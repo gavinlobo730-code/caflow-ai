@@ -15,6 +15,7 @@ from models.accounting import JournalReversalIn
 from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
+from domain.accounting.payment_account import resolve_payment_account
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -636,12 +637,20 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
     fx_diff = ap_relieved - cash_base   # + gain (paid less INR) / − loss (paid more)
 
     ap_id = K._find_account(db, firm_id, client_id, "%Trade Payable%", system_key="ap")
-    bank_id = K._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+    # The third FX site with the same defect. Three of the six call sites this
+    # phase fixes were never named by the finding — it listed the two rupee
+    # paths and receipt_service, and a grep for the pattern found twice that.
+    paid_from = resolve_payment_account(
+        db, firm_id=firm_id, client_id=client_id,
+        bank_account_id=data.get("bank_account_id"),
+        payment_mode=data.get("payment_mode"),
+        find_account=K._find_account)
+    bank_id = paid_from.account_id
     lines = [
         {"account_id": ap_id, "debit_paise": ap_relieved, "credit_paise": 0,
          "narration": "Trade payable settled at booked rate", "txn_debit": f, "txn_credit": 0},
         {"account_id": bank_id, "debit_paise": 0, "credit_paise": cash_base,
-         "narration": "Bank payment (foreign)", "txn_debit": 0, "txn_credit": f},
+         "narration": ("Cash payment (foreign)" if paid_from.source == "cash" else "Bank payment (foreign)"), "txn_debit": 0, "txn_credit": f},
     ]
     if fx_diff != 0:
         fx_id = K._find_account(db, firm_id, client_id, "%Foreign Exchange%", system_key="fx_realized")

@@ -16,6 +16,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 
+from domain.accounting.payment_account import resolve_payment_account
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -100,8 +101,14 @@ class BankPostingService:
                     e, operation="bank_posting._resolve_bank",
                     firm_id=firm_id, client_id=client_id, statement_id=stmt_id,
                 )
-        # Fall back to the firm's master Bank account.
-        return phase2_journal_service._find_account(db, firm_id, txn["client_id"], "%Bank%", system_key="bank")
+        # Fall back through the SHARED resolver rather than naming the ledger
+        # here. This path already resolved the per-bank ledger correctly above
+        # while receipts and vendor payments did not — the finding's remedy is
+        # explicitly "make them share one resolver so they cannot diverge
+        # again", and a second copy of the fallback is how they diverged.
+        return resolve_payment_account(
+            db, firm_id=firm_id, client_id=txn["client_id"],
+            find_account=phase2_journal_service._find_account).account_id
 
     def _resolve_counter(self, db, firm_id, txn, account_id: Optional[str]) -> str:
         cat = txn.get("category")

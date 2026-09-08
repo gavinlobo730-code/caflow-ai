@@ -800,6 +800,10 @@
    "detail": "c",
    "expr_md5": "c344122cffff549d6673302fbeacca5a"
   },
+  "client_payroll_settings.client_payroll_settings_payroll_enabled_by_fkey": {
+   "detail": "f",
+   "expr_md5": "c97eb46958e2f0060013ef5c1206d92c"
+  },
   "client_payroll_settings.client_payroll_settings_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -1672,6 +1676,50 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "epfo_ecr_filings.epfo_ecr_approved_needs_a_date": {
+   "detail": "c",
+   "expr_md5": "3cb8d41687c072ab5033cb93f25c5361"
+  },
+  "epfo_ecr_filings.epfo_ecr_approved_not_before_submitted": {
+   "detail": "c",
+   "expr_md5": "f7613158b17d5265da42377ad5772306"
+  },
+  "epfo_ecr_filings.epfo_ecr_filings_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "epfo_ecr_filings.epfo_ecr_filings_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "epfo_ecr_filings.epfo_ecr_filings_members_check": {
+   "detail": "c",
+   "expr_md5": "7cbd979095eb475d222fe49014fe5fbb"
+  },
+  "epfo_ecr_filings.epfo_ecr_filings_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "epfo_ecr_filings.epfo_ecr_filings_recorded_by_fkey": {
+   "detail": "f",
+   "expr_md5": "35ff332c65916a62d13a99fd504f8e09"
+  },
+  "epfo_ecr_filings.epfo_ecr_filings_return_type_check": {
+   "detail": "c",
+   "expr_md5": "37b849f781ae8bb218773068cb98c2c3"
+  },
+  "epfo_ecr_filings.epfo_ecr_filings_run_id_fkey": {
+   "detail": "f",
+   "expr_md5": "47856a77c386dd846e46c153e93cd91b"
+  },
+  "epfo_ecr_filings.epfo_ecr_filings_status_check": {
+   "detail": "c",
+   "expr_md5": "320f2e2194b8c2c899ca33e785268583"
+  },
+  "epfo_ecr_filings.epfo_ecr_filings_wage_month_check": {
+   "detail": "c",
+   "expr_md5": "3f72f97caaaed9479fa2b71c811dd6d6"
+  },
   "escalation_rules.escalation_rules_firm_id_fkey": {
    "detail": "f",
    "expr_md5": "c122d302961235f761772c28254940be"
@@ -2216,9 +2264,33 @@
    "detail": "f",
    "expr_md5": "c122d302961235f761772c28254940be"
   },
+  "gstr2a_records.gstr2a_records_match_status_check": {
+   "detail": "c",
+   "expr_md5": "b138babfbb8adbc2da6a2130a503f5e8"
+  },
   "gstr2a_records.gstr2a_records_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "gstr2a_records.gstr2a_records_purchase_bill_id_fkey": {
+   "detail": "f",
+   "expr_md5": "45326f96ff7d4bdca1a2591ca7949f66"
+  },
+  "gstr2b_reconciliations.gstr2b_reconciliations_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "gstr2b_reconciliations.gstr2b_reconciliations_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "gstr2b_reconciliations.gstr2b_reconciliations_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "gstr2b_reconciliations.gstr2b_reconciliations_reconciled_by_fkey": {
+   "detail": "f",
+   "expr_md5": "3f499a813e7e8b7e26637272b9467f06"
   },
   "gstr2b_uploads.gstr2b_uploads_pkey": {
    "detail": "p",
@@ -3039,6 +3111,14 @@
   "payroll_employees.payroll_employees_client_id_fkey": {
    "detail": "f",
    "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "payroll_employees.payroll_employees_date_of_birth_plausible": {
+   "detail": "c",
+   "expr_md5": "0c5b9b4c82db12c1e146dc47223507ee"
+  },
+  "payroll_employees.payroll_employees_employee_code_not_blank": {
+   "detail": "c",
+   "expr_md5": "60c78dfc98dd35965d492ff030396dd0"
   },
   "payroll_employees.payroll_employees_firm_id_fkey": {
    "detail": "f",
@@ -5718,6 +5798,18 @@
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
   },
+  "epfo_ecr_filings.firm_reads_epfo_ecr_filings": {
+   "detail": "permissive cmd=r roles=authenticated",
+   "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
+  },
+  "epfo_ecr_filings.firm_updates_epfo_ecr_filings": {
+   "detail": "permissive cmd=w roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "epfo_ecr_filings.firm_writes_epfo_ecr_filings": {
+   "detail": "permissive cmd=a roles=authenticated",
+   "expr_md5": "9bc0d2e6c01990d486d8d9d6de8f1b09"
+  },
   "escalation_rules.escalation_rules_own_firm": {
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
@@ -5993,6 +6085,10 @@
   "gstr2a_records.gstr2a_records_internal_partner_only": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
    "expr_md5": "b5ef261b6445dac864c30640e19d831e"
+  },
+  "gstr2b_reconciliations.firm_staff_manage_gstr2b_reconciliations": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
   "gstr2b_uploads.gstr2b_uploads_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
@@ -7704,6 +7800,10 @@
    "detail": "on",
    "expr_md5": ""
   },
+  "epfo_ecr_filings": {
+   "detail": "on",
+   "expr_md5": ""
+  },
   "escalation_rules": {
    "detail": "on",
    "expr_md5": ""
@@ -7809,6 +7909,10 @@
    "expr_md5": ""
   },
   "gstr2a_records": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "gstr2b_reconciliations": {
    "detail": "on",
    "expr_md5": ""
   },

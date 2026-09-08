@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException
 
+from domain.accounting.payment_account import resolve_payment_account
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -175,11 +176,20 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
     unalloc_base = cash_base - settled_cash_base
     fx_diff = settled_cash_base - total_ar_relieved   # + gain / − loss (receivable)
 
-    bank_id = K._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+    # The FOREIGN-currency receipt has the same defect as the rupee one, and the
+    # finding did not name it: a firm-wide Bank ledger regardless of which
+    # account received the money or whether it was cash.
+    paid_into = resolve_payment_account(
+        db, firm_id=firm_id, client_id=client_id,
+        bank_account_id=data.get("bank_account_id"),
+        payment_mode=data.get("payment_mode"),
+        find_account=K._find_account)
+    bank_id = paid_into.account_id
     ar_id = K._find_account(db, firm_id, client_id, "%Trade Receivable%", system_key="ar")
     lines = [
         {"account_id": bank_id, "debit_paise": cash_base, "credit_paise": 0,
-         "narration": "Cash/bank received (foreign)", "txn_debit": total_foreign, "txn_credit": 0},
+         "narration": ("Cash received (foreign)" if paid_into.source == "cash"
+                       else "Bank receipt (foreign)"), "txn_debit": total_foreign, "txn_credit": 0},
         {"account_id": ar_id, "debit_paise": 0, "credit_paise": total_ar_relieved + unalloc_base,
          "narration": "Trade receivable settled at booked rate", "txn_debit": 0, "txn_credit": total_foreign},
     ]
@@ -652,6 +662,11 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         "tds_paise":         tds_paise,
         "unallocated_paise": unallocated_paise,
         "payment_mode":      data.get("payment_mode", ""),
+        # ReceiptIn.bank_account_id has been ACCEPTED BY THE API since the model
+        # was written and dropped here — absent from this dict, so a caller that
+        # supplied it got no error and no effect (SALES-08). Migration 342 gives
+        # it a column; receipt_journal_lines resolves the ledger from it.
+        "bank_account_id":   data.get("bank_account_id"),
         "reference_no":      data.get("reference_no", ""),
         "notes":             data.get("notes", ""),
         "created_at":        datetime.now(timezone.utc).isoformat(),
