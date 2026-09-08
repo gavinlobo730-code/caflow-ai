@@ -431,6 +431,37 @@ class ITRComputeResult:
     validation_errors: list[str] = field(default_factory=list)
 
 
+def _stamp_rate_provenance(result, requested_fy: str, rates) -> None:
+    """Record whether the rates used are the rates for the year that was ASKED.
+
+    `rates_for()` FALLS BACK: a year the registry does not hold silently returns
+    `LATEST_VERIFIED_FY`'s figures, still flagged `verified=True` — because that
+    flag describes the entry it came from, not the request. Copying it straight
+    onto the result made the response assert that a Finance Act had been checked
+    for a year nobody had entered.
+
+    So `rates_verified` now means what a reader assumes it means: the rates are
+    the verified rates FOR `requested_fy`. A substituted year is false, and says
+    so in `warnings` with both years named, because "your 2024-25 computation was
+    run at 2025-26 rates" is the sentence a CA needs — a bare false flag is not.
+
+    This is not a refusal. The fallback is deliberate (CLAUDE.md, "the trap that
+    makes this list necessary") and several callers depend on getting a number.
+    What was wrong was claiming it had been checked.
+    """
+    requested = (requested_fy or "").strip()
+    result.fy = rates.fy
+    if requested and requested != rates.fy:
+        result.rates_verified = False
+        result.warnings.append(
+            f"No rates are held for FY {requested}; this was computed at "
+            f"FY {rates.fy} rates. Slabs, surcharge, rebate and the entity and "
+            f"minimum-tax rates all move by Finance Act, so treat every figure "
+            f"as indicative until FY {requested} is added to the registries.")
+        return
+    result.rates_verified = rates.verified
+
+
 # ── Engine ────────────────────────────────────────────────────────────────────
 
 class ITREngine:
@@ -451,8 +482,7 @@ class ITREngine:
         rates = rates_for(req.fy)
         result = ITRComputeResult()
         result.regime = "new" if req.use_new_regime else "old"
-        result.fy = rates.fy
-        result.rates_verified = rates.verified
+        _stamp_rate_provenance(result, req.fy, rates)
 
         # 1. Standard deduction on salary (IT Act Section 16(ia)). F17 fix:
         # this used to apply the NEW regime's ₹75,000 to both regimes — the
@@ -816,8 +846,7 @@ class ITREngine:
         """
         rates = rates_for(req.fy)
         result = ITRComputeResult()
-        result.fy = rates.fy
-        result.rates_verified = rates.verified
+        _stamp_rate_provenance(result, req.fy, rates)
         result.assessee_kind = req.assessee_kind
         # A COMPANY has a regime (§115BAA, §115BAB, or the normal rates). A
         # firm or LLP has none — there is one rate and no election — so this is

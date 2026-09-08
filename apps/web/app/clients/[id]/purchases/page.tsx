@@ -384,7 +384,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
     const supabase = getSupabaseClient();
     const { start, end } = range;
     try {
-      const [billsRes, vendorsRes, servicesRes, reconRes] = await Promise.all([
+      const [billsRes, vendorsRes, servicesRes, reconRes, doneRes] = await Promise.all([
         selectAll(() => supabase
           .from("purchase_bills")
           .select("*, vendors(name)")
@@ -422,13 +422,28 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
           .eq("client_id", clientId)
           .not("purchase_bill_id", "is", null)
           .order("purchase_bill_id")),
+        // WHICH PERIODS HAVE BEEN RECONCILED — a SEPARATE read, and it has to be.
+        //
+        // The set used to be derived from the rows above, which carry
+        // `purchase_bill_id IS NOT NULL` and therefore only exist where a
+        // document MATCHED a bill. So a client whose suppliers filed nothing
+        // produced no rows, the period never entered the set, and every bill
+        // read "not reconciled" — for precisely the client who needs chasing.
+        // Migration 341 records the reconciliation itself.
+        selectAll(() => supabase
+          .from("gstr2b_reconciliations")
+          .select("return_period")
+          .eq("client_id", clientId)
+          .order("return_period")),
       ]);
       setVendors((vendorsRes.data as Vendor[]) ?? []);
       const reconRows = (reconRes.data as unknown as Recon2BRow[]) ?? [];
       setRecon2B(Object.fromEntries(
         reconRows.filter((r) => r.purchase_bill_id)
                  .map((r) => [r.purchase_bill_id as string, r])));
-      setReconciledPeriods(new Set(reconRows.map((r) => r.return_period).filter(Boolean)));
+      setReconciledPeriods(new Set(
+        ((doneRes.data as unknown as { return_period: string }[]) ?? [])
+          .map((r) => r.return_period).filter(Boolean)));
       setServices((servicesRes.data as ServiceCatalogueItem[]) ?? []);
       // M17: a failed bills fetch — a thrown network error OR a non-null
       // PostgREST error — must surface as retryable, not read as an empty

@@ -267,7 +267,7 @@ def _presentation(statements: dict):
 
         return (_bs(statements.get("balance_sheet")), _bs(comparatives.get("balance_sheet")),
                 _pl(statements.get("profit_loss")), _pl(comparatives.get("profit_loss")),
-                _rs, "All figures in Indian Rupees (₹).")
+                _rs, "All figures in Indian Rupees (Rs.).")
 
     comp = rounding.get("comparative")
     return (rounding["current"]["balance_sheet"],
@@ -286,7 +286,7 @@ def _bs_section(elements, st, bs_data: dict, comp: dict | None = None,
     elements.append(
         Paragraph(
             "As per Schedule III, Companies Act 2013. "
-            + (caption or "All figures in Indian Rupees (₹)."),
+            + (caption or "All figures in Indian Rupees (Rs.)."),
             st["note"],
         )
     )
@@ -379,7 +379,7 @@ def _pl_section(elements, st, pl_data: dict, comp: dict | None = None,
     elements.append(
         Paragraph(
             "As per Schedule III, Companies Act 2013. "
-            + (caption or "All figures in Indian Rupees (₹)."),
+            + (caption or "All figures in Indian Rupees (Rs.)."),
             st["note"],
         )
     )
@@ -497,7 +497,7 @@ def generate_notes_pdf(engagement_data: dict, notes_data: list) -> bytes:
     elements.append(
         Paragraph(
             "As required by Schedule III, Companies Act 2013. "
-            "All figures in Indian Rupees (₹).",
+            "All figures in Indian Rupees (Rs.).",
             st["note"],
         )
     )
@@ -516,7 +516,7 @@ def generate_notes_pdf(engagement_data: dict, notes_data: list) -> bytes:
         ]
         if monetary_rows:
             tbl = Table(
-                [["Particulars", "₹ (Rupees)"]] + [[r[0], r[1]] for r in monetary_rows],
+                [["Particulars", "Rupees"]] + [[r[0], r[1]] for r in monetary_rows],
                 colWidths=[(PAGE_W - 70 * mm) * 0.65, (PAGE_W - 70 * mm) * 0.35],
             )
             tbl.setStyle(_table_style(has_total_row=False))
@@ -584,11 +584,11 @@ def generate_complete_pack_pdf(
     # ── Adjustment Register ──────────────────────────────────────────────────
     elements.append(Paragraph("YEAR-END ADJUSTMENT REGISTER", st["section"]))
     elements.append(
-        Paragraph("All amounts in Indian Rupees (₹). Paise converted to rupees for display.", st["note"])
+        Paragraph("All amounts in Indian Rupees (Rs.). Paise converted to rupees for display.", st["note"])
     )
     elements.append(Spacer(1, 3 * mm))
 
-    adj_rows = [["#", "Type", "Description", "Date", "Amount (₹)", "Status"]]
+    adj_rows = [["#", "Type", "Description", "Date", "Amount (Rs.)", "Status"]]
     for i, adj in enumerate(adjustments, start=1):
         adj_rows.append([
             str(i),

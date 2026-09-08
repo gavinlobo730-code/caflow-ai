@@ -52,8 +52,8 @@ _HIDE_WHEN_ZERO = {"loan_recovery_paise"}
 
 
 def deduction_lines(slip: dict) -> tuple[list[list[str]], int]:
-    """([["Deductions", "Amount (₹)"], [label, amount], ...], total_paise)."""
-    rows = [["Deductions", "Amount (₹)"]]
+    """([["Deductions", "Amount (Rs.)"], [label, amount], ...], total_paise)."""
+    rows = [["Deductions", "Amount (Rs.)"]]
     total = 0
     for label, key in DEDUCTION_DEFS:
         value = int(slip.get(key) or 0)
@@ -65,13 +65,13 @@ def deduction_lines(slip: dict) -> tuple[list[list[str]], int]:
 
 
 def _paise_to_rupee_str(paise: int) -> str:
-    """Format integer paise as a rupee string, e.g. 123456 -> '₹1,234.56'.
+    """Format integer paise as a rupee string, e.g. 123456 -> 'Rs.1,234.56'.
 
     Integer paise arithmetic only — never float (project rupee rule)."""
     paise = int(paise or 0)
     rupees = paise // 100
     fraction = paise % 100
-    return f"₹{rupees:,}.{fraction:02d}"
+    return f"Rs.{rupees:,}.{fraction:02d}"
 
 
 def _pay_period(slip: dict, run: dict) -> tuple[str, int, int]:
@@ -191,7 +191,7 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict) -> 
         ("Bonus / Incentive / Arrears", "one_time_earnings_paise"),
     ]
     gross_paise = int(slip.get("gross_paise") or 0)
-    earning_rows = [["Earnings", "Amount (₹)"]]
+    earning_rows = [["Earnings", "Amount (Rs.)"]]
     has_breakdown = any(slip.get(k) for _, k in earning_defs)
     if has_breakdown:
         for label, key in earning_defs:

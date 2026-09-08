@@ -11,7 +11,7 @@ All amounts are integer paise. Never float.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import Optional, Sequence
 
 # GSTR-3B is declared and paid in WHOLE rupees (CGST Act §170) — not the 2-decimal
 # rupees GSTR-1 uses. Conversion lives in the shared GST money module.
@@ -717,6 +717,7 @@ def compute_gstr3b(
     gstr2a_records: Sequence[GSTR2ARecord],
     reversals: Sequence[ITCReversal] = (),
     reclaims: Sequence[ITCReversal] = (),
+    have_2b: Optional[bool] = None,
 ) -> GSTR3BResult:
     """Compute GSTR-3B figures from transaction data.
 
@@ -802,9 +803,22 @@ def compute_gstr3b(
     gstr2a_cgst = sum(r.cgst_paise for r in gstr2a_records)
     gstr2a_sgst = sum(r.sgst_paise for r in gstr2a_records)
 
-    # Whether a 2B is ON FILE at all, which is a different fact from its total
-    # being zero — see _apply_rule_36_4_cap.
-    have_2b = len(gstr2a_records) > 0
+    # WHETHER A 2B IS ON FILE AT ALL — a different fact from its total being
+    # zero, and one this function cannot work out for itself.
+    #
+    # Deriving it from `len(gstr2a_records)`, which is what the caller-less
+    # default below does, is WRONG whenever a 2B exists and yields no rows: the
+    # supplier filed nothing, or every document is itcavl = "N" and the caller
+    # filtered them out. Both mean the cap is NIL, and both look identical to
+    # "no 2B uploaded" from in here. A caller that knows — gst_return_service
+    # asks the reconciliation header, migration 341 — passes it explicitly.
+    #
+    # The fallback is kept, and kept as a fallback rather than a required
+    # argument, because the direct-compute path and the mock-mode callers have
+    # no header table to ask and their old behaviour is the safe one for them:
+    # it never caps where it should not, it only fails to cap where it should.
+    if have_2b is None:
+        have_2b = len(gstr2a_records) > 0
     itc_igst, capped_i = _apply_rule_36_4_cap(book_igst, gstr2a_igst, have_2b)
     itc_cgst, capped_c = _apply_rule_36_4_cap(book_cgst, gstr2a_cgst, have_2b)
     itc_sgst, capped_s = _apply_rule_36_4_cap(book_sgst, gstr2a_sgst, have_2b)

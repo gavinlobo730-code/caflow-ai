@@ -799,6 +799,8 @@ current and are where to start on any "what should we fix next" question:**
 | `2026-09-07-where-we-are-against-the-one-platform-goal.md` | the full platform audit against the one-platform goal: 278 findings, the module scorecard, the market comparison, and the staged plan. §13 records the verification pass |
 | `2026-09-07-findings/` | the 278 findings as JSON, one file per subsystem. **Sort by `verification.corrected_severity`, not `severity`** — the raw severity is the reader's first impression, the corrected one survived an adversarial check |
 | `2026-09-07-a-plus-roadmap.md` | what each of the 14 modules needs to reach A+, defined as five testable properties, in a seven-stage order that starts by proving correctness |
+| `2026-09-08c-the-phase-plan.md` | **the plan being worked to.** All 254 remaining items in twelve phases grouped by FIX SHAPE rather than by module, so each phase teaches one pattern and ends with one guard test. Every critical and high is assigned; two duplicate pairs are named (PUR-07≡TDS-13, IT-09≡FA-06) |
+| `2026-09-08b-what-is-left.md` | the current remaining-work list, re-scored against `9fbe40d`. **Start here**, not at the 7 September audit: 39 findings are closed, one critical is left (FA-02, latent), and §2 lists seven defects the last tranche introduced that the 10,389-test suite passes over. It supersedes `2026-09-08-what-is-left.md`, which is kept because its §2 is the record of what was fixed |
 
 `docs/audits/2026-09-07-market-research/` holds the statutory re-check behind
 them. **Nothing in it is graded `[P]`** — direct egress is refused at the proxy

@@ -20,6 +20,7 @@ from __future__ import annotations
 import calendar
 from datetime import date
 
+import services.gst_2b_reconciliation_service as gst_2b_reconciliation_service
 import services.gst_advance_service as gst_advance_service
 import services.itc_register_service as itc_register_service
 from domain.gst.gstr3b_computer import (
@@ -814,8 +815,7 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
 
     # Rule 36(4): ITC is capped at the credit suppliers have actually filed.
     # This used to pass [], so the cap could never fire on the return a CA
-    # files. _apply_rule_36_4_cap leaves book ITC alone when no records exist,
-    # so a client who has never uploaded 2A is unaffected.
+    # files.
     two_a_rows = _gstr2a_for_period(db, firm_id, client_id, period)
     gstr2a = [
         GSTR2ARecord(
@@ -826,7 +826,20 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         for x in two_a_rows
     ]
 
-    result = compute_gstr3b(sales, purchases, gstr2a, reversals, reclaims)
+    # WHETHER A 2B IS ON FILE IS A DIFFERENT QUESTION FROM WHETHER IT HAS ROWS,
+    # and it is asked of the reconciliation header rather than of `gstr2a`.
+    # Deriving it from `len(gstr2a)` — which the first version did — makes
+    # "reconciled, and nobody filed anything" identical to "never reconciled",
+    # so the cap does not fire and the return claims the whole book ITC. That is
+    # the credit §16(2)(aa) exists to withhold, on exactly the client whose
+    # suppliers are delinquent. `_gstr2a_for_period` also filters out
+    # itcavl = "N" documents, so a period whose every document is blocked
+    # legitimately reaches here with an empty list and MUST still cap.
+    have_2b = gst_2b_reconciliation_service.was_reconciled(
+        db, firm_id=firm_id, client_id=client_id, period=period)
+
+    result = compute_gstr3b(sales, purchases, gstr2a, reversals, reclaims,
+                            have_2b=have_2b)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)

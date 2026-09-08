@@ -359,7 +359,10 @@ def _compute_tax_splits(
 # ── The shared renderer ──────────────────────────────────────────────────────
 
 # Fee invoice: description + SAC + taxable value, as it has always been.
-_PLAIN_HEADER = ["#", "Description", "SAC", "Taxable Value (₹)"]
+# "Rs.", matching _DETAIL_HEADER below and for the same reason. This one was
+# left with the glyph, so the SIMPLE invoice layout — the one used when a
+# line breakdown is not shown — printed an unmapped box in its column head.
+_PLAIN_HEADER = ["#", "Description", "SAC", "Taxable Value (Rs.)"]
 _PLAIN_WIDTHS = [10 * mm, 95 * mm, 25 * mm, 50 * mm]
 # Sales invoice: Rule 46(g)/(h)/(l) — HSN/SAC, quantity, unit, rate and the tax
 # on each line, none of which the plain layout has room for.
