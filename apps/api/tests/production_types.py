@@ -70,44 +70,8 @@ _NUMERIC_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 # Keep this SHORT. A long list means the snapshot needs refreshing, not that the
 # list needs another entry.
 ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
-    ("payroll_slips", "pf_wages_paise"): "migration 334",
-    ("payroll_slips", "pf_wages_addback_paise"): "migration 334",
-    ("payroll_slips", "pf_wages_rule_applied"): "migration 334",
-    ("client_payroll_settings", "payroll_enabled"): "migration 332",
-    ("client_payroll_settings", "payroll_enabled_by"): "migration 332",
-    ("client_payroll_settings", "payroll_enabled_on"): "migration 332",
-    ("payroll_employees", "employee_code"): "migration 333",
-    ("payroll_employees", "date_of_birth"): "migration 333",
-    ("fixed_assets", "acquisition_mode"): "migration 343",
-    ("fixed_assets", "vendor_id"): "migration 343",
-    ("fixed_assets", "purchase_bill_id"): "migration 343",
-    ("fixed_assets", "bank_account_id"): "migration 343",
-    ("fixed_assets", "payment_mode"): "migration 343",
-    ("fixed_assets", "igst_paise"): "migration 343",
-    ("fixed_assets", "cgst_paise"): "migration 343",
-    ("fixed_assets", "sgst_paise"): "migration 343",
-    ("fixed_assets", "itc_eligible"): "migration 343",
-    ("fixed_assets", "itc_blocked_reason"): "migration 343",
-    ("receipts", "bank_account_id"): "migration 342",
-    ("purchase_payments", "bank_account_id"): "migration 342",
-    ("gstr3b_returns", "rcm_cash_paise"): "migration 339",
-    ("gstr3b_returns", "cash_payable_paise"): "migration 339",
-    ("gstr2a_records", "purchase_bill_id"): "migration 340",
-    ("gstr2a_records", "match_status"): "migration 340",
-    ("gstr2a_records", "match_difference_paise"): "migration 340",
-    ("gstr2a_records", "itc_available"): "migration 340",
-    ("gstr2a_records", "itc_unavailable_reason_code"): "migration 340",
-    ("gstr2a_records", "itc_unavailable_reason"): "migration 340",
-    ("gstr2a_records", "document_type"): "migration 340",
-    ("gstr2a_records", "section"): "migration 340",
-    ("gstr2a_records", "cess_paise"): "migration 340",
-    ("gstr2a_records", "invoice_value_paise"): "migration 340",
-    ("gstr2a_records", "supplier_trade_name"): "migration 340",
-    ("gstr2a_records", "supplier_filed_on"): "migration 340",
-    ("gstr2a_records", "is_amendment"): "migration 340",
-    ("gstr2a_records", "amends_document_number"): "migration 340",
-    ("gstr2a_records", "reconciled_at"): "migration 340",
-    ("gstr2a_records", "updated_at"): "migration 340",
+    # Empty, and that is the goal state: the snapshot is current as of
+    # migration 343 and every entry it used to carry is now IN it.
 }
 
 

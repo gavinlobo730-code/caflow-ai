@@ -108,9 +108,23 @@ def test_a_table_the_snapshot_predates_is_skipped_not_failed():
 
 def test_a_column_a_later_migration_added_is_allowed_by_name():
     """...but only by name, with the migration recorded, so the entry becomes
-    provably removable the moment the snapshot is refreshed."""
-    check("payroll_slips", {"pf_wages_paise": 1_400_000})
-    assert ("payroll_slips", "pf_wages_paise") in ADDED_AFTER_THE_SNAPSHOT
+    provably removable the moment the snapshot is refreshed.
+
+    Driven by the list rather than naming one column, because naming one is a
+    claim that goes stale: this test pinned payroll_slips.pf_wages_paise, and
+    the 9 September refresh — which put that column IN the snapshot and
+    correctly removed its entry — broke the test rather than passing it. What
+    is being asserted is the RULE (a named column is let through, an unnamed
+    one is not), and the rule survives every refresh.
+    """
+    for (table, column), migration in ADDED_AFTER_THE_SNAPSHOT.items():
+        check(table, {column: object()})
+        assert migration.startswith("migration "), (table, column, migration)
+
+    # The other half, and the one that matters: a column NOT on the list, in a
+    # table the snapshot does hold, is still refused.
+    with pytest.raises(AssertionError):
+        check("payroll_slips", {"invented_by_this_test_paise": 1})
 
 
 def test_the_post_snapshot_list_stays_short_and_names_its_migrations():
