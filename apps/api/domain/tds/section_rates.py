@@ -65,6 +65,43 @@ silently under-deducts; the CA reviews every figure before filing anyway:
     technical services / call centres are 2% — not separately modelled.
   * 194D: 2% individual rate (Finance (No. 2) Act 2024, from 1 April 2025);
     10% remains the rate for payments to domestic companies.
+
+MOST OF THESE SECTIONS HAVE TWO LIMITS, NOT ONE. The proviso to s. 194J reads
+"if such sum or, as the case may be, THE AGGREGATE OF THE SUMS credited or paid
+... during the financial year does not exceed fifty thousand rupees", and
+ss. 194A, 194D, 194G and 194H carry the same "aggregate of the sums" wording;
+s. 194C(5) sets a separate and higher aggregate of its own. Until this table
+gained aggregate_threshold_paise on those sections, only 194C had one, so the
+second limb of tds_computer.resolve_tds()'s `applies` test was dead everywhere
+else: a consultant billed ₹30,000 four times had NOTHING withheld against the
+₹12,000 due on the ₹1,20,000 aggregate. Where the statute names one amount for
+both limbs the aggregate here equals the single threshold, so single-payment
+behaviour is unchanged; 194C stays the one section where the two differ
+(₹30,000 single, ₹1,00,000 aggregate).
+
+Two sections deliberately have NO aggregate. s. 194I's limit is "fifty thousand
+rupees for a month or part of a month" — a per-month test that an FY aggregate
+would misstate — and FA 2025 made s. 194B's ₹10,000 apply to a single
+transaction. Adding an FY aggregate to either would deduct where the statute
+does not charge.
+
+And one section is charged on a DIFFERENT BASE. s. 194Q(1) requires "a sum equal
+to 0.1 per cent of such sum EXCEEDING fifty lakh rupees": the ₹50,00,000 is
+carved out of the base, not merely a trigger. That is carried on the rule as
+charge_on_excess_only, so the engine reads a property of the section rather
+than testing its name. s. 194Q's ₹50,00,000 is ALSO an FY aggregate in the
+statute — "purchase of goods of the value or aggregate of such value exceeding
+fifty lakh rupees in any previous year" — and both limbs now carry it, so two
+₹30,00,000 bills to one seller withhold ₹1,000 on the second (0.1% of the
+₹10,00,000 by which the year exceeds ₹50,00,000) instead of nothing at all.
+That became safe to model only once the purchase-bill path started crediting
+what earlier bills withheld (fy_prior_tds_paise); before that, charging on a
+running aggregate re-charged the whole year on every later bill.
+
+What this module does NOT decide for 194Q is whether the section applies. The
+first proviso binds only a buyer whose own turnover exceeded ₹10 crore in the
+preceding FY, and no client turnover figure reaches this engine — the CA marks
+the vendor, and the table answers "given 194Q applies, how much".
 """
 from __future__ import annotations
 
@@ -83,7 +120,18 @@ class TDSSectionRule:
     single_threshold_paise: int          # TDS applies when a payment EXCEEDS this
     individual_rate_bps: int             # payee is individual/HUF (PAN 4th char P/H)
     company_rate_bps: int                # any other payee
-    aggregate_threshold_paise: int | None = None  # FY-aggregate alternative trigger (194C)
+    # FY-aggregate alternative trigger — the statute's "or, as the case may be,
+    # the aggregate of the sums ... during the financial year". TDS applies once
+    # the payee's FY total under this section EXCEEDS this, even though no single
+    # payment reached single_threshold_paise. See the module docstring for which
+    # sections take one and which deliberately do not.
+    aggregate_threshold_paise: int | None = None
+    # IT Act s. 194Q(1) alone charges "a sum equal to 0.1 per cent of such sum
+    # EXCEEDING fifty lakh rupees" — the threshold is carved OUT of the base
+    # rather than only triggering it. Every other section here charges the whole
+    # sum once its threshold is crossed. Held as a property of the rule so the
+    # engine never has to special-case a section by name.
+    charge_on_excess_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -115,30 +163,57 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     # Dividends — ₹5,000 → ₹10,000 (FA 2025).
     "194":   TDSSectionRule(10_000_00, 1000, 1000),
     # Interest other than securities — "any other payer" ₹10,000 (FA 2025); see
-    # module docstring for the bank/senior-citizen simplification.
-    "194A":  TDSSectionRule(10_000_00, 1000, 1000),
+    # module docstring for the bank/senior-citizen simplification. s. 194A(3)(i)
+    # sets the limit on "the amount or, as the case may be, the aggregate of the
+    # amounts of such income credited or paid ... during the financial year", so
+    # the same ₹10,000 is both limbs.
+    "194A":  TDSSectionRule(10_000_00, 1000, 1000, aggregate_threshold_paise=10_000_00),
     # Lottery/crossword winnings — ₹10,000, now per single transaction (FA 2025).
     "194B":  TDSSectionRule(10_000_00, 3000, 3000),
     # Contractors — unchanged: ₹30,000 single OR ₹1,00,000 FY aggregate; 1%/2%.
+    # The one section whose two limbs are different amounts (s. 194C(5)).
     "194C":  TDSSectionRule(30_000_00, 100, 200, aggregate_threshold_paise=1_00_000_00),
     # Insurance commission — ₹15,000 → ₹20,000 (FA 2025); 5% → 2% for
-    # non-companies (F(No.2)A 2024, from 1 Apr 2025); companies stay 10%.
-    "194D":  TDSSectionRule(20_000_00, 200, 1000),
+    # non-companies (F(No.2)A 2024, from 1 Apr 2025); companies stay 10%. The
+    # s. 194D proviso reads on "the aggregate of the amounts of such income
+    # credited or paid during the financial year", hence the same ₹20,000 twice.
+    "194D":  TDSSectionRule(20_000_00, 200, 1000, aggregate_threshold_paise=20_000_00),
     # Lottery-ticket commission — ₹15,000 → ₹20,000; 5% → 2% (from 1 Oct 2024).
-    "194G":  TDSSectionRule(20_000_00, 200, 200),
+    # s. 194G(1) proviso: "the amount of such income or, as the case may be, the
+    # aggregate of the amounts of such income ... during the financial year".
+    "194G":  TDSSectionRule(20_000_00, 200, 200, aggregate_threshold_paise=20_000_00),
     # Commission/brokerage — ₹15,000 → ₹20,000; 5% → 2% (from 1 Oct 2024).
-    "194H":  TDSSectionRule(20_000_00, 200, 200),
+    # s. 194H proviso: "such income or, as the case may be, the aggregate of the
+    # amounts of such income credited or paid ... during the financial year".
+    "194H":  TDSSectionRule(20_000_00, 200, 200, aggregate_threshold_paise=20_000_00),
     # Rent — ₹2,40,000/yr → ₹50,000 per month or part (FA 2025); 10%. Modelled
     # per-payment (see module docstring).
     "194I":  TDSSectionRule(50_000_00, 1000, 1000),
     # Professional fees — ₹30,000 → ₹50,000 (FA 2025); 10% professional rate.
-    "194J":  TDSSectionRule(50_000_00, 1000, 1000),
+    # The s. 194J proviso: "if such sum or, as the case may be, the aggregate of
+    # the sums credited or paid ... during the financial year does not exceed
+    # fifty thousand rupees" — one amount, both limbs.
+    "194J":  TDSSectionRule(50_000_00, 1000, 1000, aggregate_threshold_paise=50_000_00),
     # Mutual-fund income — ₹5,000 → ₹10,000 (FA 2025).
     "194K":  TDSSectionRule(10_000_00, 1000, 1000),
     # Compulsory acquisition compensation — ₹2,50,000 → ₹5,00,000 (FA 2025).
     "194LA": TDSSectionRule(5_00_000_00, 1000, 1000),
-    # Purchase of goods — unchanged ₹50L, 0.1%.
-    "194Q":  TDSSectionRule(50_00_000_00, 10, 10),
+    # Purchase of goods — unchanged ₹50L, 0.1%, charged on the EXCESS: s. 194Q(1)
+    # says "a sum equal to 0.1 per cent of such sum exceeding fifty lakh rupees",
+    # so a ₹60,00,000 purchase bears ₹1,000 (0.1% of the ₹10,00,000 excess) and
+    # not ₹6,000. The ₹50L is an FY AGGREGATE as well as a single-payment
+    # trigger — s. 194Q(1) charges on "purchase of goods of the value OR
+    # AGGREGATE OF SUCH VALUE exceeding fifty lakh rupees in any previous year"
+    # — so both limbs carry the same figure. Without the aggregate limb two
+    # ₹30,00,000 bills to one seller withheld nothing at all against ₹1,000 due
+    # on the ₹60,00,000 year. NOT modelled here, and outside this module: the
+    # section only binds a BUYER whose own turnover exceeded ₹10 crore in the
+    # preceding FY (first proviso), and no client turnover figure reaches this
+    # engine — so a vendor is put on 194Q by the CA marking them, and this table
+    # answers only "given 194Q applies, how much".
+    "194Q":  TDSSectionRule(50_00_000_00, 10, 10,
+                            aggregate_threshold_paise=50_00_000_00,
+                            charge_on_excess_only=True),
     # TCS on sale of goods, Section 206C(1H) — unchanged, 0.1%.
     # R3.1: NOT wired to any computation anywhere in this codebase — confirmed
     # zero readers (tds_computer.py has no 27EQ/TCS path at all, only 24Q/26Q

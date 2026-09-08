@@ -301,6 +301,7 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
     # FY-aggregate of this vendor's prior taxable under the same section, so the
     # §194C ₹1L aggregate threshold is honoured across multiple bills.
     fy_prior = 0
+    fy_prior_tds = 0
     if not _USE_MOCK and db is not None:
         fy_start, fy_end = _fy_bounds(bill_date)
         # deleted_at IS NULL — soft-deleted bills keep status "draft", so the
@@ -310,16 +311,22 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
         # threshold is "credited or paid or LIKELY to be credited" (IT Act
         # §194C(5)) and a live draft is expected to be received.
         prior = (db.table("purchase_bills")
-                 .select("id, taxable_amount_paise")
+                 .select("id, taxable_amount_paise, tds_paise")
                  .eq("firm_id", firm_id).eq("vendor_id", vendor.get("id"))
                  .eq("tds_section", tds_section).neq("status", "cancelled")
                  .is_("deleted_at", "null")
                  .gte("bill_date", fy_start).lte("bill_date", fy_end)
                  .execute().data) or []
-        fy_prior = sum(
-            int(b.get("taxable_amount_paise") or 0)
-            for b in prior if b.get("id") != exclude_bill_id
-        )
+        _earlier = [b for b in prior if b.get("id") != exclude_bill_id]
+        fy_prior = sum(int(b.get("taxable_amount_paise") or 0) for b in _earlier)
+        # ...and what those bills ALREADY withheld. The charge is on the FY
+        # aggregate (IT Act §194C(5) and the parallel "aggregate of the sums"
+        # limbs of §§194A/194D/194G/194H/194J), so without this credit the same
+        # aggregate is taxed again on every later bill: three ₹1,00,000 §194J
+        # bills withheld ₹10,000, ₹20,000 and ₹30,000 instead of ₹10,000 each.
+        # IT Act §200 — tax already deducted and paid to the credit of the
+        # Central Government is not deducted a second time.
+        fy_prior_tds = sum(int(b.get("tds_paise") or 0) for b in _earlier)
     # Resolve thresholds/rates for the FY the BILL falls in, not "today" —
     # a bill entered late for a prior FY must use that year's law.
     try:
@@ -333,6 +340,7 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
             section=tds_section,
             taxable_paise=total_taxable,
             fy_prior_taxable_paise=fy_prior,
+            fy_prior_tds_paise=fy_prior_tds,
             is_company=is_company_pan(vendor.get("pan")),
             fy=bill_fy,
             # IT Act §206AA: no real PAN on file floors the rate at
