@@ -219,8 +219,27 @@ def _next_bank_account_code(db, firm_id: str) -> str:
     return str(n)
 
 
+#: An overdraft and a cash credit are MONEY OWED TO THE BANK, so their ledger is
+#: a liability. bank_accounts.account_type has allowed these since migration 054
+#: and the form offers them; the ledger was created Asset/'Bank' regardless.
+#:
+#: The SUBTYPE is 'Bank Overdraft' and that was checked, not chosen:
+#: domain/reporting/schedule_iii.bs_bucket() substring-scans for the literal
+#: "overdraft", so 'Bank OD' and 'Cash Credit' both fall to Other Current
+#: Liabilities instead of Short Term Borrowings — the caption Schedule III
+#: Division I puts "loans repayable on demand from banks" under.
+_OVERDRAWN_BANK_TYPES = frozenset({"Cash Credit", "Overdraft"})
+_OD_LEDGER = ("Liability", "Bank Overdraft")
+_ASSET_LEDGER = ("Asset", "Bank")
+
+
+def ledger_shape_for_bank(account_type: Optional[str]) -> tuple[str, str]:
+    """(account_type, account_subtype) for a bank account's own ledger."""
+    return _OD_LEDGER if (account_type or "") in _OVERDRAWN_BANK_TYPES else _ASSET_LEDGER
+
+
 def _ensure_bank_ledger(db, firm_id: str, client_id: str, bank_name: str,
-                        account_no: str) -> Optional[str]:
+                        account_no: str, account_type: Optional[str] = None) -> Optional[str]:
     """Create a chart-of-accounts row dedicated to one bank account, and return it.
 
     Every bank account needs its own ledger. Left to the CA it is a step that gets
@@ -238,6 +257,7 @@ def _ensure_bank_ledger(db, firm_id: str, client_id: str, bank_name: str,
     ordinary use: a firm with two clients banking at the same branch produces the
     same "HDFC Bank — 7890", and so does one client re-adding an account after
     deactivating it. Each attempt re-reads the codes and disambiguates the name."""
+    _typ, _sub = ledger_shape_for_bank(account_type)
     last4 = str(account_no or "")[-4:]
     base = f"{bank_name.strip()} — {last4}" if last4 else bank_name.strip()
     for attempt in range(1, 6):
@@ -247,7 +267,7 @@ def _ensure_bank_ledger(db, firm_id: str, client_id: str, bank_name: str,
                 "firm_id": firm_id, "client_id": client_id,
                 "account_code": _next_bank_account_code(db, firm_id),
                 "account_name": name[:120],
-                "account_type": "Asset", "account_subtype": "Bank", "is_active": True,
+                "account_type": _typ, "account_subtype": _sub, "is_active": True,
             }).execute().data or [{}])[0]
             if row.get("id"):
                 return row["id"]
@@ -457,7 +477,8 @@ def create_bank_account(
                        f"line and neither can be reconciled.")
     else:
         payload["coa_account_id"] = _ensure_bank_ledger(
-            db, firm_id, payload["client_id"], payload["bank_name"], payload["account_no"])
+            db, firm_id, payload["client_id"], payload["bank_name"],
+            payload["account_no"], payload.get("account_type"))
 
     row = db.table("bank_accounts").insert(payload).execute()
     account = (row.data or [{}])[0]

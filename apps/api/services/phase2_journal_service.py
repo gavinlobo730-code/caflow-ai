@@ -49,6 +49,9 @@ def purchase_bill_journal_ref(bill_id: str) -> str:
     return f"PB-{str(bill_id)[:8].upper()}"
 
 
+from domain.accounting.payment_account import resolve_payment_account
+
+
 class Phase2JournalService:
     """Auto-journal service for Phase 2 transaction types."""
 
@@ -207,7 +210,17 @@ class Phase2JournalService:
         tds_paise  = int(receipt.get("tds_paise", 0) or 0)
         settlement = cash_paise + tds_paise
 
-        bank_id        = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+        # THE LEDGER THE MONEY ACTUALLY WENT INTO, not a firm-wide guess.
+        # This was `_find_account(..., "%Bank%", system_key="bank")`, which
+        # ignored both the bank account the CA chose and payment_mode='cash' —
+        # so a cash receipt debited Bank and a client with three banks had every
+        # receipt land in one ledger. See domain/accounting/payment_account.py.
+        paid_into = resolve_payment_account(
+            db, firm_id=firm_id, client_id=client_id,
+            bank_account_id=receipt.get("bank_account_id"),
+            payment_mode=receipt.get("payment_mode"),
+            find_account=self._find_account)
+        bank_id        = paid_into.account_id
         receivables_id = self._find_account(
             db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
         )
@@ -217,7 +230,9 @@ class Phase2JournalService:
                 "account_id": bank_id,
                 "debit_paise": cash_paise,
                 "credit_paise": 0,
-                "narration": "Cash/bank received from customer",
+                "narration": ("Cash received from customer"
+                              if paid_into.source == "cash"
+                              else "Bank receipt from customer"),
             },
         ]
         if tds_paise > 0:
@@ -764,9 +779,14 @@ class Phase2JournalService:
             payables_id = self._find_account(
                 db, firm_id, client_id, "%Trade Payable%", system_key="ap"
             )
-            bank_id = self._find_account(
-                db, firm_id, client_id, "%Bank%", system_key="bank"
-            )
+            # As for receipts — the account the money left, not a firm-wide
+            # generic Bank ledger. See domain/accounting/payment_account.py.
+            paid_from = resolve_payment_account(
+                db, firm_id=firm_id, client_id=client_id,
+                bank_account_id=payment.get("bank_account_id"),
+                payment_mode=payment.get("payment_mode"),
+                find_account=self._find_account)
+            bank_id = paid_from.account_id
 
             lines = [
                 {

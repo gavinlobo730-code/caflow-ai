@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from core.authz import can_access_client
+from domain.accounting.payment_account import resolve_payment_account
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
@@ -178,6 +179,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
             "payment_no": f"VPMT-{fy}-0001", "payment_date": data["payment_date"],
             "amount_paise": amount_paise, "unallocated_paise": unallocated_paise,
             "payment_mode": data.get("payment_mode", "bank"),
+            "bank_account_id": data.get("bank_account_id"),
             "reference_no": data.get("reference_no"), "notes": data.get("notes"),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -244,6 +246,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         "amount_paise":      amount_paise,
         "unallocated_paise": unallocated_paise,
         "payment_mode":      data.get("payment_mode", "bank"),
+        "bank_account_id":   data.get("bank_account_id"),
         "reference_no":      data.get("reference_no"),
         "notes":             data.get("notes"),
         "created_at":        datetime.now(timezone.utc).isoformat(),
@@ -440,12 +443,18 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
     fx_diff = total_ap_relieved - settled_cash_base   # + gain (paid less INR) / − loss (paid more)
 
     ap_id = K._find_account(db, firm_id, client_id, "%Trade Payable%", system_key="ap")
-    bank_id = K._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+    # Same defect as the rupee path, and the finding named neither FX site.
+    paid_from = resolve_payment_account(
+        db, firm_id=firm_id, client_id=client_id,
+        bank_account_id=data.get("bank_account_id"),
+        payment_mode=data.get("payment_mode"),
+        find_account=K._find_account)
+    bank_id = paid_from.account_id
     lines = [
         {"account_id": ap_id, "debit_paise": total_ap_relieved + unalloc_base, "credit_paise": 0,
          "narration": "Trade payable settled at booked rate", "txn_debit": total_foreign, "txn_credit": 0},
         {"account_id": bank_id, "debit_paise": 0, "credit_paise": cash_base,
-         "narration": "Bank payment (foreign)", "txn_debit": 0, "txn_credit": total_foreign},
+         "narration": ("Cash payment (foreign)" if paid_from.source == "cash" else "Bank payment (foreign)"), "txn_debit": 0, "txn_credit": total_foreign},
     ]
     if fx_diff != 0:
         fx_id = K._find_account(db, firm_id, client_id, "%Foreign Exchange%", system_key="fx_realized")
@@ -475,7 +484,8 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
         "firm_id": firm_id, "client_id": client_id, "vendor_id": data["vendor_id"],
         "purchase_bill_id": None, "payment_no": payment_no, "payment_date": data["payment_date"],
         "amount_paise": cash_base, "unallocated_paise": unalloc_base,
-        "payment_mode": data.get("payment_mode", "bank"), "reference_no": data.get("reference_no"),
+        "payment_mode": data.get("payment_mode", "bank"),
+            "bank_account_id": data.get("bank_account_id"), "reference_no": data.get("reference_no"),
         "notes": data.get("notes"), "journal_entry_id": entry_id,
         "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat(),
         "txn_currency": ccy, "exchange_rate": str(R1), "txn_amount": total_foreign,

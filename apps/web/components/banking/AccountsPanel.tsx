@@ -312,7 +312,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
 // chart-of-accounts ledger account so postings hit the right GL account and
 // the opening balance flows to the books (backend auto-syncs on save).
 
-interface CoaAccountLite { id: string; account_code: string; account_name: string; account_type: string }
+interface CoaAccountLite { id: string; account_code: string; account_name: string; account_type: string; account_subtype?: string | null }
 
 export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   clientId: string; account: BankAccount | null; onClose: () => void; onSaved: () => void;
@@ -332,14 +332,20 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
 
   useEffect(() => {
     (async () => {
-      // Only Asset accounts can be a bank's GL account (Bank/Cash sit under Assets).
+      // ASSET **OR** LIABILITY, because an overdraft is not an asset (BANK-02).
+      // bank_accounts.account_type has allowed 'Cash Credit' and 'Overdraft'
+      // since migration 054 and this form offers both — but the picker filtered
+      // `account_type = "Asset"`, so a CA who created an OD account could not
+      // point it at a liability ledger even by hand. Migration 342 creates the
+      // right one automatically and re-classifies the existing ones; this is
+      // what lets the manual picker agree with it.
       const supabase = getSupabaseClient();
       const { data } = await selectAll(() => supabase
         .from("chart_of_accounts")
-        .select("id, account_code, account_name, account_type")
+        .select("id, account_code, account_name, account_type, account_subtype")
         .or(`client_id.eq.${clientId},client_id.is.null`)
         .eq("is_active", true)
-        .eq("account_type", "Asset")
+        .in("account_type", ["Asset", "Liability"])
         .order("account_code").order("id"));
       setCoaAccounts((data as CoaAccountLite[]) ?? []);
     })();

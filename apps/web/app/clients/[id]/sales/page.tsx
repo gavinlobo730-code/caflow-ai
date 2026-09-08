@@ -3345,6 +3345,25 @@ function ReceiptForm({
   const [receiptDate, setReceiptDate] = useState(today);
   const [amount, setAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState("bank");
+  // WHICH ACCOUNT THE MONEY WAS RECEIVED INTO (SALES-08). The API has accepted
+  // ReceiptIn.bank_account_id since the model was written and this form never
+  // sent it, so every receipt posted to one firm-wide Bank ledger regardless of
+  // which of the client's accounts actually took the money.
+  const [bankAccountId, setBankAccountId] = useState("");
+  const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    (async () => {
+      const { data } = await getSupabaseClient()
+        .from("bank_accounts")
+        .select("id, bank_name, account_no")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .order("bank_name");
+      setBankAccounts((data as { id: string; bank_name: string; account_no: string }[]) ?? []);
+    })();
+  }, [clientId]);
   const [referenceNo, setReferenceNo] = useState("");
   const [openInvoices, setOpenInvoices] = useState<SalesInvoice[]>([]);
   const [allocations, setAllocations] = useState<Record<string, string>>({});
@@ -3474,6 +3493,7 @@ function ReceiptForm({
           receipt_date: receiptDate,
           amount_paise: amountPaise,
           payment_mode: paymentMode,
+          bank_account_id: bankAccountId || undefined,
           reference_no: referenceNo.trim() || undefined,
           allocations: allocationsList.length > 0 ? allocationsList : undefined,
           currency: isForeign ? currency : undefined,
@@ -3540,6 +3560,29 @@ function ReceiptForm({
               <option key={m} value={m}>{m.toUpperCase()}</option>
             ))}
           </select>
+        </div>
+        <div>
+          {/* Hidden for a cash receipt: it did not go into a bank, and offering
+              an account there is what makes a CA pick one and mis-post it. */}
+          {paymentMode !== "cash" && (
+            <>
+              <label className="block text-xs font-medium text-[#475569] mb-1">
+                Deposited Into
+              </label>
+              <select
+                value={bankAccountId}
+                onChange={(e) => setBankAccountId(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Not specified — posts to the general Bank ledger</option>
+                {bankAccounts.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.bank_name} — {String(b.account_no || "").slice(-4)}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Reference No.</label>
