@@ -24,6 +24,7 @@ import path from "node:path";
 const ROOT = path.join(import.meta.dirname, "..");
 const GSTR3B = "app/gst/gstr3b/page.tsx";
 const REPORTS = "app/reports/page.tsx";
+const CLIENT_GST = "app/clients/[id]/compliance/gst/page.tsx";
 
 /** Source with comments stripped — the assertions are about what RENDERS, and
  *  the notes beside this code explain the very figures they replaced. */
@@ -106,4 +107,56 @@ test("no GST screen states the withdrawn Rule 36(4) buffer", () => {
         `${rel} states a Rule 36(4) buffer that was withdrawn on 01-01-2022: ${line.trim()}`);
     }
   }
+});
+
+
+// ── the SECOND GSTR-3B screen, and what gets STORED ──────────────────────────
+//
+// GST-01's fix reached one of the two screens the finding named. The client
+// workspace's GST tab still showed a "Tax Liability" tile that INCLUDES the
+// reverse charge next to a "Net Tax" tile that excludes it, with nothing
+// bridging them, no 3.1(d) row in its table-by-table breakdown, and a Filing
+// History column printing the set-off residual for every saved return.
+//
+// And the record was wrong underneath all of it: `SaveGSTR3BRequest` had no
+// cash column, so `gstr3b_returns.net_tax_paise` — and through it
+// `filings.tax_payable_paise` — stored the credit-settled figure rather than
+// what was paid.
+
+test("the client GST tab shows the challan, not only the set-off residual", () => {
+  const src = code(CLIENT_GST);
+  assert.match(src, /cash_payable_paise/,
+    "the challan figure must be on this screen too");
+  assert.match(src, /rcm_cash_paise/,
+    "and the 3.1(d) component, or the CA cannot reconcile the challan to the return");
+  assert.match(src, /Cash payable/,
+    "labelled as cash, because that is what distinguishes it from Table 6");
+  assert.doesNotMatch(src, /text-xs text-\[#64748B\]">Net Tax</,
+    'a bare "Net Tax" beside a liability that includes reverse charge is the ' +
+    'ambiguity this fixes — label it "After set-off"');
+});
+
+test("the client GST tab lists Table 3.1(d) in its breakdown", () => {
+  const src = code(CLIENT_GST);
+  assert.match(src, /3\.1\(d\)/,
+    "a breakdown that runs 3.1(a) -> 4(C) -> Table 6 does not explain Table 6");
+  assert.match(src, /rcm_inward/,
+    "and it has to read the working's own reverse-charge block");
+});
+
+test("the saved return carries the cash figure, not only the residual", () => {
+  const src = code(CLIENT_GST);
+  const save = src.slice(src.indexOf("async function saveComputed"));
+  assert.match(save, /cash_payable_paise: d\.cash_payable_paise/,
+    "SaveGSTR3BRequest gained the column; the caller has to send it");
+  assert.match(save, /rcm_cash_paise: d\.rcm_cash_paise/);
+});
+
+test("the direct PostgREST save writes the cash columns too", () => {
+  // lib/data/gst.ts writes gstr3b_returns straight over PostgREST, so the API
+  // model gaining a column changes nothing on this path by itself.
+  const src = code("lib/data/gst.ts");
+  const fn = src.slice(src.indexOf("export async function saveGSTR3BReturn"));
+  assert.match(fn, /rcm_cash_paise: w\.net_payable\.rcm_cash_paise/);
+  assert.match(fn, /cash_payable_paise: w\.net_payable\.challan_total_paise/);
 });

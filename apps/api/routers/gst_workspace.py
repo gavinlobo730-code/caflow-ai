@@ -110,6 +110,22 @@ class SaveGSTR1Request(BaseModel):
     total_cess_paise: int = Field(default=0)
 
 
+def _cash_payable(cash_paise, net_tax_paise) -> int:
+    """The challan figure, falling back to the set-off residual.
+
+    Migration 339 added `cash_payable_paise` with a DEFAULT 0, and rows saved
+    before it have never carried one. 0 there means "not stated", not "nothing
+    to pay" — so the fallback states the figure that WAS recorded rather than
+    reporting a zero challan for every historic return.
+
+    A backfill is deliberately not attempted: recomputing the set-off would run
+    it against books that may have moved since the return was saved, which
+    would silently restate a filed period.
+    """
+    cash = int(cash_paise or 0)
+    return cash if cash > 0 else int(net_tax_paise or 0)
+
+
 class SaveGSTR3BRequest(BaseModel):
     client_id: str
     period: str = Field(..., description="MMYYYY e.g. 042025")
@@ -118,7 +134,20 @@ class SaveGSTR3BRequest(BaseModel):
     summary_json: dict = Field(default_factory=dict)
     tax_liability_paise: int = Field(default=0)
     itc_claimed_paise: int = Field(default=0)
+    # The Table 6 set-off residual. DELIBERATELY NOT the challan — see the two
+    # fields below, which is the whole of GST-01's remaining half.
     net_tax_paise: int = Field(default=0)
+    # Table 3.1(d), which §49(4) with §2(82) makes payable in CASH: the credit
+    # ledger may pay only "output tax", and output tax excludes "tax payable by
+    # him on reverse charge basis". So this is never set off, and
+    # cash_payable_paise — the residual PLUS this — is the challan the CA
+    # actually pays. `filings.tax_payable_paise` is written from it.
+    #
+    # Defaulted to 0 rather than required, because a caller that has not been
+    # updated must not start failing: 0 means "not stated", and the save path
+    # falls back to net_tax_paise, which is what was recorded before.
+    rcm_cash_paise: int = Field(default=0)
+    cash_payable_paise: int = Field(default=0)
 
 
 class UpdateStatusRequest(BaseModel):
@@ -581,6 +610,12 @@ def save_gstr3b(
             "tax_liability_paise": body.tax_liability_paise,
             "itc_claimed_paise": body.itc_claimed_paise,
             "net_tax_paise": body.net_tax_paise,
+            # Migration 339. Stored beside the set-off residual rather than
+            # instead of it: the two are different facts, and a reader has to be
+            # able to tell a return carrying reverse charge from one where the
+            # credit simply ran out.
+            "rcm_cash_paise": body.rcm_cash_paise,
+            "cash_payable_paise": _cash_payable(body.cash_payable_paise, body.net_tax_paise),
             "status": "draft",
             "created_at": datetime.utcnow().isoformat(),
         }
@@ -749,7 +784,13 @@ def update_gstr3b_status(
                     client_id=rec.get("client_id") or "",
                     filing_type=FILING_TYPE_GSTR3B, period=rec.get("period") or "",
                     filed_date=body.filed_date, arn=body.arn,
-                    tax_payable_paise=rec.get("net_tax_paise"),
+                    # WHAT WAS PAID, not what the set-off left. §49(4) with
+                    # §2(82) makes reverse-charge tax payable in cash on top of
+                    # the residual, so net_tax_paise is smaller than the challan
+                    # for any return carrying 3.1(d) — and this row is meant to
+                    # be the evidence of what was filed.
+                    tax_payable_paise=_cash_payable(rec.get("cash_payable_paise"),
+                                                    rec.get("net_tax_paise")),
                     summary=rec.get("summary_json"),
                 )
             except Exception:

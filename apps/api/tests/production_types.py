@@ -78,6 +78,8 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("client_payroll_settings", "payroll_enabled_on"): "migration 332",
     ("payroll_employees", "employee_code"): "migration 333",
     ("payroll_employees", "date_of_birth"): "migration 333",
+    ("gstr3b_returns", "rcm_cash_paise"): "migration 339",
+    ("gstr3b_returns", "cash_payable_paise"): "migration 339",
 }
 
 

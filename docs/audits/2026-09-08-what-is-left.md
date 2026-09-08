@@ -257,15 +257,15 @@ will now disagree with the register**.
 
 ---
 
-## 3. The five criticals still open
+## 3. The five criticals — three closed since
 
 | id | state | what is left |
 |---|---|---|
 | **GST-04** | untouched | The 2A/2B reconciliation does not read the books, does not parse a real GSTR-2B JSON, and persists nothing. Byte-identical parser; zero writers of `gstr2a_records`; `/gst/reconciliation` contains no API call at all. Gates GST-19 and GST-28, and PUR-11 is the same defect from the purchase side. |
-| **IT-01** | untouched | No tax computation path for a company, firm or LLP. `entity_rates`, `minimum_tax` and `presumptive` are complete, tested, and imported by nothing outside their own package. |
+| **IT-01** | ~~untouched~~ **CLOSED** | `ITREngine.compute` branches on the assessee: a firm, LLP or company goes to `compute_entity_tax` and then §115JB/§115JC, with the credit recorded. `domain/income_tax/assessee.py` maps `clients.entity_type` — a PROPRIETORSHIP is an individual, a trust and a co-operative society are REFUSED by name (§§11-13/§164, §80P) — and the mapping is in apps/api, asked for by the screen through `GET /api/income-tax/assessee-kind`. Capital gains for a non-individual are refused rather than charged at the flat rate: §111A/§112A/§112 override it and 30% on a listed-equity LTCG is more than double the 12.5% due. 40 backend tests and 7 frontend guards, all failing against the previous code. **Measured: ₹50,00,000 of profit for FY 2025-26 — ₹11,23,200 was shown, ₹15,60,000 is owed.** |
 | **FA-02** | partial | The default rate is right; **the stored rows are not**. No backfill migration, the compute path prefers the stored rate, and FA-10 leaves no edit path — so a wrong rate is frozen in for the asset's life. Production holds zero fixed assets today, so this is latent until a register is migrated in. |
-| **GST-01** | partial | The money is right everywhere; **the record is not**. `SaveGSTR3BRequest` has no cash column, so `gstr3b_returns.net_tax_paise` and hence `filings.tax_payable_paise` store the credit-settled figure rather than what was paid. One screen still shows only Net Tax. ~1 hour. |
-| **PUR-01** | partial | §§193, 194, 194K, 194LA — see §2.3. |
+| **GST-01** | ~~partial~~ **CLOSED** | Migration 339 adds `rcm_cash_paise` and `cash_payable_paise` to `gstr3b_returns`; `SaveGSTR3BRequest` and BOTH save paths (the API and `lib/data/gst.ts`'s direct PostgREST write) carry them; `filings.tax_payable_paise` is written from the challan, falling back to `net_tax_paise` for rows saved before the migration. The client GST tab now shows Table 3.1(d) and the cash total, its breakdown lists 3.1(d) between 3.1(a) and Table 4, and 3.1(d) gained a drill-down to the bills carrying the charge. 5 backend tests and 4 frontend guards fail against the previous code. |
+| **PUR-01** | ~~partial~~ **CLOSED** | §§193, 194, 194K and 194LA gained the aggregate limb in §2.3. |
 
 ---
 

@@ -204,7 +204,8 @@ const UNFILED = ["draft", "validated", "ca_approved"];
 const LABEL_OF: Record<string, string> = {
   tax_liability_paise: "Tax liability",
   itc_claimed_paise: "ITC claimed",
-  net_tax_paise: "Net tax",
+  net_tax_paise: "Net tax after set-off",
+  cash_payable_paise: "Cash payable (the challan)",
 };
 
 /** What the recompute endpoint answers when asked, without writing. */
@@ -837,6 +838,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
         tax_liability_paise: d.tax_liability_paise,
         itc_claimed_paise: d.itc_claimed_paise,
         net_tax_paise: d.net_tax_paise,
+        // The CHALLAN, beside the set-off residual. §49(4) with §2(82) bars the
+        // credit ledger from paying reverse-charge tax, so 3.1(d) is always
+        // cash and always on top of net_tax_paise. filings.tax_payable_paise is
+        // written from cash_payable_paise — it is what was actually paid.
+        rcm_cash_paise: d.rcm_cash_paise,
+        cash_payable_paise: d.cash_payable_paise,
         // The carry-forward is NOT sent as its own field: SaveGSTR3BRequest has
         // no such parameter, and Pydantic would drop it without complaint —
         // a value that looks saved and is not. It rides in summary_json, which
@@ -939,7 +946,12 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <div className="grid grid-cols-4 gap-3 text-sm">
                   <div><p className="text-xs text-[#64748B]">Tax Liability</p><p className="font-medium">{rupees(computeResult.tax_liability_paise as number)}</p></div>
                   <div><p className="text-xs text-[#64748B]">ITC Claimed</p><p className="font-medium">{rupees(computeResult.itc_claimed_paise as number)}</p></div>
-                  <div><p className="text-xs text-[#64748B]">Net Tax</p><p className="font-medium">{rupees(computeResult.net_tax_paise as number)}</p></div>
+                  {/* The set-off residual, LABELLED as such. Beside it is a
+                      "Tax Liability" tile that already includes the reverse
+                      charge, so a bare "Net Tax" left this panel showing a
+                      liability with 3.1(d) in it and a net without, and nothing
+                      bridging the two. */}
+                  <div><p className="text-xs text-[#64748B]">After set-off</p><p className="font-medium">{rupees(computeResult.net_tax_paise as number)}</p></div>
                   {/* Net Tax of zero is true both when liability and credit cancel
                       out and when credit exceeds liability by lakhs. Apex's April
                       2026 showed zero over Rs 36,54,961.65 of unused credit, with
@@ -951,10 +963,38 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     <p className={cf > 0 ? "font-medium text-emerald-700" : "font-medium"}>{rupees(cf)}</p>
                   </div>
                 </div>
+                {/* THE CHALLAN. §49(4) allows the electronic credit ledger to
+                    pay only "output tax", and §2(82) defines output tax as
+                    EXCLUDING "tax payable by him on reverse charge basis" — so
+                    §9(3)/(4) tax is cash, on top of whatever the set-off left.
+                    This screen showed the residual alone and called it Net Tax,
+                    which is the figure a CA would have carried to the payment. */}
+                <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">Table 6 — payable after set-off</span>
+                    <span className="font-mono">{rupees(computeResult.net_tax_paise as number)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#64748B]">
+                      Table 3.1(d) — reverse charge, payable in cash
+                    </span>
+                    <span className="font-mono">{rupees((computeResult.rcm_cash_paise as number) ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-[#E2E8F0] pt-1 font-semibold text-[#0F172A]">
+                    <span>Cash payable — the challan</span>
+                    <span className="font-mono">{rupees((computeResult.cash_payable_paise as number) ?? (computeResult.net_tax_paise as number))}</span>
+                  </div>
+                  {((computeResult.rcm_cash_paise as number) ?? 0) > 0 && (
+                    <p className="text-[11px] text-[#64748B] pt-0.5">
+                      Input credit cannot pay reverse-charge tax (CGST §49(4) read with §2(82)),
+                      so it is paid in cash whatever credit is available.
+                    </p>
+                  )}
+                </div>
                 {cf > 0 && (
                   <p className="text-xs text-[#64748B]">
                     Input credit exceeded this period&apos;s liability, so there is no tax to
-                    pay and {rupees(cf)} carries into the next return.
+                    pay from the credit ledger and {rupees(cf)} carries into the next return.
                   </p>
                 )}
                 {/* THE TABLES, not just the totals.
@@ -977,6 +1017,11 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     const revP = (w.itc_reversal as unknown as { permanent_paise?: Record<string, number> })?.permanent_paise ?? {};
                     const revR = (w.itc_reversal as unknown as { reclaimable_paise?: Record<string, number> })?.reclaimable_paise ?? {};
                     const np = w.net_payable ?? {};
+                    // Table 3.1(d). The reverse-charge liability the credit
+                    // ledger may not pay (§49(4) with §2(82)), which this
+                    // breakdown listed nowhere — so 4(C) minus 3.1(a) appeared
+                    // to explain Table 6 and did not.
+                    const rcmW = w.rcm_inward ?? {};
                     // A line is clickable only where documents exist behind it.
                     // 4(C) and Table 6 are arithmetic over the lines above, not
                     // things you can list — offering a drill-down that opened
@@ -1019,6 +1064,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                           <tbody>
                             {row("3.1(a) Outward taxable supplies",
                                  out.taxable_igst_paise, out.taxable_cgst_paise, out.taxable_sgst_paise, "3.1a")}
+                            {row("3.1(d) Inward supplies liable to reverse charge",
+                                 rcmW.igst_paise, rcmW.cgst_paise, rcmW.sgst_paise, "3.1d")}
                             {row("4(A) ITC available (gross)",
                                  itcW.avail_igst_paise, itcW.avail_cgst_paise, itcW.avail_sgst_paise, "4A")}
                             {row("4(B)(1) Reversed — permanent",
@@ -1038,6 +1085,9 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                           their own. Table 4 follows Notification 14/2022-Central Tax with
                           Circular 170/02/2022-GST: 4(A) is gross, §17(5) sits in 4(B)(1)
                           and is not repeated in 4(D), and Table 6 sets off 4(C) — never 4(A).
+                          3.1(d) is a LIABILITY, not a credit: §49(4) read with §2(82) bars
+                          the credit ledger from paying reverse-charge tax, so it does not
+                          enter the set-off and is added to the challan in cash.
                         </p>
                       </div>
                     );
@@ -1080,7 +1130,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               <th className="px-3 py-2 border-b">Period</th>
               <th className="px-3 py-2 border-b">Tax Liability</th>
               <th className="px-3 py-2 border-b">ITC Claimed</th>
-              <th className="px-3 py-2 border-b">Net Tax</th>
+              <th className="px-3 py-2 border-b">After set-off</th>
+              <th className="px-3 py-2 border-b">Cash paid</th>
               <th className="px-3 py-2 border-b">Status</th>
               <th className="px-3 py-2 border-b">Actions</th>
             </tr>
@@ -1092,6 +1143,14 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2">{rupees((r.tax_liability_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{rupees((r.itc_claimed_paise as number) ?? 0)}</td>
                 <td className="px-3 py-2">{rupees((r.net_tax_paise as number) ?? 0)}</td>
+                {/* Rows saved before migration 339 carry 0 here, which means
+                    "not stated" rather than "nothing to pay" — so they fall
+                    back to the set-off residual, which is the figure that WAS
+                    recorded. Recomputing would run the set-off against books
+                    that may have moved since the return was filed. */}
+                <td className="px-3 py-2">
+                  {rupees(((r.cash_payable_paise as number) || (r.net_tax_paise as number)) ?? 0)}
+                </td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status as string] ?? ""}`}>
                     {r.status as string}

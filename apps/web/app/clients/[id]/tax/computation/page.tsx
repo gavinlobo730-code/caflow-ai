@@ -16,6 +16,25 @@ interface SupportedFY { fy: string; verified: boolean }
 const AY_OPTIONS = ["2026-27", "2025-26", "2024-25"];
 const SECTION_OPTIONS = ["40A(3)", "43B_pf", "43B_gst", "43B_bonus", "43B_leave", "other"];
 
+/** What a snapshot's `regime` means, in words.
+ *
+ *  This screen used to render `regime === "new" ? "New Regime" : "Old Regime"`,
+ *  which is s.115BAC's election — an INDIVIDUAL or HUF question. A company's
+ *  choice is s.115BAA / s.115BAB and a firm has no election at all, so every
+ *  entity snapshot read "Old Regime", a label with no statute behind it. */
+function regimeLabel(regime: string | null | undefined): string {
+  switch (regime) {
+    case "new": return "New Regime";
+    case "old": return "Old Regime";
+    case "normal": return "Company — normal rates";
+    case "115BAA": return "Company — §115BAA";
+    case "115BAB": return "Company — §115BAB";
+    case "firm": return "Firm — flat 30%";
+    case "llp": return "LLP — flat 30%";
+    default: return regime ? regime : "—";
+  }
+}
+
 async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");
   const { data: { session } } = await supabase.auth.getSession();
@@ -63,6 +82,33 @@ interface ComputeResult {
   tax: { total_tax_paise: number; rebate_87a_paise: number };
   payable: { net_payable_paise: number; is_refund: boolean };
   warnings: string[];
+  validation_errors?: string[];
+  /** WHO was assessed, and on what basis. A firm, an LLP and a company are
+   *  each taxed differently from an individual and from each other; until
+   *  IT-01 this screen ran individual slabs for every client, so a Private
+   *  Limited company's profit was taxed nil to Rs 4 lakh with a Rs 60,000
+   *  s.87A rebate against the 22%/25%/30% it actually owes. */
+  assessee?: {
+    kind: string;
+    rate_percent: number;
+    /** The year the 25%/30% turnover test looks at — two back, never the year
+     *  being taxed. */
+    turnover_reference_fy: string | null;
+    workings: string[];
+  };
+  /** s.115JB (a company) / s.115JC (a firm or LLP). `credit_paise` is the
+   *  point: s.115JAA and s.115JD carry the excess forward for fifteen
+   *  assessment years, and charging the floor without recording the credit
+   *  turns a timing difference into a permanent cost. */
+  minimum_tax?: {
+    section: string;
+    applies: boolean;
+    minimum_tax_paise: number;
+    applied: boolean;
+    credit_paise: number;
+    credit_expires_after_ay: number | null;
+    reasons: string[];
+  };
   // The year whose rates were ACTUALLY applied, and whether they are
   // confirmed against the Finance Act. The backend has always returned both;
   // this screen used to discard them, which is how a computation at another
@@ -97,8 +143,28 @@ export default function TaxComputationPage() {
   const [bfLosses, setBfLosses] = useState<BFLoss[]>([]);
   const [activeSection, setActiveSection] = useState<string | null>("overview");
 
+  // The client's own entity type, read from the client record and passed
+  // through UNINTERPRETED. Deciding that 'Private Limited' is a company and
+  // 'Proprietorship' is an individual is statutory knowledge and lives in
+  // apps/api — CLAUDE.md, "zero business logic in the frontend".
+  const [entityType, setEntityType] = useState<string | null>(null);
+  // WHICH ASSESSEE that entity type makes them, answered by the server. The
+  // mapping is statutory — a proprietorship is an individual, a trust is
+  // refused — so this screen asks rather than deciding.
+  const [assesseeKind, setAssesseeKind] = useState<string | null>(null);
+  const [assesseeRefusal, setAssesseeRefusal] = useState<string | null>(null);
+  const isEntity = assesseeKind === "firm" || assesseeKind === "llp"
+                   || assesseeKind === "domestic_company";
+  const isCompany = assesseeKind === "domestic_company";
+
   // Computation inputs
   const [regime, setRegime] = useState("new");
+  // Company only: s.115BAA (22%) and s.115BAB (15%) are elections whose
+  // surcharge is a flat 10% whatever the income.
+  const [companyRegime, setCompanyRegime] = useState("normal");
+  const [turnoverRefYear, setTurnoverRefYear] = useState("");
+  const [bookProfit, setBookProfit] = useState("");
+  const [claimedSpecifiedDeduction, setClaimedSpecifiedDeduction] = useState(false);
   const [salary, setSalary] = useState("");
   const [businessIncome, setBusinessIncome] = useState("");
   const [otherIncome, setOtherIncome] = useState("");
@@ -137,6 +203,7 @@ export default function TaxComputationPage() {
       { data: snapsData, error: snapsErr },
       { data: disallData, error: disallErr },
       { data: lossData, error: lossErr },
+      { data: clientRow },
     ] = await Promise.all([
       supabase
         .from("tax_computation_snapshots")
@@ -155,6 +222,9 @@ export default function TaxComputationPage() {
         .select("id, assessment_year, loss_type, original_amount_paise, remaining_amount_paise, expiry_assessment_year")
         .eq("client_id", clientId)
         .order("assessment_year"),
+      // Which assessee this client IS. Not interpreted here — the raw value
+      // goes to the endpoint, which maps it.
+      supabase.from("clients").select("entity_type").eq("id", clientId).maybeSingle(),
     ]);
     const firstError = snapsErr ?? disallErr ?? lossErr;
     if (firstError) {
@@ -167,10 +237,31 @@ export default function TaxComputationPage() {
     setSnapshots((snapsData as Snapshot[]) ?? []);
     setDisallowances((disallData as Disallowance[]) ?? []);
     setBfLosses((lossData as BFLoss[]) ?? []);
+    setEntityType(((clientRow as { entity_type?: string } | null)?.entity_type) ?? null);
     setLoadError(null);
   }, [clientId, fy]);
 
   useEffect(() => { load(); }, [load]);
+
+  // The entity type -> assessee mapping, from the server. A refusal (a trust, a
+  // co-operative society, a blank entity type) is shown BEFORE the CA types a
+  // figure, rather than as a 422 after they have.
+  useEffect(() => {
+    let cancelled = false;
+    if (!entityType) { setAssesseeKind(null); setAssesseeRefusal(null); return; }
+    (async () => {
+      try {
+        const r = await apiFetch(
+          `/api/income-tax/assessee-kind?entity_type=${encodeURIComponent(entityType)}`);
+        if (cancelled || !r.success) return;
+        setAssesseeKind(r.data?.kind ?? null);
+        setAssesseeRefusal(r.data?.refusal ?? null);
+      } catch {
+        /* leave it unresolved; the compute call answers definitively anyway */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [entityType]);
 
   // Which years this build can compute is the server's answer, not a constant
   // in this file. A failed probe leaves the picker empty rather than guessing:
@@ -230,9 +321,28 @@ export default function TaxComputationPage() {
           tds_deducted_paise: toP(tds),
           advance_tax_paid_paise: toP(advanceTax),
           use_new_regime: regime === "new",
+          // The raw client entity type. The endpoint maps it, refuses a trust
+          // or a co-operative society by name, and computes the flat entity
+          // rate where one applies.
+          entity_type: entityType,
+          company_regime: companyRegime,
+          turnover_in_reference_year_paise:
+            turnoverRefYear.trim() === "" ? null : toP(turnoverRefYear),
+          book_profit_paise: bookProfit.trim() === "" ? null : toP(bookProfit),
+          claimed_specified_deduction: claimedSpecifiedDeduction,
+          assessment_year_end: Number(ay.slice(0, 4)) + 1,
         }),
       });
       if (!computeRes.success) throw new Error(computeRes.error ?? "Computation failed");
+      // A refused input is not a computation. The engine returns the reasons
+      // with every figure at zero, and showing a zero tax beside them would be
+      // worse than showing nothing.
+      const refusals = (computeRes.data?.validation_errors ?? []) as string[];
+      if (refusals.length) {
+        setComputeResult(null);
+        setComputeError(refusals.join(" "));
+        return;
+      }
       setComputeResult(computeRes.data);
 
       // 2. Save snapshot
@@ -243,7 +353,12 @@ export default function TaxComputationPage() {
           client_id: clientId,
           financial_year: fy,
           assessment_year: ay,
-          regime,
+          // The regime the SERVER applied, not the local dropdown. A company
+          // is on s.115BAA/s.115BAB/normal and a firm has none, so sending the
+          // s.115BAC value stamped an election on a snapshot that could not
+          // have made it. Falls back to the assessee kind where there is no
+          // regime, so the label is at least true.
+          regime: (computeRes.data?.regime as string) || (isEntity ? assesseeKind : regime),
           income: {
             gross_salary_paise: toP(salary),
             business_income_paise: toP(businessIncome),
@@ -366,7 +481,7 @@ export default function TaxComputationPage() {
               "bg-[#F1F5F9] text-[#64748B]"
             }`}>{latestSnap.status}</span>
             <span className="text-[10px] text-[#94A3B8]">
-              {latestSnap.regime === "new" ? "New Regime" : "Old Regime"} · FY {latestSnap.financial_year}
+              {regimeLabel(latestSnap.regime)} · FY {latestSnap.financial_year}
             </span>
           </div>
         </div>
@@ -393,14 +508,51 @@ export default function TaxComputationPage() {
                 </select>
               </div>
               <div className="flex-1">
-                <label className="text-[10px] text-[#64748B] mb-1 block">Tax Regime</label>
-                <select value={regime} onChange={e => setRegime(e.target.value)}
-                  className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
-                  <option value="new">New Regime (Default)</option>
-                  <option value="old">Old Regime</option>
-                </select>
+                {/* s.115BAC's new/old election reaches an individual or HUF.
+                    A company's choice is s.115BAA / s.115BAB, which is a
+                    different question with different rates and a flat 10%
+                    surcharge — offering "New Regime" to a Private Limited
+                    company is offering an election it cannot make. */}
+                {isCompany ? (
+                  <>
+                    <label className="text-[10px] text-[#64748B] mb-1 block">Company Regime</label>
+                    <select value={companyRegime} onChange={e => setCompanyRegime(e.target.value)}
+                      className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+                      <option value="normal">Normal rates — 25% or 30%</option>
+                      <option value="115BAA">§115BAA — 22%</option>
+                      <option value="115BAB">§115BAB — 15%, new manufacturing</option>
+                    </select>
+                  </>
+                ) : isEntity ? (
+                  <>
+                    <label className="text-[10px] text-[#64748B] mb-1 block">Tax Regime</label>
+                    <p className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg bg-[#F8FAFC] text-[#64748B]">
+                      Flat 30% — a firm has no regime election
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <label className="text-[10px] text-[#64748B] mb-1 block">Tax Regime</label>
+                    <select value={regime} onChange={e => setRegime(e.target.value)}
+                      className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+                      <option value="new">New Regime (Default)</option>
+                      <option value="old">Old Regime</option>
+                    </select>
+                  </>
+                )}
               </div>
             </div>
+
+            {assesseeRefusal ? (
+              <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
+                {assesseeRefusal}
+              </p>
+            ) : entityType ? (
+              <p className="text-[11px] text-[#64748B]">
+                Assessed as recorded on the client: <strong>{entityType}</strong>.
+                {isEntity && " Taxed at a flat rate from the first rupee — no slabs, no exemption limit and no §87A rebate."}
+              </p>
+            ) : null}
 
             <div className="grid grid-cols-2 gap-3">
               {[
@@ -423,6 +575,54 @@ export default function TaxComputationPage() {
               ))}
             </div>
 
+            {isEntity && (
+              <div className="grid grid-cols-2 gap-3">
+                {isCompany && (
+                  <div>
+                    <label className="text-[10px] text-[#64748B] mb-1 block">
+                      Turnover in {computeResult?.assessee?.turnover_reference_fy ?? "the reference year"} (₹)
+                    </label>
+                    <input type="text" inputMode="decimal" value={turnoverRefYear}
+                      onChange={e => setTurnoverRefYear(e.target.value)}
+                      className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Leave blank for 30%" />
+                    {/* The 25% concession looks at the turnover of a year TWO
+                        BACK, not the year being taxed. Left blank, the higher
+                        rate is used: a concession has to be established. */}
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                      Two years back — not this year. Under ₹400 crore gives 25%.
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className="text-[10px] text-[#64748B] mb-1 block">
+                    {isCompany ? "Book profit — §115JB (₹)" : "Adjusted total income — §115JC (₹)"}
+                  </label>
+                  <input type="text" inputMode="decimal" value={bookProfit}
+                    onChange={e => setBookProfit(e.target.value)}
+                    className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={isCompany ? "Companies Act profit as adjusted" : "Total income with §10AA/§35AD/VI-A Part C added back"} />
+                  <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                    {isCompany
+                      ? "Not taxable income — the gap between them is why §115JB exists."
+                      : "Total income with the §10AA, §35AD and Chapter VI-A Part C deductions added back."}
+                  </p>
+                </div>
+                {!isCompany && (
+                  <label className="flex items-start gap-2 text-[11px] text-[#475569] col-span-2">
+                    <input type="checkbox" checked={claimedSpecifiedDeduction}
+                      onChange={e => setClaimedSpecifiedDeduction(e.target.checked)}
+                      className="mt-0.5" />
+                    <span>
+                      A §10AA, §35AD or Chapter VI-A Part C deduction was claimed.
+                      §115JC applies only where one was — an assessee who claimed
+                      none is outside Chapter XII-BA entirely, not below a threshold.
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
+
             {computeError && <p className="text-xs text-red-600">{computeError}</p>}
 
             <button
@@ -430,7 +630,7 @@ export default function TaxComputationPage() {
               // No year resolved means the server never told us which years it
               // can compute. Posting fy:"" would take the engine's own default
               // and put a figure on screen for a year nobody chose.
-              disabled={actionInFlight || !fy}
+              disabled={actionInFlight || !fy || assesseeRefusal !== null}
               className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               {computing && <Loader2 size={12} className="animate-spin" />}
@@ -467,10 +667,26 @@ export default function TaxComputationPage() {
                     <p className="text-[#94A3B8]">Tax Liability</p>
                     <p className="font-medium">{paise(computeResult.tax?.total_tax_paise ?? 0)}</p>
                   </div>
-                  <div>
-                    <p className="text-[#94A3B8]">Rebate 87A</p>
-                    <p className="font-medium">{paise(computeResult.tax?.rebate_87a_paise ?? 0)}</p>
-                  </div>
+                  {/* §87A reaches "an individual, being a resident". Showing a
+                      "Rebate 87A" line reading ₹0 to a company implies a relief
+                      it was never eligible for; the rate it WAS charged at is
+                      the useful figure in its place. */}
+                  {computeResult.assessee && computeResult.assessee.kind !== "individual" ? (
+                    <div>
+                      <p className="text-[#94A3B8]">Rate charged</p>
+                      <p className="font-medium">
+                        {computeResult.assessee.rate_percent}%
+                        {computeResult.assessee.turnover_reference_fy
+                          ? ` · turnover test on FY ${computeResult.assessee.turnover_reference_fy}`
+                          : ""}
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-[#94A3B8]">Rebate 87A</p>
+                      <p className="font-medium">{paise(computeResult.tax?.rebate_87a_paise ?? 0)}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-[#94A3B8]">{computeResult.payable?.is_refund ? "Refund" : "Net Payable"}</p>
                     <p className={`font-medium ${computeResult.payable?.is_refund ? "text-green-600" : "text-red-600"}`}>
@@ -478,6 +694,38 @@ export default function TaxComputationPage() {
                     </p>
                   </div>
                 </div>
+                {/* §115JB / §115JC. The CREDIT is the reason this is on the
+                    screen at all: §115JAA and §115JD carry the excess forward
+                    for fifteen assessment years, and a floor charged without
+                    the credit recorded turns a timing difference into a
+                    permanent cost that is invisible in the year it arises. */}
+                {computeResult.minimum_tax?.applied && (
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1">
+                    <p className="text-[11px] font-medium text-amber-900">
+                      §{computeResult.minimum_tax.section} minimum tax applies —{" "}
+                      {paise(computeResult.minimum_tax.minimum_tax_paise)} is payable
+                      instead of the ordinary computation.
+                    </p>
+                    <p className="text-[11px] text-amber-900">
+                      Credit carried forward:{" "}
+                      <strong>{paise(computeResult.minimum_tax.credit_paise)}</strong>
+                      {computeResult.minimum_tax.credit_expires_after_ay
+                        ? ` — available until AY ${computeResult.minimum_tax.credit_expires_after_ay}`
+                        : ""}
+                      .
+                    </p>
+                    {computeResult.minimum_tax.reasons?.map((r: string, i: number) => (
+                      <p key={i} className="text-[10px] text-amber-800">{r}</p>
+                    ))}
+                  </div>
+                )}
+                {computeResult.assessee?.workings?.length ? (
+                  <div className="mt-2 space-y-0.5">
+                    {computeResult.assessee.workings.map((w: string, i: number) => (
+                      <p key={i} className="text-[10px] text-[#64748B]">{w}</p>
+                    ))}
+                  </div>
+                ) : null}
                 {(computeResult.warnings?.length > 0) && (
                   <div className="mt-2 space-y-1">
                     {computeResult.warnings.map((w: string, i: number) => (
@@ -637,7 +885,7 @@ export default function TaxComputationPage() {
               {snapshots.map(s => (
                 <div key={s.id} className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-lg">
                   <div>
-                    <p className="text-xs font-medium text-[#1E293B]">Version {s.version} — {s.regime === "new" ? "New" : "Old"} Regime</p>
+                    <p className="text-xs font-medium text-[#1E293B]">Version {s.version} — {regimeLabel(s.regime)}</p>
                     <p className="text-[10px] text-[#94A3B8]">{new Date(s.created_at).toLocaleDateString("en-IN")}</p>
                   </div>
                   <div className="text-right flex items-center gap-2">

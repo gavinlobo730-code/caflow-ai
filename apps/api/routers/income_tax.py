@@ -20,6 +20,7 @@ from domain.income_tax.capital_gains_engine import (
     compute_capital_gains, ASSET_TYPES, REGISTER_ASSET_TYPES, CII_BY_FY, LATEST_CII_FY,
     ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
+from domain.income_tax.assessee import assessee_kind_for_entity_type
 from domain.income_tax.advance_tax_interest_engine import (
     compute_234c_interest, installment_schedule, InstallmentPayment, INSTALLMENT_RULES,
 )
@@ -78,6 +79,42 @@ class HRAInput(BaseModel):
 
 
 class ComputeITRRequest(BaseModel):
+    # WHO IS BEING ASSESSED.
+    #
+    # `entity_type` is the RAW value off the client record — 'Private Limited',
+    # 'LLP', 'Proprietorship'. The screen passes what it read and this endpoint
+    # maps it, because the mapping is statutory knowledge and CLAUDE.md keeps
+    # that in apps/api: a PROPRIETORSHIP is an individual (the proprietor is
+    # assessed, on the slabs, with §87A), and a TRUST or a co-operative SOCIETY
+    # is refused because §§11-13/§164 and §80P are not modelled here.
+    #
+    # `assessee_kind` is the explicit override, for a caller that already knows.
+    # When both are absent the assessee is an individual, which is the whole of
+    # the previous behaviour — this endpoint computed individual slabs for
+    # every client, including the four Private Limited companies on the live
+    # book, which owe 22%/25%/30% from the first rupee with no §87A rebate.
+    entity_type: Optional[str] = None
+    assessee_kind: Optional[str] = None
+
+    # Company only — §115BAA (22%) and §115BAB (15%) are elections, and their
+    # surcharge is a FLAT 10% whatever the income.
+    company_regime: str = "normal"
+    # The 25%/30% test looks at the turnover of a year TWO BACK, never the year
+    # being taxed. Absent, the higher rate is used: the concession has to be
+    # established rather than assumed.
+    turnover_in_reference_year_paise: Optional[int] = None
+    # §115JB book profit (a company) or §115JC's adjusted total income (a firm
+    # or LLP). Book profit is the Companies Act profit as adjusted by
+    # Explanation 1 to §115JB(2) — NOT taxable income, which is why it cannot
+    # be derived and has to be supplied.
+    book_profit_paise: Optional[int] = None
+    # §115JC applies only where a §10AA, §35AD or Chapter VI-A Part C deduction
+    # has been CLAIMED — a taxpayer who claimed none is outside Chapter XII-BA
+    # entirely, not merely below a threshold.
+    claimed_specified_deduction: bool = False
+    # For the fifteen-year expiry of the MAT/AMT credit (§115JAA, §115JD).
+    assessment_year_end: Optional[int] = None
+
     # Financial year the statutory rates should be resolved for, e.g.
     # "2025-26". Omit to default to today's FY. See domain/income_tax/
     # statutory_rates.py — the response's rates_verified flag tells the
@@ -133,8 +170,31 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
     Returns full computation working, deduction breakdown, and net payable/refund.
     """
+    # Resolve WHO is being assessed before anything is computed. An unmapped
+    # entity type is REFUSED rather than defaulted to "individual": the default
+    # is what produced the defect, and it produced it silently.
+    kind = req.assessee_kind
+    if kind is None:
+        if req.entity_type is None:
+            kind = "individual"
+        else:
+            kind, refusal = assessee_kind_for_entity_type(req.entity_type)
+            if kind is None:
+                raise HTTPException(status_code=422, detail=refusal)
+    elif kind not in ("individual", "firm", "llp", "domestic_company"):
+        raise HTTPException(
+            status_code=422,
+            detail=(f"Unknown assessee kind {kind!r}. Expected one of "
+                    "individual, firm, llp, domestic_company."))
+
     engine_req = ITRComputeRequest(
         fy=req.fy,
+        assessee_kind=kind,
+        company_regime=req.company_regime,
+        turnover_in_reference_year_paise=req.turnover_in_reference_year_paise,
+        book_profit_paise=req.book_profit_paise,
+        claimed_specified_deduction=req.claimed_specified_deduction,
+        assessment_year_end=req.assessment_year_end,
         gross_salary_paise=req.gross_salary_paise,
         other_income_paise=req.other_income_paise,
         house_property_income_paise=req.house_property_income_paise,
@@ -196,6 +256,30 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         "regime": result.regime,
         "fy": result.fy,
         "rates_verified": result.rates_verified,
+        # WHO was assessed, and on what basis. Reported rather than inferred
+        # from `regime`: a firm has no regime at all, and a screen reading
+        # `regime === "new" ? "New" : "Old"` printed "Old Regime" for one.
+        "assessee": {
+            "kind": result.assessee_kind,
+            "rate_percent": result.entity_rate_percent,
+            # The year the 25%/30% turnover test looks at — two back, never the
+            # year being taxed.
+            "turnover_reference_fy": result.turnover_reference_fy,
+            "workings": result.entity_workings,
+        },
+        # §115JB / §115JC. `credit_paise` is the point: §115JAA and §115JD carry
+        # the excess forward for fifteen assessment years, and charging the
+        # floor without recording the credit turns a timing difference into a
+        # permanent cost that is invisible in the year it is incurred.
+        "minimum_tax": {
+            "section": result.minimum_tax_section,
+            "applies": result.minimum_tax_applies,
+            "minimum_tax_paise": result.minimum_tax_paise,
+            "applied": result.minimum_tax_applied,
+            "credit_paise": result.minimum_tax_credit_paise,
+            "credit_expires_after_ay": result.minimum_tax_credit_expires_after_ay,
+            "reasons": result.minimum_tax_reasons,
+        },
         "income": {
             "gross_total_paise": result.gross_total_income_paise,
             "standard_deduction_paise": result.standard_deduction_paise,
@@ -257,6 +341,32 @@ def supported_financial_years(current_user: dict = Depends(rbac("income_tax", "r
             for fy in years
         ],
         "current_fy": current_fy(),
+    })
+
+
+@router.get("/assessee-kind")
+def resolve_assessee_kind(
+    entity_type: str = Query(..., description="The raw clients.entity_type value"),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """Which assessee a client's entity type makes them, and why not.
+
+    THE SAME RULE AS /financial-years, applied to a form rather than a dropdown.
+    A screen has to know BEFORE it computes whether to offer a §115BAC new/old
+    election or a §115BAA/§115BAB one, and whether to ask for book profit —
+    and that answer is statutory (a PROPRIETORSHIP is an individual; a trust is
+    refused because §§11-13 and §164 are not modelled). CLAUDE.md keeps
+    statutory rules in apps/api, so the screen asks rather than deciding.
+
+    A refusal comes back as `kind: null` with the sentence, so the screen can
+    say WHAT is missing instead of offering a computation that will 422.
+    """
+    kind, refusal = assessee_kind_for_entity_type(entity_type)
+    return api_response(True, {
+        "entity_type": entity_type,
+        "kind": kind,
+        "is_entity": kind in ("firm", "llp", "domestic_company"),
+        "refusal": refusal,
     })
 
 
