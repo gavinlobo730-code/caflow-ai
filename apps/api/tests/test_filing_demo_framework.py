@@ -14,6 +14,16 @@ WHY THIS EXISTS
       3. REALISM IS LABELLED — a result stage's realistic reference never
          appears without its SPECIMEN note.
 
+    Two more are held here because they are refusals rather than shapes, and
+    a refusal is exactly what erodes when a walk-through is made to look more
+    like the real thing:
+
+      4. A CREDENTIAL IS SHOWN AND NEVER TAKEN. The OTP step is in the
+         sequence; a field that accepts one is not, in the demo or ever.
+      5. EVERY FLOW SAYS WHAT CHANGES WHEN IT IS REAL — envelope() will not
+         build without it, so no walk-through can show a CA a capability and
+         stay silent about the registration gating it.
+
     GSTR-1 is the exemplar flow and is tested end-to-end here; the other
     flows get their own files, but the framework rules apply to them
     automatically because the scans below walk the whole package.
@@ -142,6 +152,76 @@ def test_the_result_specimen_never_travels_without_its_note():
     assert "SPECIMEN" in result["specimen_note"]
     assert "not issued" in result["specimen_note"]
     assert any("Nothing was filed" in t for t in result["truth"])
+
+
+def test_gstr1_teaches_the_sequence_lock_both_ways():
+    """CGST Rule 59(6): GSTR-1 cannot be filed while the PRECEDING period's
+    GSTR-3B is unfiled. CGST Act §39(10): that period's GSTR-3B cannot be
+    filed until this statement is. The two returns interlock, one missed
+    month stops the next, and a monthly filer meets this constantly — a
+    walk-through that opens on a saved statement with no mention of it is
+    describing a portal the CA does not recognise."""
+    out = gstr1.build(_db_with_return(), FIRM, CLIENT, {"return_id": "R1"})
+    note = out["stages"][0]["note"]
+    assert "Rule 59(6)" in note
+    assert "§39(10)" in note
+
+
+def test_gstr1s_freeze_warning_names_gstr1a_before_the_amendment_tables():
+    """The correction answer CHANGED, and the old one is still the obvious
+    guess. GSTR-3B's outward tables became auto-populated and non-editable
+    (GSTN advisory 606, from the July 2025 tax period), so FORM GSTR-1A — the
+    current-period amendment, open from the filing of GSTR-1 until the filing
+    of GSTR-3B — is now the only route that reaches this period's liability.
+    A demo that offers only "amend it in a later period" sends a CA to the
+    route that no longer fixes this month."""
+    out = gstr1.build(_db_with_return(), FIRM, CLIENT, {"return_id": "R1"})
+    warning = next(s for s in out["stages"] if s["kind"] == "warning")
+    assert "GSTR-1A" in warning["text"]
+    assert "non-editable" in warning["text"]
+    assert "§37(3)" in warning["text"], "the later-period route is still real"
+    assert warning["text"].index("GSTR-1A") < warning["text"].index("§37(3)"), (
+        "the route that still works comes first")
+    # CGST §37(5)/§39(11)/§44(2) — a different failure from a shut window.
+    assert "THREE YEARS" in warning["text"]
+
+
+def test_gstr1_says_what_changes_when_filing_is_real():
+    out = gstr1.build(_db_with_return(), FIRM, CLIENT, {"return_id": "R1"})
+    note = out["when_this_is_real"]
+    assert "GST Suvidha Provider" in note or "GSP" in note
+    assert "never hold it" in note, (
+        "the signature stays the taxpayer's, on the portal, whatever else "
+        "a GSP changes")
+
+
+def test_the_envelope_cannot_be_built_without_saying_what_changes():
+    """The "what changes when this is real" note is a REQUIRED argument, not
+    an optional one — the same discipline as result_stage deriving its own
+    SPECIMEN note. A flow author cannot ship a walk-through that shows a CA a
+    capability and stays silent about the registration gating it.
+
+    This is the negative control for the six per-flow assertions elsewhere:
+    without it, they only prove that six authors remembered."""
+    with pytest.raises(TypeError):
+        common.envelope("x", "t", "s", "seed",
+                        {"how": "", "software_permitted": False, "note": ""},
+                        [])
+
+
+def test_every_flow_that_shows_an_otp_says_it_is_not_entered_here():
+    """A credential is SHOWN and never TAKEN. CLAUDE.md: an EVC OTP field in
+    this app is a credential-capture surface whatever it is labelled — so the
+    stage describes the step and names where the code is really typed. The
+    wizard renders no input for it (held by
+    apps/web/scripts/one-filing-demo-and-the-kill-switch-reaches-it.test.ts);
+    this holds the server half, for every flow at once."""
+    for name, src in _package_sources().items():
+        if "otp_stage(" not in src or name == "common.py":
+            continue
+        assert "never here" in src, (
+            f"services/filing_demo/{name} shows an OTP stage without saying "
+            "the code is entered on the portal and not in PracticeSync")
 
 
 def test_result_stage_constructor_cannot_omit_the_note():

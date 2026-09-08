@@ -412,8 +412,15 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         common.transmit_stage([
             {"key": "upload", "label": "Uploading signed form to MCA V3"},
             {"key": "prescrutiny", "label": "Pre-scrutiny checks"},
-            {"key": "srn", "label": "SRN generated"},
-            {"key": "fee", "label": "Fee payment recorded"},
+            {"key": "srn", "label": "SRN generated — the form is submitted, "
+                                    "not yet filed"},
+            # THE STEP THAT CATCHES PEOPLE OUT. MCA V3 issues the SRN at
+            # submission and offers Pay Later; the form is not filed until the
+            # fee is actually paid, and the additional fee for delay keeps
+            # accruing on an SRN left in Pending Payment. A walk-through that
+            # ends at "SRN generated" teaches that the job is done.
+            {"key": "fee", "label": "Fee paid — only now is the form filed "
+                                    "(an SRN left in Pending Payment is not)"},
         ]),
         common.result_stage(
             "MCA",
@@ -447,5 +454,19 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                     "API — PracticeSync prepares the figures and evidence; "
                     "the signatories file on the portal.",
         },
+        # What changes when this is real. MCA is the flow where the honest
+        # answer is smallest, and the reason is the DUAL SIGNATURE: even a
+        # filing API would not remove two people signing two different
+        # statements with two different DSCs on two different tokens.
+        "Least changed of all the walk-throughs, and the reason is the two "
+        "signatures. Filing needs MCA21 V3 credentials for the company plus "
+        "a DIN-linked Class 3 DSC in the director's hands and, on AOC-4 and "
+        "MGT-7, a second DSC in the certifying professional's — physical "
+        "tokens held by two different people, which no API replaces. MCA "
+        "publishes no public filing API in any case. So the roadmap here is "
+        "the PREPARATION: the Schedule III figures, the XBRL package where "
+        "it applies, the attachments and the AGM-driven due dates, assembled "
+        "so the person at the portal is transcribing a finished form rather "
+        "than rebuilding it.",
         stages,
     )

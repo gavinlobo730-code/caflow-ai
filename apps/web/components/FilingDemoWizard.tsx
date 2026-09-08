@@ -51,11 +51,23 @@ export async function fetchFilingDemoCapabilities(): Promise<{ enabled: boolean;
  *     Aadhaar OTP); one with otp=false (DSC/emSigner) skips it;
  *   - the transmit stage plays its steps on a timer and advances itself.
  *
- * And three things are unconditional, because they are the terms the demo
- * exists under: the DEMO banner never scrolls away; the result stage's
- * realistic reference always carries its SPECIMEN badge and note; and the
- * truth lines (nothing filed, how to file for real) always render. The
- * component has no code path that omits them.
+ * THE OTP STAGE HAS NO INPUT, DELIBERATELY. It used to take six digits and
+ * accept any of them. The step is real and stays in the sequence — but a box
+ * in this app that accepts a portal OTP is a credential-capture surface
+ * whatever it is labelled (CLAUDE.md says so about real filing, and a demo
+ * that trains the habit is how the habit arrives). It is also the more
+ * faithful rendering: the code is typed on gst.gov.in or incometax.gov.in,
+ * never in the software that prepared the return, so a field here taught the
+ * step in the wrong PLACE. This is the one point where the walk-through is
+ * deliberately less imitative than the portal.
+ *
+ * And FIVE things are unconditional, because they are the terms the demo
+ * exists under, and the component has no code path that omits any of them:
+ * the DEMO banner never scrolls away; the transmit stage says nothing is
+ * being sent while it plays; the result panel says in its own heading that
+ * this is what the portal WOULD have shown; the realistic reference always
+ * carries its SPECIMEN badge and note; and the truth lines (nothing filed,
+ * how to file for real, what changes when it is) always render.
  */
 
 interface Figure { label: string; paise?: number; text?: string }
@@ -76,6 +88,10 @@ export interface FilingDemoScript {
   simulated: boolean; filed: boolean; flow: string;
   title: string; subtitle: string; acknowledgement: string;
   real_channel: { how: string; software_permitted: boolean; note: string };
+  /** The registration that gates real filing for this flow, and what the CA
+   *  will do differently once it exists. Required server-side — see
+   *  services/filing_demo/common.envelope. */
+  when_this_is_real: string;
   stages: Stage[]; disclaimer: string;
 }
 
@@ -109,8 +125,9 @@ export default function FilingDemoWizard({
   const [declared, setDeclared] = useState(false);
   const [signatory, setSignatory] = useState("");
   const [method, setMethod] = useState<SignatureMethod | null>(null);
-  const [otp, setOtp] = useState("");
-  const [otpError, setOtpError] = useState<string | null>(null);
+  // No OTP state. There is no OTP field — see the header. Removing the state
+  // as well as the input is the point: a component that still holds a
+  // six-digit value is one edit away from rendering a box for it again.
   const [done, setDone] = useState(-1);
 
   useEffect(() => {
@@ -163,12 +180,6 @@ export default function FilingDemoWizard({
     return () => { cancelled = true; timers.forEach(clearTimeout); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage?.kind, idx]);
-
-  function verifyOtp() {
-    if (!/^\d{6}$/.test(otp)) { setOtpError("Enter the 6-digit OTP."); return; }
-    setOtpError(null);
-    advance();
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -297,7 +308,7 @@ export default function FilingDemoWizard({
                         // professional's) is two declaration+signature pairs,
                         // and the second must not arrive pre-ticked — each
                         // person affirms their own statement.
-                        setDeclared(false); setSignatory(""); setOtp("");
+                        setDeclared(false); setSignatory("");
                         advance();
                       }}
                       disabled={!declared || !signatory}
@@ -338,16 +349,29 @@ export default function FilingDemoWizard({
               {stage?.kind === "otp" && (
                 <>
                   <p className="text-sm text-[#334155]">{stage.prompt}</p>
-                  <input value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    inputMode="numeric" placeholder="6-digit OTP" aria-label="OTP"
-                    className="px-3 py-2 border rounded text-sm font-mono tracking-widest w-40" />
-                  {otpError && <p className="text-xs text-red-600">{otpError}</p>}
-                  {stage.note && <p className="text-[11px] text-[#94A3B8]">{stage.note}</p>}
+                  {/* No input, and the empty boxes say why. The step is shown
+                      because it is real; the field is refused because a box
+                      in this app that takes a portal OTP is a credential
+                      surface whatever it is labelled — and because the code
+                      is typed on the portal, not here, so an input would put
+                      the step in the wrong place. */}
+                  <div className="rounded border-2 border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-3">
+                    <div className="flex gap-1.5" aria-hidden="true">
+                      {[0, 1, 2, 3, 4, 5].map((i) => (
+                        <span key={i}
+                          className="w-8 h-9 rounded border border-[#CBD5E1] bg-white" />
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-[#64748B] mt-2">
+                      This is the portal&apos;s screen, not one PracticeSync has.
+                      Entered on the authority&apos;s own site.
+                    </p>
+                  </div>
+                  {stage.note && <p className="text-[11px] text-amber-800">{stage.note}</p>}
                   <div className="flex gap-2">
-                    <button onClick={verifyOtp}
+                    <button onClick={advance}
                       className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
-                      Verify OTP
+                      Continue
                     </button>
                     <button onClick={back} className="px-3 py-2 border rounded text-sm">Back</button>
                   </div>
@@ -355,22 +379,46 @@ export default function FilingDemoWizard({
               )}
 
               {stage?.kind === "transmit" && (
-                <ul className="space-y-2">
-                  {(stage.steps ?? []).map((st, i) => (
-                    <li key={st.key} className="flex items-center gap-2 text-sm">
-                      <span className={`w-4 text-center ${i <= done ? "text-green-600" : "text-[#CBD5E1]"}`}>
-                        {i <= done ? "✓" : "○"}
-                      </span>
-                      <span className={i <= done ? "text-[#334155]" : "text-[#94A3B8]"}>{st.label}</span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="space-y-2">
+                    {(stage.steps ?? []).map((st, i) => (
+                      <li key={st.key} className="flex items-center gap-2 text-sm">
+                        <span className={`w-4 text-center ${i <= done ? "text-green-600" : "text-[#CBD5E1]"}`}>
+                          {i <= done ? "✓" : "○"}
+                        </span>
+                        <span className={i <= done ? "text-[#334155]" : "text-[#94A3B8]"}>{st.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {/* Unconditional. This is the one stage whose appearance
+                      most resembles a real upload — ticks appearing one by
+                      one — and the one most likely to be screenshotted
+                      mid-play. The banner above says it too; this says it
+                      inside the frame the ticks are in. */}
+                  <p className="text-xs font-semibold text-amber-800 border-t pt-2">
+                    Nothing is being sent. These steps are played on a timer to
+                    show the portal&apos;s sequence; there is no connection to any
+                    government system behind them.
+                  </p>
+                </>
               )}
 
               {stage?.kind === "result" && (
                 <div className="space-y-3">
                   <div className="rounded border-2 border-green-300 bg-green-50 p-4 space-y-2">
+                    {/* The portal's own words, and then immediately whose
+                        words they are. "✓ Filing successful" is the single
+                        most dangerous string in this product: it is what
+                        makes the walk-through recognisable and it is the
+                        sentence someone could screenshot. It keeps the badge
+                        it always had, and now cannot appear without the line
+                        below it — which is rendered here, not supplied by a
+                        flow, so no flow can leave it out. */}
                     <p className="text-sm font-bold text-green-800">✓ Filing successful<DemoBadge /></p>
+                    <p className="text-xs font-semibold text-amber-800">
+                      That is what the portal would say. This is PracticeSync,
+                      nothing was sent, and no return has been filed.
+                    </p>
                     <div>
                       <p className="text-[11px] text-green-800">{stage.reference_label}</p>
                       <p className="text-lg font-mono font-semibold tracking-wider text-green-900">
@@ -397,6 +445,17 @@ export default function FilingDemoWizard({
                         : "No public API lets software transmit this today; the roadmap integration depends on the authority."}
                       {" "}{script.real_channel.note}
                     </p>
+                  </div>
+                  {/* What changes when this is real. The server requires it of
+                      every flow (services/filing_demo/common.envelope will not
+                      build without one), so this block has no empty state to
+                      design for — and it is the half a CA being shown the
+                      product is entitled to: which registration is missing,
+                      who has to obtain it, and what they will do differently
+                      the day it arrives. */}
+                  <div className="rounded border border-[#E2E8F0] bg-white p-3">
+                    <p className="text-[11px] font-semibold text-[#334155]">What changes when this is real</p>
+                    <p className="text-[11px] text-[#64748B]">{script.when_this_is_real}</p>
                   </div>
                 </div>
               )}

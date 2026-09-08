@@ -115,14 +115,15 @@ def test_envelope_is_honest():
 # ── The portal's sequence ───────────────────────────────────────────────────
 
 def test_follows_the_portal_sequence_with_months_missing():
-    """summary → month table → precondition warning (months missing) →
-    correction-window warning → declaration → signature → otp → transmit →
-    result. No payment stage: GSTR-9 liabilities are paid through DRC-03, a
-    separate ceremony this walk-through does not pretend to include."""
+    """summary → the annual-return package (9 and 9C) → month table →
+    precondition warning (months missing) → correction-window warning →
+    declaration → signature → otp → transmit → result. No payment stage:
+    GSTR-9 liabilities are paid through DRC-03, a separate ceremony this
+    walk-through does not pretend to include."""
     out = _build()
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "table", "warning", "warning", "declaration",
-                     "signature", "otp", "transmit", "result"]
+    assert kinds == ["summary", "table", "table", "warning", "warning",
+                     "declaration", "signature", "otp", "transmit", "result"]
 
 
 def test_all_filed_drops_the_precondition_but_never_the_window_warning():
@@ -131,7 +132,7 @@ def test_all_filed_drops_the_precondition_but_never_the_window_warning():
     warning is conditional."""
     out = _build(_db(all_filed=True))
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "table", "warning", "declaration",
+    assert kinds == ["summary", "table", "table", "warning", "declaration",
                      "signature", "otp", "transmit", "result"]
     warning = next(s for s in out["stages"] if s["kind"] == "warning")
     assert "whichever is EARLIER" in warning["text"]
@@ -172,7 +173,8 @@ def test_figures_are_the_filed_months_own_paise_exact():
 
 def test_month_table_is_twelve_rows_april_first():
     out = _build()
-    table = next(s for s in out["stages"] if s["kind"] == "table")
+    table = next(s for s in out["stages"]
+                 if s.get("title") == "Month-wise filing status")
     assert table["columns"] == ["Month", "GSTR-1", "GSTR-3B"]
     assert len(table["rows"]) == 12
     assert table["rows"][0][0]["text"] == "Apr 2025"
@@ -195,6 +197,67 @@ def test_statutory_copy_names_the_due_date_and_the_optionality():
     assert "§47(2)" in note
     result = next(s for s in out["stages"] if s["kind"] == "result")
     assert any("31 December 2026" in t for t in result["truth"])
+
+
+# ── The annual return is up to TWO forms ────────────────────────────────────
+
+def test_the_package_stage_carries_gstr9c_and_the_three_bands():
+    """CGST Rule 80: above ₹5 crore aggregate turnover the annual return also
+    needs the self-certified reconciliation in FORM GSTR-9C, filed ALONG WITH
+    GSTR-9 and by the same date. A walk-through that shows only GSTR-9 tells
+    a CA with a ₹5-crore client that they are finished when they are not."""
+    out = _build()
+    package = next(s for s in out["stages"]
+                   if s.get("title") == "The annual return is up to two forms")
+    assert package["columns"] == [
+        "Aggregate turnover in the FY", "GSTR-9", "GSTR-9C"]
+    bands = [r[0]["text"] for r in package["rows"]]
+    assert bands == ["Up to ₹2 crore", "Over ₹2 crore, up to ₹5 crore",
+                     "Over ₹5 crore"]
+    assert package["rows"][0][1]["text"].startswith("Optional")
+    assert package["rows"][0][2]["text"] == "Not required"
+    assert package["rows"][2][2]["text"].startswith("Mandatory")
+    # Circular 246/03/2025-GST: the §47(2) late fee attaches to the COMPLETE
+    # annual return, so GSTR-9 on time with 9C outstanding is still late.
+    assert "246/03/2025-GST" in package["note"]
+    assert "self-certified" in package["note"].lower(), (
+        "GSTR-9C stopped being a CA/CMA certification in 2021; calling it an "
+        "audit would sell work the law no longer requires")
+
+
+def test_the_package_stage_refuses_to_place_this_client_in_a_band():
+    """Aggregate turnover under §2(6) is PAN-level and all-India and takes in
+    exempt and non-taxable supplies. The taxable value this demo totals from
+    ONE registration's GSTR-1s is a different number, so the bands are shown
+    and the client is not placed in one — the same refusal the rest of the
+    package makes everywhere it lacks a fact."""
+    out = _build()
+    package = next(s for s in out["stages"]
+                   if s.get("title") == "The annual return is up to two forms")
+    assert "§2(6)" in package["note"]
+    assert "cannot decide it" in package["note"]
+    # And nothing anywhere in the stage asserts which band applies.
+    assert "this client" not in str(package["rows"])
+
+
+def test_the_window_warning_also_carries_the_three_year_bar():
+    """CGST §44(2) bars GSTR-9 itself three years past its due date, which is
+    a different failure from the correction window closing — and the annual
+    return is exactly the form left unfiled for years."""
+    from services.filing_demo import common
+    warnings = [s for s in _build()["stages"] if s["kind"] == "warning"]
+    window = warnings[-1]
+    assert "THREE YEARS" in window["text"]
+    assert window["text"].endswith(common.THREE_YEAR_BAR.rstrip())
+
+
+def test_the_flow_says_what_changes_when_filing_is_real():
+    """And says it honestly: GSTR-9 is the flow a GSP changes least, because
+    the work is the reconciliation and not the upload. A roadmap note that
+    oversold this one would be the easiest place to do it."""
+    note = _build()["when_this_is_real"]
+    assert "GST Suvidha Provider" in note or "GSP" in note
+    assert "reconciliation" in note
 
 
 # ── Declaration and signature ceremony ──────────────────────────────────────

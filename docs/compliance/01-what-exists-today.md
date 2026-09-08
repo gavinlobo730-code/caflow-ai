@@ -136,21 +136,29 @@ every response carries an honest `SIM-NOT-FILED` reference.
 > deleted.** Never repointed at a live portal. Everything that makes it safe is
 > the fact that it cannot file.
 
-### A second implementation is still live
+### The second implementation is gone (was: "still live")
 
-CLAUDE.md states there is exactly one filing-demo implementation. As of
-2026-09-04 that is **not true**. `components/DemoFilingModal.tsx` is still wired
-into `app/deadlines/page.tsx` and carries its own everything: its own reference
-generator (`lib/filing/demoFiling.ts`, `DEMO-`/`SIM-` prefixes rather than
-`SIM-NOT-FILED`), its own `validateForDemo`, and its own persistence to the
-`demo_filings` table (migration 087) through a **direct PostgREST write**, so
-`rbac()` never runs on it and RLS is the only check.
+**Resolved in commit #433, verified again 2026-09-08.** This section used to
+record a live second filing demo. It no longer exists:
+`components/DemoFilingModal.tsx`, `lib/filing/demoFiling.ts` and
+`lib/data/demoFilings.ts` are all deleted, `app/deadlines/page.tsx` carries a
+comment where the button was, and nothing writes `demo_filings` from the
+browser.
 
-`docs/DEMO_FILING.md` documents that older path and only that one, which is why
-the discrepancy survived.
+What it was, kept because the failure is the instructive part: it generated the
+reference and ran the validation IN THE BROWSER, wrote the result straight to
+`demo_filings` (migration 087) over PostgREST so `rbac()` never ran, and — the
+part that mattered — **never called the server, so `ENABLE_FILING_SIMULATION`
+did not reach it**. Turning the kill switch off left it simulating filings
+anyway. A demo also belongs on the screen where the RETURN lives; a deadline row
+is not a return.
 
-Neither implementation can file anything, so this is not a safety incident. It
-is a correctness-of-the-map problem, and it is exactly the fault pattern the
-rest of this codebase has spent months removing: one rule, two implementations,
-one of them documented. Tracked as its own task; resolve it before any real
-filing work starts, because the safety argument should have to be made once.
+`apps/web/scripts/one-filing-demo-and-the-kill-switch-reaches-it.test.ts` now
+holds the line — it fails if any of those files come back, if anything writes
+`demo_filings` from the browser, or if a screen offers the wizard without first
+probing `fetchFilingDemoCapabilities`.
+
+`docs/DEMO_FILING.md` documents the deleted path and only that one, which is how
+the discrepancy survived unnoticed for as long as it did. It is stale and should
+be replaced by a description of the shared framework or removed.
+

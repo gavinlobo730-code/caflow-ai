@@ -10,8 +10,13 @@ What is particular to ITR among the demo flows:
     director's, partner's, authorised signatory's), never the firm's;
   - e-verification within 30 days of transmission or the return is treated
     as never filed (CBDT Notification 05/2022) — carried by a warning stage;
-  - there is no ITR JSON generator in the repo, and the transmit stage says
-    so instead of pretending the artefact exists;
+  - PracticeSync emits no ITR JSON, and a whole STAGE says exactly why —
+    the Department's schemas are held and every field path is verified, and
+    what is missing is the SW######## software-provider id (a registration)
+    and the non-computed half of a return. That is the most useful thing the
+    demo can teach a CA evaluating the product, and it is read out of
+    domain/income_tax/itr_json.py rather than restated, because the sentence
+    it replaced ("no generator yet") had already gone stale;
   - the demo is gated on status == 'ready_for_filing', the last stop before
     'filed' in domain/income_tax/itr_workflow.py's state machine.
 """
@@ -85,12 +90,14 @@ def test_real_channel_says_software_may_file_itr():
 # ── The portal sequence ─────────────────────────────────────────────────────
 
 def test_itr_follows_the_portal_sequence():
-    """summary → 30-day e-verification warning → §140 declaration →
-    signature → otp → transmit → result. No payment stage: self-assessment
-    tax is paid as a challan before filing, not inside the filing flow."""
+    """summary → the return file (what is ready, what is not) → 30-day
+    e-verification warning → §140 declaration → signature → otp → transmit →
+    result. No payment stage: self-assessment tax under §140A is paid as a
+    challan before filing, not inside the filing flow — the summary says so
+    rather than the sequence inventing a step the portal does not have."""
     out = itr.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "warning", "declaration", "signature",
+    assert kinds == ["summary", "table", "warning", "declaration", "signature",
                      "otp", "transmit", "result"]
 
 
@@ -130,12 +137,113 @@ def test_the_declaration_is_the_forms_own_wording():
     )
 
 
-def test_the_transmit_stage_admits_there_is_no_json_generator():
-    """The repo has no ITR JSON generator; a transmit step claiming the
-    artefact exists would be the demo's first lie."""
+def test_the_transmit_stage_does_not_claim_a_file_that_was_not_produced():
+    """PracticeSync emits no ITR JSON, and a transmit step claiming the
+    artefact exists would be the demo's first lie.
+
+    The REASON in that step used to be "generator not yet built", and that
+    sentence went stale: the Department's AY 2026-27 schemas have since been
+    downloaded by hand and committed, and every field path is verified
+    against them by tests/test_itr_schema_paths.py. What is actually missing
+    is the SW######## provider id (and the non-computed half of a return), so
+    the step names that instead — a stale honest answer is still a wrong
+    answer, and this is the flow where a CA is most likely to check."""
     out = itr.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})
     transmit = next(s for s in out["stages"] if s["kind"] == "transmit")
-    assert "generator not yet built" in transmit["steps"][0]["label"]
+    first = transmit["steps"][0]["label"]
+    assert "NOT produced" in first
+    assert "SW########" in first
+    assert "generator not yet built" not in first, (
+        "the schemas are held now; this reason is no longer true")
+
+
+# ── The return file: the refusal, surfaced as a stage ───────────────────────
+
+def test_the_return_file_stage_names_what_the_portal_would_reject_for():
+    """The most useful thing this demo can teach a CA evaluating the product:
+    the figures are right and the file still cannot be produced, for two
+    named reasons rather than one vague one.
+
+    Every row is read out of domain/income_tax/itr_json.py — the authority on
+    what it would refuse and why — so the stage cannot drift from the module
+    the way the old transmit sentence did."""
+    out = itr.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})
+    stage = next(s for s in out["stages"] if s["kind"] == "table")
+    assert stage["title"] == "The return file — what is ready, and what is not"
+    needs = [r[0]["text"] for r in stage["rows"]]
+    assert any("SW########" in n for n in needs)
+    assert any("PersonalInfo" in n for n in needs)
+    assert any("Balance sheet" in n for n in needs)
+    states = {r[0]["text"]: r[1]["text"] for r in stage["rows"]}
+    provider_row = next(n for n in needs if "SW########" in n)
+    assert "NOT HELD" in states[provider_row]
+    assert "e-Return Intermediary" in states[provider_row], (
+        "the id comes with ERI registration — the gate, named")
+
+
+def test_the_return_file_stage_reports_the_schema_as_actually_held():
+    """The schemas ARE committed and the paths ARE verified, so the stage must
+    say so — under-claiming is as much a fidelity fault as over-claiming, and
+    it would tell a CA the product is further behind than it is."""
+    from domain.income_tax import itr_json
+    out = itr.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})
+    stage = next(s for s in out["stages"] if s["kind"] == "table")
+    schema_state = stage["rows"][0][1]["text"]
+    assert "Held and verified" in schema_state
+    mapping = itr_json.FIELD_MAPPINGS["ITR-6"]
+    assert str(len(mapping.paths)) in schema_state
+    assert (mapping.schema_file or "") in schema_state
+
+
+def test_the_return_file_stage_never_prints_a_provider_id(monkeypatch):
+    """Where one IS configured the stage says so and stops. The SW######## id
+    identifies the software provider; a walk-through that renders it puts it
+    on every screenshot a CA takes."""
+    monkeypatch.setenv("ITR_SOFTWARE_PROVIDER_ID", "SW12345678")
+    out = itr.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})
+    stage = next(s for s in out["stages"] if s["kind"] == "table")
+    assert "SW12345678" not in str(stage)
+    provider_state = next(r[1]["text"] for r in stage["rows"]
+                          if "SW########" in r[0]["text"])
+    assert provider_state.startswith("Configured")
+
+
+def test_the_summary_names_the_140a_challan_where_tax_is_payable():
+    """IT Act §140A: tax still payable after TDS and advance tax is paid,
+    with §234 interest, BEFORE the return is furnished. There is no payment
+    stage because the portal has none — the challan is a separate act — but a
+    CA must not leave this walk-through thinking the return pays it."""
+    out = itr.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})
+    note = out["stages"][0]["note"]
+    assert "§140A" in note
+    assert "§234A" in note and "§234C" in note
+    assert "no payment step" in note
+
+
+def test_the_140a_line_is_absent_on_a_refund():
+    """Telling a refund case to pay self-assessment tax would be worse than
+    saying nothing at all."""
+    db = _db(snapshots=[{
+        "id": "S1", "firm_id": FIRM, "client_id": CLIENT,
+        "financial_year": "2025-26", "version": 1,
+        "taxable_income_paise": 8_00_000_00,
+        "net_payable_paise": -35_000_00, "is_refund": True,
+    }])
+    out = itr.build(db, FIRM, CLIENT, {"filing_id": "F1"})
+    assert "§140A" not in out["stages"][0]["note"]
+
+
+def test_the_flow_says_what_changes_when_filing_is_real():
+    """ITR is the ONE flow where software may transmit, so this note is the
+    one a CA will read hardest. It has to name the ERI registration, the
+    SW######## id it carries, and the whitelisted-static-IP condition — which
+    is a hosting problem this API's Singapore region does not currently
+    meet — rather than implying the gate is code."""
+    note = itr.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})["when_this_is_real"]
+    assert "e-Return Intermediary" in note
+    assert "SW########" in note
+    assert "static IP" in note
+    assert "§140" in note, "verification stays the taxpayer's either way"
 
 
 # ── Rule 3: realism is labelled ─────────────────────────────────────────────

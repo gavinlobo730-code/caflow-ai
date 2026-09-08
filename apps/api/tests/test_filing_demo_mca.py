@@ -379,3 +379,28 @@ def test_the_specimen_srn_matches_mcas_format_and_carries_its_note():
         "the truth lines must point at the genuine path: file on the "
         "portal, then record the SRN here"
     )
+
+
+def test_the_transmit_stage_does_not_stop_at_the_srn():
+    """MCA V3 issues the SRN at SUBMISSION and offers Pay Later. A form whose
+    SRN sits in Pending Payment is not filed, and the additional fee for
+    delay keeps running on it — so a walk-through that ends at "SRN
+    generated" teaches that the job is done when it is not."""
+    out = mca.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})
+    steps = {s["key"]: s["label"]
+             for s in next(s for s in out["stages"]
+                           if s["kind"] == "transmit")["steps"]}
+    assert "not yet filed" in steps["srn"]
+    assert "only now is the form filed" in steps["fee"]
+    assert "Pending Payment" in steps["fee"]
+
+
+def test_the_flow_says_what_changes_when_filing_is_real():
+    """MCA is the flow a filing API would change least, and the reason is the
+    DUAL SIGNATURE: two people, two statements, two physical DSC tokens. The
+    note has to say that rather than promise an integration that would still
+    leave both signatures where they are."""
+    note = mca.build(_db(), FIRM, CLIENT, {"filing_id": "F1"})["when_this_is_real"]
+    assert "MCA21" in note
+    assert "two signatures" in note or "two different people" in note
+    assert "no public filing API" in note

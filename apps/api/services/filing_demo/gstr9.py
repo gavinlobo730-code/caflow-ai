@@ -133,6 +133,49 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
             ],
             cta="Proceed to file",
         ),
+        # WHAT THE "ANNUAL RETURN" ACTUALLY IS, WHICH IS NOT ALWAYS ONE FORM.
+        # CGST Rule 80: >₹5 crore aggregate turnover must also furnish the
+        # SELF-CERTIFIED reconciliation statement in FORM GSTR-9C, ALONG WITH
+        # the annual return and by the same 31 December — it is no longer an
+        # audit (the CA/CMA certification requirement went in 2021), but it is
+        # still a second form and a CA filing for a ₹5-crore-plus client
+        # expects to see it. Circular 246/03/2025-GST then attaches the §47(2)
+        # late fee to the COMPLETE annual return, so a filed GSTR-9 with the
+        # 9C outstanding is still late.
+        #
+        # THE BANDS ARE SHOWN, THE CLIENT IS NOT PLACED IN ONE. Aggregate
+        # turnover under §2(6) is all-India and PAN-level and takes in exempt
+        # and non-taxable supplies; the taxable value totalled from this
+        # registration's GSTR-1s is a different number and cannot stand in for
+        # it. Guessing the band would be the kind of confident wrong answer
+        # this package refuses everywhere else.
+        common.table_stage(
+            "The annual return is up to two forms",
+            "CGST Rule 80. GSTR-9C is a SELF-CERTIFIED reconciliation between "
+            "the audited accounts and the annual return — since 2021 no "
+            "longer certified by a CA or CMA, but still a second form, filed "
+            "ALONG WITH GSTR-9 and by the same date. The §47(2) late fee "
+            "attaches to the COMPLETE annual return (Circular "
+            "246/03/2025-GST), so GSTR-9 filed on time with GSTR-9C "
+            "outstanding is still a late annual return. Which band this "
+            "client is in is NOT shown, and deliberately: aggregate turnover "
+            "under §2(6) is PAN-level and all-India and includes exempt and "
+            "non-taxable supplies, so the taxable value totalled from this "
+            "registration's own GSTR-1s above is a different number and "
+            "cannot decide it.",
+            ["Aggregate turnover in the FY", "GSTR-9", "GSTR-9C"],
+            [
+                [{"text": "Up to ₹2 crore"},
+                 {"text": "Optional (exempt by notification under the first "
+                          "proviso to §44(1))"},
+                 {"text": "Not required"}],
+                [{"text": "Over ₹2 crore, up to ₹5 crore"},
+                 {"text": "Mandatory"}, {"text": "Not required"}],
+                [{"text": "Over ₹5 crore"},
+                 {"text": "Mandatory"},
+                 {"text": "Mandatory, self-certified, filed with GSTR-9"}],
+            ],
+        ),
         common.table_stage(
             "Month-wise filing status",
             # Rule 80(1) CGST Rules with FORM GSTR-9's instructions: the
@@ -176,7 +219,8 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
             f"only until {outer_text} OR the date this annual return is "
             "furnished, whichever is EARLIER. File GSTR-9 in July and the "
             "correction window shuts in July — months ahead of the statutory "
-            "outer limit. GSTR-9 itself, once filed, cannot be revised.",
+            "outer limit. GSTR-9 itself, once filed, cannot be revised."
+            + common.THREE_YEAR_BAR,
         ),
         common.declaration_stage(
             # FORM GSTR-9's verification — the form's own wording, verbatim,
@@ -203,7 +247,11 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         common.otp_stage(
             "An OTP would now be sent to the authorised signatory's mobile "
             "and email as registered on the GST portal.",
-            "Any six digits will do here — there is no OTP to be right about.",
+            "The code is entered on gst.gov.in, never here. PracticeSync"
+            " has no field that takes an OTP and will not have one when"
+            " filing is real — a box in your practice software that"
+            " accepts a portal credential is a credential-capture"
+            " surface whatever it is labelled.",
         ),
         common.transmit_stage([
             {"key": "compute", "label": "Computing liabilities"},
@@ -240,5 +288,17 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                     "and compliance step, not a coding one. Until then, "
                     "PracticeSync prepares and the CA files on the portal.",
         },
+        # What changes when this is real — and the honest half is that GSTR-9
+        # is the LEAST changed by it. The work in an annual return is the
+        # reconciliation, not the upload, and no registration shortens that.
+        "One registration changes this screen: a GST Suvidha Provider (GSP), "
+        "through which GSTN's return APIs are reached. Say plainly what it "
+        "would and would not buy here — GSTR-9 is one upload a year, so the "
+        "saving is a few minutes, and the work is the reconciliation that "
+        "comes before it. What a GSP would genuinely change is the reverse "
+        "direction: pulling the year's filed figures back from GSTN to check "
+        "against the books, instead of the CA reading them off the portal. "
+        "The declaration and the DSC or EVC stay the taxpayer's, on "
+        "gst.gov.in.",
         stages,
     )
