@@ -4,8 +4,17 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { BankRegister } from "@/components/banking/BankBook";
+import { CashRegister } from "@/components/banking/CashBook";
 
 /**
+ * Cash & Bank Book — where the client's money is, both halves on one page.
+ *
+ * The CASH half is here rather than on its own /reports/cash-book route because
+ * public/_redirects is at exactly 100 dynamic rules against Cloudflare Pages'
+ * cap of 100, and every new /clients/[id]/* page costs 2 — see CashBook.tsx.
+ * The URL stays /reports/bank-book: renaming it would itself cost rules, and a
+ * stale path is cheaper than a broken workspace.
+ *
  * Bank Book — the bank ledger: every statement line in date order with a
  * running balance, its cleared status (C / R), and the self-check against the
  * balance column the bank's own statement carried.
@@ -34,13 +43,17 @@ export default function BankBookReportPage() {
         >
           <ArrowLeft size={12} /> Reports
         </button>
-        <h2 className="text-sm font-semibold text-[#1E293B]">Bank Book</h2>
+        <h2 className="text-sm font-semibold text-[#1E293B]">Cash &amp; Bank Book</h2>
         <p className="text-[11px] text-[#94A3B8] mt-0.5">
           The bank ledger — running balance, cleared status, and the check against the
           statement&apos;s own balance column. To pass entries, go to Bank › Entries.
         </p>
       </div>
-      <BankRegister clientId={clientId} />
+      <CashRegister clientId={clientId} />
+      <div className="pt-1">
+        <h3 className="text-xs font-semibold text-[#1E293B] mb-2">Bank Book</h3>
+        <BankRegister clientId={clientId} />
+      </div>
     </div>
   );
 }
