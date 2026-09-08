@@ -58,6 +58,7 @@ from routers.fixed_assets import (
     _wdv_rate_for_life,
 )
 from models.accounting import DepreciationIn, FixedAssetIn
+from tests.production_types import assert_write_fits_production_types
 
 FIRM, CLIENT = "firm-1", "client-1"
 USER = {"firm_id": FIRM, "id": "u1"}
@@ -72,58 +73,10 @@ USER = {"firm_id": FIRM, "id": "u1"}
 # assert_write_fits_production_types() — routers/year_end_adjustments.py has a
 # defect of exactly this shape.
 
-_SCHEMA = json.loads(
-    (Path(__file__).resolve().parent / "fixtures" / "production_schema_2026-09-03.json")
-    .read_text(encoding="utf-8")
-)
-
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
-
-
-def assert_write_fits_production_types(table: str, payload: dict) -> None:
-    """Fail on a value production's column type would reject.
-
-    uuid and text are not checked: test fixtures use synthetic ids ("asset-1"),
-    which is the tests' own business, and every Python value has a text
-    rendering. What is checked is the set that actually rejects an insert —
-    date, timestamp, the integer family, boolean, numeric — plus a column the
-    table does not have at all, which PostgREST rejects outright.
-    """
-    columns = _SCHEMA.get(table)
-    if columns is None:
-        return  # a table the snapshot predates; nothing to check it against
-    for key, value in payload.items():
-        spec = columns.get(key)
-        assert spec is not None, (
-            f"{table}.{key} is not a column in production — PostgREST rejects the "
-            f"whole write with PGRST204."
-        )
-        kind = spec["type"]
-        if value is None:
-            continue
-        if kind == "date":
-            ok = isinstance(value, date) or (isinstance(value, str) and _DATE_RE.match(value))
-            assert ok, (
-                f"{table}.{key} is a DATE and this write gives it {value!r}. Postgres "
-                f"answers 22007 invalid_input_syntax_for_type_date and rejects the "
-                f"WHOLE update — every other column in it silently stays as it was."
-            )
-        elif kind.startswith("timestamp"):
-            ok = isinstance(value, date) or (isinstance(value, str) and _TIMESTAMP_RE.match(value))
-            assert ok, f"{table}.{key} is {kind} and this write gives it {value!r}."
-        elif kind in ("bigint", "integer", "smallint"):
-            assert isinstance(value, int) and not isinstance(value, bool), (
-                f"{table}.{key} is {kind} and this write gives it {value!r}."
-            )
-        elif kind == "boolean":
-            assert isinstance(value, bool), f"{table}.{key} is boolean, got {value!r}."
-        elif kind == "numeric":
-            assert isinstance(value, (int, float, Decimal)) and not isinstance(value, bool), (
-                f"{table}.{key} is numeric and this write gives it {value!r}."
-            )
-
-
+# The check itself now lives in tests/production_types.py and is wired into
+# the shared e2e harness, so every FakeDB write in the suite goes through it —
+# this file had the only copy, and two implementations of one rule drift. What
+# stays here is the local fake, which predates the shared harness.
 class _Resp:
     def __init__(self, data, count=None):
         self.data, self.count = data, count

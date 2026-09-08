@@ -32,9 +32,18 @@ def _setup(monkeypatch):
     return cr, db
 
 
-def _create(cr, status="Not Started", due="2026-12-20", ctype="GSTR-3B"):
+def _create(cr, status="Not Started", due="2026-12-20", ctype="GSTR-3B",
+            start="2026-10-01", end="2026-12-31"):
+    """A period is supplied because the table requires one.
+
+    compliance_records.period_start and period_end are DATE NOT NULL
+    (migration 003), so a record created without them was never insertable
+    against the real database — this helper omitted them and every test built
+    on it was asserting a write Postgres rejects.
+    """
     return cr.create_compliance_record(ComplianceRecordIn(
         client_id="CLI", compliance_type=ctype, due_date=due, status=status,
+        period_start=start, period_end=end,
     ), CALLER)["data"]
 
 
@@ -122,19 +131,35 @@ def test_compliance_manual_create_rejects_duplicate_period(monkeypatch):
 
 def test_compliance_manual_create_allows_distinct_periods(monkeypatch):
     cr, db = _setup(monkeypatch)
+    # period_END is supplied too. It was omitted here, and period_end is DATE
+    # NOT NULL (migration 003) — so this test asserted a pair of inserts the
+    # real database would have refused with 23502, on the very path it exists
+    # to cover.
     r1 = cr.create_compliance_record(ComplianceRecordIn(
         client_id="CLI", compliance_type="GST", due_date="2026-07-11",
-        period_start="2026-06-01"), CALLER)["data"]
+        period_start="2026-06-01", period_end="2026-06-30"), CALLER)["data"]
     r2 = cr.create_compliance_record(ComplianceRecordIn(
         client_id="CLI", compliance_type="GST", due_date="2026-08-11",
-        period_start="2026-07-01"), CALLER)["data"]
+        period_start="2026-07-01", period_end="2026-07-31"), CALLER)["data"]
     assert r1["id"] != r2["id"]
 
 
-def test_compliance_manual_create_without_period_never_dedups(monkeypatch):
-    """No period supplied ⇒ nothing to dedup against; both creates succeed
-    (matches the pre-existing behaviour for callers not yet passing periods)."""
+def test_a_manual_record_without_a_period_is_refused(monkeypatch):
+    """It used to succeed here and fail in production, which is the worst pair.
+
+    period_start and period_end are DATE NOT NULL (migration 003). The service
+    wrote "" for a missing period, so Postgres answered 22007 and rejected the
+    whole insert; None would have failed the same insert with 23502. There was
+    no value that worked. The mock suite said otherwise because an in-memory
+    dict accepts any string, and this test asserted that — "both creates
+    succeed" — as the specification.
+
+    The refusal is now the specification, and it names both columns.
+    """
     cr, db = _setup(monkeypatch)
-    r1 = _create(cr)
-    r2 = _create(cr)
-    assert r1["id"] != r2["id"]
+    with pytest.raises(HTTPException) as ei:
+        cr.create_compliance_record(ComplianceRecordIn(
+            client_id="CLI", compliance_type="GSTR-3B", due_date="2026-12-20",
+        ), CALLER)
+    assert ei.value.status_code == 422
+    assert "period" in str(ei.value.detail).lower()
