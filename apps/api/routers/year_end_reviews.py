@@ -358,9 +358,111 @@ def final_approve(
     from services.year_end_workflow_service import lock_year_if_completing
     lock_year_if_completing(
         db, firm_id, eng.get("financial_year"), "locked",
-        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        # public.users.id — the INTERNAL id. client_year_locks.locked_by FKs it
+        # (migration 289), and auth_user_id was passed here: the INSERT failed
+        # the FK, the exception propagated, and the status row above had already
+        # been written — engagement locked, client's year still open.
+        actor_id=current_user.get("id"),
+        actor_auth_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
         # The engagement's own client — a year-end closes one entity's year,
         # never the whole practice's.
+        client_id=eng.get("client_id"),
+    )
+
+    return api_response(True, updated)
+
+
+@router.post("/engagements/{engagement_id}/reviews/reopen")
+def reopen(
+    engagement_id: str,
+    data: ReviewActionIn = ReviewActionIn(),
+    current_user: dict = Depends(rbac("year_end", "final_approve")),
+):
+    """Partner reopens a finalised engagement and its client's financial year.
+
+    ACC-05. This is the reverse of final-approve, and until now it did not
+    exist anywhere: routers/year_end.py made "locked" terminal, and the only
+    caller of year_lock_service.set_client_lock in the whole repository passed
+    lock=True. The posting kernel meanwhile refused every entry for that client
+    and year with "Reopen the year before posting to it" — naming an action
+    with no endpoint, no screen and no API behind it. A CA's only remedies were
+    a DELETE straight on client_year_locks or posting into the wrong year.
+
+    Transitions locked → approved, which is where final-approve took it from,
+    so the Partner can re-finalise through the ordinary step once the
+    correction is in. Partner-only, and the reason is REQUIRED: this reverses a
+    Partner's own final approval and lets postings back into a closed year, and
+    the audit rows (year_end_review_events here, audit_log in set_client_lock)
+    are what make that answerable in the next audit.
+
+    It does NOT touch final_approved_by/final_approved_at. Those record that
+    the approval happened; erasing them would make the history claim it never
+    did. The reopen is an event ON TOP of that history, not a rewrite of it —
+    the same append-only posture the general ledger takes.
+    """
+    role    = current_user.get("role", "")
+    firm_id = current_user["firm_id"]
+    now     = datetime.now(timezone.utc).isoformat()
+    reason  = (data.comment or "").strip()
+
+    if role != "Partner":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Role '{role}' cannot reopen a finalised year-end. Only a Partner can.",
+        )
+    if not reason:
+        from routers.year_end import REOPEN_REASON_REQUIRED
+        raise HTTPException(status_code=422, detail=REOPEN_REASON_REQUIRED)
+
+    eng = _assert_engagement_scope(current_user, engagement_id)
+    if eng["status"] != "locked":
+        raise HTTPException(
+            status_code=422,
+            detail=f"Only a locked engagement can be reopened. Current: {eng['status']}",
+        )
+
+    updates = {
+        "status":       "approved",
+        "locked_at":    None,
+        "reopened_at":  now,
+        "reopened_by":  current_user.get("id"),
+        "reopen_reason": reason,
+        "updated_at":   now,
+    }
+    if _USE_MOCK:
+        return api_response(True, _update_mock_engagement(engagement_id, updates))
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    # Written out again as a LITERAL rather than passing `updates`: only a
+    # literal dict has column names test_backend_columns_exist_pg.py can read
+    # and check against the real schema. The mock branch above takes the dict.
+    updated = (
+        db.table("year_end_engagements")
+        .update({"status": "approved", "locked_at": None, "reopened_at": now,
+                 "reopened_by": current_user.get("id"),
+                 "reopen_reason": reason, "updated_at": now})
+        .eq("id", engagement_id)
+        .eq("firm_id", firm_id)
+        .execute()
+        .data[0]
+    )
+    _record_review_event(db, engagement_id, firm_id, "reopened",
+                         current_user.get("id"), reason)
+    log_event(firm_id, "year_end_engagement", engagement_id, "reopen",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"),
+              new_data={"status": "approved", "reason": reason})
+
+    # The year itself. The engagement row above is the workflow; THIS is what
+    # the posting kernel reads.
+    from services.year_end_workflow_service import unlock_year_on_reopen
+    unlock_year_on_reopen(
+        db, firm_id, eng.get("financial_year"), reason,
+        actor_id=current_user.get("id"),
+        actor_auth_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
         client_id=eng.get("client_id"),
     )
 

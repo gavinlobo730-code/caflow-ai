@@ -64,15 +64,26 @@ export default function ReviewPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function doAction(action: "submit" | "approve" | "requestRevision" | "finalApprove") {
+  async function doAction(action: "submit" | "approve" | "requestRevision" | "finalApprove" | "reopen") {
     setActionLoading(action);
     setActionMsg(null);
     try {
       const c = comment.trim() || undefined;
+      // Reopening is the one action whose reason is not optional — it reverses
+      // a Partner's final approval and lets postings back into a closed year,
+      // and the audit row is what answers for that at the next review. Caught
+      // here so the CA is told before the round trip; the backend refuses it
+      // too, which is where the rule actually lives.
+      if (action === "reopen" && !c) {
+        setActionMsg({ msg: "Give a reason for reopening — it goes on the audit trail.", ok: false });
+        setActionLoading(null);
+        return;
+      }
       let res;
       if (action === "submit") res = await yearEndApi.review.submitForReview(engagementId, c);
       else if (action === "approve") res = await yearEndApi.review.approve(engagementId, c);
       else if (action === "requestRevision") res = await yearEndApi.review.requestRevision(engagementId, c);
+      else if (action === "reopen") res = await yearEndApi.review.reopen(engagementId, c as string);
       else res = await yearEndApi.review.finalApprove(engagementId, c);
       if (!res.success) throw new Error(res.error ?? "Action failed");
       setComment("");
@@ -241,8 +252,25 @@ export default function ReviewPage() {
             />
           )}
 
+          {/* Reopen — the only action available on a locked engagement (ACC-05).
+              A closed year is reopened at least once a season in every Indian
+              practice: a revised bank interest certificate in October, a
+              §143(1) intimation, an audit adjustment found while filing the
+              ITR. Partner-only, and the backend refuses without a reason. */}
           {currentStatus === "locked" && (
-            <p className="text-xs text-[#64748B] py-2">This engagement is locked. No further actions available.</p>
+            <>
+              <p className="text-xs text-[#64748B] py-2">
+                This engagement is locked and the client&apos;s financial year is closed
+                for posting. A Partner can reopen it — give the reason above; it goes
+                on the audit trail.
+              </p>
+              <ActionButton
+                label="Reopen Year"
+                action={() => doAction("reopen")}
+                loading={actionLoading === "reopen"}
+                variant="danger"
+              />
+            </>
           )}
         </div>
       </div>

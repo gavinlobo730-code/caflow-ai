@@ -66,6 +66,46 @@ definitions select different columns. The assertion excludes views by asking the
 database which relations are views, never by naming them, so a table cannot fall
 through it.
 
+## Refreshed 9 September 2026 (01:20 IST), after migration 343
+
+Twelve migrations had landed since the last capture (332, 333, 334, 335, 339,
+340, 341, 342, 343 touch columns; 336, 337, 338 do not), and
+`ADDED_AFTER_THE_SNAPSHOT` in `tests/production_types.py` had grown to 41
+entries working around them — one over the cap its own guard sets, which is
+what forced the refresh rather than another entry. It is back to 3, all of them
+migration 344, which is genuinely in flight.
+
+Same constraint as the 293/294 refreshes and the same proof. This session has
+no libpq route to production — port 5432 is not reachable from the container,
+only the SQL console is — so the file was rebuilt from a DELTA rather than a
+full re-capture:
+
+1. the local file was hashed with the format below and reproduced the recorded
+   `c4ad4bb0377e158edfe042fc589b0fbb` exactly, which is what proves the local
+   string format is the same question production is being asked;
+2. production's table list was diffed against the file's — two new tables,
+   `epfo_ecr_filings` (335) and `gstr2b_reconciliations` (341), and none
+   missing;
+3. the ten tables named by migrations 332-343 were re-read in full (278
+   columns) and REPLACED wholesale, not merged column by column, so a column
+   DROPPED from one of them would disappear here too;
+4. the rebuilt file was hashed the same way and compared with production.
+
+Both sides `dff5c56db004d43f0cd6c4dc3d193124`, over **3,999 columns in 270
+tables** — 3,931 + 68. That covers every column, not only the ten tables
+touched, so an unrelated out-of-band change anywhere in the schema would have
+failed the comparison rather than passing silently. The script asserts the hash
+before writing, so a mismatch leaves the old file in place.
+
+    -- in production
+    SELECT md5(string_agg(
+             table_name||'|'||column_name||'|'||data_type||'|'||is_nullable
+             ||'|'||COALESCE(column_default,''),
+             E'\n' ORDER BY table_name, column_name))
+    FROM information_schema.columns WHERE table_schema = 'public';
+
+Prefer a real re-capture when a libpq DSN is available.
+
 # production_guards_2026-09-03.json
 
 The same idea for the OTHER half of a schema: every table's RLS switch, every

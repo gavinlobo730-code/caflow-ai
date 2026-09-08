@@ -800,6 +800,18 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         firm_id or "", data["bill_date"],
         bulk_cache.get("locked_fy_cache") if bulk_cache is not None else None,
     )
+    # ...and not inside a period whose GSTR-3B has already been filed. The FY
+    # lock above is the CA's own switch; this is the portal's. A late March bill
+    # booked in June carries ITC the filed March 3B never claimed, and §16(4)
+    # says where that credit actually goes: the CURRENT return, not the closed
+    # one. The sales side has refused this on create since SALES-15; the
+    # purchase side is the half that matters most, because a bill is a CLAIM.
+    # NOT memoized like the FY check above: that cache is keyed on the FIRM's
+    # year, and a filed return is a fact about one client and one month.
+    if not _USE_MOCK:
+        from core.supabase_client import get_supabase
+        period_lock_service.assert_open(
+            get_supabase(), firm_id or "", client_id, data["bill_date"])
 
     if _USE_MOCK:
         bill_id = str(uuid.uuid4())
@@ -1593,6 +1605,14 @@ def receive_purchase_bill(
         # after the draft was created (deferred-posting gap).
         if bill.get("bill_date"):
             period_validation_service.validate_posting_date(current_user.get("firm_id") or "", bill["bill_date"])
+            # ...and the PORTAL's lock, re-checked HERE and not only at create.
+            # Receiving is what posts the journal, and it posts with the BILL's
+            # date: a draft entered in March and received in June is credit
+            # taken in a GSTR-3B filed in April. Checking only at create is
+            # checking at the moment nothing was posted.
+            period_lock_service.assert_open(
+                db, current_user.get("firm_id") or "", bill.get("client_id"),
+                bill["bill_date"])
 
         now_iso = datetime.now(timezone.utc).isoformat()
         upd = db.table("purchase_bills").update({

@@ -125,11 +125,27 @@ def is_client_year_locked(db, firm_id: str, client_id: str,
 def set_client_lock(db, firm_id: str, client_id: str, financial_year: str,
                     lock: bool, actor_id: Optional[str] = None,
                     actor_email: Optional[str] = None,
-                    reason: Optional[str] = None) -> dict:
+                    reason: Optional[str] = None,
+                    actor_auth_id: Optional[str] = None) -> dict:
     """Lock or unlock ONE client's financial year. Idempotent and audited.
 
     No PIN: the firm PIN guards practice-wide locks, and this closes a single
     entity's year on the authority of the Partner-gated workflow that calls it.
+
+    TWO ACTOR IDS, BECAUSE THEY GO TO DIFFERENT PLACES.
+        `actor_id` is the INTERNAL public.users.id and is the only one that may
+        reach `locked_by`, which references users(id) (migration 289 above).
+        `actor_auth_id` is the Supabase auth id and is used only for audit_log
+        attribution, exactly as journal_posting_service.post_draft splits them.
+
+        Both callers passed current_user["auth_user_id"] for `actor_id`, and
+        production holds no user whose users.id equals their auth id — so the
+        INSERT violated the FK, the exception propagated out of
+        lock_year_if_completing, and the status row had ALREADY been written.
+        The engagement went to "locked" (terminal, and until now unreopenable)
+        while the client's year stayed open. Latent only because production has
+        no year-end engagements yet; the identical bug was found and fixed once
+        already in banking.py's column-mapping save.
     """
     already = is_client_year_locked(db, firm_id, client_id, financial_year)
     if lock and not already:
@@ -150,7 +166,7 @@ def set_client_lock(db, firm_id: str, client_id: str, financial_year: str,
         log_event(
             firm_id, "client_year_lock", client_id,
             "lock" if lock else "unlock",
-            actor_id=actor_id, actor_email=actor_email,
+            actor_id=actor_auth_id or actor_id, actor_email=actor_email,
             new_data={"financial_year": financial_year, "reason": reason},
         )
     return {"financial_year": financial_year, "locked": lock}

@@ -79,6 +79,7 @@ def build_filings_row(
     *, firm_id: str, client_id: str, filing_type: str, period: str,
     filed_date: str, arn: Optional[str] = None,
     tax_payable_paise: Optional[int] = None, summary: Optional[dict] = None,
+    bounds: Optional[tuple[str, str]] = None,
 ) -> dict:
     """The `filings` row for a submitted return.
 
@@ -98,7 +99,12 @@ def build_filings_row(
     (migration 001) and the actor we have is a users.id, which would either
     violate the FK or record the wrong person.
     """
-    start, end = period_bounds(period)
+    # `bounds` overrides the month derived from `period`, and exists for ONE
+    # reason: a QRMP client's obligation covers a QUARTER. The compliance
+    # calendar stores that quarter's real start and end, and deriving a month
+    # from it would write a filings row covering April when the return filed
+    # covered April to June — under-locking two of the three months, silently.
+    start, end = bounds if bounds else period_bounds(period)
     row = {
         "firm_id": firm_id,
         "client_id": client_id,
@@ -121,6 +127,7 @@ def record_filing(
     db, *, firm_id: str, client_id: str, filing_type: str, period: str,
     filed_date: Optional[str] = None, arn: Optional[str] = None,
     tax_payable_paise: Optional[int] = None, summary: Optional[dict] = None,
+    bounds: Optional[tuple[str, str]] = None,
 ) -> dict:
     """Write (or refresh) the `filings` row for a submitted return.
 
@@ -135,6 +142,7 @@ def record_filing(
         firm_id=firm_id, client_id=client_id, filing_type=filing_type,
         period=period, filed_date=filed_date or ist_today().isoformat(),
         arn=arn, tax_payable_paise=tax_payable_paise, summary=summary,
+        bounds=bounds,
     )
     existing = (db.table("filings").select("id")
                 .eq("client_id", client_id)

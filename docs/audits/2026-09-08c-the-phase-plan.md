@@ -120,7 +120,7 @@ the wrong ledger, and no later phase can be trusted while it holds.
 *Guard:* no posting path may name a ledger by string literal.
 *Falls out free:* the cash book (BANK-20) is a screen once the ledger is right.
 
-### Phase 2 — A filed period is closed, and a locked one can reopen · 3 + 1 · ~5 days
+### Phase 2 — A filed period is closed, and a locked one can reopen · 3 + 1 · ~5 days · **DONE**
 `PUR-08 ACC-05 GST-14` + the `post_draft` carry-over
 
 Same `period_lock_service` machinery already used for SALES-15. A bill can still
@@ -130,6 +130,44 @@ lock and not the client's.
 
 *Shape:* one helper, four call sites, one vocabulary for "filed".
 *Guard:* every create/post path asserts the lock — the shape I already built.
+
+**What it actually took, which was wider than four call sites.** Reading the
+four document routers side by side showed the omission was the whole PURCHASE
+half, not two endpoints: sales invoices, sales credit notes and sales debit
+notes assert the lock on create, on both dates of an edit and again at issue,
+while purchase bills asserted it only on edit and purchase credit and debit
+notes not at all. **Ten call sites**, one rule. It matters more on that side —
+a sales document slipping into a filed period overstates output tax the return
+already declared; a purchase document claims INPUT CREDIT the return never
+took, and §16(4) puts that credit in the current period instead.
+
+Three things were found on the way that the findings did not name:
+
+- **`post_draft` read two columns it never selected.** It tested
+  `je.get("deleted_at")` to refuse a soft-deleted draft and logged the timeline
+  against `je.get("client_id")`, while `_SELECT` asked for neither — so both
+  were always `None`. A soft-deleted draft could be posted to the books, and
+  every `post_draft` timeline row was written with no client. Invisible to the
+  suite because FakeDB skips its column projection when the select carries an
+  embed, and that one carries `journal_lines(...)`.
+- **The year-end lock could never have been written.** Both routers passed
+  `current_user["auth_user_id"]` into `client_year_locks.locked_by`, which FKs
+  `public.users(id)`; production holds no user whose ids match. The INSERT
+  would raise 23503 *after* the engagement row had been written
+  `status='locked'` — engagement finalised and terminal, client's year still
+  open. Latent only because production has no year-end engagements.
+- **The guard written for that exact bug was pinning it.**
+  `test_the_audit_log_actor_is_deliberately_untouched` asserted a literal
+  string that, in that file, matched only the `lock_year_if_completing` call —
+  the wrong one. And the `_pg` sweep looks for the column name and the auth id
+  in one window of source, so a value crossing a function boundary is invisible
+  to it. Both are fixed, and the sweep now follows the parameter through the
+  call chain.
+
+*Also done here, because the ratchet demanded it:* the production schema
+snapshot was 12 migrations stale and `ADDED_AFTER_THE_SNAPSHOT` had grown to 41
+entries — one over its own cap. Refreshed and proved equal to production
+(md5 `dff5c56d…`, 3,999 columns in 270 tables); the list is back to 3.
 
 ### Phase 3 — One TDS engine, and the browser copy deleted · 8 findings · ≤19 days
 `TDS-05 TDS-11 TDS-03 TDS-15 TDS-04 TDS-14 PUR-06 PUR-14`

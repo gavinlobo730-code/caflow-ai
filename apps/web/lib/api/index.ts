@@ -2,6 +2,26 @@ import { supabase } from "@/lib/supabase/client";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/** What PATCH /api/compliance/calendar/{id}/filed answers.
+ *
+ *  `filing_recorded` is the same question as "is the period now locked".
+ *  `filing_not_recorded_reason` is why not, per compliance type — a GSTR-9
+ *  tick is a real thing to record and still closes no month, and a silent
+ *  no-op there is the defect this replaced in a new place.
+ *  `workspace_return` names a prepared GSTR-1/3B for the same client and
+ *  period that is still not submitted in the client workspace: the
+ *  disagreement, shown rather than resolved, because approving a return needs
+ *  Manager+ and an explicit confirmation on the workspace endpoint (CGST §37).
+ */
+export type MarkFiledResult = {
+  record: Record<string, unknown>;
+  filing_recorded: boolean;
+  filing_not_recorded_reason: string | null;
+  period_locked_from: string | null;
+  period_locked_to: string | null;
+  workspace_return: { id: string; period: string; status: string; table: string } | null;
+};
+
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
@@ -695,6 +715,21 @@ export const api = {
     permanentDelete: (id: string) => request(`/api/clients/${id}`, { method: "DELETE" }),
   },
   compliance: {
+    // Recording that a calendar obligation was filed — and, for a GST return,
+    // closing its period.
+    //
+    // GST-14. /gst used to write filing_status / filed_date / arn_number
+    // straight into compliance_calendar over PostgREST, single-row and bulk.
+    // rbac() never ran, gst_filing_record_service.record_filing never ran, and
+    // public.filings — the ONLY table journal_period_lock_reason (migration
+    // 266) reads — stayed empty. A return marked filed from the tracker did
+    // NOT lock its period, so the books could still move under a return
+    // already at the portal, while the client GST workspace showed the same
+    // return as a draft.
+    markFiled: (recordId: string, body: { filed_date: string; arn?: string | null }) =>
+      request<ApiResp<MarkFiledResult>>(
+        `/api/compliance/calendar/${encodeURIComponent(recordId)}/filed`,
+        { method: "PATCH", body: JSON.stringify(body) }),
     tasks: (params?: { client_id?: string; status?: string }) => {
       const q = new URLSearchParams(params as Record<string, string>).toString();
       return request(`/api/compliance/tasks${q ? `?${q}` : ""}`);

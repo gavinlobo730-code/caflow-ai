@@ -3060,6 +3060,21 @@
    "nullable": "YES",
    "type": "text"
   },
+  "payroll_enabled": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "payroll_enabled_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "payroll_enabled_on": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
   "updated_at": {
    "default": "now()",
    "nullable": "NO",
@@ -7119,6 +7134,83 @@
    "type": "timestamp with time zone"
   }
  },
+ "epfo_ecr_filings": {
+  "approved_on": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "deleted_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "members": {
+   "default": "'[]'::jsonb",
+   "nullable": "NO",
+   "type": "jsonb"
+  },
+  "recorded_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "return_type": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "run_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "status": {
+   "default": "'submitted'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "submitted_on": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "trrn": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "wage_month": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  }
+ },
  "escalation_rules": {
   "created_at": {
    "default": "now()",
@@ -8211,6 +8303,11 @@
    "nullable": "NO",
    "type": "bigint"
   },
+  "acquisition_mode": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
   "asset_category": {
    "default": "",
    "nullable": "NO",
@@ -8225,6 +8322,16 @@
    "default": "",
    "nullable": "NO",
    "type": "text"
+  },
+  "bank_account_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "cgst_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
   },
   "client_id": {
    "default": "",
@@ -8281,8 +8388,23 @@
    "nullable": "NO",
    "type": "uuid"
   },
+  "igst_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
   "is_disposed": {
    "default": "false",
+   "nullable": "YES",
+   "type": "boolean"
+  },
+  "itc_blocked_reason": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "itc_eligible": {
+   "default": "",
    "nullable": "YES",
    "type": "boolean"
   },
@@ -8301,6 +8423,16 @@
    "nullable": "YES",
    "type": "text"
   },
+  "payment_mode": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "purchase_bill_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
   "purchase_cost_paise": {
    "default": "",
    "nullable": "NO",
@@ -8316,10 +8448,20 @@
    "nullable": "NO",
    "type": "bigint"
   },
+  "sgst_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
   "useful_life_years": {
    "default": "",
    "nullable": "YES",
    "type": "integer"
+  },
+  "vendor_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
   },
   "wdv_rate_percent": {
    "default": "",
@@ -9372,6 +9514,16 @@
   }
  },
  "gstr2a_records": {
+  "amends_document_number": {
+   "default": "''::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "cess_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
   "cgst_paise": {
    "default": "0",
    "nullable": "NO",
@@ -9386,6 +9538,11 @@
    "default": "now()",
    "nullable": "YES",
    "type": "timestamp with time zone"
+  },
+  "document_type": {
+   "default": "'invoice'::text",
+   "nullable": "NO",
+   "type": "text"
   },
   "firm_id": {
    "default": "",
@@ -9412,8 +9569,58 @@
    "nullable": "NO",
    "type": "text"
   },
+  "invoice_value_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "is_amendment": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "itc_available": {
+   "default": "''::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "itc_unavailable_reason": {
+   "default": "''::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "itc_unavailable_reason_code": {
+   "default": "''::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "match_difference_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "match_status": {
+   "default": "'unmatched'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "purchase_bill_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "reconciled_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
   "return_period": {
    "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "section": {
+   "default": "'b2b'::text",
    "nullable": "NO",
    "type": "text"
   },
@@ -9427,6 +9634,11 @@
    "nullable": "YES",
    "type": "text"
   },
+  "supplier_filed_on": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
   "supplier_gstin": {
    "default": "",
    "nullable": "NO",
@@ -9437,10 +9649,97 @@
    "nullable": "YES",
    "type": "text"
   },
+  "supplier_trade_name": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
   "taxable_value_paise": {
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  }
+ },
+ "gstr2b_reconciliations": {
+  "book_bill_count": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "document_count": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "file_return_period": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "generated_on": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "gstin": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "parsed_ok": {
+   "default": "true",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "problems": {
+   "default": "'{}'::text[]",
+   "nullable": "NO",
+   "type": "ARRAY"
+  },
+  "reconciled_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "reconciled_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "return_period": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "sections_seen": {
+   "default": "'{}'::text[]",
+   "nullable": "NO",
+   "type": "ARRAY"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
   }
  },
  "gstr2b_uploads": {
@@ -9510,6 +9809,11 @@
    "default": "",
    "nullable": "YES",
    "type": "uuid"
+  },
+  "cash_payable_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
   },
   "client_id": {
    "default": "",
@@ -9640,6 +9944,11 @@
    "default": "",
    "nullable": "NO",
    "type": "text"
+  },
+  "rcm_cash_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
   },
   "rcm_cgst_paise": {
    "default": "0",
@@ -12582,6 +12891,11 @@
    "nullable": "NO",
    "type": "numeric"
   },
+  "date_of_birth": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
   "department": {
    "default": "",
    "nullable": "YES",
@@ -12593,6 +12907,11 @@
    "type": "text"
   },
   "email": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "employee_code": {
    "default": "",
    "nullable": "YES",
    "type": "text"
@@ -13659,6 +13978,21 @@
    "nullable": "NO",
    "type": "bigint"
   },
+  "pf_wages_addback_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "pf_wages_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "pf_wages_rule_applied": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
   "pt_paise": {
    "default": "0",
    "nullable": "NO",
@@ -14722,6 +15056,11 @@
    "nullable": "NO",
    "type": "bigint"
   },
+  "bank_account_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
   "client_id": {
    "default": "",
    "nullable": "NO",
@@ -14885,6 +15224,11 @@
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
+  },
+  "bank_account_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
   },
   "client_id": {
    "default": "",

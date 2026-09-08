@@ -1,8 +1,12 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, field_validator
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client, assert_client_access
 from repositories.compliance_repository import compliance_repo
+from services.audit_service import log_event
 from repositories.client_repository import client_repo
 # itr_due_date is deliberately NOT imported here any more. It answers "which
 # date is 31 July and which is 31 October"; it does not answer "which one does
@@ -15,11 +19,88 @@ from services.compliance_engine import (
     gst_state_category, MONTHLY, QUARTERLY,
     advance_tax_due_dates, enrich_compliance_task
 )
+from services.gst_filing_record_service import (
+    FILING_TYPE_GSTR1, FILING_TYPE_GSTR3B, record_filing)
 from datetime import date
+from core.ist_clock import ist_today
 from typing import Annotated, Optional
 from models.fy import FYLabel, OptionalFYLabel
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
+
+_USE_MOCK = not os.environ.get("SUPABASE_URL")
+
+
+# ── Recording that something was filed ───────────────────────────────────────
+#
+# GST-14. The compliance tracker at /gst marked a return filed by writing
+# filing_status / filed_date / arn_number straight into compliance_calendar
+# over PostgREST — single row and bulk. Three things follow from "straight over
+# PostgREST", and each is worse than the last:
+#
+#   * rbac() never ran, so a Reviewer could mark a client's GSTR-3B filed;
+#   * gst_filing_record_service.record_filing never ran, so no row reached
+#     public.filings;
+#   * public.filings is the ONLY table journal_period_lock_reason (migration
+#     266) reads. So a return marked filed from the tracker did NOT lock its
+#     period — the books could still move under a return already with the
+#     government, which is the entire thing the lock exists to prevent.
+#
+# Meanwhile the client GST workspace, which records a filing properly, showed
+# the same return as a draft. Two screens, one return, opposite answers.
+#
+# The vocabulary this settles on is public.filings, because that is what the
+# lock reads. Both paths write it now.
+
+# compliance_calendar.compliance_type → the filings.filing_type it records
+# under. Deliberately NOT every calendar type.
+_CALENDAR_TYPE_TO_FILING_TYPE = {
+    "GSTR1":  FILING_TYPE_GSTR1,
+    "GSTR3B": FILING_TYPE_GSTR3B,
+}
+
+# Why a type can be marked filed on the calendar and still lock nothing. Said
+# out loud, per type, and returned to the caller: a silent no-op here is the
+# same defect in a new place — the CA has to be able to see that the tick did
+# not close the period.
+_NO_FILING_ROW_REASON = {
+    "GSTR9": ("GSTR-9 is the annual return. Furnishing it closes the CORRECTION "
+              "WINDOW under §37(3)/§39(9)/§16(4) — see "
+              "compliance_engine.correction_window_closes() — which is a "
+              "different rule from the period lock. Recording it here would "
+              "freeze a whole financial year's books."),
+    "ITR":    "An income-tax return is not a GST period; the GST period lock does not apply.",
+    "TDS26Q": "A TDS return is not a GST period; the GST period lock does not apply.",
+}
+_NO_FILING_ROW_DEFAULT = (
+    "public.filings records GST returns of supplies (GSTR-1 and GSTR-3B). "
+    "This obligation is tracked on the calendar but closes no GST period."
+)
+
+
+class MarkFiledIn(BaseModel):
+    filed_date: str
+    arn: Optional[str] = None
+
+    @field_validator("filed_date")
+    @classmethod
+    def a_real_past_date(cls, v: str) -> str:
+        """YYYY-MM-DD, and not in the future.
+
+        The shape check keeps a typo out of `filings.filed_date`, which is a
+        DATE column — without it a malformed value is a 500 from Postgres
+        rather than a 422 the CA can act on. The past check is the same
+        reasoning as the value itself: a return cannot have been filed
+        tomorrow, and this is the field the audit reads to say when it went.
+        IST, because a filing date is an Indian calendar date.
+        """
+        try:
+            when = date.fromisoformat((v or "").strip())
+        except ValueError:
+            raise ValueError("filed_date must be YYYY-MM-DD")
+        if when > ist_today():
+            raise ValueError("filed_date cannot be in the future")
+        return when.isoformat()
 
 
 @router.get("/tasks")
@@ -293,3 +374,146 @@ def calculate_due_dates(year: int, month: int,
         ],
         "advance_tax_schedule": advance_tax_due_dates(fy_end),
     })
+
+
+@router.patch("/calendar/{record_id}/filed")
+def mark_calendar_entry_filed(
+    record_id: str,
+    body: MarkFiledIn,
+    current_user: dict = Depends(rbac("compliance_record", "write")),
+):
+    """Record that a calendar obligation was filed — and, for a GST return,
+    close its period.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here talks to a portal.
+    # This records what a human has already filed there, which is exactly the
+    # genuine path CLAUDE.md describes: the CA files on gst.gov.in, then tells
+    # the software.
+
+    Answers three things the caller must be able to see, because the previous
+    implementation answered none of them:
+
+      * `filing_recorded` — whether a public.filings row was written, which is
+        the same as whether the period is now locked;
+      * `filing_not_recorded_reason` — if not, WHY, per compliance type. A
+        GSTR-9 tick is a real thing to record and still locks nothing;
+      * `workspace_return` — a prepared GSTR-1/3B for the same client and
+        period that is NOT yet submitted in the client workspace. That is the
+        disagreement GST-14 is about, and it is surfaced rather than resolved:
+        moving a prepared return to "submitted" needs Manager+ and an explicit
+        ca_approved on the workspace endpoint (CGST §37), and marking a
+        calendar row is not that approval.
+    """
+    firm_id = current_user.get("firm_id") or ""
+    if _USE_MOCK:
+        # No compliance_calendar in mock mode — the table is written by the
+        # frontend and read here; there is nothing to stand in for.
+        raise HTTPException(status_code=503,
+                            detail="Recording a filing needs the database.")
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+
+    rows = (db.table("compliance_calendar")
+            .select("id, firm_id, client_id, compliance_type, period_start, "
+                    "period_end, due_date, filing_status, filed_date, arn_number")
+            .eq("id", record_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Compliance entry not found")
+    row = rows[0]
+    # The caller may only touch a client they are assigned to (M2). Reading the
+    # row firm-scoped is not enough: firm_id alone let one staff member mark
+    # another's client filed.
+    assert_client_access(current_user, row.get("client_id"))
+
+    ctype = str(row.get("compliance_type") or "")
+    arn = (body.arn or "").strip() or None
+    # The payload is written INLINE rather than built into a variable, because
+    # test_backend_columns_exist_pg.py can only read the column names out of a
+    # literal dict — an .update(variable) is counted as an unreadable reference
+    # and its columns stop being checked against the real schema.
+    updated = (db.table("compliance_calendar").update({
+        "filing_status": "filed",
+        "filed_date": body.filed_date,
+        "arn_number": arn,
+    }).eq("id", record_id).eq("firm_id", firm_id).execute().data or [])
+    record = updated[0] if updated else {
+        **row, "filing_status": "filed",
+        "filed_date": body.filed_date, "arn_number": arn}
+
+    filing_type = _CALENDAR_TYPE_TO_FILING_TYPE.get(ctype)
+    start = str(row.get("period_start") or "")[:10]
+    end = str(row.get("period_end") or "")[:10]
+    filing_row = None
+    # Both bounds, or no filings row. compliance_calendar has them NOT NULL, so
+    # this cannot happen against the real schema — but record_filing would
+    # otherwise fall back to period_bounds("") and raise ValueError, turning a
+    # malformed row into a 500 instead of a recorded tick with a stated reason.
+    if filing_type and len(start) == 10 and len(end) == 10:
+        # The calendar's OWN bounds, not a month derived from them: a QRMP
+        # client's GSTR-1 obligation covers a quarter, and locking only its
+        # first month would leave two filed months editable.
+        filing_row = record_filing(
+            db, firm_id=firm_id, client_id=row.get("client_id") or "",
+            filing_type=filing_type, period=f"{start[5:7]}{start[0:4]}",
+            filed_date=body.filed_date, arn=arn, bounds=(start, end),
+        )
+
+    log_event(firm_id, "compliance_calendar", record_id, "mark_filed",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"),
+              new_data={"compliance_type": ctype, "filed_date": body.filed_date,
+                        "arn": arn, "period_locked": bool(filing_row)})
+
+    return api_response(True, {
+        "record": record,
+        "filing_recorded": bool(filing_row),
+        "filing_not_recorded_reason": (
+            None if filing_row
+            else _NO_FILING_ROW_REASON.get(ctype, _NO_FILING_ROW_DEFAULT)
+        ),
+        "period_locked_from": (filing_row or {}).get("period_start"),
+        "period_locked_to": (filing_row or {}).get("period_end"),
+        "workspace_return": _unsubmitted_workspace_return(
+            db, firm_id, row.get("client_id") or "", ctype, start),
+    })
+
+
+def _unsubmitted_workspace_return(db, firm_id: str, client_id: str,
+                                  compliance_type: str, period_start: str):
+    """A prepared GSTR-1/3B for the same client and month that is still not
+    submitted in the client workspace.
+
+    Reported, never changed. The tracker saying "filed" and the workspace
+    saying "draft" is the contradiction GST-14 names; the honest resolution is
+    to show the CA that the prepared return still needs approving there, not to
+    approve it from here — the workspace endpoint requires Manager+ and an
+    explicit ca_approved for exactly that transition (CGST §37).
+    """
+    if not (client_id and len(period_start) == 10):
+        return None
+    period = f"{period_start[5:7]}{period_start[0:4]}"
+    # The two tables are named as LITERALS, in two branches, rather than looked
+    # up into db.table(variable). A dynamic table name is invisible to
+    # test_backend_columns_exist_pg.py — it counts it as an unreadable
+    # reference and stops checking the columns entirely — and this query names
+    # four of them. Two branches cost three lines and keep them checkable.
+    try:
+        if compliance_type == "GSTR1":
+            table = "gstr1_returns"
+            found = (db.table("gstr1_returns").select("id, period, status")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .eq("period", period).limit(1).execute().data) or []
+        elif compliance_type == "GSTR3B":
+            table = "gstr3b_returns"
+            found = (db.table("gstr3b_returns").select("id, period, status")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .eq("period", period).limit(1).execute().data) or []
+        else:
+            return None
+    except Exception:                                            # noqa: BLE001
+        return None
+    if not found or found[0].get("status") == "submitted":
+        return None
+    return {"id": found[0].get("id"), "period": period,
+            "status": found[0].get("status"), "table": table}

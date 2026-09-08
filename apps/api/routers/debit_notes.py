@@ -24,6 +24,7 @@ from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
+from services import period_lock_service
 from services.timeline_service import timeline_service
 
 # Same private Storage bucket routers/documents.py and document_intelligence_v1.py
@@ -203,6 +204,15 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
         if total_paise <= 0:
             raise HTTPException(status_code=422, detail="Debit note total must be positive.")
         period_validation_service.validate_posting_date(firm_id or "", data["debit_note_date"])
+        # ...and not inside a period whose GSTR-3B has already been filed. The
+        # FY lock above is the CA's own switch; this is the portal's. A purchase
+        # debit note INCREASES what the vendor charged and the credit taken with
+        # it, so dating one into a filed period claims ITC that return never
+        # did — §16(4) puts that credit in the CURRENT return instead.
+        if not _USE_MOCK:
+            from core.supabase_client import get_supabase
+            period_lock_service.assert_open(
+                get_supabase(), firm_id or "", client_id, data["debit_note_date"])
         fy = _current_fy()
 
         payload = {
@@ -320,6 +330,14 @@ def update_debit_note(dn_id: str, data: DebitNoteUpdateIn, current_user: dict = 
             )
         if data.get("debit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", data["debit_note_date"])
+            if not _USE_MOCK:
+                from core.supabase_client import get_supabase
+                # Both dates: moving a note OUT of a filed period changes that
+                # return's figures as much as moving one in.
+                period_lock_service.assert_open(
+                    get_supabase(), firm_id or "", dn.get("client_id"), dn.get("debit_note_date"))
+                period_lock_service.assert_open(
+                    get_supabase(), firm_id or "", dn.get("client_id"), data["debit_note_date"])
 
         if lines_data is not None:
             is_interstate = data.get("is_interstate", dn.get("is_interstate", False))
@@ -443,6 +461,11 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             raise HTTPException(status_code=422, detail="Only draft debit notes can be issued")
         if dn.get("debit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", dn["debit_note_date"])
+            # Re-checked at ISSUE, not only at create: a draft raised in June
+            # and issued in September posts with its June date, and GSTR-3B for
+            # June may have been filed in between.
+            period_lock_service.assert_open(
+                db, firm_id or "", dn.get("client_id"), dn["debit_note_date"])
 
         client_id = dn.get("client_id", "")
         dn_total = int(dn.get("total_paise") or 0)

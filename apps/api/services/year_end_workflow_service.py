@@ -29,6 +29,7 @@ def lock_year_if_completing(
     actor_id: Optional[str],
     actor_email: Optional[str],
     client_id: Optional[str] = None,
+    actor_auth_id: Optional[str] = None,
 ) -> None:
     """When an engagement transitions to 'locked', close THAT CLIENT's
     financial year for posting. Idempotent and audited.
@@ -62,5 +63,57 @@ def lock_year_if_completing(
     set_client_lock(
         db, firm_id, client_id, financial_year, lock=True,
         actor_id=actor_id, actor_email=actor_email,
+        actor_auth_id=actor_auth_id,
         reason="Year-end engagement finalised",
+    )
+
+
+def unlock_year_on_reopen(
+    db,
+    firm_id: str,
+    financial_year: Optional[str],
+    reason: str,
+    actor_id: Optional[str],
+    actor_email: Optional[str],
+    client_id: Optional[str] = None,
+    actor_auth_id: Optional[str] = None,
+) -> None:
+    """Reopen THAT CLIENT's financial year when a locked engagement is reopened.
+
+    THE OTHER HALF, WHICH DID NOT EXIST (ACC-05). set_client_lock has taken
+    lock=False since migration 289, and nothing had ever passed it: the only
+    caller in the repository was lock_year_if_completing with lock=True, and
+    routers/year_end.py made "locked" a terminal status. So the kernel's refusal
+    — "FY {fy} is closed for this client — its year-end has been finalised.
+    Reopen the year before posting to it." — named an action the product did not
+    have. The only remedies left were a DELETE straight on client_year_locks or
+    posting the correction into the wrong year.
+
+    Every Indian practice reopens a closed year: a revised interest certificate
+    in October, a §143(1) intimation, an audit adjustment found while filing the
+    ITR. Tally's period lock is set and cleared at will; Zoho Books lets an
+    admin unlock a closed period with a reason. The reason is the point — this
+    is a Partner reversing a Partner's own finalisation, and the audit row
+    set_client_lock already writes is what makes that answerable later.
+
+    Deliberately NOT idempotent-silent about a missing reason: the caller is
+    responsible for demanding one, and passing an empty string here would write
+    an audit row that records nothing about why a closed year was opened.
+    """
+    if not financial_year:
+        return
+    if not client_id:
+        _logger.warning(
+            "unlock_year_on_reopen called without client_id for firm %s FY %s "
+            "— not unlocking. A year-end reopens one client's year; there is "
+            "no correct firm-wide fallback.",
+            firm_id, financial_year,
+        )
+        return
+    from services.year_lock_service import set_client_lock
+    set_client_lock(
+        db, firm_id, client_id, financial_year, lock=False,
+        actor_id=actor_id, actor_email=actor_email,
+        actor_auth_id=actor_auth_id,
+        reason=reason,
     )

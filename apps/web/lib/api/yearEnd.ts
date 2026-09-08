@@ -390,6 +390,18 @@ export const yearEndApi = {
         `/api/year-end/engagements/${engagementId}/reviews/final-approve`,
         { method: "POST", body: JSON.stringify({ comment }) }
       ),
+    /** Reopen a finalised engagement and its client's financial year (ACC-05).
+     *
+     *  The reason is REQUIRED and the backend refuses without it: this
+     *  reverses a Partner's own final approval and lets postings back into a
+     *  closed year. Until this existed, the posting kernel refused every entry
+     *  for that client and year with "Reopen the year before posting to it" —
+     *  an instruction to do something the product had no way to do. */
+    reopen: (engagementId: string, comment: string) =>
+      request<{ success: boolean; data: YearEndEngagement; error: string | null }>(
+        `/api/year-end/engagements/${engagementId}/reviews/reopen`,
+        { method: "POST", body: JSON.stringify({ comment }) }
+      ),
   },
 
   exports: {

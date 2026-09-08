@@ -80,6 +80,19 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** The PostgREST statement that starts at `from`, up to its terminating `;`.
+ *
+ *  A fixed-size window instead of a real boundary reads whatever happens to
+ *  follow, and what follows the add-filing insert is the API call that FIXES
+ *  the defect — `markFiled(id, { filed_date: filedDate })` — so a
+ *  700-character window reported the fix as the bug. The chain is capped as
+ *  well, so a file with no semicolon after the call cannot swallow the rest of
+ *  itself. */
+function statementAt(src: string, from: number): string {
+  const end = src.indexOf(";", from);
+  return src.slice(from, end === -1 ? from + 700 : Math.min(end, from + 2000));
+}
+
 const MARKERS = ["markGSTR3BFiled", "markGSTR1Filed"] as const;
 
 // ── the browser no longer writes the return row itself ──────────────────────
@@ -165,7 +178,7 @@ test("no screen marks a GST return submitted over PostgREST", () => {
     const re = /\.from\(\s*"(gstr1_returns|gstr3b_returns)"\s*\)/g;
     let hit: RegExpExecArray | null;
     while ((hit = re.exec(src)) !== null) {
-      const chain = src.slice(hit.index, hit.index + 700);
+      const chain = statementAt(src, hit.index);
       const writes = /\.(update|upsert|insert|delete)\(/.test(chain);
       if (writes && /submitted/.test(chain)) {
         offenders.push(`${path.relative(WEB, file)} (${hit[1]})`);
@@ -177,4 +190,109 @@ test("no screen marks a GST return submitted over PostgREST", () => {
     "a GST return is being marked submitted straight into the table — " +
     "public.filings never gets its row and the period lock never engages",
   );
+});
+
+
+// ── the tracker, which was the other half and was not swept for ────────────
+//
+// GST-14. The sweep above names two tables, and `compliance_calendar` is a
+// third: /gst wrote filing_status / filed_date / arn_number into it over
+// PostgREST, single-row and bulk, with no rbac(), no record_filing and so no
+// `public.filings` row — the same defect in a table the guard written for that
+// defect did not look at. A guard that names a SPELLING misses the next one;
+// this asks the rule instead: nothing in the browser sets a filing state on
+// any table itself.
+
+const FILING_STATE_TABLES = ["gstr1_returns", "gstr3b_returns", "compliance_calendar"] as const;
+/** Does this chain SET a filed state, as opposed to merely naming the columns?
+ *
+ *  Creating a row with `filing_status: "pending", filed_date: null` is the
+ *  correct shape and must not trip — the add-filing modal does exactly that
+ *  and then records the filing through the API. Written as a function rather
+ *  than one regex because the regex form of "not null" is a trap: in
+ *  `/filed_date:\s*(?!null)/` the `\s*` backtracks to zero characters and the
+ *  lookahead then compares against " null", which is not "null", so it matches
+ *  every time — a guard that fires on the very shape it is meant to allow. */
+function setsAFiledState(chain: string): boolean {
+  if (/status:\s*"submitted"/.test(chain)) return true;
+  if (/filing_status:\s*"filed"/.test(chain)) return true;
+  for (const m of chain.matchAll(/(?:filed_date|arn_number)\s*:\s*([^,\n}]*)/g)) {
+    const value = m[1].trim();
+    if (value && value !== "null" && value !== "undefined") return true;
+  }
+  return false;
+}
+
+// Screens that still record a filing state themselves, with the reason. This
+// list may only SHRINK. Both entries are income-tax obligations: an ITR or an
+// advance-tax instalment is not a GST period, so no `public.filings` row is
+// due for them and the period lock is not the thing at stake — but rbac()
+// still does not run on those writes, which is its own finding and its own
+// module. Named here rather than excluded by a narrower regex, because a
+// narrower regex is how this table was missed in the first place.
+const STILL_WRITING_IT_THEMSELVES = [
+  "app/income-tax/page.tsx (compliance_calendar)",
+  "app/income-tax/page.tsx (compliance_calendar)",
+];
+
+test("no screen writes a filing state straight into a table", () => {
+  const offenders: string[] = [];
+  for (const file of walk(WEB)) {
+    const src = fs.readFileSync(file, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    const re = new RegExp(`\\.from\\(\\s*"(${FILING_STATE_TABLES.join("|")})"\\s*\\)`, "g");
+    let hit: RegExpExecArray | null;
+    while ((hit = re.exec(src)) !== null) {
+      const chain = statementAt(src, hit.index);
+      if (/\.(update|upsert|insert|delete)\(/.test(chain) && setsAFiledState(chain)) {
+        offenders.push(`${path.relative(WEB, file)} (${hit[1]})`);
+      }
+    }
+  }
+  assert.deepEqual(
+    offenders, STILL_WRITING_IT_THEMSELVES,
+    "a filing is being recorded straight into a table — rbac() does not run " +
+    "there, record_filing never fires, public.filings stays empty and the " +
+    "period lock cannot engage. If you have FIXED one, delete its entry from " +
+    "STILL_WRITING_IT_THEMSELVES; the list may only shrink.",
+  );
+});
+
+test("the add-filing modal does not create a row already marked filed", () => {
+  // A third path to the same defect, on the same screen: "Add GST Filing" let
+  // a CA create a calendar row with filing_status "filed" in the INSERT, so a
+  // back-dated filing entered that way locked nothing either.
+  const src = read("app/gst/page.tsx");
+  assert.doesNotMatch(
+    src, /filing_status:\s*filedDate\s*\?/,
+    "the row must be created pending and the filing recorded through the API",
+  );
+});
+
+test("the tracker marks a filing through the API", () => {
+  const src = read("app/gst/page.tsx");
+  // THREE paths on this one screen, and all three had the defect: the
+  // single-row modal, the bulk modal (the worst — marking twelve months filed
+  // left twelve periods open), and "Add GST Filing", which could create a row
+  // already marked filed.
+  assert.equal(
+    (src.match(/api\.compliance\.markFiled\(/g) ?? []).length, 3,
+    "every mark-filed path on the tracker must go through the API",
+  );
+  // ...and both check the envelope. The backend answers a refusal as HTTP 200
+  // with { success: false }, so an unchecked call shows "Filed" for a request
+  // the server declined.
+  assert.ok(
+    (src.match(/!res\.success|!marked\.success/g) ?? []).length >= 3,
+    "a refused mark-filed must not read as success",
+  );
+});
+
+test("the API client names the compliance mark-filed route the backend serves", () => {
+  const src = read(API_CLIENT);
+  assert.match(src, /markFiled:/);
+  assert.match(src, /`\/api\/compliance\/calendar\/\$\{[^}]+\}\/filed`/);
+  const block = src.slice(src.indexOf("markFiled:"));
+  assert.match(block.slice(0, 400), /method:\s*"PATCH"/);
 });

@@ -40,6 +40,7 @@ from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
+from services import period_lock_service
 from services.timeline_service import timeline_service
 
 # Same private Storage bucket routers/documents.py and debit_notes.py use —
@@ -209,6 +210,16 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
         if total_paise <= 0:
             raise HTTPException(status_code=422, detail="Credit note total must be positive.")
         period_validation_service.validate_posting_date(firm_id or "", data["credit_note_date"])
+        # ...and not inside a period whose GSTR-3B has already been filed. The
+        # FY lock above is the CA's own switch; this is the portal's. A purchase
+        # credit note REVERSES input credit (§16(2) second proviso / Rule 37),
+        # so dating one into a filed period makes that return's 4(B) reversal
+        # figure wrong in the direction that overstates credit — the mirror of
+        # the sales side, which has refused this since SALES-15.
+        if not _USE_MOCK:
+            from core.supabase_client import get_supabase
+            period_lock_service.assert_open(
+                get_supabase(), firm_id or "", client_id, data["credit_note_date"])
         fy = _current_fy()
 
         payload = {
@@ -323,6 +334,14 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
             )
         if data.get("credit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", data["credit_note_date"])
+            if not _USE_MOCK:
+                from core.supabase_client import get_supabase
+                # Both dates: moving a note OUT of a filed period changes that
+                # return's figures as much as moving one in.
+                period_lock_service.assert_open(
+                    get_supabase(), firm_id or "", d.get("client_id"), d.get("credit_note_date"))
+                period_lock_service.assert_open(
+                    get_supabase(), firm_id or "", d.get("client_id"), data["credit_note_date"])
 
         if lines_data is not None:
             is_interstate = data.get("is_interstate", d.get("is_interstate", False))
@@ -447,6 +466,11 @@ def issue_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("a
             raise HTTPException(status_code=422, detail="Only draft credit notes can be issued")
         if pcn.get("credit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", pcn["credit_note_date"])
+            # Re-checked at ISSUE, not only at create: a draft raised in June
+            # and issued in September posts with its June date, and GSTR-3B for
+            # June may have been filed in between.
+            period_lock_service.assert_open(
+                db, firm_id or "", pcn.get("client_id"), pcn["credit_note_date"])
 
         client_id = pcn.get("client_id", "")
         pcn_total = int(pcn.get("total_paise") or 0)
