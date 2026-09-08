@@ -26,6 +26,97 @@ router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 #      failure this endpoint has available to it, so the rates are attributed to
 #      their source Act and the model is told to say when it cannot confirm the
 #      year — rather than restating them as settled for a year nobody verified.
+def _rupees(paise: int) -> str:
+    """Integer paise -> a rupee figure grouped the Indian way (Rs 1,00,000).
+
+    str.format's "," gives Western grouping (Rs 100,000), which a CA reads as
+    a different number at a glance. Integer arithmetic only — this never sees
+    a float.
+    """
+    n = paise // 100
+    s = str(abs(n))
+    if len(s) > 3:
+        # last three digits, then pairs
+        head, tail = s[:-3], s[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            parts.insert(0, head)
+        s = ",".join(parts + [tail])
+    return f"Rs {'-' if n < 0 else ''}{s}"
+
+
+def _tds_lines() -> str:
+    """The TDS bullet list, generated from the rate registry rather than typed.
+
+    It used to be typed, and it drifted: the prompt still carried the s. 194J
+    Rs 30,000 and s. 194A Rs 5,000 thresholds the Finance Act 2025 raised to
+    Rs 50,000 and Rs 10,000, the s. 194I Rs 2.4 lakh ANNUAL limit that Act
+    replaced with Rs 50,000 a month, and a flat "Section 194Q: 0.1%; threshold
+    Rs 50L" that says nothing about s. 194Q(1) charging only the sum EXCEEDING
+    Rs 50 lakh. So a CA who asked the copilot got one answer and the bill they
+    then entered got another - from the same application, with nothing
+    reconciling the two.
+
+    Same failure shape as the two this module's header already records (a wrong
+    Q4 deadline, a hardcoded financial year): a fact duplicated into prose,
+    drifting from the code that owns it. The cure is the same - derive it.
+    tests/test_system_prompts_agree_with_the_code.py holds the two together.
+    """
+    from domain.tds.section_rates import LATEST_VERIFIED_TDS_FY, tds_rates_for
+
+    # The sections a CA actually asks about, in the order they are usually met,
+    # with what the registry's single figure MEANS where that is not obvious.
+    # Not every section in the registry - the prompt is a briefing, not a table.
+    WANTED = [
+        ("194C", "contractors", ""),
+        ("194J", "professional or technical fees", ""),
+        ("194H", "commission or brokerage", ""),
+        ("194A", "interest other than on securities", ""),
+        # s. 194I's limit is per month or part of a month (Finance Act 2025
+        # replaced the old Rs 2,40,000 annual limit), so it is deliberately NOT
+        # an FY aggregate and must not be described as one.
+        ("194I", "rent",
+         " — this limit is PER MONTH or part of a month, not for the year"),
+        ("194Q", "purchase of goods", ""),
+    ]
+
+    rules = tds_rates_for(LATEST_VERIFIED_TDS_FY).sections
+    out = []
+    for code, what, note in WANTED:
+        r = rules.get(code)
+        if r is None:
+            continue
+        if r.individual_rate_bps == r.company_rate_bps:
+            rate = f"{r.individual_rate_bps / 100:g}%"
+        else:
+            rate = (f"{r.individual_rate_bps / 100:g}% individual/HUF, "
+                    f"{r.company_rate_bps / 100:g}% others")
+        line = (f"- Section {code} {what}: {rate}; threshold "
+                f"{_rupees(r.single_threshold_paise)} single payment")
+        if r.aggregate_threshold_paise is not None:
+            line += f" or {_rupees(r.aggregate_threshold_paise)} aggregate in the year"
+        line += note
+        # What the tax is charged ON, once a threshold is crossed. The two are
+        # mutually exclusive and stating both would contradict: s. 194Q(1)
+        # carves its threshold OUT of the base, every other section here
+        # charges the whole aggregate once a limit is passed.
+        if r.charge_on_excess_only:
+            line += (f". The tax is charged ONLY on the amount by which the year"
+                     f" exceeds {_rupees(r.single_threshold_paise)}, never on the"
+                     f" whole sum — s. 194Q(1), \"0.1 per cent of such sum"
+                     f" exceeding fifty lakh rupees\"")
+        elif r.aggregate_threshold_paise is not None:
+            line += (". Once either is crossed the tax is due on the WHOLE"
+                     " aggregate for the year, not only on the payment that"
+                     " crossed it — the earlier payments are not forgiven,"
+                     " they simply had not been taxed yet")
+        out.append(line)
+    return "\n".join(out)
+
+
 SYSTEM_PROMPT = """You are an expert AI assistant for Indian Chartered Accountants \
 using PracticeSync. You answer on Indian taxation, GST and statutory compliance.
 
@@ -58,13 +149,14 @@ GST COMPLIANCE (CGST Act) — statutory due dates:
 - E-invoicing mandatory above Rs 5 crore turnover
 - Registration thresholds: Rs 40L goods, Rs 20L services, Rs 10L special category states
 
-TDS (rates per Finance Act 2025; thresholds and due dates statutory):
-- Section 194C contractors: 1% individual/HUF, 2% others; threshold Rs 30,000 single / Rs 1L annual
-- Section 194J professional fees: 10%; threshold Rs 30,000
+TDS (rates and thresholds below are generated from the engine that computes \
+them — domain/tds/section_rates.py — so they cannot drift from what the app does):
+""" + _tds_lines() + """
 - Section 192 salary: applicable slab rates
-- Section 194A interest (non-bank): 10%; threshold Rs 5,000
-- Section 194I rent: 2% plant/machinery, 10% land/building; threshold Rs 2.4L annual
-- Section 194Q purchase of goods: 0.1%; threshold Rs 50L
+- On Section 194I the rate above is the 194I(b) one — land, building, furniture \
+or fittings, 10%. Letting of plant, machinery or equipment is Section 194I(a) at \
+2%, and the engine does not carry that rate, so say which limb you are answering \
+on and tell the CA the app will compute 194I at 10%.
 - 24Q/26Q returns: 31 July (Q1), 31 October (Q2), 31 January (Q3), 31 May (Q4). \
 Q4 is 31 May, NOT 30 April — it is the one quarter that does not follow the \
 "end of the month after quarter end" pattern.

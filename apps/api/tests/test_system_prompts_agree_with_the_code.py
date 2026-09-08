@@ -175,3 +175,96 @@ def test_every_prompt_tells_the_model_to_admit_uncertainty(name):
 
     assert "uncertain" in lowered or "unsure" in lowered or "never invent" in lowered, \
         f"{name} has no instruction to admit what it does not know"
+
+
+# ── TDS thresholds: the prompt must be the registry, not a copy of it ────────
+
+def test_the_assistant_states_the_thresholds_the_engine_actually_uses():
+    """The failure this catches, which had already happened.
+
+    The prompt carried the s. 194J Rs 30,000 and s. 194A Rs 5,000 thresholds
+    that the Finance Act 2025 raised to Rs 50,000 and Rs 10,000, and the
+    s. 194I Rs 2,40,000 ANNUAL limit that Act replaced with Rs 50,000 a month.
+    So a CA who asked the copilot got one answer and the purchase bill they
+    then entered got another — from the same application, with nothing
+    reconciling the two. Same shape as the wrong Q4 deadline above.
+    """
+    from domain.tds.section_rates import LATEST_VERIFIED_TDS_FY, tds_rates_for
+
+    text = _prompts()["routers/assistant.py"]
+    rules = tds_rates_for(LATEST_VERIFIED_TDS_FY).sections
+
+    def indian(paise: int) -> str:
+        n = str(paise // 100)
+        if len(n) > 3:
+            head, tail, parts = n[:-3], n[-3:], []
+            while len(head) > 2:
+                parts.insert(0, head[-2:]); head = head[:-2]
+            if head:
+                parts.insert(0, head)
+            n = ",".join(parts + [tail])
+        return n
+
+    for code in ("194C", "194J", "194H", "194A", "194I", "194Q"):
+        rule = rules[code]
+        line = next((ln for ln in text.splitlines()
+                     if ln.startswith(f"- Section {code} ")), None)
+        assert line, f"the prompt no longer briefs Section {code}"
+        assert indian(rule.single_threshold_paise) in line, (
+            f"Section {code}: the prompt does not state the engine's single-payment "
+            f"threshold of Rs {indian(rule.single_threshold_paise)}"
+        )
+        if rule.aggregate_threshold_paise is not None:
+            assert indian(rule.aggregate_threshold_paise) in line, (
+                f"Section {code}: the prompt omits the FY aggregate threshold the "
+                f"engine applies"
+            )
+
+
+def test_the_tds_block_is_derived_and_not_retyped(monkeypatch):
+    """The regression that matters: a value typed into the prose passes on the
+    day it is written and drifts silently the next time the Finance Act moves a
+    threshold. Move the registry and the prompt must follow."""
+    from dataclasses import replace
+    import routers.assistant as assistant
+    from domain.tds import section_rates
+
+    real = section_rates.tds_rates_for
+
+    def _bumped(fy=None):
+        rates = real(fy)
+        bumped = dict(rates.sections)
+        bumped["194J"] = replace(bumped["194J"], single_threshold_paise=77_777_00)
+        return replace(rates, sections=bumped)
+
+    monkeypatch.setattr(assistant, "_tds_lines", assistant._tds_lines)
+    monkeypatch.setattr(section_rates, "tds_rates_for", _bumped)
+
+    assert "Rs 77,777" in assistant._tds_lines()
+
+
+def test_the_prompt_says_the_charge_is_on_the_aggregate():
+    """The statutory point a CA most often gets wrong, and which the engine now
+    implements: crossing an aggregate threshold does not exempt the earlier
+    payments, it makes them due. A prompt that lists thresholds without saying
+    what the tax is charged ON invites the model to answer "2% of the bill that
+    crossed it"."""
+    text = _prompts()["routers/assistant.py"]
+
+    assert "WHOLE aggregate" in text
+    # s. 194Q is the one exception and must not be described the same way.
+    q_line = next(ln for ln in text.splitlines() if ln.startswith("- Section 194Q "))
+    assert "exceeding fifty lakh rupees" in q_line
+    assert "WHOLE aggregate" not in q_line
+
+
+def test_no_prompt_states_a_superseded_tds_threshold():
+    """The specific stale figures that were in the prompt until 2026-09-08, as
+    literals — so re-typing any of them fails here rather than reaching a CA."""
+    SUPERSEDED = {
+        "Rs 2.4L": "s. 194I's pre-Finance-Act-2025 annual limit (now Rs 50,000 a month)",
+        "Rs 2,40,000": "s. 194I's pre-Finance-Act-2025 annual limit",
+    }
+    for name, text in _prompts().items():
+        for literal, why in SUPERSEDED.items():
+            assert literal not in text, f"{name} states {literal} — {why}"

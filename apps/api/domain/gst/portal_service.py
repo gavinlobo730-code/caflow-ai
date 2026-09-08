@@ -70,13 +70,31 @@ class ManualGSTProvider(GSTPortalProvider):
 
 
 def get_provider(provider_name: str = "manual") -> GSTPortalProvider:
-    # TODO(compliance): docs/compliance/02-gst.md — this is the seam a GSP would
-    # plug into, and the parameter is a trap. It takes a name and IGNORES it, so
-    # the day a second provider exists a caller asking for it by name gets
-    # MANUAL data and no error. Wire the switch in the same commit that adds the
-    # provider, not after. Reading GST returns needs a GSP: the specs are public
-    # but production credentials are a licence key issued only to an empanelled
-    # GSP, and there is no direct-to-GSTN route at any turnover.
+    """The seam a GSP would plug into. Exactly one provider exists: manual.
+
+    TODO(compliance): docs/compliance/02-gst.md, and docs/compliance/
+    07-getting-permission-to-file.md for what has to be applied for first.
+    Reading GST returns needs a GSP: the specs are public but production
+    credentials are a licence key issued only to an empanelled GSP, and there
+    is no direct-to-GSTN route at any turnover.
+
+    The parameter used to be a TRAP — it took a name and IGNORED it, so the day
+    a second provider exists a caller asking for it by name would get MANUAL
+    data and no error, which in this module means empty return lists and
+    `status: "manual"`. A CA reading that as "the portal says the return is not
+    filed" is the whole failure. It now refuses a name it does not have, so the
+    switch has to be wired in the same commit that adds the provider rather
+    than remembered afterwards. domain/income_tax/einvoice_service.get_provider
+    already behaved this way (it warns and falls back); this one is stricter
+    because its data is read as fact rather than posted as a document.
+    """
+    if provider_name != "manual":
+        raise ValueError(
+            f"No GST portal provider named '{provider_name}'. Only 'manual' exists — "
+            f"reading returns from the portal needs an empanelled GSP "
+            f"(docs/compliance/07-getting-permission-to-file.md). Wire the provider "
+            f"into this factory in the same commit that adds it."
+        )
     return ManualGSTProvider()
 
 
@@ -151,12 +169,15 @@ def run_sync_job(
         raise ValueError("Sync job not found")
 
     job = job_res.data
+    # Resolve the provider BEFORE the job is marked running: get_provider now
+    # refuses a name it does not have, and a job stuck at "running" because the
+    # provider name was wrong is a worse report than one that never started.
+    provider = get_provider(provider_name)
+
     sb.table("gst_sync_jobs").update({
         "status": "running",
         "started_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", job_id).execute()
-
-    provider = get_provider(provider_name)
     gstin = job["gstin"]
     client_id = job["client_id"]
     scope = job.get("scope", list(SNAPSHOT_TYPES))
