@@ -11,6 +11,9 @@ from models.common import api_response
 from models.accounting import AccountIn, AccountUpdateIn, JournalEntryIn, JournalEntryUpdateIn, JournalReversalIn
 from domain.accounting_service import accounting_service
 from domain.reporting import ReportingService, SupabaseLedgerSource, mock_ledger_source
+from domain.reporting.cash_book import (
+    explain_negative, first_negative_day, is_cash_account,
+)
 from services.journal_posting_service import journal_posting_service
 from core.exceptions import (NotFoundError, ValidationError, postgres_message,
                              document_failure_detail)
@@ -889,6 +892,85 @@ def get_ledger(
         current_user["firm_id"], client_id, account_id, start_date, end_date,
         limit=limit, offset=offset,
     ))
+
+
+@router.get("/cash-book")
+def get_cash_book(
+    client_id: str = Query(...),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The cash book: every Cash ledger, with the one rule a bank book lacks.
+
+    NOT A SECOND LEDGER. Each account's lines and running balance come from the
+    same reporting engine `/ledger` uses — computed in SQL over the account's
+    whole history — because a second running-balance implementation for cash is
+    exactly the drift CLAUDE.md's reporting section warns about.
+
+    What is added is the NEGATIVE-BALANCE RULE, which is the whole cash-specific
+    part of BANK-20. A bank account may go negative — that is an overdraft, and
+    BANK-02 gave it a liability ledger. Physical cash may not: you cannot pay
+    out a note you do not have, so a negative cash balance is never a fact about
+    the world, only an error in the books. It is reported at the FIRST date it
+    happens, not at the close, because a balance that dips and recovers within
+    the month is invisible in a closing figure and is just as wrong.
+
+    `client_id` is REQUIRED here, unlike /ledger. A firm-wide cash book would
+    add together the physical cash of unrelated businesses, which is not a
+    figure that means anything.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        return api_response(True, {"accounts": [], "negative_days": [], "clean": True})
+
+    accounts = (db.table("chart_of_accounts")
+                .select("id, account_code, account_name, account_type, account_subtype")
+                .eq("firm_id", firm_id).eq("is_active", True)
+                .or_(f"client_id.eq.{client_id},client_id.is.null")
+                .execute().data) or []
+    cash_accounts = [a for a in accounts
+                     if is_cash_account(a.get("account_type"), a.get("account_subtype"))]
+
+    out, negatives = [], []
+    for a in sorted(cash_accounts, key=lambda x: str(x.get("account_code") or "")):
+        led = _reporting_service().ledger(
+            firm_id, client_id, a["id"], start_date, end_date, limit=1000, offset=0)
+        lines = led.get("lines") or []
+        opening = int(led.get("opening_balance_paise") or 0)
+        out.append({
+            "account_id": a["id"],
+            "account_code": a.get("account_code"),
+            "account_name": a.get("account_name"),
+            "opening_balance_paise": opening,
+            "closing_balance_paise": int(led.get("closing_balance_paise") or 0),
+            "total_lines": led.get("total_lines"),
+            "lines": lines,
+        })
+        neg = first_negative_day(lines, account_id=a["id"],
+                                 account_name=a.get("account_name") or "Cash",
+                                 opening_balance_paise=opening)
+        if neg:
+            negatives.append({
+                "account_id": neg.account_id,
+                "account_name": neg.account_name,
+                "on_date": neg.on_date,
+                "balance_paise": neg.balance_paise,
+                "entry_id": neg.entry_id,
+                "narration": neg.narration,
+                "what_to_check": explain_negative(neg),
+            })
+
+    return api_response(True, {
+        "accounts": out,
+        "negative_days": negatives,
+        # An empty list means "checked and none", which is only an answer
+        # alongside how many accounts were checked.
+        "cash_accounts_checked": len(cash_accounts),
+        "clean": not negatives,
+    })
 
 
 @router.get("/trial-balance")

@@ -82,8 +82,32 @@ box in its column head; and a first version of the PDF guard flagged the two
 COMMENTS explaining why "Rs." is used — the money-parser mistake again, fixed by
 walking the AST for emitted string literals rather than grepping the file.
 
-### Phase 1 — The ledger model: cash is not bank · 6 findings · ≤32 days
+### Phase 1 — The ledger model: cash is not bank · 6 findings · ≤32 days · **DONE**
 `ACC-02 ACC-03 SALES-08 BANK-20 BANK-02 FA-07`
+
+**Closed across three PRs.** 1a (#462): `domain/accounting/payment_account.py` is
+the one resolver, and SIX posting paths ask it — three of which no finding named
+(the foreign-currency receipt and both FX payment paths). Migration 342 gives
+receipts and purchase payments a `bank_account_id`; overdraft ledgers are
+re-classified to Liability/'Bank Overdraft', a subtype CHECKED against
+`bs_bucket()` rather than chosen. 1b part 1 (#463): migration 343 gives an asset
+its acquisition facts, and `acquisition_mode` decides the credit leg — the
+`from_bill` case posts NO acquisition entry, only a reclassification, which is
+what stops the double count. 1b part 2: the cash book, with the one rule a bank
+book does not have.
+
+*Guard:* `test_no_posting_path_names_a_ledger_by_string.py` — the rule, walked
+over the AST. Its debt list is down to one entry (`opening_balance_service`,
+deliberate and correct), and a second test fails if that stops being true.
+
+*The routing constraint this phase ran into, recorded because the next screen
+will hit it too:* `public/_redirects` was at Cloudflare Pages' cap of 100
+dynamic rules, and every new `/clients/[id]/*` page costs 2. The cash book ships
+as a component on the existing bank-book route for that reason. The proven
+lever — merging a static sibling into its dynamic sibling, 3 rules per pair, six
+already done — has exactly ONE candidate left (`year-end/xbrl` into
+`:engagementId`), and taking it would mean calling "xbrl" an engagement id. The
+budget needs real work before the next page.
 
 Every one of these is the same line of code in six places: a posting path names
 a ledger by string instead of resolving the account the user chose. Cash
