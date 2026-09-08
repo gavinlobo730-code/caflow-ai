@@ -378,6 +378,15 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     total_liability = total_credit = total_itc_paid = total_cash = 0
     for label, head in _HEADS:
         head_liability = _p(outward, f"taxable_{head}_paise")
+        if head == "igst":
+            # A zero-rated supply made ON PAYMENT OF TAX (§16(3)(b)) carries
+            # real IGST — refunded later under §54, but a liability in THIS
+            # return, and Table 6.1 on the portal includes it. Nil under an
+            # LUT or bond (§16(3)(a)), so this adds nothing for most clients
+            # and everything for an exporter who does not use one. Without it
+            # the liability column understates and `paid_by_itc` below floors
+            # to a figure the portal would not show.
+            head_liability += _p(outward, "zero_rated_igst_paise")
         credit_available = _p(itc, f"net_{head}_paise")   # 4(C) — never 4(A)
         cash = _p(net_payable, f"{head}_paise")
         # What the credit actually discharged, as the difference between the
@@ -397,6 +406,25 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         total_itc_paid += paid_by_itc
         total_cash += cash
 
+    # Reverse charge, as its own row rather than folded into the heads above.
+    # §49(4) permits the electronic credit ledger to pay only "output tax", and
+    # §2(82) defines output tax as EXCLUDING "tax payable by him on reverse
+    # charge basis" — so this line has a liability and a cash figure and a
+    # PERMANENT DASH in the credit columns. The note under this table already
+    # said the 3.1(d) tax is paid in cash separately; the row is what makes
+    # that visible in the total a CA carries to the challan.
+    rcm_cash = _p(net_payable, "rcm_cash_paise")
+    if rcm_cash:
+        pay_rows.append([
+            {"text": "Reverse charge (3.1(d))"},
+            {"paise": rcm_cash},
+            {"text": "—"},
+            {"text": "—"},
+            {"paise": rcm_cash},
+        ])
+        total_liability += rcm_cash
+        total_cash += rcm_cash
+
     payment_note = (
         "The portal's PROCEED TO PAYMENT screen. The credit set off here is "
         "Table 4(C) — what is left AFTER the 4(B) reversals — and never 4(A): "
@@ -412,9 +440,12 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         "re-derives; on the portal the taxpayer may choose a different "
         "permissible split and the cash column will change. Anything in the "
         "cash column is paid "
-        "by challan (PMT-06) before the return can be filed, and the "
-        "reverse-charge tax in 3.1(d) is paid in cash separately — it is not "
-        "part of this set-off.")
+        "by challan (PMT-06) before the return can be filed. The "
+        "reverse-charge tax in 3.1(d) is its own row and is paid in cash "
+        "whatever credit is available: §49(4) permits the credit ledger to "
+        "pay only \"output tax\", and §2(82) defines that as EXCLUDING \"tax "
+        "payable by him on reverse charge basis\" — which is why its credit "
+        "columns are dashes rather than zeroes.")
     stages.append(common.table_stage(
         "Table 6.1 — Payment of tax",
         payment_note,

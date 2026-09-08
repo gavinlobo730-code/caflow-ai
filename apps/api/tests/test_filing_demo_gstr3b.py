@@ -660,3 +660,87 @@ def test_the_engine_really_does_split_excess_igst_credit_in_half():
         "6.1 note in services/filing_demo/gstr3b.py, which is written against "
         "this behaviour"
     )
+
+
+# ── The challan is not the set-off ──────────────────────────────────────────
+
+def _working_with_cash(rcm_cash: int, zero_rated_igst: int = 0) -> dict:
+    """The saved working as gst_return_service writes it since 2026-09-08."""
+    w = _working()
+    w["net_payable"]["rcm_cash_paise"] = rcm_cash
+    w["net_payable"]["challan_total_paise"] = w["net_payable"]["total_paise"] + rcm_cash
+    w["outward"]["zero_rated_igst_paise"] = zero_rated_igst
+    return w
+
+
+def test_the_payment_table_carries_reverse_charge_as_its_own_row():
+    """CGST Act §49(4) permits the electronic credit ledger to pay only
+    "output tax", and §2(82) defines output tax as EXCLUDING "tax payable by
+    him on reverse charge basis". So §9(3)/(4) tax is cash whatever credit is
+    available.
+
+    The note under this table already said so. The TABLE did not, and the
+    total under it is the figure a CA reads off and pays — so the walk-through
+    showed a challan short by the whole of Table 3.1(d), on the one screen
+    this flow exists to put in front of them.
+    """
+    db = _db(summary_json=_working_with_cash(15_000_00))
+    table = _stage(_build(db), "Table 6.1")
+
+    labels = [str(r[0].get("text") or "") for r in table["rows"]]
+    assert any("Reverse charge" in ln for ln in labels), labels
+
+    row = next(r for r in table["rows"] if "Reverse charge" in str(r[0].get("text") or ""))
+    cells = _cells(row)
+    assert cells[1] == 15_000_00, "the liability column must carry the 3.1(d) tax"
+    assert cells[2] == "—" and cells[3] == "—", (
+        "the credit columns must be dashes, not zeroes — a zero reads as "
+        "'no credit was available', and the point is that credit is barred"
+    )
+    assert cells[4] == 15_000_00, "and all of it is cash"
+
+
+def test_the_payment_total_is_the_challan_figure():
+    """The footer is what gets carried to PMT-06."""
+    rcm = 15_000_00
+    db = _db(summary_json=_working_with_cash(rcm))
+    table = _stage(_build(db), "Table 6.1")
+
+    cash_column = [_cells(r)[4] for r in table["rows"] if isinstance(_cells(r)[4], int)]
+    assert _cells(table["footer"])[4] == sum(cash_column)
+    assert _cells(table["footer"])[4] == CASH_IGST + CASH_CGST + CASH_SGST + rcm
+
+
+def test_a_period_with_no_reverse_charge_shows_no_row():
+    """A nil row on every other client's return is noise. The row appears only
+    where there is tax on it — and its absence must not change the total."""
+    db = _db(summary_json=_working_with_cash(0))
+    table = _stage(_build(db), "Table 6.1")
+
+    labels = [str(r[0].get("text") or "") for r in table["rows"]]
+    assert not any("Reverse charge" in ln for ln in labels)
+    assert _cells(table["footer"])[4] == CASH_IGST + CASH_CGST + CASH_SGST
+
+
+def test_the_igst_liability_includes_a_zero_rated_supply_taxed_on_payment():
+    """An export made ON PAYMENT OF TAX (§16(3)(b)) carries real IGST —
+    refunded later under §54, but a liability in THIS return, and Table 6.1 on
+    the portal includes it. Nil under an LUT or bond (§16(3)(a)), which is why
+    this adds nothing for most clients and everything for an exporter who does
+    not use one."""
+    zr_igst = 90_000_00
+    db = _db(summary_json=_working_with_cash(0, zero_rated_igst=zr_igst))
+    table = _stage(_build(db), "Table 6.1")
+
+    igst_row = next(r for r in table["rows"] if str(r[0].get("text") or "").startswith("IGST"))
+    assert _cells(igst_row)[1] == OUT_IGST + zr_igst
+
+
+def test_a_working_saved_before_these_fields_existed_still_walks_through():
+    """The saved working is a JSON column. Rows written before 2026-09-08 carry
+    neither key, and must render exactly as they did — _p() answers 0 for a
+    missing key, which is the same as no reverse charge and an LUT export."""
+    before = _stage(_build(_db(summary_json=_working())), "Table 6.1")
+    after = _stage(_build(_db(summary_json=_working_with_cash(0, 0))), "Table 6.1")
+    assert before["rows"] == after["rows"]
+    assert before["footer"] == after["footer"]
