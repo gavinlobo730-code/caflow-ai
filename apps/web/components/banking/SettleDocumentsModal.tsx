@@ -146,12 +146,26 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillDocId, docs]);
 
-  const totalAllocatedPaise = Array.from(checked).reduce((sum, id) => sum + rsToP(parseFloat(amounts[id] || "0") || 0), 0);
+  // One reading of the allocation fields, shared by the running total, the
+  // auto-fill and the payload — so what the CA is shown adding up and what is
+  // posted are the same numbers.
+  //
+  // This was `rsToP(parseFloat(amounts[id] || "0") || 0)`, and parseFloat
+  // ("1,25,000") is 1: a CA allocating a settlement the way Indian amounts are
+  // grouped posted ₹1 against the invoice and left the rest outstanding, with
+  // no error anywhere. `|| 0` did the same for "12abc" (→ 12) and a blank.
+  // rsToP now refuses, and an unreadable field blocks the save rather than
+  // silently allocating zero.
+  const allocOf = (id: string): number | null => rsToP(amounts[id] ?? "");
+  const badAllocIds = Array.from(checked).filter((id) => allocOf(id) === null);
+  const totalAllocatedPaise = Array.from(checked)
+    .reduce((sum, id) => sum + (allocOf(id) ?? 0), 0);
   // Mirror of bank_posting_service.match_and_settle_multi's settlement_cap: the
   // documents that can be settled total the cash received PLUS any TDS the
   // customer withheld, because the withheld amount discharges the receivable
   // just as cash does (it lands in TDS receivable instead of the bank).
-  const tdsPaise = isCredit ? Math.max(rsToP(parseFloat(tds || "0") || 0), 0) : 0;
+  const tdsParsed = rsToP(tds);
+  const tdsPaise = isCredit ? Math.max(tdsParsed ?? 0, 0) : 0;
   const settlementCap = txnAmount + tdsPaise;
   const remaining = settlementCap - totalAllocatedPaise;
   const checkedCurrencies = new Set(Array.from(checked).map((id) => docs.find((d) => d.id === id)?.currency ?? "INR"));
@@ -167,7 +181,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
       } else {
         next.add(doc.id);
         const alreadyAllocated = Array.from(next).filter((id) => id !== doc.id)
-          .reduce((sum, id) => sum + rsToP(parseFloat(amounts[id] || "0") || 0), 0);
+          .reduce((sum, id) => sum + (allocOf(id) ?? 0), 0);
         const remainingBefore = Math.max(settlementCap - alreadyAllocated, 0);
         const fill = Math.min(doc.outstanding_paise, remainingBefore);
         setAmounts((a) => ({ ...a, [doc.id]: (fill / 100).toFixed(2) }));
@@ -178,6 +192,15 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
 
   async function save() {
     if (checked.size === 0) { setError(`Select at least one ${docLabel}.`); return; }
+    if (badAllocIds.length > 0) {
+      const nos = badAllocIds.map((id) => docs.find((d) => d.id === id)?.no ?? id).join(", ");
+      setError(`The amount against ${nos} isn't a number. Type it in rupees, like 125000 or 125000.50 — not 1,25,000.`);
+      return;
+    }
+    if (isCredit && tds.trim() !== "" && tdsParsed === null) {
+      setError("The TDS amount isn't a number. Type it in rupees, like 10000 or 10000.50.");
+      return;
+    }
     if (checkedCurrencies.size > 1) { setError(`Select ${docLabel}s in a single currency.`); return; }
     if (isForeign && !exchangeRate) { setError("Enter the exchange rate for this foreign-currency settlement."); return; }
     if (totalAllocatedPaise > settlementCap) {
@@ -190,7 +213,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
     try {
       const res = await api.banking.matchMulti(txn.id, {
         entity_type: entityType,
-        allocations: Array.from(checked).map((id) => ({ entity_id: id, allocated_paise: rsToP(parseFloat(amounts[id] || "0") || 0) })),
+        allocations: Array.from(checked).map((id) => ({ entity_id: id, allocated_paise: allocOf(id) ?? 0 })),
         tds_paise: tdsPaise > 0 ? tdsPaise : undefined,
         currency: isForeign ? currency! : undefined,
         exchange_rate: isForeign ? exchangeRate : undefined,

@@ -7,6 +7,7 @@
 // is its own file now. Behaviour here is unchanged by the move.
 
 import { formatPaise } from "@/lib/services/formatting";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 // ── Shared types & helpers ─────────────────────────────────────────────────
 // Kept local rather than imported from the Accounting page: this route must not
@@ -26,8 +27,22 @@ export function fmt(paise: number): string {
   return paise === 0 ? "\u2014" : formatPaise(paise);
 }
 
-export function rsToP(rs: number): number {
-  return Math.round(rs * 100);
+/**
+ * Rupees as typed → integer paise, or null when the text is not an amount.
+ *
+ * This took a `number` and did `Math.round(rs * 100)`, so every call site had
+ * to `parseFloat` first — and `parseFloat("1,25,000")` is 1. A CA settling an
+ * invoice the way Indian amounts are grouped allocated one rupee against it,
+ * and the modal reported the rest as still outstanding. `parseFloat` also
+ * accepts "12abc" as 12 and "1e3" as 1000, and returns NaN for a blank field,
+ * which `|| 0` then turned into a silent zero allocation.
+ *
+ * Now it is the one parser in lib/money/rupeeInput.ts, and it REFUSES rather
+ * than coercing: the caller decides what a field it cannot read means, which
+ * for money posted to the ledger is "don't save", not "zero".
+ */
+export function rsToP(rs: string): number | null {
+  return paiseFromRupeeInput(rs || "0");
 }
 
 

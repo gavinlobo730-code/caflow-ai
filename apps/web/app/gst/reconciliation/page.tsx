@@ -29,6 +29,7 @@ import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { todayLocalISO } from "@/lib/dateMath";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,14 +118,22 @@ const CSV_TEMPLATE_SAMPLE =
 
 // ─── Paise helpers ────────────────────────────────────────────────────────────
 
-/** Parse a rupee string (may have commas) → integer paise. NEVER float. */
-function toPaise(val: string | number | undefined | null): number {
+/**
+ * A rupee amount from a portal CSV → integer paise, or null if the cell is not
+ * an amount.
+ *
+ * The comma strip stays: GSTR-2A/2B exports group amounts the Indian way, so
+ * "1,25,000.00" is a legitimate cell here (which is exactly why the rest of
+ * the app's typed-input parser refuses it). What is gone is
+ * `Math.round(parseFloat(s) * 100)`, which read "12abc" as ₹12 and "1e3" as
+ * ₹1,000, and dropped the half paise on "12.345" — and which returned 0 for a
+ * cell it could not read at all. A zero in an ITC reconciliation is not a
+ * missing figure, it is a claim that no tax was charged, so an unreadable cell
+ * is now reported instead (see parseCsv).
+ */
+function toPaise(val: string | number | undefined | null): number | null {
   if (val === null || val === undefined || val === "") return 0;
-  const s = String(val).replace(/,/g, "").trim();
-  const f = parseFloat(s);
-  if (isNaN(f)) return 0;
-  // Round to nearest paise — avoids floating point drift
-  return Math.round(f * 100);
+  return paiseFromRupeeInput(String(val).replace(/,/g, "").trim());
 }
 
 /** Format paise → Indian rupee string (en-IN locale) */
@@ -193,15 +202,34 @@ function parseCsv(text: string): { rows: InvoiceRow[]; error: string | null } {
     const invoice_number = get("invoice_number");
     if (!supplier_gstin || !invoice_number) continue;
 
+    const amounts: Record<string, number | null> = {
+      taxable_value: toPaise(get("taxable_value")),
+      igst: toPaise(get("igst")),
+      cgst: toPaise(get("cgst")),
+      sgst: toPaise(get("sgst")),
+    };
+    const unreadable = Object.entries(amounts).filter(([, v]) => v === null).map(([k]) => k);
+    if (unreadable.length > 0) {
+      // Reported, not skipped and not zeroed: a row missing from the
+      // reconciliation reads as "the supplier never filed it" (CGST s.16), and
+      // a zero reads as "no tax was charged". Both are answers this file does
+      // not have, so the import stops and names the row.
+      return {
+        rows: [],
+        error: `Row ${i + 1} (invoice ${invoice_number}): ${unreadable.join(", ")} is not an amount. `
+             + `Give a plain number of rupees, like 125000 or 125000.50.`,
+      };
+    }
+
     rows.push({
       supplier_gstin,
       supplier_name: get("supplier_name"),
       invoice_number,
       invoice_date: get("invoice_date"),
-      taxable_value_paise: toPaise(get("taxable_value")),
-      igst_paise: toPaise(get("igst")),
-      cgst_paise: toPaise(get("cgst")),
-      sgst_paise: toPaise(get("sgst")),
+      taxable_value_paise: amounts.taxable_value!,
+      igst_paise: amounts.igst!,
+      cgst_paise: amounts.cgst!,
+      sgst_paise: amounts.sgst!,
     });
   }
 

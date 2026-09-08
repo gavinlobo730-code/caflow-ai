@@ -9,6 +9,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Account } from "@/lib/types";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -208,10 +209,11 @@ export default function BudgetPage() {
   }
 
   function confirmEdit(accountId: string) {
-    const rupees = parseFloat(editValue);
-    if (isNaN(rupees) || rupees < 0) { cancelEdit(); return; }
-    // All money stored as integer paise — no floating point
-    const paise = Math.round(rupees * 100);
+    // Integer paise through the one parser. parseFloat("1,25,000") is 1, so a
+    // budget typed the way Indian amounts are grouped was silently saved as ₹1
+    // and every variance against it was wrong.
+    const paise = paiseFromRupeeInput(editValue);
+    if (paise === null || paise < 0) { cancelEdit(); return; }
     saveBudget(fy, accountId, paise);
     setRows(prev => prev.map(r => r.account_id === accountId ? { ...r, budget_paise: paise } : r));
     setEditingId(null);

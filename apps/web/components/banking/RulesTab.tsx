@@ -100,8 +100,11 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
     setEditing(r.id);
   }
 
-  // Empty string means "no bound", which is not the same as zero.
-  const boundToPaise = (v: string) => (v.trim() === "" ? null : rsToP(parseFloat(v) || 0));
+  // Empty string means "no bound", which is not the same as zero. rsToP now
+  // returns null for text that is not an amount too, so both cases arrive here
+  // as null — and save() refuses a bound that was typed but unreadable, rather
+  // than storing "no bound" and letting the rule match lines it should not.
+  const boundToPaise = (v: string) => (v.trim() === "" ? null : rsToP(v));
 
   async function save() {
     const payload = {
@@ -118,6 +121,12 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
       suggested_is_interstate: form.suggested_is_interstate,
     };
     if (!payload.rule_name) { setFormError("Give the rule a name."); return; }
+    if (form.amount_min.trim() !== "" && payload.amount_min_paise === null) {
+      setFormError("The minimum amount isn't a number. Type it in rupees, like 25000 or 25000.50."); return;
+    }
+    if (form.amount_max.trim() !== "" && payload.amount_max_paise === null) {
+      setFormError("The maximum amount isn't a number. Type it in rupees, like 25000 or 25000.50."); return;
+    }
     const hasCondition = payload.description_pattern || payload.amount_min_paise != null
       || payload.amount_max_paise != null || payload.txn_type !== "any";
     if (!hasCondition) {

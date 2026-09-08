@@ -127,9 +127,10 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
-    const feeFloat = parseFloat(feeRs || "0");
-    // Integer paise: multiply by 100 and round
-    const feePaise = Math.round(feeFloat * 100);
+    // Integer paise through the one parser — never Math.round(parseFloat(x)*100),
+    // which reads a fee typed "1,25,000" as ₹1 and a blank field as NaN.
+    const feePaise = paiseFromRupeeInput(feeRs);
+    if (feePaise === null) { setError("Fee isn't a number. Type it in rupees, like 25000 or 25000.50."); return; }
     if (!clientId || feePaise <= 0) { setError("Select a client and enter a valid fee"); return; }
     setSaving(true);
     try {

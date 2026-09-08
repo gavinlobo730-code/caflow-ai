@@ -83,8 +83,14 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
     if (f.q.trim()) params.q = f.q.trim();
     if (f.dateFrom) params.date_from = f.dateFrom;
     if (f.dateTo) params.date_to = f.dateTo;
-    if (f.minRs !== "") params.min_amount_paise = String(rsToP(parseFloat(f.minRs) || 0));
-    if (f.maxRs !== "") params.max_amount_paise = String(rsToP(parseFloat(f.maxRs) || 0));
+    // A bound that is not an amount is dropped rather than sent as zero: a
+    // min of 0 is a real filter that hides nothing, so coercing "1,25,000"
+    // (parseFloat reads it as 1) or a typo into 0 quietly widened the search
+    // instead of narrowing it, and the CA saw candidates they had excluded.
+    const minP = rsToP(f.minRs);
+    const maxP = rsToP(f.maxRs);
+    if (f.minRs !== "" && minP !== null) params.min_amount_paise = String(minP);
+    if (f.maxRs !== "" && maxP !== null) params.max_amount_paise = String(maxP);
     if (f.entityType) params.entity_type = f.entityType;
     try {
       const res = (await api.banking.candidateSearch(txn.id, params)) as
