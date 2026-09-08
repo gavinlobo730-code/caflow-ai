@@ -51,6 +51,13 @@ interface GSTSummaryData {
     net_cgst: number;
     net_sgst: number;
     net_igst: number;
+    /** Reverse-charge tax under CGST s.9(3)/(4). The three net_* figures above
+     *  cannot include it: s.49(4) lets the electronic credit ledger pay only
+     *  "output tax" and s.2(82) defines that as EXCLUDING "tax payable by him
+     *  on reverse charge basis". Always cash, always on top. */
+    rcm_cash: number;
+    /** What the client actually pays — the set-off result plus rcm_cash. */
+    cash_payable: number;
   };
   tds_deducted: number;
 }
@@ -142,7 +149,9 @@ function currentFYStart(): string {
 
 function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
   const totalITC = data.gstr3b.itc_cgst + data.gstr3b.itc_sgst + data.gstr3b.itc_igst;
+  // The SET-OFF result. Not what is paid — see rcmCash below.
   const totalNetLiability = data.gstr3b.net_cgst + data.gstr3b.net_sgst + data.gstr3b.net_igst;
+  const rcmCash = data.gstr3b.rcm_cash ?? 0;
 
   return (
     <div className="report-content space-y-6">
@@ -243,6 +252,26 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
               <td className="px-4 py-2.5 text-right text-green-800">{formatPaise(totalITC)}</td>
               <td className="px-4 py-2.5 text-right">{formatPaise(Math.max(0, totalNetLiability))}</td>
             </tr>
+            {/* Reverse charge is cash on top of the set-off — CGST s.49(4) with
+                s.2(82). Shown only when there is any, because a nil row on
+                every other client's report is noise, but omitting it where
+                there IS one understates the challan. */}
+            {rcmCash > 0 && (
+              <>
+                <tr className="text-[#475569]">
+                  <td className="px-4 py-2.5" colSpan={3}>
+                    Reverse charge, payable in cash (Table 3.1(d) — the credit ledger cannot pay this)
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-medium">{formatPaise(rcmCash)}</td>
+                </tr>
+                <tr className="bg-red-50 font-semibold text-red-900">
+                  <td className="px-4 py-2.5" colSpan={3}>Total payable in cash</td>
+                  <td className="px-4 py-2.5 text-right">
+                    {formatPaise(Math.max(0, totalNetLiability) + rcmCash)}
+                  </td>
+                </tr>
+              </>
+            )}
           </tfoot>
         </table>
       </section>

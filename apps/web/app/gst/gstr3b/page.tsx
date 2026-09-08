@@ -317,8 +317,22 @@ export default function GSTR3BPage() {
                   <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.outward.taxable_sgst_paise)}</td>
                 </tr>
                 <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">Zero-rated supplies (Exports / SEZ)</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B]">{r(w.outward.zero_rated_paise)}</td>
+                  <td className="px-5 py-3 text-[#334155]">
+                    Zero-rated supplies (Exports / SEZ)
+                    {w.outward.zero_rated_igst_paise > 0 && (
+                      <span className="block text-[10px] text-[#64748B] mt-0.5">
+                        On payment of tax — CGST s.16(3)(b). Refundable under s.54.
+                      </span>
+                    )}
+                  </td>
+                  {/* The IGST column carried an em dash whatever the figure was.
+                      An export under an LUT or bond (s.16(3)(a)) genuinely
+                      carries nil, but one made ON PAYMENT OF TAX (s.16(3)(b))
+                      carries real IGST that this return owes and s.54 refunds
+                      later — and the em dash said otherwise. */}
+                  <td className="px-5 py-3 text-right font-mono text-[#0F172A]">
+                    {w.outward.zero_rated_igst_paise > 0 ? r(w.outward.zero_rated_igst_paise) : "—"}
+                  </td>
                   <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
                   <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
                 </tr>
@@ -418,20 +432,46 @@ export default function GSTR3BPage() {
           <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
             <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
               <h3 className="font-semibold text-[#1E293B] text-sm">Table 6 — Net Tax Payable</h3>
-              <p className="text-xs text-[#64748B] mt-0.5">CGST Act Section 49: IGST ITC cross-utilised against CGST/SGST if excess.</p>
+              <p className="text-xs text-[#64748B] mt-0.5">CGST Act Section 49(5) with Rule 88A: IGST credit is spent first, then CGST and SGST credit may each be set against IGST — but never against each other.</p>
             </div>
+            {/* The four heads are the SET-OFF result. Reverse-charge tax is not
+                in them and cannot be: s.49(4) lets the electronic credit ledger
+                pay only "output tax", and s.2(82) defines output tax as
+                EXCLUDING "tax payable by him on reverse charge basis". The row
+                below carries it, because "Total" here was being read as the
+                challan amount and was short by the whole of Table 3.1(d). */}
             <div className="grid grid-cols-4 divide-x divide-[#F1F5F9] text-center">
               {[
                 { label: "IGST", value: w.net_payable.igst_paise, color: "text-blue-700" },
                 { label: "CGST", value: w.net_payable.cgst_paise, color: "text-blue-600" },
                 { label: "SGST", value: w.net_payable.sgst_paise, color: "text-purple-700" },
-                { label: "Total", value: w.net_payable.total_paise, color: "text-red-700 font-bold" },
+                { label: "After set-off", value: w.net_payable.total_paise, color: "text-[#0F172A] font-bold" },
               ].map(item => (
                 <div key={item.label} className="px-4 py-5">
                   <p className="text-xs text-[#64748B] font-medium mb-1">{item.label}</p>
                   <p className={`text-lg font-semibold font-mono ${item.color}`}>{r(item.value)}</p>
                 </div>
               ))}
+            </div>
+            <div className="border-t border-[#E2E8F0] divide-y divide-[#F1F5F9]">
+              <div className="flex items-baseline justify-between px-5 py-3">
+                <div>
+                  <p className="text-sm text-[#334155]">Reverse charge, payable in cash</p>
+                  <p className="text-[10px] text-[#64748B] mt-0.5">
+                    Table 3.1(d). CGST Act s.49(4) with s.2(82) — the credit ledger cannot pay this.
+                  </p>
+                </div>
+                <p className="text-lg font-semibold font-mono text-purple-700">{r(w.net_payable.rcm_cash_paise)}</p>
+              </div>
+              <div className="flex items-baseline justify-between px-5 py-4 bg-[#FEF2F2]">
+                <div>
+                  <p className="text-sm font-semibold text-[#0F172A]">Total payable in cash</p>
+                  <p className="text-[10px] text-[#64748B] mt-0.5">
+                    This is the challan figure — the set-off result plus the reverse-charge tax.
+                  </p>
+                </div>
+                <p className="text-xl font-bold font-mono text-red-700">{r(w.net_payable.challan_total_paise)}</p>
+              </div>
             </div>
             {/* A total of zero says nothing about whether credit was exhausted
                 or barely touched. Apex, April 2026: nil payable over

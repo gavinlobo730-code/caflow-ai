@@ -52,6 +52,14 @@ export interface GSTSummary {
     output_cgst: number; output_sgst: number; output_igst: number;
     itc_cgst: number; itc_sgst: number; itc_igst: number;
     net_cgst: number; net_sgst: number; net_igst: number;
+    /** Reverse-charge tax under CGST s.9(3)/(4). The three net_* figures cannot
+     *  include it: s.49(4) lets the electronic credit ledger pay only "output
+     *  tax", and s.2(82) defines that as EXCLUDING "tax payable by him on
+     *  reverse charge basis" — so it is always cash and always on top. */
+    rcm_cash: number;
+    /** What the client actually pays: the set-off result plus rcm_cash. */
+    cash_payable: number;
+    itc_carried_forward: number;
   };
   tds_deducted: number;
   ca_review_required: true;

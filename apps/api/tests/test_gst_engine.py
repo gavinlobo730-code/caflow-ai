@@ -330,6 +330,53 @@ class TestGSTR3BComputer:
         assert result.net_cgst == 0
         assert result.net_sgst == 0
 
+    def test_cgst_and_sgst_credit_offset_against_igst(self):
+        """The OTHER direction, which this class only ever tested one way of.
+
+        CGST Act §49(5)(b): credit of central tax "shall first be utilised
+        towards payment of central tax and the amount remaining, if any, may
+        be utilised towards the payment of integrated tax". §49(5)(c) says the
+        same for State tax. Both second limbs were missing, so an inter-state
+        seller buying locally was shown the whole IGST liability as payable in
+        cash with the credit stranded in the ledger.
+
+        Output: ₹1,80,000 IGST on a ₹10,00,000 inter-state sale.
+        ITC:    ₹1,00,000 CGST + ₹1,00,000 SGST from local purchases.
+        The CGST credit goes first (proviso to §49(5)(c)), then ₹80,000 of the
+        SGST credit; ₹20,000 of State credit carries forward.
+        """
+        sales = [make_sale(taxable_paise=10_00_000_00, gst_rate=18.0, is_interstate=True)]
+        purchases = [make_purchase(taxable_paise=10_00_000_00, gst_rate=20.0, is_interstate=False)]
+        result = compute_gstr3b(sales, purchases, [])
+        assert result.itc_cgst == 1_00_000_00 and result.itc_sgst == 1_00_000_00
+        assert result.net_igst == 0
+        assert result.net_cgst == 0 and result.net_sgst == 0
+        assert result.itc_carried_forward_paise == 20_000_00
+
+    def test_cgst_credit_cannot_pay_sgst_and_sgst_credit_cannot_pay_cgst(self):
+        """§49(5)(e) and (f) — the two directions that stay shut. Adding the
+        second limbs above must not have opened a path between the two local
+        heads."""
+        sales = [make_sale(taxable_paise=100_000_00, gst_rate=18.0)]  # 9000 CGST + 9000 SGST
+        # Credit on one local head only.
+        cgst_only = PurchaseTransaction(
+            taxable_amount_paise=100_000_00,
+            cgst_paise=30_000_00, sgst_paise=0, igst_paise=0, cess_paise=0,
+            is_reverse_charge=False,
+        )
+        result = compute_gstr3b(sales, [cgst_only], [])
+        assert result.net_cgst == 0
+        assert result.net_sgst == 9_000_00, "§49(5)(e) bars CGST credit from SGST"
+
+        sgst_only = PurchaseTransaction(
+            taxable_amount_paise=100_000_00,
+            cgst_paise=0, sgst_paise=30_000_00, igst_paise=0, cess_paise=0,
+            is_reverse_charge=False,
+        )
+        result = compute_gstr3b(sales, [sgst_only], [])
+        assert result.net_sgst == 0
+        assert result.net_cgst == 9_000_00, "§49(5)(f) bars SGST credit from CGST"
+
     def test_credit_note_reduces_output_tax(self):
         """GSTR-3B Table 3.1 is NET — credit notes must reduce output tax.
 

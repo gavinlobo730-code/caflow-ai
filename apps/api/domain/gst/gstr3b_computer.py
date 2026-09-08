@@ -135,6 +135,19 @@ class GSTR3BResult:
     outward_taxable_sgst: int = 0
     outward_taxable_cess: int = 0
     outward_zero_rated: int = 0      # zero-rated (export) taxable value
+    # Table 3.1(b) has TWO figures, not one. IGST Act §16(3) gives a zero-rated
+    # supplier a choice: supply under a bond or LUT with no tax and claim a
+    # refund of the unutilised credit (§16(3)(a)), or supply ON PAYMENT of
+    # integrated tax and claim a refund of the tax paid (§16(3)(b), with CGST
+    # Act §54). The second route is only worth taking because the tax is
+    # declared and paid — so 3.1(b) carries the integrated tax as well as the
+    # turnover, and a return that files the turnover with a nil tax has
+    # declared an export under LUT that was not one, and claims no refund.
+    #
+    # This is whatever IGST the transaction actually carries. An LUT/bond
+    # export has none and this stays zero, which is the correct declaration
+    # for it; nothing is invented for a supply that bore no tax.
+    outward_zero_rated_igst: int = 0
     outward_nil_exempt: int = 0      # nil-rated + exempt taxable value
 
     # Table 3.2 of the FORM (not of this dataclass's old numbering): of the
@@ -304,11 +317,93 @@ class GSTR3BResult:
              self.itc_avail_cess),
         ]
 
-    # Table 6: Net tax payable
+    # Table 6: tax on OUTWARD supplies still payable after the §49 set-off.
+    # This is not the whole of what the return pays — see the reverse-charge
+    # block below, which never touches these figures.
     net_igst: int = 0
     net_cgst: int = 0
     net_sgst: int = 0
     net_cess: int = 0
+
+    # ── The liability the set-off is run against ─────────────────────────────
+    # Derived, so Table 6 and the credit-utilisation figures below can never be
+    # run against two different liabilities.
+    #
+    # Each head floors at zero. A period's credit notes can exceed its invoices
+    # (CGST Act §34), and a negative liability is not a set-off against which
+    # credit can be spent — it reduces the next period's outward tax, not this
+    # one's credit ledger.
+
+    @property
+    def liability_igst(self) -> int:
+        """Table 6.1 integrated tax: 3.1(a) plus the 3.1(b) zero-rated supplies
+        made WITH payment of integrated tax (IGST Act §16(3)(b)). An export on
+        payment of tax is a real IGST liability, discharged here and refunded
+        under CGST Act §54; an LUT/bond export contributes nothing because it
+        carries no tax."""
+        return max(self.outward_taxable_igst + self.outward_zero_rated_igst, 0)
+
+    @property
+    def liability_cgst(self) -> int:
+        return max(self.outward_taxable_cgst, 0)
+
+    @property
+    def liability_sgst(self) -> int:
+        return max(self.outward_taxable_sgst, 0)
+
+    @property
+    def liability_cess(self) -> int:
+        return max(self.outward_taxable_cess, 0)
+
+    # ── Reverse charge is paid in CASH and never out of credit ───────────────
+    #
+    # CGST Act §49(4): the electronic credit ledger "may be used for making any
+    # payment towards OUTPUT TAX". Output tax is defined by §2(82) as the tax
+    # chargeable on a taxable supply made by the person or by his agent "but
+    # EXCLUDES tax payable by him on reverse charge basis". So the §9(3)/(4)
+    # liability declared in Table 3.1(d) is discharged out of the electronic
+    # CASH ledger, in full, every time — and only then does the corresponding
+    # credit become available (§16 with §49(2)), which is why it is claimed on
+    # the 4(A)(3) ISRC row of the same return.
+    #
+    # That is why these are separate from net_igst/cgst/sgst rather than added
+    # into them: adding the reverse-charge tax to the net figures would let the
+    # set-off above discharge it out of credit, which §49(4) forbids. It used
+    # to be omitted from the payable side altogether while its credit was still
+    # deducted, so a return with reverse-charge purchases understated the tax
+    # by twice the reverse-charge amount — once for the liability that was
+    # never added, once for the credit that reduced everything else.
+
+    @property
+    def rcm_cash_paise(self) -> int:
+        """Table 3.1(d) tax — payable in cash, no set-off available."""
+        return self.rcm_igst + self.rcm_cgst + self.rcm_sgst
+
+    @property
+    def cash_payable_igst(self) -> int:
+        """Everything this return pays in cash under the integrated head: what
+        the set-off could not cover, plus the reverse-charge tax it could never
+        have covered."""
+        return self.net_igst + self.rcm_igst
+
+    @property
+    def cash_payable_cgst(self) -> int:
+        return self.net_cgst + self.rcm_cgst
+
+    @property
+    def cash_payable_sgst(self) -> int:
+        return self.net_sgst + self.rcm_sgst
+
+    @property
+    def cash_payable_cess(self) -> int:
+        """No reverse-charge cess is modelled, so this is the set-off residue."""
+        return self.net_cess
+
+    @property
+    def cash_payable_paise(self) -> int:
+        """Total cash outgo for the period across every head."""
+        return (self.cash_payable_igst + self.cash_payable_cgst
+                + self.cash_payable_sgst + self.cash_payable_cess)
 
     # ── What is LEFT of the credit once Table 6 has set off what it can ──────
     #
@@ -342,9 +437,13 @@ class GSTR3BResult:
 
     @property
     def itc_consumed_paise(self) -> int:
-        """Credit actually used to discharge this period's liability."""
-        owed = (self.outward_taxable_igst + self.outward_taxable_cgst
-                + self.outward_taxable_sgst + self.outward_taxable_cess)
+        """Credit actually used to discharge this period's liability.
+
+        The reverse-charge tax is deliberately NOT in `owed`: §49(4) with
+        §2(82) keeps it out of the credit ledger's reach, so no credit is
+        consumed by it and none of it may be netted here."""
+        owed = (self.liability_igst + self.liability_cgst
+                + self.liability_sgst + self.liability_cess)
         still_payable = self.net_igst + self.net_cgst + self.net_sgst + self.net_cess
         return max(owed - still_payable, 0)
 
@@ -411,9 +510,18 @@ class GSTR3BResult:
                     "samt": r(self.outward_taxable_sgst),
                     "csamt": r(self.outward_taxable_cess),
                 },
+                # Table 3.1(b) — zero-rated. "iamt" used to be hardcoded 0,
+                # which files every export as though it were made under a bond
+                # or LUT. IGST Act §16(3)(b) lets a supplier export ON PAYMENT
+                # of integrated tax and claim that tax back under CGST Act §54;
+                # the refund is processed against what 3.1(b) declares, so a
+                # nil there forfeits it. camt/samt/csamt stay nil: a zero-rated
+                # supply is inter-state by IGST Act §7(5), so it can bear no
+                # central or state tax.
                 "osup_zero": {
                     "txval": r(self.outward_zero_rated),
-                    "iamt": 0, "camt": 0, "samt": 0, "csamt": 0,
+                    "iamt": r(self.outward_zero_rated_igst),
+                    "camt": 0, "samt": 0, "csamt": 0,
                 },
                 "osup_nil_exmp": {
                     "txval": r(self.outward_nil_exempt),
@@ -618,6 +726,13 @@ def compute_gstr3b(
             result.outward_nil_exempt += sign * s.taxable_amount_paise
         elif s.supply_type == "zero_rated":
             result.outward_zero_rated += sign * s.taxable_amount_paise
+            # IGST Act §16(3)(b): an export or SEZ supply made ON PAYMENT of
+            # integrated tax carries real IGST, refundable under CGST Act §54.
+            # Only the taxable value used to be accumulated, so the tax on
+            # every such supply vanished out of the return. Whatever the
+            # transaction actually carries is carried here — an LUT/bond export
+            # (§16(3)(a)) has none, and correctly contributes nothing.
+            result.outward_zero_rated_igst += sign * s.igst_paise
         elif s.supply_type == "taxable":
             if not s.is_reverse_charge:
                 result.outward_taxable_value += sign * s.taxable_amount_paise
@@ -716,32 +831,110 @@ def compute_gstr3b(
         result.itc_reclaimed_cess += rc.cess_paise
 
     # ── Table 6: Net tax payable ─────────────────────────────────────────────
-    # CGST Act Section 49: IGST credit first against IGST, then CGST, then SGST.
     #
-    # The credit set off here is Table 4(C) — what is left AFTER the 4(B)
-    # reversals — not 4(A). Section 49(4) permits payment only out of credit
-    # "available in the electronic credit ledger", and credit reversed in this
-    # very return is not available: reversing it and then paying tax with it
-    # would use the same rupee twice. Before reversals existed as an input this
-    # distinction could not arise and the set-off read the gross figure; with a
-    # cancellation in the period, that understates the tax payable by the whole
-    # reversed amount, and the taxpayer underpays.
+    # WHAT IS SET OFF. The credit spent here is Table 4(C) — what is left AFTER
+    # the 4(B) reversals — not 4(A). CGST Act §49(4) permits payment only out
+    # of credit "available in the electronic credit ledger", and credit
+    # reversed in this very return is not available: reversing it and then
+    # paying tax with it would use the same rupee twice. Before reversals
+    # existed as an input this distinction could not arise and the set-off read
+    # the gross figure; with a cancellation in the period, that understates the
+    # tax payable by the whole reversed amount, and the taxpayer underpays.
+    #
+    # WHAT IS NOT SET OFF. The reverse-charge liability in Table 3.1(d). §49(4)
+    # reaches "output tax", which §2(82) defines to EXCLUDE tax payable on
+    # reverse charge basis, so §9(3)/(4) tax is paid in cash and never out of
+    # credit. It is deliberately absent from every line below and surfaces
+    # through rcm_cash_paise / cash_payable_* instead.
+    #
+    # THE ORDER OF UTILISATION — CGST Act §49(5) read with §49A, §49B and
+    # Rule 88A. Each is a separate rule and the whole answer needs all of them:
+    #
+    #   §49A + Rule 88A   IGST credit is exhausted FIRST — against IGST, then
+    #                     towards CGST or SGST "in any order and in any
+    #                     proportion" — before CGST or SGST credit may be used
+    #                     towards any liability at all.
+    #   §49(5)(b)         CGST credit: first towards CGST, THEN towards IGST.
+    #   §49(5)(c)         SGST credit: first towards SGST, THEN towards IGST.
+    #                     The proviso allows the second limb only "where the
+    #                     balance of the input tax credit on account of central
+    #                     tax is not available for payment of integrated tax",
+    #                     so CGST credit reaches IGST before SGST credit does —
+    #                     which is why step 3 runs before step 4.
+    #   §49(5)(e)/(f)     CGST credit is NEVER usable towards SGST, nor SGST
+    #                     credit towards CGST. There is no step doing either.
+    #
+    # The SECOND LIMBS of (b) and (c) were missing. IGST credit was carried
+    # across to CGST and SGST, but CGST and SGST credit never went the other
+    # way, so an exporter or any inter-state seller with local purchases was
+    # shown the whole IGST liability as payable in cash while lakhs of central
+    # and state credit sat unusable in the ledger. Nothing about it looked
+    # wrong: the liability was right, the credit was right, only the bridge
+    # between them was absent.
     avail_igst, avail_cgst, avail_sgst = (
         result.itc_net_igst, result.itc_net_cgst, result.itc_net_sgst)
-    igst_after_itc = result.outward_taxable_igst - avail_igst
+    liab_igst = result.liability_igst
+    liab_cgst = result.liability_cgst
+    liab_sgst = result.liability_sgst
 
-    if igst_after_itc <= 0:
-        # Excess IGST ITC — offset against CGST and SGST (Section 49(5))
-        excess_igst_itc = abs(igst_after_itc)
-        half_excess = excess_igst_itc // 2
-        result.net_igst = 0
-        result.net_cgst = max(0, result.outward_taxable_cgst - avail_cgst - half_excess)
-        result.net_sgst = max(0, result.outward_taxable_sgst - avail_sgst - (excess_igst_itc - half_excess))
-    else:
-        result.net_igst = igst_after_itc
-        result.net_cgst = max(0, result.outward_taxable_cgst - avail_cgst)
-        result.net_sgst = max(0, result.outward_taxable_sgst - avail_sgst)
+    # 1. IGST credit -> IGST liability. §49(5)(a), first limb.
+    used = min(avail_igst, liab_igst)
+    liab_igst -= used
+    avail_igst -= used
 
-    result.net_cess = max(0, result.outward_taxable_cess - result.itc_net_cess)
+    # 2. IGST credit -> CGST and SGST liability. §49(5)(a) second limb with
+    #    Rule 88A ("in any order and in any proportion"). Split as evenly as
+    #    the two remaining liabilities allow — the long-standing behaviour —
+    #    and then let whatever one head cannot absorb fall to the other. A
+    #    half that exceeds one head's liability is not a reason to leave IGST
+    #    credit idle while the other head is still payable, and §49A requires
+    #    this credit to be exhausted before any CGST or SGST credit is touched.
+    #
+    #    The halving is pinned from outside this module:
+    #    tests/test_filing_demo_gstr3b.py reads this source for
+    #    "half_excess = excess_igst_itc // 2", because the Table 6.1 note in
+    #    services/filing_demo/gstr3b.py tells a CA the split is whatever the
+    #    saved working computed rather than a rule the demo re-derives. Change
+    #    the apportionment and that note has to be revisited.
+    excess_igst_itc = avail_igst
+    half_excess = excess_igst_itc // 2
+    from_igst_c = min(liab_cgst, half_excess)
+    from_igst_s = min(liab_sgst, excess_igst_itc - half_excess)
+    liab_cgst -= from_igst_c
+    liab_sgst -= from_igst_s
+    avail_igst -= from_igst_c + from_igst_s
+    mop_c = min(liab_cgst, avail_igst)
+    liab_cgst -= mop_c
+    avail_igst -= mop_c
+    mop_s = min(liab_sgst, avail_igst)
+    liab_sgst -= mop_s
+    avail_igst -= mop_s
+
+    # 3. CGST credit -> CGST liability, then IGST liability. §49(5)(b).
+    #    Never towards SGST — §49(5)(e).
+    used = min(avail_cgst, liab_cgst)
+    liab_cgst -= used
+    avail_cgst -= used
+    used = min(avail_cgst, liab_igst)
+    liab_igst -= used
+    avail_cgst -= used
+
+    # 4. SGST credit -> SGST liability, then IGST liability. §49(5)(c), after
+    #    step 3 because of its proviso. Never towards CGST — §49(5)(f).
+    used = min(avail_sgst, liab_sgst)
+    liab_sgst -= used
+    avail_sgst -= used
+    used = min(avail_sgst, liab_igst)
+    liab_igst -= used
+    avail_sgst -= used
+
+    result.net_igst = liab_igst
+    result.net_cgst = liab_cgst
+    result.net_sgst = liab_sgst
+
+    # Compensation cess credit is usable only against compensation cess —
+    # GST (Compensation to States) Act §11(2), which applies §49 to the cess
+    # "as if it were tax", head for head. No cross-utilisation either way.
+    result.net_cess = max(0, result.liability_cess - result.itc_net_cess)
 
     return result
