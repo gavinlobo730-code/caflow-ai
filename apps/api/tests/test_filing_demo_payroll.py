@@ -111,11 +111,17 @@ def test_esi_envelope_is_honest():
 # ── The sequence is the real portal's: no DSC, no OTP, no declaration ───────
 
 def test_pf_follows_the_portal_sequence():
-    """summary → account-head table → missing-UAN warning (E2 has none) →
-    transmit → result. The monthly ECR has no signature ceremony at all."""
+    """summary → the ECR file and its checks → the sequential-filing warning
+    → account-head table → missing-UAN warning (E2 has none) → transmit →
+    result. The monthly ECR has no signature ceremony at all.
+
+    The file comes before the challan because that is the order of the real
+    upload: EPFO parses a text file, and everything the portal checks it
+    against is decided before a challan exists."""
     out = pf_ecr.build(_db(), FIRM, CLIENT, REF)
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "table", "warning", "transmit", "result"]
+    assert kinds == ["summary", "table", "warning", "table", "warning",
+                     "transmit", "result"]
     assert not any(k in kinds for k in ("declaration", "signature", "otp")), (
         "the monthly ECR flow is a password login — a signature or OTP stage "
         "teaches a ceremony that does not exist"
@@ -123,11 +129,13 @@ def test_pf_follows_the_portal_sequence():
 
 
 def test_esi_follows_the_portal_sequence():
-    """summary → EE/ER split table → missing-ESI-number warning (E3 has
-    none) → transmit → result. Same shape as PF: no signature ceremony."""
+    """summary → EE/ER split table → the coverage table (who is on this
+    filing, and until when) → missing-ESI-number warning (E3 has none) →
+    transmit → result. Same shape as PF: no signature ceremony."""
     out = esi.build(_db(), FIRM, CLIENT, REF)
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "table", "warning", "transmit", "result"]
+    assert kinds == ["summary", "table", "table", "warning", "transmit",
+                     "result"]
     assert not any(k in kinds for k in ("declaration", "signature", "otp"))
 
 
@@ -135,17 +143,20 @@ def test_pf_warning_absent_when_every_member_has_a_uan():
     db = _db(employee_overrides={"E2": {"uan": "100555666777"}})
     out = pf_ecr.build(db, FIRM, CLIENT, REF)
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "table", "transmit", "result"], (
+    assert kinds == ["summary", "table", "warning", "table", "transmit",
+                     "result"], (
         "with no missing UANs there is nothing to warn about — an empty "
-        "warning stage is noise"
+        "warning stage is noise. The sequential-filing warning stays: it is "
+        "unconditional, because the order applies to every month"
     )
+    assert "wage-month ORDER" in out["stages"][2]["text"]
 
 
 def test_esi_warning_absent_when_every_covered_ip_has_a_number():
     db = _db(employee_overrides={"E3": {"esi_number": "3100999888"}})
     out = esi.build(db, FIRM, CLIENT, REF)
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "table", "transmit", "result"]
+    assert kinds == ["summary", "table", "table", "transmit", "result"]
 
 
 # ── The warnings name exactly the blocked members of THIS run ───────────────
@@ -158,7 +169,8 @@ def test_pf_warning_names_only_run_members_whose_slip_carries_pf():
         "id": "E9", "firm_id": FIRM, "client_id": CLIENT,
         "name": "Zara Outside", "uan": None, "esi_number": None})
     out = pf_ecr.build(db, FIRM, CLIENT, REF)
-    warning = next(s for s in out["stages"] if s["kind"] == "warning")
+    warning = next(s for s in out["stages"]
+                   if s["kind"] == "warning" and "UAN" in s["text"])
     assert "Bharat Iyer" in warning["text"]
     assert "Zara Outside" not in warning["text"]
     assert "Chitra Nair" not in warning["text"]
@@ -185,7 +197,8 @@ def test_pf_figures_are_the_runs_stored_total():
     assert by_label["PF payable (employee + employer)"]["paise"] == 43_200_00
     assert by_label["Wage month"]["text"] == "2026-06"
     assert by_label["Employees in this run"]["text"] == "3"
-    table = out["stages"][1]
+    table = next(s for s in out["stages"]
+                 if s.get("title") == "Challan account heads")
     assert table["footer"][-1]["paise"] == 43_200_00
 
 
@@ -194,7 +207,8 @@ def test_esi_figures_are_the_runs_stored_total():
     summary = out["stages"][0]
     by_label = {f["label"]: f for f in summary["figures"]}
     assert by_label["ESI payable (employee + employer)"]["paise"] == 8_400_00
-    table = out["stages"][1]
+    table = next(s for s in out["stages"]
+                 if s.get("title") == "Contribution split")
     assert table["footer"][-1]["paise"] == 8_400_00
 
 
@@ -202,9 +216,10 @@ def test_the_split_tables_never_fabricate_per_head_amounts():
     """The run stores EE+ER combined; the account-head/rate rows are
     indicative TEXT, and the only paise figure is the combined total in the
     footer."""
-    for build in (pf_ecr.build, esi.build):
+    for build, title in ((pf_ecr.build, "Challan account heads"),
+                         (esi.build, "Contribution split")):
         out = build(_db(), FIRM, CLIENT, REF)
-        table = next(s for s in out["stages"] if s["kind"] == "table")
+        table = next(s for s in out["stages"] if s.get("title") == title)
         for row in table["rows"]:
             assert all("paise" not in cell for cell in row), (
                 "a paise amount on a split row would be a fabricated split "
@@ -216,7 +231,8 @@ def test_the_split_tables_never_fabricate_per_head_amounts():
 
 def test_pf_challan_teaches_the_epfo_account_heads():
     out = pf_ecr.build(_db(), FIRM, CLIENT, REF)
-    table = next(s for s in out["stages"] if s["kind"] == "table")
+    table = next(s for s in out["stages"]
+                 if s.get("title") == "Challan account heads")
     text = str(table)
     for head in ("A/c 1", "A/c 2", "A/c 10", "A/c 21", "A/c 22"):
         assert head in text, f"challan account head {head} missing"
@@ -229,12 +245,92 @@ def test_pf_challan_teaches_the_epfo_account_heads():
 
 def test_esi_table_teaches_the_rule_51_rates_and_the_ceiling():
     out = esi.build(_db(), FIRM, CLIENT, REF)
-    table = next(s for s in out["stages"] if s["kind"] == "table")
+    table = next(s for s in out["stages"]
+                 if s.get("title") == "Contribution split")
     text = str(table)
     # Rule 51, ESI (Central) Rules 1950, w.e.f. 01-07-2019.
     assert "0.75%" in text and "3.25%" in text
     # Rule 50: coverage wage ceiling.
     assert "₹21,000" in text and "₹25,000" in text
+
+
+def test_the_ecr_stage_carries_the_four_checks_that_reject_the_file():
+    """The ECR is a text file the portal parses, and an upload that fails on
+    one member line fails as a whole. These are the four validations the
+    revamped ECR applies (docs/audits/2026-09-07-market-research/
+    payroll-primary.md §4), and the format itself — .txt, #~# separated,
+    eleven fields per member, keyed by UAN, unchanged by the 2025 revamp."""
+    out = pf_ecr.build(_db(), FIRM, CLIENT, REF)
+    stage = next(s for s in out["stages"]
+                 if s.get("title") == "The ECR file, and what the portal checks")
+    checks = [r[0]["text"] for r in stage["rows"]]
+    assert checks == [
+        "EPF wages ≤ gross wages",
+        "EPS wages ≤ EPF wages",
+        "EDLI wages = EPF wages, capped at ₹15,000",
+        "Every member line carries a UAN",
+    ]
+    assert "#~#" in stage["note"] and "eleven fields" in stage["note"]
+    assert all("paise" not in c for row in stage["rows"] for c in row), (
+        "the checks are rules, not amounts — a paise figure here would be a "
+        "per-member split the run does not store")
+
+
+def test_the_pf_sequence_warning_is_unconditional_and_names_the_nil_return():
+    """Sequential filing is what actually stops a bureau: since the
+    re-engineered ECR (wage month September 2025) a later month cannot be
+    uploaded while an earlier one is pending, so one skipped month blocks
+    every month after it — and a month with no contributory members needs a
+    NIL return purely to keep the sequence unbroken. It is not conditional on
+    anything in the run, so it renders every time."""
+    out = pf_ecr.build(_db(employee_overrides={"E2": {"uan": "100555666777"}}),
+                       FIRM, CLIENT, REF)
+    warning = next(s for s in out["stages"]
+                   if s["kind"] == "warning" and "ORDER" in s["text"])
+    assert "September 2025" in warning["text"]
+    assert "NIL return" in warning["text"]
+    assert "two separate acts" in warning["text"], (
+        "filing the return and paying the challan were split by the revamp; "
+        "a TRRN is not a payment")
+
+
+def test_the_esi_coverage_stage_teaches_the_contribution_period():
+    """The rule payroll gets backwards most often: an employee whose wages
+    cross ₹21,000 mid-period stays covered and contributory to the END of
+    that contribution period. Dropping them in the month of the rise
+    under-remits for every month left in the period — and it decides who is
+    on THIS filing, which is what the walk-through is about."""
+    out = esi.build(_db(), FIRM, CLIENT, REF)
+    stage = next(s for s in out["stages"]
+                 if s.get("title") == "Who is covered, and until when")
+    rows = {r[0]["text"]: r[1]["text"] for r in stage["rows"]}
+    period_row = next(k for k in rows if "Contribution periods" in k)
+    assert "1 April to 30 September" in rows[period_row]
+    assert "1 October to 31 March" in rows[period_row]
+    crossing = next(k for k in rows if "cross the ceiling" in k)
+    assert "STAYS covered" in rows[crossing]
+    assert "under-remits" in rows[crossing]
+    # The research grades the mechanics [S] but the "Rule 50 / Rule 51, ESI
+    # (Central) Rules 1950" citation [U] — possibly superseded by rules under
+    # the Code on Social Security. A wrong citation beside a right fact is
+    # worse than the fact alone, so this stage carries no rule number.
+    assert "Rule" not in str(stage["rows"]), (
+        "the contribution-period rule number is unverified; state the "
+        "mechanics, not a citation nobody has confirmed")
+
+
+def test_both_flows_say_what_changes_when_filing_is_real():
+    """And both have to give the SAME uncomfortable answer: there is no
+    registration to wait for. EPFO and ESIC publish no API, and the door is
+    the CLIENT's own establishment login — which the firm should not hold.
+    A roadmap note implying a coming integration would be selling something
+    that does not exist."""
+    for build, portal in ((pf_ecr.build, "epfindia.gov.in"),
+                          (esi.build, "esic.gov.in")):
+        note = build(_db(), FIRM, CLIENT, REF)["when_this_is_real"]
+        assert "no registration to wait for" in note
+        assert portal in note
+        assert "belongs to the client" in note
 
 
 def test_both_due_dates_are_the_15th_of_the_following_month():

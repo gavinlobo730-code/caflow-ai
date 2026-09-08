@@ -174,13 +174,20 @@ class FakeDB:
 
 
 def test_get_sales_invoice_pdf_fetches_and_renders_the_real_line_items(monkeypatch):
+    """The supplier of a client_sales_invoice is the selling CLIENT (loaded from
+    `clients`, firm-scoped), never the CA firm — see
+    tests/test_sales_invoice_pdf_supplier.py."""
     db = FakeDB()
     db.store["client_sales_invoices"] = [{
-        "id": "inv-1", "firm_id": "firm-1", "invoice_no": "SINV-042",
+        "id": "inv-1", "firm_id": "firm-1", "client_id": "cli-1", "invoice_no": "SINV-042",
         "invoice_date": "2026-06-01", "due_date": None, "status": "Issued",
         "taxable_amount_paise": 200_000_00, "cgst_paise": 18_000_00, "sgst_paise": 18_000_00,
         "igst_paise": 0, "total_paise": 236_000_00,
         "customers": {"id": "cust-1", "name": "Acme Pvt Ltd", "gstin": "27BBBBB8888B1Z3"},
+    }]
+    db.store["clients"] = [{
+        "id": "cli-1", "firm_id": "firm-1", "client_name": "Sunrise Traders",
+        "legal_name": "Sunrise Traders LLP", "gstin": "27CCCCC7777C1Z1", "pan": "CCCCC7777C",
     }]
     db.store["client_sales_invoice_lines"] = [
         {"sales_invoice_id": "inv-1", "description": "Consulting — Q1 review",
@@ -189,10 +196,6 @@ def test_get_sales_invoice_pdf_fetches_and_renders_the_real_line_items(monkeypat
          "hsn_sac": "998311", "taxable_amount_paise": 80_000_00, "sort_order": 1},
     ]
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: db)
-    monkeypatch.setattr(
-        "services.invoice_pdf_service._load_firm",
-        lambda firm_id: {"name": "Test & Co", "gstin": "27AAAAA9999A1Z5"},
-    )
 
     pdf, filename = get_sales_invoice_pdf("inv-1", "firm-1")
     text = _pdf_text(pdf)

@@ -802,8 +802,15 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
     # movement legitimately carries BOTH heads — the books-side comparator
     # must too, or every RCM bill flags a false mismatch.
     books_rcm = result.rcm_cgst + result.rcm_sgst + result.rcm_igst
+    # ...plus IGST on a zero-rated supply made ON PAYMENT OF TAX (CGST §16(3)(b)
+    # / IGST §16(3)(b)): that IGST is charged, posted to the output account and
+    # refunded later under §54, so it is on the ledger like any other output
+    # tax. An LUT/bond export under §16(3)(a) carries nil and adds nothing here.
+    # Omitting it made every exporter-on-payment show a permanent false mismatch
+    # against their own general ledger.
     books_output = (result.outward_taxable_cgst + result.outward_taxable_sgst
-                    + result.outward_taxable_igst + books_rcm)
+                    + result.outward_taxable_igst
+                    + result.outward_zero_rated_igst + books_rcm)
     # The ledger's gst_input movement is NET of reversals — cancelling a bill
     # credits the account — so the books comparator has to net them too. It did
     # not, and that was the whole of the Rs 88,141.67 the July 2026 reconciliation
@@ -844,7 +851,17 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         # This is the figure stored on gst_returns and shown as "ITC Claimed",
         # so it has to be the one the return claims, not the gross 4(A).
         "itc_claimed_paise": result.itc_net_igst + result.itc_net_cgst + result.itc_net_sgst,
+        # Table 6 after set-off. This is the credit-settled part ONLY, and it
+        # is deliberately not the challan figure — see cash_payable_paise below.
         "net_tax_paise": result.net_igst + result.net_cgst + result.net_sgst,
+        # WHAT THE CA ACTUALLY PAYS. Reverse-charge tax under §9(3)/(4) cannot
+        # be discharged out of credit: §49(4) allows the credit ledger to pay
+        # only "output tax", and §2(82) defines output tax as EXCLUDING "tax
+        # payable by him on reverse charge basis". So the challan is the
+        # set-off result PLUS the whole 3.1(d) tax in cash. net_tax_paise alone
+        # was being read as the amount to pay and was short by exactly that.
+        "rcm_cash_paise": result.rcm_cash_paise,
+        "cash_payable_paise": result.cash_payable_paise,
         # What this return leaves behind. net_tax_paise of 0 is true both when
         # liability and credit cancel out and when credit exceeds liability by
         # lakhs; without this the screen cannot say which, and the difference
@@ -859,6 +876,10 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                 "taxable_sgst_paise": result.outward_taxable_sgst,
                 "taxable_igst_paise": result.outward_taxable_igst,
                 "zero_rated_paise": result.outward_zero_rated,
+                # The tax on it, which is nil under an LUT/bond (§16(3)(a)) and
+                # real on a §16(3)(b) export made on payment of tax. Table 6.1
+                # of the portal's form includes it, so the screen needs it too.
+                "zero_rated_igst_paise": result.outward_zero_rated_igst,
                 "nil_exempt_paise": result.outward_nil_exempt,
             },
             "rcm_inward": {
@@ -928,6 +949,12 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                 "cgst_paise": result.net_cgst,
                 "sgst_paise": result.net_sgst,
                 "total_paise": result.net_igst + result.net_cgst + result.net_sgst,
+                # The reverse-charge tax, which the set-off above cannot touch
+                # (§49(4) with §2(82)) and which is therefore payable in cash on
+                # top. `challan_total_paise` is the figure a CA carries to the
+                # payment screen; `total_paise` is only the credit-settled part.
+                "rcm_cash_paise": result.rcm_cash_paise,
+                "challan_total_paise": result.cash_payable_paise,
             },
             # The other side of Table 6, which the form itself never states:
             # credit available, credit spent, credit left. Derived from the

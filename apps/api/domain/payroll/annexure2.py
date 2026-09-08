@@ -201,6 +201,7 @@ def build_annexure_ii(
     slips: list[dict],
     employees_by_id: dict[str, dict],
     standard_deduction_paise: int,
+    old_regime_standard_deduction_paise: Optional[int] = None,
     months_expected: int = 12,
     declarations_by_employee: Optional[dict] = None,
     perquisites_by_employee: Optional[dict] = None,
@@ -216,6 +217,25 @@ def build_annexure_ii(
     gaps below stop being gaps. Only VERIFIED figures are carried: an annexure
     is the input TRACES generates a certificate from, and a certificate resting
     on an unproved claim is the employer's exposure, not the employee's.
+
+    THE TWO STANDARD DEDUCTIONS ARE DIFFERENT NUMBERS.
+
+    `standard_deduction_paise` is §16(ia) for the NEW regime;
+    `old_regime_standard_deduction_paise` is §16(ia) for the OLD one. §16(ia) is
+    the single clause of section 16 that survives §115BAC(2)(i) — which is
+    exactly why it is easy to treat as regime-blind — but Finance (No. 2) Act
+    2024 raised only the new regime's figure to ₹75,000 and left the old one at
+    ₹50,000. Giving every row the new regime's figure understates income under
+    the head Salaries by ₹25,000 for each old-regime employee, on the annexure
+    TRACES builds Form 16 Part B from. This row already knows which regime it
+    is on: it consults `uses_new_regime` for professional tax a few lines below,
+    and it now consults it here too.
+
+    The old-regime figure is optional only so a caller with no old-regime
+    employees need not supply it. Where one turns up and it was not supplied,
+    the row keeps the figure that was given and the annexure says so as a gap
+    — a wrong number nobody is told about is the thing this module exists to
+    avoid.
     """
     out = AnnexureII()
     by_emp: dict[str, list[dict]] = {}
@@ -288,6 +308,21 @@ def build_annexure_ii(
                     f"unproved claim is the employer's exposure under §192(1)."
                 )
 
+        # §16(ia) at THIS employee's regime — see the docstring. The old-regime
+        # figure is ₹50,000 where the new regime's is ₹75,000, and the row
+        # already carries the regime it was withheld on.
+        standard_deduction = standard_deduction_paise
+        if not uses_new_regime:
+            if old_regime_standard_deduction_paise is None:
+                out.gaps.append(
+                    f"{label}: on the OLD regime, but no old-regime §16(ia) "
+                    f"standard deduction was supplied, so the new regime's "
+                    f"figure is used. The two differ — ₹75,000 against ₹50,000 "
+                    f"— and TRACES computes Part B from what is filed here."
+                )
+            else:
+                standard_deduction = old_regime_standard_deduction_paise
+
         out.rows.append(AnnexureIIRow(
             employee_id=str(emp_id),
             name=name.upper(),
@@ -299,7 +334,7 @@ def build_annexure_ii(
             perquisites_17_2_paise=perquisite_value,
             exempt_under_10_paise=exempt_10,
             chapter_vi_a_paise=chapter_vi_a,
-            standard_deduction_16_ia_paise=min(standard_deduction_paise, salary),
+            standard_deduction_16_ia_paise=min(standard_deduction, salary),
             professional_tax_16_iii_paise=pt,
             tds_deducted_paise=tds,
         ))

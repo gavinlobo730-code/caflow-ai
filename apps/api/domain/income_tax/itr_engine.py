@@ -1,6 +1,9 @@
 """
 Income Tax Return computation engine.
-IT Act 1961 — Section 80C, 80CCD, 80D, 80G, 80TTA, 80TTB, 10(13A), 24(b), 87A.
+IT Act 1961 — Section 80C, 80CCD, 80D, 80G (with its Section 80G(4)
+qualifying limit and Section 80G(5D) cash bar), 80TTA, 80TTB, 10(13A),
+24(b), 87A, and the Section 71(3)/74 refusal to set a capital loss off
+against any other head.
 
 Slab/rebate/surcharge rates come from domain.income_tax.statutory_rates — the
 single, FY-versioned source of truth (Tier 2 R2.3). See that module's
@@ -120,14 +123,148 @@ class Deductions80D:
         return min(self.self_family_premium_paise, self_limit) + min(self.parents_premium_paise, parents_limit)
 
 
+# IT Act Section 80G(4) — the qualifying limit. Donations in the "subject to
+# qualifying limit" category qualify only up to ten per cent of adjusted
+# gross total income; the excess "shall be ignored".
+LIMIT_80G_QUALIFYING_PERCENT: int = 10
+
+# IT Act Section 80G(5D) — no deduction at all for a donation of any sum
+# EXCEEDING ₹2,000 unless it was paid by a mode other than cash. Exactly
+# ₹2,000 in cash is still allowed; ₹2,001 is not.
+LIMIT_80G_CASH_PAISE: int = 2_000 * 100
+
+
 @dataclass
 class Donation80G:
+    """One donation claimed under IT Act Section 80G.
+
+    `deduction_pct` (100 or 50) and `subject_to_qualifying_limit` are two
+    INDEPENDENT facts about the donee, and the section's four categories are
+    their product: 100% without limit (Section 80G(1)(i) — the PM National
+    Relief Fund, the National Defence Fund and the rest of that list), 50%
+    without limit, 100% subject to the limit, and 50% subject to the limit
+    (the residual case — an approved fund or institution under
+    Section 80G(2)(a)(iv)). Only `deduction_pct` existed before, which could
+    not express the difference at all, so every donation was deducted at its
+    percentage with no ceiling: ₹9,00,000 at 50% gave a ₹4,50,000 deduction
+    against a ₹10,00,000 salary.
+
+    The default is True — subject to the limit — because that is the
+    residual category the section itself puts an unlisted donee in, and
+    because it is the direction that cannot over-claim. A donation to a fund
+    listed in Section 80G(1)(i) has to be marked.
+
+    `paid_in_cash` is deliberately tri-state. Section 80G(5D) turns on the
+    MODE of payment, which is a fact about the transaction that no caller in
+    this repository supplies today (routers/income_tax.py's Donation80GInput
+    has no such field). None means "not stated": the deduction is allowed,
+    because denying every donation a CA has ever entered is not a defensible
+    default either, and compute() raises a warning naming the amount so the
+    silence is visible. A zero for "paid by cheque" and a zero for "nobody
+    said" must not be the same number.
+    """
     description: str
     amount_paise: int
     deduction_pct: int  # 100 or 50
+    subject_to_qualifying_limit: bool = True
+    paid_in_cash: Optional[bool] = None
 
-    def eligible_paise(self) -> int:
+    def disallowed_by_80g_5d(self) -> bool:
+        """Section 80G(5D): a cash donation over ₹2,000 gets no deduction."""
+        return bool(self.paid_in_cash) and self.amount_paise > LIMIT_80G_CASH_PAISE
+
+    def mode_of_payment_unstated(self) -> bool:
+        """Over ₹2,000 and nobody said how it was paid — the one case where
+        Section 80G(5D) could change the answer and the input cannot say."""
+        return self.paid_in_cash is None and self.amount_paise > LIMIT_80G_CASH_PAISE
+
+    def deduction_before_qualifying_limit_paise(self) -> int:
+        """Amount × percentage, i.e. the deduction BEFORE Section 80G(4)'s
+        ceiling is applied to the aggregate. Never the final figure for a
+        donation subject to the qualifying limit — deliberately not called
+        `eligible_paise`, because a method with that name returning a
+        pre-ceiling number is exactly how the ceiling got skipped."""
+        if self.disallowed_by_80g_5d():
+            return 0
         return self.amount_paise * self.deduction_pct // 100
+
+
+def compute_80g_deduction(
+    donations: list[Donation80G], adjusted_gti_paise: int,
+) -> tuple[int, list[str]]:
+    """Section 80G deduction for a year's donations, and the warnings that
+    explain any amount the section refused.
+
+    Section 80G(4): where the aggregate of the donations in the categories
+    that carry a qualifying limit exceeds ten per cent of adjusted gross
+    total income, "the amount in excess ... shall be ignored". The ceiling
+    applies to the AGGREGATE of those donations, and Section 80G(1) then
+    applies 100% or 50% to what qualifies.
+
+    FLAGGED, not guessed: where the ceiling bites AND the limited donations
+    carry different percentages, the section does not say which of them the
+    qualifying amount is made up of. Long-standing practice adjusts the
+    ceiling against the 100% donations first, as more beneficial to the
+    assessee; this function apportions the qualifying amount pro rata by
+    donation instead, which can never exceed the most-beneficial figure, and
+    warns when the choice actually changed the answer. Adopting the
+    most-beneficial ordering is a one-line change here once somebody
+    confirms it against the section rather than against a textbook."""
+    warnings: list[str] = []
+    allowed = [d for d in donations if not d.disallowed_by_80g_5d()]
+
+    refused = [d for d in donations if d.disallowed_by_80g_5d()]
+    if refused:
+        total_refused = sum(d.amount_paise for d in refused)
+        warnings.append(
+            f"Section 80G(5D): ₹{total_refused // 100:,} of donations was paid in cash in "
+            f"sums exceeding ₹2,000. No deduction is allowed for those donations."
+        )
+
+    unstated = sum(d.amount_paise for d in allowed if d.mode_of_payment_unstated())
+    if unstated:
+        warnings.append(
+            f"Section 80G(5D): ₹{unstated // 100:,} of donations exceeds ₹2,000 per donation "
+            f"and no mode of payment is recorded. The deduction below assumes they were not "
+            f"paid in cash — a cash donation over ₹2,000 gets no deduction at all."
+        )
+
+    # Category A/B — deductible without any qualifying limit.
+    deduction = sum(d.deduction_before_qualifying_limit_paise()
+                    for d in allowed if not d.subject_to_qualifying_limit)
+
+    limited = [d for d in allowed if d.subject_to_qualifying_limit]
+    gross_limited = sum(d.amount_paise for d in limited)
+    if not gross_limited:
+        return deduction, warnings
+
+    ceiling = max(0, adjusted_gti_paise) * LIMIT_80G_QUALIFYING_PERCENT // 100
+    qualifying = min(gross_limited, ceiling)
+
+    if qualifying >= gross_limited:
+        deduction += sum(d.deduction_before_qualifying_limit_paise() for d in limited)
+        return deduction, warnings
+
+    # The ceiling bites. Apportion it pro rata; integer division floors, so
+    # the sum of the parts never exceeds the qualifying amount.
+    for d in limited:
+        share = d.amount_paise * qualifying // gross_limited
+        deduction += share * d.deduction_pct // 100
+    warnings.append(
+        f"Section 80G(4): donations subject to the qualifying limit total "
+        f"₹{gross_limited // 100:,}, of which only ₹{qualifying // 100:,} qualifies — "
+        f"10% of adjusted gross total income (₹{max(0, adjusted_gti_paise) // 100:,}). "
+        f"A donation to a fund listed in Section 80G(1)(i), such as the PM National Relief "
+        f"Fund, carries no qualifying limit and should be marked as not subject to it."
+    )
+    if len({d.deduction_pct for d in limited}) > 1:
+        warnings.append(
+            "Section 80G(4) caps the aggregate of the limited donations but does not say "
+            "how the qualifying amount is split between the 100% and 50% categories. It has "
+            "been apportioned pro rata here; practice commonly adjusts it against the 100% "
+            "donations first, which would give a larger deduction. CA review required."
+        )
+    return deduction, warnings
 
 
 @dataclass
@@ -306,15 +443,29 @@ class ITREngine:
         else:
             business_income = req.business_income_paise + max(0, req.disallowances_paise)
 
-        # Capital gains are computed separately (special rates)
+        # Capital gains are computed separately (special rates).
+        #
+        # IT Act Section 71(3): where the net result under the head "Capital
+        # gains" is a loss, the assessee is NOT entitled to set it off
+        # against income under any other head — Section 74 carries it
+        # forward for eight assessment years instead. Each head is therefore
+        # floored at zero here, for gross total income and for the
+        # special-rate tax alike. A negative figure used to flow straight
+        # into both: a ₹5,00,000 short-term capital loss entered against a
+        # ₹20,00,000 salary cut the year's tax from ₹1,92,400 to ₹88,400,
+        # relief the section expressly denies, and it also produced NEGATIVE
+        # tax on the capital-gains line, which reduced the tax on the salary
+        # a second time.
+        stcg = max(0, req.capital_gains_stcg_paise)
+        ltcg = max(0, req.capital_gains_ltcg_paise)
+        ltcg_other = max(0, req.capital_gains_ltcg_other_paise)
         ordinary_income = (
             salary_after_std_ded
             + req.other_income_paise
             + house_property
             + business_income
         )
-        gti = (ordinary_income + req.capital_gains_stcg_paise
-               + req.capital_gains_ltcg_paise + req.capital_gains_ltcg_other_paise)
+        gti = ordinary_income + stcg + ltcg + ltcg_other
         result.gross_total_income_paise = gti
 
         # 3. Chapter VI-A deductions (only for old regime for most)
@@ -348,11 +499,6 @@ class ITREngine:
             result.deduction_80d_paise = d80d
             deductions += d80d
 
-            # 80G
-            d80g = sum(d.eligible_paise() for d in req.donations_80g)
-            result.deduction_80g_paise = d80g
-            deductions += d80g
-
             # 80TTA / 80TTB
             if req.is_senior_citizen or req.is_very_senior_citizen:
                 tta_ttb = min(req.savings_interest_80tta_paise, LIMIT_80TTB_PAISE)
@@ -373,13 +519,54 @@ class ITREngine:
 
             deductions += req.other_deductions_paise
 
+            # 80G — computed LAST, because its own ceiling is a percentage
+            # of what is left after every other deduction.
+            #
+            # IT Act Section 80G(4) caps the qualifying amount at 10% of
+            # gross total income "as reduced by any portion thereof on which
+            # income-tax is not payable under any provision of this Act and
+            # by any amount in respect of which the assessee is entitled to
+            # a deduction under any other provision of this Chapter" — what
+            # is conventionally called adjusted gross total income. Read
+            # with Section 112(2) and Section 111A(2), which require the
+            # capital gains charged at those special rates to be taken out
+            # of gross total income before any Chapter VI-A deduction is
+            # computed at all, the base is:
+            #
+            #     gross total income
+            #   − the long-term capital gains in it        (Section 112(2))
+            #   − the short-term gains charged u/s 111A    (Section 111A(2))
+            #   − every other Chapter VI-A deduction allowed  (Section 80G(4))
+            #
+            # `ordinary_income` is already gross total income less all three
+            # capital-gains buckets, so the base is it less the deductions
+            # accumulated above. HRA under Section 10(13A) and the interest
+            # under Section 24(b) are in that running total although neither
+            # is a Chapter VI-A deduction; both are exemptions/deductions
+            # that reduce the head income and so are already outside gross
+            # total income properly computed. Subtracting them here puts
+            # them where they belong rather than double-counting them.
+            #
+            # NOT subtracted, and deliberately: income of a non-resident
+            # chargeable under Sections 115A/115AB/115AC/115AD, and a share
+            # of AOP/BOI profit on which no tax is payable under Section 86,
+            # are excluded from the base by their own sections. This engine
+            # models a resident assessee and has no input for either, and
+            # inventing a figure nobody supplied would move the ceiling in
+            # the direction that over-claims. If either is ever added as an
+            # input it belongs in this subtraction.
+            adjusted_gti = max(0, ordinary_income - deductions)
+            d80g, warnings_80g = compute_80g_deduction(req.donations_80g, adjusted_gti)
+            result.deduction_80g_paise = d80g
+            deductions += d80g
+            result.warnings.extend(warnings_80g)
+
         result.total_deductions_paise = deductions
 
         # 4. Taxable income
         # Capital gains are excluded from deductions (Section 112A/111A)
         ordinary_taxable = max(0, ordinary_income - deductions)
-        taxable_income = (ordinary_taxable + req.capital_gains_stcg_paise
-                          + req.capital_gains_ltcg_paise + req.capital_gains_ltcg_other_paise)
+        taxable_income = ordinary_taxable + stcg + ltcg + ltcg_other
         result.taxable_income_paise = taxable_income
 
         # 5. Tax computation (ordinary/slab income only)
@@ -391,12 +578,15 @@ class ITREngine:
         # see the F17 fix note ahead of the rebate step). Rates are FY-versioned
         # in statutory_rates.py (R3.1) rather than inline here.
         # IT Act Section 111A: STCG on equity
-        stcg_tax = req.capital_gains_stcg_paise * rates.stcg_111a_rate_bps // 10000
-        # IT Act Section 112A: LTCG on equity, less the exemption
-        ltcg_taxable = max(0, req.capital_gains_ltcg_paise - rates.ltcg_112a_exemption_paise)
+        stcg_tax = stcg * rates.stcg_111a_rate_bps // 10000
+        # IT Act Section 112A: LTCG on equity, less the exemption. The
+        # exemption is annual, applied once to the year's aggregate 112A
+        # gain — see capital_gains_engine.compute_capital_gains, which is
+        # per-transfer and says so.
+        ltcg_taxable = max(0, ltcg - rates.ltcg_112a_exemption_paise)
         ltcg_tax = ltcg_taxable * rates.ltcg_112a_rate_bps // 10000
         # IT Act Section 112: LTCG on any other asset
-        ltcg_other_tax = req.capital_gains_ltcg_other_paise * rates.ltcg_112_other_rate_bps // 10000
+        ltcg_other_tax = ltcg_other * rates.ltcg_112_other_rate_bps // 10000
 
         # 6. Rebate u/s 87A — reduces slab tax only, never special-rate CG tax.
         # Pre-existing, deliberately conservative position: the CBDT's own ITR
@@ -458,6 +648,15 @@ class ITREngine:
                 "Section 80C/80CCD(1B) deductions are not available under the new regime "
                 "(Section 80CCD(2), employer NPS, is — see the deductions breakdown)"
             )
+        if req.use_new_regime and req.donations_80g:
+            # Same silence as the 80C case above: donations were entered,
+            # nothing was deducted, and nothing said why.
+            total_donated = sum(d.amount_paise for d in req.donations_80g)
+            result.warnings.append(
+                f"₹{total_donated // 100:,} of Section 80G donations gives no deduction under "
+                f"the new regime — Section 115BAC(2) allows no Chapter VI-A deduction except "
+                f"Section 80CCD(2)/80CCH(2)/80JJAA."
+            )
         if req.house_property_income_paise < 0:
             loss = -req.house_property_income_paise
             if req.use_new_regime:
@@ -475,6 +674,42 @@ class ITREngine:
             result.warnings.append(
                 f"₹{req.disallowances_paise // 100:,} of disallowed expenditure has "
                 f"been added back to business income."
+            )
+
+        # A capital loss dropped silently is its own trap — the figure the
+        # CA entered simply vanishes from the computation. Name each one,
+        # the section that refuses it, and the amount that goes forward.
+        capital_loss_heads = (
+            ("Short-term capital loss", req.capital_gains_stcg_paise),
+            ("Long-term capital loss on listed equity/equity MF (Section 112A)",
+             req.capital_gains_ltcg_paise),
+            ("Long-term capital loss on other assets (Section 112)",
+             req.capital_gains_ltcg_other_paise),
+        )
+        any_loss = False
+        for label, amount in capital_loss_heads:
+            if amount < 0:
+                any_loss = True
+                result.warnings.append(
+                    f"{label} of ₹{-amount // 100:,} is not set off against income under any "
+                    f"other head (Section 71(3)). It is carried forward for eight assessment "
+                    f"years (Section 74) — this computation does not maintain that carry-forward."
+                )
+        if any_loss and (stcg or ltcg or ltcg_other):
+            # Section 70(2) lets a short-term loss be set off against ANY
+            # capital gain and Section 70(3) lets a long-term loss be set
+            # off against a long-term gain, both WITHIN the head. This
+            # engine does not do it: the three buckets carry different
+            # rates and a different exemption, so which gain a loss is set
+            # against changes the tax, and the section does not choose.
+            # Flooring each bucket independently can therefore tax a gain a
+            # loss in another bucket should have absorbed — never the
+            # reverse. The CA enters the net figure per head.
+            result.warnings.append(
+                "Sections 70(2)/70(3) allow a capital loss to be set off against capital gains "
+                "of the right kind WITHIN the head. This computation does not apply that "
+                "set-off — each head was taken at its own figure, floored at zero. Enter the "
+                "already-net figure per head where an intra-head set-off applies."
             )
 
         return result

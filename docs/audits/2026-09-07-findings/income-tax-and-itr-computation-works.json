@@ -1,0 +1,824 @@
+{
+ "findings": [
+  {
+   "id": "IT-01",
+   "kind": "gap",
+   "severity": "critical",
+   "title": "No tax computation path exists for a company, firm or LLP \u2014 the entity-rate and MAT/AMT engines are reachable from no router and no screen",
+   "evidence": "apps/api/domain/income_tax/entity_rates.py:141 compute_entity_tax() and apps/api/domain/income_tax/minimum_tax.py:145 compute_mat / :177 compute_amt are complete and well-tested. `grep -rn \"from domain.income_tax\" --include=*.py apps/api | grep -v tests/ | grep -v domain/income_tax/` returns importers for itr_engine, statutory_rates, capital_gains_engine, advance_tax_interest_engine, computation_workspace, itr_workflow, form26as_service \u2014 and NOTHING for entity_rates, minimum_tax, presumptive, regime_election, book_to_tax_bridge, itr_json or itr_schema. The only computation endpoint is apps/api/routers/income_tax.py:113 POST /api/income-tax/compute, whose request model (routers/income_tax.py:62 ComputeITRRequest) has no entity field at all and whose engine (domain/income_tax/itr_engine.py:236 ITREngine.compute) only ever applies individual slabs via _slabs_for (itr_engine.py:485).",
+   "ca_experience": "A CA opens Client \u2192 Income Tax \u2192 Tax Computation for a Private Limited company, types in the profit, and gets tax computed on the INDIVIDUAL new-regime slab table \u2014 nil up to \u20b94 lakh, 5% to \u20b98 lakh, with a \u20b960,000 \u00a787A rebate. A company pays 22%/25%/30% from the first rupee and gets no rebate. On the live book described in CLAUDE.md (4 Private Limited, 1 LLP, 1 Partnership, 1 Proprietorship, zero individuals) the one computation endpoint the product has fits none of the clients. MAT under \u00a7115JB \u2014 the exact case of large book profit and small taxable income \u2014 is never charged.",
+   "market_standard": "Winman, CompuTax, Genius, Saral and TaxCloud all compute for every assessee class from one screen: individual, HUF, firm, LLP, company (normal / \u00a7115BAA / \u00a7115BAB), AOP/BOI and trust, with MAT/AMT and the \u00a7115JAA/\u00a7115JD credit register carried year to year.",
+   "confidence": "high",
+   "suggested_fix": "Add an assessee_kind to ComputeITRRequest and branch in ITREngine: individuals to the slab path, firm/LLP/company to compute_entity_tax, then apply_minimum_tax over the result. Expose the company regime and the turnover-reference-year figure (entity_rates.turnover_reference_fy) as inputs, and persist the MAT/AMT credit generated on the snapshot.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "grep for importers of entity_rates/minimum_tax/presumptive outside domain/income_tax: zero"
+   }
+  },
+  {
+   "id": "IT-02",
+   "kind": "bug",
+   "severity": "critical",
+   "title": "A capital LOSS entered as a negative figure reduces slab tax on salary \u2014 \u00a771(3) set-off restriction is not applied",
+   "evidence": "apps/api/domain/income_tax/itr_engine.py:394 `stcg_tax = req.capital_gains_stcg_paise * rates.stcg_111a_rate_bps // 10000` \u2014 no max(0, \u2026); same at :397 and :399. The negative also enters `gti` at :316 and `taxable_income` at :382. routers/income_tax.py:84-86 declares capital_gains_stcg_paise / ltcg_paise / ltcg_other_paise as plain `int = 0` with no `ge=0`. Probe run this session: salary \u20b920,00,000 alone \u2192 total tax \u20b91,92,400; the same salary with capital_gains_stcg_paise = \u2212\u20b95,00,000 \u2192 total tax \u20b988,400.",
+   "ca_experience": "A CA who records a \u20b95 lakh short-term capital loss the natural way \u2014 as a negative \u2014 sees the client's tax on \u20b920 lakh of salary fall by \u20b91,04,000. IT Act \u00a771(3) allows a capital loss to be set off only against capital gains, never against salary; \u00a774 carries the balance forward. The return understates tax by six figures and looks entirely reasonable on screen.",
+   "market_standard": "Every ITR utility (and Winman/CompuTax) keeps capital losses in Schedule CG and Schedule CFL, sets them off only inside the capital-gains head in the statutory order, and carries the balance forward for eight years. None of them lets a capital loss touch salary.",
+   "confidence": "high",
+   "suggested_fix": "Clamp each capital-gains tax component with max(0, \u2026) so a negative can never produce negative tax; exclude negative gains from `ordinary_income` and `gti`; add `ge=0` to the three router fields and take losses through a separate, explicit brought-forward/current-year capital-loss input that only nets within the head.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran ITREngine.compute: salary 20L tax 1,92,400; with STCG -5L tax 88,400"
+   }
+  },
+  {
+   "id": "IT-03",
+   "kind": "bug",
+   "severity": "critical",
+   "title": "\u00a780G is allowed in full at 50% or 100% with no qualifying limit of 10% of adjusted gross total income and no cash-donation cap",
+   "evidence": "apps/api/domain/income_tax/itr_engine.py:127-130 \u2014 `Donation80G.eligible_paise()` is simply `amount_paise * deduction_pct // 100`; the value is summed at itr_engine.py:352 (`d80g = sum(d.eligible_paise() ...)`) and added straight to deductions with no reference to gross total income. routers/income_tax.py:54 constrains deduction_pct to 50..100 only. Probe: salary \u20b910,00,000, one donation of \u20b99,00,000 at 50% \u2192 deduction_80g_paise = \u20b94,50,000, taxable income \u20b95,00,000.",
+   "ca_experience": "A CA entering a \u20b99 lakh donation for a client with \u20b910 lakh of salary is shown a \u20b94,50,000 deduction. \u00a780G(4) caps the qualifying amount for donations in the 'subject to qualifying limit' category at 10% of adjusted GTI \u2014 about \u20b995,000 here, so \u20b947,500 of deduction. The computation overstates the deduction by roughly \u20b94 lakh and the client's return will be reduced on processing under \u00a7143(1). \u00a780G(5D) also disallows any cash donation above \u20b92,000 entirely \u2014 not modelled.",
+   "market_standard": "ClearTax, Winman and the ITD utility itself all classify each donation into the four \u00a780G buckets (100% without limit, 50% without limit, 100% subject to limit, 50% subject to limit), compute adjusted GTI, apply the 10% cap to the limited buckets only, and refuse cash donations over \u20b92,000.",
+   "confidence": "high",
+   "suggested_fix": "Give Donation80G a bucket enum and a payment mode. Compute adjusted GTI (GTI less LTCG/STCG-111A, less other Chapter VI-A deductions), apply the 10% cap to the two limited buckets, and disallow cash above \u20b92,000 with a named reason. Add a test that fails against the current code for the \u20b99L-on-\u20b910L case.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran ITREngine.compute: 9L donation at 50% on 10L salary gave a 4,50,000 deduction"
+   }
+  },
+  {
+   "id": "IT-04",
+   "kind": "bug",
+   "severity": "critical",
+   "title": "The capital-gains engine ignores the date of transfer, so every pre-23-July-2024 sale is charged at Budget-2024 rates",
+   "evidence": "apps/api/domain/income_tax/capital_gains_engine.py:160-178 \u2014 the equity branch returns rate 20.0 for STCG and 12.5% with a \u20b91,25,000 exemption for LTCG unconditionally; `sale_date` is used only for holding-period arithmetic (:103) and for the CII lookup (:143). No branch anywhere in the file reads 23-07-2024. Probe: compute_capital_gains('equity', purchase 10-Jan-2024, sale 10-Jun-2024, cost \u20b910L, sale \u20b915L) \u2192 20.0%, tax \u20b91,00,000; the statutory rate for a transfer before 23-07-2024 is 15% under \u00a7111A, i.e. \u20b975,000. Probe: LTCG on equity sold 10-Jun-2024 with a \u20b920L gain \u2192 \u20b92,34,375 at 12.5%; \u00a7112A charged 10% for that transfer, i.e. \u20b91,87,500.",
+   "ca_experience": "FY 2024-25 work is live now \u2014 belated and revised returns for AY 2025-26, updated returns under \u00a7139(8A) for earlier years, and any reassessment. A CA computing a client's April-to-July 2024 share sales is handed a figure a third too high on STCG and a quarter too high on LTCG, with no warning. The number is also PERSISTED: POST /api/income-tax/capital-gains (routers/income_tax.py:353) writes result.tax_rate_percent into the capital_gains register.",
+   "market_standard": "Every Indian tax package split the FY 2024-25 capital-gains schedule at 23 July 2024 the season it happened \u2014 the ITD's own Schedule CG has separate before/after 23.07.2024 rows for \u00a7111A, \u00a7112A and \u00a7112, precisely because the rate depends on the transfer date, not the year.",
+   "confidence": "high",
+   "suggested_fix": "Make the rate table date-versioned rather than FY-versioned for capital gains: a `rates_for_transfer(sale_date)` that returns 15%/10%/20%-with-indexation before 23-07-2024 and 20%/12.5%/12.5% on and after, with the \u20b91.25L \u00a7112A exemption applying to the whole of FY 2024-25. Refuse rather than guess for years whose rates are not held.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran compute_capital_gains for a 10-Jun-2024 transfer: 20% STCG / 12.5% LTCG, i.e. post-23-07-2024 rates"
+   }
+  },
+  {
+   "id": "IT-05",
+   "kind": "gap",
+   "severity": "high",
+   "title": "The per-client Tax Computation workspace collects only five figures \u2014 no deductions, no house property, no capital gains \u2014 so an old-regime individual is computed with zero Chapter VI-A relief",
+   "evidence": "apps/web/app/clients/[id]/tax/computation/page.tsx:200-233 \u2014 the compute payload is exactly gross_salary_paise, business_income_paise, disallowances_paise, other_income_paise, tds_deducted_paise, advance_tax_paid_paise and use_new_regime. The backend request model (apps/api/routers/income_tax.py:62-110) accepts house_property_income_paise, all three capital-gains heads, s80c, s80d, donations_80g, hra, home_loan_interest_24b_paise, nps_80ccd1b_paise, savings_interest_80tta_paise, employer_nps_80ccd2_paise, is_senior_citizen and other_deductions_paise \u2014 none of which this screen sends. The only screen that does send them, apps/web/app/income-tax/deductions/page.tsx:222-262, is a firm-level planner with no link to the client's snapshot.",
+   "ca_experience": "A CA preparing an old-regime individual return in the client workspace types salary and TDS and gets a tax figure computed with a \u20b950,000 standard deduction and nothing else \u2014 no \u00a780C, no \u00a780D, no HRA, no \u00a724(b), no senior-citizen slab. The figure is then SAVED as a versioned snapshot (page.tsx:238) and is what the filing demo and the filing workflow read. For a client with \u20b91.5 lakh of \u00a780C and \u20b92 lakh of housing interest the tax is overstated by about \u20b91.09 lakh.",
+   "market_standard": "Winman, CompuTax and ClearTax present the full computation sheet \u2014 all five heads, every Chapter VI-A section, Schedule CG, Schedule HP with the let-out/self-occupied split \u2014 on the client's own screen, and the regime comparison is a column in that same sheet rather than a separate planner.",
+   "confidence": "high",
+   "suggested_fix": "Replace the five-field form with the full ComputeITRRequest surface on the client workspace screen, and make the deductions planner write into the same snapshot rather than into tax_planning_records.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The client-workspace computation screen sends only five money figures plus regime, so an old-regime computation there gets the \u20b950,000 standard deduction and nothing else, and the deduction-free figure is saved as the snapshot the ITR filing demo reads (apps/web/app/clients/[id]/tax/computation/page.tsx:222-256; apps/api/services/filing_demo/itr.py:52-97). The full surface exists on the API (apps/api/routers/income_tax.py:62-110) but only the unrelated firm-level planner sends it.",
+    "probe": "cd apps/api && venv/bin/python -c \"...ITREngine().compute(gross_salary 20,00,000, old regime)...\" printed: no deductions 413400.0; with 80C 1.5L + 24(b) 2L 304200.0; overstated by 109200.0 \u2014 the finding's \u20b91.09 lakh is exact.",
+    "lens_notes": {
+     "literal": "Confirmed at the cited lines. apps/web/app/clients/[id]/tax/computation/page.tsx:222-232 posts exactly seven keys to /api/income-tax/compute: fy, gross_salary_paise, business_income_paise, disallowances_paise, other_income_paise, tds_deducted_paise, advance_tax_paid_paise, use_new_regime. The state the form holds (page.tsx:96-102) is only regime/salary/businessIncome/otherIncome/tds/advanceTax \u2014 there is no deduction, house-property or capital-gains input on the screen at all. The backend model accepts all of them: ComputeITRRequest at apps/api/routers/income_tax.py:62-110 carries house_property_income_paise, the three capital-gains heads, s80c, s80d, donations_80g, hra, home_loan_interest_24b_paise, nps_80ccd1b_paise, savings_interest_80tta_paise, employer_nps_80ccd2_paise, is_senior_citizen, other_deductions_paise.",
+     "guards": "None. The screen renders computeResult.warnings (page.tsx:481-486) and two rate-provenance banners (page.tsx:440-455), but the engine emits no warning for 'old regime with zero Chapter VI-A input', so nothing tells the CA the figure is deduction-free. The other caller of the same endpoint, apps/web/app/income-tax/deductions/page.tsx:229-262, is a separate firm-level planner: it has its own client picker, sends the deduction surface, and writes nowhere near tax_computation_snapshots.",
+     "reach": "Fully reachable. /clients/[id]/tax/ is a first-class tab in the client nav (apps/web/lib/workspace/ClientNavContext.tsx:75) and links to tax/computation (apps/web/app/clients/[id]/tax/page.tsx:13, also apps/web/app/clients/[id]/reports/page.tsx:108). The computed figure is then persisted as a versioned snapshot (page.tsx:238-256) and that snapshot is what the ITR filing demo displays as the client's real numbers (apps/api/services/filing_demo/itr.py:52-97)."
+    }
+   }
+  },
+  {
+   "id": "IT-06",
+   "kind": "bug",
+   "severity": "high",
+   "title": "\u00a7234C interest is charged on the first three instalments for a \u00a744AD/\u00a744ADA presumptive assessee, who owes none",
+   "evidence": "apps/api/domain/income_tax/advance_tax_interest_engine.py:78-83 INSTALLMENT_RULES applies the 15/45/75/100 four-instalment schedule to every caller; the module header (lines 22-32) says the presumptive single-instalment case is 'out of scope here'. compute_234c_interest (:135) has no assessee parameter and routers/income_tax.py:497 ComputeAdvanceTaxRequest has no field for one. Probe: estimated tax \u20b91,00,000 paid in full on 15-Mar-2026 \u2192 instalments 1/2/3 each shown short, interest \u20b9450 + \u20b91,350 + \u20b92,250 = \u20b94,050.",
+   "ca_experience": "A doctor or a small trader filing under \u00a744AD/\u00a744ADA legitimately pays the whole advance tax by 15 March. The proviso to \u00a7211(1) makes that one instalment the whole liability and \u00a7234C(1)(b) charges interest only if the 15 March payment falls short. The screen tells the CA the client owes \u20b94,050 of interest that is not due, on a client segment CLAUDE.md itself says is a large part of an Indian practice's book. The reverse error is worse in the other direction: a \u00a744AD client shown a 15 June 'shortfall' may be advised to pay early for no reason.",
+   "market_standard": "Winman, CompuTax and ClearTax all take a 'presumptive u/s 44AD/44ADA' flag on the advance-tax screen and collapse the schedule to one 15-March instalment with the \u00a7234C(1)(b) rule.",
+   "confidence": "high",
+   "suggested_fix": "Add an `is_presumptive_44ad_44ada` flag to compute_234c_interest and to the endpoint; when set, use a single rule (100% by 15 March, 1 month, no tolerance) and say so in the response.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The \u00a7234C engine applies the four-instalment schedule to every assessee and the module itself says the \u00a744AD/\u00a744ADA single-15-March-instalment case is out of scope (apps/api/domain/income_tax/advance_tax_interest_engine.py:66-83), yet neither the function (:128) nor the endpoint model (apps/api/routers/income_tax.py:480) can express it, so a presumptive client who pays in full on 15 March is shown interest on instalments 1-3 that the proviso to \u00a7211(1) does not make due.",
+    "probe": "venv/bin/python -c \"compute_234c_interest('2025-26', 100_00_000, [InstallmentPayment(4, 100_00_000, date(2026,3,15))])\" printed instalments 1/2/3 short with interest 45000/135000/225000 paise and TOTAL 405000 paise = \u20b94,050; instalment 4 ok.",
+    "lens_notes": {
+     "literal": "Confirmed, with one citation correction: the 'out of scope here' sentence about presumptive assessees is at apps/api/domain/income_tax/advance_tax_interest_engine.py:66-73 (the comment above INSTALLMENT_RULES), not lines 22-32 (which are about treating \u00a7234C's numeric structure as settled). The substance holds: INSTALLMENT_RULES at :78-83 is the 15/45/75/100 four-instalment table, compute_234c_interest at :128 takes only (fy, estimated_tax_paise, payments) with no assessee parameter, and ComputeAdvanceTaxRequest at apps/api/routers/income_tax.py:480-483 has no presumptive flag either.",
+     "guards": "None found. grep for '44AD|presumptive' in apps/web/app/income-tax/advance-tax/page.tsx returns nothing; the page's own header comment (lines 3-6) restates the four-instalment schedule as universal. No test pins a presumptive case.",
+     "reach": "Fully reachable. apps/web/app/income-tax/advance-tax/page.tsx:132 calls computeAdvanceTaxInterest \u2192 apps/web/lib/data/income-tax.ts:391-392 \u2192 POST /api/income-tax/advance-tax/compute, and income_tax.router is mounted at apps/api/main.py:267. The page is linked from the income-tax hub (apps/web/app/income-tax/page.tsx:738, 1033)."
+    }
+   }
+  },
+  {
+   "id": "IT-07",
+   "kind": "bug",
+   "severity": "high",
+   "title": "AMT surcharge for an individual or HUF uses the partnership firm's 12%-above-\u20b91-crore ladder instead of the individual surcharge brackets",
+   "evidence": "apps/api/domain/income_tax/minimum_tax.py:224-227 \u2014 compute_amt calls apply_surcharge_with_marginal_relief with `entity.firm_surcharge` for EVERY non-corporate assessee, individuals and HUFs included; entity_rates.py:88 defines firm_surcharge as a single SurchargeBracket(1 crore, 12%). The individual ladder (10/15/25/37 with the 25% new-regime cap) lives in statutory_rates.py:140-146 and is never consulted here. Probe: individual with adjusted total income \u20b93,00,00,000 \u2192 AMT before surcharge \u20b955,50,000, surcharge \u20b96,66,000 (12%); the individual bracket above \u20b92 crore is 25%. At \u20b980,00,000 the surcharge computed is \u20b90; an individual above \u20b950 lakh owes 10%.",
+   "ca_experience": "An individual or HUF who has claimed \u00a710AA or \u00a735AD and falls into AMT has the surcharge on the minimum tax understated by 13 percentage points at \u20b93 crore \u2014 about \u20b97.2 lakh plus cess \u2014 and by the whole 10% at \u20b980 lakh. The return under-reports the minimum tax and the shortfall surfaces as a \u00a7143(1) adjustment with \u00a7234B interest.",
+   "market_standard": "Winman and CompuTax compute AMT surcharge on the assessee's own First-Schedule ladder \u2014 the same one that governs their regular tax \u2014 because \u00a7115JC's charge is on the person, not on a firm-shaped default.",
+   "confidence": "high",
+   "suggested_fix": "Select the surcharge brackets by assessee inside compute_amt: individual/HUF/AOP/BOI/AJP \u2192 statutory_rates.surcharge_brackets (with the 25% cap where \u00a7115BAC applies), firm/LLP \u2192 firm_surcharge.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The code defect is real \u2014 compute_amt uses the firm's 12% bracket for individuals and HUFs (apps/api/domain/income_tax/minimum_tax.py:225-227 with entity_rates.py:85) \u2014 but minimum_tax.py is dead code: no router, service or screen calls it (only tests/test_minimum_tax.py does), so the 'return under-reports the minimum tax' consequence in the finding does not occur. Worth fixing before AMT is ever wired up, not before.",
+    "probe": "venv/bin/python -c \"compute_amt(adjusted_total_income_paise=..., assessee='individual', claimed_specified_deduction=True, fy='2025-26')\" printed: \u20b980,00,000 \u2192 surcharge \u20b90; \u20b93,00,00,000 \u2192 base \u20b955,50,000, surcharge \u20b96,66,000 (12%), total \u20b964,64,640. Matches the finding's numbers.",
+    "lens_notes": {
+     "literal": "Confirmed exactly. apps/api/domain/income_tax/minimum_tax.py:225-227 calls apply_surcharge_with_marginal_relief(base, tax, entity.firm_surcharge, None, ...) for every non-corporate assessee \u2014 individual, HUF, AOP, BOI and artificial juridical person included (the company branch has already returned at :197-203). entity.firm_surcharge is the single 12%-above-\u20b91-crore bracket at apps/api/domain/income_tax/entity_rates.py:85; the individual ladder 10/15/25/37 with the new-regime 25% cap is at apps/api/domain/income_tax/statutory_rates.py:146-153 and is never consulted in this module.",
+     "guards": "No test pins AMT surcharge for an individual \u2014 apps/api/tests/test_minimum_tax.py only asserts surcharge behaviour for the company MAT case (:36-39) and the firm/LLP effective rate (:72-77); the individual tests (:110-121) exercise only the \u00a7115JEE threshold. So there is no test either catching the bug or recording it as deliberate.",
+     "reach": "This is the decisive lens and it refutes the finding's stated consequence. grep across apps/api for 'minimum_tax|compute_amt|115JC' outside the module and its own tests returns exactly one hit \u2014 a comment in apps/api/domain/income_tax/itr_json.py:112. No router imports minimum_tax, no service calls compute_amt, and nothing in apps/web references AMT/\u00a7115JC. The module is exercised only by tests, so no return under-reports anything and no CA sees this surcharge today."
+    }
+   }
+  },
+  {
+   "id": "IT-08",
+   "kind": "bug",
+   "severity": "high",
+   "title": "The unexhausted basic exemption limit is never absorbed against \u00a7111A / \u00a7112 capital gains, so a small resident taxpayer is over-taxed several times over",
+   "evidence": "apps/api/domain/income_tax/itr_engine.py:392-399 computes stcg_tax, ltcg_tax and ltcg_other_tax on the raw gain figures with no reference to ordinary income or to the slab's nil band; the only reduction applied is the \u20b91,25,000 \u00a7112A exemption at :396. Probe: a resident with ONLY \u20b95,00,000 of \u00a7111A short-term gain and no other income \u2192 total tax \u20b91,04,000. The proviso to \u00a7111A(1) reduces the gain by the amount by which total income (as reduced by that gain) falls short of the maximum amount not chargeable to tax \u2014 \u20b94,00,000 under \u00a7115BAC for FY 2025-26 \u2014 leaving \u20b91,00,000 at 20% \u2248 \u20b920,800. Same shape on the LTCG probe: \u20b95,00,000 of \u00a7112A gain alone \u2192 \u20b948,750 charged.",
+   "ca_experience": "A retired client or a homemaker whose only income for the year is a share sale is shown five times the tax actually payable. This is a common real case in an SME practice and the CA has no way to make the screen produce the right figure.",
+   "market_standard": "The ITD's own utility and every commercial package apply the proviso automatically for a resident individual/HUF and show the absorbed exemption as a line in Schedule SI.",
+   "confidence": "high",
+   "suggested_fix": "After computing ordinary_taxable, compute the unused nil band for the applicable slab table and, for a resident individual/HUF, reduce \u00a7111A and \u00a7112 gains by that shortfall in the statutory order before applying the special rates. Cite the proviso to \u00a7111A(1) and to \u00a7112(1)(a)(ii)/(b)(ii) in the code.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The ITR engine genuinely never absorbs the unused basic exemption against \u00a7111A/\u00a7112/\u00a7112A gains (apps/api/domain/income_tax/itr_engine.py:378-399) and returns the inflated figures the finding quotes, but no screen sends capital-gains figures to that endpoint, so the 'retired client is shown five times the tax' scenario is unreachable until the workspace form (IT-05) grows capital-gains inputs. It is a latent wrong number, not one a CA sees today.",
+    "probe": "venv/bin/python -c \"ITREngine().compute(...)\" printed: STCG-only \u20b95,00,000 \u2192 total tax \u20b91,04,000; \u00a7112A-only \u20b95,00,000 \u2192 \u20b948,750; \u00a7112-other-only \u20b95,00,000 \u2192 \u20b965,000. New-regime nil band is \u20b94,00,000 (statutory_rates.py:115), so the proviso would leave \u20b91,00,000 taxable.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/income_tax/itr_engine.py:394-399 charges stcg_tax, ltcg_tax and ltcg_other_tax on the raw head figures; the only reduction is the \u20b91,25,000 \u00a7112A exemption at :395. ordinary_taxable is computed at :378 and never consulted when taxing the special-rate heads, so the unexhausted nil band of the slab table is not absorbed. grep for 'basic exemption|maximum amount not chargeable|unexhausted' across apps/api finds no implementation anywhere (only unrelated payroll/presumptive prose).",
+     "guards": "None \u2014 no test asserts the proviso, and the engine emits no warning. The separate per-asset calculator apps/api/domain/income_tax/capital_gains_engine.py:142-180 has the same absence, but it is a single-transaction estimator that structurally cannot know the taxpayer's other income, so it is not the same defect.",
+     "reach": "This is where the finding overstates. Only two screens call POST /api/income-tax/compute \u2014 apps/web/app/clients/[id]/tax/computation/page.tsx:222 and apps/web/app/income-tax/deductions/page.tsx:269-270 \u2014 and NEITHER sends any capital_gains_* field (see IT-05). apps/api/routers/itr_workspace.py, domain/income_tax/computation_workspace.py and itr_json.py contain no capital-gains handling at all (grep 'capital_gain|stcg|ltcg' returns nothing). So a CA cannot today produce the over-taxed figure through the product; the field exists on the API and on the frontend type (apps/web/lib/data/income-tax.ts:54-56) but nothing populates it."
+    }
+   }
+  },
+  {
+   "id": "IT-09",
+   "kind": "gap",
+   "severity": "high",
+   "title": "IT Act \u00a732 depreciation (block of assets, WDV, the 180-day half-rate rule, additional depreciation) is implemented nowhere, so the book-to-tax bridge can never complete for a business client",
+   "evidence": "apps/api/domain/income_tax/book_to_tax_bridge.py:22-38 states it plainly and refuses rather than defaulting; build_bridge (:129) marks the bridge incomplete when depreciation_under_section_32_paise is None. `grep -rni 'block of assets|block_of_assets' --include=*.py apps/api/domain apps/api/routers apps/api/services` returns only that docstring. apps/api/routers/fixed_assets.py:6-41 computes Companies Act Schedule II SL/WDV depreciation per asset and holds _DEFAULT_WDV_RATES for that Act only. The bridge itself is also imported by no router (see IT-01 evidence).",
+   "ca_experience": "For every company, firm and proprietorship client \u2014 which is the whole of the described live book \u2014 the largest single line in the computation sheet has to be worked out on paper or in Excel and typed in, and there is no screen to type it into because build_bridge is not exposed. A CA cannot produce the statement of total income that an assessing officer asks for from this product.",
+   "market_standard": "Tally Prime, Winman, CompuTax and Genius all maintain a parallel \u00a732 block register \u2014 blocks at 15/30/40%, additions split by the 180-day rule, sale proceeds reduced from the block, additional depreciation under \u00a732(1)(iia) \u2014 alongside the Companies Act register, and print the depreciation schedule for Clause 18 of Form 3CD.",
+   "confidence": "high",
+   "suggested_fix": "Build a \u00a732 block register beside the fixed-asset register (blocks, opening WDV, additions before/after 180 days, deletions, block rate, unabsorbed depreciation), and expose build_bridge behind an endpoint that reads it. Keep the refusal for any block a human has not classified.",
+   "effort": "months",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "IT Act \u00a732 block depreciation (blocks, opening WDV, the 180-day half-rate split, additional depreciation) exists nowhere in the codebase, and the one module that would consume it, apps/api/domain/income_tax/book_to_tax_bridge.py:84-139, is reachable from no router or screen \u2014 so the largest adjustment in a business client's statement of total income has to be produced outside the product entirely.",
+    "probe": "grep -rni 'block of assets|block_of_assets' --include=*.py apps/api/domain apps/api/routers apps/api/services \u2192 only book_to_tax_bridge.py:24-25 (its own docstring). grep -rn 'book_to_tax_bridge|build_bridge' apps/api --include=*.py excluding the module \u2192 only tests/test_book_to_tax_bridge.py.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/income_tax/book_to_tax_bridge.py:17-38 states that \u00a732 block-of-assets depreciation is implemented nowhere and that defaulting it to the book figure is the one thing that must not happen; build_bridge (:84) appends 'Depreciation allowable under IT Act \u00a732' to `missing` and sets is_complete False when depreciation_under_section_32_paise is None (:121-139). grep -rni 'block of assets|block_of_assets' over apps/api/domain, routers and services returns only that module's own docstring at :24-25. apps/api/routers/fixed_assets.py:6-8,31-41,70-91 is Companies Act Schedule II per-asset SL/WDV only.",
+     "guards": "The refusal IS the guard, and it is the right one \u2014 nothing silently substitutes the book figure. But refusing correctly does not produce the \u00a732 number, and there is no other module that does.",
+     "reach": "Confirms rather than refutes the gap on two counts. (a) No \u00a732 computation exists at all. (b) build_bridge is imported by nothing outside apps/api/tests/test_book_to_tax_bridge.py \u2014 no router, no service \u2014 so even the incomplete bridge has no screen. The \u00a732 figure also has no input field anywhere in apps/web."
+    }
+   }
+  },
+  {
+   "id": "IT-10",
+   "kind": "gap",
+   "severity": "high",
+   "title": "Brought-forward losses are stored and displayed but never enter the computation, and there is no screen to create or utilise one",
+   "evidence": "apps/api/domain/income_tax/computation_workspace.py:404 create_bf_loss / :467 utilize_bf_loss persist to brought_forward_losses; routers/itr_workspace.py:485 POST /api/itr/bf-losses and :519 POST /api/itr/bf-losses/{id}/utilize exist. ITRComputeRequest (domain/income_tax/itr_engine.py:157-232) has no brought-forward-loss field at all and ITREngine.compute never reads one. On the frontend, `grep -rn 'bf-losses|utilize' apps/web/app apps/web/lib` returns nothing \u2014 apps/web/app/clients/[id]/tax/computation/page.tsx:97 only READS brought_forward_losses over PostgREST for display (:601-605). No set-off ordering (\u00a770/\u00a771/\u00a772/\u00a774), no Schedule CFL, no expiry enforcement beyond a stored `expiry_assessment_year`.",
+   "ca_experience": "A CA can see a client's carried-forward business loss on the workspace screen and cannot use it: there is no button to record one, no button to set it off, and the computed tax is identical whether or not a loss exists. Every loss set-off has to be done outside the product and the eight-year clock is tracked by nobody.",
+   "market_standard": "Winman and CompuTax carry Schedule CFL forward automatically from last year's return, apply \u00a770/\u00a771 intra-year and \u00a772/\u00a773/\u00a774 inter-year set-off in statutory order, and warn when a loss is about to lapse or when a late return under \u00a7139(1) forfeits the carry-forward under \u00a780.",
+   "confidence": "high",
+   "suggested_fix": "Add current-year and brought-forward loss inputs to ITRComputeRequest, implement the set-off order as a pure function with per-head buckets, write the utilisation back through utilize_bf_loss when a snapshot is saved, and build the CRUD screen the endpoints are already waiting for.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Brought-forward losses are stored, listed and displayed but never enter the tax computation \u2014 ITRComputeRequest has no loss field (apps/api/domain/income_tax/itr_engine.py:152-232) and the workspace screen only reads the table for display (apps/web/app/clients/[id]/tax/computation/page.tsx:154, 583-624), while the create/utilize endpoints (apps/api/routers/itr_workspace.py:479, 518) are called from no screen. Intra-year \u00a771(3A) house-property set-off is the one exception that does work (itr_engine.py:462-472).",
+    "probe": "grep -rn 'bf-losses|bf_losses|brought_forward_losses|utilize' apps/web/app apps/web/lib \u2192 only page.tsx:133 and :154. grep -n 'loss' apps/api/domain/income_tax/itr_engine.py \u2192 only house-property lines.",
+    "lens_notes": {
+     "literal": "Confirmed with two small corrections. The persistence layer and endpoints do exist: create_bf_loss at apps/api/domain/income_tax/computation_workspace.py:401 (finding said :404), utilize_bf_loss at :485 (finding said :467); POST /api/itr/bf-losses at apps/api/routers/itr_workspace.py:479, GET at :507, POST .../utilize at :518. ITRComputeRequest (apps/api/domain/income_tax/itr_engine.py:152-232) has no brought-forward-loss field \u2014 the only 'loss' it knows is house_property_income_paise being negative (:157). Correction 1: intra-year \u00a771(3A) house-property set-off IS implemented (itr_engine.py:462-472, \u20b92,00,000 cap with a carry-forward warning), so 'no set-off ordering' is too broad. Correction 2: \u00a772 set-off exists in apps/api/domain/income_tax/book_to_tax_bridge.py:179-188 but only as a caller-supplied input, and that module is unexposed (see IT-09).",
+     "guards": "None that helps: utilize_bf_loss raises when utilisation exceeds the original amount (computation_workspace.py:492-497), which bounds the stored row but has no bearing on the computed tax.",
+     "reach": "Confirms the gap. grep for 'bf-losses|bf_losses|brought_forward_losses|utilize' across apps/web/app and apps/web/lib returns exactly two hits, both in apps/web/app/clients/[id]/tax/computation/page.tsx (:133 comment, :154 the PostgREST read) \u2014 a read-only display list at :583-624. Nothing in the frontend calls the create or utilize endpoints, and the compute payload (:222-232) carries no loss figure, so the tax is identical with or without a recorded loss."
+    }
+   }
+  },
+  {
+   "id": "IT-11",
+   "kind": "gap",
+   "severity": "high",
+   "title": "Tax audit is a four-field tracker: no Form 3CD at all, and the \u00a744AB applicability test is decided in TypeScript by amount rather than by the client's own business/profession status",
+   "evidence": "apps/web/app/income-tax/tax-audit/page.tsx is the whole feature \u2014 a row per client with form_type, status, auditor, dates, UDIN and turnover, written straight to the tax_audits table over PostgREST (:150-163). Thresholds live in apps/web/lib/income-tax/taxAuditThresholds.ts, whose own header records that the \u20b910 crore and \u20b975 lakh cash-test limits are 'not modeled here'. page.tsx:207-213 then decides the message purely by size: `turnover >= \u20b91cr ? 'mandatory (business)' : turnover >= \u20b950L ? 'mandatory (profession)' : ...`. `grep -rni '3cd|3ca|3cb' --include=*.py apps/api` finds only an engagement-letter template and a compliance-obligation label \u2014 no clause data anywhere.",
+   "ca_experience": "A trader with \u20b960 lakh turnover is told '\u2713 Exceeds \u20b950 lakh \u2014 tax audit mandatory (profession)'. No audit applies. A business with \u20b95 crore turnover and under 5% cash receipts and payments is told the audit is mandatory when the first proviso to \u00a744AB(a) raises its threshold to \u20b910 crore. And once the CA does have a real audit, the product holds none of Form 3CD \u2014 not one of its forty-plus clauses \u2014 so the actual deliverable is produced elsewhere.",
+   "market_standard": "Winman, CompuTax, Genius and TaxCloud generate the complete 3CA/3CB-3CD from the books: Clause 18 depreciation, Clause 21 disallowances, Clause 26 \u00a743B, Clause 34 TDS reconciliation, Clause 44 GST expenditure break-up, plus the UDIN field and the JSON for the portal. A tax-audit tracker with no 3CD is a spreadsheet.",
+   "confidence": "high",
+   "suggested_fix": "Move the \u00a744AB test to the backend, take business-vs-profession from the client record and the cash-receipts/cash-payments percentages as inputs, and return a reasoned applicability answer. Then build 3CD as a clause workspace fed by the existing disallowance, TDS and GST data.",
+   "effort": "months",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Tax audit is a PostgREST-backed tracker with no Form 3CD anywhere in the product, and the \u00a744AB applicability line is decided in the browser purely by turnover size (apps/web/app/income-tax/tax-audit/page.tsx:207-213 against apps/web/lib/income-tax/taxAuditThresholds.ts:11-12), so a \u20b960 lakh trader is told an audit is mandatory and a \u20b95 crore business under the 5% cash test is not told its threshold is \u20b910 crore.",
+    "probe": "wc -l apps/web/app/income-tax/tax-audit/page.tsx \u2192 413. grep -rni '3cd|3ca|3cb' --include=*.py apps/api \u2192 1 hit, engagement_letters.py:224.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/income-tax/tax-audit/page.tsx is 413 lines and is the whole feature: the modal writes form_type/status/auditor/dates/udin/ack/turnover straight to tax_audits over PostgREST (:139-158). The applicability message at :207-213 is exactly `turnoverPreviewPaise >= THRESHOLD_BUSINESS ? '\u2713 Exceeds \u20b91 crore \u2014 tax audit mandatory (business)' : >= THRESHOLD_PROFESSION ? '\u2713 Exceeds \u20b950 lakh \u2014 tax audit mandatory (profession)' : 'Below threshold \u2014 verify if audit is required'` \u2014 decided by amount alone, with nothing read from the client's business/profession status. apps/web/lib/income-tax/taxAuditThresholds.ts:4-9 records in its own header that the cash-percentage test raising the limits is 'not modeled here'. grep -rni '3cd|3ca|3cb' --include=*.py apps/api returns only apps/api/routers/engagement_letters.py:224 (a letter template); grep '44AB' returns only prose in engagement_letters.py, mock_data.py:259, ai_insight_service.py:94 and presumptive.py:7,206 \u2014 no applicability engine, no clause data.",
+     "guards": "None. There is no backend \u00a744AB endpoint to disagree with the TypeScript, and no Pydantic model or migration constrains the message.",
+     "reach": "Reachable: /income-tax/tax-audit is linked from the income-tax hub (apps/web/app/income-tax/page.tsx:747) and is in knownRoutes.generated.ts:96. Because the write is direct PostgREST, rbac() never runs on it \u2014 consistent with CLAUDE.md's 'second data path' note."
+    }
+   }
+  },
+  {
+   "id": "IT-12",
+   "kind": "bug",
+   "severity": "high",
+   "title": "The tax audit report due date is wrong in both places it appears \u2014 the compliance calendar uses the ITR date and the screen header says 30 November",
+   "evidence": "apps/api/services/compliance_obligation_service.py:359-362 \u2014 `_tax_audit_obligation` returns `ce.itr_due_date(fye, is_audit=True)`, which is 31 October (services/compliance_engine.py:225-231). apps/web/app/income-tax/tax-audit/page.tsx:301 renders 'IT Act Section 44AB \u2014 Form 3CA/3CB/3CD | Due: 30 November'. Explanation (ii) to \u00a744AB defines the specified date as one month prior to the \u00a7139(1) due date, i.e. 30 September for a case whose return is due 31 October; compliance_engine has no function for it.",
+   "ca_experience": "A CA relying on the deadline dashboard schedules the tax audit for 31 October and is a month late from the day the calendar is created. \u00a7271B penalty is 0.5% of turnover up to \u20b91,50,000. The tracker screen tells a third story (30 November), so the two surfaces in the product disagree with each other and both disagree with the Act.",
+   "market_standard": "Every compliance calendar in the Indian market (Winman, CompuTax, ClearTax Practice) carries 30 September for the audit report and 31 October for the audited return as two separate rows, and moves both together when CBDT extends.",
+   "confidence": "high",
+   "suggested_fix": "Add `tax_audit_report_due_date(fye)` to compliance_engine deriving one month before itr_due_date(is_audit=True), use it in _tax_audit_obligation, and delete the hardcoded string from the page header.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The tax-audit report deadline is wrong in both surfaces and they disagree with each other: the compliance calendar dates it 31 October by reusing the audited-ITR date (apps/api/services/compliance_obligation_service.py:359-362 with compliance_engine.py:225-231), the tracker header hardcodes 30 November (apps/web/app/income-tax/tax-audit/page.tsx:301), and neither is the Explanation (ii) specified date of 30 September; compliance_engine has no function for it.",
+    "probe": "grep -n 'tax_audit|specified date|44AB' apps/api/services/compliance_engine.py \u2192 no matches; itr_due_date(is_audit=True) is `return date(financial_year_end, 10, 31)` at compliance_engine.py:230.",
+    "lens_notes": {
+     "literal": "Confirmed in both places. apps/api/services/compliance_obligation_service.py:359-362 \u2014 _tax_audit_obligation emits a 'Tax Audit FY \u2026' spec whose due date is ce.itr_due_date(fye, is_audit=True), and apps/api/services/compliance_engine.py:225-231 returns date(fye, 10, 31) for is_audit=True. apps/web/app/income-tax/tax-audit/page.tsx:301 renders the literal string 'IT Act Section 44AB \u2014 Form 3CA/3CB/3CD | Due: 30 November'. grep for 'tax_audit|specified date|44AB' in compliance_engine.py returns nothing \u2014 there is no \u00a744AB report-date function at all. Explanation (ii) to \u00a744AB puts the specified date one month before the \u00a7139(1) date, i.e. 30 September where the return is due 31 October.",
+     "guards": "None. compliance_engine is the declared single source for due dates (CLAUDE.md) and it simply has no entry for this one, so nothing else can correct it.",
+     "reach": "Both surfaces are live. The obligation is generated for any engagement whose service_type contains 'audit' (compliance_obligation_service.py:401-402) via obligations_for_service (:369) \u2192 generate_due, consumed by the daily sweep (apps/api/jobs/scheduler.py:257) and the compliance dashboards (apps/web/app/practice/compliance/page.tsx, apps/web/app/clients/[id]/compliance/page.tsx); routers/compliance_ops is mounted at apps/api/main.py:316. The tax-audit page header is linked from apps/web/app/income-tax/page.tsx:747."
+    }
+   }
+  },
+  {
+   "id": "IT-13",
+   "kind": "gap",
+   "severity": "high",
+   "title": "\u00a7234A and \u00a7234B are implemented and tested but exposed by no endpoint and no screen \u2014 only \u00a7234C reaches a CA",
+   "evidence": "apps/api/domain/income_tax/advance_tax_interest_engine.py:239 compute_234a_interest and :306 compute_234b_interest are complete. apps/api/routers/income_tax.py:22 imports only `compute_234c_interest, installment_schedule, InstallmentPayment, INSTALLMENT_RULES`; `grep -rn 'compute_234a|compute_234b' apps/api/routers apps/api/services` returns nothing, and `grep -rn '234A|234B' apps/web/app apps/web/lib` finds only prose in the payroll reports page. The advance-tax screen (apps/web/app/income-tax/advance-tax/page.tsx:220) shows a single 'Interest u/s 234C' figure. There is also no self-assessment tax / Challan 280 capture anywhere.",
+   "ca_experience": "A client who files late owes \u00a7234A at 1% a month on the net tax, and one who paid under 90% of assessed tax owes \u00a7234B from 1 April of the assessment year \u2014 usually the LARGER of the three interest charges. The product computes neither, so the 'net payable' figure on the computation screen and on the snapshot is understated for every late or under-paid return, and the CA has to work them out by hand before paying the self-assessment tax.",
+   "market_standard": "Winman, CompuTax and ClearTax compute 234A/234B/234C together as one interest block on the computation sheet and roll them into the self-assessment tax payable, with the challan captured against the return.",
+   "confidence": "high",
+   "suggested_fix": "Add a /api/income-tax/interest endpoint returning all three sections, feed it the filing date and the assessment date, surface the block on the client computation screen, and add a self-assessment tax / challan field so the payload's self_assessment_tax figure has a source.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "\u00a7234A and \u00a7234B are implemented and tested but exposed by no endpoint and no screen (advance_tax_interest_engine.py:233,:300 vs routers/income_tax.py:22-24), and net_payable_paise (itr_engine.py:453) carries no interest of any section, so the CA's payable figure is understated for every late or under-paid return. Two small corrections to the evidence: advance-tax CHALLAN capture does exist (routers/income_tax.py:480 challan_number on AdvanceTaxInstallmentInput) and Form 26AS parsing already classifies Part D rows as 'self_assessment' (domain/income_tax/form26as_service.py:191) \u2014 what is missing is a self-assessment-tax INPUT to the computation, not challan capture 'anywhere'.",
+    "probe": "cd apps/api && python -m pytest tests/test_234a_234b_interest.py tests/test_presumptive_taxation.py tests/test_itr_json.py -q \u2192 '61 passed in 0.24s'; grep for compute_234a/compute_234b outside tests returns only the definitions.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/income_tax/advance_tax_interest_engine.py:233 compute_234a_interest and :300 compute_234b_interest are complete (both return SectionInterestResult with base/months/interest/reasons). apps/api/routers/income_tax.py:22-24 imports only compute_234c_interest, installment_schedule, InstallmentPayment, INSTALLMENT_RULES. `grep -rn 'compute_234a|compute_234b' --include=*.py apps/api` hits only advance_tax_interest_engine.py itself and tests/test_234a_234b_interest.py \u2014 no router, no service. The single interest endpoint is POST /api/income-tax/advance-tax/compute (routers/income_tax.py:522) and its response hardcodes section_ref 'Section 234C' (:501).",
+     "guards": "No guard closes it. The one place with slots for the other two \u2014 domain/income_tax/itr_json.py:320-322 interest_234a/234b/234c_paise, emitted as PayloadValue at :357-362 \u2014 is itself imported by nothing but tests (see IT-17). And the gap is wider than the finding says: itr_engine.py:453 sets net_payable_paise = total_tax_paise - tds_and_advance_paise, so NO interest section at all, 234C included, enters the net payable the computation screen shows. tests/test_234a_234b_interest.py passes 24/24, which proves the engine is correct and unused, not that it is reached.",
+     "reach": "income_tax router is mounted (main.py:267). apps/web/app/income-tax/advance-tax/page.tsx:220 renders exactly one interest tile, labelled 'Interest u/s 234C'. `grep -rn '234A|234B' apps/web/app apps/web/lib` finds only prose in app/payroll/reports/page.tsx and app/risks/page.tsx \u2014 no computed figure. So this is the 'exists in the backend, reachable from no screen' case, which confirms the gap."
+    }
+   }
+  },
+  {
+   "id": "IT-14",
+   "kind": "bug",
+   "severity": "high",
+   "title": "Holding period is counted in whole calendar months rather than days, so a holding one day short of twelve months is classified long-term",
+   "evidence": "apps/api/domain/income_tax/capital_gains_engine.py:103-105 \u2014 `holding_months` is `(sale.year-buy.year)*12 + (sale.month-buy.month)`, with the day of the month discarded; is_long_term (:107) compares that count against 12 or 24. Probe: purchase 15-Jan-2024, sale 05-Jan-2025 \u2192 holding_months 12, is_long_term True, rate 12.5%. Actual holding is 356 days, so \u00a72(42A) makes it SHORT term at 20% under \u00a7111A. tests/test_capital_gains_engine.py:38-40 pins this behaviour rather than catching it.",
+   "ca_experience": "A share sold a few days before the twelve-month anniversary is taxed at 12.5% instead of 20%, and the misclassification is written into the capital_gains register (routers/income_tax.py:371 stores `gain_type`). The error runs both ways at the 24-month boundary for property. On a \u20b920 lakh gain the difference is \u20b91.5 lakh, and it is the kind of thing a scrutiny notice picks up because the dates are on the contract note.",
+   "market_standard": "ClearTax, Zerodha's tax P&L, Winman and the ITD utility all classify on exact dates \u2014 'held for more than 12 months' means more than 365/366 days from the day after acquisition.",
+   "confidence": "high",
+   "suggested_fix": "Classify on dates, not month counts: long-term when sale_date > purchase_date + relativedelta(months=threshold) (or the equivalent day arithmetic). Keep holding_months for display only, and replace the boundary test with day-precision cases.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Holding period is counted in whole calendar months with the day discarded (capital_gains_engine.py:103-104), so a sale one day short of the twelve- or twenty-four-month anniversary is classified long-term and taxed at the LTCG rate. \u00a72(42A) counts from the date of acquisition, so this is a wrong rate and a wrong gain_type written into the capital_gains register.",
+    "probe": "cd apps/api && python -c \"compute_capital_gains('equity', date(2024,1,15), date(2025,1,5), 1_00_000_00, 3_00_000_00)\" \u2192 months 12, is_long_term True, rate 12.5, section 'Section 112A', tax 937500 paise. Correct answer is STCG at 20% under \u00a7111A (356 days held). Property 15-Jan-2024 \u2192 05-Jan-2026 likewise prints is_long_term True at 12.5% under 'Section 112 (Budget 2024)'.",
+    "lens_notes": {
+     "literal": "Confirmed exactly. capital_gains_engine.py:103-104 holding_months(purchase, sale) = (sale.year-purchase.year)*12 + (sale.month-purchase.month) \u2014 the day of month is never read. :107-109 is_long_term compares that count with `>=` against 12 (equity) or 24 (other). compute_capital_gains:152-153 calls both, so a holding of 11 months and 21 days scores 12 and is classified long-term.",
+     "guards": "None \u2014 the opposite. tests/test_capital_gains_engine.py:38-40 and :43-46 pin `is_long_term('equity', 12) is True` / `is_long_term('property', 24) is True` at month granularity, and :49-51 pins holding_months' whole-month arithmetic, so the suite locks the defect in. routers/income_tax.py:308-315 validates only that sale_date >= purchase_date; there is no day-level check anywhere.",
+     "reach": "Live on both paths. POST /api/income-tax/capital-gains/compute (routers/income_tax.py:337) and POST /api/income-tax/capital-gains (:385) both call compute_capital_gains, and _cg_response:322 writes gain_type = 'LTCG'/'STCG' into the persisted register. The screen apps/web/app/income-tax/capital-gains/page.tsx calls both via lib/data/income-tax.ts:278,:304, and it is linked from app/income-tax/page.tsx:735."
+    }
+   }
+  },
+  {
+   "id": "IT-15",
+   "kind": "bug",
+   "severity": "high",
+   "title": "The ITR deadline tracker conflates assessment year with financial year \u2014 the period it stores and the due date it stores are a year apart",
+   "evidence": "apps/web/app/income-tax/page.tsx:62-67 `AY_PERIOD` maps '2025-26' to 2025-04-01 \u2026 2026-03-31, which is FY 2025-26, i.e. AY 2026-27. Lines 69-79 then map the same key '2025-26' to due dates 2025-10-31 / 2025-07-31, which are the AY 2025-26 dates. Both are written into one compliance_calendar row at :509-519 (period_start/period_end from AY_PERIOD, due_date from the DUE_DATE_* maps). getAYFromDates (:95-100) derives the displayed 'AY' from the period start, so the column labelled Assessment Year actually shows the FY.",
+   "ca_experience": "A CA adds an ITR deadline for a client, picks '2025-26', and gets a row covering 1 Apr 2025 \u2013 31 Mar 2026 that is due 31 July 2025 \u2014 four months before the year it covers has ended. Either the deadline is a year early or the period is a year wrong; on a dashboard whose whole job is to say what is due when, the row cannot be trusted either way, and 'overdue' badges fire against it (:597).",
+   "market_standard": "Every practice-management calendar keys ITR obligations on the AY and derives the previous year from it, so the two can never disagree. compliance_engine.itr_due_date already does exactly this on the backend and the page does not call it.",
+   "confidence": "high",
+   "suggested_fix": "Delete the two hardcoded maps, call the backend for the period and the due date (compliance_engine.itr_due_date), and label the picker consistently \u2014 either AY throughout or FY throughout.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The page stores an FY-shaped period with an AY-shaped due date in one compliance_calendar row (app/income-tax/page.tsx:62-79, :508-519), and the backend seeder writes the opposite, correct pairing into the same table (routers/compliance.py:149-153), so the ITR list mixes rows whose due dates for the same displayed 'AY' are a year apart. One nuance the finding overstates: on screen the AY column round-trips (getAYFromDates(2025-04-01) = '2025-26' = the label picked), the period dates are never displayed, and the due date is editable \u2014 so the visible symptom is a default due date a year early and rows that disagree with seeded ones, not a self-evidently contradictory row.",
+    "probe": "Read of app/income-tax/page.tsx:62-79/:484-492/:508-519 against apps/api/routers/compliance.py:149-153 and services/compliance_engine.py:225-231 \u2014 the two writers of compliance_calendar ITR rows differ by one year on due_date for the same period.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/income-tax/page.tsx:62-67 AY_PERIOD maps the key '2025-26' to 2025-04-01 \u2026 2026-03-31 \u2014 that is FY 2025-26, i.e. AY 2026-27. :69-79 map the same key to due dates 2025-10-31 (audit) / 2025-07-31 (non-audit), which are the AY 2025-26 dates. :484-492 auto-fills due_date from those maps on client or AY change, and :508-519 writes period_start/period_end from AY_PERIOD and that due_date into one compliance_calendar row. The due date therefore falls four months INSIDE the period the same row claims to cover.",
+     "guards": "None, and there is direct counter-evidence that the frontend is the wrong half. The backend seeder routers/compliance.py:149-153 writes the SAME table with period_start = date(financial_year,4,1), period_end = date(fy_end,3,31) and due_date = itr_due_date(fy_end) \u2014 for FY 2025-26 that is due 2026-07-31, a year later than the page's default for an identically-shaped row. services/compliance_engine.py:225-231 itr_due_date takes financial_year_end, so the two writers disagree by exactly one year. The row is inserted straight over PostgREST (:512), so no rbac() and no server-side validation sees it.",
+     "reach": "/income-tax is a first-class nav destination (components/panels/DeadlinesPanel.tsx:33, lib/workspace/workspaceConfig.ts:166) and the Add-ITR-deadline modal is on it (:1138-1175). effectiveStatusOf (:595-598) flags a row overdue purely on due_date < today, so a manually added FY 2025-26 row goes red on 1 Aug 2025."
+    }
+   }
+  },
+  {
+   "id": "IT-16",
+   "kind": "gap",
+   "severity": "high",
+   "title": "The presumptive engine for \u00a744AD, \u00a744ADA and \u00a744AE is reachable from nothing \u2014 no endpoint, no request field, no screen",
+   "evidence": "apps/api/domain/income_tax/presumptive.py:159 compute_44ad, :245 compute_44ada, :328 compute_44ae are complete and covered by tests/test_presumptive_taxation.py. ITRComputeRequest supports the result (domain/income_tax/itr_engine.py:180 `presumptive_income_paise`, honoured at :294), but routers/income_tax.py:62-110 ComputeITRRequest has NO presumptive field, so the engine's presumptive branch is unreachable through the API. `grep -rn 'presumptive|44AD|44ADA|44AE' apps/web/app apps/web/lib` returns only two dropdown labels in app/income-tax/page.tsx:912,917.",
+   "ca_experience": "The presumptive client \u2014 the small trader, the doctor, the lorry owner that the module's own docstring calls 'a large part of an Indian practice's client base' \u2014 cannot be computed. The CA can select 'ITR-4' as a form label in the deadline tracker and that is the whole of the support. The 6%/8% split, the 3-crore proviso, the \u00a744AD(5) refusal to declare less: all of it is dead code.",
+   "market_standard": "ClearTax, TaxCloud, Winman and Saral all have a \u00a744AD/\u00a744ADA/\u00a744AE screen that takes turnover and the digital share, computes the deemed income, and routes the client into ITR-4 with the advance-tax schedule collapsed to one instalment.",
+   "confidence": "high",
+   "suggested_fix": "Add presumptive_income_paise plus the scheme inputs (turnover, digital turnover, cash receipts, vehicles) to ComputeITRRequest, expose compute_44ad/ada/ae behind /api/income-tax/presumptive, and put the scheme on the client computation screen. It also unlocks the \u00a7234C fix in IT-06.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "compute_44ad/44ada/44ae exist and are tested (presumptive.py:159,:245,:328) but nothing outside tests calls them, and ComputeITRRequest (routers/income_tax.py:63-110) carries no presumptive field, so itr_engine.py:304's presumptive branch is unreachable through the API. The only frontend trace is two ITR-form dropdown labels.",
+    "probe": "cd apps/api && python -m pytest tests/test_presumptive_taxation.py -q \u2192 passes (part of the 61 passed run); grep for presumptive outside tests returns no router/service caller.",
+    "lens_notes": {
+     "literal": "Confirmed. domain/income_tax/presumptive.py:159 compute_44ad, :245 compute_44ada, :328 compute_44ae are complete. `grep -rn 'presumptive|compute_44ad|compute_44ada|compute_44ae' --include=*.py apps/api` excluding tests and the module itself returns ONLY comment lines and the honoured field inside itr_engine.py (:166-172 presumptive_income_paise, :304-305 the branch that uses it) plus one out-of-scope note in advance_tax_interest_engine.py:69. routers/income_tax.py ComputeITRRequest (:63-110) has no presumptive field, and routers/income_tax.py:120 constructs ITRComputeRequest from it, so the engine's presumptive branch cannot be entered over HTTP.",
+     "guards": "No alternative entry point. The only other ITRComputeRequest builders are domain/payroll/arrears.py:116 and domain/payroll/declarations.py:384 \u2014 both salary paths, neither sets presumptive_income_paise. routers/itr_workspace.py has no presumptive endpoint (grep over routers/ and services/ returns nothing). tests/test_presumptive_taxation.py passes, which proves the module is correct and unreached.",
+     "reach": "`grep -rni 'presumptive|44AD|44ADA|44AE' apps/web/app apps/web/lib apps/web/components` returns exactly two hits, both dropdown copy in app/income-tax/page.tsx:912 and :917. Backend capability, no screen and no endpoint \u2014 confirms the gap."
+    }
+   }
+  },
+  {
+   "id": "IT-17",
+   "kind": "gap",
+   "severity": "high",
+   "title": "itr_field_placements() \u2014 'this figure goes in this field' against the Department's own committed schemas \u2014 is not exposed by any endpoint, and the payload itself carries only fourteen figures",
+   "evidence": "apps/api/domain/income_tax/itr_json.py:428 itr_field_placements and :344 build_itr_payload are complete, every path verified against the seven committed schemas in domain/income_tax/schemas/ by tests/test_itr_schema_paths.py. Neither function is imported outside tests (see IT-01 grep). generate_itr_json (:390) deliberately refuses with SoftwareProviderNotRegistered / ReturnIncomplete \u2014 that refusal is right, but the useful half was never wired up. The payload's fourteen PayloadValue entries (:352-380) are the tax-computation figures only: no Schedule CG, no Schedule HP, no Schedule BP, no Schedule CFL, no Schedule AL/FA/FSI/TR (`grep -rni 'schedule al|schedule fa|schedule cfl|schedule tr' apps/api/domain/income_tax` returns nothing).",
+   "ca_experience": "The module's docstring says 'A CA can work from it directly' \u2014 but there is no screen and no endpoint, so nobody can. A CA who has computed a return in the workspace still has to re-derive every figure by eye to key into the ITD offline utility, which is the exact transcription risk the placements list exists to remove.",
+   "market_standard": "The whole point of Winman/CompuTax/Genius is that the computation and the return schedules are one document; the JSON falls out of it. Even where a product cannot file, it prints a computation sheet mapped to the form's own line numbers.",
+   "confidence": "high",
+   "suggested_fix": "Add GET /api/itr/filings/{id}/placements returning itr_field_placements over the filing's pinned snapshot, and render it as a printable keying sheet. Extend ITRPayload head by head as the computation grows.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "itr_field_placements (itr_json.py:442) and build_itr_payload (:305) are imported by nothing but tests/test_itr_json.py, and the payload is fourteen computation figures with no Schedule CG/HP/BP/CFL/AL/FA/FSI/TR content. One evidence correction: the finding's schedule grep does hit matches \u2014 but only inside the committed Department schema JSON under domain/income_tax/schemas/; restricted to *.py it returns nothing, which is the point being made.",
+    "probe": "cd apps/api && grep -rni 'schedule al|schedule fa|schedule cfl|schedule tr' --include=*.py domain/income_tax/ \u2192 no output; python -m pytest tests/test_itr_json.py -q \u2192 passes.",
+    "lens_notes": {
+     "literal": "Confirmed. `grep -rn 'itr_field_placements|build_itr_payload|generate_itr_json' --include=*.py apps/api` returns only domain/income_tax/itr_json.py's own definitions (:305, :388, :442, plus the :14-15 docstring and the :437 refusal message) and tests/test_itr_json.py. build_itr_payload's `values` list (:334-364) is exactly fourteen PayloadValue entries, all tax-computation figures \u2014 gross total income, Chapter VI-A, total income, tax, 87A, surcharge, cess, total tax, TDS/TCS, advance tax, self-assessment tax, and the three interest sections. No schedule-level detail is assembled.",
+     "guards": "The refusal in generate_itr_json (:388-400, SoftwareProviderNotRegistered / ReturnIncomplete) is correct and CLAUDE.md-consistent, but it guards emission, not the placements list, which is a separate function and is equally unexposed. tests/test_itr_schema_paths.py verifies every FIELD_MAPPINGS path against the seven committed schemas, so the mapping is right and unused.",
+     "reach": "No endpoint in routers/itr_workspace.py (its route list is snapshots, filings, versions, acknowledge, disallowances, deductions, bf-losses \u2014 no placements, no payload) and no frontend caller (`grep -rni 'placements|generate_itr' apps/web/app apps/web/lib` hits only an unrelated invoice-template signature-placement constant). Confirms the gap."
+    }
+   }
+  },
+  {
+   "id": "IT-18",
+   "kind": "gap",
+   "severity": "high",
+   "title": "The AIS screen persists nothing \u2014 the whole reconciliation lives in React state and is gone on refresh, and no backend AIS capability exists",
+   "evidence": "apps/web/app/income-tax/ais/page.tsx is 776 lines with a JSON parser, a transaction table and a books-comparison grid, and `grep -n 'api\\.|apiFetch|supabase.from|fetch(|localStorage'` over it returns nothing at all \u2014 only useState (:167,:173). Backend-side, `grep -rni '\\bAIS\\b' --include=*.py apps/api/domain apps/api/routers` returns only hardcoded demo strings: domain/ai_insight_service.py:69-71 'AIS shows income \u20b98.5L vs books \u20b97.3L', domain/risk_engine.py:64-65 and domain/document_intelligence_service.py:120-121 repeat the same invented figures. There is no AIS table, no AIS endpoint, no TIS anything.",
+   "ca_experience": "A CA uploads the client's AIS JSON, spends an hour typing book amounts against forty lines, navigates away, and it is all gone. Nothing is attached to the client, nothing is auditable, and next year starts from zero. Meanwhile the insights and risk panels show a fabricated '\u20b98.5L vs \u20b97.3L' AIS mismatch for clients whose AIS the product has never seen.",
+   "market_standard": "ClearTax and TaxCloud import AIS/TIS JSON per PAN, persist it, auto-match against the books and against 26AS, and carry the CA's feedback (which is submitted back on the portal) as a tracked disposition per line.",
+   "confidence": "high",
+   "suggested_fix": "Give AIS the same shape 26AS already has \u2014 an upload row, parsed records, a persisted reconciliation \u2014 and remove or clearly label the invented AIS figures in ai_insight_service / risk_engine / document_intelligence_service so a demo number cannot read as a client's own.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The AIS reconciliation is entirely client-side React state (app/income-tax/ais/page.tsx:166-173, zero network or storage calls in 776 lines) and no AIS table, endpoint or parser exists on the backend; the only AIS logic in apps/api is demo copy plus a fabricated 85%-of-AIS 'book income' at domain/document_intelligence_service.py:531.",
+    "probe": "cd apps/web && wc -l app/income-tax/ais/page.tsx \u2192 776; grep for api./supabase/fetch(/localStorage in that file \u2192 no matches.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/income-tax/ais/page.tsx is 776 lines and `grep -n 'api\\.|apiFetch|supabase|getSupabaseClient|fetch(|localStorage'` over it returns nothing \u2014 the only state is useState at :166-173 (clientName, transactions, parseError, showManual, manualForm, booksAmounts). Backend: no AIS table (no migration creates one), no AIS router, and `grep -rni '\\bAIS\\b' --include=*.py domain/ routers/ services/` returns demo strings in domain/ai_insight_service.py:69-71, domain/risk_engine.py:64-65, domain/notification_service.py:135-136 and domain/document_intelligence_service.py:120-121, all repeating the same invented '\u20b98.5L vs \u20b97.3L'.",
+     "guards": "None. The nearest thing to a backend AIS capability actually strengthens the finding: document_intelligence_service.py classifies an 'AIS' document (:400-401), lists required fields (:481) and raises an AIS_MISMATCH risk at :526-540 \u2014 but the comparison there is `book_income = int(total_income * 0.85)  # mock book income difference` (:531), i.e. the 'mismatch' is manufactured from the AIS figure itself, not read from the ledger.",
+     "reach": "The page is linked from the income-tax landing page (app/income-tax/page.tsx:1056 href=\"/income-tax/ais\") and is a known route (lib/workspace/knownRoutes.generated.ts:92), so a CA can and will use it. Contrast Form 26AS, which does have a real backend (routers/form_26as.py mounted at main.py:296, parser domain/income_tax/form26as_service.py) \u2014 so the finding's 'give AIS the shape 26AS already has' is accurate."
+    }
+   }
+  },
+  {
+   "id": "IT-19",
+   "kind": "missing_feature",
+   "severity": "high",
+   "title": "No \u00a754/\u00a754F/\u00a754EC/\u00a754B reinvestment exemptions and no \u00a7112A grandfathering under \u00a755(2)(ac)",
+   "evidence": "apps/api/domain/income_tax/capital_gains_engine.py computes gain = sale \u2212 cost \u2212 improvement (:139) and applies a rate; there is no exemption parameter, no CGAS deposit concept, and no 31-01-2018 fair-market-value input anywhere in the file or in routers/income_tax.py's ComputeCapitalGainsRequest (:299-306). `grep -rni '54F|54EC|55(2)(ac)|31-01-2018|grandfather' apps/api/domain/income_tax` finds only the Budget-2024 property indexation comment.",
+   "ca_experience": "Every property sale in an SME practice involves \u00a754 or \u00a754F, and every long-held listed equity holding involves the 31-01-2018 grandfathered cost. Without them the CA is shown the gross gain: on shares bought in 2012 and sold now the LTCG can be overstated by the entire pre-2018 appreciation, and on a house sold and reinvested the tax shown is the full 12.5% when the correct answer may be nil.",
+   "market_standard": "ClearTax, Winman and CompuTax all take the 31-01-2018 FMV and compute the \u00a755(2)(ac) higher-of/lower-of cost automatically, and carry a \u00a754/54F/54EC schedule with the reinvestment amount, the due date for the CGAS deposit, and the three-year lock-in reversal.",
+   "confidence": "high",
+   "suggested_fix": "Add fmv_31_01_2018_paise to the equity path and implement \u00a755(2)(ac); add an exemptions block (section, amount invested, date, CGAS deposit) that reduces the taxable gain and records the lock-in for a later year's reversal.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "There is no \u00a754/54F/54EC/54B exemption input and no \u00a755(2)(ac) grandfathering anywhere: the engine's whole signature is six inputs (capital_gains_engine.py:142-148), the persisted register has no exemption column (migrations/030:29-44), and the sole repo-wide mention of \u00a754 is a docstring claim at apps/web/app/income-tax/capital-gains/page.tsx:9.",
+    "probe": "grep -rni 'section 54|54EC|CGAS|capital gains account' across apps/ \u2192 one hit, the page docstring at apps/web/app/income-tax/capital-gains/page.tsx:9; grep for fmv/31-01-2018/55(2) in domain/income_tax \u2192 nothing.",
+    "lens_notes": {
+     "literal": "Confirmed. compute_capital_gains (capital_gains_engine.py:142-148) takes only asset_type, purchase_date, sale_date, purchase_cost_paise, sale_value_paise, improvement_cost_paise; gain is sale \u2212 (cost + improvement) at :156-157, and the equity branch (:163-180) applies 20%/12.5% to that gain with the \u00a7112A \u20b91,25,000 exemption and nothing else. There is no exemption parameter, no CGAS concept and no 31-01-2018 FMV input. `grep -rni '54F|54EC|55(2)|grandfather|31-01-2018|fmv' --include=*.py domain/income_tax/ routers/income_tax.py` returns only four Budget-2024 property-indexation comments.",
+     "guards": "None, and the persistence layer confirms it: public.capital_gains (migrations/030_supplier_tds_and_credit.sql:29-44) has purchase/improvement/sale/indexed cost, gain_type and tax_rate_percent \u2014 no exemption, no reinvestment, no lock-in column. ComputeCapitalGainsRequest (routers/income_tax.py:294-315) mirrors the engine's six inputs exactly.",
+     "reach": "The calculator and register are live and linked (app/income-tax/capital-gains/page.tsx, reached from app/income-tax/page.tsx:735), and the page's own header comment at :9 advertises 'Section 54: Exemptions' \u2014 the only mention of \u00a754 in the entire repo, with nothing behind it. So a CA is told the screen covers exemptions it does not compute."
+    }
+   }
+  },
+  {
+   "id": "IT-20",
+   "kind": "bug",
+   "severity": "medium",
+   "title": "\u00a780CCD(2) is capped at 10% of salary for a non-government employee under the NEW regime, where the limit has been 14% since Finance (No.2) Act 2024",
+   "evidence": "apps/api/domain/income_tax/itr_engine.py:53-66 records the doubt explicitly and chooses 10% for non-government employees in both regimes; LIMIT_80CCD2_OTHER_PERCENT = 10 at :65. Applied at :340-345 with no regime branch. Probe: new regime, non-government, salary base \u20b910,00,000, employer contribution \u20b91,40,000 \u2192 deduction \u20b91,00,000. tests/test_itr_engine.py:301-307 asserts the 10% figure, so the suite pins it.",
+   "ca_experience": "An employee under the default new regime whose employer contributes 14% of basic to NPS \u2014 which is now the common corporate design precisely because the deduction was raised \u2014 loses \u20b940,000 of deduction on a \u20b910 lakh base, about \u20b912,500 of extra tax at 30% plus cess. The direction is conservative, but it is still a wrong figure a CA cannot override.",
+   "market_standard": "greytHR, Zoho Payroll, RazorpayX Payroll and every ITR utility apply 14% under \u00a7115BAC(1A) and 10% under the old regime for non-government employees, and 14% for government employees in both.",
+   "confidence": "medium",
+   "suggested_fix": "Make the cap regime-dependent \u2014 14% under \u00a7115BAC(1A) for everyone, 10% under the old regime for non-government employees \u2014 after confirming against the Finance (No.2) Act 2024 text, and change the pinning test with it.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The \u00a780CCD(2) cap is 10% for every non-government employee in both regimes (itr_engine.py:53-54, :330), where \u00a7115BAC(1A) after Finance (No.2) Act 2024 allows 14%; the deduction is understated by 4% of salary for new-regime employees and the error also flows into payroll TDS projection via declarations.py:384. Medium is right: the direction is conservative (never an over-claim) and the code documents the doubt, but the figure is wrong for every FY the registries cover.",
+    "probe": "cd apps/api && python -c \"ITREngine().compute(ITRComputeRequest(gross_salary_paise=10_00_000*100, use_new_regime=True, is_government_employee=False, employer_nps_80ccd2_paise=1_40_000*100))\" \u2192 deduction \u20b91,00,000; same call with is_government_employee=True \u2192 \u20b91,40,000.",
+    "lens_notes": {
+     "literal": "Confirmed. itr_engine.py:40-52 is an explicit PENDING STATUTORY VERIFICATION note choosing the conservative 10%, :53-54 sets LIMIT_80CCD2_GOVT_PERCENT = 14 and LIMIT_80CCD2_OTHER_PERCENT = 10, and :330 applies min(employer_nps, salary_base * cap_percent // 100) with cap_percent selected on is_government_employee alone \u2014 the block sits ABOVE the `if not req.use_new_regime:` gate at :333, so no regime branch exists.",
+     "guards": "The suite pins the current behaviour rather than catching it: tests/test_itr_engine.py:301-307 asserts the 10% figure for a new-regime non-government employee. The direction is conservative (under-claim, never over-claim), and the doubt is documented in code \u2014 but CLAUDE.md records no decision on \u00a780CCD(2), so this is not a deliberate statutory choice the house rules protect. Finance (No.2) Act 2024 raised the cap to 14% for employees taxed under \u00a7115BAC(1A), and both FYs the rate registry holds (2025-26, 2026-27) fall after that, so the wrong cap applies to every year the product supports.",
+     "reach": "Two live paths. POST /api/income-tax/compute (routers/income_tax.py:114) is called by apps/web/app/income-tax/deductions/page.tsx:241 (employer_nps_80ccd2_paise) and the eligible figure is rendered at :412-418. And domain/payroll/declarations.py:384 builds the same ITRComputeRequest with use_new_regime defaulting True, so monthly \u00a7192 withholding over-deducts for the same employees."
+    }
+   }
+  },
+  {
+   "id": "IT-21",
+   "kind": "bug",
+   "severity": "medium",
+   "title": "AMT is charged without the \u00a7115JC(5) carve-out for a person who has opted into \u00a7115BAC \u2014 which is the default regime",
+   "evidence": "apps/api/domain/income_tax/minimum_tax.py:177-232 compute_amt gates only on assessee kind (:198), on whether a specified deduction was claimed (:206) and on the \u00a7115JEE threshold (:216). There is no regime parameter and no reference to \u00a7115BAC anywhere in the module. `grep -n '115BAC' apps/api/domain/income_tax/minimum_tax.py` returns nothing.",
+   "ca_experience": "An individual or firm on the new regime who has claimed \u00a735AD or \u00a710AA is charged an AMT floor Chapter XII-BA does not reach, and a credit is recorded under \u00a7115JD that does not exist. Since \u00a7115BAC has been the default since AY 2024-25 this is the ordinary case, not the edge case. Because the module is currently reachable from no screen (IT-01) nobody sees it yet \u2014 but it will be wrong the day it is wired up.",
+   "market_standard": "Winman and CompuTax suppress AMT entirely once the new regime is selected, and say so on the computation sheet.",
+   "confidence": "medium",
+   "suggested_fix": "Add a `regime` argument to compute_amt and return _not_applicable naming \u00a7115JC(5) when the assessee is on \u00a7115BAC/\u00a7115BAD/\u00a7115BAE. Verify the sub-section number against the Act before writing the citation.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "compute_amt (apps/api/domain/income_tax/minimum_tax.py:177-244) has no \u00a7115BAC/\u00a7115BAD/\u00a7115BAE carve-out and will charge the AMT floor for a new-regime assessee if a caller says a specified deduction was claimed \u2014 but the whole module has no caller outside tests, and the deductions that trigger the charge are themselves unavailable under \u00a7115BAC, so the wrong number cannot reach a CA today.",
+    "probe": "cd apps/api && python -c \"from domain.income_tax.minimum_tax import compute_amt; import inspect; print(inspect.signature(compute_amt)); r=compute_amt(adjusted_total_income_paise=1_00_00_000*100, assessee='individual', claimed_specified_deduction=True, fy='2025-26'); print(r.section, r.applies, r.minimum_tax_paise)\" \u2192 \"(*, adjusted_total_income_paise, assessee, claimed_specified_deduction, fy=None)\" and \"115JC True 192400000\" \u2014 no regime parameter exists to suppress it.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/income_tax/minimum_tax.py:177-182 \u2014 compute_amt's signature is (adjusted_total_income_paise, assessee, claimed_specified_deduction, fy) with no regime argument; the only gates are assessee kind (:198), claimed_specified_deduction (:206) and the \u00a7115JEE threshold (:216). `grep -n 115BAC domain/income_tax/minimum_tax.py` returns nothing. The asymmetry is visible inside the same file: compute_mat DOES carry the company carve-out (:152-159, \u00a7115BAA/\u00a7115BAB) while compute_amt carries no \u00a7115BAC/BAD/BAE equivalent.",
+     "guards": "One partial coupling, not a guard: \u00a7115BAC(2) disallows \u00a710AA, \u00a735AD and Chapter VI-A Part C outright, so a correctly-fed caller would pass claimed_specified_deduction=False for a new-regime assessee and the charge would fall away at :206. Nothing enforces that \u2014 the flag is caller-supplied and the module never sees the regime. tests/test_minimum_tax.py has no regime case either. No DB constraint or flag is involved.",
+     "reach": "Zero. `grep -rn compute_amt --include=*.py apps/api` finds it only in domain/income_tax/minimum_tax.py:177 and tests/test_minimum_tax.py; no router, no service, no frontend path imports the module at all. Nothing a CA can click reaches this code today."
+    }
+   }
+  },
+  {
+   "id": "IT-22",
+   "kind": "bug",
+   "severity": "medium",
+   "title": "The Budget-2024 grandfathered 20%-with-indexation option is offered for property acquired ON OR AFTER 23-07-2024, and to assessees who are not resident individuals or HUFs",
+   "evidence": "apps/api/domain/income_tax/capital_gains_engine.py:230-241 \u2014 the branch is `if asset_type in _PROPERTY_LIKE:` and nothing else; purchase_date is not tested against 23-07-2024 and there is no residency or assessee-kind parameter on compute_capital_gains (:135). The docstring at :30-38 describes the relief correctly ('resident individuals/HUFs on immovable property acquired before 23 Jul 2024') and the code does not implement either condition. Probe: property purchased 01-Sep-2024, sold 2027 \u2192 tax_with_indexation_percent 20.0 offered.",
+   "ca_experience": "For a company, an LLP, or a non-resident selling immovable property \u2014 and for any property bought after July 2024 \u2014 the engine may pick the lower of two figures where only one is lawful, understating the tax. Today the flat 12.5% usually wins because CII_BY_FY stops at 2025-26, so the exposure is latent; it becomes live the moment the index is updated. The wrong `tax_rate_percent` is also persisted into the capital_gains register.",
+   "market_standard": "ClearTax and Winman gate the grandfathered option on both conditions and grey it out where it does not apply, showing why.",
+   "confidence": "high",
+   "suggested_fix": "Gate the indexation branch on purchase_date < 2024-07-23 and on an explicit resident-individual/HUF flag passed by the caller; refuse (rather than default) when the flag is not supplied.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The 20%-with-indexation alternative is offered for every 'property' row regardless of acquisition date and regardless of who the assessee is (capital_gains_engine.py:229-241), and the exposure is NOT latent as the finding assumed \u2014 with today's CII table a company/LLP/non-resident selling long-held property is under-taxed now. One correction to the finding: the persisted register column tax_rate_percent is always 12.5 for property (routers/income_tax.py:418-420 stores result.tax_rate_percent, and the lower-of figure is not persisted), so what is wrong is the displayed/returned tax_liability_paise and the 20% panel, not the stored rate.",
+    "probe": "cd apps/api && python -c \"compute_capital_gains('property', date(2015,6,1), date(2026,8,1), 1_00_00_000_00, 2_00_00_000_00)\" \u2192 flat 12.5% = 125000000 paise, indexed 20% = 100787402 paise, engine final = 100787402 \u2014 an understatement of \u20b92,42,125.98 for an assessee (company/LLP/non-resident) with no grandfathered option. A second probe, property bought 01-Sep-2024 (after the 23-07-2024 cut-off) sold 2027: tax_with_indexation_percent 20.0 is still offered and wins on modest gains (\u20b918,663.91 understated).",
+    "lens_notes": {
+     "literal": "Confirmed, and worse than described. apps/api/domain/income_tax/capital_gains_engine.py:229-241 \u2014 the grandfathered branch is `if asset_type in _PROPERTY_LIKE:` and nothing else; compute_capital_gains (:142-149) takes only asset_type, two dates and three amounts, so there is no purchase-date test against 23-07-2024 and no residency / assessee-kind parameter to test. The docstring at :22-31 states both conditions the code omits.",
+     "guards": "None. routers/income_tax.py:338-348 (POST /api/income-tax/capital-gains/compute) and :391-410 (POST /api/income-tax/capital-gains) both call it unconditionally; the only validator on the write path is a field_validator restricting asset_type to the register vocabulary (:373-382). No test, no CHECK constraint, no UI gate.",
+     "reach": "Live. main.py:267 mounts routers.income_tax; apps/web/lib/data/income-tax.ts:278 calls the compute endpoint; apps/web/app/income-tax/capital-gains/page.tsx:149 sets showIndexation from tax_with_indexation_percent and lines 410/435-436 render 'With Indexation (20%)' and the lower-of tax. The page is linked from apps/web/app/income-tax/page.tsx:735."
+    }
+   }
+  },
+  {
+   "id": "IT-23",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "The ITR filing workflow offers only ITR-3/5/6/7, has no revised or updated return path, and the acknowledgement endpoint bypasses its own state machine",
+   "evidence": "apps/web/app/clients/[id]/tax/filing/page.tsx:43 `const ITR_FORMS = [\"ITR-3\", \"ITR-5\", \"ITR-6\", \"ITR-7\"]` \u2014 no ITR-1/2/4, although domain/income_tax/itr_json.py:114-282 holds verified field mappings for all seven. domain/income_tax/itr_workflow.py:22-28 makes 'filed' terminal with no outgoing transitions, and record_filing_acknowledgement (:212) writes status='filed' directly with no check of the current status, so a draft can be marked filed without review or partner review. routers/itr_workspace.py:70 takes itr_form as a free string with no validation, and assessment_year as a bare `str` while financial_year is an FYLabel. `grep -rni '139(8A)|139(5)|ITR-U|updated return' apps/api apps/web` returns nothing.",
+   "ca_experience": "A salaried or presumptive client cannot have a filing record created at all. Once a return is filed, a revised return under \u00a7139(5) or an updated return under \u00a7139(8A) \u2014 with its 25/50/60/70% additional tax after the Finance Act 2025 extension to 48 months \u2014 has nowhere to live, so the second-most-common ITR job in a practice is off the system. And the 'Partner review mandatory before Ready for Filing' promise on apps/web/app/clients/[id]/tax/page.tsx is not enforced on the acknowledge path.",
+   "market_standard": "Winman and CompuTax carry original/revised/updated as a return TYPE on the same client-year, prefill the revised return from the original acknowledgement number and date, and compute the \u00a7140B additional tax for ITR-U.",
+   "confidence": "high",
+   "suggested_fix": "Validate itr_form against a Literal of all seven; add a return_type (original/revised/updated) and allow a filed return to spawn a revised one; make record_filing_acknowledgement require status == 'ready_for_filing'; type assessment_year.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The backend and the database both accept all seven ITR forms, and only the client screen restricts the list to four (filing/page.tsx:43) \u2014 a backend capability reachable from no screen, which confirms the gap. There is no return_type anywhere and the UNIQUE (firm_id, client_id, financial_year, itr_form) constraint (migration 319:111) actively prevents a \u00a7139(5)/\u00a7139(8A) return being recorded beside the original. The state-machine bypass in record_filing_acknowledgement (itr_workflow.py:212-249) is real but is gated in the UI to 'ready_for_filing' and by Manager+ RBAC, so it is a hardening item rather than the live hole the finding implies.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed on all four limbs. apps/web/app/clients/[id]/tax/filing/page.tsx:43 `const ITR_FORMS = [\"ITR-3\", \"ITR-5\", \"ITR-6\", \"ITR-7\"]`; domain/income_tax/itr_json.py:117-282 holds verified FieldMappings for ITR-1..ITR-7 (ITRForm Literal at :58); domain/income_tax/itr_workflow.py:22-28 makes 'filed' terminal; record_filing_acknowledgement (:212-249) writes status='filed' with no read of the current status, unlike transition_itr_status (:104-140) which does enforce _TRANSITIONS; routers/itr_workspace.py:70-73 has assessment_year as a bare str and itr_form as an unconstrained str while financial_year is FYLabel. `grep -rniE '139\\(8A\\)|139\\(5\\)|ITR-U|updated return'` over apps/api + apps/web finds only EPFO 'Revised return' text in payroll \u2014 nothing income-tax.",
+     "guards": "Two partial ones. (a) Production has CHECK itr_form IN ('ITR-1'..'ITR-7') (migrations/319_declare_the_guards_production_enforces.sql:112), so the free string cannot store junk \u2014 the four-form limit is purely the frontend's. (b) The acknowledge button only renders at status 'ready_for_filing' (filing/page.tsx:384) and the endpoint requires rbac('income_tax','approve') = Manager+ (core/permissions.py:206-209), so the state-machine bypass needs a direct API call by a Manager, not a UI misclick. Cutting the other way: migration 319:111 records UNIQUE (firm_id, client_id, financial_year, itr_form) on itr_filings, so a second filing row for the same client/FY/form \u2014 exactly what a revised return needs \u2014 is rejected by the database.",
+     "reach": "Live. The page is linked from apps/web/app/clients/[id]/tax/page.tsx:21, whose card badge even advertises 'ITR-3 / ITR-5 / ITR-6 / ITR-7'; routers/itr_workspace.py is mounted at main.py:294."
+    }
+   }
+  },
+  {
+   "id": "IT-24",
+   "kind": "bug",
+   "severity": "medium",
+   "title": "The Form 26AS parser is fixed-column and silently drops every line it cannot read, then marks the upload 'parsed'",
+   "evidence": "apps/api/domain/income_tax/form26as_service.py:145-185 \u2014 the parser splits each line on tab or pipe, skips anything with fewer than five columns (:167), and reads deductor/TAN/date/amount/TDS from fixed positions 1..6. The whole record build is inside `try: \u2026 except (ValueError, IndexError): _logger.debug(...)` (:181-183), so a malformed row is dropped with a debug log and nothing else. `grep -n parse_errors form26as_service.py` shows it is initialised to [] at :85 and never written. save_parsed_records (:230) sets parse_status='parsed' regardless of how many records came out \u2014 including zero.",
+   "ca_experience": "A CA pastes a real 26AS (TRACES issues it as a password-protected PDF whose text dump is not tab-delimited in that column order) and the upload reports 'parsed'. If nothing matched the shape, total_records is 0 and the subsequent reconciliation then reports every book credit as 'not in 26AS' \u2014 the CA is told the client's whole TDS credit is unsupported and cannot be claimed. Nothing on screen says the parse found nothing.",
+   "market_standard": "ClearTax and TaxCloud ingest the TRACES text file and the PDF, validate the header and the section structure, and refuse an unrecognised file by name rather than producing an empty success.",
+   "confidence": "high",
+   "suggested_fix": "Populate parse_errors with the skipped lines and the reason; refuse (parse_status='failed') when zero records are extracted or when the header does not identify a 26AS; and surface the count and the errors on the 26AS screen.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "A 26AS dump that is not tab- or pipe-delimited in the expected column order parses to zero records, is stored as parse_status='parsed' with parse_errors=[] (form26as_service.py:274-279), and the reconciliation then reports the client's entire book TDS credit as unsupported. One correction to the finding: the screen is not wholly silent \u2014 apps/web/app/clients/[id]/tax/26as/page.tsx:418 prints '0 records' in the upload history, though with a green tick and the label 'parsed'.",
+    "probe": "cd apps/api && python -c \"parse_26as_text(<space-aligned PART A dump>)\" \u2192 0 records; save_parsed_records then returned parse_status='parsed', total_records=0, parse_errors=[]; run_reconciliation against one seeded \u20b950,000 book credit returned not_in_26as_count=1, unsupported_credit_paise=5000000, total_tds_26as_paise=0. The same text tab-delimited parses correctly, so the failure is purely delimiter/column shape.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/income_tax/form26as_service.py:138-183 \u2014 `cols = re.split(r'\\t|\\|', line)` (:165), `if len(cols) < 5: continue` (:166-167), fixed positions cols[1..6] (:170-177), and the whole build wrapped in `except (ValueError, IndexError): _logger.debug(...)` (:181-182). `grep -n parse_errors form26as_service.py` gives only :85 (initialised to []) \u2014 it is never written on either the mock (:250-256) or the real (:274-279) save path, both of which set parse_status='parsed' unconditionally. There is no 'failed' status anywhere in the module.",
+     "guards": "Partial only. The parse response returns records_parsed (routers/form_26as.py:107-110) but the caller discards it (26as/page.tsx:176-184). The upload-history row does render `{u.total_records} records` (26as/page.tsx:418) \u2014 so a zero IS visible on screen, beside a green tick and the word 'parsed'. run_reconciliation refuses only when NO parsed upload exists (routers/form_26as.py:155-157); a zero-record upload passes that check.",
+     "reach": "Live. main.py:296 mounts routers.form_26as; the screen is linked from apps/web/app/clients/[id]/tax/page.tsx:29."
+    }
+   }
+  },
+  {
+   "id": "IT-25",
+   "kind": "bug",
+   "severity": "medium",
+   "title": "The ITR due date is chosen by entity type rather than by whether an audit applies, so a small firm or LLP is given 31 October and an individual with a tax audit is given 31 July",
+   "evidence": "apps/web/app/income-tax/page.tsx:81-92 \u2014 AUDIT_ENTITY_TYPES contains private_limited, public_limited, llp, partnership, trust, aop, boi, and isAuditCase() returns true for any of them; handleAddFormChange (:488-492) picks DUE_DATE_AUDIT for those and DUE_DATE_NON_AUDIT for everyone else. Explanation 2 to \u00a7139(1) fixes 31 October for a company and for any OTHER person whose accounts are required to be audited \u2014 which turns on the \u00a744AB turnover test, not on the legal form. The turnover is not consulted here at all, and the tax_audits table that records it lives on a different screen with no link.",
+   "ca_experience": "A partnership firm or LLP with \u20b940 lakh turnover is given a 31 October deadline when its return is due 31 July; the client files late and picks up \u00a7234A interest and, under \u00a780, loses the right to carry forward the year's business loss. An individual proprietor with \u20b93 crore turnover \u2014 an audit case \u2014 is given 31 July when the correct date is 31 October, so the dashboard shows 'overdue' for three months on a return that is not.",
+   "market_standard": "Practice calendars in Winman, CompuTax and ClearTax Practice derive the ITR date from the audit flag on the client-year, which is itself set by the \u00a744AB test, and companies are handled as their own case.",
+   "confidence": "high",
+   "suggested_fix": "Take the audit flag from the client-year (the tax_audits row or a computed \u00a744AB result), keep companies as an unconditional 31 October, and call compliance_engine.itr_due_date on the backend instead of the two hardcoded maps.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The prefill is derived from legal form, not from whether \u00a744AB applies (income-tax/page.tsx:80-93, 483-491), so a non-audit LLP/partnership/trust is defaulted to 31 October and an audited proprietor to 31 July \u2014 but it is an editable field with the statutory rule labelled next to it, so it is a wrong default rather than an unavoidable wrong date. Worth adding: the backend's own generator has the same defect in the opposite direction \u2014 services/compliance_obligation_service.py:398 calls _itr_obligation(financial_year) with is_audit defaulting to False (:329-332), so every auto-generated ITR obligation is dated 31 July regardless of audit, even though compliance_engine.itr_due_date (services/compliance_engine.py:225-231) takes the flag correctly.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/income-tax/page.tsx:80-93 \u2014 AUDIT_ENTITY_TYPES = {private_limited, public_limited, llp, partnership, trust, aop, boi} and isAuditCase() tests membership only; handleAddFormChange (:483-491) sets due_date = DUE_DATE_AUDIT[ay] or DUE_DATE_NON_AUDIT[ay] purely from that set. No turnover, no \u00a744AB test, no tax_audits lookup anywhere in the file.",
+     "guards": "The date field is pre-filled but editable, and the rule is printed beside it: 'Due Date (31 Jul \u2014 non-audit \u00b7 31 Oct \u2014 audit, IT Act S.139)' at apps/web/app/income-tax/page.tsx:1158-1173. So the CA sees the date and can override it before the compliance_calendar row is inserted (:518). That is a real mitigation the finding does not mention.",
+     "reach": "Live \u2014 /income-tax is linked from components/panels/DeadlinesPanel.tsx:33 and the stored due_date drives the 'overdue' badge at page.tsx:597."
+    }
+   }
+  },
+  {
+   "id": "IT-26",
+   "kind": "bug",
+   "severity": "medium",
+   "title": "The \u00a710(13A) HRA exemption is folded into Chapter VI-A 'total deductions' and gross total income is reported gross of it",
+   "evidence": "apps/api/domain/income_tax/itr_engine.py:360-363 adds `hra_exempt` to the same `deductions` accumulator as \u00a780C/\u00a780D/\u00a780G, and :375 assigns that total to result.total_deductions_paise; the gross total income at :318 is computed BEFORE the exemption is removed. domain/income_tax/itr_json.py:355-356 then maps total_deductions to 'Deductions under Chapter VI-A' / 'Schedule VI-A' on every form. Probe: salary \u20b910,00,000 old regime with a \u20b92,00,000 HRA exemption \u2192 gross_total_income_paise \u20b99,50,000 (i.e. gross of the exemption), total_deductions \u20b92,00,000, taxable \u20b97,50,000.",
+   "ca_experience": "The final tax is right, but the computation sheet the CA hands the client shows a gross total income \u20b92 lakh too high and a Chapter VI-A figure \u20b92 lakh too high. \u00a710(13A) is an exemption computed in Schedule S before salary reaches GTI, not a Chapter VI-A deduction. If the payload is ever fed to the ITD utility, the \u20b92 lakh lands in Schedule VI-A and the return will not validate against Schedule S.",
+   "market_standard": "Every computation sheet in the market shows HRA as a deduction from gross salary under \u00a710(13A), above the standard deduction line, and never inside Chapter VI-A.",
+   "confidence": "high",
+   "suggested_fix": "Deduct the HRA exemption from gross salary before the standard deduction, keep it out of the Chapter VI-A accumulator, and report it as its own line on the result and in the payload.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The classification error is real \u2014 \u00a710(13A) (and \u00a724(b)) are accumulated into total_deductions_paise (itr_engine.py:364-371) and GTI is struck before them (:316-318) \u2014 but the only live consequence is one inflated 'Total Deductions (Old Regime)' summary line on app/income-tax/deductions/page.tsx:539; the engine's GTI is rendered nowhere and the Schedule VI-A payload mapping in itr_json.py has no non-test caller.",
+    "probe": "cd apps/api && python -c \"itr_engine.compute(ITRComputeRequest(gross_salary_paise=10_00_000_00, use_new_regime=False, hra=HRADetails(basic_salary_paise=5_00_000_00, hra_received_paise=2_50_000_00, rent_paid_paise=3_00_000_00, is_metro=True)))\" \u2192 gross_total_income 95000000 paise (\u20b99,50,000, i.e. gross of the exemption), deduction_hra 25000000, total_deductions 25000000, taxable 70000000.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/domain/income_tax/itr_engine.py:364-366 adds hra_exempt to the same `deductions` accumulator as \u00a780C/\u00a780D/\u00a780G, :376 assigns it to result.total_deductions_paise, and the GTI at :316-318 is computed before any of it. The same file does the same thing with \u00a724(b) home-loan interest at :368-371, which the finding did not mention and which is a house-property deduction, not Chapter VI-A. domain/income_tax/itr_json.py:337-338 does label total_deductions 'Deductions under Chapter VI-A' / 'Schedule VI-A', and :131/151/171/190/209/228 map it to the ChapVIA node on every form.",
+     "guards": "None in code, but two things bound the damage. The engine's own gross_total_income_paise is returned as income.gross_total_paise (routers/income_tax.py:181) and is typed in apps/web/lib/data/income-tax.ts:83 but rendered on NO screen \u2014 the deductions page shows the user's own typed figure instead (app/income-tax/deductions/page.tsx:538). And the only screen showing the total labels it 'Total Deductions (Old Regime)' (:539), not 'Chapter VI-A'; HRA also gets its own card, 'HRA Exemption \u2014 Section 10(13A) (Old Regime Only)' (:505).",
+     "reach": "The tax figure is unaffected (the finding says so and the probe agrees). The Schedule VI-A mis-mapping cannot reach anyone: `grep -rn itr_json --include=*.py apps/api` finds importers only in tests/test_itr_json.py and tests/test_itr_schema_paths.py \u2014 no router or service builds a payload. The client tax computation screen sends no HRA at all (app/clients/[id]/tax/computation/page.tsx:405-424 offers only salary/business/other income/TDS/advance tax)."
+    }
+   }
+  },
+  {
+   "id": "IT-27",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "The \u00a7115BAC(6) regime-election engine \u2014 Form 10-IEA, the due date, the once-only withdrawal lock-out \u2014 is reachable from nothing; the screens carry a bare old/new dropdown",
+   "evidence": "apps/api/domain/income_tax/regime_election.py:145 evaluate_election is complete and covered by tests/test_regime_election.py, and is imported by no router (see IT-01 grep). The client workspace offers a two-option select (apps/web/app/clients/[id]/tax/computation/page.tsx:395-398 'New Regime (Default)' / 'Old Regime') and sends `use_new_regime` as a boolean; nothing asks whether Form 10-IEA was filed, when, or whether the option has already been withdrawn.",
+   "ca_experience": "The module's own docstring names the consequence: a missed Form 10-IEA taxes a business client on the new regime for a year they planned around the old one and cannot be cured after the \u00a7139(1) due date, and a withdrawal made without realising it is final closes the old regime permanently. A CA using this product picks 'Old Regime' from a dropdown and gets a number, with no prompt that a form is due and no record that the option has been spent.",
+   "market_standard": "Winman and CompuTax track the 10-IEA acknowledgement number and date on the client-year and warn when the old regime is selected without one, and carry the prior-year election history forward.",
+   "confidence": "high",
+   "suggested_fix": "Expose evaluate_election behind /api/income-tax/regime-election, store the client's 10-IEA acknowledgement and prior elections, and gate the old-regime selection on the screen with the engine's own reasons rendered.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "domain/income_tax/regime_election.py (evaluate_election at :121, form_10iea_due_date, election_route) is fully implemented and tested but has no importer outside tests, and the client computation screen offers a bare old/new dropdown (app/clients/[id]/tax/computation/page.tsx:395-401) with no 10-IEA capture, due date or withdrawal history. The only 10-IEA prompt in the product is on the payroll declaration path (routers/payroll.py:4710), which is the withholding intimation, not the election.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. `grep -rn 'regime_election\\|evaluate_election' --include=*.py apps/api` outside tests/ returns exactly two hits: the definition at domain/income_tax/regime_election.py:121 and a prose reference in domain/payroll/declarations.py:32. tests/test_regime_election.py exercises it. The client screen is a two-option select \u2014 apps/web/app/clients/[id]/tax/computation/page.tsx:395-401 ('New Regime (Default)' / 'Old Regime') \u2014 and nothing on it asks about Form 10-IEA.",
+     "guards": "One adjacent, and it is a different subject: the PAYROLL declaration path does warn about Form 10-IEA (routers/payroll.py:4704-4712 raises it as a notice, and components/portal/TaxDeclarationTab.tsx:296 tells the employee). That covers an employee's withholding intimation, not the CA's \u00a7115BAC(6) election on a client-year, and it does not call evaluate_election either.",
+     "reach": "The engine is reachable from nothing \u2014 no router imports it, so it is not mounted at any path. Per the gap rule, a backend capability reachable from no screen confirms the gap rather than refuting it."
+    }
+   }
+  },
+  {
+   "id": "IT-28",
+   "kind": "bug",
+   "severity": "medium",
+   "title": "\u00a750AA is applied to every debt mutual fund regardless of acquisition date, and listed bonds and debentures are given the 24-month long-term threshold",
+   "evidence": "apps/api/domain/income_tax/capital_gains_engine.py:185-197 \u2014 the `_DEBT_MF_LIKE` branch charges a flat 30% estimate with no reference to purchase_date, while \u00a750AA applies to specified mutual funds ACQUIRED on or after 01-04-2023; units acquired earlier are ordinary capital assets. capital_gains_engine.py:93-97 puts 'bonds' and 'other' in the 24-month bucket (_LONG_TERM_MONTHS_OTHER), whereas listed securities carry a 12-month threshold.",
+   "ca_experience": "A client's pre-April-2023 debt fund units are charged at a flat 30% slab estimate instead of being classified long-term, and a listed bond held 18 months is classified short-term. Both are wrong classifications that flow into the persisted register's gain_type and tax_rate_percent.",
+   "market_standard": "ClearTax and Zerodha's tax reports split debt funds at the 01-04-2023 acquisition boundary and hold a separate 12-month threshold for listed securities.",
+   "confidence": "medium",
+   "suggested_fix": "Branch the debt-MF path on purchase_date >= 2023-04-01; add a listed-security asset type with the 12-month threshold. Verify the post-23-07-2024 threshold table against the Act before writing it down.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "A debt mutual fund unit acquired before 01-04-2023 is still routed through the \u00a750AA branch and charged a flat 30% estimate (capital_gains_engine.py:184-196), and 'bonds' carries the 24-month threshold (:93-97), so a listed bond held 18 months is classified STCG. Both wrong classifications are persisted (gain_type / tax_rate_percent, routers/income_tax.py:415-420). The register's asset-type vocabulary has no listed/unlisted split, so fixing the second limb needs a new asset type, not just a threshold change.",
+    "probe": "cd apps/api && python -c \"compute_capital_gains('debt_mf', date(2020,1,1), date(2026,1,1), ...)\" \u2192 is_long_term True but tax_rate_percent 30.0, section_ref 'Section 50AA (Finance Act 2023)' on units bought in 2020; compute_capital_gains('bonds', date(2024,1,1), date(2025,7,1), ...) \u2192 is_long_term False at 18 months, 30.0%, 'Section 48'.",
+    "lens_notes": {
+     "literal": "Both limbs confirmed. apps/api/domain/income_tax/capital_gains_engine.py:184-196 \u2014 the _DEBT_MF_LIKE branch charges a flat 30% with no reference to purchase_date, while its own note (:194) asserts 'Debt MF (acquired after 1 Apr 2023)'. capital_gains_engine.py:87-97 sets _LONG_TERM_MONTHS_OTHER = 24 and is_long_term() applies the 12-month threshold only to _EQUITY_LIKE, so 'bonds'/'other' get 24 months; the comment at :83-86 states the choice deliberately.",
+     "guards": "None. No caller filters by acquisition date, and the register's asset_type vocabulary (REGISTER_ASSET_TYPES at :95, and the CHECK constraint the field_validator at routers/income_tax.py:373-382 mirrors) has a single 'bonds' value with no listed/unlisted distinction \u2014 so the engine has no input that could tell it which threshold to use even if the branch existed. Partial mitigation on the debt-MF side only: the result carries is_slab_rate_estimate=True and a note saying 30% is an estimate to be adjusted (:194-195).",
+     "reach": "Live \u2014 same path as IT-22: main.py:267 \u2192 routers/income_tax.py:344 and :401, rendered by apps/web/app/income-tax/capital-gains/page.tsx (asset type 'bonds' is offered at :49) and persisted into the capital_gains register (gain_type and tax_rate_percent, routers/income_tax.py:415-420)."
+    }
+   }
+  },
+  {
+   "id": "IT-29",
+   "kind": "data_integrity",
+   "severity": "medium",
+   "title": "The Cost Inflation Index stops at FY 2025-26, so every indexed cost computed and STORED in the current financial year silently uses last year's index",
+   "evidence": "apps/api/domain/income_tax/capital_gains_engine.py:57-64 CII_BY_FY ends at '2025-26': 380, LATEST_CII_FY = '2025-26', and cii_for (:70-74) returns 380 for any later year with no flag on the result. routers/income_tax.py:353 create_capital_gains writes `result.indexed_cost_paise` into the capital_gains table. CapitalGainsResult (:118-134) has no 'index was estimated' field, and the endpoint response (_cg_response, :311) has none either. CLAUDE.md already records this as the one live instance of the fallback trap.",
+   "ca_experience": "A property gain computed today for FY 2026-27 uses CII 380 instead of the (not yet notified) 2026-27 index. The indexed cost is understated, the indexed gain overstated, and \u2014 unlike the tax figure, which the lower-of comparison usually rescues \u2014 the wrong indexed_cost_paise is persisted in the register and will be read back next year as if it were a fact.",
+   "market_standard": "Winman and ClearTax refuse to compute an indexed cost for a year whose CII CBDT has not notified, and say so, rather than substituting the previous year's number.",
+   "confidence": "high",
+   "suggested_fix": "Have cii_for return a (value, is_estimate) pair or raise for an un-notified year; carry the flag through CapitalGainsResult and the API response; and refuse to PERSIST an indexed cost computed on an estimated index.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "True, and the auditor understated it: the wrong index does not only corrupt the stored indexed_cost_paise, it can change the TAX. For immovable property capital_gains_engine.py:227-237 takes min(12.5% flat, 20% indexed); an understated indexed cost overstates the indexed branch, so the lower-of comparison picks the wrong branch. On a \u20b950L 2015-16 purchase sold today for \u20b91.20cr the shipped code returns \u20b98,75,000 tax where a notified 2026-27 CII of 400 would give \u20b98,25,196 \u2014 \u20b949,803 too much \u2014 and persists an indexed cost of \u20b974,80,314 instead of \u20b978,74,015 (capital_gains_engine.py:158-159, routers/income_tax.py:414). Severity stays medium only because indexation now survives solely as the pre-23-Jul-2024 grandfathered option on immovable property.",
+    "probe": "cd apps/api && python -c \"import domain.income_tax.capital_gains_engine as cg; ...\" \u2192 'as shipped (CII 380 substituted for 2026-27): indexed_cost=Rs 7480314 tax=Rs 875000' / 'if 2026-27 CII were 400: indexed_cost=Rs 7874015 tax=Rs 825196' / 'overstated tax = Rs 49803'. Also `cii_for('2026-27')` prints 380, and fy_for_date(2026-09-07) prints '2026-27'.",
+    "lens_notes": {
+     "literal": "Confirmed at the cited lines. apps/api/domain/income_tax/capital_gains_engine.py:58-65 ends CII_BY_FY at '2025-26': 380 with LATEST_CII_FY = '2025-26'; cii_for (:68-72) is `CII_BY_FY.get(fy, CII_BY_FY[LATEST_CII_FY])` \u2014 a silent substitution. compute_capital_gains reads it twice (:158-159) and CapitalGainsResult (:120-146) carries no estimate flag; _cg_response (routers/income_tax.py:311-327) exposes none; create_capital_gains persists result.indexed_cost_paise into the capital_gains row (routers/income_tax.py:414).",
+     "guards": "No guard. The opposite: apps/api/tests/test_capital_gains_engine.py:32-33 PINS the fallback (`assert cii_for('2030-31') == CII_BY_FY[LATEST_CII_FY]`), so the substitution is asserted as intended behaviour rather than caught. The only near-guard is cosmetic and inconsistent \u2014 the frontend renders the sale-year CII from GET /capital-gains/cii-table, so apps/web/app/income-tax/capital-gains/page.tsx:336,412 print 'CII 254 \u2192 \u2014' beside a fully populated indexed-cost figure the backend computed with 380.",
+     "reach": "Reaches a user. /income-tax is linked from apps/web/components/panels/DeadlinesPanel.tsx:33, the capital-gains page is a tab under it, and POST /api/income-tax/capital-gains both computes and persists (routers/income_tax.py:387-422). CLAUDE.md names this as the one live instance of the fallback trap."
+    }
+   }
+  },
+  {
+   "id": "IT-30",
+   "kind": "glitch",
+   "severity": "medium",
+   "title": "Snapshots stay 'draft' forever \u2014 the review endpoint exists but no screen calls it, and the workspace's own 'partner review mandatory' promise is unenforced",
+   "evidence": "apps/api/routers/itr_workspace.py:196 POST /api/itr/snapshots/{id}/review is gated on rbac('income_tax','approve') and sets status='reviewed' (computation_workspace.py:147). `grep -rn 'snapshots/.*review' apps/web/app` returns nothing. The client computation screen renders latestSnap.status with styling for 'reviewed' and 'finalized' (apps/web/app/clients/[id]/tax/computation/page.tsx:361-365) but offers no control to reach either. apps/web/app/clients/[id]/tax/page.tsx:96 tells the CA 'Partner review mandatory before marking Ready for Filing'.",
+   "ca_experience": "Every computation in the product is permanently a draft. A partner cannot sign off a computation, a manager cannot see which computations have been reviewed, and the maker-checker discipline the product advertises exists only in the API. In a firm where an executive prepares and a partner signs, there is no record of who approved the number that went on the return.",
+   "market_standard": "Practice tools (ClearTax Practice, Winman's multi-user setup) put a two-step preparer/reviewer sign-off on the computation itself, with the reviewer's name and timestamp printed on the sheet.",
+   "confidence": "high",
+   "suggested_fix": "Add a Review button on the computation screen calling the existing endpoint, show reviewer and timestamp on the snapshot card, and block the filing workflow's ready_for_filing transition unless the pinned snapshot is reviewed.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The snapshot-review endpoint is genuinely dead from the UI, so a computation snapshot's status is permanently 'draft' \u2014 but the auditor's consequences are wrong. The 'Partner review mandatory before marking Ready for Filing' line at apps/web/app/clients/[id]/tax/page.tsx:96 is about the ITR FILING workflow, which is enforced in itr_workflow.py:23-29 and driven from apps/web/app/clients/[id]/tax/filing/page.tsx:27,161-177, and partner_reviewed_by/partner_reviewed_at are recorded (itr_workflow.py:155-156). The one real residual gap is the third clause of the suggested fix: transition_itr_status never checks that the filing's computation_snapshot_id points at a reviewed snapshot. Downgraded to low \u2014 a stale status chip, not an absent maker-checker.",
+    "probe": "grep -rn 'api/itr/' apps/web/{app,lib,components} --include=*.ts --include=*.tsx | grep -v node_modules \u2192 5 hits, none matching snapshots/.*review; grep -n 'STATUS_ORDER' apps/web/app/clients/[id]/tax/filing/page.tsx \u2192 line 27 lists draft\u2026filed.",
+    "lens_notes": {
+     "literal": "The narrow half is confirmed. POST /api/itr/snapshots/{id}/review exists at apps/api/routers/itr_workspace.py:190-216 and sets status/reviewed_by/reviewed_at (domain/income_tax/computation_workspace.py:147-162). A grep of every non-node_modules .ts/.tsx for '/api/itr/' returns only snapshots (create), disallowances, filings, filings/{id}/transition and filings/{id}/acknowledge \u2014 no /review call anywhere. So tax_computation_snapshots.status is written 'draft' at creation and never moves, and the 'reviewed'/'finalized' branches of the status chip at apps/web/app/clients/[id]/tax/computation/page.tsx:361-365 are unreachable.",
+     "guards": "The broad half is refuted by a guard the auditor missed. The maker-checker for the RETURN is a separate, live workflow: apps/api/domain/income_tax/itr_workflow.py:23-29 defines draft \u2192 review \u2192 partner_review \u2192 ready_for_filing \u2192 filed and ready_for_filing is reachable ONLY from partner_review; the transition records reviewed_by/reviewed_at and partner_reviewed_by/partner_reviewed_at (:126-130, :152-156); the endpoint is rbac('income_tax','approve') (routers/itr_workspace.py:266-271).",
+     "reach": "Both screens are reachable \u2014 apps/web/app/clients/[id]/tax/page.tsx:13,21 links tax/computation and tax/filing. The filing screen drives the workflow: STATUS_ORDER at apps/web/app/clients/[id]/tax/filing/page.tsx:27 and handleTransition at :161-177 POST to /transition, so a partner does sign off and the sign-off IS recorded."
+    }
+   }
+  },
+  {
+   "id": "IT-31",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "26AS reconciliation never feeds the computation \u2014 the TDS credit on the return is a number the CA retypes by hand",
+   "evidence": "The reconciliation compares 26AS against `receipts.tds_paise` (apps/api/domain/income_tax/form26as_service.py:56 BOOKS_SOURCE) and produces matched/mismatch/missing counts and an unsupported_credit_paise figure. Nothing writes a TDS total back: ITRComputeRequest.tds_deducted_paise (domain/income_tax/itr_engine.py:230) is a plain input, and the client computation screen collects it from a free-text field (apps/web/app/clients/[id]/tax/computation/page.tsx:105, sent at :230). There is no endpoint returning 'claimable TDS for this client-year'.",
+   "ca_experience": "A CA who has just run the 26AS reconciliation and knows exactly which credits are supported must then type the total into a different tab, by hand, with no check that the two agree. For a salaried client whose 26AS Part A credit never touches the receipts ledger, the reconciliation cannot see the credit at all, so the CA is on their own.",
+   "market_standard": "ClearTax and Winman prefill Schedule TDS-1/TDS-2 straight from the imported 26AS, per deductor and per TAN, and flag any credit claimed that 26AS does not support under Rule 37BA(1).",
+   "confidence": "high",
+   "suggested_fix": "Return a claimable-TDS total (and a per-deductor schedule) from the reconciliation, and prefill the computation's TDS field from it with a visible variance if the CA overrides.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The gap is real: nothing computes a claimable-TDS figure or prefills the computation, and ITR TDS is hand-typed with no variance check (itr_engine.py:206; computation/page.tsx:105,410,230). The finding's 'no endpoint returning claimable TDS' is too strong \u2014 GET /api/form-26as/reconciliation already returns total_tds_26as_paise, unsupported_credit_paise and a per-deductor/per-TAN breakdown (form26as_service.py:468-515, routers/form_26as.py:195). The salaried-client point stands: _load_book_credits reads only `receipts` rows with tds_paise > 0 (form26as_service.py:371-380), so \u00a7192 salary credit has no books counterpart at all. Medium is right.",
+    "probe": "grep -rn 'claimable|prefill|tds_credit' over routers/form_26as.py, routers/income_tax.py, routers/itr_workspace.py \u2192 one hit, a comment. grep -n 'tds' apps/web/app/clients/[id]/tax/computation/page.tsx \u2192 useState('') at 105, label 'TDS Deducted (\u20b9)' at 410.",
+    "lens_notes": {
+     "literal": "Confirmed with one imprecision. The books side of the reconciliation is receipts.tds_paise only \u2014 apps/api/domain/income_tax/form26as_service.py:341-408 reads `receipts` joined to `customers` for the TAN, and BOOKS_SOURCE = 'receipts.tds_paise' at :54. On the computation side tds_deducted_paise is a plain input at domain/income_tax/itr_engine.py:206 (the finding cites :230; the field is at :206) and only feeds result.tds_and_advance_paise at :452. The frontend collects it as free text: apps/web/app/clients/[id]/tax/computation/page.tsx:105 useState(''), rendered as a bare '\u20b9' field at :410, sent at :230 and :253. Nothing reads the reconciliation on that path.",
+     "guards": "No guard, and no cross-check. The imprecision: the raw figures DO exist and ARE fetchable \u2014 summarise() at form26as_service.py:468-515 emits total_tds_26as_paise, unsupported_credit_paise and a per-deductor list carrying label/tan/total_26as_paise/variance, and GET /api/form-26as/reconciliation (routers/form_26as.py:195-207) returns it. So it is not 'no endpoint'; it is 'no netting into a claimable figure, and no wiring'.",
+     "reach": "Reaches a user. Both screens are live and separately linked from apps/web/app/clients/[id]/tax/page.tsx:13 (computation) and :27 (26AS), so the CA does have to carry the number across two screens by hand."
+    }
+   }
+  },
+  {
+   "id": "IT-32",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "The Chapter VI-A surface stops at seven sections \u2014 no \u00a780E, \u00a780EE/EEA, \u00a780DD/DDB, \u00a780U, \u00a780GG, \u00a780JJAA, and no free-text \u00a780C 'other' bucket through the API",
+   "evidence": "apps/api/domain/income_tax/itr_engine.py:24-80 defines limits for \u00a780C, \u00a780CCD(1B), \u00a780CCD(2), \u00a780D, \u00a780TTA/TTB and \u00a724(b) only; everything else has to go through the untyped `other_deductions_paise` (:225), which is added with no limit and no section attribution (:371). Deductions80C has an `other_paise` field (:100) that routers/income_tax.py:33-42 S80CInput does NOT expose, so \u00a780C items like a five-year term deposit, stamp duty or \u00a780CCD(1) cannot be entered at all through the API. \u00a780D has no \u20b95,000 preventive health check-up sub-limit and no medical-expenditure route for an uninsured senior.",
+   "ca_experience": "An old-regime individual with an education loan (\u00a780E), a disabled dependant (\u00a780DD), a specified illness (\u00a780DDB) or no HRA but paying rent (\u00a780GG) has to be lumped into one unlabelled 'other deductions' figure with no cap check and no line on the computation sheet. The CA loses the audit trail for exactly the deductions most likely to be questioned.",
+   "market_standard": "Winman, CompuTax and ClearTax present the full Chapter VI-A list with each section's own limit, sub-limits and evidence prompts, and print Schedule VI-A line by line.",
+   "confidence": "high",
+   "suggested_fix": "Model the remaining Chapter VI-A sections with their own limits and a per-section result line (the tax_deduction_claims table already has a `section` column ready for it), and expose Deductions80C.other_paise on S80CInput.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The Chapter VI-A surface really does stop at \u00a780C/\u00a780CCD(1B)/\u00a780CCD(2)/\u00a780D/\u00a780G/\u00a780TTA-TTB plus \u00a710(13A) and \u00a724(b); \u00a780E, \u00a780EE/EEA, \u00a780DD, \u00a780DDB, \u00a780U, \u00a780GG and \u00a780JJAA are absent from the whole income_tax domain, and \u00a780D has neither the preventive-checkup sub-limit nor the uninsured-senior medical-expenditure route (itr_engine.py:108-119). Deductions80C.other_paise is unreachable through the API (routers/income_tax.py:32-42, :135-141). The one factual error is the five-year term deposit, which is supported as fd_5yr_paise. Add to the finding: the untyped other_deductions_paise fallback is added with no limit at itr_engine.py:374, so anything \u00a780C routed through it escapes the \u00a780CCE \u20b91.5L cap.",
+    "probe": "grep -rn '80E\\b|80EE|80EEA|80DD|80DDB|80U|80GG|80JJAA' apps/api/domain apps/api/routers apps/web/app/income-tax \u2192 3 hits, all docstrings/comments naming the range, no implementation.",
+    "lens_notes": {
+     "literal": "Confirmed except one example. apps/api/domain/income_tax/itr_engine.py:23-79 defines limits for \u00a780C, \u00a780CCD(1B), \u00a780CCD(2), \u00a780D, \u00a780TTA/TTB, \u00a724(b) and \u00a771(3A) only; a repo-wide grep for 80E/80EE/80EEA/80DD/80DDB/80U/80GG/80JJAA across apps/api/domain, apps/api/routers and apps/web/app/income-tax returns no implementation \u2014 only three docstring mentions of the range '80C\u201380JJAA'. Deductions80C.other_paise exists (itr_engine.py:99, summed at :106) but S80CInput (routers/income_tax.py:32-42) does not expose it, and the router's Deductions80C construction (:135-141) never passes it. other_deductions_paise is added raw with no cap and no section attribution at :374 (old regime only \u2014 the block is inside `if not req.use_new_regime`, itr_engine.py:333). Deductions80D.eligible_paise (:108-119) has only the two premium buckets: no \u20b95,000 preventive-checkup sub-limit and no \u00a780D(2)(b) medical-expenditure route. WRONG EXAMPLE: a five-year term deposit IS supported \u2014 fd_5yr_paise at itr_engine.py:96 and routers/income_tax.py:39.",
+     "guards": "None. The escape hatch makes it worse rather than better: because other_deductions_paise is added uncapped at :374, an \u00a780C item routed through it (stamp duty, \u00a780CCD(1)) bypasses the \u00a780CCE \u20b91,50,000 aggregate cap entirely \u2014 an over-claim, not just a lost audit trail.",
+     "reach": "Reaches a user on both surfaces. apps/web/app/income-tax/deductions/page.tsx (linked from apps/web/app/income-tax/page.tsx:744) sends only ppf/elss/lic/nsc/homeLoanPrincipal/tuitionFees/fd5yr, 80CCD(1B), 80CCD(2), 80D, 80G, 80TTA, HRA and \u00a724(b) (:229-262) \u2014 it does not even expose other_deductions_paise, so the missing sections have no route at all from that screen. The auditor's structural note checks out: public.tax_deduction_claims has a NOT NULL `section TEXT` column (apps/api/migrations/156_missing_tables_f5.sql:155)."
+    }
+   }
+  },
+  {
+   "id": "IT-33",
+   "kind": "gap",
+   "severity": "low",
+   "title": "The advance-tax hub card hardcodes the FY 2025-26 instalment calendar, so it shows last year's dates",
+   "evidence": "apps/web/app/income-tax/page.tsx:121-126 ADVANCE_TAX_INSTALLMENTS is a literal list reading '15 Jun 2025', '15 Sep 2025', '15 Dec 2025', '15 Mar 2026', rendered at :970. The backend derives the schedule from the FY at apps/api/domain/income_tax/advance_tax_interest_engine.py:87-95 installment_schedule(fy) and compliance_engine.advance_tax_due_dates(:357), neither of which this page calls.",
+   "ca_experience": "On any date in FY 2026-27 the Income Tax hub shows a client the previous year's advance-tax calendar. It is a display panel rather than a computation, so no money is wrong \u2014 but it is the first thing on the page and it is stale, which undermines confidence in everything below it.",
+   "market_standard": "Every compliance dashboard derives instalment dates from the selected year.",
+   "confidence": "high",
+   "suggested_fix": "Derive the four dates from the selected FY (or call compliance_engine.advance_tax_due_dates) instead of the literal list.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "Literally true, and slightly worse than described: not only the four dates but the panel's heading are hardcoded to FY 2025-26 (apps/web/app/income-tax/page.tsx:121-126 and :964), so today the tab is titled with last year and shows four elapsed instalments with no upcoming one. Display only \u2014 no stored or computed money is affected \u2014 so low is correct.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed exactly. apps/web/app/income-tax/page.tsx:121-126 ADVANCE_TAX_INSTALLMENTS is a literal array with due '15 Jun 2025' / '15 Sep 2025' / '15 Dec 2025' / '15 Mar 2026', mapped at :970. The section heading is hardcoded too \u2014 :964 reads 'Advance Tax Installments \u2014 FY 2025-26'. As of 2026-09-07 all four parse to dates before `today`, so every row takes the isPast branch and none is ever 'upcoming'.",
+     "guards": "None on this page \u2014 the array is module-level, not derived from any selected FY, and nothing on the page calls the backend for it.",
+     "reach": "Reaches a user: /income-tax is linked from apps/web/components/panels/DeadlinesPanel.tsx:33 and this is the Advance Tax tab of that hub. The backend alternatives the auditor names both exist and are correct \u2014 apps/api/domain/income_tax/advance_tax_interest_engine.py:88-97 installment_schedule(fy) derives all four from the FY string, and services/compliance_engine.py:357-368 advance_tax_due_dates(financial_year_end) does the same \u2014 and neither is called from this page."
+    }
+   }
+  },
+  {
+   "id": "IT-34",
+   "kind": "performance",
+   "severity": "low",
+   "title": "The deductions planner fires two RBAC-gated compute calls on every debounced state change, including fields that cannot affect tax",
+   "evidence": "apps/web/app/income-tax/deductions/page.tsx:222-283 \u2014 one useEffect keyed on the whole `state` object runs `Promise.all([computeITR(old), computeITR(new)])` behind a 400 ms debounce; the dependency array is `[state]` (:283), which changes when a donation's description is typed, and the comment at :226-229 acknowledges this. Each call is a POST to /api/income-tax/compute on a Render Singapore instance that cold-starts.",
+   "ca_experience": "Typing a donation description or toggling a checkbox re-runs both regime computations. On a cold instance the CA watches the comparison panel blank and repopulate repeatedly while typing.",
+   "market_standard": "Desktop tools (Winman, CompuTax) compute locally and instantly; web tools compute on an explicit action or on a narrowed dependency set.",
+   "confidence": "medium",
+   "suggested_fix": "Key the effect on the tax-relevant fields only (a derived request object), or move to an explicit Recompute action.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The over-firing is real and self-documented: the effect is keyed on the whole `state` object (deductions/page.tsx:283) and a donation description is in it (:467), so a tax-irrelevant keystroke costs two cross-region compute calls after each 400 ms pause. The ca_experience is overstated \u2014 nothing blanks; the tax figures persist and only the recommendation line shows 'Computing\u2026' (:558-561) while Save is disabled (:571). Low is correct; this is polish, not a defect a CA would report.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/income-tax/deductions/page.tsx:224-283 is one useEffect whose dependency array is `[state]` (:283); inside, a 400 ms setTimeout fires Promise.all([computeITR(old), computeITR(new)]) (:266-271). A donation description is part of `state` \u2014 the input's onChange at :467 does upd({ donations: ds }) \u2014 so typing it does re-key the effect, exactly as the comment at :221-223 admits.",
+     "guards": "Partly guarded, more than the finding allows. The 400 ms debounce plus the `cancelled` flag and clearTimeout in the cleanup (:282) mean continuous typing fires NO request at all; a pair of calls fires once per 400 ms idle pause, and any in-flight result from a superseded state is discarded. Both endpoints are stateless POSTs behind rbac('income_tax','compute') (apps/api/routers/income_tax.py:112-115) \u2014 nothing is written.",
+     "reach": "Reachable (linked from apps/web/app/income-tax/page.tsx:744), but the described symptom does not occur. The comparison panel does not blank: the two regime cards at :544-555 keep rendering the previous oldResult/newResult while `computing` is true; only the recommendation strip swaps to 'Computing\u2026' (:558-561) and the Save button disables (:571)."
+    }
+   }
+  }
+ ],
+ "maturity": {
+  "grade": "C",
+  "rationale": "The domain layer is genuinely strong in places \u2014 FY-versioned statutory rates with a `verified` flag and correct FY 2025-26 slabs, rebate, marginal relief and surcharge caps in both regimes (probed and confirmed); a \u00a7234C engine that gets the fixed-period and trigger-tolerance structure right where the frontend it replaced got it wrong; ITR JSON field paths resolved against the Department's own committed schemas and pinned by tests; and several modules that REFUSE rather than guess (\u00a732 depreciation in the bridge, the software-provider id, the presumptive under-declaration case). But the product a CA can actually reach is far behind that layer. Seven of the best-written modules \u2014 entity_rates, minimum_tax, presumptive, regime_election, book_to_tax_bridge, itr_json, itr_schema \u2014 are imported by no router and no screen, verified by grep this session. The one computation endpoint only computes individual slabs, which fits none of the described live client book. The per-client computation screen collects five figures and no deductions at all. And four defects put a wrong money number in front of a CA today: a capital loss reducing slab tax, \u00a780G with no qualifying limit, capital gains charged at Budget-2024 rates for pre-23-July-2024 transfers, and \u00a7234C charged to presumptive assessees. Tax audit is a tracker with no 3CD, AIS persists nothing, and \u00a7234A/234B reach no screen. The scaffolding, the discipline and the test culture are there; the module is not.",
+  "grade_rationale_short": "strong domain layer, largely unreachable product",
+  "would_a_ca_buy_this_module_alone": "No \u2014 a CA firm serving SMEs cannot compute a company, firm or LLP return at all here, cannot produce a Form 3CD, and cannot get from this product to a filed-elsewhere JSON; the individual path it does have omits every Chapter VI-A deduction on the client screen."
+ },
+ "strengths": [
+  "FY-versioned statutory rates done properly: apps/api/domain/income_tax/statutory_rates.py:108-160 holds the FY 2025-26 new-regime slabs (0/5/10/15/20/25/30 at 4/8/12/16/20/24 lakh), the \u20b960,000 \u00a787A rebate at \u20b912 lakh with marginal relief granted ONLY under the new regime (the old-regime cliff is encoded as data on RebateRule, :51-64, which is legally correct), the 25% new-regime surcharge cap and the 15% capital-gains surcharge cap. Probed this session: \u20b912L \u2192 nil, \u20b912.1L \u2192 \u20b910,400 (relief working), \u20b96cr new regime \u2192 25% surcharge, old regime \u2192 37%. All integer paise.",
+  "The 'dead control' discipline at apps/api/routers/income_tax.py:225-250: GET /api/income-tax/financial-years exists precisely so a picker cannot offer a year the engine has no rates for, and apps/web/app/clients/[id]/tax/computation/page.tsx:176-193 leaves the picker EMPTY on a failed probe rather than guessing. This is the right instinct applied to a real past failure.",
+  "The \u00a7234C engine (apps/api/domain/income_tax/advance_tax_interest_engine.py:78-179) gets the structure right where the frontend it replaced got it wrong: the 12%/36% trigger tolerance on instalments 1 and 2, the fixed 3/3/3/1-month periods regardless of actual delay, and cumulative-by-due-date counting so a late lump payment still counts for later instalments. The header (:16-32) names the exact \u00a7234B-shaped bug it fixed.",
+  "ITR JSON field paths are CHECKED, not believed: apps/api/domain/income_tax/itr_schema.py:75-95 resolves a dotted path through the Department's own committed schema and asserts the leaf is an integer, and tests/test_itr_schema_paths.py re-verifies every path in FIELD_MAPPINGS on every run (271 tests across the income-tax modules pass in 0.75s). The recorded near-miss at itr_json.py:104-113 \u2014 TaxPayableOnDeemedTI (the \u00a7115JB/\u00a7115JC branch) instead of TaxPayableOnTI on ITR-5/6, which would have validated perfectly and reported the wrong tax \u2014 is exactly the class of error this machinery exists to catch.",
+  "Refusing by name rather than emitting something plausible: apps/api/domain/income_tax/itr_json.py:390-427 raises SoftwareProviderNotRegistered and ReturnIncomplete with the specific missing thing, and domain/income_tax/book_to_tax_bridge.py:22-38 refuses to default IT Act \u00a732 depreciation to the Companies Act book charge because 'a bridge that reconciles and lies is worse than one that refuses to reconcile'. Both are the right call.",
+  "Two commonly-botched entity-tax rules are correct: apps/api/domain/income_tax/entity_rates.py:127-137 turnover_reference_fy looks TWO years back for the 25% company rate (not at the year being taxed), and :227-231 applies the \u00a7115BAA/\u00a7115BAB surcharge as a flat 10% from the first rupee rather than reusing the normal brackets. Both are named in the module docstring as the easy mistakes.",
+  "The \u00a7115JEE asymmetry is modelled deliberately: apps/api/domain/income_tax/minimum_tax.py:78-80 excludes firm and LLP from the \u20b920 lakh AMT cushion, with the docstring explaining that extending it to firms 'silently zeroes the liability of every small LLP that claims \u00a735AD'. The MAT/AMT credit under \u00a7115JAA/\u00a7115JD is recorded rather than dropped (:255-311).",
+  "Presumptive arithmetic is careful in the right places: apps/api/domain/income_tax/presumptive.py:152-158 tests the 5% cash threshold by cross-multiplication so no division rounds a taxpayer across the boundary, :195-241 refuses to declare BELOW the presumptive figure (\u00a744AD(5)) rather than quietly reducing it, and :373-380 does \u00a744AE in kilograms because \u20b91,000 per ton is exactly \u20b91 per kg.",
+  "Client-scope authorization has been swept properly: every row-addressed endpoint in routers/itr_workspace.py (:26-64) and routers/form_26as.py (:26-42) resolves the row and checks can_access_client before acting, and routers/income_tax.py:326-345 does the same for the capital-gains register \u2014 each with a comment naming the specific gap it closed. The 26AS 404 message is deliberately identical for missing, wrong-firm and unassigned so it is not an existence oracle.",
+  "Money parsing is disciplined across all seven tax screens: apps/web/app/clients/[id]/tax/computation/page.tsx:197-209 reads and validates all five figures BEFORE computing anything, with the comment 'a gross salary read as \u20b91 because it was typed 12,00,000 would produce a return that is internally consistent and completely wrong'. paiseFromRupeeInput is used everywhere; no Math.round(parseFloat(x)*100) survives in this subsystem.",
+  "The ITR filing demo (apps/api/services/filing_demo/itr.py:1-116) is honest: gated on status == 'ready_for_filing', reads the pinned snapshot with an explicit fallback chain, states in as many words that PracticeSync has no ITR JSON generator, and carries the \u00a7140 verification rule (the taxpayer signs, never the CA) and the 30-day e-verification clock."
+ ],
+ "test_coverage_notes": "\"Volume is good and quality is uneven in a specific, diagnosable way: the eleven income-tax test modules (test_itr_engine, test_capital_gains_engine, test_advance_tax_interest_engine, test_minimum_tax, test_presumptive_taxation, test_entity_tax_rates, test_regime_election, test_book_to_tax_bridge, test_itr_json, test_itr_schema_paths, test_statutory_rates) run 271 tests and all pass in 0.75s. But the coverage tracks the DOMAIN modules in isolation, and the best-tested modules are precisely the ones no router imports \u2014 entity_rates, minimum_tax, presumptive, regime_election and book_to_tax_bridge each have a full suite and zero production callers, so the suite is green about code a CA cannot run.\\n\\nNot covered at all, and each is a live defect found this session: a negative capital-gains figure reaching the tax computation (IT-02); \u00a780G above the 10%-of-adjusted-GTI qualifying limit (IT-03); any transfer dated before 23-07-2024 (IT-04) \u2014 test_capital_gains_engine.py has no date-sensitive rate test whatever; \u00a7234C for a \u00a744AD/\u00a744ADA assessee (IT-06); AMT surcharge for an individual rather than a firm (IT-07); the \u00a7111A/\u00a7112 basic-exemption absorption (IT-08).\\n\\nTwo tests actively PIN behaviour I believe is wrong. tests/test_itr_engine.py:301-307 test_capped_at_10_percent_for_non_government_employee asserts the 10% \u00a780CCD(2) cap for a non-government employee under the NEW regime, which Finance (No.2) Act 2024 raised to 14% (IT-20) \u2014 the test will have to change with the fix. tests/test_capital_gains_engine.py:38-40 test_equity_12_months_is_long_term_boundary asserts is_long_term('equity', 12) is True against a month-count that discards the day of the month, so it locks in the classification bug at IT-14 rather than catching it; tests/test_capital_gains_engine.py:49-51 test_holding_months_counts_whole_months does the same for the helper.\\n\\nOn the frontend, apps/web/lib/income-tax/taxAuditThresholds.test.ts is the only test in this subsystem's UI layer and it tests two constants \u2014 not the business logic sitting beside them in app/income-tax/tax-audit/page.tsx:207-213 that decides business-vs-profession by amount. There is no test asserting that a screen sends every field the backend accepts, which is what would have caught the five-field computation payload (IT-05).\\n\\nWhat IS worth keeping: test_itr_schema_paths.py is a genuinely good pattern \u2014 it fails if a FIELD_MAPPINGS path stops resolving against the committed schema or stops naming an integer leaf, so a mid-year schema revision cannot silently move a figure into the wrong field.\"",
+ "open_questions_for_owner": [
+  "Which assessee classes must this module serve first? CLAUDE.md records a live book of 4 Private Limited, 1 LLP, 1 Partnership, 1 Proprietorship and zero individuals, yet the only computation endpoint computes individual slabs. Should the next block of work be 'wire up entity_rates + minimum_tax and make the client screen compute a company', or 'finish the individual path'? The two are different quarters of work and the second serves nobody currently on the book.",
+  "Is Form 3CD in scope? A CA firm serving SMEs earns a large share of its income from \u00a744AB tax audits, and the product holds none of the report \u2014 only a tracker row with a UDIN field. 3CD is a several-month build that would draw on the ledger, the disallowance workspace, the TDS module and GST. Is it a pillar you want, or is it deliberately out of scope?",
+  "How far back must the product compute? Belated, revised and updated returns mean FY 2023-24 and FY 2024-25 are live work, and the rate registries hold only 2025-26 and 2026-27 while the capital-gains engine has no notion of the 23-07-2024 rate change. Adding two or three past years to every registry is a bounded data job \u2014 is it worth doing, or should the product simply refuse a year it does not hold (which is what the /financial-years endpoint already does for the slab tables but not for capital gains)?",
+  "Where should the \u00a732 block-of-assets register live \u2014 inside the fixed-asset module or as a separate tax register? It is the largest single line in almost every business computation, it is prerequisite to a real book-to-tax bridge and to Clause 18 of 3CD, and nothing in the codebase computes it today. Building it inside routers/fixed_assets.py risks confusing two depreciation systems in one table; building it separately means the CA maintains two registers.",
+  "What is the intended relationship between the firm-level Deductions planner (/income-tax/deductions, which sends the full deduction surface and compares both regimes) and the per-client Tax Computation workspace (which sends five figures and saves the snapshot the filing workflow reads)? They compute different things about the same client and neither knows the other exists. Should the planner write into the snapshot, or should the workspace absorb the planner?",
+  "Should any of the ITD's own e-Return Intermediary route be pursued? docs/compliance/03 \u00a71 sets out Type-2 ERI's four serial gates and flags that production access is limited to four whitelisted INDIAN static IPs while apps/api runs on Render in Singapore \u2014 a deployment problem, not a code one. Until that is answered, itr_json.generate_itr_json will keep refusing, and the realistic ceiling for this module is 'compute perfectly, key into the ITD utility by hand'. Is exposing itr_field_placements as a printable keying sheet the right interim target?",
+  "The Income-tax Act 2025 commences 1 April 2026 and, per docs/compliance/03, renumbers \u00a7139 to \u00a7263 among much else, while CLAUDE.md records that ITR-1..7 are NOT renumbered for AY 2026-27. domain/tds/vocabulary.py forked the TDS vocabulary for exactly this reason. Does the income-tax side need the same fork \u2014 and if so, when does the trigger fire, given the committed schemas are AY 2026-27 and the current FY is already 2026-27?",
+  "How much should the product refuse versus estimate? The house style so far is admirable \u2014 refuse a \u00a732 figure, refuse an ITR JSON, refuse a state's PT slab. But the capital-gains engine estimates a slab rate at a flat 30% and falls back to a stale CII without flagging it, and the ITR engine silently allows an unlimited \u00a780G. Should the refusal discipline be extended to those, at the cost of screens that sometimes say 'cannot compute'?"
+ ],
+ "subsystem": "\"Income tax and ITR \u2014 computation workspace, ITR engine and JSON, statutory/entity/presumptive/MAT-AMT rate registries, capital gains, advance tax and \u00a7234A/B/C interest, regime election, book-to-tax bridge, deductions, AIS, notices, tax audit, Form 26AS credit, ITR workflow and filing screens (apps/api/domain/income_tax/*, routers/income_tax.py, routers/itr_workspace.py, routers/form_26as.py, apps/web/app/income-tax/**, apps/web/app/clients/[id]/tax/**)\"",
+ "what_exists": "\"BACKEND. domain/income_tax/ holds nineteen modules, ~6,200 lines. statutory_rates.py is the FY-versioned individual registry (new/old slabs including senior and very-senior tables, standard deduction per regime, \u00a787A rebate with a marginal_relief flag, surcharge brackets with the 25% new-regime cap and the 15% capital-gains cap, \u00a7111A/112A/112 rates in basis points, 4% cess) with FY 2025-26 verified and 2026-27 carried forward. entity_rates.py rates firms, LLPs and domestic companies (normal / \u00a7115BAA / \u00a7115BAB) with the two-year turnover lookback for the 25% rate. presumptive.py computes \u00a744AD (6%/8%, 2cr/3cr), \u00a744ADA (50%, 50L/75L) and \u00a744AE (per-ton per-month). minimum_tax.py computes MAT \u00a7115JB (15% of book profit) and AMT \u00a7115JC (18.5% of adjusted total income) with the \u00a7115JEE threshold and the \u00a7115JAA/\u00a7115JD credit. capital_gains_engine.py classifies by holding period and rates equity (111A/112A), debt MF (50AA), VDA (115BBH) and other assets (112) with a CII table. advance_tax_interest_engine.py computes \u00a7234C (four instalments, trigger tolerances, fixed periods) plus \u00a7234A and \u00a7234B. regime_election.py evaluates \u00a7115BAC(6) \u2014 Form 10-IEA versus in-the-return, and the once-only withdrawal lock-out. book_to_tax_bridge.py assembles book profit \u2192 taxable income and refuses when \u00a732 depreciation is not supplied. itr_engine.py is the compute kernel for individuals. itr_json.py builds a fourteen-figure payload and maps every figure to a verified path in one of seven committed ITD schemas (itr_schema.py, schemas/, AY 2026-27), refusing to emit a file for two named reasons. computation_workspace.py persists versioned snapshots, disallowances (with a \u00a740A(3) ledger scan), deduction claims and brought-forward losses. itr_workflow.py runs draft \u2192 review \u2192 partner_review \u2192 ready_for_filing \u2192 filed with immutable JSON versions. form26as_service.py + form26as_matcher.py parse pasted 26AS text and reconcile it in both directions against receipts.tds_paise.\\n\\nENDPOINTS. Only three routers reach any of this. /api/income-tax: POST /compute (individuals only), GET /financial-years, POST /hra/compute, the capital-gains calculator and register (GET/POST/DELETE, plus GET /capital-gains/cii-table), and advance tax (POST /advance-tax/compute for \u00a7234C, GET/POST /advance-tax). /api/itr: snapshots (create/list/review), filings (create/list/transition/versions/acknowledge), disallowances (create/list/status/auto-detect-40a3), deductions (create/list), bf-losses (create/list/utilize). /api/form-26as: uploads, parse, list, reconcile, get reconciliation, mark uploaded. Seven domain modules \u2014 entity_rates, minimum_tax, presumptive, regime_election, book_to_tax_bridge, itr_json, itr_schema \u2014 are imported by no router, no service and no job.\\n\\nFRONTEND. Firm-level under app/income-tax/: a hub with an ITR deadline tracker over compliance_calendar, an advance-tax screen (backend-driven \u00a7234C), a capital-gains calculator and register (backend-driven), a deductions/regime-comparison planner (backend-driven, writes tax_planning_records), an AIS screen (client-side only, persists nothing), an IT notices tracker (direct PostgREST on it_notices) and a tax-audit tracker (direct PostgREST on tax_audits, thresholds in TypeScript). Client-scoped under app/clients/[id]/tax/: a computation workspace (five income fields, disallowances, read-only brought-forward losses), an ITR filing workflow (ITR-3/5/6/7 only) and a 26AS reconciliation screen. Tables touched: tax_computation_snapshots, tax_disallowances, tax_deduction_claims, brought_forward_losses, itr_filings, itr_filing_versions, capital_gains, advance_tax_payments, form_26as_uploads, form_26as_records, tax_audits, it_notices, tax_planning_records, compliance_calendar.\""
+}

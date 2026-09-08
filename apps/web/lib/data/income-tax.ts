@@ -35,6 +35,21 @@ export interface Donation80G {
   description: string;
   amount_paise: number;
   deduction_pct: 100 | 50;
+  /** IT Act s.80G's four categories are the PRODUCT of two independent facts
+   *  about the donee, and only the percentage was ever sent — so every
+   *  donation was deducted at its percentage with no ceiling. s.80G(4) caps
+   *  donations in the residual category at 10% of adjusted gross total income.
+   *
+   *  Omitted, the backend defaults it to true (subject to the limit), which is
+   *  the residual category the section itself puts an unlisted donee in and
+   *  the direction that cannot over-claim. A fund listed in s.80G(1)(i) — the
+   *  PM National Relief Fund and its neighbours — must be marked false. */
+  subject_to_qualifying_limit?: boolean;
+  /** s.80G(5D) bars a deduction for a cash donation over Rs 2,000. Omitted
+   *  means "the CA did not say", which the backend allows while warning —
+   *  a zero for "paid by cheque" and a zero for "nobody stated the mode" are
+   *  not the same number. */
+  paid_in_cash?: boolean;
 }
 
 export interface HRAInput {
@@ -221,6 +236,15 @@ export async function saveTaxPlanningRecord(record: TaxPlanningRecord): Promise<
 export type CapitalGainsAssetType = "equity" | "debt_mf" | "property" | "unlisted" | "vda" | "gold";
 export type CapitalGainsRegisterAssetType = "equity_shares" | "mutual_funds" | "property" | "bonds" | "other";
 
+/** Who the assessee is. The fifth proviso to IT Act s.112(1) lets a RESIDENT
+ *  INDIVIDUAL OR HUF pay the lower of 12.5% without indexation and 20% with
+ *  it, on immovable property acquired before 23-07-2024. A company, an LLP or
+ *  a non-resident never gets that option. */
+export type CapitalGainsAssesseeType =
+  | "unspecified"
+  | "resident_individual_huf"
+  | "other";
+
 export interface ComputeCapitalGainsRequest {
   asset_type: CapitalGainsAssetType | CapitalGainsRegisterAssetType;
   purchase_date: string;   // YYYY-MM-DD
@@ -228,6 +252,11 @@ export interface ComputeCapitalGainsRequest {
   purchase_cost_paise: number;
   sale_value_paise: number;
   improvement_cost_paise?: number;
+  /** Omitted, the backend charges the flat 12.5% and returns both candidate
+   *  figures with a note saying why the option was withheld — so an
+   *  unanswered question reads as one, rather than as a claim nobody was
+   *  entitled to make. */
+  assessee_type?: CapitalGainsAssesseeType;
 }
 
 export interface CapitalGainsComputeResult {

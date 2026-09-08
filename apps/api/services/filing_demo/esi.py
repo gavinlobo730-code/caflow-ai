@@ -153,6 +153,43 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
             footer=[{"text": "ESI recorded on this run (employee + employer, combined)"},
                     {"paise": total_esi}],
         ),
+        # WHO IS ON THIS FILING, which is not simply "whoever earns under
+        # ₹21,000 this month". ESI runs on two six-month CONTRIBUTION
+        # PERIODS, and an employee whose wages cross the ceiling mid-period
+        # stays covered and contributory to the END of that period — so a
+        # pay rise in July does not remove them from the July filing, or the
+        # August one, or September's. Dropping them at the rise is the
+        # classic payroll error and it under-remits for months.
+        #
+        # Deliberately without a rule number. The research
+        # (docs/audits/2026-09-07-market-research/payroll-primary.md §3c)
+        # confirms the mechanics [S] but grades the "Rule 50 / Rule 51, ESI
+        # (Central) Rules 1950" citations [U] — they may have been superseded
+        # by rules under the Code on Social Security. The mechanics are what
+        # a CA needs; a wrong citation beside them would be worse than none.
+        common.table_stage(
+            "Who is covered, and until when",
+            "Coverage is decided by the contribution PERIOD, not by the "
+            "month. This is the rule payroll gets backwards most often, and "
+            "it decides who belongs on this filing.",
+            ["", ""],
+            [
+                [{"text": "Wage ceiling"},
+                 {"text": "₹21,000 a month; ₹25,000 for an employee with "
+                          "disability."}],
+                [{"text": "Contribution periods"},
+                 {"text": "1 April to 30 September, and 1 October to 31 "
+                          "March. Each funds a benefit period that begins "
+                          "three months later."}],
+                [{"text": "An employee whose wages cross the ceiling "
+                          "mid-period"},
+                 {"text": "STAYS covered and contributory to the end of that "
+                          "contribution period. Coverage ends at the period "
+                          "boundary, never at the pay rise — dropping them "
+                          "in the month of the rise under-remits for every "
+                          "month left in the period."}],
+            ],
+        ),
     ]
 
     if missing_ip:
@@ -205,5 +242,19 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                     "prepares the figures and the employer files on the "
                     "portal.",
         },
+        # What changes when this is real — the same honest answer as PF: no
+        # registration is waiting to be obtained, because the door is the
+        # CLIENT's employer code and there is no API behind it.
+        "There is no registration to wait for here. ESIC publishes no API "
+        "for the monthly contribution, and the only door is the "
+        "establishment's own 17-digit employer code on esic.gov.in — which "
+        "belongs to the client, not to the firm. What PracticeSync will do "
+        "is produce the contribution file, one line per IP number, so the "
+        "step becomes an upload rather than a screen typed from a payroll "
+        "register; and it will flag the coverage the table above describes, "
+        "so an employee who crossed ₹21,000 in month two of a contribution "
+        "period is still on the filing in month three. Submitting the "
+        "contribution and paying the challan stay with whoever holds the "
+        "employer code.",
         stages,
     )

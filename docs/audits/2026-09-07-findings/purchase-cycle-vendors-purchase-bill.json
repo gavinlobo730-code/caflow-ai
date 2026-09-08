@@ -1,0 +1,788 @@
+{
+ "subsystem": "Purchase cycle \u2014 vendors, purchase bills, purchase credit/debit notes, purchase payments, TDS on purchase (resident + \u00a7195), ITC capture and reversal, vendor statements, MSME tracker, expense capture / document intelligence for bills",
+ "what_exists": "Backend. `routers/purchase_bills.py` (1930 lines) is the centre: `_compute_bill_lines_and_totals` computes per-line GST in integer paise (full tax then split CGST/SGST so it equals the IGST a supply would attract), aggregates \u00a717(5) blocked credit into header `ineligible_itc_*_paise`, converts to base INR via `domain/currency/document_currency`, then resolves TDS. TDS routes by RESIDENCY first: `domain/tds/residency.py` says the 194-series charges only sums paid \"to a resident\", so a non-resident vendor goes to `domain/tds/section_195.py` (chargeability \u2192 nature \u2192 \u00a790(2) treaty \u2192 \u00a7206AA/Rule 37BC \u2192 surcharge + cess), and a resident goes to `domain/tds/tds_computer.resolve_tds` over the FY-versioned `domain/tds/section_rates.py`. Endpoints: list, create, `POST /bulk` (pre-fetched vendor/client cache, dedup, per-row errors), get, `GET /{id}/document-url` (signed URL minted on demand), delete (draft-only hard delete), PATCH (draft = full recompute; received = `_SOFT_BILL_UPDATE_FIELDS` only), `POST /{id}/receive` (journal via the one kernel, status rollback on posting failure, `_sync_tds_register`, inventory stock-in), `POST /{id}/cancel` (append-only kernel reversal + register removal + stock reversal), and `POST /from-document`.\n\n`routers/purchase_payments.py` records single-bill or unlinked vendor payments with a compare-and-swap claim on `paid_paise` against `(net_payable + credit_note_paise) \u2212 paid \u2212 debited`, plus reversal. `services/purchase_payment_service.py` adds multi-bill allocation and a realized-FX foreign path, reached today only from the bank match queue. `routers/debit_notes.py` (client \u2192 vendor, reduces payable) and `routers/purchase_credit_notes.py` (vendor undercharge, increases payable) both CAS-apply to the bill and post through the kernel with rollback. `services/vendor_statement_service.py` builds the ledger and AP ageing off the generated `outstanding_paise` column (migration 278). `services/tds_register_service.py` writes `tds_deductions` at the moment of credit and returns named `statutory_gaps`. `services/itc_reversal_service.py` + `domain/gst/itc_reversal.py` report Rule 37 180-day reversals; `services/itc_register_service.py` classifies posted journals as 4(B)(2)/4(D)(1) and refuses a figure the ledger does not support. `services/treaty_rate_service.py` reads `dtaa_treaty_rates` (migration 310). `routers/document_intelligence_v1.py` extracts an invoice (Groq for PDF text, Gemini for images), stores the original, and refuses to fabricate.\n\nFrontend. `apps/web/app/clients/[id]/purchases/page.tsx` (3143 lines) carries five tabs \u2014 Bills, Vendors, Payments, Debit Notes, Credit Notes \u2014 reading `purchase_bills`, `vendors`, `purchase_payments`, `debit_notes`, `purchase_credit_notes` directly over PostgREST and writing through the API. `components/purchases/PurchaseBillEditor.tsx` handles create/edit, RCM, multi-currency and AI extraction. Separately `app/accounting/msme-tracker/page.tsx` keeps a manual `msme_payments` table, and `app/accounting/suppliers/page.tsx` maintains a `suppliers` table that nothing in the purchase cycle reads.\n\nTables: `vendors`, `purchase_bills`, `purchase_bill_lines`, `purchase_payments`, `purchase_payment_allocations`, `debit_notes`, `debit_note_allocations`, `purchase_credit_notes`, `tds_deductions`, `itc_reversal_register`, `dtaa_treaty_rates`, plus the orphans `suppliers`, `msme_vendors`, `msme_payments`.",
+ "maturity": {
+  "grade": "C",
+  "rationale": "The plumbing is genuinely good \u2014 one posting kernel with rollback on every path, integer paise throughout, compare-and-swap on every settlement counter, keyset pagination on every report, a duplicate-bill guard at both the API and the index, and a \u00a7195/non-resident engine that is better than anything in the Indian SME market. But three things a CA touches every single day are wrong or absent. (1) The resident TDS thresholds are modelled per-payment when the statute says per-FY-aggregate, so \u00a7194J/\u00a7194H/\u00a7194A silently withhold ZERO on real aggregates, and \u00a7194C withholds only on the crossing bill instead of the cumulative \u2014 both under-deductions that carry a 30% \u00a740(a)(ia) disallowance, and a test pins the \u00a7194C behaviour as correct. (2) \u00a717(5) blocked credit is accepted by the API and used by the GSTR-3B computer but is unreachable from any screen, and the journal debits GST Input for it anyway, so the ledger carries a permanent phantom asset. (3) The GSTR-2A/2B reconciliation \u2014 the reason most Indian CAs buy a purchase module at all \u2014 asks the CA to export the purchase register the platform already holds to CSV and re-upload it, does the matching in TypeScript, quotes the repealed 105% Rule 36(4) cushion, and writes nothing back. The grade is C rather than D because none of this is architectural: the kernel, the register and the domain modules are the right shapes, and every defect above is a bounded fix inside them.",
+  "would_a_ca_buy_this_module_alone": "Not yet \u2014 the AP ledger and the foreign-vendor withholding would impress a CA, but a purchase module that under-deducts \u00a7194J TDS on aggregates, cannot flag a \u00a717(5) blocked credit, and makes them re-upload their own purchase register to match GSTR-2B is not one they can run a client on."
+ },
+ "strengths": [
+  "The residency-first TDS routing is the best thing in this subsystem and I have seen nothing like it in Tally, Busy or Zoho Books. `domain/tds/residency.py:106-140` transcribes the charging words of each section ('to a resident') rather than inferring, and `routers/purchase_bills.py:530-556` therefore routes a non-resident vendor to \u00a7195 as a different CHARGING SECTION \u2014 no threshold, rate by nature of income, surcharge and cess \u2014 instead of just relabelling the return form. Market tools treat 26Q vs 27Q as a dropdown.",
+  "`domain/tds/section_195.py:126-260` asks chargeability BEFORE rate (GE India Technology Centre v. CIT) and REFUSES rather than guessing in exactly three places \u2014 no nature recorded, business profits with no no-PE declaration, and a TRC on file with no treaty rate recorded. `services/treaty_rate_service.py:60-111` makes the DTAA position a per-(country, nature) firm fact rather than a per-vendor number. This is the correct posture and it is unusual.",
+  "Every purchase-side accounting event goes through the one kernel with a compensating rollback. `routers/purchase_bills.py:1552-1578` flips the bill to received, posts, and rolls the status BACK to draft if `journal_for_purchase_bill` raises \u2014 while re-raising a genuine HTTPException so a locked-FY refusal is not collapsed into 'please try again'. `routers/debit_notes.py:500-522` and `services/purchase_payment_service.py:66-116` do the same for their paths.",
+  "Lost-update prevention is real, not decorative. `routers/purchase_payments.py:124-175` retries a compare-and-swap on `paid_paise` (`.eq(\"paid_paise\", raw_paid)`) rather than read-check-write, and `routers/debit_notes.py:459-490` does the same on `debited_paise`. `_rollback_bill_claim` (line 177) decrements by its OWN amount rather than restoring a snapshot, so a concurrent payment is not clobbered.",
+  "Duplicate supplier invoices are stopped twice and explained once. Migration 313 puts a partial unique index on `(client_id, vendor_id, lower(btrim(bill_no)))` excluding cancelled and soft-deleted rows, and `routers/purchase_bills.py:207-247` re-implements the same predicate purely so the CA gets a sentence naming the existing bill instead of a 23505.",
+  "`domain/gst/itc_reversal.py:96-145` gets the two hardest bits of Rule 37 right \u2014 proportionate reversal per tax head with CEILING division (documented as deliberate, because under-reversal carries \u00a750 interest and over-reversal is re-availed under Rule 37(4)), and `reversal_period` returning the period IMMEDIATELY FOLLOWING expiry, which is the usual thing to get wrong.",
+  "`services/itc_register_service.py:139-158` refuses to register a 4(B)(2) reversal larger than the GST Input credit actually moved on the journal behind it \u2014 so a return figure can never exceed what the ledger supports, and the books-vs-ledger comparator stays independent of the register.",
+  "Every report in this subsystem obeys the pagination rule. `services/vendor_statement_service.py:37-59`, `services/itc_reversal_service.py:44-70` and `services/itc_register_service.py:50-64` all keyset-walk rather than accepting PostgREST's silent 1000-row truncation, and migration 278's generated `outstanding_paise` column moves the AP-ageing filter into SQL.",
+  "Client-assignment scope is enforced on every backend purchase endpoint. `routers/purchase_bills.py:56-100` resolves the owning client from the bill id and returns the SAME 404 for 'not yours' and 'does not exist' so the status code is not an id oracle, and `_assert_batch_scope` (line 96) checks every distinct client in a bulk payload before any row is written.",
+  "`services/tds_register_service.py:150-165` records a NIL \u00a7195 withholding as a real row with a `non_deduction_reason`, while correctly NOT recording a below-threshold resident bill \u2014 27Q reports non-deduction, 26Q reports deductions, and the docstring says the asymmetry is the statute's."
+ ],
+ "findings": [
+  {
+   "id": "PUR-01",
+   "kind": "bug",
+   "severity": "critical",
+   "title": "\u00a7194J/\u00a7194H/\u00a7194A/\u00a7194D/\u00a7194G thresholds are applied per payment when the statute applies them to the FY aggregate \u2014 a professional paid \u20b930,000 four times has zero TDS deducted",
+   "evidence": "domain/tds/section_rates.py:104-149 gives every section a `single_threshold_paise` and sets `aggregate_threshold_paise` only on 194C. domain/tds/tds_computer.py:305-310: `applies = taxable_paise > rule.single_threshold_paise or (rule.aggregate_threshold_paise is not None and fy_total > rule.aggregate_threshold_paise)` \u2014 for 194J the second clause is dead. I ran it: four \u20b930,000 bills under 194J withhold 0 paise against \u20b912,000 required; three \u20b915,000 bills under 194H withhold 0 against \u20b9900 required. \u00a7194J(1) proviso reads 'if such sum or, as the case may be, the aggregate of the sums credited or paid ... during the financial year does not exceed fifty thousand rupees'; \u00a7194H, \u00a7194A, \u00a7194D and \u00a7194G carry the same aggregate wording. The module docstring at section_rates.py:39-45 claims the simplifications 'over-flag rather than silently under-deduct' \u2014 for these sections the opposite is true.",
+   "ca_experience": "A client pays their auditor \u20b930,000 a quarter (\u20b91,20,000 for the year). Every bill posts with tds_paise = 0, nothing reaches tds_deductions, 26Q reports nothing, and the CA discovers it when the assessing officer disallows 30% of \u20b91,20,000 under \u00a740(a)(ia) and levies \u00a7201(1A) interest at 1%/1.5% a month. Same for rent split across landlords, commission, and interest to non-banks. This is the single most common TDS section a CA firm's SME clients hit.",
+   "market_standard": "TallyPrime tracks a running FY aggregate per party per nature-of-payment and deducts the moment the exemption limit is crossed; ClearTDS and Winman TDS do the same. No Indian product treats the \u00a7194J limit as per-invoice.",
+   "confidence": "high",
+   "suggested_fix": "Add `aggregate_threshold_paise` to 194J/194H/194A/194D/194G/193/194 (equal to the single threshold, since the statute states one annual limit), and change the ONE section that genuinely is per-payment \u2014 194I, \u20b950,000 per month or part after FA 2025 \u2014 to say so in its own comment. `_resolve_bill_resident_tds` already computes `fy_prior` correctly, so only the registry and the `applies` test move.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "same probe as TDS-01; s.194H three Rs 15,000 commissions withheld Rs 0 against Rs 900"
+   }
+  },
+  {
+   "id": "PUR-02",
+   "kind": "bug",
+   "severity": "critical",
+   "title": "When the \u00a7194C \u20b91L aggregate is crossed, TDS is deducted only on the crossing bill, not on the cumulative sums \u2014 and a test pins the wrong number as correct",
+   "evidence": "domain/tds/tds_computer.py:313-317 computes `tds = taxable_paise * rate_bps // 10000` \u2014 always on THIS bill's taxable only, never on `fy_total`. I ran five \u20b925,000 bills to a company contractor: total withheld 50000 paise (\u20b9500) against \u20b92,500 required on the \u20b91,25,000 aggregate. \u00a7194C(5) proviso: 'where the aggregate of the amounts ... credited or paid ... during the financial year exceeds one lakh rupees, the person responsible for paying such sums shall be liable to deduct income-tax under this section' \u2014 the liability attaches to the aggregate of such sums, not to the marginal one. tests/test_tds_bill_engine.py:59-70 asserts `b5[\"tds_paise\"] == 500_00`, so the wrong behaviour is locked in by a passing test.",
+   "ca_experience": "A transporter or job-worker billing \u20b925,000 a month: the CA sees \u20b9500 deducted on the fifth bill and nothing before it. The correct figure is \u20b92,500 on the fifth bill (catching up the earlier four). The shortfall disallows 30% of the whole \u20b91,25,000 under \u00a740(a)(ia) and attracts \u00a7201(1A) interest.",
+   "market_standard": "TallyPrime's TDS deducts on the cumulative value at the moment the exemption limit is crossed \u2014 the standard 'threshold crossed, deduct on aggregate' behaviour every Indian package implements.",
+   "confidence": "high",
+   "suggested_fix": "When `applies` is true only because the aggregate clause fired, compute TDS on `fy_total` less TDS already deducted in the FY under that section for that payee, rather than on the current bill alone. The FY-prior figure is already fetched at routers/purchase_bills.py:317-332; it needs a companion sum of prior `tds_paise`. Rewrite tests/test_tds_bill_engine.py:59-70 as the negative control.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "hand",
+    "probe": "ran five Rs 25,000 s.194C bills: Rs 500 total withheld against Rs 2,500 on the aggregate"
+   }
+  },
+  {
+   "id": "PUR-03",
+   "kind": "bug",
+   "severity": "high",
+   "title": "Surcharge and 4% cess are added on top of a DTAA treaty rate, over-deducting on every foreign payment where a treaty applies",
+   "evidence": "domain/tds/section_195.py:222-256: after the \u00a790(2) branch sets `rate_bps = treaty_rate_bps` and `basis = \"treaty\"` (lines 218-220), surcharge and cess are applied unconditionally \u2014 `sur_pct = _surcharge_percent(...)`, `cess = (base_tax + surcharge) * rates.cess_percent // 100`. I ran a \u20b91 crore royalty at a 10% recorded treaty rate: a foreign company withholds 10.40%, a non-corporate payee withholds 11.44% (\u20b91,44,000 over-deducted). The module explicitly documents and defends its conservative choice for the \u00a7206AA floor at lines 244-252 but says nothing about the treaty branch, and tests/test_section_195_rates.py has no test combining a treaty rate with surcharge or cess.",
+   "ca_experience": "The CA records a Singapore FTS or royalty treaty rate of 10% read off the agreement, and the bill withholds 10.4% or 11.44%. The vendor is short-paid, 27Q reports a rate that does not match the treaty article, and the vendor can only recover the excess by filing an Indian return. On a large remittance this is a conversation with the client's overseas supplier.",
+   "market_standard": "The settled and mainstream Indian practice \u2014 supported by a consistent line of ITAT decisions (e.g. DIC Asia Pacific Pte Ltd v ADIT) \u2014 is that a DTAA rate is a ceiling on tax as defined in Article 2, which includes surcharge and cess, so neither is added on top. Winman TDS and ClearTDS cap at the treaty rate.",
+   "confidence": "medium",
+   "suggested_fix": "When `basis == \"treaty\"`, do not add surcharge or cess, and say so in the docstring beside the \u00a7206AA paragraph that already explains the opposite choice. If the owner wants to keep the conservative behaviour, make it an explicit recorded decision with a test naming it, because right now it is neither documented nor pinned.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "A recorded DTAA rate is treated as a base rate and then grossed up by Part II surcharge and 4% cess (domain/tds/section_195.py:256-262), so a 10% treaty rate withholds 10.40% from a foreign company and 11.44% from a non-corporate payee above the surcharge threshold. The settled Indian position (Article 2 'taxes covered' includes surcharge and cess) is that the treaty rate is a ceiling on the total. The module explicitly documents and defends the analogous conservative choice for the s.206AA floor at lines 246-255 but is silent on the treaty branch, and no test pins it either way \u2014 so this is neither a recorded decision nor a guarded one.",
+    "probe": "cd apps/api && python -c \"from domain.tds.section_195 import resolve_section_195; ...amount_paise=100_00_00_000 (Rs 1 crore), nature='royalty', trc_on_file=True, form_10f_on_file=True, treaty_rate_bps=1000, fy='2026-27'\" printed: company treaty rate_bps 1000 eff_bps 1040 total 104000000 sur 0 cess 4000000 / non-corp treaty rate_bps 1000 eff_bps 1144 total 114400000 sur 10000000 cess 4400000 \u2014 i.e. Rs 1,44,000 over-withheld on the non-corporate case.",
+    "lens_notes": {
+     "literal": "Confirmed, with minor line drift. domain/tds/section_195.py:229-232 sets `rate_bps = treaty_rate_bps; basis = \"treaty\"` inside the s.90(2) branch; lines 256-262 then run `base_tax = amount_paise * rate_bps // 10000`, `sur_pct = _surcharge_percent(...)` (line 258), `cess = (base_tax + surcharge) * rates.cess_percent // 100` (line 260) unconditionally \u2014 there is no `if basis != \"treaty\"` anywhere between. The module docstring's item 5 (lines 39-45) and the block comment at lines 246-255 justify surcharge+cess generally and specifically defend applying them on top of the s.206AA floor; neither mentions the treaty branch.",
+     "guards": "None. tests/test_section_195_rates.py has no test combining a non-zero treaty rate with surcharge or cess: test_a_lower_treaty_rate_wins (line 120) asserts only rate_bps and base_tax_paise, never tds_paise; test_a_treaty_rate_of_zero_is_honoured (line 137) asserts tds_paise == 0, which is trivially true at a 0% base. Section 5 of that file (lines 207-260) tests surcharge/cess only on Act-rate paths. No DB constraint, no frontend cap. The one mitigation is presentational: migration 309 stores tds_surcharge_paise / tds_cess_paise separately (routers/purchase_bills.py:547-548), so a CA who looks can see the components \u2014 but the withheld total is still wrong.",
+     "reach": "Live. routers/purchase_bills.py:540 calls _resolve_bill_section_195 on every non-resident bill, which calls resolve_section_195 at line 374; the result becomes tds_paise / net_payable_paise on the bill (lines 542-556). purchase_bills is mounted in main.py. The treaty branch is only entered when trc_on_file is true AND a treaty rate is recorded in dtaa_treaty_rates (migration 310) \u2014 i.e. exactly the case a CA has done the work to set up."
+    }
+   }
+  },
+  {
+   "id": "PUR-04",
+   "kind": "data_integrity",
+   "severity": "high",
+   "title": "\u00a717(5) blocked credit is still debited to GST Input in the journal, leaving a permanent phantom asset and a permanent GSTR-3B books-vs-ledger mismatch",
+   "evidence": "services/phase2_journal_service.py:656-676 debits `gst_input_id` for the FULL `bill[\"cgst_paise\"]`/`sgst_paise`/`igst_paise` with no reference to `ineligible_itc_*_paise`, and the expense debits at lines 640-654 are the taxable amount only. Meanwhile domain/gst/gstr3b_computer.py:663-666 computes `book_igst = sum(p.igst_paise - p.ineligible_igst_paise ...)`, and services/gst_return_service.py:828-830 compares that against the GL `gst_input` movement. Nothing anywhere reverses the ineligible portion out of GST Input.",
+   "ca_experience": "The client's trial balance carries an Input GST asset that will never be claimed and never clears \u2014 a hotel bill, a club membership, a works-contract invoice \u2014 while the expense head is understated by the same amount, so profit is overstated. The GSTR-3B books-vs-ledger reconciliation on the same screen reports an unexplained difference every month equal to the blocked GST, and the CA cannot make it agree.",
+   "market_standard": "TallyPrime posts blocked credit to the expense/purchase ledger at voucher entry (its 'Ineligible for input credit' classification), so the GST Input ledger only ever holds claimable credit. Zoho Books does the same via its ITC-ineligible flag.",
+   "confidence": "high",
+   "suggested_fix": "In `journal_for_purchase_bill`, debit GST Input for `cgst_paise - ineligible_itc_cgst_paise` (and the same for SGST/IGST) and add the ineligible remainder to the expense debit \u2014 that is what \u00a717(5) means economically. Add a parity test asserting the GL gst_input movement equals `books_itc` for a bill with a blocked line.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The claim is literally correct about the code: services/phase2_journal_service.py:656-676 debits GST Input for the gross tax and nothing subtracts the s.17(5) portion, while services/gst_return_service.py:828-833 compares a books figure that IS net of it \u2014 so the moment a blocked line exists there is both a phantom Input GST asset and a permanent books-vs-ledger difference. But no screen can set itc_eligible=false today (see PUR-05), so no real CA has hit this. It is a latent bug that becomes high the instant PUR-05's UI is built, and the two must be fixed together.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed exactly at the cited lines. services/phase2_journal_service.py:656-676 appends three debits to gst_input_id for the full `bill[\"cgst_paise\"]`, `bill[\"sgst_paise\"]`, `bill[\"igst_paise\"]` with no reference to any ineligible field; the expense debits at 645-654 are built from `purchase_bill_lines.taxable_amount_paise` grouped by expense_account_id, so the blocked GST lands nowhere but GST Input. grep for `ineligible_itc` across apps/api returns hits only in routers/purchase_bills.py, services/gst_return_service.py and migration 240 \u2014 never in phase2_journal_service.py. The books side does net it: domain/gst/gstr3b_computer.py:663-666 computes `book_igst = sum(p.igst_paise - p.ineligible_igst_paise ...)`, and services/gst_return_service.py:828-830 builds `books_itc` from those and compares it at line 833 against `gl[\"itc_paise\"]`, which (lines 158-167) is the raw Dr-minus-Cr movement on the GST Input account. So the comparator would report a difference equal to the blocked GST.",
+     "guards": "None on the journal side. No test asserts anything about gst_input and ineligible together (grep over tests/ for gst_input + ineligible/blocked returns nothing), and no migration or trigger reconciles them. The only thing standing between this and a live wrong number is PUR-05.",
+     "reach": "This is why the severity drops. The bug can only fire on a bill whose lines carry `itc_eligible = false`, and no screen sends that key \u2014 apps/web/components/purchases/PurchaseBillEditor.tsx:476-489 builds the line payload with description/hsn_sac/quantity/unit/rate_paise/gst_rate_percent/expense_account_id/service_catalogue_id and nothing else, and no other frontend file writes purchase_bill_lines. So today every bill has ineligible_itc_*_paise = 0, the GST Input debit is correct by accident, and the reconciliation agrees. The defect is latent, not live."
+    }
+   }
+  },
+  {
+   "id": "PUR-05",
+   "kind": "gap",
+   "severity": "high",
+   "title": "\u00a717(5) blocked credit cannot be set from any screen \u2014 the API field, the DB column and the return computation all exist and are unreachable",
+   "evidence": "models/invoices.py:222-246 accepts `itc_eligible` and `blocked_credit_reason` per line; migration 240 adds the columns; routers/purchase_bills.py:466-478 aggregates them; domain/gst/gstr3b_computer.py:668-671 files them in 4(B)(1). A grep for `itc_eligible` and `blocked_credit` across all of apps/web returns ZERO hits, and components/purchases/PurchaseBillEditor.tsx:475-490 builds the line payload with no such key.",
+   "ca_experience": "GSTR-3B Table 4(B)(1) and 4(D)(1) are permanently nil for every client, so a client with any blocked credit over-claims ITC every month. The only workaround is to leave the GST off the bill entirely, which then misstates the payable to the vendor and breaks the 2B tie-up.",
+   "market_standard": "TallyPrime asks 'Is ineligible for input credit?' with a \u00a717(5) reason at voucher entry; Zoho Books has a per-line ITC-eligibility dropdown; ClearTax's purchase register carries an ineligibility column. It is a first-class field everywhere.",
+   "confidence": "high",
+   "suggested_fix": "Add a per-line 'ITC eligible' toggle plus a \u00a717(5) reason picker to PurchaseBillEditor (the reason codes are listed in migration 240's column comment), and show the blocked total on the bill view drawer. Backend needs no change.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The s.17(5) blocked-credit field is fully implemented in models/invoices.py:245-246, migration 240:29-30, routers/purchase_bills.py:468-478 and domain/gst/gstr3b_computer.py:663-671, and is settable from nowhere \u2014 apps/web/components/purchases/PurchaseBillEditor.tsx:476-489 omits it from the save payload and no other frontend file writes bill lines. The one correction to the evidence: the editor DOES carry a \u00a717(5) heuristic warning banner (PurchaseBillEditor.tsx:343,728-739 via lib/purchases/billEditor.ts:144), which flags 'Possible blocked ITC \u2014 review before saving' and offers no way to act on it.",
+    "probe": "grep -rn 'itc_eligible|blocked_credit|itcEligible|blockedCredit' apps/web --include=*.ts --include=*.tsx printed exactly 3 lines, all `blockedCreditHits` (the read-only warning); zero hits for itc_eligible or blocked_credit_reason.",
+    "lens_notes": {
+     "literal": "The substance is confirmed; one sentence of the evidence is wrong. Backend and DB exist: models/invoices.py:245-246 declares `itc_eligible: bool = True` and `blocked_credit_reason`, with a validator at 285-286 requiring the reason when eligibility is false; migration 240_purchase_bill_itc_eligibility.sql:29-30 adds both columns with a reason-code list in the COMMENT at line 35; routers/purchase_bills.py:468-478 accumulates `total_ineligible_{cgst,sgst,igst}` and persists them at 764-766; domain/gst/gstr3b_computer.py:663-671 nets them out of book ITC and files them as itc_ineligible_*. The auditor's claim that a grep for itc_eligible/blocked_credit across apps/web 'returns ZERO hits' is FALSE \u2014 apps/web/components/purchases/PurchaseBillEditor.tsx:29,343,728-739 has `findBlockedCreditHits` (apps/web/lib/purchases/billEditor.ts:144), a heuristic that renders an amber banner reading 'Possible blocked ITC \u2014 review before saving (CGST Act \u00a717(5))'. But that banner is read-only: there is no control that sets itc_eligible, and the save payload at PurchaseBillEditor.tsx:476-489 omits both keys. So the claim that the field cannot be SET stands, and the banner makes it worse \u2014 the product warns the CA and then gives them nothing to do about it.",
+     "guards": "None that close the gap. No other write path exists: grep for `purchase_bill_lines` across apps/web returns nothing (all bill writes go through the API), and grep for `itc_eligible` across apps/api shows only purchase_bills.py, models/invoices.py and tests. tests/test_r239_gst_computation_gaps.py:30-50,186-203 tests the model and the aggregation but is a backend test only \u2014 it cannot notice the missing UI.",
+     "reach": "Per the instructions this CONFIRMS a gap rather than refuting it: the capability exists end-to-end in the backend (accepted, stored, aggregated, filed into GSTR-3B 4(B)/4(D)) and is reachable from no screen. The consequence is live and reaches every client \u2014 GSTR-3B Table 4(B)(1)/4(D)(1) is structurally nil, so any client with hotel bills, club memberships, motor vehicles or works-contract inputs over-claims ITC every month."
+    }
+   }
+  },
+  {
+   "id": "PUR-06",
+   "kind": "bug",
+   "severity": "high",
+   "title": "The vendor's TDS rate is collected on a form, shown in a list column, and never used by the computation",
+   "evidence": "The vendor form at apps/web/app/clients/[id]/purchases/page.tsx:1827 has a 'TDS Rate %' input; line 1216 persists `tds_rate_bps`; line 1378-1379 renders it as a 'Rate' column. On the backend `_resolve_bill_resident_tds` (routers/purchase_bills.py:284-345) never reads `vendor.get(\"tds_rate_bps\")` \u2014 it calls `TDSComputer().resolve_tds`, which takes the rate from the FY registry. `grep tds_rate_bps routers/purchase_bills.py` shows only the COMPUTED rate being written back. The one place the constant is even named, `_TDS_DEFAULT_BPS` at routers/purchase_bills.py:30-37 ('Default rates when vendor master tds_rate_bps is 0'), has no readers at all.",
+   "ca_experience": "A CA with a \u00a7197 lower-deduction certificate for 1% types 1 into the vendor's TDS Rate, sees '1.0%' in the vendor list, and every bill deducts 2% or 10%. They only find out when the vendor complains or the certificate limit is reconciled at year end. The UI actively confirms a setting that does nothing.",
+   "market_standard": "In TallyPrime the party's TDS rate (including a lower/nil \u00a7197 rate with certificate number and validity) is what the voucher deducts at. A rate field that is displayed and ignored does not exist in any comparable product.",
+   "confidence": "high",
+   "suggested_fix": "Either make the vendor rate an override the engine honours (with a bound so it can never exceed the section rate silently), or remove the input and the list column and replace them with a read-only display of the section rate the registry will apply. The first is the honest fix and is the natural home for PUR-07.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "`vendors.tds_rate_bps` (migration 049:60) is written by the vendor form (apps/web/app/clients/[id]/purchases/page.tsx:1216,1826) and displayed as a 'Rate' column (lines 1378-1379), and no backend code ever reads it \u2014 `_resolve_bill_resident_tds` (routers/purchase_bills.py:284-347) takes the rate solely from TDSComputer's FY registry. The dead constant `_TDS_DEFAULT_BPS` (routers/purchase_bills.py:29-37) advertises the intent that was never wired: grep across apps/api finds no reader.",
+    "probe": "grep -rn '_TDS_DEFAULT_BPS' apps/api --include=*.py printed exactly one line \u2014 its own definition at routers/purchase_bills.py:30. grep -rn 'tds_rate_bps' apps/api excluding tests and purchase_bills.py showed every remaining read is against a bill row or the banking shortfall heuristic, never against a vendor.",
+    "lens_notes": {
+     "literal": "Confirmed at every cited line. Frontend: apps/web/app/clients/[id]/purchases/page.tsx:1826 renders a 'TDS Rate (%)' input, line 1216 persists `tds_rate_bps: rateBps` onto the vendor row, lines 1378-1379 render it as a sortable 'Rate' column, and lines 346/2327/2768 select it. Backend: `_resolve_bill_resident_tds` (routers/purchase_bills.py:284-347) reads only `vendor.get(\"pan\")` and `vendor.get(\"id\")` and hands the section to `TDSComputer().resolve_tds`, which takes its rate from the FY registry; `vendor.get(\"tds_rate_bps\")` appears nowhere in the file. Every `tds_rate_bps` occurrence in routers/purchase_bills.py (lines 524, 546, 558, 584, 713, 768, 814, 1303, 1423) is the COMPUTED rate being written to the bill. `_TDS_DEFAULT_BPS` at lines 29-37, whose own comment says 'Default rates when vendor master tds_rate_bps is 0', has no readers at all \u2014 grep across apps/api returns only its definition.",
+     "guards": "None. No backend read of `vendors.tds_rate_bps` exists anywhere: the only service-layer reads of that name (services/tds_register_service.py:169, services/tds_return_service.py:223) read `bill.get(\"tds_rate_bps\")`, the computed value on purchase_bills; the banking hits (domain/banking/matcher.py:135 detect_tds_rate_bps) are an unrelated shortfall heuristic. models/parties.py:279,366 accepts the field on vendor create/update, so it is persisted and then ignored.",
+     "reach": "Live on both sides. The vendor form and the vendor list are on the client purchases page, which is a mounted workspace screen, and the bill path is the mounted purchase_bills router. A CA can type the rate, see it echoed in the list, and every bill will still deduct the registry rate."
+    }
+   }
+  },
+  {
+   "id": "PUR-07",
+   "kind": "gap",
+   "severity": "high",
+   "title": "No \u00a7197 lower-deduction or nil-deduction certificate anywhere \u2014 no certificate number, rate, threshold amount or validity period",
+   "evidence": "The `vendors` table (migration 049, extended by 201/303/308/309/311) has no certificate column of any kind. `domain/tds/tds_computer.py:38-39` declares `is_lower_deduction` and `lower_deduction_cert` on `TDSDeducteeRecord` and nothing anywhere sets them (grep for `is_lower_deduction` returns only that declaration). `resolve_tds` (line 271) takes no certificate parameter. A grep for `197` across domain/, services/ and routers/ returns only migration/comment noise.",
+   "ca_experience": "A transport contractor or an advertising agency with a \u00a7197 certificate at 0.5% cannot be modelled. The CA must either turn TDS off on the vendor (so no register row, no 26Q deductee line, no challan) or accept over-deduction at the section rate. 26Q's own deductee annexure has a lower-deduction flag and certificate-number field that can never be populated, so the FVU file is wrong for those payees.",
+   "market_standard": "TallyPrime, ClearTDS, Winman TDS and Saral TDS all hold a \u00a7197 certificate per deductee: certificate number, section, rate, the amount up to which it applies, and validity dates, with the rate reverting to the section rate once the certificate limit is exhausted.",
+   "confidence": "high",
+   "suggested_fix": "Add `tds_certificate_no`, `tds_certificate_rate_bps`, `tds_certificate_limit_paise`, `tds_certificate_valid_from/to` to vendors; pass them into `resolve_tds` so the certificate rate applies to bills dated in the validity window up to the limit and the section rate applies beyond it; carry the flag and number onto the `tds_deductions` row for 26Q.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "There is no s.197 lower/nil-deduction certificate model: `vendors` has no certificate number, rate, limit or validity column (migration 049 and every later vendors ALTER \u2014 201, 303, 308, 309, 311), and `resolve_tds` (domain/tds/tds_computer.py:271) takes no certificate parameter, so a certificate holder is always withheld at the full section rate. The evidence's claim that `is_lower_deduction` exists only as a dataclass field is wrong \u2014 it is a real column on tds_deductions (migrations/037_tds_engine.sql:48-49), accepted by routers/tds.py:58-59 and read by apps/web/app/tds/returns/page.tsx:128 \u2014 but nothing ever sets it, and the register-driven 26Q builder (services/tds_return_service.py:211-229) omits it entirely, so the FVU lower-deduction fields are permanently False.",
+    "probe": "grep -A6 'ALTER TABLE public.vendors' apps/api/migrations/{201,303,308,309,311}_*.sql | grep -i 'ADD COLUMN' listed 14 columns, none certificate-related. grep -rn 'is_lower_deduction|lower_deduction' apps/api returned 9 hits across routers/tds.py, migrations/037 and domain/tds/tds_computer.py \u2014 none of them a write from the bill path.",
+    "lens_notes": {
+     "literal": "The substantive gap is confirmed; two evidence sentences are wrong and need correcting. CONFIRMED: the `vendors` table carries no certificate column of any kind \u2014 migration 049 plus every later ALTER (201: credit_days; 303: msme_status, msme_registration_no; 308: residential_status, country_of_residence, tax_identification_number; 309: section_195_nature_of_income, trc_on_file, form_10f_on_file, no_pe_declaration_on_file, treaty_rate_bps; 311: no_pe_declaration_on/_by/_ref) \u2014 nothing about s.197. `TDSComputer.resolve_tds` (domain/tds/tds_computer.py:271) takes no certificate parameter, and `_resolve_bill_resident_tds` (routers/purchase_bills.py:284-347) passes none. WRONG in the evidence: (a) grep for `is_lower_deduction` returns more than the declaration \u2014 migrations/037_tds_engine.sql:48-49 adds `is_lower_deduction BOOLEAN` and `lower_deduction_cert TEXT` to `tds_deductions`, routers/tds.py:58-59,151-152,201 accepts them on the manual Compute26QRequest deductee list, and apps/web/app/tds/returns/page.tsx:128 reads `is_lower_deduction` off the row when building the 26Q payload. So the deductee-level flag DOES exist end to end. What does not exist is anything that SETS it.",
+     "guards": "None, and the machinery that exists makes the gap sharper rather than softer. The register-driven 26Q path \u2014 services/tds_return_service.py:211-229 \u2014 constructs each TDSDeducteeRecord from the bill and vendor and never sets `is_lower_deduction` or `lower_deduction_cert`, so the flag is always False in the generated return. services/tds_register_service.py:150-200 writes the tds_deductions row from the bill and likewise never sets either column. apps/web/app/tds/returns/page.tsx:128 therefore always reads False.",
+     "reach": "Live. Every resident-TDS bill goes through _resolve_bill_resident_tds and is withheld at the registry section rate with no way to lower it, and the 26Q deductee annexure's lower-deduction fields are structurally unpopulatable from the bill path. The only alternative is turning tds_applicable off on the vendor, which suppresses the tds_deductions row and the 26Q deductee line entirely."
+    }
+   }
+  },
+  {
+   "id": "PUR-08",
+   "kind": "bug",
+   "severity": "high",
+   "title": "A purchase bill can be created and received into a period whose GSTR-3B has already been filed \u2014 the filed-return lock that guards sales invoices is missing on both paths",
+   "evidence": "routers/sales_invoices.py:819-826 calls `period_lock_service.assert_open(...)` on invoice CREATE, right after the FY check. `_create_purchase_bill_core` (routers/purchase_bills.py:757-762) calls only `period_validation_service.validate_posting_date_cached` \u2014 no `assert_open`. `receive_purchase_bill` (routers/purchase_bills.py:1533-1536) likewise calls only `validate_posting_date`. The lock IS imported and used in `update_purchase_bill` at lines 1345-1347, so the omission is on create and receive specifically. `services/phase2_journal_service.py` has no `assert_open`/`period_lock_reason` reference, so the kernel does not catch it either. tests/test_documents_locked_by_filed_return.py covers only the purchase-bill EDIT path (line 189).",
+   "ca_experience": "A late supplier invoice for March arrives in June. The CA books it dated March and receives it. The GSTR-3B for March was filed in April with its own ITC figure. The March books now claim credit the filed return never did, permanently. Nothing warns them, and the books-vs-ledger reconciliation the product prides itself on will disagree for that month forever. The equivalent sales invoice is refused with a sentence naming the filing date.",
+   "market_standard": "TallyPrime blocks entry into a GST-return-locked period and prompts to move the voucher to the current period; ClearTax's books flag out-of-period ITC. A recipient who genuinely wants that credit takes it in the current 3B under \u00a716(4), which is exactly what the refusal message should say.",
+   "confidence": "high",
+   "suggested_fix": "Call `period_lock_service.assert_open(db, firm_id, client_id, bill_date)` in `_create_purchase_bill_core` (mirroring sales_invoices.py:824) and in `receive_purchase_bill` before the status flip. Extend tests/test_documents_locked_by_filed_return.py with a create case and a receive case.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The filed-return period lock is enforced on purchase-bill UPDATE (routers/purchase_bills.py:1345,1347) but not on CREATE (line 740 has only the FY check) or RECEIVE (line 1536, likewise), while the sales side enforces it on create at routers/sales_invoices.py:825. A late bill dated into a period whose GSTR-3B is already filed is accepted and posted, and neither the kernel (no period_lock reference in services/phase2_journal_service.py) nor the test suite (tests/test_documents_locked_by_filed_return.py has only edit cases) notices. Migration 267's own header text names this exact omission as the thing it was written to allow fixing.",
+    "probe": "grep -n 'assert_open' across apps/api printed 6 call sites: services/period_lock_service.py:66 (the definition), routers/purchase_bills.py:1345,1347 (update only), routers/sales_invoices.py:825 (create), 1252,1254 (update). No purchase create or receive site exists.",
+    "lens_notes": {
+     "literal": "Confirmed at every cited line. routers/sales_invoices.py:823-826 calls `period_lock_service.assert_open(get_supabase(), firm_id, data.get(\"client_id\"), data.get(\"invoice_date\"))` on invoice CREATE, immediately after `validate_posting_date_cached` at 815-818, with a comment explaining that the FY lock is the CA's switch and this is the portal's. `_create_purchase_bill_core` (routers/purchase_bills.py:737-743) calls only `period_validation_service.validate_posting_date_cached` \u2014 the full list of lock calls in that file is lines 740, 1339, 1341, 1345, 1347, 1536, 1699, and `assert_open` appears only at 1345 and 1347 (the UPDATE path). `receive_purchase_bill` at line 1536 calls only `validate_posting_date`, and its own comment ('FY-lock: receiving posts a dated journal') shows it was written with only the FY half in mind.",
+     "guards": "None downstream. grep for `period_lock|assert_open|lock_reason` across services/phase2_journal_service.py returns nothing, so the posting kernel does not catch it either. The SQL function itself is real and general \u2014 migrations/267_period_lock_reason_for_every_document.sql:35-80 defines `public.period_lock_reason`, whose own header says in terms that 'Sales invoices and purchase bills check only the financial-year half today ... so a document can still be created or changed inside a period whose return has been filed'; the delegate was created precisely so both document types could use it, and the purchase-bill create/receive callers were never added. tests/test_documents_locked_by_filed_return.py covers the sales edit (line 142), the sales move (157) and the purchase EDIT (189) \u2014 there is no create case and no receive case for either document.",
+     "reach": "Live in production. The `if not _USE_MOCK` guard on the sales-invoice call means the check runs against the real DB; the purchase path has no such call to guard. routers/purchase_bills is mounted, and the receive step is the one that posts the journal (services/phase2_journal_service.journal_for_purchase_bill, called from routers/purchase_bills.py after the status flip at 1539-1543)."
+    }
+   }
+  },
+  {
+   "id": "PUR-09",
+   "kind": "bug",
+   "severity": "high",
+   "title": "The Rule 37 report ignores debit notes and purchase credit notes, over-reversing ITC on any bill settled by a purchase return",
+   "evidence": "services/itc_reversal_service.py:57-59 selects only `total_paise, paid_paise, tds_paise, cgst_paise, sgst_paise, igst_paise` \u2014 not `debited_paise` or `credit_note_paise`, and not the generated `outstanding_paise` column that migration 278 added precisely to net them. `domain/gst/itc_reversal.py:73-79`: `unpaid = total_paise - (paid + tds)`. Every other AP path in the codebase uses the full formula: routers/purchase_payments.py:150-156, routers/debit_notes.py:471-476 and services/vendor_statement_service.py:305-310 all compute `(net_payable + credit_note_paise) \u2212 paid \u2212 debited`.",
+   "ca_experience": "A \u20b91,18,000 bill where \u20b959,000 of goods were returned on a debit note and the balance was never paid shows as \u20b91,18,000 unpaid at 180 days and reverses 100% of the \u20b918,000 ITC \u2014 but \u20b99,000 of that was already reversed by the debit note's own journal. The CA reverses \u20b99,000 too much in GSTR-3B Table 4(B)(2), understating credit for the month, and the compensating re-availment is not tracked.",
+   "market_standard": "ClearTax's and Cygnet's Rule 37 / 180-day reports run off the net outstanding in the purchase ledger, which already reflects debit and credit notes.",
+   "confidence": "high",
+   "suggested_fix": "Add `debited_paise, credit_note_paise` to the select and pass them into `reversal_for_bill`, or read `outstanding_paise` directly. The proportion should also be taken against the CURRENT value of the supply, not the original `total_paise`. Add a case to tests/test_rule37_itc_reversal.py with a debit-noted bill as the negative control.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The Rule 37 180-day report computes unpaid as `total_paise - (paid + tds)` (domain/gst/itc_reversal.py:74-77) from a select that omits debited_paise and credit_note_paise (services/itc_reversal_service.py:57-59), so a bill partly settled by a debit note or purchase credit note shows its gross value as unpaid and reverses ITC that the debit note's own journal already credited out of GST Input. The generated `outstanding_paise` column (migration 278:85-93) that every other AP path uses is right there and unread.",
+    "probe": "cd apps/api && python -c \"from domain.gst.itc_reversal import reversal_for_bill; print(reversal_for_bill(total_paise=11800000, paid_paise=0, tds_paise=0, cgst_paise=0, sgst_paise=0, igst_paise=1800000))\" printed unpaid_paise 11800000, igst_paise 1800000 (Rs 18,000 reversed). Re-run net of a Rs 59,000 debit note (total 5900000, igst 900000) printed igst_paise 900000 \u2014 Rs 9,000, i.e. the report over-reverses by exactly the debit note's ITC.",
+    "lens_notes": {
+     "literal": "Confirmed. services/itc_reversal_service.py:57-59 selects exactly `id, bill_no, bill_date, vendor_id, status, total_paise, paid_paise, tds_paise, cgst_paise, sgst_paise, igst_paise` \u2014 no `debited_paise`, no `credit_note_paise`, no `outstanding_paise`. rule37_report at lines 93-99 passes only total/paid/tds/cgst/sgst/igst into `reversal_for_bill`, and domain/gst/itc_reversal.py:74-77 computes `unpaid = max(0, total_paise - (paid + tds))`. Every other AP path uses the netted formula: routers/purchase_payments.py:153-156 (`effective_payable = net_payable_paise + credit_note_paise; outstanding = effective_payable - paid_paise - debited_paise`), services/vendor_statement_service.py:299,311 (reads the generated `outstanding_paise` column directly). Migration 278:85-93 defines that generated column as net_payable + credit_note - paid - debited, added expressly so the filter could move into the query.",
+     "guards": "None, and the double-count is real: services/phase2_journal_service.py's journal_for_debit_note (around lines 398-418) credits the GST Input account for the debit note's reversed GST, so the ITC on returned goods has already left the ledger before Rule 37 reverses it a second time. tests/test_rule37_itc_reversal.py and tests/test_rule37_report.py exist but neither exercises a debit-noted or credit-noted bill.",
+     "reach": "Live and CA-facing. routers/gst_workspace.py:1326-1328 exposes rule37_report; gst_workspace is mounted at apps/api/main.py:321; and apps/web/app/gst/gstr3b/page.tsx:94,461-476 fetches it and renders the split bills beside the GSTR-3B figures via lib/gst/rule37Period.splitRule37Bills."
+    }
+   }
+  },
+  {
+   "id": "PUR-10",
+   "kind": "gap",
+   "severity": "high",
+   "title": "No TDS is deducted or recorded on a vendor payment \u2014 advances to contractors withhold nothing, and purchase_payments has no tds_paise column at all",
+   "evidence": "routers/purchase_payments.py:3 and :358 both assert 'TDS already deducted at the purchase bill stage, so payment is net'. `create_purchase_payment` (line 348) and `create_payment_core` (services/purchase_payment_service.py:120) contain no TDS logic \u2014 grep for `tds` across both files returns only those two comment lines. `purchase_payments` (migration 050:313, plus 148/159/161/215/226) has no `tds_paise` column, while the AR mirror `receipts` gained one in migration 077:27. `services/tds_register_service.py` is only ever called from `receive_purchase_bill` and `cancel_purchase_bill`. Migration 050:318 explicitly comments that `purchase_bill_id` is nullable 'to support advance payments before bill receipt'.",
+   "ca_experience": "A client pays a \u20b95,00,000 mobilisation advance to a contractor in March; the bill arrives in May. \u00a7194C(3) requires deduction at credit OR payment, whichever is EARLIER \u2014 so \u20b910,000 was due to be deposited by 7 April. The product withholds nothing, creates no tds_deductions row, no challan obligation and no 26Q deductee line for Q4. Interest under \u00a7201(1A) runs from the payment date. Advances to vendors are routine in construction, manufacturing and any retainer arrangement.",
+   "market_standard": "TallyPrime deducts TDS on an advance payment voucher and adjusts it against the bill when the bill is later booked; ClearTDS and Saral both model advance-payment deductions as first-class 26Q rows.",
+   "confidence": "high",
+   "suggested_fix": "Add `tds_paise`/`tds_section`/`tds_rate_bps` to purchase_payments; when a payment has no bill allocation (or exceeds the allocated bills), run the same `_resolve_bill_resident_tds` / \u00a7195 path over the unallocated amount, post the TDS credit in `journal_for_purchase_payment`, and call `sync_for_bill`'s equivalent for payments so the register carries the row. The adjustment against a later bill needs its own rule so the same sum is not deducted twice.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Nothing on the vendor-payment path deducts or records TDS: purchase_payments has no tds_paise column (migrations/050:312-329; only 215:11 ever alters the table), create_purchase_payment and services/purchase_payment_service.create_payment_core contain no TDS logic, and tds_register_service.sync_for_bill runs only from receive/cancel of a bill (routers/purchase_bills.py:1587,1740). Since \u00a7194C(3)/\u00a7194J charge at credit or payment whichever is earlier, an unlinked advance \u2014 which the UI offers by default for domestic payments at apps/web/app/clients/[id]/purchases/page.tsx:2201 \u2014 withholds nothing and creates no deposit obligation, while the AR mirror `receipts` has carried tds_paise since migration 077:27.",
+    "probe": "grep -in 'tds' apps/api/routers/purchase_payments.py apps/api/services/purchase_payment_service.py printed 2 lines, both docstring comments. grep -rn 'purchase_payments' apps/api/migrations/*.sql | grep -i 'add column' printed 1 line: 215_reversal_support.sql:11 is_reversed.",
+    "lens_notes": {
+     "literal": "Confirmed at every point. routers/purchase_payments.py:3 ('IT Act Section 194C/194I/194J: TDS already deducted at bill stage; payment is net amount.') and :358 ('TDS was already deducted at the purchase bill stage, so payment is net.') are the ONLY occurrences of 'tds' in either routers/purchase_payments.py or services/purchase_payment_service.py \u2014 a case-insensitive grep across both files returns exactly those two lines. `purchase_payments` (migrations/050_sales_purchase_cycle.sql:312-329) has no tds column, and the only later ALTER on that table across all migrations is 215_reversal_support.sql:11 adding `is_reversed`. The AR mirror does have one: migrations/077_collections_ar.sql:27-29 adds `receipts.tds_paise` with a comment naming \u00a7194J. Migration 050:311 comments 'purchase_bill_id nullable to support advance payments before bill receipt', and the column at line 316 is indeed nullable.",
+     "guards": "None. services/tds_register_service.sync_for_bill is called from exactly two places, both bill-lifecycle: routers/purchase_bills.py:1587 (receive) and :1740 (cancel), via the `_sync_tds_register` wrapper at line 1452. There is no payment-side equivalent, so an advance produces no tds_deductions row, no challan obligation, and no 26Q/27Q deductee line.",
+     "reach": "Live, and the advance path is deliberately exposed in the UI. apps/web/app/clients/[id]/purchases/page.tsx:2201 renders the bill selector with placeholder '\u2014 Advance / Select bill \u2014' for domestic payments; line 2205 shows that only FOREIGN payments are forced to link to a bill ('A foreign payment must be linked to the bill it settles \u2014 no unlinked foreign advance'). So a domestic mobilisation advance to a contractor is a first-class, two-click action that withholds nothing."
+    }
+   }
+  },
+  {
+   "id": "PUR-11",
+   "kind": "missing_feature",
+   "severity": "high",
+   "title": "The GSTR-2A/2B reconciliation asks the CA to export and re-upload the purchase register the platform already holds, matches in TypeScript, and writes nothing back",
+   "evidence": "apps/web/app/gst/reconciliation/page.tsx:514 holds `booksRows` in React state populated only from a CSV/XLSX upload (`setBooksRows(rows)` at line 555) \u2014 the file never reads `purchase_bills`. The whole matching algorithm is `reconcile()` at lines 225-292, in the browser, keyed on `supplier_gstin|invoice_number` with a 3-paise tolerance. The result is rendered and Excel-exported (line 344) and never persisted. `gstr2a_records` (migration 028) has no `purchase_bill_id` column, so there is no place to store a per-invoice match even if one were computed. This also violates the house rule 'Zero business logic in the frontend'.",
+   "ca_experience": "The one purchase-side task a CA does every single month \u2014 'which of my client's bills has the supplier not filed, and how much ITC must I hold back' \u2014 requires them to export the purchase register from this product, open Excel, download 2B from the portal, upload both back into this product, look at a screen, and then remember the answer, because nothing is written against the bill. Reopening the screen next month starts from zero. There is no supplier-wise defaulter list and no way to see, from the Purchases tab, that a specific bill is unmatched.",
+   "market_standard": "This is the core of the ITC products CAs actually pay for. ClearTax GST, Cygnet, IRIS Sapphire and TaxGenie all pull 2A/2B, match invoice-by-invoice against the books with fuzzy invoice-number handling, persist a status per invoice, and produce a supplier-wise 'not filed' follow-up list. TallyPrime 5.0 downloads GSTR-2B and reconciles inside the ledger.",
+   "confidence": "high",
+   "suggested_fix": "Move `reconcile()` to a backend service that reads `purchase_bills` for the period, add `gstr2a_records.purchase_bill_id` plus a match status, persist the result, and surface the status as a column on the Purchases \u2192 Bills tab and as a supplier-wise defaulter list. Keep the CSV upload for the 2B side only.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "The purchase register is never read from the platform's own data on either reconciliation path: /gst/reconciliation/page.tsx:514,555 takes it from a CSV upload and matches in the browser (:225-292) with no persistence, and the server-side alternative at routers/gst_workspace.py:830-905 requires the CA to paste a `book_invoices` array (:852) \u2014 it persists only a result blob on gstr2b_uploads, not a per-invoice status, and gstr2a_records (migration 028:2-17) has no purchase_bill_id to hold one.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed at the cited lines. apps/web/app/gst/reconciliation/page.tsx:514 declares booksRows in React state; the only writer is handleBooksFile at :548-555 (CSV/XLSX parse). The file contains no purchase_bills read and no fetch/apiCall at all (grep for from(/apiGet/fetch( over the 919-line file returns nothing). reconcile() is the whole matching algorithm at :225-292, keyed on `${gstin}|${invoice_number}` with a total-diff tolerance of 3 paise across the three heads (:259-261). The only output is render + XLSX.writeFile at :350. migration 028_*.sql:2-17 confirms gstr2a_records has no purchase_bill_id and no status column.",
+     "guards": "One partial guard, which I looked for specifically: a SERVER-side reconciliation does exist \u2014 POST /api/gst-workspace/gstr2b/upload (apps/api/routers/gst_workspace.py:830-905) matches on (inum, sgstin), compares taxable in integer paise, and PERSISTS reconciliation_result into gstr2b_uploads, plus a timeline warning event. But it does not read purchase_bills either: the books side is `raw.get(\"book_invoices\", [])` (gst_workspace.py:852), i.e. an array the caller pastes. Its UI (GSTR2BTab, apps/web/app/clients/[id]/compliance/gst/page.tsx:1199-1240) is a textarea labelled 'Paste GSTR-2B JSON here (include book_invoices array for reconciliation)'. So the finding's 'writes nothing back' and 'matches in TypeScript' are true of the /gst/reconciliation page only; the substantive claim \u2014 the platform never reads the purchase register it holds, and no match status ever lands on a bill \u2014 holds on BOTH paths.",
+     "reach": "Live and linked: /gst/reconciliation from apps/web/app/gst/page.tsx:809; the GSTR-2B Recon tab from compliance/gst/page.tsx:1503/1541. No supplier-wise defaulter list exists anywhere (grep 'defaulter|not filed' across apps/web/app hits only /risks for advance tax)."
+    }
+   }
+  },
+  {
+   "id": "PUR-12",
+   "kind": "bug",
+   "severity": "high",
+   "title": "The reconciliation screen tells the CA that ITC is restricted to 105% of GSTR-2A \u2014 a cushion repealed on 1 January 2022 \u2014 while the backend correctly uses 100%",
+   "evidence": "apps/web/app/gst/reconciliation/page.tsx states '105% of eligible ITC' at lines 7, 217, 628 and 894, including in a prominent callout box ('CGST Rule 36(4): ITC is restricted to 105% of eligible credit appearing in GSTR-2A/2B'). The backend disagrees: domain/gst/gstr3b_computer.py:540-542 sets `_RULE_36_4_NUMERATOR = 100` with the comment 'as amended w.e.f. 1 Jan 2022 ... no provisional buffer'. Rule 36(4) was substituted by Notification 40/2021-CT (29-12-2021) with \u00a716(2)(aa) from 01-01-2022, removing the percentage entirely.",
+   "ca_experience": "The CA reads a statutory instruction on screen and believes they may claim 5% more ITC than appears in 2B. Acting on it over-claims credit, attracting \u00a750 interest and a \u00a773/74 demand. It is worse than a missing feature: it is the product asserting repealed law with a section citation.",
+   "market_standard": "Every current Indian GST product states the post-2022 position \u2014 ITC only to the extent reflected in GSTR-2B, no cushion.",
+   "confidence": "high",
+   "suggested_fix": "Replace all four strings with the \u00a716(2)(aa) / Rule 36(4)-as-substituted position and cite Notification 40/2021-CT. Worth grepping for other '105' / '110' / '120' Rule 36(4) survivals across apps/web at the same time.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The four strings are there and are repealed law (page.tsx:7, 217, 628, 894), and the backend contradicts them at domain/gst/gstr3b_computer.py:538-542 \u2014 but nothing on the page computes a 105% cushion, so the harm is a wrong statutory statement in front of a CA, not a wrong number. Downgraded from high to medium on that basis.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed, four occurrences: apps/web/app/gst/reconciliation/page.tsx:7 (module docstring), :217 (reconcile() docstring), :628 (blue info callout, '<strong>CGST Rule 36(4):</strong> ITC is restricted to 105% of eligible credit appearing in GSTR-2A/2B'), :894 (table footer). The backend does state the post-2022 position: apps/api/domain/gst/gstr3b_computer.py:538-542 comments Notification 40/2021-Central Tax w.e.f. 1 Jan 2022 and sets _RULE_36_4_NUMERATOR = 100 / _DENOMINATOR = 100, applied in _apply_rule_36_4_cap at :545-558.",
+     "guards": "The 105% never enters any computation \u2014 the page has no ITC-cap arithmetic at all, it only classifies matched/mismatch/missing/extra. The return a CA actually files is computed by gstr3b_computer at 100%, pinned by tests/test_gst_engine.py:373-380 and tests/test_gstr3b_itc_reversal_from_books.py:201-215. So no figure produced by the product is inflated by 5%.",
+     "reach": "The page is linked from apps/web/app/gst/page.tsx:809, so a CA does read the callout. It is on-screen statutory guidance only."
+    }
+   }
+  },
+  {
+   "id": "PUR-13",
+   "kind": "bug",
+   "severity": "high",
+   "title": "\u00a7194Q deducts 0.1% on the whole purchase value instead of on the value exceeding \u20b950 lakh, and has no FY aggregate at all",
+   "evidence": "domain/tds/section_rates.py:141: `\"194Q\": TDSSectionRule(50_00_000_00, 10, 10)` \u2014 a single threshold with `aggregate_threshold_paise=None`. domain/tds/tds_computer.py:315 then computes `tds = taxable_paise * rate_bps // 10000` on the full amount. I ran a single \u20b960,00,000 bill: 600000 paise (\u20b96,000) withheld, against the statutory \u20b91,000 (0.1% of the \u20b910,00,000 exceeding \u20b950L). And because there is no aggregate, one hundred \u20b91,00,000 bills totalling \u20b91 crore from the same seller withhold nothing at all. \u00a7194Q(1) charges 0.1% 'of such sum exceeding fifty lakh rupees' where the value 'or aggregate of such value' in the year exceeds \u20b950 lakh.",
+   "ca_experience": "Two opposite wrong numbers for the same client. A trading SME buying in many small lots crosses \u20b950 lakh with a supplier and deducts nothing all year \u2014 \u00a740(a)(ia) disallowance on the excess. A client with one large bill deducts six times what is due and the supplier is short-paid. \u00a7194Q applies to any buyer with turnover above \u20b910 crore, which is most of the SMEs a CA firm serves.",
+   "market_standard": "TallyPrime tracks 194Q per party cumulatively and deducts on the incremental value above \u20b950 lakh, and also handles the \u00a7194Q vs \u00a7206C(1H) precedence (if the buyer deducts under 194Q, the seller does not collect under 206C(1H)).",
+   "confidence": "high",
+   "suggested_fix": "Give 194Q an excess-only computation: `tds = max(0, fy_total - 50L) * rate - tds_already_deducted_in_fy`, with the aggregate as the trigger. Note that \u00a7206C(1H) TCS is separately unimplemented \u2014 section_rates.py:143-149 says so explicitly for 206C \u2014 so the precedence rule cannot be modelled until TCS exists.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "\u00a7194Q is computed as 0.1% of the whole bill once a single bill exceeds \u20b950 lakh, and not at all otherwise: a \u20b960,00,000 bill withholds \u20b96,000 against the statutory \u20b91,000 (\u00a7194Q(1) charges 0.1% of 'such sum exceeding fifty lakh rupees'), and one hundred \u20b91,00,000 bills totalling \u20b91 crore withhold nil because section_rates.py:141 sets no aggregate threshold. Borderline critical \u2014 a wrong tax figure is deducted, paid and reported.",
+    "probe": "cd apps/api && venv/bin/python -c \"from domain.tds.tds_computer import TDSComputer; ...\" printed: single 60L bill -> TDSResolution(applies=True, section='194Q', tds_paise=600000, rate_pct=0.1, ...) i.e. \u20b96,000; 100 x \u20b91L bills -> total tds paise 0 on an FY total of \u20b91,00,00,000.",
+    "lens_notes": {
+     "literal": "Confirmed exactly. domain/tds/section_rates.py:141 is `\"194Q\": TDSSectionRule(50_00_000_00, 10, 10)` \u2014 positional args are (single_threshold, individual_bps, company_bps), aggregate_threshold_paise defaults to None. domain/tds/tds_computer.py:304-306 gates on `taxable > single_threshold OR (aggregate is not None AND fy_total > aggregate)`, then :316 computes `tds = taxable_paise * rate_bps // 10000` on the FULL amount, never on the excess over 50L.",
+     "guards": "None. The one 194Q test (tests/test_tds_section_rates.py:114-122) asserts the wrong behaviour as correct: `amt == 60_00_000_00 * 10 // 10000` (\u20b96,000 on a \u20b960L bill). No FY-aggregate handling exists for 194Q anywhere; the aggregate machinery exists but is wired only to 194C (section_rates.py:125). \u00a7206C(1H) TCS is genuinely absent (section_rates.py:143-149 says so), so the 194Q-vs-206C(1H) precedence cannot be modelled \u2014 that half of the finding is accurate.",
+     "reach": "Fully live. A vendor's TDS section is chosen in the client workspace Purchases tab: apps/web/app/clients/[id]/purchases/page.tsx:235 offers '194Q \u2014 Purchase of Goods (0.1%)' with a 10-bps default at :248, and routers/purchase_bills.py:332-341 calls resolve_tds with that section on every bill (single, bulk and PATCH recompute)."
+    }
+   }
+  },
+  {
+   "id": "PUR-14",
+   "kind": "gap",
+   "severity": "high",
+   "title": "The TDS register's statutory gaps are computed on every receive and never reach a screen \u2014 the exact failure the module was written to fix",
+   "evidence": "routers/purchase_bills.py:1594-1596 and 1631 return `{**updated_bill, \"tds_register\": _tds_sync}`, where `_tds_sync` carries `statutory_gaps`, `gap_details`, `vendor_name` and a `synced: False` failure signal (services/tds_register_service.py:193-233). The frontend at apps/web/app/clients/[id]/purchases/page.tsx:382-384 discards `result.data` entirely and shows 'Purchase bill received'. A grep for `statutory_gaps` across apps/web finds it only in the PAYROLL page (app/clients/[id]/payroll/page.tsx:574-591), which even has a regression test enforcing the wiring (scripts/payroll-gaps-reach-the-screen.test.ts). tds_register_service.py:44-49 and 224-227 say explicitly that a gap existing only in a log is the failure being fixed.",
+   "ca_experience": "Five gap codes are computed and thrown away on every received bill: `vendor_residency_not_classified` (the deduction was filed on an assumption that the vendor is resident), `27q_identifiers_missing`, `form_15ca_not_recorded` (money left the country without Rule 37BB paperwork), `no_pe_declaration_undated` and `195_rates_unverified`. And when the register write FAILS, the CA is told 'Purchase bill received' while the deduction sits in the books with no challan and no 26Q row. All of it is invisible.",
+   "market_standard": "Not a market comparison \u2014 this is the product's own established pattern (payroll) not being applied to the purchase side.",
+   "confidence": "high",
+   "suggested_fix": "Read `res.data.tds_register` in the receive handler and render `gap_details` the way the payroll page renders `statutory_gaps`; treat `synced: false` as a warning banner, not a success. Add the mirror of scripts/payroll-gaps-reach-the-screen.test.ts.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Every receive computes the register's statutory_gaps and gap_details and returns them (purchase_bills.py:1635), and both the single (:382) and bulk (:488) receive handlers in apps/web/app/clients/[id]/purchases/page.tsx throw the payload away and print 'Purchase bill received' \u2014 including when the sync failed and came back synced:false (purchase_bills.py:1489-1491), which means the deduction is in the books with no tds_deductions row for the challan or 26Q and the CA is told it succeeded.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed with a small line offset. routers/purchase_bills.py:1587 calls _sync_tds_register and :1635 returns `api_response(True, {**updated_bill, \"tds_register\": _tds_sync})` (the finding cited 1594-1596/1631). services/tds_register_service.py:189-233 builds the five gap codes and :254-266 attaches statutory_gaps / gap_details / vendor_id / vendor_name; :268-273 returns {synced: False, reason: ...} on failure, and _sync_tds_register's own except at purchase_bills.py:1486-1491 returns the same shape. The frontend handler at apps/web/app/clients/[id]/purchases/page.tsx:380-386 assigns `result` only to test `result.success`, then sets 'Purchase bill received' \u2014 result.data is never read. The bulk receive at :488 does the same.",
+     "guards": "None: `tds_register` appears nowhere in apps/web (grep over the whole tree), and the gaps are not persisted to any column \u2014 tds_register_service.py:222-252 writes only the tds_deductions row, so nothing else can surface them later. The contrast the finding draws is real: apps/web/app/clients/[id]/payroll/page.tsx:574-591 reads statutory_gaps and apps/web/scripts/payroll-gaps-reach-the-screen.test.ts:27-29 pins that wiring.",
+     "reach": "Live \u2014 /clients/[id]/purchases is in the client nav (lib/workspace/ClientNavContext.tsx:65) and receive is the only way a purchase bill posts."
+    }
+   }
+  },
+  {
+   "id": "PUR-15",
+   "kind": "missing_feature",
+   "severity": "high",
+   "title": "The MSME \u00a743B(h) tracker is a manually re-keyed side table with the whole statutory rule computed in TypeScript, disconnected from purchase bills and from vendors.msme_status",
+   "evidence": "apps/web/app/accounting/msme-tracker/page.tsx:59-88 implements the entire \u00a743B(h) test in the browser \u2014 `due_days = agreement_type === \"written\" ? 45 : 15`, `addDays`, and a `status`/`disallowed_paise` decision \u2014 and reads/writes `msme_payments` directly over PostgREST (lines 156, 263). It never touches `purchase_bills`, `vendors` or `purchase_payments`. Separately, `vendors.msme_status` (migration 303:186) IS modelled, feeds `public.schedule_iii_ageing`, and is settable only from the Schedule III ageing report (app/clients/[id]/reports/ageing/page.tsx:441). There is no backend \u00a743B(h) code at all \u2014 grep for `43B` across apps/api returns only migration comments. There is also no MSMED \u00a716 interest computation anywhere. A third dead table, `msme_vendors` (migration 014:393), has zero readers.",
+   "ca_experience": "Every MSME supplier invoice must be typed in a second time by hand, with the amount, date and agreement type re-entered, and it does not reconcile to the bills already in the system. The disallowance figure is computed in the browser and is not available to the income-tax computation. Vendors classified micro/small for the Schedule III note are invisible to the tracker and vice versa. No interest under MSMED \u00a716 (three times the RBI bank rate, compounded monthly) is computed, and \u00a743B(h) is stricter than the code models: MSMED \u00a715 caps the agreed period at 45 days but the agreed period may be SHORTER, so a written agreement saying 30 days is treated as 45 here and a genuine disallowance is missed.",
+   "market_standard": "TallyPrime 4.1+ ships MSME tracking off the actual party ledger with an ageing report against the \u00a715 due date; Zoho Books flags MSME vendors on the bill; ClearTax's 43B(h) report is generated from the purchase register, not re-keyed.",
+   "confidence": "high",
+   "suggested_fix": "Delete the manual table and derive \u00a743B(h) on the backend from `purchase_bills` + `purchase_payments` for vendors whose `msme_status` is micro or small, with the agreed credit period read from `purchase_bills.credit_days` (already snapshotted) capped at 45 days, defaulting to 15 where no agreement is recorded. Report the year-of-accrual disallowance and the \u00a716 interest, and surface the vendor's MSME classification on the vendor master where the CA already is.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "high",
+    "what_is_actually_true": "Two unconnected MSME facts exist \u2014 vendors.msme_status for the Schedule III note, and a hand-keyed msme_payments table whose \u00a743B(h) rule lives entirely in the browser (msme-tracker/page.tsx:62-88) \u2014 with no backend \u00a743B(h) computation, no MSMED \u00a716 interest, and a flat 45 days for any written agreement, which overstates the allowed period whenever the agreement is shorter (MSMED \u00a715 caps at 45, it does not grant 45) and so understates the disallowance.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/accounting/msme-tracker/page.tsx:62-88 is the whole \u00a743B(h) test in the browser \u2014 `const due_days = row.agreement_type === \"written\" ? 45 : 15` at :64, addDays at :54-58, and the status/disallowed_paise decision at :66-86. Its only data access is sb.from(\"msme_payments\") insert at :156 and select at :261; the file contains no purchase_bills, vendors or purchase_payments read. vendors.msme_status is real (migration 303, enforced by tests/test_schedule_iii_ageing_parity_pg.py:733-752 as constrained and default-less) and feeds public.schedule_iii_ageing. Backend \u00a743B(h): grep '43B' over apps/api returns only comments plus the ITR workspace's MANUAL disallowance entry (routers/itr_workspace.py:104 accepts '40A(3)|43B_pf|43B_gst|43B_bonus|other' \u2014 note 43B(h) is not even in that list). No MSMED \u00a716 interest anywhere. msme_vendors (migration 014:393) has zero readers outside migrations/grants.",
+     "guards": "None connecting the two. msme_status is settable ONLY from the Schedule III ageing screen (apps/web/app/clients/[id]/reports/ageing/page.tsx:435-443 via routers/accounting.py:1007) \u2014 there is no MSME field on the vendor form in the Purchases tab (grep 'msme' over app/clients/[id]/purchases/page.tsx and components/purchases/* returns nothing).",
+     "reach": "Live and advertised: apps/web/app/accounting/page.tsx:22 links 'MSME 43B(h) Tracker' \u2192 /accounting/msme-tracker, and knownRoutes.generated.ts:17 lists it."
+    }
+   }
+  },
+  {
+   "id": "PUR-16",
+   "kind": "glitch",
+   "severity": "high",
+   "title": "A second, orphaned vendor master at /accounting/suppliers that no purchase path reads",
+   "evidence": "apps/web/app/accounting/suppliers/page.tsx:151, 225, 227, 243 read and write the `suppliers` table (migration 030:2), which carries its own `supplier_name`, `gstin`, `pan`, `tds_section`, `tds_rate_percent`, `credit_limit_paise` and `payment_terms_days`. Grepping `suppliers` across apps/api finds it only in RLS-policy test allowlists (tests/test_direct_write_tables_are_role_guarded.py:45, tests/test_sql_role_tiers_match_python.py:60) \u2014 no router, service or domain module reads it. The purchase cycle uses `vendors` (migration 049) exclusively. The page is reachable from navigation (lib/workspace/knownRoutes.generated.ts:23).",
+   "ca_experience": "A CA finds 'Suppliers' in the accounting menu, sets up their client's whole supplier master there with TDS sections and credit terms, then goes to Purchases \u2192 Bills and finds the vendor dropdown empty. The work is silently lost and there is no migration path. It also creates a second place a TDS section can be recorded and disagree with the one that matters.",
+   "market_standard": "Not applicable \u2014 no product ships two disconnected supplier masters. This is a leftover from an earlier schema (migration 030 predates 049).",
+   "confidence": "high",
+   "suggested_fix": "Remove the route and the page, or make it a redirect to the client's Purchases \u2192 Vendors tab. If any production data exists in `suppliers`, write a one-off backfill into `vendors` first. Same treatment for the `msme_vendors` table, which has no readers at all.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The finding is accurate: /accounting/suppliers is a live, nav-linked master over the `suppliers` table (migration 030) that no backend module and no purchase screen reads, and it duplicates the TDS section that actually drives withholding on `vendors`. Downgraded from high to medium because no wrong figure is produced and the real path (client workspace \u2192 Purchases \u2192 Vendors) is prominent \u2014 the cost is wasted setup work and a second, silently ignored TDS section.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. apps/web/app/accounting/suppliers/page.tsx reads sb.from(\"suppliers\") at :151 and writes at :225/:227/:243. migration 030_*.sql:2-15 creates public.suppliers with supplier_name, gstin, pan, tds_section, tds_rate_percent, credit_limit_paise, payment_terms_days. Grep for the table across apps/api finds it only in RLS/role test allowlists (tests/test_direct_write_tables_are_role_guarded.py:45, tests/test_sql_role_tiers_match_python.py:60, tests/test_role_write_policies_pg.py:309) \u2014 no router, service or domain module. The purchase cycle reads `vendors`: apps/web/app/clients/[id]/purchases/page.tsx:337,345 and routers/purchase_bills.py throughout.",
+     "guards": "None \u2014 the table is role-guarded for writes but nothing reconciles or migrates it. The only other apps/web hit for 'suppliers' is prose on the GSTR-3B page (app/gst/gstr3b/page.tsx:467).",
+     "reach": "Reachable and prominently offered: apps/web/app/accounting/page.tsx:16 links 'Supplier Master \u2014 Manage supplier TDS sections, credit limits and payment terms' \u2192 /accounting/suppliers."
+    }
+   }
+  },
+  {
+   "id": "PUR-17",
+   "kind": "bug",
+   "severity": "medium",
+   "title": "POST /purchase-bills/from-document bypasses the whole compute engine and cannot succeed for a vendor that is not already in the master",
+   "evidence": "routers/purchase_bills.py:1773-1937 builds `bill_draft` by hand: it never calls `_compute_bill_lines_and_totals`, so there is no interstate determination (`is_interstate` is left at its default), no per-line CGST/SGST/IGST split (lines are inserted with all three hard-coded to 0 at lines 1919-1921 while the header carries the extracted GST), no `total_gst_paise`, no credit terms, no currency columns, no `itc_eligible`, no TDS (line 1802: `\"tds_paise\": 0`) and no `period_validation_service` call. `vendor_id` is left None when no match is found (line 1789), but `purchase_bills.vendor_id` is `UUID NOT NULL REFERENCES vendors(id)` (migration 050:233) and no later migration relaxes it \u2014 so the insert at line 1913 raises and the CA gets a generic `document_failure_detail` message. No frontend calls this endpoint (the editor at components/purchases/PurchaseBillEditor.tsx:416 uses document-intelligence-v1 and then the ordinary POST /), so it is a second, divergent write path that is currently unreachable but live on the API.",
+   "ca_experience": "If it is ever wired up: an invoice from a supplier not yet in the master \u2014 the common case for expense capture \u2014 fails with an opaque error instead of 'create the vendor first'. When it does succeed the bill's header GST does not tie to its lines, TDS is silently zero for a 194J vendor, and `total_gst_paise` reads 0 to every report that uses it. If `taxable + GST != total` (which nothing validates), `_create_journal`'s balance assertion refuses the receive.",
+   "market_standard": "Zoho Books' Autoscan and Dext create the vendor inline from the extracted GSTIN/name when no match is found, rather than failing.",
+   "confidence": "high",
+   "suggested_fix": "Either delete the endpoint (the editor path already does the right thing) or route it through `_create_purchase_bill_core` with an explicit 422 'No vendor matches this GSTIN/name \u2014 create the vendor first' when the match fails.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "The endpoint is real and divergent exactly as described (no compute engine, zeroed line GST, tds_paise 0, total_gst_paise left at its 0 default, and a NOT NULL vendor_id it can leave None \u2014 migration 050:233), but no screen calls it, so it harms nobody today; downgraded to low. The finding's error-message attribution is wrong: purchase_bills.py:1930 returns 'Unable to complete purchase bill operation: {e}'.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Mostly confirmed. routers/purchase_bills.py:1772-1931: bill_draft is hand-built at :1839-1860 with no _compute_bill_lines_and_totals call, no is_interstate (migration 050:20 defaults FALSE), no total_gst_paise (migration 050:27 defaults 0), no itc_eligible/\u00a717(5) fields, no currency columns, no credit terms, `\"tds_paise\": 0` at :1852, and lines inserted with cgst/sgst/igst hard-coded 0 at :1893-1895. vendor_id stays None when no match is found (:1837 + :1815-1836), and purchase_bills.vendor_id is UUID NOT NULL REFERENCES vendors(id) at migration 050:233 with no later relaxation (the only DROP NOT NULL on this family is vendors.credit_days, migration 202:16), so the insert at :1874 does raise in real mode. ONE evidence detail is wrong: the failure is caught at :1928-1931 and returned as `Unable to complete purchase bill operation: {e}`, not document_failure_detail.",
+     "guards": "Draft-only, so nothing posts to the GL until receive, which does run period validation and the kernel. Mock mode never reaches the constraint (the vendor-match loop is `for v in []` at :1798) and tests/test_r237_ar_ap_hardening.py:339-345 exercises only the mock path's line_total arithmetic.",
+     "reach": "No caller. Grep for 'from-document' across apps/web returns nothing; the editor uses /api/document-intelligence-v1/extract-invoice (components/purchases/PurchaseBillEditor.tsx:416) and then the ordinary POST /. The only other mention is a docstring pointer at routers/document_intelligence_v1.py:91. Per the REACH rule this is unreachable code, hence the downgrade."
+    }
+   }
+  },
+  {
+   "id": "PUR-18",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "Import of goods has no path \u2014 no Bill of Entry, so the IGST paid to customs cannot be recorded and GSTR-3B 4(A)(1)/(2) are hard-coded nil",
+   "evidence": "A grep for `bill of entry`, `bill_of_entry`, `BoE` and `import of goods` across apps/api finds nothing but a comment in migration 309 and a `customs` value in the exchange-rate-type enum (domain/currency/rate_types.py:12). domain/gst/gstr3b_computer.py:293-299 emits `(\"IMPG\", 0, 0, 0, 0)` and `(\"IMPS\", 0, 0, 0, 0)` unconditionally, with the docstring at line 280 conceding 'nothing upstream distinguishes an import ... from any other purchase yet'.",
+   "ca_experience": "For an importing client the IGST paid on the Bill of Entry \u2014 often the largest single ITC item of the month \u2014 cannot be booked at all. Putting it on the vendor's bill overstates Trade Payables by the IGST (the supplier was never charged it); leaving it off loses the credit. GSTR-3B Table 4(A)(1) files nil against a 2B that shows the BoE, and the CA must file outside the product.",
+   "market_standard": "TallyPrime has a dedicated Bill of Entry / import purchase voucher class; Zoho Books India has an 'Import' transaction type that splits the customs IGST from the supplier invoice; ClearTax reconciles BoE data from ICEGATE into 4(A)(1).",
+   "confidence": "high",
+   "suggested_fix": "A Bill of Entry document type carrying BoE number, port code, date and the customs IGST + cess, posting Dr GST Input / Cr Bank (or Cr Customs Duty Payable) without touching the vendor's AP, and feeding `IMPG`. Import of services is the \u00a7195/RCM combination that already half-exists and needs the `IMPS` row wired.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "There is no Bill of Entry concept and 4(A)(1)/(2) are hard nil (gstr3b_computer.py:293-294). The finding overstates one step: customs IGST is not impossible to book \u2014 a purchase bill raised on a customs vendor carries it into ITC \u2014 but it then lands in 4(A)(5) 'All other ITC' instead of 4(A)(1), so the 3B breakup will not tie to a 2B showing the BoE, and a manual journal would not reach the return's ITC at all because ITC is document-sourced (gst_return_service.py:678-692). Medium is right.",
+    "probe": null,
+    "lens_notes": {
+     "literal": "Confirmed. Case-insensitive grep for 'bill of entry|bill_of_entry|boe|icegate|import of goods' over apps/api returns only prose (migration 309:21, domain/tds/section_195_rates.py:38, the gstr3b docstring) and nothing in apps/web. domain/gst/gstr3b_computer.py:293-294 emits ('IMPG', 0, 0, 0, 0) and ('IMPS', 0, 0, 0, 0) unconditionally, with :280-283 conceding nothing upstream distinguishes an import.",
+     "guards": "None; there is no BoE document type, no port code, no customs-duty account wiring. The customs exchange-rate type in domain/currency/rate_types.py:12 is the only related artefact.",
+     "reach": "Live \u2014 the from-books GSTR-3B is what the CA files from, and its ITC is sourced entirely from purchase documents (services/gst_return_service.py:678-724: posted bills, purchase debit notes and purchase credit notes)."
+    }
+   }
+  },
+  {
+   "id": "PUR-19",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "Reverse-charge bills produce no self-invoice (\u00a731(3)(f)) and no payment voucher (\u00a731(3)(g))",
+   "evidence": "`is_reverse_charge` is accepted (models/invoices.py:309), drives the payable exclusion (routers/purchase_bills.py:499-505) and the self-assessed output credit in the journal (services/phase2_journal_service.py:705-718). But a grep for `self_invoice`, `self-invoice`, `31(3)(f)` and `payment voucher` across apps/api and apps/web finds only an unrelated numbering comment in migration 159. No document is generated or numbered for an RCM inward supply.",
+   "ca_experience": "Where the RCM supply comes from an unregistered supplier, \u00a731(3)(f) requires the recipient to issue a self-invoice \u2014 within 30 days of receipt since Rule 47A (01-11-2024) \u2014 and \u00a731(3)(g) requires a payment voucher. Neither exists, so the client has an RCM liability discharged in 3B with no invoice behind it. In a departmental audit the ITC on that RCM is challenged for want of the document Rule 36(1)(b) requires.",
+   "market_standard": "TallyPrime auto-generates the RCM self-invoice with its own voucher series; Zoho Books India issues a 'Bill of Supply / self-invoice' for reverse-charge purchases from unregistered vendors.",
+   "confidence": "high",
+   "suggested_fix": "Generate a numbered self-invoice document (own series, own numbering under services/numbering.py) when a bill is received with `is_reverse_charge` and the vendor has no GSTIN, and a payment voucher when the RCM vendor is paid. A print/PDF is enough; nothing needs to be filed.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "An RCM inward supply is fully accounted for (payable excluded at routers/purchase_bills.py:493/517, output-tax leg at services/phase2_journal_service.py:705-718) but produces no \u00a731(3)(f) self-invoice and no \u00a731(3)(g) payment voucher, and GSTR-1 Table 13 never counts either nature (domain/gst/gstr1_builder.py:672-690 counts only three of the twelve). Medium is right: the tax is correct, the document that evidences it does not exist.",
+    "probe": "grep -rn 'self_invoice|self-invoice|31(3)(f)|payment voucher|payment_voucher' apps/api apps/web -i --include='*.py|*.ts|*.tsx|*.sql' -> 3 hits, all prose/label: migrations/159:13, migrations/159:14, domain/gst/gstr1_builder.py:662.",
+    "lens_notes": {
+     "literal": "Confirmed. `is_reverse_charge` is accepted at models/invoices.py:309, excludes the self-assessed GST from what the vendor is owed (routers/purchase_bills.py:493 and 517 \u2014 `line_total_paise`/`total_paise` = taxable only when RCM), and books the output-tax leg at services/phase2_journal_service.py:705-718 (`{head} payable under reverse charge \u2014 CGST Act \u00a79(3)/(4)`). A case-insensitive grep for self_invoice / self-invoice / 31(3)(f) / payment_voucher across apps/api and apps/web returns exactly three hits and none of them is a document: migrations/159_document_numbering_uniqueness.sql:13-14 (a prose comment about the VPMT vendor-payment series) and domain/gst/gstr1_builder.py:662, which is the literal string 'Payment Voucher' as entry #7 of the fixed GSTR-1 Table 13 nature list. No document is generated, numbered or printed for an RCM inward supply.",
+     "guards": "None. services/numbering.py has series only for SINV-/CN-/DN-/RCPT-/VPMT- (module docstring, lines 4-5) \u2014 no self-invoice series exists. Worse, the same gap shows in the return: _build_doc_summary (gstr1_builder.py:672-690) counts only three natures \u2014 'Invoices for outward supply', 'Credit Note', 'Debit Note' \u2014 so Table 13 nature #2 'Invoices for inward supply from unregistered person' and #7 'Payment Voucher' are always absent from the filed summary too. No test, migration or flag mitigates.",
+     "reach": "Reachable. is_reverse_charge is a live checkbox in the bill editor (apps/web/components/purchases/PurchaseBillEditor.tsx:199, posted at :528), on debit notes (DebitNoteEditor.tsx:321) and purchase credit notes (PurchaseCreditNoteEditor.tsx:307), and is rendered on the view drawers (PurchaseBillViewDrawer.tsx:222). routers/purchase_bills is mounted at apps/api/main.py:317."
+    }
+   }
+  },
+  {
+   "id": "PUR-20",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client dealing in cess goods",
+   "evidence": "`purchase_bills` has `ineligible_itc_cess_paise` (migration 240:41) but no `cess_paise` column at all \u2014 grep of the migrations confirms it. `purchase_bill_lines` has no cess rate or amount. services/gst_return_service.py:684 reads `int(b.get(\"cess_paise\") or 0)` on a purchase bill, which is therefore always 0, and domain/gst/gstr3b_computer.py:690 sets `result.itc_cess = book_cess` from that. `_compute_line_gst` (routers/purchase_bills.py:133-155) computes only CGST/SGST/IGST.",
+   "ca_experience": "A client buying aerated drinks, tobacco, coal, or motor vehicles pays compensation cess on every inward invoice and it can be recorded nowhere. GSTR-3B Table 4(A) cess is nil, the credit is never claimed, and the trade payable to the vendor is understated by the cess, so the vendor ledger will not agree with the supplier's statement.",
+   "market_standard": "Cess is a standard rate field on the purchase line in TallyPrime, Busy, Marg and Zoho Books India, and flows to 3B Table 4 cess automatically.",
+   "confidence": "high",
+   "suggested_fix": "Add `cess_rate_bps` and `cess_paise` to purchase_bill_lines and `cess_paise` to purchase_bills, compute it alongside the other heads in `_compute_line_gst`, include it in the payable and the journal, and expose a cess column on the bill editor. The GST computer and the ineligible-cess column are already waiting for it.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Compensation cess cannot be recorded on a purchase anywhere: purchase_bills and purchase_bill_lines have no cess column (production schema fixture), so the GSTR-3B ITC cess line is structurally always nil and the vendor payable is understated by the cess on any cess-bearing bill. The same hole exists on the SALES side (client_sales_invoices / client_sales_invoice_lines also have no cess column \u2014 the gstr1_builder.py:634-640 comment already flags this as latent), so this is a product-wide absence of compensation cess, not a purchase-only one. Medium is defensible but it borders on high: the trade payable to the vendor is a wrong money figure, not merely a missing disclosure.",
+    "probe": "python -c \"json.load(open('tests/fixtures/production_schema_2026-09-03.json'))\" -> purchase_bills cess cols: ['ineligible_itc_cess_paise', 'tds_cess_paise']; purchase_bill_lines cess cols: []; client_sales_invoice_lines cess: []; client_sales_invoices cess: [].",
+    "lens_notes": {
+     "literal": "Confirmed, and the production schema settles it. purchase_bills has exactly two cess columns \u2014 `ineligible_itc_cess_paise` (migration 240:41) and `tds_cess_paise` (migration 309:117, the \u00a7195 health-and-education cess, unrelated to compensation cess) \u2014 and NO `cess_paise`. purchase_bill_lines has no cess column at all. So services/gst_return_service.py:684 `cess_paise=int(b.get('cess_paise') or 0)` is unconditionally 0, and domain/gst/gstr3b_computer.py:690 `result.itc_cess = book_cess` therefore always reports nil ITC cess. routers/purchase_bills.py:137-160 `_compute_line_gst` returns a 3-tuple (cgst, sgst, igst) with no cess term.",
+     "guards": "None that record cess. firm_hsn_rate_history carries `cess_rate_pct` / `cess_specific_paise_per_unit` (migration 181:31-32) but the only code that touches them is the Pydantic model models/firm_hsn_rate_history.py:17-33 \u2014 no computation reads them, and migration 181:17 says so explicitly ('No automatic slab/cess/RCM branching logic'). No frontend cess field exists in apps/web/components/purchases/*.",
+     "reach": "Reachable and live \u2014 this is the ordinary purchase-bill path, mounted at apps/api/main.py:317 and driven by the Purchases screen."
+    }
+   }
+  },
+  {
+   "id": "PUR-21",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "AI-extracted invoice figures are never arithmetically validated and are never reconciled against what the CA saves",
+   "evidence": "routers/document_intelligence_v1.py:204-234 (`_parse_extraction_json`) coerces the paise fields to int and returns them with no check that `taxable + cgst + sgst + igst == total`, and no check that the line items sum to the header. `_estimate_confidence` (line 268) counts populated fields only \u2014 it is field presence, not accuracy. On the frontend, components/purchases/PurchaseBillEditor.tsx:441-455 uses ONLY `ex.line_items` to build the editor lines and discards the extracted `total_paise`/`taxable_amount_paise` entirely, so nothing tells the CA whether the lines they are about to save add up to the invoice total the model read.",
+   "ca_experience": "A model that misreads one digit of one line, or drops a line entirely from a multi-page invoice, produces a bill that looks plausible and is short. Nothing on the screen compares the reconstructed total against the invoice total, and 'confidence: high' is displayed for an extraction whose arithmetic does not close. If the model returns a total but no line items, the CA gets an empty bill with a filled header.",
+   "market_standard": "Dext, Zoho Books Autoscan and Vyapar all show the original document side by side with the extracted fields and flag when the line total does not equal the header total before allowing a save.",
+   "confidence": "high",
+   "suggested_fix": "Validate the arithmetic server-side in `_parse_extraction_json` and return an explicit `arithmetic_ok` flag plus the extracted total; in the editor, show the extracted invoice total against the running line total and block the save (or warn hard) when they differ. Also show the stored `document_url` beside the form so the CA can check against the original.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Extraction arithmetic is never validated server-side (routers/document_intelligence_v1.py:216-240) and the extracted header totals are discarded by the editor, which rebuilds the bill from `ex.line_items` only (apps/web/components/purchases/PurchaseBillEditor.tsx:441-455) \u2014 so nothing compares the reconstructed total against the invoice total the model read, and there is no side-by-side view of the original (the editor only prints '\ud83d\udcce Original invoice attached', PurchaseBillEditor.tsx:647-650). The finding's 'confidence: high is displayed' and 'empty bill with a filled header' details are refuted: confidence is computed (line 275) but never rendered anywhere in apps/web, and the editor's validation blocks a lineless save.",
+    "probe": "grep -rn 'confidence' apps/web/app apps/web/components apps/web/lib --include='*.tsx' --include='*.ts' -> no hit in the purchases tree (only relationships/, memory/, banking/, HsnLookup). grep -rn 'from-document' apps/web -> no callers.",
+    "lens_notes": {
+     "literal": "The core claim is confirmed; two supporting details in the finding are wrong. Confirmed: `_parse_extraction_json` (routers/document_intelligence_v1.py:216-240) coerces the five paise fields and the per-line fields to numbers and returns \u2014 no check that taxable+cgst+sgst+igst == total, none that the lines sum to the header. `_estimate_confidence` (line 275-294) scores field PRESENCE only (vendor_name, vendor_gstin, invoice_no, invoice_date, total_paise>0, 2 points each). apps/web/components/purchases/PurchaseBillEditor.tsx:441-455 builds editor lines from `ex.line_items` alone and never reads `ex.total_paise` / `ex.taxable_amount_paise`. WRONG in the finding: (a) the confidence label is never rendered \u2014 grep for 'confidence' across apps/web returns no hit in the purchases tree, and the editor shows only the static banner '\u2713 AI extracted data pre-filled below. Review before saving.' (PurchaseBillEditor.tsx:642-646); (b) 'a total but no line items gives an empty bill with a filled header' does not happen on this path \u2014 validateBillEditor requires at least one valid line (PurchaseBillEditor.tsx:330, :468-469; lib/purchases/billEditor.test.ts:42-51), so the save is blocked. That scenario belongs to POST /purchase-bills/from-document (routers/purchase_bills.py:1853-1855, which writes header totals straight from the extraction and inserts lines only `if line_items`), and NOTHING in apps/web calls /from-document.",
+     "guards": "Partial only. The saved bill's totals are always recomputed from the lines by `_compute_bill_lines_and_totals` (routers/purchase_bills.py:414+), so the bill is internally consistent \u2014 but that is exactly what hides the problem: a dropped or mis-read line produces a self-consistent bill that is simply short. The bill is always created as a draft needing a human /receive (routers/purchase_bills.py:1776-1780), which is a review gate but not an arithmetic check. No test asserts extraction arithmetic.",
+     "reach": "Reachable. POST /api/document-intelligence-v1/extract-invoice is called from PurchaseBillEditor.tsx:416 and the router is mounted at apps/api/main.py:320. The /from-document endpoint is mounted but has no frontend caller."
+    }
+   }
+  },
+  {
+   "id": "PUR-22",
+   "kind": "missing_feature",
+   "severity": "medium",
+   "title": "One payment settling several bills is not reachable from the Purchases screen \u2014 the multi-bill allocation engine exists but only the bank match queue can use it",
+   "evidence": "`services/purchase_payment_service.create_payment_core` implements full multi-bill allocation with `unallocated_paise` and per-bill CAS (lines 120-330). Its only caller is `services/bank_posting_service.py:1044`. The Payments tab posts to `POST /api/purchase-payments` (apps/web/app/clients/[id]/purchases/page.tsx:2033) and `components/purchases/PurchaseBillViewDrawer.tsx:465` does too \u2014 both hit `routers/purchase_payments.create_purchase_payment`, which takes a single optional `purchase_bill_id` (line 373). The form (page.tsx:1907-1912) has one `billId` state.",
+   "ca_experience": "A client makes one NEFT of \u20b94,50,000 settling six supplier bills. The CA either records six payments with six fabricated references and six journal entries against one bank line, or records one unallocated payment which then sits as an advance and leaves all six bills showing as outstanding in the AP ageing.",
+   "market_standard": "In TallyPrime a payment voucher shows the party's pending bills for Agst Ref selection; Zoho Books' vendor payment lets you tick multiple bills and shows the unapplied remainder as an advance. This is table stakes.",
+   "confidence": "high",
+   "suggested_fix": "Point the Payments tab's form at the multi-bill engine \u2014 list the vendor's open bills with allocation boxes, an auto-apply-oldest-first button and a visible unallocated remainder. The backend is done; this is UI plus an endpoint that reaches `create_payment_core`.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "The multi-bill allocation engine (services/purchase_payment_service.py:120-330) and a re-allocation endpoint (routers/purchase_payments.py:528) both exist and are reachable from no screen \u2014 apps/web calls neither ('/allocate' has zero frontend hits); the Payments tab and the bill drawer both post a single optional purchase_bill_id. A one-NEFT-many-bills settlement can only be done by the bank match queue (services/bank_posting_service.py:1044) or by six separate payments. Additionally, a bill-less payment recorded from the UI leaves unallocated_paise at the DEFAULT 0 (routers/purchase_payments.py:466-481 vs migration 226:36), so even the advance amount is not recorded as unallocated.",
+    "probe": "grep -rn '/allocate' apps/web --include='*.ts' --include='*.tsx' -> no output. grep -rn 'create_payment_core' apps/api --include='*.py' -> only services/bank_posting_service.py:1044 outside the service and tests.",
+    "lens_notes": {
+     "literal": "Confirmed. `create_payment_core` (services/purchase_payment_service.py:120-330) takes `data['allocations']`, validates sum(allocated) <= amount, sets `unallocated_paise = amount - total_allocated`, pre-validates every allocation against live outstanding and CAS-updates each bill. Its only non-test caller is services/bank_posting_service.py:1044. routers/purchase_payments.create_purchase_payment (line 348-526) is a separate single-bill implementation taking one optional `purchase_bill_id` (:374) and never touching allocations. The Payments tab posts a single `purchase_bill_id` (apps/web/app/clients/[id]/purchases/page.tsx:2043) from one `billId` state (:1909), as does PurchaseBillViewDrawer.tsx:465.",
+     "guards": "There IS a second backend door the finding missed: PATCH /api/purchase-payments/{payment_id}/allocate (routers/purchase_payments.py:528-559 -> purchase_payment_service.update_allocations_core), written precisely to resolve a stranded advance across bills. It does not rescue the CA, because grep for '/allocate' across all of apps/web returns ZERO hits \u2014 neither the AP nor the AR allocation endpoint is called from any screen. Per the instructions, a backend capability reachable from no screen CONFIRMS the gap.",
+     "reach": "The single-bill path is the one users get. Worse for the workaround the finding describes: the router's own single-bill insert (routers/purchase_payments.py:466-481) never writes `unallocated_paise` at all, so a UI payment recorded with no bill leaves the column at its DEFAULT 0 (migration 226:36) \u2014 the advance is not even flagged as unallocated."
+    }
+   }
+  },
+  {
+   "id": "PUR-23",
+   "kind": "bug",
+   "severity": "medium",
+   "title": "Issuing a debit note (purchase return) does not resync the TDS register, so 26Q keeps reporting the pre-return payment amount",
+   "evidence": "routers/debit_notes.py:418-560 (`issue_debit_note`) applies the note to the bill's `debited_paise`, posts the journal and updates the note \u2014 it never calls `_sync_tds_register` or `services.tds_register_service.sync_for_bill`. The same is true of `issue_purchase_credit_note` (routers/purchase_credit_notes.py:419-565), which INCREASES the payable. The register row written at receive time carries `payment_amount_paise = bill.taxable_amount_paise` (services/tds_register_service.py:200) and is never revisited.",
+   "ca_experience": "A \u20b92,00,000 contractor bill has \u20b980,000 returned on a debit note. The 26Q deductee row still says \u20b92,00,000 was credited to that PAN, and the TDS shown is on the full amount. The vendor's 26AS shows income they did not receive, and the reconciliation between the TDS register and the purchase ledger will not close at year end.",
+   "market_standard": "TallyPrime adjusts the TDS on a purchase return against the party's deduction so the 26Q figures track the net credit.",
+   "confidence": "high",
+   "suggested_fix": "Call `sync_for_bill` after a debit note or purchase credit note is issued against a bill, with the bill's post-note taxable amount. Note this also raises a genuine statutory question the owner should decide: whether the TDS itself is adjusted or only the reported gross.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Issuing a debit note or a purchase credit note against a received bill never resyncs tds_deductions \u2014 the only two callers of sync_for_bill are receive (routers/purchase_bills.py:1587) and cancel (:1740) \u2014 so the register keeps `payment_amount_paise` = the bill's original taxable amount (services/tds_register_service.py:229). This also contradicts the module's own stated design, which says sync_for_bill 'is called on every transition rather than only on create' (services/tds_register_service.py:21-23). Medium, not high: whether a purchase return should reduce the amount already CREDITED under \u00a7194C(3) is a genuine statutory choice the finding itself flags, so the wrongness is in the register never being revisited, not in a settled number being miscomputed.",
+    "probe": "grep -rn 'sync_for_bill|_sync_tds_register' apps/api --include='*.py' -> outside services/tds_register_service.py and tests, only routers/purchase_bills.py:1469, :1587, :1740. grep -n 'tds' apps/api/routers/debit_notes.py apps/api/routers/purchase_credit_notes.py -> no hits.",
+    "lens_notes": {
+     "literal": "Confirmed. `_sync_tds_register` / `sync_for_bill` has exactly two call sites in the whole codebase: routers/purchase_bills.py:1587 (inside receive_purchase_bill) and :1740 (inside cancel_purchase_bill). routers/debit_notes.py:419-520 (`issue_debit_note`) only CAS-updates `debited_paise` and the bill status (:484-486) and posts the journal; grep for 'tds' in that file returns nothing. routers/purchase_credit_notes.py:420-520 (`issue_purchase_credit_note`) is the same for `credit_note_paise`. The register row's `payment_amount_paise` is written as `int(bill.get('taxable_amount_paise') or 0)` (services/tds_register_service.py:229) and the bill's taxable_amount_paise is not changed by a note, so the row keeps the pre-return figure.",
+     "guards": "None. No DB trigger, no scheduled sweep (nothing under apps/api/jobs mentions tds), no reconciliation report. The cancel path DOES resync (routers/purchase_bills.py:1737-1741, with the comment 'The credit is undone, so the deduction never happened'), and cancellation is blocked outright when notes exist (routers/purchase_bills.py:1683), which means the debit-note route is the one path that changes the credited amount and leaves the register stale. PATCH /purchase-bills/{id} does not resync either, but `_reject_locked_bill_fields` (:1215) freezes the amount fields once received, so that one is moot.",
+     "reach": "Reachable \u2014 debit notes and purchase credit notes are first-class UI objects (apps/web/components/purchases/DebitNoteEditor.tsx, PurchaseCreditNoteEditor.tsx) and both routers are mounted."
+    }
+   }
+  },
+  {
+   "id": "PUR-24",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "AP ageing lists only bills, so unallocated vendor advances are invisible and the ageing total does not equal the vendor ledger balance",
+   "evidence": "`VendorStatementService.ap_aging` (services/vendor_statement_service.py:287-346) reads only `purchase_bills` with `outstanding_paise > 0`; `purchase_payments.unallocated_paise` (migration 226:36) is never read there, and no negative/advance row is emitted. `build_statement` (line 71) DOES include every payment, so the vendor statement's closing balance and the AP ageing total legitimately differ whenever an advance exists.",
+   "ca_experience": "A \u20b93,00,000 advance to a supplier makes the vendor statement show a \u20b93,00,000 debit while the AP ageing shows the full gross bills with nothing netted. The CA cannot tie the ageing report to the Trade Payables control account, which is exactly the tie-up the Schedule III payables note needs.",
+   "market_standard": "Tally's Bills Payable report shows 'On Account' amounts as a separate line; Zoho Books shows unapplied vendor advances in the payables ageing summary.",
+   "confidence": "high",
+   "suggested_fix": "Add an 'advances / on account' section to `ap_aging` sourced from `purchase_payments.unallocated_paise` (net of reversed payments) and report the reconciling total, so the ageing agrees with the AP control account.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "AP ageing reads only purchase_bills with outstanding_paise > 0 (services/vendor_statement_service.py:293-300); vendor advances appear nowhere in it, while the vendor statement debits every payment (services/vendor_statement_service.py:118-125) and the GL debits Trade Payables for the full payment (services/phase2_journal_service.py:771-777) \u2014 so the ageing total cannot be tied to the control account whenever an advance exists. One correction to the suggested fix: sourcing it from `purchase_payments.unallocated_paise` alone would still miss UI-created advances, because the single-payment router path never writes that column (routers/purchase_payments.py:466-481 vs its DEFAULT 0 in migration 226:36); the advance has to be derived from amount_paise minus allocations. Note also that a supplier advance is an asset, so excluding it from the Schedule III trade-payables note is correct \u2014 the defect is the operational tie-up, not the statutory disclosure.",
+    "probe": "grep -n 'unallocated' apps/api/services/vendor_statement_service.py -> no output (vs. 4 hits in customer_statement_service.py, where ar_relief_paise at :295 does add receipts.unallocated_paise).",
+    "lens_notes": {
+     "literal": "Confirmed. `ap_aging` (services/vendor_statement_service.py:286-350) selects from `purchase_bills` only, filtered `.gt('outstanding_paise', 0)` (:300), and emits `buckets` + `bills` + `total_outstanding_paise`. It never queries purchase_payments and emits no advance/on-account row. `generate` (:246-249) DOES fetch every non-reversed purchase_payment and `build_statement` (:118-125) posts each as a debit against the vendor, so the statement's closing balance nets advances and the ageing total does not.",
+     "guards": "None. The GL confirms the mismatch rather than bounding it: `journal_for_purchase_payment` (services/phase2_journal_service.py:749-798) debits Trade Payables for the FULL amount_paise regardless of allocation, so an unapplied advance reduces the Trade Payables control balance while leaving every bill's outstanding_paise untouched \u2014 the ageing total and the control account genuinely diverge.",
+     "reach": "Reachable. GET /api/vendors/ap-aging (routers/vendors.py:823-849) -> apps/web/lib/api/index.ts:2068 -> apps/web/app/clients/[id]/reports/ageing/page.tsx:205 (`api.ageing.payables`). The Schedule III note beside it is a separate SQL function, so the Schedule III disclosure itself is unaffected."
+    }
+   }
+  },
+  {
+   "id": "PUR-25",
+   "kind": "missing_feature",
+   "severity": "medium",
+   "title": "No purchase orders, goods receipt notes or three-way matching",
+   "evidence": "A grep for `purchase_order`, `purchase order`, `goods receipt` and `grn` across all of apps/api and apps/web returns nothing. `purchase_bills` has no PO reference column and the bill editor has no PO lookup.",
+   "ca_experience": "For a trading or manufacturing client the CA cannot answer 'was this bill authorised, and did the goods actually arrive at the quantity billed'. Every bill is entered on trust. It also blocks the commitment/open-PO figure a year-end review would want.",
+   "market_standard": "TallyPrime, Busy and Marg all ship Purchase Order \u2192 Receipt Note \u2192 Purchase Bill with quantity and rate matching; Zoho Books has PO \u2192 Bill conversion with a match indicator. For an SME's own staff using the platform this is a standard expectation.",
+   "confidence": "high",
+   "suggested_fix": "If the target user is the CA rather than the client's purchase clerk, this may be deliberately out of scope \u2014 it is worth an explicit owner decision rather than a build. If built, a lightweight PO with a bill-conversion path and a quantity-variance flag covers most of the value.",
+   "effort": "months",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "No purchase order, goods receipt note, or three-way match exists anywhere in the repo \u2014 one grep hit, and it is an unrelated comment in a test. Because inventory IS built and stock-in happens at bill receipt (routers/purchase_bills.py:1750 via domain/inventory_service), a trading or manufacturing client's stock moves with nothing evidencing that the goods arrived at the quantity billed. Medium is right, and the finding's own caveat is the right one: this is an owner scope decision (CA-facing vs. client's purchase clerk), not an obvious build.",
+    "probe": "grep -rni 'purchase_order|purchase order|goods receipt|\\bgrn\\b|three-way|three way match' apps/api apps/web --include='*.py' --include='*.ts' --include='*.tsx' --include='*.sql' -> 1 hit: apps/api/tests/test_router_client_scope.py:221 (unrelated).",
+    "lens_notes": {
+     "literal": "Confirmed. A case-insensitive grep for purchase_order / 'purchase order' / 'goods receipt' / \\bgrn\\b / 'three-way' across apps/api and apps/web (.py, .ts, .tsx, .sql) returns exactly ONE hit, and it is unrelated: apps/api/tests/test_router_client_scope.py:221, a comment about '/api/gst's three-way split'. The production schema fixture confirms purchase_bills carries no PO reference column (its 60 columns are listed in the fixture; none is order-related), and apps/web/components/purchases/PurchaseBillEditor.tsx has no PO lookup.",
+     "guards": "None \u2014 there is nothing to guard. Inventory exists (domain/inventory_service.apply_purchase_to_inventory / reverse_purchase_stock, called from receive and cancel at routers/purchase_bills.py:1750), so stock moves on the BILL with no receipt document behind it and no quantity variance check.",
+     "reach": "N/A for a missing feature. Not listed anywhere in CLAUDE.md's 'Not built yet \u2014 known, deliberate' section, so it is not a recorded owner decision."
+    }
+   }
+  },
+  {
+   "id": "PUR-26",
+   "kind": "missing_feature",
+   "severity": "medium",
+   "title": "No recurring purchase bills, though recurring sales invoices are fully built",
+   "evidence": "migration 107 creates `recurring_invoice_templates`, `recurring_invoice_template_lines` and `recurring_invoice_runs`; `services/recurring_invoice_service.py` and `routers/recurring_invoices.py` drive them. Grepping both files for `purchase` returns nothing, and there is no equivalent table or service for purchase bills.",
+   "ca_experience": "Monthly rent (\u00a7194I), a retainer to a consultant (\u00a7194J), electricity and telecom bills, and software subscriptions all have to be keyed by hand every month for every client. These are exactly the bills where TDS applies and where a missed month causes a threshold and a challan to be missed too.",
+   "market_standard": "Zoho Books has recurring bills; TallyPrime has voucher templates and repeat entry; Busy has recurring vouchers.",
+   "confidence": "high",
+   "suggested_fix": "Mirror the recurring-invoice tables and service for purchase bills, creating DRAFTS (never auto-receiving, per the house rule) so a human still posts them.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "There is no recurring purchase bill: migration 107 and services/recurring_invoice_service.py are sales-only, and no purchase equivalent exists. The finding's 'keyed by hand every month' overstates it slightly \u2014 the editor supports Duplicate (apps/web/components/purchases/PurchaseBillEditor.tsx:174-189) and there is a bulk endpoint (routers/purchase_bills.py:904) \u2014 but nothing is scheduled and nothing flags a month that was missed, which is the real exposure for \u00a7194I/\u00a7194J bills. Medium (market-standard feature absent) stands.",
+    "probe": "ls apps/api/services apps/api/routers | grep -i recur -> recurring_invoices.py, task_recurring.py, recurring_invoice_service.py, recurring_task_service.py. grep -in 'purchase|bill' on the two recurring-invoice files -> only prose about billing_service, no purchase path.",
+    "lens_notes": {
+     "literal": "Confirmed. migrations/107_recurring_invoices.sql creates recurring_invoice_templates / _template_lines / _runs and is explicitly sales-only ('generate DRAFT sales invoices through the EXISTING\u2026', :3). apps/api/services/ and routers/ contain exactly recurring_invoice_service.py / recurring_invoices.py plus the unrelated recurring_task_service.py / task_recurring.py; grep for 'purchase' or 'bill' inside the two recurring-invoice files returns only docstring prose about billing_service, never a purchase path. No recurring_purchase_* table or service exists.",
+     "guards": "Two partial workarounds, neither a substitute. (1) POST /api/purchase-bills/bulk (routers/purchase_bills.py:904-925) collapses a CSV import into one request \u2014 but somebody still has to build the CSV each month. (2) 'Duplicate bill' exists in the UI (apps/web/components/purchases/PurchaseBillEditor.tsx:174-189 duplicateSeed, fed from lib/purchases/duplicateSeed), so a monthly rent bill is a few clicks rather than full re-keying. Neither schedules anything, and neither reminds anyone that the month's bill was not entered \u2014 which is the part that costs a TDS threshold and a challan.",
+     "reach": "The recurring-invoice machinery is live on the sales side; there is simply no purchase counterpart to reach."
+    }
+   }
+  },
+  {
+   "id": "PUR-27",
+   "kind": "missing_feature",
+   "severity": "medium",
+   "title": "No expense claim or petty cash module \u2014 every small expense needs a vendor and a purchase bill",
+   "evidence": "A grep for `expense claim`, `expense_claim`, `petty cash` and `reimburse` across apps/api and apps/web finds only payroll reimbursement components (models/payroll.py:501) and one comment in components/banking/EntryDetailModal.tsx:514 describing the bank-line route for 'an expense with no bill on file'. `_create_purchase_bill_core` requires `vendor_id` (routers/purchase_bills.py:614) and `purchase_bills.vendor_id` is NOT NULL.",
+   "ca_experience": "Conveyance, staff welfare, small cash purchases and employee reimbursements all have to be entered either as bills against a dummy 'Cash Purchases' vendor, or through a bank/cash entry with no document attached. There is no way to capture a stack of receipts, no per-employee claim, and no approval trail on them.",
+   "market_standard": "Zoho Books has Expenses with receipt attachment, mileage and employee reimbursement; Zoho Expense and Keka do full claim workflows; Tally handles it as payment vouchers but with a proper cash-book. The banking module here does cover the bank-line case, so this is a partial gap rather than a total one.",
+   "confidence": "high",
+   "suggested_fix": "A lightweight expense document (payee optional, receipt attachment, expense account, GST optional) posting through the same kernel would cover it. Worth checking with the owner whether the banking module's voucher path is considered sufficient before building.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "There is no expense-claim or petty-cash document type: every bill needs a vendor (apps/api/routers/purchase_bills.py:619-622, apps/api/migrations/050_...:233 NOT NULL) and no expenses router, table or nav entry exists. The bank-line coding path in apps/web/components/banking/EntryDetailModal.tsx does cover a paid-from-bank expense, so this is a partial gap \u2014 what is missing is receipt capture, a per-employee claim and an approval trail.",
+    "probe": "`ls apps/api/routers/ | grep -i 'expen|cash|claim'` -> empty; `grep -rln 'CREATE TABLE.*expense' apps/api/migrations/` -> empty; `grep -rni expense apps/web/lib/workspace/*.ts` -> empty.",
+    "lens_notes": {
+     "literal": "Confirmed. apps/api/routers/purchase_bills.py:619-622 hard-requires vendor_id ('required = [\"client_id\", \"vendor_id\", \"bill_date\", \"lines\"]' -> 422), and apps/api/migrations/050_...:233 declares purchase_bills.vendor_id UUID NOT NULL REFERENCES vendors(id). There is no expense/claim/petty-cash router: `ls apps/api/routers | grep -i 'expen|cash|claim'` returns nothing, and no migration creates an expenses or expense_claims table.",
+     "guards": "The only 'expense' hits in apps/api are payroll earning components (models/payroll.py, domain/payroll/one_time_earnings.py, domain/payroll/annexure2.py) and COA seed account names (services/coa_seed_service.py) \u2014 none is a claim workflow. The real partial coverage the finding concedes is genuine: a bank/cash statement line can be coded straight to an expense account as a Payment voucher (apps/web/components/banking/EntryDetailModal.tsx), and manual journals exist. Neither carries a receipt, a claimant, or an approval trail.",
+     "reach": "Confirms the gap rather than refuting it. `grep -i expense apps/web/lib/workspace/*.ts` returns nothing \u2014 there is no Expenses screen in the client workspace nav at all, so this is not a backend capability hidden behind missing UI; it is absent in both halves."
+    }
+   }
+  },
+  {
+   "id": "PUR-28",
+   "kind": "security",
+   "severity": "medium",
+   "title": "Client-assignment scope is enforced on every purchase API endpoint and on none of the Purchases page's direct PostgREST reads",
+   "evidence": "The backend enforces it thoroughly \u2014 routers/purchase_bills.py:56-100 (`_bill_owner`/`_assert_bill_scope`), :96 (`_assert_batch_scope`), routers/purchase_payments.py:232 (`_assert_payment_scope`). The frontend reads `purchase_bills`, `vendors`, `purchase_payments`, `debit_notes` and `purchase_credit_notes` straight over PostgREST scoped only by `client_id` (apps/web/app/clients/[id]/purchases/page.tsx:335-353, 1976-1980, 2317-2331), where the only check is the firm-level RLS policy `firm_id = get_my_firm_id()` (migration 050:268). Migrations 260/261 added role-aware WRITE policies, not assignment-aware SELECT ones.",
+   "ca_experience": "An Executive or Reviewer assigned to three clients can type another client's id into the URL and read that client's entire purchase ledger, vendor master with PANs, and payment history. The API would refuse the same request. For a firm with confidentiality walls between engagement teams this is a real exposure.",
+   "market_standard": "Jamku and Zoho Practice scope client visibility to the assigned team. Note this is the codebase-wide second data path CLAUDE.md documents rather than something specific to this subsystem \u2014 I am recording it here because vendor PANs and supplier pricing are among the more sensitive things it exposes.",
+   "confidence": "high",
+   "suggested_fix": "Either add assignment-aware RLS SELECT policies for the purchase tables (mirroring the 260/261 write policies), or route these five reads through the API where `assert_client_access` already runs. The first scales better across the ~320 direct reads.",
+   "effort": "weeks",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "medium",
+    "what_is_actually_true": "Assignment scope IS enforced on the direct PostgREST reads of purchase_bills, vendors, purchase_payments and service_catalogue \u2014 RESTRICTIVE *_assignment_scope policies from apps/api/migrations/084_assignment_scoped_rls.sql:66-97, verified present in production at apps/api/tests/fixtures/production_guards_2026-09-03.json. The hole is narrower than claimed but real: debit_notes (created by migration 145, after 084's one-shot loop) and purchase_credit_notes (migration 210, RLS added by 212:43-45) carry only firm-level permissive policies, so a Manager/Executive/Reviewer can read \u2014 and, the policy being FOR ALL, write \u2014 any client's purchase debit and credit notes via PostgREST regardless of assignment.",
+    "probe": "python over apps/api/tests/fixtures/production_guards_2026-09-03.json printed: purchase_bills -> firm_client_isolation (permissive) + purchase_bills_assignment_scope (RESTRICTIVE cmd=*) + internal_partner_only; vendors -> same shape; debit_notes -> firm_debit_notes (permissive cmd=*) ONLY; purchase_credit_notes -> firm_purchase_credit_notes (permissive cmd=*) ONLY.",
+    "lens_notes": {
+     "literal": "Half wrong. The five reads exist as described (apps/web/app/clients/[id]/purchases/page.tsx:334-353 purchase_bills+vendors+service_catalogue, :1975-1984 purchase_payments+vendors, :2317-2331 debit_notes+vendors, :2757-2766 purchase_credit_notes), all scoped only by .eq('client_id', clientId) on the browser's anon-key client (apps/web/lib/supabase/client.ts:5, so RLS runs as `authenticated`). But the claim that 'the only check is the firm-level RLS policy' is false for three of the five tables: apps/api/migrations/084_assignment_scoped_rls.sql:29-40 defines can_access_client() and its DO block at :66-97 puts a RESTRICTIVE `<table>_assignment_scope` policy FOR ALL (SELECT included) on EVERY base table carrying a client_id column.",
+     "guards": "The 084 policies are present in production, not just in the migration: apps/api/tests/fixtures/production_guards_2026-09-03.json carries `purchase_bills.purchase_bills_assignment_scope`, `vendors.vendors_assignment_scope` and `purchase_payments.purchase_payments_assignment_scope`, each 'RESTRICTIVE cmd=* roles=PUBLIC'. service_catalogue got its own at apps/api/migrations/182_client_products_services.sql:43. The two that have NO assignment policy in that same snapshot are debit_notes (only `firm_debit_notes`, permissive cmd=*) and purchase_credit_notes (only `firm_purchase_credit_notes`, permissive cmd=*). Cause: 084's DO loop was a one-shot over tables existing at the time \u2014 debit_notes was created later by migration 145 and purchase_credit_notes by 210, and 212:43-45 gave the latter only a firm-level policy. SELECT is granted to `authenticated` on both (193_grant_missing_debit_note_privileges.sql:14; 212:59).",
+     "reach": "Real. Both tables are read by the live Purchases page (Debit Notes tab at :2317, Purchase Credit Notes tab at :2757), the browser holds the user's JWT against the anon key, and nothing in apps/web/app/clients/[id]/layout.tsx or ClientWorkspaceShell blocks an unassigned client id \u2014 the assignment stop is meant to be the DB policy, which for these two tables does not exist. Migrations 260/261 are role-aware WRITE policies and cover neither table (they are not in the GUARDED set in apps/api/tests/test_direct_write_tables_are_role_guarded.py:43-56)."
+    }
+   }
+  },
+  {
+   "id": "PUR-29",
+   "kind": "gap",
+   "severity": "medium",
+   "title": "Reverse charge and \u00a717(5) eligibility have no test coverage on the purchase-bill compute path at all",
+   "evidence": "`grep -rn is_reverse_charge tests/*.py` matches ten GST-side test files and none of the purchase ones \u2014 not tests/test_e2e_purchase_cycle.py, tests/test_phase2_purchase_cycle.py, tests/test_purchase_bill_line_extras.py or tests/test_tds_bill_engine.py. `grep -rn itc_eligible tests/` matches only tests/test_schema_guard.py, tests/test_r239_gst_computation_gaps.py and a schema fixture \u2014 never `_compute_bill_lines_and_totals`. So the RCM branch at routers/purchase_bills.py:499-505 (which changes what the vendor is owed) and the ineligible-ITC accumulation at :466-478 are both untested where they are computed.",
+   "ca_experience": "Not a live wrong number today, but the RCM branch is the one that decides whether Trade Payables includes GST the vendor never charged. A regression there overstates every RCM client's payables and their bank reconciliation, and nothing in CI would catch it.",
+   "market_standard": "Not applicable \u2014 this is an internal coverage gap measured against the codebase's own standard (CLAUDE.md: 'Every financial calculation must have a corresponding unit test').",
+   "confidence": "high",
+   "suggested_fix": "Add tests asserting: an RCM bill's `total_paise` and `net_payable_paise` exclude GST while `cgst/sgst/igst` are still populated; the receive journal balances with the output-liability legs; and a bill with one blocked line produces the right `ineligible_itc_*_paise` header totals.",
+   "effort": "hours",
+   "verification": {
+    "status": "refuted",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "Both branches are tested where they are computed. apps/api/tests/test_accounting_audit_fixes.py:56-88 covers the RCM payable, the balanced receive journal and the output-liability legs; apps/api/tests/test_r239_gst_computation_gaps.py:177-217 covers the ineligible_itc_* header totals through create_purchase_bill. Those are the three assertions the finding's own suggested_fix asks for. The finding misread its own grep \u2014 test_accounting_audit_fixes.py matches `is_reverse_charge` and is the purchase-cycle RCM file.",
+    "probe": "`pytest tests/test_accounting_audit_fixes.py -q -k rcm` -> 3 passed, 3 deselected. `pytest tests/test_r239_gst_computation_gaps.py -q -k ineligible` -> 8 passed, 12 deselected.",
+    "lens_notes": {
+     "literal": "Refuted at the grep. apps/api/tests/test_accounting_audit_fixes.py is a purchase-bill test file, not a GST-side one: its _setup at :27-41 wires routers.purchase_bills against FakeDB, _bill_in at :44-51 passes is_reverse_charge=rcm into PurchaseBillIn, and the three tests at :56-88 assert exactly what the finding says is untested \u2014 test_rcm_bill_vendor_payable_excludes_self_assessed_gst (:56) asserts total_paise == 10_000_000 and net_payable_paise == 10_000_000 'NOT 11,800,000' with cgst/sgst still 9,00,000 each, test_rcm_receive_posts_output_liability_and_balances (:67) asserts the receive journal balances at 11,800,000 both sides with AP credited taxable-only and the RCM output legs at -18,00,000, and test_normal_bill_unchanged_by_rcm_support (:84) is the negative control. That is the RCM branch at routers/purchase_bills.py:492-493 and :508 covered where it is computed.",
+     "guards": "The \u00a717(5) half is covered too, and also through the compute path: apps/api/tests/test_r239_gst_computation_gaps.py:177-205 calls pb.create_purchase_bill(...) with one itc_eligible=False line and asserts ineligible_itc_cgst_paise == 4_50000 / sgst == 4_50000 / igst == 0 plus the per-line flags, and :207-217 is the all-eligible zero case. That is the accumulation at routers/purchase_bills.py:466-478. Pydantic-level coverage of blocked_credit_reason is at :33-51 of the same file.",
+     "reach": "Not applicable \u2014 the claim was about test coverage, and the coverage exists and runs in the default mock suite (no DB required)."
+    }
+   }
+  },
+  {
+   "id": "PUR-30",
+   "kind": "fine_tune",
+   "severity": "low",
+   "title": "A dead _TDS_DEFAULT_BPS table at the top of purchase_bills.py carries a \u00a7194H rate that is 2.5x the live one",
+   "evidence": "routers/purchase_bills.py:29-37 defines `_TDS_DEFAULT_BPS` with `\"194H\": 500` (5%) and `\"194J\": 1000`, captioned 'Default rates when vendor master tds_rate_bps is 0'. `grep -n _TDS_DEFAULT_BPS routers/*.py services/*.py` finds only the definition \u2014 it has no readers. The live registry (domain/tds/section_rates.py:129) has 194H at 200 bps (2%) after the Finance (No. 2) Act 2024 cut.",
+   "ca_experience": "No wrong number reaches a CA, but the first thing a developer reads in the purchase-bill router is a rate table that is both wrong and unused, and the comment implies a vendor-rate fallback that PUR-06 shows does not exist.",
+   "market_standard": "Not applicable \u2014 code hygiene.",
+   "confidence": "high",
+   "suggested_fix": "Delete the constant.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "_TDS_DEFAULT_BPS at apps/api/routers/purchase_bills.py:30-37 is dead (a repo-wide grep finds only the definition) and its 194H entry of 500 bps is 2.5x the live 200 bps at apps/api/domain/tds/section_rates.py:130. No computed figure uses it; the harm is that it is the first thing read in the file and its caption implies a vendor-rate fallback the code does not have.",
+    "probe": "`grep -rn '_TDS_DEFAULT_BPS' /home/user/caflow-ai/apps /home/user/caflow-ai/scripts` -> exactly one hit: apps/api/routers/purchase_bills.py:30.",
+    "lens_notes": {
+     "literal": "Confirmed exactly. apps/api/routers/purchase_bills.py:30-37 defines _TDS_DEFAULT_BPS with '194H': 500 at :35 and '194J': 1000 at :34, under the comment 'Default rates when vendor master tds_rate_bps is 0' at :29. The live registry has 194H at 200 bps: apps/api/domain/tds/section_rates.py:130 is `\"194H\": TDSSectionRule(20_000_00, 200, 200)` with the comment at :129 recording the F(No.2)A 2024 5%->2% cut from 1 Oct 2024. 500/200 = 2.5x, as claimed.",
+     "guards": "None needed \u2014 a repo-wide grep for the symbol returns one line, the definition itself, so nothing reads it. TDS on the purchase-bill path goes through the central engine instead (routers/purchase_bills.py:519-521 comment: 'routed through the central engine (domain/tds/tds_computer). No inline rate maths').",
+     "reach": "No wrong number can reach a CA from a constant with no readers. Low is correct; this is code hygiene plus a misleading comment."
+    }
+   }
+  },
+  {
+   "id": "PUR-31",
+   "kind": "glitch",
+   "severity": "low",
+   "title": "Vendor payment numbering is count+1, so a deleted or compensated payment guarantees a collision the CA has to retry by hand",
+   "evidence": "`_next_payment_seq` (routers/purchase_payments.py:218-230 and the identical copy at services/purchase_payment_service.py:52-64) returns `(resp.count or 0) + 1` over rows matching `VPMT-{fy}-%`. Migration 159:143 puts `UNIQUE (firm_id, payment_no)` on the table, and `_compensate_failed_settlement` (services/purchase_payment_service.py:105) DELETEs the payment row on a settlement failure. `_is_unique_violation` then surfaces a 409 'A payment numbering collision was detected; please retry.'",
+   "ca_experience": "After any failed-and-compensated payment, the next payment attempt collides and the CA sees a 409 they must click through. Two CAs recording payments at the same moment hit it too. It is recoverable but it is a self-inflicted error the CA has to understand.",
+   "market_standard": "Tally and Zoho use a monotonic sequence that never reuses a number, so a voided voucher leaves a gap rather than causing a collision.",
+   "confidence": "high",
+   "suggested_fix": "Take the max existing suffix rather than the count, or move numbering into services/numbering.py with a DB sequence, as the sales side's document numbering already contemplates.",
+   "effort": "hours",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "Numbering is count+1 rather than max+1 (apps/api/routers/purchase_payments.py:218-230; apps/api/services/purchase_payment_service.py:44-55) against a UNIQUE (firm_id, payment_no) constraint (migration 159:144-145), which is fragile. But the finding's premise is wrong: the only delete path (services/purchase_payment_service.py:105) removes the just-created, highest-numbered row, so a compensated payment does NOT guarantee a later collision. The reachable cases are concurrent creation, and the `except -> return 1` fallback that hands out VPMT-{fy}-0001 whenever the count query throws. Severity stays low \u2014 a 409 the CA retries, with the journal already compensated.",
+    "probe": "`grep -n '@router.delete|def delete' apps/api/routers/purchase_payments.py` -> no matches; `grep 'purchase_payments\").*delete' apps/api/routers/purchase_payments.py apps/api/services/purchase_payment_service.py` -> one hit, services/purchase_payment_service.py:105.",
+    "lens_notes": {
+     "literal": "The mechanism is literal, the harm is not. `_next_payment_seq` really is `(resp.count or 0) + 1` over `like('payment_no', f'VPMT-{fy}-%')` in both copies (apps/api/routers/purchase_payments.py:218-230, apps/api/services/purchase_payment_service.py:44-55), migration 159:144-145 really does add UNIQUE (firm_id, payment_no), and the 409 'A payment numbering collision was detected; please retry.' exists at routers/purchase_payments.py:116-120 and services/purchase_payment_service.py:325,546-549. But the stated trigger is wrong: `_compensate_failed_settlement` (services/purchase_payment_service.py:105) deletes the payment it just created, which is the HIGHEST-numbered row, so the count returns to N and the next attempt legitimately gets N+1 again \u2014 no collision. A collision needs a hole BELOW the top.",
+     "guards": "No user-facing delete endpoint exists (`grep '@router.delete' apps/api/routers/purchase_payments.py` -> nothing) and the compensation delete at services/purchase_payment_service.py:105 is the only DELETE against the table, so ordinary use never punches a mid-sequence hole. There is no retry loop around the insert \u2014 the 409 is surfaced straight to the caller \u2014 and the journal is compensated first (routers/purchase_payments.py:63-118), so a collision does not leave a phantom GL entry.",
+     "reach": "Two paths do reach a CA. (1) Genuine concurrency: two payments computed against the same count both build VPMT-{fy}-{N}; the loser gets the 409. (2) The `except: return 1` fallback at routers/purchase_payments.py:228-229 and services/purchase_payment_service.py:54-55 \u2014 any transient failure of the count query hands out VPMT-{fy}-0001, which collides for every firm that already has one payment this FY, and retrying does not fix it while the count query stays broken."
+    }
+   }
+  },
+  {
+   "id": "PUR-32",
+   "kind": "fine_tune",
+   "severity": "low",
+   "title": "Duplicate-bill detection is exact-match on vendor plus bill number only, so an OCR typo or a duplicated vendor record defeats it",
+   "evidence": "`_duplicate_bill_id` (routers/purchase_bills.py:207-247) and migration 313's index both key on `(client_id, vendor_id, lower(btrim(bill_no)))`. Nothing compares amount or date. And `create_vendor`'s duplicate guard (routers/vendors.py:266-277) only matches on GSTIN or PAN, so two vendor rows for the same unregistered supplier are freely creatable \u2014 after which the same invoice can be booked twice under two vendor ids and neither guard fires.",
+   "ca_experience": "The same supplier invoice entered as 'INV-001' and 'INV 001', or scanned twice with one character misread, is booked twice: the expenditure is double-counted, the ITC is claimed twice under \u00a716, and the deductee is filed twice on 26Q \u2014 precisely the harm the guard's own message at line 250 describes.",
+   "market_standard": "Dext and Zoho Books flag a possible duplicate on same-vendor + same-amount + same-date regardless of the reference; Tally warns on a repeated supplier invoice number per party per year.",
+   "confidence": "high",
+   "suggested_fix": "Add a soft warning (not a refusal) when a live bill exists for the same vendor with the same `bill_date` and `total_paise` but a different number, and tighten the vendor duplicate guard to include a normalised-name match for vendors with no GSTIN or PAN.",
+   "effort": "days",
+   "verification": {
+    "status": "confirmed",
+    "by": "agent",
+    "corrected_severity": "low",
+    "what_is_actually_true": "Duplicate detection is exact-match on (client_id, vendor_id, normalised bill_no) only \u2014 apps/api/routers/purchase_bills.py:240+ and the identical partial unique index at apps/api/migrations/313_...:48-52; nothing compares amount or date. And apps/api/routers/vendors.py:267-275 only dedupes vendors on GSTIN or PAN, with no unique constraint on the table at all, so an unregistered supplier can exist twice and the same invoice can be booked under each without either guard firing. Migration 313's recorded exclusions cover cancelled/soft-deleted/blank-numbered bills, not this.",
+    "probe": "`grep -rn 'vendors' apps/api/migrations/*.sql | grep -i UNIQUE` -> no output (no unique index on vendors); migration 313:48-52 shows the index keyed on client_id, vendor_id, lower(btrim(bill_no)) only.",
+    "lens_notes": {
+     "literal": "Confirmed on both halves. `_duplicate_bill_id` (apps/api/routers/purchase_bills.py:240-247 onward) keys on `(client_id, vendor_id, lower(strip(bill_no)))` and nothing else \u2014 no amount, no date \u2014 and apps/api/migrations/313_...:48-52 builds the matching partial unique index on exactly those three expressions. create_vendor's duplicate guard at apps/api/routers/vendors.py:263-275 calls _match_existing_vendor only `if gstin or pan`, and there is no unique constraint on vendors anywhere (`grep 'vendors' apps/api/migrations/*.sql | grep -i UNIQUE` -> no matches), so two rows for the same PAN-less, GSTIN-less supplier are freely creatable and the bill index then treats their invoices as distinct.",
+     "guards": "Migration 313's header does record deliberate exclusions \u2014 cancelled bills, soft-deleted bills, blank numbers (:28-38) \u2014 but says nothing about amount/date matching or vendor duplication, so this is a residual gap rather than a decision CLAUDE.md or the migration already made. The index closes the direct-PostgREST path too (313:18-26), and tests/test_no_duplicate_purchase_bill.py pins the router check and the index together. No soft 'possible duplicate' warning exists in the Purchases page.",
+     "reach": "Real but narrow. The common case \u2014 the same invoice number keyed twice against the same vendor \u2014 is caught, including case and whitespace variants. What escapes is a mistyped/OCR-misread number, or the same invoice booked under two vendor rows for one supplier."
+    }
+   }
+  }
+ ],
+ "test_coverage_notes": "What is tested, and well: the \u00a7195 engine has 165 passing tests across tests/test_section_195_rates.py and tests/test_vendor_residency_and_27q.py covering chargeability, the treaty comparison, the two surcharge ladders, the capital-gains cap, cess on tax-plus-surcharge, and every refusal path. tests/test_no_duplicate_purchase_bill.py holds the API guard and migration 313's index together. tests/test_rule37_itc_reversal.py covers proportionate reversal, the ceiling rounding and the reversal period. tests/test_vendor_payment_concurrency.py, tests/test_purchase_payment_allocate.py and tests/test_r227_draft_bill_payment_guard.py cover the CAS and the draft-bill guard. tests/test_e2e_purchase_cycle.py walks a full lifecycle including cross-firm refusals. tests/test_itc_reversal_register.py covers the ledger-support refusal.\n\nTwo tests assert WRONG statutory behaviour, and both should be rewritten as negative controls for PUR-01 and PUR-02. tests/test_tds_bill_engine.py:59-70 (`test_h5_194c_aggregate_threshold_across_bills`) asserts `b5[\"tds_paise\"] == 500_00` \u2014 TDS on the crossing bill alone \u2014 which under \u00a7194C(5) should be \u20b92,500 on the \u20b91,25,000 aggregate. tests/test_tds_bill_engine.py:43-47 (`test_h5_below_threshold_no_tds`) is correct for one \u20b940,000 \u00a7194J bill in isolation, but it is the only \u00a7194J threshold test and it therefore pins a model that has no annual aggregate at all, which is where the statute puts the limit.\n\nWhat has no coverage where it is computed: `is_reverse_charge` never appears in any purchase-cycle test file (grep across tests/*.py matches only GST-side files), so the branch that decides whether Trade Payables includes GST the vendor never charged is untested. `itc_eligible` never appears in a test of `_compute_bill_lines_and_totals` \u2014 only in the schema guard and the GST computer's own tests. There is no test at all for `POST /purchase-bills/from-document` (grep finds it only in tests/test_r237_ar_ap_hardening.py, which is about ageing). No test asserts that the TDS register's `statutory_gaps` reach the frontend \u2014 the payroll equivalent has one (apps/web/scripts/payroll-gaps-reach-the-screen.test.ts) and could be copied. tests/test_documents_locked_by_filed_return.py covers the purchase-bill EDIT path only (line 189), not create and not receive, which is exactly where the lock is missing. \u00a7194Q has no test anywhere. And nothing pins the GL `gst_input` movement against the GSTR-3B `books_itc` for a bill with a blocked line \u2014 that parity test would have caught PUR-04 the day it was written.",
+ "open_questions_for_owner": [
+  "PUR-01 and PUR-02 are wrong money on a live path and everything else in this list is downstream of them. Do you want the FY-aggregate rewrite of the resident TDS thresholds treated as a hotfix ahead of the other findings, and do you want the two tests that currently pin the wrong \u00a7194C number rewritten as the negative control in the same commit?",
+  "On PUR-03 (surcharge and cess added on top of a DTAA rate): the module already makes and documents a conservative over-deduction choice for the \u00a7206AA floor. Is the treaty behaviour the same deliberate choice \u2014 in which case it needs a docstring and a test naming it \u2014 or is it an oversight that should be capped at the treaty rate the way most Indian practice does?",
+  "PUR-11 (2A/2B invoice-level matching against the purchase bills the product already holds) is the largest single piece of work here and, in my reading of the market, the strongest reason a CA would buy a purchase module at all. Is that the next big build, or is the GST subsystem's owner already scoping it \u2014 I stopped at the purchase-side boundary and did not audit the GST workspace.",
+  "PUR-10 asks whether TDS on advance payments is in scope. It needs a `tds_paise` column on `purchase_payments`, a deduction at the payment event, and \u2014 the hard part \u2014 a rule for adjusting it against the bill when the bill arrives so the same sum is not deducted twice. Do you want the full credit-or-payment-whichever-earlier model, or is 'bills only' an accepted limitation you would rather state on screen than build?",
+  "PUR-15: the MSME tracker is a manual side-table that duplicates `vendors.msme_status`, and `msme_vendors` and `suppliers` are two further dead tables with live UI or none. Do you want these consolidated onto `vendors` + `purchase_bills` in one pass, and is there production data in `suppliers` or `msme_payments` that needs a backfill first?",
+  "PUR-25 (purchase orders / GRN / three-way match) and PUR-27 (expense claims / petty cash) are the two places where 'replace Tally' and 'a tool for the CA, not the client's purchase clerk' point in different directions. Which user are you building the purchase cycle for \u2014 the CA doing write-up work from a stack of invoices, or the SME's own staff entering transactions?",
+  "PUR-28 is the codebase-wide direct-PostgREST scoping gap, and CLAUDE.md already records it. The purchase tables carry vendor PANs and supplier pricing, which is on the sensitive end of what it exposes. Is assignment-aware RLS on the SELECT side already on someone's roadmap, or should I have raised it as a subsystem-specific item?",
+  "Several findings here (PUR-05 \u00a717(5), PUR-14 TDS gaps, PUR-22 multi-bill allocation) are backend capabilities with no screen. Is there a systematic way you want these tracked \u2014 a test that asserts every backend field a return depends on is reachable from a form \u2014 or should each be picked up individually?"
+ ]
+}

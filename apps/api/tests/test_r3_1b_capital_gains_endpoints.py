@@ -33,10 +33,17 @@ def cg_app(monkeypatch):
     return app, db
 
 
+# The sale date is load-bearing, not incidental. The Finance (No. 2) Act 2024
+# amended ss. 111A, 112A, 112 and 2(42A) for transfers made ON OR AFTER
+# 23-07-2024, so a 2023 transfer is charged under the earlier law — s. 112A at
+# 10% with a Rs 1,00,000 exemption, not 12.5% with Rs 1,25,000. These fixtures
+# asserted 12.5% on a 2023-01-01 sale, which passed only while the engine was
+# date-blind and applied the post-fork rate to every transfer. Moved past the
+# cutoff so the assertion below states the rate that actually governs this sale.
 COMPUTE_BODY = {
     "asset_type": "equity",
     "purchase_date": "2020-01-01",
-    "sale_date": "2023-01-01",
+    "sale_date": "2025-01-01",
     "purchase_cost_paise": 10_000_000,   # ₹1,00,000
     "sale_value_paise": 40_000_000,      # ₹4,00,000
     "improvement_cost_paise": 0,
@@ -80,7 +87,8 @@ class TestCreateEndpoint:
         body = {
             "client_id": "C1", "asset_description": "Reliance Industries — 100 shares",
             "asset_type": "equity_shares",
-            "purchase_date": "2020-01-01", "sale_date": "2023-01-01",
+            # Post-23-07-2024, so s. 112A charges 12.5% — see COMPUTE_BODY.
+            "purchase_date": "2020-01-01", "sale_date": "2025-01-01",
             "purchase_cost_paise": 10_000_000, "sale_value_paise": 40_000_000,
         }
         r = _client_for(app, PARTNER_F1).post("/api/income-tax/capital-gains", json=body)

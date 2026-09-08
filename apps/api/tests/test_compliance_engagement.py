@@ -98,8 +98,15 @@ def test_tds_itr_advance_roc_audit_obligations():
     assert {s["obligation_type"] for s in roc} == {"MCA_AOC4", "MCA_MGT7"}
     assert next(s for s in roc if s["obligation_type"] == "MCA_AOC4")["due_date"] == "2026-10-30"
 
+    # The s.44AB SPECIFIED DATE, not the return's. Explanation (ii) to s.44AB
+    # (substituted by the Finance Act 2020, w.e.f. AY 2020-21) makes it "date
+    # one month prior to the due date for furnishing the return of income under
+    # sub-section (1) of section 139" — 30 September, not the 31 October this
+    # asserted. Every audit client's calendar showed the report a month late,
+    # on the obligation whose lateness carries s.271B at 0.5% of turnover.
     audit = ob.obligations_for_service("Statutory Audit", FY)
-    assert len(audit) == 1 and audit[0]["obligation_type"] == "TAX_AUDIT" and audit[0]["due_date"] == "2026-10-31"
+    assert len(audit) == 1 and audit[0]["obligation_type"] == "TAX_AUDIT"
+    assert audit[0]["due_date"] == "2026-09-30"
 
 
 def test_non_statutory_services_generate_nothing():

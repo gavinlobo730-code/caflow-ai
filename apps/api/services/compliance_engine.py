@@ -2,6 +2,7 @@
 Compliance due date calculation engine.
 All rules per CGST Act 2017 and Income Tax Act 1961.
 """
+import calendar
 from datetime import date, timedelta
 from calendar import monthrange
 from typing import Optional
@@ -229,6 +230,49 @@ def itr_due_date(financial_year_end: int, is_audit: bool = False,
     if is_audit:
         return date(financial_year_end, 10, 31)
     return date(financial_year_end, 7, 31)
+
+
+def tax_audit_report_due_date(financial_year_end: int) -> date:
+    """The s.44AB "specified date" — when Form 3CA/3CB with 3CD must be filed.
+
+    IT ACT s.44AB, EXPLANATION (ii), as substituted by the Finance Act 2020
+    with effect from AY 2020-21: "specified date", in relation to the accounts
+    of the assessee of the previous year relevant to an assessment year, means
+    DATE ONE MONTH PRIOR TO the due date for furnishing the return of income
+    under sub-section (1) of section 139.
+
+    So it is 30 SEPTEMBER, not 31 October. The obligation generator dated the
+    audit report at itr_due_date(is_audit=True) — the RETURN's date — which is
+    a month late. A CA who files the report on the date the calendar showed
+    them is exposed to s.271B: 0.5% of turnover, capped at Rs 1,50,000. It is
+    also self-defeating as a sequence, since the return's own s.139(1) date
+    assumes the report is already on record.
+
+    A SEPARATE DATE FROM THE RETURN'S, DERIVED FROM IT, so the two cannot
+    drift: Explanation (ii) defines this one BY REFERENCE to s.139(1), and if a
+    CBDT notification moves the return the report moves with it.
+
+    THE s.92E CASE IS DELIBERATELY NOT MODELLED. Where a transfer-pricing
+    report is required the s.139(1) date is 30 November, and "one month prior"
+    to it is 30 October by calendar arithmetic while professional sources
+    commonly state 31 October. That is a one-day difference nobody here has
+    confirmed against the section, and this path never reaches it —
+    _tax_audit_obligation asks only the ordinary audit question. Add it when
+    somebody has read Explanation (ii) against a TP case, not before.
+    """
+    ordinary = itr_due_date(financial_year_end, is_audit=True)   # 31 October
+    return _one_month_before(ordinary)
+
+
+def _one_month_before(d: date) -> date:
+    """The same day of the previous month, clamped to that month's last day.
+
+    Clamping matters: 31 October has no counterpart on 31 September, and the
+    statute says a DATE one month prior rather than "thirty days".
+    """
+    year = d.year if d.month > 1 else d.year - 1
+    month = d.month - 1 if d.month > 1 else 12
+    return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
 
 
 # IT Act, Section 200(3) — TDS return due 31st of month following quarter end

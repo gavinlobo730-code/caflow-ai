@@ -345,7 +345,16 @@ export type ReportGSTSummary = {
            total: number; lines: ReportTransaction[] };
   gstr3b: { output_cgst: number; output_sgst: number; output_igst: number;
             itc_cgst: number; itc_sgst: number; itc_igst: number;
-            net_cgst: number; net_sgst: number; net_igst: number };
+            // The s.49(5) set-off result, per head.
+            net_cgst: number; net_sgst: number; net_igst: number;
+            // Reverse-charge tax under s.9(3)/(4), which the set-off cannot
+            // touch: s.49(4) lets the credit ledger pay only "output tax", and
+            // s.2(82) excludes "tax payable by him on reverse charge basis".
+            // cash_payable is the challan figure — the set-off plus this.
+            rcm_cash: number; cash_payable: number;
+            // Nil tax payable is true both when liability and credit cancel out
+            // and when credit exceeds liability by lakhs. This says which.
+            itc_carried_forward: number };
   tds_deducted: number;
   ca_review_required: true;
 };
@@ -601,6 +610,27 @@ export interface TreatyRateRow {
   notes: string | null;
   verified_on: string | null;
 }
+
+/**
+ * PATCH body for a GST return's status route (routers/gst_workspace.py's
+ * UpdateStatusRequest).
+ *
+ * `ca_approved` is NOT a convenience flag: the backend refuses `ca_approved`
+ * and `submitted` outright without it, because CLAUDE.md's rule is that a
+ * return only moves on an explicit CA confirmation.
+ * `acknowledge_stale` is the deliberate override when the books have moved
+ * since the return was computed — it is never defaulted true, since the whole
+ * point is that the refusal gets seen.
+ * `filed_date` matters because marking a return here can lag the portal by
+ * days and the period lock keys on the REAL filing date.
+ */
+export type GSTStatusUpdate = {
+  status: "draft" | "validated" | "ca_approved" | "submitted";
+  ca_approved?: boolean;
+  acknowledge_stale?: boolean;
+  arn?: string;
+  filed_date?: string;
+};
 
 export const api = {
   /** The firm's own reading of the DTAA rates it withholds under, per country
@@ -2083,6 +2113,46 @@ export const api = {
       request<ApiResp<ReportGSTSummary>>(
         `/api/reports/gst-summary?client_id=${encodeURIComponent(clientId)}` +
         `&month=${encodeURIComponent(month)}`),
+  },
+  /**
+   * Moving a GST return's status. This is a BACKEND route and has to stay one.
+   *
+   * The screens used to write `status: "submitted"` straight into
+   * gstr1_returns / gstr3b_returns over PostgREST. Two things were lost by
+   * going round the API:
+   *
+   *   * `record_filing` never ran, so `public.filings` stayed empty — and that
+   *     table is the ONLY thing journal_period_lock_reason (migrations 266 and
+   *     267) reads to decide whether a filed return freezes the period behind
+   *     it. A filed GSTR-3B locked nothing; entries inside a filed period
+   *     stayed editable (CGST Act §37(3)/§39(9)).
+   *   * `rbac()` never runs on a PostgREST call, so any role that could reach
+   *     the screen could mark a return filed. The backend requires
+   *     Manager-or-above plus an explicit `ca_approved` for submitted.
+   *
+   * The CA still files on gst.gov.in and records the ARN here afterwards; this
+   * writes down what happened, it does not transmit anything.
+   * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+   */
+  gstWorkspace: {
+    /** Every GSTR-1 / GSTR-3B row for a client — the read that turns a
+     *  (client, period) into the return id the status route addresses. */
+    listReturns: (clientId: string, returnType?: "gstr1" | "gstr9") => {
+      const q = new URLSearchParams({ client_id: clientId, limit: "500" });
+      if (returnType) q.set("return_type", returnType);
+      return request<ApiResp<{
+        gstr1: Array<Record<string, unknown>>;
+        gstr3b: Array<Record<string, unknown>>;
+      }>>(`/api/gst-workspace/returns?${q.toString()}`);
+    },
+    setGstr1Status: (returnId: string, body: GSTStatusUpdate) =>
+      request<ApiResp<Record<string, unknown>>>(
+        `/api/gst-workspace/gstr1/${encodeURIComponent(returnId)}/status`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    setGstr3bStatus: (returnId: string, body: GSTStatusUpdate) =>
+      request<ApiResp<Record<string, unknown>>>(
+        `/api/gst-workspace/gstr3b/${encodeURIComponent(returnId)}/status`,
+        { method: "PATCH", body: JSON.stringify(body) }),
   },
   identity: {
     listUsers: () => request<ApiResp<{

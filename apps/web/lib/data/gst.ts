@@ -23,6 +23,7 @@
  * All amounts in integer paise. Never float.
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { api } from "@/lib/api";
 import { getFirmId } from "./getFirmId";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -91,6 +92,12 @@ export interface GSTR3BWorking {
     taxable_cgst_paise: number;
     taxable_sgst_paise: number;
     zero_rated_paise: number;
+    /** The IGST on those supplies. Nil under an LUT or bond (CGST s.16(3)(a));
+     *  real on an export made ON PAYMENT OF TAX (s.16(3)(b)), which is refunded
+     *  later under s.54 but is a liability in this return. Table 6.1 of the
+     *  portal's own form includes it, and the ledger reconciliation counts it
+     *  as output tax. */
+    zero_rated_igst_paise: number;
     nil_exempt_paise: number;
   };
   rcm_inward: {
@@ -123,7 +130,18 @@ export interface GSTR3BWorking {
     igst_paise: number;
     cgst_paise: number;
     sgst_paise: number;
+    /** The set-off result: what the three heads come to after the s.49(5)
+     *  cross-utilisation. NOT the challan amount — see challan_total_paise. */
     total_paise: number;
+    /** Reverse-charge tax under s.9(3)/(4). It cannot be discharged out of
+     *  credit: s.49(4) lets the electronic credit ledger pay only "output
+     *  tax", and s.2(82) defines that as EXCLUDING "tax payable by him on
+     *  reverse charge basis". So it is always cash, always on top. */
+    rcm_cash_paise: number;
+    /** What the CA actually pays — total_paise + rcm_cash_paise. This is the
+     *  figure to carry to the payment screen; `total_paise` alone was being
+     *  read as the amount due and was short by the whole of Table 3.1(d). */
+    challan_total_paise: number;
   };
   /** The other side of Table 6, which the form itself never states: credit
    *  available, credit spent, credit left. Net tax of zero is true both when
@@ -653,26 +671,52 @@ function triggerDownload(content: string, filename: string, mimeType: string): v
  * Record that a return has been manually filed on the GST portal and capture the ARN.
  * Called after the CA uploads the JSON to gst.gov.in and receives the ARN.
  * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+ *
+ * WHY THESE TWO GO THROUGH THE API AND NOT POSTGREST
+ *     They used to write `status: "submitted"` straight into gstr3b_returns /
+ *     gstr1_returns over PostgREST. That skipped the backend entirely, and the
+ *     backend is where two things happen that nothing else does:
+ *
+ *       1. `record_filing` (services/gst_filing_record_service.py) writes the
+ *          `public.filings` row. That table is the ONLY thing
+ *          journal_period_lock_reason (migrations 266/267) reads to decide
+ *          whether a filed return freezes the period behind it. With nothing
+ *          writing it, the table stayed empty and the lock could never fire —
+ *          a filed GSTR-3B left every journal entry in its period still
+ *          editable, against CGST Act §37(3)/§39(9). Production showed exactly
+ *          that: one gstr3b_returns row sitting at ca_approved, no ARN, and
+ *          `filings` empty.
+ *       2. `rbac()` runs. It does not run on a PostgREST call — the only check
+ *          there is RLS — so any role that could open the screen could mark a
+ *          return filed. The route requires Manager-or-above plus an explicit
+ *          ca_approved, and it also records the approver, submitted_at and the
+ *          ARN on the return row.
+ *
+ *     The signatures are unchanged, so the two screens calling them do not
+ *     move. The (client, period) → return id lookup is a READ and stays on
+ *     PostgREST; it is the WRITE that had to move.
  */
 export async function markGSTR3BFiled(
   clientId: string,
   period: string,
   arn: string,
 ): Promise<void> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  const { error } = await sb
-    .from("gstr3b_returns")
-    .update({
-      status: "submitted",
-      arn,
-      submitted_at: new Date().toISOString(),
-    })
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("period", period);
-
-  if (error) throw new Error(`Failed to mark GSTR-3B as filed: ${error.message}`);
+  const existing = await getGSTR3BReturn(clientId, period);
+  const returnId = (existing as { id?: string } | null)?.id;
+  if (!returnId) {
+    throw new Error(
+      `No GSTR-3B has been computed for ${fromPeriod(period)} — compute and approve it before recording the filing.`);
+  }
+  // # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: ca_approved is the CA's own
+  // confirmation click reaching the server, not a formality the client sets.
+  const res = await api.gstWorkspace.setGstr3bStatus(returnId, {
+    status: "submitted",
+    ca_approved: true,
+    arn,
+  });
+  // This router answers a refusal as HTTP 200 with { success: false, error },
+  // so an unchecked call reports "filed" for a request the server declined.
+  if (!res.success) throw new Error(res.error ?? "Failed to mark GSTR-3B as filed");
 }
 
 export async function markGSTR1Filed(
@@ -680,20 +724,19 @@ export async function markGSTR1Filed(
   period: string,
   arn: string,
 ): Promise<void> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  const { error } = await sb
-    .from("gstr1_returns")
-    .update({
-      status: "submitted",
-      arn,
-      submitted_at: new Date().toISOString(),
-    })
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId)
-    .eq("period", period);
-
-  if (error) throw new Error(`Failed to mark GSTR-1 as filed: ${error.message}`);
+  const existing = await getGSTR1Return(clientId, period);
+  const returnId = (existing as { id?: string } | null)?.id;
+  if (!returnId) {
+    throw new Error(
+      `No GSTR-1 has been built for ${fromPeriod(period)} — build and approve it before recording the filing.`);
+  }
+  // # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+  const res = await api.gstWorkspace.setGstr1Status(returnId, {
+    status: "submitted",
+    ca_approved: true,
+    arn,
+  });
+  if (!res.success) throw new Error(res.error ?? "Failed to mark GSTR-1 as filed");
 }
 
 // ── Update transactions.ts types (additive) ─────────────────────────────────

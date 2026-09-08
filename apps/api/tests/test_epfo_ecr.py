@@ -220,3 +220,90 @@ def test_a_newline_in_a_name_cannot_split_one_member_into_two():
     the second half a malformed extra row."""
     f = _build(emps=[_emp(name="Two\nLines")])
     assert len(f.to_text().splitlines()) == 1
+
+
+# ── the wage base the contribution was actually deducted on ──────────────────
+#
+# The one figure on this file that MUST tie to the contribution beside it is
+# EPF_WAGES, and this module used to re-derive it as `basic + DA` while the
+# payroll run deducted on the Code on Social Security base — the Code on Wages
+# §2(y) definition that caps the listed exclusions at half of total
+# remuneration and deems the excess to be wages (domain/payroll/wage_base.py,
+# stored on the slip by migration 334).
+#
+# The module's own comment two lines above the derivation already said to read
+# the stored figure and not re-derive; only the code disagreed.
+
+from routers.payroll import _compute_slip            # noqa: E402
+
+LOW_BASIC = dict(id="e1", name="Asha Kumar", uan="100200300400",
+                 pf_applicable=True, eps_eligible=True,
+                 basic_paise=10_000_00, hra_percent=180, da_percent=0,
+                 esi_applicable=False, pt_applicable=False)
+
+
+def _line_for(emp: dict, *, fy: str, month: int) -> list[str]:
+    """One employee's ECR line, built from the slip the run would post."""
+    slip = _compute_slip(emp, fy=fy, pt_month=month)
+    slip["employee_id"] = emp["id"]
+    f = build_ecr(slips=[slip], employees_by_id={emp["id"]: emp},
+                  days_in_month=31, wage_ceiling_paise=CEILING)
+    assert f.problems == []
+    return f.to_text().split(DELIMITER)
+
+
+def test_the_file_declares_the_base_the_contribution_was_deducted_on():
+    """₹10,000 basic + ₹18,000 HRA, December 2026: the §2(y) base is ₹14,000.
+
+    Declaring ₹10,000 of EPF wages beside EPS of ₹1,166 claims a pension rate of
+    11.66% where EPFO validates 8.33%. The portal either rejects the line or
+    accepts a false wage declaration, and the second is the worse outcome —
+    nothing on the challan would look wrong.
+    """
+    fields = _line_for(LOW_BASIC, fy="2026-27", month=12)
+    assert fields[3] == "14000", "EPF wages"
+    assert fields[4] == "14000", "EPS wages"
+    assert fields[5] == "14000", "EDLI wages"
+    assert fields[7] == "1166", "EPS contribution"
+    # 8.33% of the declared wages, which is the arithmetic EPFO runs.
+    assert int(fields[7]) == int(fields[4]) * 833 // 10000
+
+
+def test_a_month_before_the_labour_codes_is_untouched():
+    """The Codes commenced 21-11-2025. October 2025 is still EPF Act §6, and
+    this change must not restate a single historic line."""
+    fields = _line_for(dict(LOW_BASIC, hra_percent=0), fy="2025-26", month=10)
+    assert fields[3] == "10000"
+    assert fields[7] == "833"
+
+
+def test_a_slip_written_before_the_column_existed_falls_back_to_basic_plus_da():
+    """Migration 334 deliberately did not backfill: those rows were computed on
+    basic + DA and the return states what was remitted."""
+    old = _slip()
+    old.pop("pf_wages_paise", None)
+    assert "pf_wages_paise" not in old
+    f = _build([old])
+    assert f.problems == []
+    assert f.to_text().split(DELIMITER)[3] == "15000"      # basic 15,000 + DA 0
+
+
+def test_a_stored_base_of_zero_is_not_read_as_a_missing_one():
+    """`or 0` on a stored figure would make 0 and NULL the same value, and they
+    are not: NULL is "this slip predates the column"."""
+    f = _build([_slip(pf_wages_paise=0, pf_employee_paise=0, pf_employer_paise=0,
+                      pf_employer_eps_paise=0, pf_employer_epf_paise=0)])
+    assert f.problems == []
+    assert f.to_text().split(DELIMITER)[3] == "0"
+
+
+def test_arrears_recorded_as_pf_wages_still_add_on_top_of_the_stored_base():
+    """`one_time_pf_wages_paise` (migration 331) is added after the §2(y)
+    figure, exactly as the run adds it — and the ceiling still bounds the
+    result."""
+    f = _build([_slip(basic_paise=8_000_00, pf_wages_paise=12_000_00,
+                      one_time_pf_wages_paise=2_000_00)])
+    assert f.to_text().split(DELIMITER)[3] == "14000"
+    capped = _build([_slip(pf_wages_paise=14_000_00,
+                           one_time_pf_wages_paise=5_000_00)])
+    assert capped.to_text().split(DELIMITER)[3] == "15000"

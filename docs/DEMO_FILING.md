@@ -19,6 +19,30 @@ new statutory flow is a new server-side definition and zero new UI.
 One flow per statutory filing, served by `POST /api/filing-demo/{flow}/preview`,
 listed by `GET /api/filing-demo/capabilities`.
 
+### What each flow teaches beyond the ceremony
+
+The walk-throughs exist so a CA recognises the sequence, so the steps that are
+easy to skip are IN them:
+
+| Flow | The step the walk-through exists to put in front of a CA |
+|---|---|
+| `gstr1` | The sequence lock both ways — Rule 59(6) and §39(10) — and that **GSTR-1A**, not the later-period amendment tables, is the only correction that still reaches this period's GSTR-3B now that its outward tables are locked. |
+| `gstr3b` | **IMS**, between Table 3.1 and Table 4, because that is where Table 4(A) comes from: Accept / Reject / Pending, no action **deemed accepted**, draft GSTR-2B cut on the 14th but the operative deadline being the filing of the return — with a **recompute** in between. Then Table 6.1, the set-off, which is the screen the CA actually decides on. |
+| `gstr9` | That the annual return is **up to two forms** — GSTR-9C above ₹5 crore, self-certified, filed with it, and the §47(2) late fee attaching to the complete package — and that filing early **shuts the correction window** early. |
+| `itr` | **Why no return file comes out.** The Department's schemas are held and every field path verified; what is missing is the `SW########` provider id and the non-computed half of a return. Read out of `domain/income_tax/itr_json.py`, not restated. |
+| `tds` | That a TDS statement is **not filed on TRACES** — CSI, FVU, `.fvu` upload under the deductor's TAN — and, from FY 2026-27, that the form is **138 / 140** under the Income-tax Act 2025 while the stored key stays 24Q / 26Q. |
+| `pf` | The ECR is a **file**, with four validations that reject it whole, filed in **wage-month order** since the 2025 revamp — one skipped month blocks every month after it, and a nil month still needs a nil return. |
+| `esi` | Coverage runs on **contribution periods**, and an employee who crosses ₹21,000 mid-period stays covered to the end of it. |
+| `mca` | The **dual signature** — a director's DIN-linked DSC, then the practising professional's own — and that an SRN in Pending Payment is **not a filed form**. |
+
+Every flow also carries a **"what changes when this is real"** note: the
+registration that gates real transmission (a GSP, an ERI's `SW########`, an
+EPFO establishment login, MCA21 credentials) and what the CA will do
+differently the day it arrives. `common.envelope()` will not build without one,
+so no walk-through can show a capability and stay silent about its gate. Three
+of the eight say honestly that **no registration is waiting** — TDS, PF and ESI
+have no API to be granted access to.
+
 ### Why one, emphatically
 
 Two demos of one filing drift, and each needs its own safety argument. This has
@@ -47,12 +71,40 @@ already happened twice and been undone twice:
 
 ## Where a CA reaches it
 
-On the five module screens where the return actually lives — GST, TDS, MCA,
-payroll and tax filing — each gated on `fetchFilingDemoCapabilities()`.
+On the five module screens where the return actually lives — each gated on
+`fetchFilingDemoCapabilities()`:
+
+| Screen | Flows |
+|---|---|
+| `app/clients/[id]/compliance/gst/page.tsx` | `gstr1`, `gstr3b`, `gstr9` |
+| `app/clients/[id]/compliance/mca/page.tsx` | `mca` |
+| `app/clients/[id]/payroll/page.tsx` | `pf`, `esi` |
+| `app/clients/[id]/tax/filing/page.tsx` | `itr` |
+| `app/tds/returns/page.tsx` | `tds` |
 
 **Not from `/deadlines`.** A deadline row is a calendar obligation, not a saved
 return, so there is nothing for a flow to walk through; the CA opens the client
 and demos it where the figures are.
+
+**Five screens hold the same returns and do NOT offer it yet** — a gap, not a
+rule, and each is a small wiring change (probe capabilities, pass the record
+id) rather than anything new:
+
+| Screen | Flow it should offer | The id it already has |
+|---|---|---|
+| `app/gst/gstr1/page.tsx` | `gstr1` | `getGSTR1Return(clientId, period).id` |
+| `app/gst/gstr3b/page.tsx` | `gstr3b` | `getGSTR3BReturn(clientId, period).id` |
+| `app/clients/[id]/compliance/tds/page.tsx` | `tds` | the `tds_returns` row's `id` |
+| `app/mca/page.tsx` | `mca` | the `mca_filings` row's `id` |
+| `app/payroll/page.tsx` | `pf`, `esi` | `run.id` |
+
+The two `app/gst/*` workspaces are arguably the PRIMARY screens for those
+returns — compute, CA Approve, Download JSON, Mark as Filed all live there —
+so the demo being absent from them is the largest of the five gaps. Whichever
+is wired, the rule holds: probe `fetchFilingDemoCapabilities()` first, gate the
+control on the flow appearing in `flows`, and gate it on the same status the
+flow does (`ca_approved` for the GST and TDS returns, `finalized`/`paid` for a
+payroll run).
 
 ## The kill switch
 
@@ -72,6 +124,23 @@ the control rather than offering one that errors.
   renders with its SPECIMEN badge and note. `FilingDemoWizard` has no code path
   that omits them.
 - **The banner never scrolls away.**
+- **The transmit stage says nothing is being sent, inside its own frame.** It is
+  the stage that most resembles a real upload — ticks appearing one by one — and
+  the one most likely to be screenshotted mid-play.
+- **The success panel disowns its own heading.** `✓ Filing successful` is what
+  makes the walk-through recognisable and it is the most dangerous string in the
+  product, so it keeps its DEMO badge and now cannot render without the line
+  under it: *that is what the portal would say; this is PracticeSync, nothing was
+  sent.* The component renders it, so no flow can leave it out.
+- **A credential is SHOWN and never TAKEN.** The OTP stage stays — the step is
+  real, and it is how nearly every Indian return is signed — but it has **no
+  input**, and the component holds no OTP state. CLAUDE.md: an EVC OTP field in
+  this app is a credential-capture surface whatever it is labelled, and a demo
+  that trains the habit is how the habit arrives. It is also the more faithful
+  rendering: the code is typed on gst.gov.in or incometax.gov.in, never in the
+  software that prepared the return, so a field here taught the step in the
+  wrong PLACE. This is the ONE point where the walk-through is deliberately less
+  imitative than the portal.
 - **No dead controls.** A capability the server does not have is not offered;
   a probe that fails is treated as absent.
 
@@ -96,7 +165,22 @@ server like everything else.
 # the shared framework never files, and the flag really is a kill switch
 cd apps/api && pytest tests/test_filing_simulation_never_files.py -v
 
-# one implementation, and the kill switch reaches it
+# the framework's five rules, and every flow's own statutory specifics
+cd apps/api && pytest tests/test_filing_demo_framework.py tests/test_filing_demo_*.py -v
+
+# one implementation, the kill switch reaches it, and the wizard takes no
+# credential
 cd apps/web && node --experimental-strip-types \
   --test scripts/one-filing-demo-and-the-kill-switch-reaches-it.test.ts
 ```
+
+`tests/test_filing_demo_framework.py` holds five rules for every flow at once,
+including the ones written later. Three are shapes — writes nothing, honest
+envelope, labelled realism — and two are refusals, which are the ones that
+erode when a walk-through is made to look more like the real thing: a
+credential is shown and never taken, and every flow says what changes when it
+is real (`envelope()` will not build without it).
+
+**The write scan walks every `*.py` in `services/filing_demo/`, deliberately.**
+If an unrelated module is dropped into that directory it will fail the scan —
+which is the scan working, not a false positive. Put it somewhere else.

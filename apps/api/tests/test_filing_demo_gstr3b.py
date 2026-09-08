@@ -15,6 +15,12 @@ WHAT IS SPECIFIC TO GSTR-3B AND PINNED HERE
       Circular 170/02/2022-GST): 4(A) GROSS, 4(B)(1) absolute reversals,
       4(B)(2) reclaimable ones, 4(C) = 4(A) − 4(B), and §17(5) in 4(B)(1) and
       not repeated in 4(D).
+    - IMS, BETWEEN 3.1 AND 4. CGST Act §38 was substituted with effect from
+      01-10-2025 and the ITC statement it describes is the Invoice Management
+      System one, so what the CA does on that dashboard — including nothing,
+      which is deemed acceptance — decides GSTR-2B and therefore Table 4(A).
+      The stage is pinned here, and so are the two trade-press claims it must
+      NOT repeat.
     - The demo is gated on the SAME status the screen gates its button on:
       ca_approved. A submitted return already carries its real ARN.
     - Every figure is integer paise read off the saved gstr3b_returns record —
@@ -28,7 +34,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.filing_demo import gstr3b
+from services.filing_demo import common, gstr3b
 from tests.e2e_harness import FakeDB
 
 FIRM = "FIRM-A"
@@ -151,25 +157,88 @@ def test_envelope_is_honest():
 # ── The portal's sequence, payment stage included ───────────────────────────
 
 def test_follows_the_portal_sequence_including_the_payment_stage():
-    """summary → 3.1 → 4 → 5.1 → 6.1 → freeze warning → declaration →
+    """summary → 3.1 → IMS → 4 → 5.1 → 6.1 → freeze warning → declaration →
     signature → otp → transmit → result.
 
-    The four tables are the form's own order, and the fourth of them is the
-    payment step. GSTR-1's flow has no equivalent: it declares supplies and
-    pays nothing. Losing this stage would turn the walk-through into GSTR-1
-    with a different title."""
+    Four of the five tables are the form's own order, and the last of them is
+    the payment step. GSTR-1's flow has no equivalent: it declares supplies
+    and pays nothing. Losing that stage would turn the walk-through into
+    GSTR-1 with a different title. The fifth table is IMS, which is not on the
+    form at all and is where Table 4 comes from."""
     out = _build()
     kinds = [s["kind"] for s in out["stages"]]
-    assert kinds == ["summary", "table", "table", "table", "table", "warning",
-                     "declaration", "signature", "otp", "transmit", "result"]
+    assert kinds == ["summary", "table", "table", "table", "table", "table",
+                     "warning", "declaration", "signature", "otp", "transmit",
+                     "result"]
     titles = [s["title"] for s in out["stages"] if s.get("title")]
     assert titles == [
         f"GSTR-3B · {PERIOD}",
         "Table 3.1 — Outward supplies and inward supplies liable to reverse charge",
+        # IMS sits BETWEEN 3.1 and 4, because that is where it sits in the
+        # month: what the CA did (or did not do) on the dashboard decides
+        # GSTR-2B, and GSTR-2B is what auto-populates 4(A).
+        "Before Table 4 — IMS and GSTR-2B",
         "Table 4 — Eligible ITC",
         "Table 5.1 — Interest and late fee",
         "Table 6.1 — Payment of tax",
     ]
+
+
+# ── IMS: where Table 4 actually comes from ──────────────────────────────────
+
+def test_the_ims_stage_teaches_the_four_actions_and_the_default():
+    """CGST Act §38 was substituted with effect from 01-10-2025 (Notification
+    16/2025-Central Tax) and the ITC statement it describes is the IMS one.
+    A walk-through that opens on the saved return skips the step the month
+    now turns on — and the load-bearing half is the DEFAULT: no action is
+    deemed accepted, so silence takes in whatever every supplier filed."""
+    out = _build()
+    ims = _stage(out, "Before Table 4")
+    actions = [r[0]["text"] for r in ims["rows"]]
+    assert actions == ["Accept", "Reject", "Pending", "No action"]
+    effects = {r[0]["text"]: r[1]["text"] for r in ims["rows"]}
+    assert "DEEMED ACCEPTED" in effects["No action"], (
+        "silence accepting everything is the fact a CA has to know before "
+        "deciding whether opening IMS is optional in practice")
+    assert "Rule 67B" in effects["Reject"], (
+        "rejecting a credit note pushes the liability back to the supplier")
+    assert "4(A)" in effects["Accept"], "the link to Table 4 is the point"
+
+
+def test_the_ims_stage_states_the_recompute_trap_not_just_the_14th():
+    """The 14th is when the DRAFT 2B is cut; the operative deadline is the
+    filing of GSTR-3B. An action taken after the 14th reaches Table 4 only if
+    GSTR-2B is recomputed — which is the step that silently loses an ITC
+    decision, so the note must not stop at the date."""
+    note = _stage(_build(), "Before Table 4")["note"]
+    assert "14th" in note
+    assert "RECOMPUTED" in note
+    assert "§38" in note and "16/2025-Central Tax" in note
+
+
+def test_the_ims_stage_does_not_repeat_the_trade_presss_two_wrong_claims():
+    """docs/audits/2026-09-07-market-research/gst-primary.md §1d grades "IMS
+    became mandatory" [U] and believes "from 01-04-2026 silence is deemed
+    REJECTION" false — the official advisory still says no-action records are
+    deemed accepted, which is the direct evidence that no duty to act exists.
+    A demo shown to CAs must not launder either claim into confidence."""
+    ims = _stage(_build(), "Before Table 4")
+    text = str(ims)
+    assert "deemed rejection" not in text.lower()
+    assert "mandatory" not in text.lower(), (
+        "the mandatoriness of IMS is unestablished; the stage teaches what "
+        "the CA must DO, not a compulsion nobody has shown")
+
+
+def test_table_31_says_the_outward_rows_are_locked_on_the_portal():
+    """GSTN advisory 606 of 07-06-2025, from the July 2025 tax period: the
+    outward rows are auto-populated from GSTR-1/1A/IFF and non-editable. A CA
+    who last filed before it still expects to type over these boxes, and the
+    answer to a wrong figure is now GSTR-1A rather than this table."""
+    note = _stage(_build(), "Table 3.1")["note"]
+    assert "not editable" in note.lower()
+    assert "GSTR-1A" in note
+    assert "606" in note
 
 
 def test_the_payment_stage_is_the_last_step_before_the_ceremony():
@@ -387,6 +456,32 @@ def test_the_freeze_warning_names_the_correction_route_and_its_early_close():
     assert "whichever is EARLIER" in warning["text"]
 
 
+def test_the_freeze_warning_also_carries_the_three_year_bar():
+    """CGST §37(5)/§39(11)/§44(2) (Finance Act 2023, in force 01-10-2023,
+    implemented on the portal from the July 2025 tax period and rolling
+    monthly): past three years from its due date a return cannot be furnished
+    at all. That is a different failure from a shut correction window — the
+    period stops being late and becomes unfileable — and a CA looking at an
+    old unfiled month needs to know which one they are in."""
+    warning = next(s for s in _build()["stages"] if s["kind"] == "warning")
+    assert "THREE YEARS" in warning["text"]
+    assert "§37(5)/§39(11)/§44(2)" in warning["text"]
+    assert warning["text"].endswith(common.THREE_YEAR_BAR.rstrip()), (
+        "the bar is shared copy in services/filing_demo/common.py, so the "
+        "three GST flows cannot drift apart on it")
+
+
+def test_the_flow_says_what_changes_when_filing_is_real():
+    """Every envelope carries it — common.envelope will not build without
+    one. For GSTR-3B the answer has to name the GSP AND the two steps that do
+    not move, or a reader concludes real filing means the software pays the
+    tax and holds the signature."""
+    note = _build()["when_this_is_real"]
+    assert "GST Suvidha Provider" in note or "GSP" in note
+    assert "PMT-06" in note, "the cash leg stays the taxpayer's challan"
+    assert "DSC or EVC" in note, "the signature stays the taxpayer's"
+
+
 def test_a_return_saved_without_its_working_still_walks_through():
     """A return created by hand from + New GSTR-3B has no summary_json. The
     demo must open, show nil tables, and SAY that is what it is doing."""
@@ -394,7 +489,7 @@ def test_a_return_saved_without_its_working_still_walks_through():
                      itc_claimed_paise=0, net_tax_paise=0))
     kinds = [s["kind"] for s in out["stages"]]
     assert kinds[0] == "summary" and kinds[-1] == "result"
-    assert kinds.count("table") == 4, "the payment stage survives an empty working"
+    assert kinds.count("table") == 5, "the payment stage survives an empty working"
     assert "nothing is invented" in out["stages"][0]["note"]
     footer = _stage(out, "Table 6.1")["footer"]
     assert [c.get("paise") for c in footer[1:]] == [0, 0, 0, 0]
@@ -565,3 +660,87 @@ def test_the_engine_really_does_split_excess_igst_credit_in_half():
         "6.1 note in services/filing_demo/gstr3b.py, which is written against "
         "this behaviour"
     )
+
+
+# ── The challan is not the set-off ──────────────────────────────────────────
+
+def _working_with_cash(rcm_cash: int, zero_rated_igst: int = 0) -> dict:
+    """The saved working as gst_return_service writes it since 2026-09-08."""
+    w = _working()
+    w["net_payable"]["rcm_cash_paise"] = rcm_cash
+    w["net_payable"]["challan_total_paise"] = w["net_payable"]["total_paise"] + rcm_cash
+    w["outward"]["zero_rated_igst_paise"] = zero_rated_igst
+    return w
+
+
+def test_the_payment_table_carries_reverse_charge_as_its_own_row():
+    """CGST Act §49(4) permits the electronic credit ledger to pay only
+    "output tax", and §2(82) defines output tax as EXCLUDING "tax payable by
+    him on reverse charge basis". So §9(3)/(4) tax is cash whatever credit is
+    available.
+
+    The note under this table already said so. The TABLE did not, and the
+    total under it is the figure a CA reads off and pays — so the walk-through
+    showed a challan short by the whole of Table 3.1(d), on the one screen
+    this flow exists to put in front of them.
+    """
+    db = _db(summary_json=_working_with_cash(15_000_00))
+    table = _stage(_build(db), "Table 6.1")
+
+    labels = [str(r[0].get("text") or "") for r in table["rows"]]
+    assert any("Reverse charge" in ln for ln in labels), labels
+
+    row = next(r for r in table["rows"] if "Reverse charge" in str(r[0].get("text") or ""))
+    cells = _cells(row)
+    assert cells[1] == 15_000_00, "the liability column must carry the 3.1(d) tax"
+    assert cells[2] == "—" and cells[3] == "—", (
+        "the credit columns must be dashes, not zeroes — a zero reads as "
+        "'no credit was available', and the point is that credit is barred"
+    )
+    assert cells[4] == 15_000_00, "and all of it is cash"
+
+
+def test_the_payment_total_is_the_challan_figure():
+    """The footer is what gets carried to PMT-06."""
+    rcm = 15_000_00
+    db = _db(summary_json=_working_with_cash(rcm))
+    table = _stage(_build(db), "Table 6.1")
+
+    cash_column = [_cells(r)[4] for r in table["rows"] if isinstance(_cells(r)[4], int)]
+    assert _cells(table["footer"])[4] == sum(cash_column)
+    assert _cells(table["footer"])[4] == CASH_IGST + CASH_CGST + CASH_SGST + rcm
+
+
+def test_a_period_with_no_reverse_charge_shows_no_row():
+    """A nil row on every other client's return is noise. The row appears only
+    where there is tax on it — and its absence must not change the total."""
+    db = _db(summary_json=_working_with_cash(0))
+    table = _stage(_build(db), "Table 6.1")
+
+    labels = [str(r[0].get("text") or "") for r in table["rows"]]
+    assert not any("Reverse charge" in ln for ln in labels)
+    assert _cells(table["footer"])[4] == CASH_IGST + CASH_CGST + CASH_SGST
+
+
+def test_the_igst_liability_includes_a_zero_rated_supply_taxed_on_payment():
+    """An export made ON PAYMENT OF TAX (§16(3)(b)) carries real IGST —
+    refunded later under §54, but a liability in THIS return, and Table 6.1 on
+    the portal includes it. Nil under an LUT or bond (§16(3)(a)), which is why
+    this adds nothing for most clients and everything for an exporter who does
+    not use one."""
+    zr_igst = 90_000_00
+    db = _db(summary_json=_working_with_cash(0, zero_rated_igst=zr_igst))
+    table = _stage(_build(db), "Table 6.1")
+
+    igst_row = next(r for r in table["rows"] if str(r[0].get("text") or "").startswith("IGST"))
+    assert _cells(igst_row)[1] == OUT_IGST + zr_igst
+
+
+def test_a_working_saved_before_these_fields_existed_still_walks_through():
+    """The saved working is a JSON column. Rows written before 2026-09-08 carry
+    neither key, and must render exactly as they did — _p() answers 0 for a
+    missing key, which is the same as no reverse charge and an LUT export."""
+    before = _stage(_build(_db(summary_json=_working())), "Table 6.1")
+    after = _stage(_build(_db(summary_json=_working_with_cash(0, 0))), "Table 6.1")
+    assert before["rows"] == after["rows"]
+    assert before["footer"] == after["footer"]

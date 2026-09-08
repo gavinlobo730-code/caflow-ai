@@ -260,6 +260,7 @@ class TDSComputer:
         section: str,
         taxable_paise: int,
         fy_prior_taxable_paise: int = 0,
+        fy_prior_tds_paise: int = 0,
         is_company: bool = False,
         fy: Optional[str] = None,
         has_pan: bool = True,
@@ -268,7 +269,8 @@ class TDSComputer:
 
         Encodes the statutory logic the purchase-bill path must NOT re-implement:
           * unknown section  → ValueError (never silently deduct 0 — audit L6);
-          * threshold + FY aggregation (single-payment OR §194C ₹1L aggregate — H5);
+          * threshold + FY aggregation (single payment OR the section's own FY
+            aggregate — H5), charged ON that aggregate, not on the marginal bill;
           * section- and payee-type-specific rate (individual/HUF vs other — H6);
           * rate-based amount so TDS can never exceed the section rate (audit L1);
           * IT Act §206AA — no real PAN on file floors the rate at 20% (R3.10:
@@ -282,7 +284,25 @@ class TDSComputer:
           section:                e.g. '194C', '194J'.
           taxable_paise:          this bill's taxable value (TDS base — excludes GST).
           fy_prior_taxable_paise: sum of this payee's prior taxable under this section
-                                  in the same FY (for aggregate thresholds).
+                                  in the same FY (for aggregate thresholds, and for
+                                  the charge base — see below).
+          fy_prior_tds_paise:     TDS ALREADY WITHHELD from this payee under this
+                                  section in the same FY (IT Act §200 — tax already
+                                  deducted and paid to the credit of the Central
+                                  Government is not deducted twice). Since the charge
+                                  is on the FY aggregate, the bill that crosses a
+                                  threshold carries the whole year's tax and every
+                                  bill after it must credit what came before, or the
+                                  same aggregate is taxed again and again: three
+                                  ₹1,00,000 §194J bills would withhold ₹10,000,
+                                  ₹20,000 and ₹30,000 instead of ₹10,000 each.
+                                  A CALLER THAT PASSES fy_prior_taxable_paise MUST
+                                  PASS THIS TOO — the two are one figure about the
+                                  year, and supplying half of it over-withholds.
+                                  Defaults to 0, "nothing withheld yet", which is
+                                  right for a first bill and for the single-payment
+                                  calculator (routers/tds.py's /compute-amount), both
+                                  of which pass neither.
           is_company:             non-individual payee → higher rate where applicable.
           fy:                     financial year of the PAYMENT (e.g. "2025-26") so a
                                   bill dated in an earlier FY resolves that year's
@@ -312,9 +332,35 @@ class TDSComputer:
         if not applies:
             return TDSResolution(False, section, 0, rate, rate_bps, is_company, "below_threshold")
 
+        # The base is the FY AGGREGATE, not this bill. IT Act §194C(5) charges the
+        # deduction where "the aggregate of the amounts of such sums credited or
+        # paid ... exceeds one lakh rupees", and §§194A/194D/194G/194H/194J carry
+        # the same "aggregate of the sums" limb: crossing the limit does not make
+        # the earlier payments exempt, it makes them due. Charging only the bill
+        # that happened to cross withheld ₹500 across five ₹25,000 §194C bills
+        # against ₹2,500 due on the ₹1,25,000 aggregate.
+        charge_base = fy_total
+        if rule.charge_on_excess_only:
+            # IT Act §194Q(1): "a sum equal to 0.1 per cent of such sum exceeding
+            # fifty lakh rupees" — the threshold is carved out of the base rather
+            # than only triggering it, so a ₹60,00,000 purchase bears ₹1,000 and
+            # not ₹6,000. Clamped at zero: `applies` can be reached on the single
+            # limb, which for a section with no aggregate is the same comparison,
+            # but the clamp keeps the base non-negative under any future rule.
+            charge_base = max(0, fy_total - rule.single_threshold_paise)
+
         # Integer paise, floor — never over-deduct (IT Act §145A). Rate-bounded, so
-        # tds can never reach 100% of the base (audit L1).
-        tds = taxable_paise * rate_bps // 10000
+        # tds can never exceed the section rate on the charge base (audit L1). It
+        # CAN exceed this one bill's value on the bill that crosses a large
+        # aggregate; that is the statute — the year's tax falls due on the payment
+        # that crosses — and not the 100%-of-base case audit L1 was about.
+        cumulative_tds = charge_base * rate_bps // 10000
+        # IT Act §200: what earlier bills already deducted and paid to the credit
+        # of the Central Government is not deducted a second time. Floored at zero
+        # because a credit note or a mid-year rate change can leave more withheld
+        # than the fresh aggregate needs, and there is no such thing as a negative
+        # withholding on a 26Q line.
+        tds = max(0, cumulative_tds - fy_prior_tds_paise)
         return TDSResolution(True, section, tds, rate, rate_bps, is_company, "applied")
 
     @staticmethod

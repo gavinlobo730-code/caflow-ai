@@ -18,6 +18,7 @@ from domain.income_tax.itr_engine import (
 )
 from domain.income_tax.capital_gains_engine import (
     compute_capital_gains, ASSET_TYPES, REGISTER_ASSET_TYPES, CII_BY_FY, LATEST_CII_FY,
+    ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
 from domain.income_tax.advance_tax_interest_engine import (
     compute_234c_interest, installment_schedule, InstallmentPayment, INSTALLMENT_RULES,
@@ -52,6 +53,21 @@ class Donation80GInput(BaseModel):
     description: str = ""
     amount_paise: int = 0
     deduction_pct: int = Field(default=100, ge=50, le=100)
+    # IT Act §80G's four categories are the PRODUCT of two independent facts
+    # about the donee, and this model carried only one of them — so every
+    # donation was deducted at its percentage with no ceiling at all.
+    #
+    # Default True, matching the engine: §80G(4) caps donations in the residual
+    # category at 10% of adjusted gross total income, and an unlisted donee IS
+    # the residual category. A fund listed in §80G(1)(i) — the PM National
+    # Relief Fund and its neighbours — has to be marked, because the direction
+    # that guesses wrong here under-claims rather than over-claims.
+    subject_to_qualifying_limit: bool = True
+    # §80G(5D) bars a deduction for a cash donation over ₹2,000. Tri-state on
+    # purpose: None is "the CA did not say", which the engine allows while
+    # raising a warning, because a zero for "paid by cheque" and a zero for
+    # "nobody stated the mode" must not be the same number.
+    paid_in_cash: Optional[bool] = None
 
 
 class HRAInput(BaseModel):
@@ -157,6 +173,8 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
                 description=d.description,
                 amount_paise=d.amount_paise,
                 deduction_pct=d.deduction_pct,
+                subject_to_qualifying_limit=d.subject_to_qualifying_limit,
+                paid_in_cash=d.paid_in_cash,
             ) for d in req.donations_80g
         ],
         savings_interest_80tta_paise=req.savings_interest_80tta_paise,
@@ -298,6 +316,21 @@ class ComputeCapitalGainsRequest(BaseModel):
     purchase_cost_paise: int = Field(ge=0)
     sale_value_paise: int = Field(ge=0)
     improvement_cost_paise: int = Field(default=0, ge=0)
+    # The fifth proviso to §112(1) lets a RESIDENT INDIVIDUAL OR HUF pay the
+    # lower of 12.5% without indexation and 20% with it, on immovable property
+    # acquired before 23-07-2024. A company, an LLP or a non-resident never
+    # gets it. Defaulting to "unspecified" charges the flat 12.5% and returns
+    # both candidate figures with a note saying why the option was withheld —
+    # so an unanswered question reads as an unanswered question rather than as
+    # a claim nobody was entitled to make.
+    assessee_type: str = ASSESSEE_UNSPECIFIED
+
+    @field_validator("assessee_type")
+    @classmethod
+    def valid_assessee_type(cls, v: str) -> str:
+        if v not in ASSESSEE_TYPES:
+            raise ValueError(f"assessee_type must be one of {sorted(ASSESSEE_TYPES)}")
+        return v
 
     @field_validator("asset_type")
     @classmethod
@@ -344,6 +377,7 @@ def compute_capital_gains_endpoint(
     result = compute_capital_gains(
         req.asset_type, req.purchase_date, req.sale_date,
         req.purchase_cost_paise, req.sale_value_paise, req.improvement_cost_paise,
+        assessee_type=req.assessee_type,
     )
     return api_response(True, _cg_response(result))
 
@@ -401,6 +435,7 @@ def create_capital_gains(
     result = compute_capital_gains(
         req.asset_type, req.purchase_date, req.sale_date,
         req.purchase_cost_paise, req.sale_value_paise, req.improvement_cost_paise,
+        assessee_type=req.assessee_type,
     )
     payload = {
         "firm_id": current_user["firm_id"],

@@ -5,13 +5,15 @@ Depreciation methods:
 - SL  (Straight Line Method): annual depreciation = (cost - salvage) / useful_life_years
 - WDV (Written Down Value):   annual depreciation = WDV × wdv_rate_percent / 100
 
-Companies Act 2013 Schedule II specifies WDV rates for various asset categories.
+Companies Act 2013 Schedule II prescribes a useful LIFE per class of asset, not
+a WDV percentage — see _SCHEDULE_II_PART_C below, which is the one table, and
+the only source the create form's defaults come from.
 """
 from core.ist_clock import month_end_date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from datetime import datetime, timezone, date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import calendar
 import math
 import re
@@ -28,27 +30,147 @@ router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
 
 _journal_svc = Phase2JournalService()
 
-# Companies Act 2013 Schedule II — default WDV rates. task #232 audit finding:
-# these keys used to be abbreviated ("Furniture", "Computer", "Vehicle",
-# "Intangible", no "Office Equipment"/"Land" entry at all) and never matched
-# the asset_category taxonomy actually used platform-wide — the create/edit
-# form's CATEGORIES list (apps/web/.../fixed-assets/page.tsx) and the GL
-# account mapping in services/phase2_journal_service.py's cat_map (already
-# fixed for the same mismatch — see test_fixed_asset_gl_mapping.py). Whenever
-# an asset was created without an explicit wdv_rate_percent, 4+ real
-# categories silently fell through to the generic "Other" rate instead of
-# their own. Values mirror the frontend's own WDV_RATES table exactly.
-_DEFAULT_WDV_RATES = {
-    "Plant & Machinery":       15.33,
-    "Furniture & Fixtures":    10.00,
-    "Computer & IT Equipment": 31.67,
-    "Office Equipment":        13.91,
-    "Vehicles":                25.89,
-    "Building":                 5.00,
-    "Land":                     0.00,
-    "Intangibles":             25.00,
-    "Other":                   15.33,
+# ─── Companies Act 2013, Schedule II — the LIVES, and the rate derived ───────
+#
+# Schedule II prescribes a useful LIFE per class of asset (Part C). It does not
+# prescribe a WDV percentage anywhere: the percentage is DERIVED from the life,
+#
+#     R = 1 − (residual value / original cost) ^ (1/n)
+#
+# which is the rate at which n years of reducing-balance charges take an asset
+# from its cost down to its residual value. So the life is what is stored here
+# and the rate is computed from it. That is what the statute actually says; it
+# makes the SL path right for free (SL divides by the same n); and it removes
+# the second number that can drift away from the first.
+#
+# WHAT WAS HERE BEFORE WAS NOT SCHEDULE II. It was a hand-written rate column
+# in which only Building was close (5.00% against the 60-year figure of 4.87%),
+# and the provenance of the rest was visible in the numbers themselves:
+# Furniture 10.00% and Intangibles 25.00% are INCOME TAX ACT block rates, and
+# 25.89% — the correct TEN-year figure — sat against Vehicles, which Schedule
+# II gives eight years. Two statutes mixed under one statute's name, on a form
+# that labelled the field "Companies Act 2013 Sch II rate". Every wrong entry
+# was wrong in the same direction — Office Equipment charged 13.91% where the
+# five-year life gives 45.07% — so each of them UNDER-depreciated, overstating
+# both the carrying value and the profit.
+#
+# The category keys are the asset_category taxonomy used platform-wide — the
+# create form's list (now served from here, see GET /categories) and the GL
+# account mapping in services/phase2_journal_service.py's cat_map. task #232
+# fixed an earlier mismatch in those keys; adding a key here without adding it
+# there silently books the asset to Plant & Machinery.
+
+# Schedule II, Part C, Note 5: "Ordinarily, the residual value of an asset is
+# often insignificant but it should generally be not more than 5% of the
+# original cost of the asset." Named rather than written inline because it is
+# the one term in the derivation that is a statutory cap and not an input.
+SCHEDULE_II_RESIDUAL_FRACTION = Decimal("0.05")
+
+# Part C, by the Schedule's own headings. Where a heading prescribes more than
+# one life the CA has a real choice, so ALL of them are offered and the first
+# is only the default — a server is not a laptop and a lorry on hire is not a
+# company car. A life of None means Schedule II prescribes none for that class,
+# which is an ANSWER and not a missing number (see _no_statutory_basis).
+_SCHEDULE_II_PART_C: dict[str, tuple[tuple[str, Optional[int]], ...]] = {
+    "Building": (
+        ("Buildings (other than factory buildings) — RCC frame structure", 60),
+        ("Buildings (other than factory buildings) — other than RCC frame structure", 30),
+        ("Factory buildings", 30),
+    ),
+    "Plant & Machinery": (
+        ("General rate — plant and machinery other than continuous process plant", 15),
+        ("Continuous process plant", 25),
+    ),
+    "Furniture & Fixtures": (
+        ("General furniture and fittings", 10),
+        ("Furniture and fittings used in hotels, restaurants, boarding houses and similar", 8),
+    ),
+    "Office Equipment": (
+        ("Office equipment", 5),
+    ),
+    "Computer & IT Equipment": (
+        ("End user devices — desktops, laptops, etc.", 3),
+        ("Servers and networks", 6),
+    ),
+    "Vehicles": (
+        ("Motor cars, buses and lorries other than those used in a business of running them on hire", 8),
+        ("Motor buses, lorries, cars and taxies used in a business of running them on hire", 6),
+        ("Motor cycles, scooters and other mopeds", 10),
+    ),
+    "Land": (
+        ("Land — not a depreciable asset", None),
+    ),
+    "Intangibles": (
+        ("Amortised under AS 26 / Ind AS 38 — Schedule II Part A prescribes no life", None),
+    ),
+    "Other": (
+        ("No Schedule II class — the CA determines the life or rate", None),
+    ),
 }
+
+# Land has no useful life to spread a cost over, so Schedule II never
+# depreciates it. That is a different statement from "we do not have a rate for
+# it": the rate is a definite 0.00, and the SL path must honour it too.
+_NOT_DEPRECIABLE = frozenset({"Land"})
+
+
+def _wdv_rate_for_life(years: Optional[int]) -> Optional[Decimal]:
+    """The Schedule II WDV rate for a useful life, to the two decimals
+    fixed_assets.wdv_rate_percent (NUMERIC(5,2)) can hold.
+
+        R = 1 − (residual/cost) ^ (1/n),  residual/cost capped at 5%
+
+    Decimal throughout, never float: this number multiplies the WDV in every
+    charge the asset will ever produce, and a binary float here is a rounding
+    difference in all of them.
+    """
+    if not years:
+        return None
+    ratio = SCHEDULE_II_RESIDUAL_FRACTION ** (Decimal(1) / Decimal(years))
+    return ((Decimal(1) - ratio) * 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+# category -> the Schedule II classes it offers, each with its derived rate.
+SCHEDULE_II_CATEGORIES: dict[str, tuple[dict, ...]] = {
+    category: tuple(
+        {
+            "label": label,
+            "useful_life_years": years,
+            "wdv_rate_percent": (
+                Decimal("0.00") if category in _NOT_DEPRECIABLE else _wdv_rate_for_life(years)
+            ),
+        }
+        for label, years in classes
+    )
+    for category, classes in _SCHEDULE_II_PART_C.items()
+}
+
+
+def _default_schedule_ii_class(category: Optional[str]) -> dict:
+    """The class a new asset in this category gets unless the CA picks another.
+    An unknown category falls through to "Other", which prescribes nothing —
+    so it refuses rather than inventing a rate for a category nobody modelled."""
+    classes = SCHEDULE_II_CATEGORIES.get(category or "Other") or SCHEDULE_II_CATEGORIES["Other"]
+    return classes[0]
+
+
+# The old name and the old shape (category -> rate), now derived from the lives
+# so the two can no longer disagree. A None value means Schedule II prescribes
+# no life for that category and therefore no rate — the CA supplies one.
+_DEFAULT_WDV_RATES: dict[str, Optional[Decimal]] = {
+    category: classes[0]["wdv_rate_percent"] for category, classes in SCHEDULE_II_CATEGORIES.items()
+}
+
+
+def _no_statutory_basis(category: str, method: str) -> str:
+    needed = "a WDV rate" if method == "WDV" else "a useful life"
+    return (
+        f"Schedule II prescribes no useful life for '{category}', so there is no rate to "
+        f"default to — record {needed} for this asset. Intangible assets are amortised "
+        f"under AS 26 / Ind AS 38 (Schedule II Part A), which is a judgement the CA makes, "
+        f"not a figure this table can supply."
+    )
+
 
 _PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
@@ -74,21 +196,38 @@ def _compute_annual_depreciation(asset: dict) -> int:
     _annual_depreciation_for_period, which is what routers/fixed_assets.py's
     posting/projection endpoints actually call; this pure function has no
     per-call memory of which year it's being asked about.
+
+    Raises ValueError where neither the row nor Schedule II supplies a basis
+    for the charge (an intangible with no amortisation rate recorded, say).
+    Refusing is the point: falling back to a plausible number is how the
+    Income-tax rates got into a table labelled Schedule II in the first place.
     """
-    cost    = asset["purchase_cost_paise"]
-    salvage = asset.get("salvage_value_paise", 0)
-    method  = asset.get("depreciation_method", "WDV")
-    accum   = asset.get("accumulated_depreciation_paise", 0)
-    wdv_now = cost - accum
+    cost     = asset["purchase_cost_paise"]
+    salvage  = asset.get("salvage_value_paise", 0)
+    method   = asset.get("depreciation_method", "WDV")
+    accum    = asset.get("accumulated_depreciation_paise", 0)
+    category = asset.get("asset_category") or "Other"
+    wdv_now  = cost - accum
+
+    # Schedule II spreads a cost over a useful life. Land has none, so it is
+    # never depreciated — whichever method the row happens to carry.
+    if category in _NOT_DEPRECIABLE:
+        return 0
 
     if wdv_now <= salvage:
         return 0  # fully depreciated
 
     if method == "SL":
-        life = asset.get("useful_life_years") or 5
+        life = asset.get("useful_life_years") or _default_schedule_ii_class(category)["useful_life_years"]
+        if not life:
+            raise ValueError(_no_statutory_basis(category, "SL"))
         annual = math.floor(Decimal(cost - salvage) / Decimal(life))
     else:  # WDV
-        rate_value = asset.get("wdv_rate_percent") or _DEFAULT_WDV_RATES.get(asset.get("asset_category", "Other"), _DEFAULT_WDV_RATES["Other"])
+        rate_value = asset.get("wdv_rate_percent")
+        if rate_value is None:
+            rate_value = _DEFAULT_WDV_RATES.get(category, _DEFAULT_WDV_RATES["Other"])
+        if rate_value is None:
+            raise ValueError(_no_statutory_basis(category, "WDV"))
         rate = Decimal(str(rate_value))
         annual = math.floor(Decimal(wdv_now) * rate / Decimal(100))
 
@@ -145,6 +284,36 @@ def _period_end_date(period: str) -> str:
     return month_end_date(period)
 
 
+def _month_label(value) -> Optional[str]:
+    """The 'YYYY-MM' month of a depreciation_posted_through value.
+
+    The column is a DATE, so what comes back is '2026-04-30' (or a date
+    object), never the 'YYYY-MM' the API speaks. Everything that compares a
+    posted-through against a period goes through here rather than comparing
+    the two strings and happening to be right about the prefix."""
+    if not value:
+        return None
+    return str(value)[:7]
+
+
+def _months_missing_before(posted_through_month: str, period: str) -> list[str]:
+    """Every month strictly between the last posted month and `period`.
+
+    Empty when the request is the very next month (the normal case), and
+    empty when it is not later at all (the caller has already 409'd on that).
+    """
+    y, m = int(posted_through_month[:4]), int(posted_through_month[5:7])
+    gap = []
+    while True:
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+        label = f"{y:04d}-{m:02d}"
+        if label >= period:
+            return gap
+        gap.append(label)
+
+
 def _prorate_purchase_month(monthly_paise: int, purchase_date: str) -> int:
     """Schedule II Note 3 / IT Act §32: an asset isn't held for the WHOLE of
     its purchase month — pro-rate that one month's charge by the fraction of
@@ -194,6 +363,25 @@ def create_asset(
     # inspect on POST/PUT/PATCH; explicit so the check is visible before the
     # acquisition journal is posted.
     assert_client_access(current_user, data.client_id)
+
+    # Resolve the Schedule II basis BEFORE anything is written. The CA may
+    # send either figure explicitly (the form pre-fills the category's default
+    # and lets it be overridden — Schedule II allows a different useful life,
+    # which then has to be DISCLOSED in the accounts rather than being
+    # forbidden); where they do not, the default
+    # for the category is used, and where Schedule II prescribes nothing for
+    # the category the request is REFUSED rather than given a plausible rate.
+    # `is not None` and not `or`: an explicit 0.00 is a real answer.
+    method       = data.depreciation_method.value
+    default_cls  = _default_schedule_ii_class(data.asset_category)
+    wdv_rate     = data.wdv_rate_percent if data.wdv_rate_percent is not None else default_cls["wdv_rate_percent"]
+    useful_life  = data.useful_life_years or default_cls["useful_life_years"]
+    if data.asset_category not in _NOT_DEPRECIABLE:
+        if method == "WDV" and wdv_rate is None:
+            raise HTTPException(status_code=422, detail=_no_statutory_basis(data.asset_category, "WDV"))
+        if method == "SL" and not useful_life:
+            raise HTTPException(status_code=422, detail=_no_statutory_basis(data.asset_category, "SL"))
+
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
@@ -210,19 +398,22 @@ def create_asset(
     count = (count_res.count or 0) + 1
     asset_code = f"FA-{count:04d}"
 
-    cat = data.asset_category
     row = db.table("fixed_assets").insert({
         "firm_id":                     current_user["firm_id"],
         "client_id":                   client_id,
         "asset_code":                  asset_code,
         "asset_name":                  data.asset_name,
-        "asset_category":              cat,
+        "asset_category":              data.asset_category,
         "purchase_date":               data.purchase_date,
         "purchase_cost_paise":         data.purchase_cost_paise,
         "salvage_value_paise":         data.salvage_value_paise,
-        "useful_life_years":           data.useful_life_years,
-        "depreciation_method":         data.depreciation_method.value,
-        "wdv_rate_percent":            data.wdv_rate_percent or _DEFAULT_WDV_RATES.get(cat, _DEFAULT_WDV_RATES["Other"]),
+        # The LIFE is stored too, not just the rate — it is what Schedule II
+        # actually prescribes, it is what a SL asset depreciates by, and it is
+        # what a reviewer needs to see to check the rate beside it.
+        "useful_life_years":           useful_life,
+        "depreciation_method":         method,
+        # NUMERIC(5,2) — float() only at the wire, the arithmetic above is Decimal.
+        "wdv_rate_percent":            float(wdv_rate) if wdv_rate is not None else None,
         "accumulated_depreciation_paise": 0,
         "location":                    data.location,
         "notes":                       data.notes,
@@ -276,8 +467,32 @@ def post_depreciation(
         raise HTTPException(status_code=422, detail="Cannot depreciate a disposed asset")
 
     # Check already posted
-    if asset.get("depreciation_posted_through") and asset["depreciation_posted_through"] >= period:
-        raise HTTPException(status_code=409, detail=f"Depreciation already posted through {asset['depreciation_posted_through']}")
+    posted_month = _month_label(asset.get("depreciation_posted_through"))
+    if posted_month and posted_month >= period:
+        raise HTTPException(status_code=409, detail=f"Depreciation already posted through {posted_month}")
+
+    # A month may not be SKIPPED. Posting Apr–Aug and then Oct used to charge
+    # one month for October and move posted-through with it; September was then
+    # permanently unreachable, because the check above only ever compares
+    # against the furthest month reached. The year was short one month's
+    # depreciation and nothing said so.
+    #
+    # REFUSE rather than post the gap: each month is its own journal needing
+    # its own CA review (and the purchase month is pro-rated, and a month in a
+    # new FY re-bases the annual charge), so quietly posting three entries
+    # behind one click is exactly the unprompted acting this codebase does not
+    # do. Naming the months makes the fix one click each, in order.
+    if posted_month:
+        missing = _months_missing_before(posted_month, period)
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Depreciation for {', '.join(missing)} has not been posted — post "
+                    f"{missing[0]} first. Skipping a month would leave it unpostable: "
+                    f"this asset is posted through {posted_month} and that only moves forward."
+                ),
+            )
 
     # task #232 audit finding: nothing stopped a CA from posting depreciation
     # for a period before the asset was even purchased.
@@ -295,7 +510,12 @@ def post_depreciation(
     # Fixed annual figure for THIS financial year (see
     # _annual_depreciation_for_period's docstring for why it must be fixed
     # per-FY, not recomputed every month) — monthly = annual / 12.
-    annual, fy, fy_start_accum = _annual_depreciation_for_period(asset, period)
+    try:
+        annual, fy, fy_start_accum = _annual_depreciation_for_period(asset, period)
+    except ValueError as e:
+        # No Schedule II basis and none recorded on the row — refuse with the
+        # reason rather than charging a made-up rate to the ledger.
+        raise HTTPException(status_code=422, detail=str(e))
     if annual <= 0:
         return api_response(True, {"message": "Asset fully depreciated", "depreciation_paise": 0})
 
@@ -319,7 +539,17 @@ def post_depreciation(
     db.table("fixed_assets").update({
         "accumulated_depreciation_paise": new_accum,
         "current_wdv_paise":             asset["purchase_cost_paise"] - new_accum,
-        "depreciation_posted_through":   period,
+        # fixed_assets.depreciation_posted_through is a DATE (migration 054),
+        # not a month label. Writing the 'YYYY-MM' period into it is what
+        # Postgres rejects as 22007 invalid_input_syntax — and it rejected the
+        # WHOLE update, so the journal above landed on the ledger and the
+        # register never moved: accumulated depreciation stayed at 0 and the
+        # WDV stayed at cost for ever, while the posting kernel's dedupe on
+        # (client_id, reference_no, entry_date) made every retry look like a
+        # duplicate. The month END is the right date, and the same one the
+        # entry itself carries: "posted through 30-04-2026" is exactly what
+        # the column claims, and _month_label reads the month back out of it.
+        "depreciation_posted_through":   entry_date,
         "depreciation_fy":               fy,
         "depreciation_fy_start_accum_paise": fy_start_accum,
     }).eq("id", asset_id).eq("firm_id", current_user["firm_id"]).execute()
@@ -469,7 +699,15 @@ def depreciation_schedule(
     today_period = datetime.now(timezone.utc).strftime("%Y-%m")
     schedule = []
     for a in assets:
-        annual, _fy, _fy_start = _annual_depreciation_for_period(a, today_period)
+        # An asset with no statutory basis for its charge reports itself as a
+        # named gap instead of taking the whole schedule down with it — the
+        # same shape payroll uses for an unmodelled state's professional tax.
+        # A zero with a reason beside it is not the same number as a zero.
+        statutory_gap = None
+        try:
+            annual, _fy, _fy_start = _annual_depreciation_for_period(a, today_period)
+        except ValueError as e:
+            annual, statutory_gap = 0, str(e)
         wdv    = a["purchase_cost_paise"] - a.get("accumulated_depreciation_paise", 0)
         schedule.append({
             "asset_id":               a["id"],
@@ -483,5 +721,49 @@ def depreciation_schedule(
             "monthly_depreciation_paise": math.floor(Decimal(annual) / Decimal(12)),
             "depreciation_method":    a["depreciation_method"],
             "salvage_value_paise":    a.get("salvage_value_paise", 0),
+            # Both bases travel with the row so the screen can SHOW what it is
+            # charging on without recomputing anything (CLAUDE.md: zero
+            # business logic in the frontend).
+            "wdv_rate_percent":       a.get("wdv_rate_percent"),
+            "useful_life_years":      a.get("useful_life_years"),
+            "depreciation_posted_through": _month_label(a.get("depreciation_posted_through")),
+            "statutory_gap":          statutory_gap,
         })
     return api_response(True, schedule)
+
+
+@router.get("/categories")
+def asset_categories(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read"))
+):
+    """Companies Act 2013 Schedule II Part C, as the create form needs it.
+
+    The form used to carry its own copy of this table, which is how the two
+    drifted: the frontend's literal and the backend's were identical wrong
+    numbers, and neither said where they came from. There is one table now
+    (_SCHEDULE_II_PART_C) and this is how it reaches the browser.
+
+    The Schedule itself is statutory and identical for every client — the
+    client_id is here because this list is only ever asked for from inside a
+    client's fixed-asset workspace, and every endpoint in this router consults
+    the caller's client scope rather than firm_id alone.
+    """
+    assert_client_access(current_user, client_id)
+    return api_response(True, [
+        {
+            "category":       category,
+            "depreciable":    category not in _NOT_DEPRECIABLE,
+            "residual_value_cap_percent": float(SCHEDULE_II_RESIDUAL_FRACTION * 100),
+            "classes": [
+                {
+                    "label":             c["label"],
+                    "useful_life_years": c["useful_life_years"],
+                    # NUMERIC(5,2) on the way back in; float only at the wire.
+                    "wdv_rate_percent":  None if c["wdv_rate_percent"] is None else float(c["wdv_rate_percent"]),
+                }
+                for c in classes
+            ],
+        }
+        for category, classes in SCHEDULE_II_CATEGORIES.items()
+    ])

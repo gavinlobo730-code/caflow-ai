@@ -21,8 +21,32 @@ THE REAL CHANNEL THIS MIMICS
     never having been filed (CBDT Notification 05/2022, in force 01-08-2022);
     the warning stage carries that clock.
 
-    PracticeSync has no ITR JSON generator yet, and the transmit stage says
-    so in as many words rather than pretending the artefact exists.
+THE RETURN FILE, AND THE STAGE THAT EXISTS TO SHOW WHAT IS MISSING
+    Most Indian CAs do not fill an ITR in the browser: their software emits
+    the Department's JSON and they upload it. So the honest question this
+    walk-through has to answer is "could PracticeSync hand me that file?",
+    and the answer is a specific no with named parts — which is more useful
+    to a CA evaluating the product than any amount of ceremony.
+
+    The stage reads the answer out of domain/income_tax/itr_json.py rather
+    than restating it, so it cannot go stale the way the old copy did. That
+    copy said there was "no ITR JSON generator"; the Department's schemas for
+    AY 2026-27 have since been downloaded by hand and committed, and every
+    field path is verified against them by tests/test_itr_schema_paths.py. Two
+    things are genuinely missing and both are named:
+
+      SW########. Every schema requires CreationInfo.SWCreatedBy and
+      CreationInfo.JSONCreatedBy to match a software-provider id the
+      Department issues to registered providers, and REJECTS a file without
+      one whatever else it contains. itr_json.software_provider_id() reads it
+      from ITR_SOFTWARE_PROVIDER_ID and returns None until one is issued.
+      This is the same shape as GSP for GST: a registration, not code.
+
+      A WHOLE RETURN. ITRPayload carries the tax figures. A file the portal
+      accepts also needs PersonalInfo, FilingStatus, Verification and bank
+      details, and for ITR-3/5/6 the balance sheet and profit-and-loss
+      schedules. Emitting the fragment would produce something that looks
+      like a return and fails at upload.
 
 ref: {"filing_id": <itr_filings.id>} — the prepared filing the CA is walking
 through. The demo is gated on status == 'ready_for_filing', the last stop
@@ -31,8 +55,82 @@ has not finished review, and a filed return has nothing left to walk through.
 """
 from __future__ import annotations
 
+from domain.income_tax import itr_json
+
 from services import compliance_engine
 from services.filing_demo import common
+
+
+def _return_file_stage(itr_form: str, assessment_year: str) -> dict:
+    """What PracticeSync could hand a CA to upload, and what is missing.
+
+    Every row is READ from domain/income_tax/itr_json.py — the schema mapping
+    it holds and the provider id it looks for — rather than restated here.
+    That module is the authority on what would be refused and why; a
+    walk-through that copies its answer goes stale the moment the answer
+    changes, which is exactly what happened to the sentence this replaces.
+    """
+    mapping = itr_json.FIELD_MAPPINGS.get(itr_form)
+    provider = itr_json.software_provider_id()
+
+    if mapping is not None and mapping.verified and mapping.paths:
+        schema_file = mapping.schema_file or "the committed schema"
+        schema_state = (
+            f"Held and verified — {schema_file}, {len(mapping.paths)} field "
+            "paths resolved against it and re-checked by "
+            "tests/test_itr_schema_paths.py on every run.")
+    else:
+        schema_state = (
+            "Not held for this form. The Department publishes a new JSON "
+            "schema per form per assessment year; it is downloaded by hand, "
+            "not generated.")
+
+    if provider:
+        # Reachable only where a real id has been issued and configured. Say
+        # it is present, never print it — it identifies the provider.
+        provider_state = ("Configured. This is the one thing that used to "
+                          "stop a file being produced.")
+    else:
+        provider_state = (
+            "NOT HELD. The Department issues this to registered software "
+            "providers; a file whose CreationInfo does not carry one is "
+            "rejected at upload whatever else it contains. It comes with "
+            "e-Return Intermediary registration — a commercial and "
+            "compliance step, not a coding one.")
+
+    return common.table_stage(
+        "The return file — what is ready, and what is not",
+        "Most CAs file an ITR by uploading the Department's JSON rather than "
+        "typing the return into the browser, so this is the honest state of "
+        "that file for "
+        f"{itr_form}, AY {assessment_year or 'this year'}. It is read out of "
+        "domain/income_tax/itr_json.py, which refuses to write a file rather "
+        "than write a plausible one — the figures below are correct and "
+        "correctly placed, and that is not the same as a return.",
+        ["What the portal needs", "State in PracticeSync today"],
+        [
+            [{"text": f"The Department's JSON schema for {itr_form}"},
+             {"text": schema_state}],
+            [{"text": "CreationInfo.SWCreatedBy and JSONCreatedBy "
+                      "(a SW######## software-provider id)"},
+             {"text": provider_state}],
+            [{"text": "PersonalInfo, FilingStatus, Verification, bank details"},
+             {"text": "Not in the computed payload. These are the taxpayer's "
+                      "own particulars and belong to the return, not to the "
+                      "computation."}],
+            [{"text": "Balance sheet and profit-and-loss schedules "
+                      "(ITR-3, ITR-5, ITR-6)"},
+             {"text": "Not in the computed payload. The books hold them; "
+                      "assembling them into the form's schedules is not "
+                      "built."}],
+        ],
+        footer=[{"text": "So: the figures are ready to key into the "
+                         "Department's own offline utility, and PracticeSync "
+                         "will not emit a .json that looks like a return and "
+                         "fails at upload."},
+                {"text": ""}],
+        cta="Proceed to verification",
+    )
 
 
 def _figures_from_snapshot(db, firm_id: str, client_id: str, filing: dict):
@@ -150,13 +248,37 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                     "before verification. " + source_note
                     + (f" {due_line}" if due_line else ""))
 
+    # IT Act §140A: where tax is still payable after TDS and advance tax, the
+    # assessee pays it — with §234A/B/C interest — BEFORE furnishing the
+    # return, by challan on e-Pay Tax. There is no payment stage in this
+    # walk-through because there is none in the filing flow either: the
+    # challan is a separate act on the portal and the return simply will not
+    # validate until it is done. Said on the screen rather than left to be
+    # discovered, and only where the return actually shows tax payable —
+    # telling a refund case to pay something would be worse than silence.
+    headline = figures[0] if figures else {}
+    if headline.get("label") == "Net tax payable" and int(
+            headline.get("paise") or 0) > 0:
+        summary_note += (
+            " This return still shows tax payable, so the self-assessment "
+            "tax under IT Act §140A — with any interest under §234A, §234B "
+            "and §234C — is paid by challan on e-Pay Tax BEFORE the return "
+            "is furnished. That is a separate act on the portal, which is "
+            "why there is no payment step in this sequence.")
+
     stages = [
         common.summary_stage(
             f"{itr_form} · AY {ay}",
             summary_note,
             figures,
-            cta="Proceed to verification",
+            cta="Proceed",
         ),
+        # The return FILE, and what is missing from it. Placed here because
+        # this is where it sits in the real journey — the software's output
+        # is what the CA carries to the portal — and because a CA evaluating
+        # PracticeSync is entitled to the answer before the ceremony, not
+        # buried in a transmit step nobody reads.
+        _return_file_stage(itr_form, str(ay)),
         # IT Act §140 read with CBDT Notification 05/2022 (from 01-08-2022):
         # e-verification, or the signed ITR-V reaching CPC Bengaluru, within
         # 30 days of transmission — or the return is treated as never filed.
@@ -204,16 +326,22 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         common.otp_stage(
             "An OTP would now be sent to the signatory's registered mobile "
             "for e-verification.",
-            "Any six digits will do here — there is no OTP to be right "
-            "about.",
+            "The code is entered on incometax.gov.in, never here. PracticeSync"
+            " has no field that takes an OTP and will not have one when"
+            " filing is real — a box in your practice software that"
+            " accepts a portal credential is a credential-capture"
+            " surface whatever it is labelled.",
         ),
         common.transmit_stage([
-            # Honest about the missing artefact: there is no ITR JSON
-            # generator in PracticeSync yet, and this step says so instead
-            # of pretending one ran.
+            # Honest about the missing artefact, and specific about WHY —
+            # the schemas are held and the paths verified; what is missing is
+            # the SW######## provider id and the non-computed half of the
+            # return. The "return file" stage above carries the detail; this
+            # step must not quietly claim the file exists.
             {"key": "assemble",
-             "label": "ITR JSON assembled — generator not yet built in "
-                      "PracticeSync; specimen step"},
+             "label": "Return file — NOT produced by PracticeSync "
+                      "(no SW######## provider id); on a real filing this is "
+                      "the JSON you upload"},
             {"key": "authenticate",
              "label": "Authenticating with the e-filing portal "
                       "(incometax.gov.in)"},
@@ -257,5 +385,25 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                     "files on the portal and records the acknowledgement "
                     "number here.",
         },
+        # What changes when this is real. ITR is the flow where the answer is
+        # longest, because it is the only one where software is genuinely
+        # permitted — so the gate is worth naming precisely rather than as
+        # "registration". The four serial requirements below are recorded
+        # against the compliance marker in domain/income_tax/itr_json.py.
+        "Two registrations, and one of them has a deployment cost. A "
+        "Type-2 e-Return Intermediary registration with the Income Tax "
+        "Department is what lets software file at all, and it carries the "
+        "SW######## software-provider id that every ITR JSON must name in "
+        "CreationInfo — without it a file is rejected at upload however "
+        "correct the figures are. ERI registration runs through four serial "
+        "gates: a net worth of ₹1 crore or an application through a CA firm, "
+        "an ISA/CISA due-diligence certificate, certification on the "
+        "Department's UAT environment, and production access limited to four "
+        "whitelisted INDIAN static IPs — the last is a hosting problem, not "
+        "a coding one, since this API runs in Singapore. On the day it is "
+        "done, PracticeSync produces the return file and transmits it, and "
+        "the CA stops re-keying the computation into an offline utility. "
+        "What does NOT change: verification stays the taxpayer's under §140, "
+        "and the 30-day clock still runs from transmission.",
         stages,
     )

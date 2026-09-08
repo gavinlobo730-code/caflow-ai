@@ -135,6 +135,57 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
             figures,
             cta="Proceed to upload",
         ),
+        # THE FILE ITSELF, AND THE FOUR CHECKS THAT REJECT IT. The ECR is not
+        # a form filled on the portal — it is a text file the portal parses,
+        # and an upload that fails on line 40 of 200 fails as a whole. A CA
+        # who has had one bounce recognises these instantly; one who has not
+        # is about to. ECR 2.0 format: plain .txt, #~# delimited, eleven
+        # fields per member, keyed by UAN. Grade [S] —
+        # docs/audits/2026-09-07-market-research/payroll-primary.md §4, which
+        # also records that the "25 fields became 11" line in circulation is
+        # the 2017 ECR 2.0 change and not a recent one.
+        common.table_stage(
+            "The ECR file, and what the portal checks",
+            "One line per member, #~# separated, eleven fields, keyed by UAN "
+            "— the ECR 2.0 format, unchanged by the 2025 revamp of the "
+            "workflow around it. The portal parses the whole file and "
+            "rejects it as a whole, so these checks are worth meeting before "
+            "the upload rather than at it.",
+            ["Check the portal applies", "What it means"],
+            [
+                [{"text": "EPF wages ≤ gross wages"},
+                 {"text": "A contribution base above the pay it came out of "
+                          "is a data error, not a policy choice."}],
+                [{"text": "EPS wages ≤ EPF wages"},
+                 {"text": "The pension share is carved OUT of the "
+                          "contribution, never added to it."}],
+                [{"text": "EDLI wages = EPF wages, capped at ₹15,000"},
+                 {"text": "The insurance base follows the PF base up to the "
+                          "statutory ceiling and no further."}],
+                [{"text": "Every member line carries a UAN"},
+                 {"text": "The UAN is the key. A member without one cannot "
+                          "appear in the file at all."}],
+            ],
+        ),
+        # SEQUENCE, WHICH IS THE ONE THAT ACTUALLY STOPS A BUREAU. The
+        # re-engineered ECR (from wage month September 2025) enforces the
+        # order: a later month cannot be filed while an earlier one is
+        # pending, which turns a single skipped month into a blocked queue —
+        # and a month with no contributory members needs a NIL return to keep
+        # the sequence intact rather than being left out. Filing and payment
+        # are also two acts now, not one, so a submitted return with an
+        # unpaid challan is a live liability. Grade [S], same source §4.
+        common.warning_stage(
+            "The ECR is filed in wage-month ORDER. Since the re-engineered "
+            "ECR (from wage month September 2025) a later month cannot be "
+            "uploaded while an earlier one is still pending — so one skipped "
+            "month blocks every month after it, and a month with no "
+            "contributory members needs a NIL return rather than being left "
+            "out, purely to keep the sequence unbroken. Filing and paying "
+            "are also two separate acts: submitting the return and getting a "
+            "TRRN does not pay the challan, and an unpaid challan is a live "
+            "liability whatever the portal shows about the return.",
+        ),
         common.table_stage(
             "Challan account heads",
             "The verified ECR generates one challan split across the EPFO "
@@ -217,5 +268,20 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                     "portal is the only channel. PracticeSync prepares the "
                     "figures and the employer files on the portal.",
         },
+        # What changes when this is real. The gate here is not a registration
+        # PracticeSync could obtain — it is the EMPLOYER's establishment
+        # login, which belongs to the client and is theirs to use, and no
+        # public API exists behind it in any case. So the honest roadmap is
+        # the file, not the transmission.
+        "There is no registration to wait for here, and pretending otherwise "
+        "would be the easy lie: EPFO publishes no API for ECR upload, and "
+        "the only door is the employer's own establishment login on "
+        "unifiedportal-emp.epfindia.gov.in — which belongs to the client, "
+        "not to the firm, and should stay that way. What PracticeSync will "
+        "do is produce the ECR .txt itself, member by member with each UAN, "
+        "so the step becomes an upload of a file that already passes the "
+        "four checks above rather than a spreadsheet reconciled by hand. The "
+        "upload, the verification and the net-banking payment stay with "
+        "whoever holds the establishment login.",
         stages,
     )

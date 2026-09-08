@@ -10,6 +10,23 @@ THE REAL CHANNEL THIS MIMICS
     paid with GSTR-3B. That asymmetry is itself worth showing — a CA coming
     from VAT-style regimes expects payment with every return.
 
+    TWO THINGS A MONTHLY FILER MEETS EVERY MONTH, AND THE DEMO NOW CARRIES
+    SEQUENCE. GSTR-1 for a period cannot be filed while the PRECEDING
+    period's GSTR-3B is unfiled (CGST Rule 59(6)), and GSTR-3B for a period
+    cannot be filed until that period's GSTR-1 is (CGST Act §39(10)). So the
+    returns interlock in both directions and one missed month stops the next.
+
+    GSTR-1A. Since the outward-liability tables of GSTR-3B (3.1(a),(b),(c),(e)
+    and 3.2) became non-editable and auto-populated — GSTN advisory 606 of
+    07-06-2025, live from the JULY 2025 tax period — GSTR-1A is the ONLY route
+    that corrects a period's outward supplies BEFORE its GSTR-3B is filed. It
+    is optional (Notification 12/2024-Central Tax, 10-07-2024), opens once
+    GSTR-1 for the period is filed, and closes the moment GSTR-3B for that
+    same period is filed. Miss that window and a wrong invoice value, GSTIN or
+    place of supply flows into a locked GSTR-3B and waits for the next
+    period's amendment tables. The freeze warning below says so, because
+    "revise it later" is the answer a CA will otherwise assume.
+
     Software may not transmit this today: GSTN's filing APIs are reachable
     only through a GST Suvidha Provider (a commercial registration, not a
     coding step). The demo says so in real_channel.
@@ -58,7 +75,11 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         common.summary_stage(
             f"GSTR-1 · {period}",
             "On the portal this is the saved statement, after Prepare "
-            "Online or a JSON upload, with Generate Summary run.",
+            "Online or a JSON upload, with Generate Summary run. The portal "
+            "will not open it while the PRECEDING period's GSTR-3B is "
+            "unfiled (CGST Rule 59(6)) — and that period's own GSTR-3B "
+            "cannot be filed until this statement is (CGST Act §39(10)), so "
+            "one missed month stops the next in both directions.",
             [
                 {"label": "Taxable value", "paise": taxable},
                 {"label": "IGST", "paise": igst},
@@ -79,9 +100,23 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         # No payment stage — see the module docstring. The freeze warning is
         # GSTR-1's equivalent moment of no return.
         common.warning_stage(
-            "Once filed, GSTR-1 for this period cannot be revised. A "
-            "correction is declared in a later period's amendment tables "
-            "(CGST Act §37(3)), subject to the correction window."
+            # Two routes, and the demo must not let a CA assume only the
+            # second. GSTR-1A (Notification 12/2024-Central Tax, 10-07-2024)
+            # amends the CURRENT period and its window closes when GSTR-3B for
+            # the same period is filed; the amendment tables (§37(3)) are the
+            # later-period route and run out at the correction window. Since
+            # GSTR-3B's outward tables were locked (advisory 606, from the
+            # July 2025 tax period), the first route is the only one that
+            # reaches this period's GSTR-3B at all.
+            "Once filed, GSTR-1 for this period cannot be revised. Before "
+            "this period's GSTR-3B is filed the correction route is FORM "
+            "GSTR-1A, which amends the current period and closes the moment "
+            "GSTR-3B is filed — and since GSTR-3B's outward tables are now "
+            "auto-populated and non-editable, that is the only route that "
+            "still reaches this period's liability. After that, a correction "
+            "is declared in a LATER period's amendment tables (CGST Act "
+            "§37(3)), subject to the correction window."
+            + common.THREE_YEAR_BAR
         ),
         common.declaration_stage(
             # Rule 59 — the form's own wording, verbatim.
@@ -104,7 +139,11 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         common.otp_stage(
             "An OTP would now be sent to the authorised signatory's mobile "
             "and email as registered on the GST portal.",
-            "Any six digits will do here — there is no OTP to be right about.",
+            "The code is entered on gst.gov.in, never here. PracticeSync"
+            " has no field that takes an OTP and will not have one when"
+            " filing is real — a box in your practice software that"
+            " accepts a portal credential is a credential-capture"
+            " surface whatever it is labelled.",
         ),
         common.transmit_stage([
             {"key": "validate", "label": "Validating statement summary"},
@@ -140,5 +179,17 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                     "and compliance step, not a coding one. Until then, "
                     "PracticeSync prepares and the CA uploads.",
         },
+        # What changes when this is real. GSP registration is the whole gate:
+        # GSTN publishes no direct filing endpoint, so the software has to
+        # reach the return APIs through a GST Suvidha Provider. Nothing about
+        # the SIGNATURE changes — it stays the taxpayer's, on the portal.
+        "One registration changes this screen: a GST Suvidha Provider (GSP), "
+        "through which GSTN's return APIs are reached — there is no direct "
+        "public endpoint, so no amount of code substitutes for it. On the day "
+        "it is in place these same stages stay, and the last one stops being "
+        "a specimen: PracticeSync files the statement and records the real "
+        "ARN itself, instead of the CA re-keying the figures on gst.gov.in. "
+        "What does NOT change is the signature — it is the taxpayer's DSC or "
+        "EVC, given on the portal, and this app will still never hold it.",
         stages,
     )

@@ -306,6 +306,10 @@ def compute_gstr3b_endpoint(req: GSTR3BRequest, current_user: dict = Depends(rba
                 "taxable_cgst_paise": result.outward_taxable_cgst,
                 "taxable_sgst_paise": result.outward_taxable_sgst,
                 "zero_rated_paise": result.outward_zero_rated,
+                # Nil under an LUT/bond (§16(3)(a)); real on an export made on
+                # payment of tax (§16(3)(b)), which is refunded later under §54
+                # but is a liability in this return. Table 6.1 includes it.
+                "zero_rated_igst_paise": result.outward_zero_rated_igst,
                 "nil_exempt_paise": result.outward_nil_exempt,
             },
             "itc": {
@@ -325,6 +329,15 @@ def compute_gstr3b_endpoint(req: GSTR3BRequest, current_user: dict = Depends(rba
                 "cgst_paise": result.net_cgst,
                 "sgst_paise": result.net_sgst,
                 "total_paise": result.net_igst + result.net_cgst + result.net_sgst,
+                # Reverse-charge tax cannot be discharged out of credit: §49(4)
+                # lets the credit ledger pay only "output tax", and §2(82)
+                # defines that as EXCLUDING "tax payable by him on reverse
+                # charge basis". So the challan is the set-off result PLUS the
+                # whole of Table 3.1(d) in cash, and `total_paise` alone —
+                # which is what a CA was reading as the amount to pay — is
+                # short by exactly that.
+                "rcm_cash_paise": result.rcm_cash_paise,
+                "challan_total_paise": result.cash_payable_paise,
             },
         },
         "validation_warnings": [e.as_dict() for e in gstr3b_validation],

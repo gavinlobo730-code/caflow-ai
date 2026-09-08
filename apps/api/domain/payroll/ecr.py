@@ -226,20 +226,40 @@ def build_ecr(
             )
             continue
 
-        # EPF Act s.6: PF wages = basic + DA. Plus whichever one-time earnings the
-        # CA recorded AS PF wages (migration 331) — in practice arrears of basic
-        # and DA, which s.2(b)'s exclusion of "any bonus, commission or any other
-        # similar allowance" does not reach, and on which EPFO takes contributions
-        # in the month of payment.
+        # THE PF WAGE BASE, READ OFF THE SLIP AND NOT RE-DERIVED.
         #
-        # Read off the slip's stored figure, not re-derived from the earning
-        # rows: those can be edited or deleted after a run, and the ECR must
-        # agree with the contribution that was actually deducted. Omitting it
-        # here would file EPF wages lower than the 12% remitted against them,
-        # which the portal reconciles and rejects.
-        pf_wages = (int(slip.get("basic_paise") or 0)
-                    + int(slip.get("da_paise") or 0)
-                    + int(slip.get("one_time_pf_wages_paise") or 0))
+        # EPF Act s.6 made PF wages basic + DA, and that was right until
+        # 21-11-2025. From the commencement of the four Labour Codes the Code on
+        # Social Security subsumed the EPF Act and adopts the Code on Wages
+        # s.2(y) definition, which caps the listed exclusions at half of total
+        # remuneration and deems the excess to be wages — so the base the
+        # contribution is actually deducted on can be well above basic + DA.
+        # routers/payroll.py computes it through domain/payroll/wage_base.py and
+        # stores it as pf_wages_paise (migration 334).
+        #
+        # This module re-derived basic + DA instead, and that is the one figure
+        # on the file that MUST tie to the contribution beside it: an employee on
+        # 10,000 basic + 18,000 HRA contributes on a 14,000 base, so EPS of 1,166
+        # was declared against EPF wages of 10,000 — 11.66% where EPFO validates
+        # 8.33%. The portal either rejects the line or accepts a false wage
+        # declaration, and the second is worse.
+        #
+        # NULL means the slip predates migration 334, which deliberately did not
+        # backfill: those rows were computed on basic + DA and must be declared
+        # on basic + DA, because the ECR states what was remitted.
+        #
+        # Plus whichever one-time earnings the CA recorded AS PF wages
+        # (migration 331) — in practice arrears of basic and DA, which s.2(b)'s
+        # exclusion of "any bonus, commission or any other similar allowance"
+        # does not reach, and on which EPFO takes contributions in the month of
+        # payment. Added here rather than left to the earning rows: those can be
+        # edited or deleted after a run, and the ECR must agree with the
+        # contribution that was actually deducted.
+        stored_pf_wages = slip.get("pf_wages_paise")
+        pf_wages = (int(stored_pf_wages) if stored_pf_wages is not None
+                    else int(slip.get("basic_paise") or 0)
+                    + int(slip.get("da_paise") or 0))
+        pf_wages += int(slip.get("one_time_pf_wages_paise") or 0)
         ncp = int(slip.get("lop_days") or 0)
 
         member = ECRMember(

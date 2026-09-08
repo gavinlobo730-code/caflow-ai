@@ -1,17 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client, assert_client_access
 from repositories.compliance_repository import compliance_repo
 from repositories.client_repository import client_repo
+# itr_due_date is deliberately NOT imported here any more. It answers "which
+# date is 31 July and which is 31 October"; it does not answer "which one does
+# THIS assessee have", and calling it with is_audit defaulting to False is what
+# gave every company client 31 July. Explanation 2 to §139(1) is applied by
+# services.compliance_obligation_service.itr_due_date_for_client, which is the
+# only thing that reads a client's facts before choosing a branch.
 from services.compliance_engine import (
     gstr1_due_date, gstr3b_due_date, gstr9_due_date,
     gst_state_category, MONTHLY, QUARTERLY,
-    itr_due_date, advance_tax_due_dates, enrich_compliance_task
+    advance_tax_due_dates, enrich_compliance_task
 )
 from datetime import date
-from typing import Optional
-from models.fy import OptionalFYLabel
+from typing import Annotated, Optional
+from models.fy import FYLabel, OptionalFYLabel
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
@@ -89,8 +95,18 @@ def seed_compliance_calendar(
     # filers, whose GSTR-1 is due the 13th of the month after the QUARTER and
     # whose GSTR-3B is the 22nd or 24th by state. Under §47 a wrong due date
     # costs Rs 50 a day.
-    from services.compliance_obligation_service import gst_profile_for
+    from services.compliance_obligation_service import (
+        gst_profile_for, itr_profile_for, itr_due_date_for_client)
     gst_freq, gst_state = gst_profile_for(client_id, firm_id)
+
+    # And the client's own ITR position. Explanation 2 to §139(1) gives a
+    # COMPANY 31 October whatever its turnover, and this endpoint used to call
+    # itr_due_date(fy_end) with is_audit defaulting to False — so every company
+    # client was seeded 31 July, three months early on the calendar and wrong
+    # on the row. itr_due_date_for_client decides what the facts held settle
+    # and says so when they settle nothing; see its docstring for what §44AB
+    # needs that no client row holds.
+    itr_entity_type, itr_tax_audit = itr_profile_for(client_id, firm_id)
 
     tasks_to_seed = []
 
@@ -133,6 +149,8 @@ def seed_compliance_calendar(
         ]
 
     # Annual returns
+    itr_resolved = itr_due_date_for_client(
+        f"{financial_year}-{str(fy_end)[-2:]}", itr_entity_type, itr_tax_audit)
     tasks_to_seed += [
         {
             "client_id": client_id,
@@ -149,7 +167,7 @@ def seed_compliance_calendar(
             "compliance_type": "ITR",
             "period_start": date(financial_year, 4, 1).isoformat(),
             "period_end": date(fy_end, 3, 31).isoformat(),
-            "due_date": itr_due_date(fy_end).isoformat(),
+            "due_date": itr_resolved["due_date"],
             "status": "pending",
         },
     ]
@@ -179,7 +197,48 @@ def seed_compliance_calendar(
         record = compliance_repo.create(enriched)
         seeded.append(record)
 
-    return api_response(True, {"seeded": len(seeded), "tasks": seeded})
+    out = {"seeded": len(seeded), "tasks": seeded,
+           "itr_due_date_basis": itr_resolved["basis"]}
+    # An ASSUMED ITR date is reported, never silently seeded. A wrong late date
+    # costs §234A interest, a §234F fee and the §80 carry-forward; a wrong early
+    # one costs an early chase. The row carries the early one and the CA is told
+    # which question is open.
+    if itr_resolved["statutory_gaps"]:
+        out["statutory_gaps"] = itr_resolved["statutory_gaps"]
+    return api_response(True, out)
+
+
+@router.get("/itr-due-date")
+def itr_due_date_for_one_client(
+    client_id: str,
+    financial_year: Annotated[FYLabel, Query(...)],
+    current_user: dict = Depends(rbac("compliance_record", "read")),
+):
+    """The ITR due date for one client and one financial year, with the clause
+    it rests on and any question the facts held do not settle.
+
+    Ref: IT Act 1961 §139(1), Explanation 2 — 31 October for a company or for
+    an assessee whose accounts are required to be audited, 30 November where a
+    §92E report is required, 31 July otherwise.
+
+    THIS EXISTS SO THE BROWSER DOES NOT DECIDE IT. apps/web/app/income-tax
+    carried its own table of entity types "that require audit" and matched it
+    against `entity_type.toLowerCase()`, which never equals the title-case
+    values migration 001's CHECK constraint allows — so 'Private Limited' and
+    'Public Limited', the only two multi-word values and the only two that ARE
+    companies, both fell through to 31 July. CLAUDE.md: statutory rules live in
+    apps/api. The page now reads this.
+
+    `decided` is the honest half of the answer: false means `due_date` is the
+    EARLIER of the two dates and `statutory_gaps` names what would settle it.
+    """
+    assert_client_access(current_user, client_id)
+    from services.compliance_obligation_service import (
+        itr_profile_for, itr_due_date_for_client)
+    entity_type, tax_audit = itr_profile_for(client_id, current_user.get("firm_id"))
+    resolved = itr_due_date_for_client(financial_year, entity_type, tax_audit)
+    return api_response(True, {**resolved, "client_id": client_id,
+                               "entity_type": entity_type})
 
 
 @router.get("/due-dates/calculate")
@@ -196,9 +255,24 @@ def calculate_due_dates(year: int, month: int,
     what decides it; `gstr3b_state_category` in the response is null when the
     state is unknown, which means the date returned is the earlier of the two
     and should be presented as assumed rather than known.
+
+    `itr_due_date` had the same shape of problem and no such warning: it was
+    itr_due_date(fy_end) with is_audit defaulting to False, so it stated
+    31 July as fact. This endpoint NAMES NO ASSESSEE — it is a calendar
+    calculator for a period, and that is why it is exempt from client scoping
+    (tests/test_router_client_scope.py) — so it cannot resolve Explanation 2 at
+    all. It now says so: `itr_due_date_decided` is false and the gap points at
+    GET /api/compliance/itr-due-date, which takes a client and answers
+    properly. Giving THIS handler a client parameter instead would have made an
+    endpoint that deliberately has no assessee acquire one — and would have
+    broken the exemption it is listed under.
     """
     fy_end = year if month <= 3 else year + 1
     freq = QUARTERLY if str(frequency).lower() == QUARTERLY else MONTHLY
+
+    from services.compliance_obligation_service import itr_due_date_for_client
+    itr = itr_due_date_for_client(f"{fy_end - 1}-{str(fy_end)[-2:]}")
+
     return api_response(True, {
         "period": f"{year}-{month:02d}",
         "frequency": freq,
@@ -206,6 +280,16 @@ def calculate_due_dates(year: int, month: int,
         "gstr3b_due_date": gstr3b_due_date(year, month, freq, state_code).isoformat(),
         "gstr3b_state_category": gst_state_category(state_code) if freq == QUARTERLY else None,
         "gstr9_due_date": gstr9_due_date(fy_end).isoformat(),
-        "itr_due_date": itr_due_date(fy_end).isoformat(),
+        "itr_due_date": itr["due_date"],
+        "itr_due_date_decided": itr["decided"],
+        "itr_due_date_basis": itr["basis"],
+        "itr_statutory_gaps": [
+            "This endpoint names no assessee, so IT Act §139(1) Explanation 2 "
+            "cannot be applied: 31 October is the due date for a company and "
+            "for anyone whose accounts are required to be audited, 30 November "
+            "where a §92E report is required. The date above is the "
+            "Explanation 2(c) date. GET /api/compliance/itr-due-date resolves "
+            "it for a named client and financial year."
+        ],
         "advance_tax_schedule": advance_tax_due_dates(fy_end),
     })

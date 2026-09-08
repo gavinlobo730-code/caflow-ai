@@ -255,6 +255,15 @@ def gst_summary(db, firm_id: str, client_id: str, month: str) -> dict[str, Any]:
             # Nil tax payable is true both when liability and credit cancel out
             # and when credit exceeds liability by lakhs. This says which.
             "itc_carried_forward": int(r.get("itc_carried_forward_paise") or 0),
+            # Reverse-charge tax under §9(3)/(4), which the three net_* figures
+            # above cannot include: §49(4) allows the electronic credit ledger
+            # to pay only "output tax", and §2(82) defines that as EXCLUDING
+            # "tax payable by him on reverse charge basis". So it is always
+            # cash, always on top, and a summary that reports only the set-off
+            # result understates what the client owes by the whole of Table
+            # 3.1(d).
+            "rcm_cash": int(r.get("rcm_cash_paise") or 0),
+            "cash_payable": int(r.get("cash_payable_paise") or 0),
         },
         # Proof the figures above tie to the ledger, which the old arithmetic
         # could not offer at all.

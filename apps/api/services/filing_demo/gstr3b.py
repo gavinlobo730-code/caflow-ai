@@ -21,6 +21,22 @@ THE REAL CHANNEL THIS MIMICS
     through a GST Suvidha Provider (a commercial registration, not a coding
     step). The demo says so in real_channel.
 
+WHERE TABLE 4 ACTUALLY COMES FROM — IMS
+    A walk-through that opens on the saved return skips the step a recipient's
+    month now turns on. CGST Act §38 was substituted with effect from
+    01-10-2025 (Notification 16/2025-Central Tax), and the ITC statement it
+    describes is the Invoice Management System one: supplier documents land on
+    the recipient's IMS dashboard and are Accepted, Rejected or kept Pending,
+    with NO ACTION deemed accepted at GSTR-2B generation. GSTR-2B is what
+    auto-populates Table 4(A). The draft is cut on the 14th of the following
+    month, but the operative deadline is the FILING of this return — an action
+    taken after the 14th reaches Table 4 only if GSTR-2B is RECOMPUTED first.
+    A stage before Table 4 carries this; it teaches what a CA must do, and
+    deliberately does not repeat the trade press's "IMS is mandatory" or
+    "silence is deemed rejection from 01-04-2026", both of which
+    docs/audits/2026-09-07-market-research/gst-primary.md §1d finds
+    unsupported (the second, it believes, false).
+
 TABLE 4, AS THE PORTAL HAS LAID IT OUT SINCE 01-09-2022
     Notification 14/2022-Central Tax read with Circular 170/02/2022-GST:
 
@@ -198,7 +214,18 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         "Declared under CGST Act §39. 3.1(d) is tax the RECIPIENT self-assesses "
         "under §9(3)/(4) and pays in cash — §49(4) does not let the credit "
         "ledger discharge it — and the credit for it comes back in Table "
-        "4(A)(3).",
+        "4(A)(3). "
+        # GSTN advisory 606 of 07-06-2025, live from the JULY 2025 tax period.
+        # Worth stating on the screen rather than in a comment: a CA who last
+        # filed before it still expects to be able to type over these boxes,
+        # and the answer to "the figure is wrong" is now GSTR-1A, not this
+        # table. Grade [S] — docs/audits/2026-09-07-market-research/
+        # gst-primary.md §3c, secondary sources only.
+        "ON THE PORTAL THESE ROWS ARE NOT EDITABLE. Rows (a), (b), (c) and (e) "
+        "and Table 3.2 are auto-populated from the period's GSTR-1 / GSTR-1A / "
+        "IFF and locked (GSTN advisory 606 of 07-06-2025, from the July 2025 "
+        "tax period). A wrong outward figure is corrected by filing GSTR-1A "
+        "for the same period BEFORE this return — not by editing it here.",
         ["", "Taxable value", "IGST", "CGST", "SGST"],
         [
             [{"text": "(a) Outward taxable supplies (other than zero rated, "
@@ -219,7 +246,65 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         ],
     ))
 
-    # ── Stage 3: Table 4 ─────────────────────────────────────────────────────
+    # ── Stage 3: IMS, which is where Table 4 actually comes from ─────────────
+    #
+    # The step a recipient's month now turns on, and the one a walk-through
+    # that starts at "the saved return" silently skips. CGST Act §38 was
+    # SUBSTITUTED with effect from 01-10-2025 (Finance Act 2025, brought into
+    # force by Notification 16/2025-Central Tax of 17-09-2025), and the ITC
+    # statement it describes is the IMS-shaped one — so IMS is the route by
+    # which credit is communicated, not an optional dashboard.
+    #
+    # WHAT THIS DELIBERATELY DOES NOT SAY. The trade press says "IMS became
+    # mandatory on 01-10-2025" and that "from 01-04-2026 silence is deemed
+    # REJECTION". Neither is supported: the research in
+    # docs/audits/2026-09-07-market-research/gst-primary.md §1d grades the
+    # first [U] and believes the second FALSE — GSTN's own advisory still says
+    # no-action records are DEEMED ACCEPTED at GSTR-2B generation, which is
+    # the direct evidence that no duty to act exists. The mechanics below are
+    # [S-gov] (the search index's rendering of GSTN's advisory and FAQs; no
+    # primary fetch was possible), and the stage teaches what a CA must DO
+    # rather than a compulsion nobody has shown.
+    stages.append(common.table_stage(
+        "Before Table 4 — IMS and GSTR-2B",
+        "Where the credit below comes from. Every supplier document lands on "
+        "the recipient's Invoice Management System dashboard, and what the CA "
+        "does there — or does not do — decides GSTR-2B, which auto-populates "
+        "Table 4(A). CGST Act §38 was substituted with effect from 01-10-2025 "
+        "(Notification 16/2025-Central Tax) and this is now the route by "
+        "which input tax credit is communicated. THE TIMING IS THE TRAP: the "
+        "draft GSTR-2B is cut on the 14th of the following month from the "
+        "actions standing then, but the operative deadline is the filing of "
+        "THIS return — an action taken after the 14th reaches Table 4 only if "
+        "GSTR-2B is RECOMPUTED from the IMS dashboard first, and there is no "
+        "limit on recomputing before filing. Two cases generate no GSTR-2B at "
+        "all: a QRMP filer's first two months of a quarter, and any period "
+        "whose PREVIOUS GSTR-3B is unfiled. PracticeSync does not act on IMS "
+        "— this happens on the portal, and this step is here so it is not "
+        "skipped by accident.",
+        ["Action on the record", "What it does to this return"],
+        [
+            [{"text": "Accept"},
+             {"text": "The document enters GSTR-2B and its credit lands in "
+                      "Table 4(A) below."}],
+            [{"text": "Reject"},
+             {"text": "Kept out of GSTR-2B and out of 4(A). Rejecting a "
+                      "supplier's credit note adds the liability back to the "
+                      "SUPPLIER's next GSTR-3B (CGST Rule 67B)."}],
+            [{"text": "Pending"},
+             {"text": "Neither accepted nor rejected: it reaches no return "
+                      "this period and waits on the dashboard. Deferred, not "
+                      "lost — but the window is finite, and it is narrower "
+                      "for credit notes than for invoices."}],
+            [{"text": "No action"},
+             {"text": "DEEMED ACCEPTED when GSTR-2B is generated. Silence "
+                      "takes in everything every supplier filed, including "
+                      "what should have been rejected. This is the default, "
+                      "and it is the reason to open IMS at all."}],
+        ],
+    ))
+
+    # ── Stage 4: Table 4 ─────────────────────────────────────────────────────
     # The layout Notification 14/2022 with Circular 170/02/2022-GST put on the
     # portal from 01-09-2022. 4(C) is the FOOTER because it is the total line
     # the rows above add up to, and because it is the only figure Table 6.1 is
@@ -254,7 +339,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                 {"paise": _p(itc, "net_sgst_paise")}],
     ))
 
-    # ── Stage 4: Table 5.1 ───────────────────────────────────────────────────
+    # ── Stage 5: Table 5.1 ───────────────────────────────────────────────────
     # Nil in the prepared return, and said so plainly. PracticeSync does not
     # compute §50 interest or §47 late fee, and showing a figure it did not
     # compute would be worse than showing the nil with an explanation.
@@ -279,7 +364,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         ],
     ))
 
-    # ── Stage 5: Table 6.1 — THE PAYMENT STAGE ───────────────────────────────
+    # ── Stage 6: Table 6.1 — THE PAYMENT STAGE ───────────────────────────────
     # The reason GSTR-3B has a step GSTR-1 does not, and the one screen this
     # whole walk-through exists to put in front of a CA.
     #
@@ -293,6 +378,15 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     total_liability = total_credit = total_itc_paid = total_cash = 0
     for label, head in _HEADS:
         head_liability = _p(outward, f"taxable_{head}_paise")
+        if head == "igst":
+            # A zero-rated supply made ON PAYMENT OF TAX (§16(3)(b)) carries
+            # real IGST — refunded later under §54, but a liability in THIS
+            # return, and Table 6.1 on the portal includes it. Nil under an
+            # LUT or bond (§16(3)(a)), so this adds nothing for most clients
+            # and everything for an exporter who does not use one. Without it
+            # the liability column understates and `paid_by_itc` below floors
+            # to a figure the portal would not show.
+            head_liability += _p(outward, "zero_rated_igst_paise")
         credit_available = _p(itc, f"net_{head}_paise")   # 4(C) — never 4(A)
         cash = _p(net_payable, f"{head}_paise")
         # What the credit actually discharged, as the difference between the
@@ -312,6 +406,25 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         total_itc_paid += paid_by_itc
         total_cash += cash
 
+    # Reverse charge, as its own row rather than folded into the heads above.
+    # §49(4) permits the electronic credit ledger to pay only "output tax", and
+    # §2(82) defines output tax as EXCLUDING "tax payable by him on reverse
+    # charge basis" — so this line has a liability and a cash figure and a
+    # PERMANENT DASH in the credit columns. The note under this table already
+    # said the 3.1(d) tax is paid in cash separately; the row is what makes
+    # that visible in the total a CA carries to the challan.
+    rcm_cash = _p(net_payable, "rcm_cash_paise")
+    if rcm_cash:
+        pay_rows.append([
+            {"text": "Reverse charge (3.1(d))"},
+            {"paise": rcm_cash},
+            {"text": "—"},
+            {"text": "—"},
+            {"paise": rcm_cash},
+        ])
+        total_liability += rcm_cash
+        total_cash += rcm_cash
+
     payment_note = (
         "The portal's PROCEED TO PAYMENT screen. The credit set off here is "
         "Table 4(C) — what is left AFTER the 4(B) reversals — and never 4(A): "
@@ -327,9 +440,12 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         "re-derives; on the portal the taxpayer may choose a different "
         "permissible split and the cash column will change. Anything in the "
         "cash column is paid "
-        "by challan (PMT-06) before the return can be filed, and the "
-        "reverse-charge tax in 3.1(d) is paid in cash separately — it is not "
-        "part of this set-off.")
+        "by challan (PMT-06) before the return can be filed. The "
+        "reverse-charge tax in 3.1(d) is its own row and is paid in cash "
+        "whatever credit is available: §49(4) permits the credit ledger to "
+        "pay only \"output tax\", and §2(82) defines that as EXCLUDING \"tax "
+        "payable by him on reverse charge basis\" — which is why its credit "
+        "columns are dashes rather than zeroes.")
     stages.append(common.table_stage(
         "Table 6.1 — Payment of tax",
         payment_note,
@@ -353,6 +469,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                    "early shuts this window early.")
     else:
         freeze += ", and only while the correction window is open."
+    freeze += common.THREE_YEAR_BAR
 
     stages += [
         common.warning_stage(freeze),
@@ -383,7 +500,11 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         common.otp_stage(
             "An OTP would now be sent to the authorised signatory's mobile "
             "and email as registered on the GST portal.",
-            "Any six digits will do here — there is no OTP to be right about.",
+            "The code is entered on gst.gov.in, never here. PracticeSync"
+            " has no field that takes an OTP and will not have one when"
+            " filing is real — a box in your practice software that"
+            " accepts a portal credential is a credential-capture"
+            " surface whatever it is labelled.",
         ),
         common.transmit_stage([
             {"key": "validate", "label": "Validating return against the GSTN schema"},
@@ -424,5 +545,21 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                     "and compliance step, not a coding one. Until then, "
                     "PracticeSync prepares and the CA files.",
         },
+        # What changes when this is real. Two things stay put and it is worth
+        # being explicit about both, because a CA reading a roadmap assumes
+        # "filing from the software" means the software does everything: the
+        # CASH leg is still a challan the taxpayer pays from their own bank,
+        # and the SIGNATURE is still the taxpayer's on the portal.
+        "One registration changes this screen: a GST Suvidha Provider (GSP), "
+        "through which GSTN's return APIs are reached — there is no direct "
+        "public endpoint. On the day it is in place these same stages stay "
+        "and the last one stops being a specimen: PracticeSync files the "
+        "return and records the real ARN itself. Two steps do NOT move. The "
+        "cash in Table 6.1 is still paid by the taxpayer's own challan "
+        "(PMT-06) before the return can be filed, and the return is still "
+        "signed by the taxpayer's DSC or EVC on gst.gov.in — this app will "
+        "not hold either. So the day GSP arrives, the CA stops re-keying "
+        "figures into the portal and keeps doing exactly the two things that "
+        "are theirs to do.",
         stages,
     )

@@ -134,6 +134,45 @@ def test_the_figures_are_the_records_own_paise_exact():
     assert by_label["Form"]["text"] == "26Q"
 
 
+def test_the_form_figure_agrees_with_the_title_after_the_2025_act():
+    """The title already reads "Form 140" for a 2026-27 quarter — the
+    Income-tax Act 2025 with the Rules 2026 renumbered 26Q→140 and 24Q→138,
+    and domain/tds/vocabulary.py is the single place that knows it. The
+    FIGURE beside the title used to read the stored return_type, so the same
+    screen said "Form 140" and "26Q" and a CA could reasonably ask which one
+    the portal wants.
+
+    The period's own number leads and the 1961-Act label follows in brackets,
+    because both vocabularies are permanent (the transition is a fork, not a
+    migration) and every stored challan and client conversation still uses
+    the old one."""
+    out = _build(_db_with_return(financial_year="2026-27", quarter="Q1"))
+    by_label = {f["label"]: f for f in _stage(out, "summary")["figures"]}
+    assert by_label["Form"]["text"] == "140 (was 26Q)"
+    assert out["stages"][0]["title"].startswith("Form 140 ")
+    assert out["title"] == "File Form 140 (TDS)"
+
+
+def test_the_form_figure_does_not_gratuitously_bracket_an_unchanged_form():
+    """For a period governed by the 1961 Act the two names are the same, and
+    "26Q (was 26Q)" would read as a bug."""
+    by_label = {f["label"]: f
+                for f in _stage(_build(_db_with_return()), "summary")["figures"]}
+    assert by_label["Form"]["text"] == "26Q"
+
+
+def test_the_flow_says_what_changes_when_filing_is_real():
+    """The one flow whose honest answer is "no registration unlocks this".
+    The Department publishes no filing API for TDS statements, and an ERI
+    registration — the thing that would let software file an ITR — does not
+    reach quarterly statements. Implying a coming integration would be the
+    easiest place in the package to oversell."""
+    note = _build(_db_with_return())["when_this_is_real"]
+    assert "no filing API" in note
+    assert "ERI" in note and "does not reach quarterly statements" in note
+    assert "TIN-FC" in note
+
+
 def test_the_due_date_comes_from_the_single_authority():
     out = _build(_db_with_return())
     by_label = {f["label"]: f for f in _stage(out, "summary")["figures"]}

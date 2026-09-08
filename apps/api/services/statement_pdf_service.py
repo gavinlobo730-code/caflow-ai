@@ -29,7 +29,24 @@ def _bal(paise: int) -> str:
     return f"{_paise_to_rupee_str(abs(paise))} {side}"
 
 
-def build_statement_pdf(statement: dict, firm: dict, customer: dict) -> bytes:
+def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -> bytes:
+    """A statement of account, headed by WHOSE ACCOUNT IT IS.
+
+    The second argument used to be the CA FIRM, and the letterhead read the
+    practice's name. It is the wrong party: the customer owes money to the
+    CLIENT, the practice is not to it, and a statement demanding payment under
+    a chartered accountant's name misstates who is owed. Same confusion the
+    sales-invoice PDF carried until 2026-09-08, and the same fix — the party is
+    passed in rather than assumed, and the caller loads the `clients` row.
+
+    Lower stakes than the invoice, and worth saying why: this is not a Rule 46
+    document, it carries no GSTIN and claims no credit. What it does carry is a
+    demand for money, and the name on that has to be the name of the creditor.
+
+    On the CLIENT-PORTAL path the same lookup correctly names the practice: the
+    firm's own fee invoices live under its internal practice client (migration
+    074), which is a `clients` row carrying the firm's name.
+    """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm, bottomMargin=18 * mm,
                             leftMargin=16 * mm, rightMargin=16 * mm,
@@ -40,9 +57,18 @@ def build_statement_pdf(statement: dict, firm: dict, customer: dict) -> bytes:
     small = ParagraphStyle("small", parent=styles["Normal"], fontSize=9)
     elems = []
 
-    firm_name = firm.get("name") or "Chartered Accountant"
+    # The client's own registered name, in the order the ledger prefers it.
+    holder_name = (account_holder.get("legal_name")
+                   or account_holder.get("trade_name")
+                   or account_holder.get("client_name")
+                   # `name` is the shape the firm row uses; kept so a caller
+                   # that still passes one renders rather than showing a blank
+                   # letterhead, which is the one outcome worse than a wrong
+                   # name.
+                   or account_holder.get("name")
+                   or "Statement of Account")
     period = statement["period"]
-    elems.append(Paragraph(firm_name, h))
+    elems.append(Paragraph(holder_name, h))
     elems.append(Paragraph("Customer Statement of Account", sub))
     elems.append(Spacer(1, 8))
 
@@ -99,10 +125,32 @@ def build_statement_pdf(statement: dict, firm: dict, customer: dict) -> bytes:
     return buf.getvalue()
 
 
+def load_account_holder(db, firm_id: str, client_id: str) -> dict:
+    """The `clients` row the statement is issued BY — firm-scoped, and refused
+    rather than defaulted.
+
+    Falling back to the firm is what produced the defect: a statement of
+    account headed with the CA practice's name, sent to the client's customer,
+    demanding money the practice is not owed. A missing client row is a
+    question, not a letterhead.
+    """
+    row = (db.table("clients")
+           .select("id,client_name,legal_name,trade_name,gstin,pan")
+           .eq("id", client_id).eq("firm_id", firm_id)
+           .maybe_single().execute())
+    holder = getattr(row, "data", None) or {}
+    if not holder:
+        raise ValueError(
+            f"Client {client_id} not found for firm {firm_id} — a statement of "
+            "account cannot be issued without knowing whose account it is."
+        )
+    return holder
+
+
 def get_customer_statement_pdf(db, firm_id, client_id, customer_id, start, end) -> tuple[bytes, str]:
     statement = customer_statement_service.generate(db, firm_id, client_id, customer_id, start, end)
-    firm = _load_firm(firm_id)
-    pdf = build_statement_pdf(statement, firm, statement["customer"])
+    pdf = build_statement_pdf(statement, load_account_holder(db, firm_id, client_id),
+                              statement["customer"])
     name = (statement["customer"].get("name") or "customer").replace(" ", "-").lower()
     filename = f"statement-{name}-{start}-{end}.pdf"
     return pdf, filename

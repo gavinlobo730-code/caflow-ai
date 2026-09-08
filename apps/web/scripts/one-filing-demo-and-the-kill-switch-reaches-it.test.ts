@@ -23,6 +23,23 @@
 //     that must never exist again — because "just add a Simulate button here
 //     too, it's only a modal" is a change nobody would flag in review, and the
 //     thing it would quietly cost is the kill switch.
+//
+// AND ONE MORE THING THAT MUST NEVER COME BACK: A CREDENTIAL FIELD
+//     The wizard's OTP stage used to render a six-digit input and accept any
+//     value. The STEP is real and stays — nearly every Indian return is signed
+//     with an EVC or Aadhaar OTP — but the input is gone, along with the state
+//     behind it. CLAUDE.md, on real filing: "an EVC OTP field in this app is a
+//     credential capture surface whatever it is labelled." A demo that trains a
+//     CA to type a portal OTP into their practice software is how that habit
+//     arrives before the real thing does.
+//
+//     It is also the more faithful rendering, which is why removing it cost the
+//     walk-through nothing: the code is typed on gst.gov.in or incometax.gov.in,
+//     never in the software that prepared the return, so a field here taught the
+//     step in the wrong PLACE.
+//
+//     The same inverted shape is used, for the same reason: "let them type
+//     something, it's only a demo" is a change nobody would flag in review.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -114,4 +131,85 @@ test("the guard would actually catch a reference minted in the browser", () => {
   assert.ok(SOURCES.length > 50, `walk() found only ${SOURCES.length} sources`);
   const sample = "const ref = 'DEMO-ARN-' + suffix;";
   assert.match(sample, /DEMO-ARN-/, "the pattern itself no longer matches");
+});
+
+test("the wizard takes no credential — no OTP field, no password field", () => {
+  // CLAUDE.md, on real filing: "an EVC OTP field in this app is a credential
+  // capture surface whatever it is labelled". The demo used to render one and
+  // accept any six digits. The STEP stays — it is real, and every GST and
+  // income-tax filing is signed that way — but the input is gone, and so is
+  // the state behind it, because a component still holding a six-digit value
+  // is one edit away from rendering a box for it again.
+  //
+  // It is also the more faithful rendering. The OTP is typed on gst.gov.in or
+  // incometax.gov.in, never in the software that prepared the return, so a
+  // field here taught the step in the wrong place.
+  const src = read(path.join(WEB, "components/FilingDemoWizard.tsx"));
+  assert.doesNotMatch(
+    src, /<input[^>]*\b(?:aria-label|placeholder)="[^"]*(?:OTP|otp|PIN|password)/,
+    "the wizard has an OTP or credential input again",
+  );
+  assert.doesNotMatch(src, /type="password"/, "the wizard has a password field");
+  assert.doesNotMatch(
+    src, /setOtp|verifyOtp/,
+    "the wizard is holding OTP state again — the input follows the state",
+  );
+  assert.match(
+    src, /stage\?\.kind === "otp"/,
+    "the otp STAGE must still render; it is the step that is real",
+  );
+});
+
+test("no screen anywhere collects a portal credential for a demo", () => {
+  // Wider than the wizard: the point of deleting the field is that nobody
+  // rebuilds it beside the wizard, the way the browser-side demo was built
+  // beside the server one.
+  const offenders = SOURCES.filter((p) => {
+    const src = read(p);
+    return /\b(?:demo|filing|evc|otp)/i.test(src)
+        && /<input[^>]*type="password"/.test(src);
+  });
+  assert.deepEqual(
+    offenders.map((p) => path.relative(WEB, p)), [],
+    "a filing screen is collecting a credential",
+  );
+});
+
+test("the transmit stage says nothing is being sent, in its own frame", () => {
+  // The stage that most looks like a real upload — ticks appearing one by one
+  // — and the one most likely to be screenshotted mid-play. The sticky banner
+  // says it too; this says it inside the frame the ticks are in, and it is
+  // rendered unconditionally rather than supplied by a flow.
+  const src = read(path.join(WEB, "components/FilingDemoWizard.tsx"));
+  assert.match(src, /Nothing is being sent/);
+});
+
+test("the success panel cannot show its heading without disowning it", () => {
+  // "✓ Filing successful" is what makes the walk-through recognisable and it
+  // is the single most dangerous string in the product. It keeps its DEMO
+  // badge and now carries a line saying whose words they are — rendered by
+  // the component, so no server-side flow can leave it out.
+  const src = read(path.join(WEB, "components/FilingDemoWizard.tsx"));
+  assert.match(src, /Filing successful/);
+  assert.match(src, /That is what the portal would say/);
+  assert.match(src, /nothing was sent, and no return has been filed/);
+});
+
+test("the wizard shows what changes when the filing is real", () => {
+  // Required of every flow server-side (services/filing_demo/common.envelope
+  // will not build without it), so there is no empty state: the panel names
+  // the registration that gates real filing and what the CA will do
+  // differently. It is what makes the demo a sales asset rather than a toy.
+  const src = read(path.join(WEB, "components/FilingDemoWizard.tsx"));
+  assert.match(src, /when_this_is_real/);
+  assert.match(src, /What changes when this is real/);
+});
+
+test("the credential guard would catch a field that came back", () => {
+  // The negative control for the two credential tests above: assertions that
+  // something is ABSENT prove nothing until the pattern is shown matching.
+  const otpField = '<input value={otp} aria-label="OTP" className="..." />';
+  assert.match(otpField, /<input[^>]*\baria-label="[^"]*OTP/);
+  const passwordField = '<input type="password" name="evc" />';
+  assert.match(passwordField, /<input[^>]*type="password"/);
 });

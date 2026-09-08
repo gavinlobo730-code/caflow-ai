@@ -21,9 +21,10 @@ Integer paise only; the double never coerces to float.
 """
 from __future__ import annotations
 
+import contextlib
+import re
 import uuid
 from datetime import datetime
-import re
 from typing import Any, Optional
 
 
@@ -129,6 +130,50 @@ class _Result:
 # --------------------------------------------------------------------------- #
 #  Query builder
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+#  Writes are checked against production's own column types
+# --------------------------------------------------------------------------- #
+# The mock suite runs against an in-memory dict, which accepts anything — so a
+# write that Postgres rejects passes here and fails only in production, usually
+# silently, because the failing statement sits inside a broad try/except or a
+# background job. Five defects in the 7 September 2026 audit were that shape;
+# the worst wrote the string '2026-04' into a DATE column, which makes Postgres
+# reject the WHOLE update and leave every other column as it was.
+#
+# tests/production_types.py reads the schema snapshot the drift tests already
+# maintain, so this costs no Postgres and no new fixture.
+#
+# THE ESCAPE HATCH IS FOR ONE CASE ONLY: a test that is deliberately about how
+# the code behaves when the database refuses. Turning it off to make a failure
+# go away is turning off the finding.
+#
+# It is a CONTEXT MANAGER rather than a setter on purpose. A plain
+# `enforce(False)` that a test forgets to undo disarms the guard for every test
+# after it in the same process, silently — which is precisely the class of
+# failure this whole module exists to catch, and it would be catching it in
+# itself. `with production_types_unenforced():` cannot leak.
+_ENFORCE_PRODUCTION_TYPES = True
+
+
+@contextlib.contextmanager
+def production_types_unenforced():
+    """Suspend the write-type check for one block. See above before using it."""
+    global _ENFORCE_PRODUCTION_TYPES
+    previous = _ENFORCE_PRODUCTION_TYPES
+    _ENFORCE_PRODUCTION_TYPES = False
+    try:
+        yield
+    finally:
+        _ENFORCE_PRODUCTION_TYPES = previous
+
+
+def _check_write(table: str, payload) -> None:
+    if not _ENFORCE_PRODUCTION_TYPES:
+        return
+    from tests.production_types import assert_write_fits_production_types
+    assert_write_fits_production_types(table, payload)
+
+
 class _Query:
     def __init__(self, db: "FakeDB", table: str):
         self.db = db
@@ -152,14 +197,19 @@ class _Query:
         return self
 
     def insert(self, payload, **_k):
-        self._op = "insert"; self._payload = payload; return self
+        self._op = "insert"; self._payload = payload
+        _check_write(self.table, payload)
+        return self
 
     def update(self, payload, **_k):
-        self._op = "update"; self._payload = payload; return self
+        self._op = "update"; self._payload = payload
+        _check_write(self.table, payload)
+        return self
 
     def upsert(self, payload, **kw):
         self._op = "upsert"
         self._payload = payload
+        _check_write(self.table, payload)
         # on_conflict is what makes an upsert an UPSERT rather than an insert.
         # It was discarded, so every upsert appended a second row and the read
         # afterwards found the STALE one — a second "switch payroll off" left

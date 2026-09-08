@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from core.exceptions import ValidationError, NotFoundError
-from core.ist_clock import ist_today
+from core.ist_clock import ist_now, ist_today
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.client_repository import client_repo
 
@@ -134,14 +134,37 @@ class ComplianceRecordService:
                 raise ValidationError(
                     "period_start",
                     f"A {compliance_type} compliance record for this client and period already exists.")
+        # compliance_records.period_start and period_end are DATE NOT NULL
+        # (migration 003). This wrote "" for a missing period, which Postgres
+        # answers with 22007 invalid_input_syntax_for_type_date and rejects the
+        # WHOLE insert — and None would fail the same insert with 23502. So a
+        # manual record with no period has never been creatable against the
+        # real database, in either direction; the mock suite asserted that it
+        # was because an in-memory dict takes any value. Refusing here is what
+        # production has always enforced, said out loud.
+        period_end = data.get("period_end") or ""
+        missing = [n for n, v in (("period_start", period_start),
+                                  ("period_end", period_end)) if not v]
+        if missing:
+            raise ValidationError(
+                missing[0],
+                "A compliance record needs a period: give period_start and "
+                "period_end as dates (YYYY-MM-DD). The obligation generator "
+                "derives them from the financial year; a record created by hand "
+                "has to state them, because the table requires them."
+            )
         payload = {
             "firm_id": firm_id,  # Always from current_user, never from request body
             "client_id": client_id,
-            "client_name": data.get("client_name"),
+            # client_name is deliberately NOT written: production's
+            # compliance_records has no such column, and PostgREST answers
+            # PGRST204 to the whole insert rather than ignoring the key. It only
+            # ever reached here as None — which the repository's None-filter
+            # dropped — so it was one caller away from breaking every create.
             "compliance_type": compliance_type,
             "period_label": data.get("period_label", ""),
             "period_start": period_start,
-            "period_end": data.get("period_end", ""),
+            "period_end": period_end,
             "status": data.get("status", "Not Started"),
             "due_date": data["due_date"],
             "assigned_to": data.get("assigned_to"),
@@ -170,9 +193,20 @@ class ComplianceRecordService:
                 )
             updates["status"] = new_status
             if new_status == "Filed" and not record.get("filed_date"):
+                # filed_date IS a date column, and a filing date is a date —
+                # a return is filed on a day, not at an instant.
                 updates["filed_date"] = ist_today().isoformat()
             if new_status == "Completed" and not record.get("completed_at"):
-                updates["completed_at"] = ist_today().isoformat()
+                # completed_at is timestamptz, and this wrote a bare date.
+                # Postgres accepts that — it parses '2026-09-08' as midnight in
+                # the session's timezone — so nothing failed and the column
+                # quietly recorded 00:00 UTC instead of when the work was
+                # actually finished. Not a rejected write; a fabricated one,
+                # which is harder to notice. ist_now() carries a real instant,
+                # and its offset, so the stored UTC value is right and the
+                # presentation rule (CLAUDE.md: report in IST) still applies at
+                # the point of display.
+                updates["completed_at"] = ist_now().isoformat()
 
         for field in ("notes", "assigned_to", "priority", "acknowledgement_no"):
             if field in data:

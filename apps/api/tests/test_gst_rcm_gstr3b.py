@@ -37,12 +37,59 @@ def test_c5_rcm_liability_from_purchases_not_sales():
     assert r2.rcm_igst == 0 and r2.rcm_cgst == 0 and r2.rcm_sgst == 0
 
 
-def test_c4_c5_rcm_net_liability_offsets_itc():
-    # Classic RCM: ₹18,000 liability and ₹18,000 ITC → net effect zero.
+def test_c4_c5_rcm_liability_and_itc_are_equal_but_not_a_wash():
+    """Classic RCM: ₹18,000 self-assessed liability and ₹18,000 of credit.
+
+    The two figures ARE equal — that much was always true and is asserted
+    below — but they do not cancel, and reading them as "net effect zero" is
+    exactly the mistake the engine used to make. CGST Act §49(4) lets the
+    electronic credit ledger pay "output tax", and §2(82) defines output tax
+    to EXCLUDE tax payable on reverse charge basis. So the ₹18,000 is paid in
+    CASH, and the ₹18,000 of credit is a separate asset that discharges some
+    OTHER liability (here there is none, so it carries forward).
+    """
     r = compute_gstr3b([], [_purch(L, igst=K18, rc=True)], [])
-    net_liability = r.rcm_igst           # payable under RCM
-    itc = r.itc_igst                     # claimable
-    assert net_liability - itc == 0
+    assert r.rcm_igst == K18             # payable under RCM, in cash
+    assert r.itc_igst == K18             # claimable, against something else
+
+    assert r.rcm_cash_paise == K18
+    assert r.cash_payable_paise == K18, (
+        "the RCM liability used to be accumulated and never charged, while "
+        "its credit was still deducted — the return came out at nil")
+    assert r.itc_carried_forward_paise == K18
+
+
+def test_rcm_liability_is_not_absorbed_by_the_section_49_setoff():
+    """An outward liability and an RCM bill in the same period.
+
+    Sale ₹1,00,000 inter-state (IGST ₹18,000); RCM purchase ₹1,00,000 (IGST
+    ₹18,000). The RCM credit legitimately discharges the outward tax, so
+    net_igst is nil — and the RCM tax itself is still ₹18,000 in cash. The
+    understatement used to be twice the RCM tax: once for the liability never
+    added, once for the credit that reduced everything else.
+    """
+    r = compute_gstr3b([_sale(L, igst=K18)], [_purch(L, igst=K18, rc=True)], [])
+    assert r.net_igst == 0
+    assert r.rcm_cash_paise == K18
+    assert r.cash_payable_igst == K18
+    assert r.cash_payable_paise == K18
+
+
+def test_rcm_cash_is_unaffected_by_how_much_credit_is_available():
+    """§49(4) does not reach reverse-charge tax however full the ledger is."""
+    purchases = [_purch(L, igst=K18, rc=True), _purch(10 * L, cgst=90_000_00, sgst=90_000_00)]
+    r = compute_gstr3b([], purchases, [])
+    assert r.itc_available_paise == K18 + 1_80_000_00
+    assert r.rcm_cash_paise == K18
+    assert r.cash_payable_paise == K18
+
+
+def test_rcm_liability_does_not_consume_credit():
+    """itc_consumed is credit spent on the §49 set-off. Reverse-charge tax is
+    paid in cash and spends none of it, so it cannot reduce the residual."""
+    r = compute_gstr3b([], [_purch(L, igst=K18, rc=True)], [])
+    assert r.itc_consumed_paise == 0
+    assert r.itc_carried_forward_paise == K18
 
 
 def test_h7_gstn_txval_is_taxable_value_not_tax():
@@ -149,3 +196,37 @@ def test_regular_and_rcm_purchase_itc_together():
     r = compute_gstr3b([], [_purch(L, igst=K18), _purch(L, igst=K18, rc=True)], [])
     assert r.itc_book_igst == 2 * K18        # both counted once each
     assert r.rcm_igst == K18                 # only the RCM one creates liability
+
+
+def test_a_zero_rated_export_on_payment_of_tax_declares_its_igst():
+    """IGST Act §16(3)(b): an export may be made ON PAYMENT of integrated tax,
+    which is then refunded under CGST Act §54. Table 3.1(b) carries both the
+    turnover and that tax; the engine used to carry only the turnover and the
+    payload hardcoded "iamt": 0, so the return declared an LUT export that was
+    not one and claimed no refund.
+    """
+    r = compute_gstr3b([_sale(L, igst=K18, supply="zero_rated")], [], [])
+    assert r.outward_zero_rated == L
+    assert r.outward_zero_rated_igst == K18
+    # It is a real liability — that is the whole reason for taking this route.
+    assert r.liability_igst == K18
+    assert r.net_igst == K18
+
+    osup_zero = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["sup_details"]["osup_zero"]
+    assert osup_zero["txval"] == L // 100
+    assert osup_zero["iamt"] == K18 // 100
+    # A zero-rated supply is inter-state (IGST Act §7(5)) — no central or
+    # State tax can arise on it.
+    assert osup_zero["camt"] == 0 and osup_zero["samt"] == 0 and osup_zero["csamt"] == 0
+
+
+def test_a_zero_rated_export_under_lut_still_declares_no_tax():
+    """IGST Act §16(3)(a). Nothing is invented for a supply that bore no tax."""
+    r = compute_gstr3b([_sale(L, supply="zero_rated")], [], [])
+    assert r.outward_zero_rated == L
+    assert r.outward_zero_rated_igst == 0
+    assert r.liability_igst == 0
+
+    osup_zero = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["sup_details"]["osup_zero"]
+    assert osup_zero["txval"] == L // 100
+    assert osup_zero["iamt"] == 0

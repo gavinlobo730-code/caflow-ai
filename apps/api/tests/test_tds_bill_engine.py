@@ -57,16 +57,44 @@ def test_h5_h6_above_threshold_deducts_and_persists_rate(monkeypatch):
 
 
 def test_h5_194c_aggregate_threshold_across_bills(monkeypatch):
+    """The bill that crosses the §194C aggregate withholds on the AGGREGATE.
+
+    IT Act §194C(5): no deduction while a single sum stays within ₹30,000 and
+    "the aggregate of the amounts of such sums credited or paid ... does not
+    exceed one lakh rupees". Once it does, the liability is on that aggregate —
+    the earlier bills are not forgiven, they simply had not been taxed yet.
+
+    This assertion used to read ₹500 — 2% of the crossing bill alone. Five
+    ₹25,000 bills then withheld ₹500 in total against ₹2,500 due on the
+    ₹1,25,000 aggregate: an 80% short deduction, carrying §201(1A) interest
+    at 1% a month and a §40(a)(ia) disallowance of 30% of the expenditure.
+    """
     db = _setup(monkeypatch)
     v = _vendor(db, "194C")                        # single ₹30k, aggregate ₹1L
     # Four ₹25,000 bills: each below single threshold, aggregate never exceeds ₹1L.
     for i in range(4):
         bi = _bill(db, v, 25_000_00, f"C{i}")
         assert bi["tds_paise"] == 0
-    # Fifth ₹25,000 bill tips the FY aggregate past ₹1,00,000 → TDS now applies.
+    # Fifth ₹25,000 bill tips the FY aggregate past ₹1,00,000 → TDS now applies,
+    # on the whole ₹1,25,000 aggregate at the company rate, less the nil already
+    # withheld on the four bills before it.
     b5 = _bill(db, v, 25_000_00, "C5")
-    assert b5["tds_paise"] == 500_00              # 2% (company PAN) of ₹25,000
+    assert b5["tds_paise"] == 2_500_00            # 2% (company PAN) of ₹1,25,000
     assert b5["tds_rate_bps"] == 200
+    # And every bill AFTER the crossing one charges the new aggregate less what
+    # is already withheld (IT Act §200), so it settles back to 2% of the bill.
+    # This is what pins the other half of the fix: _resolve_bill_resident_tds
+    # must sum the FY's prior tds_paise, not just its prior taxable value. With
+    # only the taxable half passed, the sixth bill re-charges the whole growing
+    # aggregate from zero and withholds ₹3,000 instead of ₹500, and the seventh
+    # ₹3,500 instead of ₹500 — over-withholding that grows with every bill.
+    b6 = _bill(db, v, 25_000_00, "C6")
+    assert b6["tds_paise"] == 500_00              # 2% of ₹1,50,000 less ₹2,500 held
+    b7 = _bill(db, v, 25_000_00, "C7")
+    assert b7["tds_paise"] == 500_00              # 2% of ₹1,75,000 less ₹3,000 held
+    # Five bills' worth of aggregate, withheld once: ₹2,500 + ₹500 + ₹500 is
+    # exactly 2% of the ₹1,75,000 credited to this vendor in the year.
+    assert b5["tds_paise"] + b6["tds_paise"] + b7["tds_paise"] == 1_75_000_00 * 200 // 10000
 
 
 def test_h6_individual_vs_company_rate_194c(monkeypatch):

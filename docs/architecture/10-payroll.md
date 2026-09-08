@@ -1,5 +1,56 @@
 # 10 — Payroll
 
+> **STATUS, 7 September 2026: PARTLY SUPERSEDED — read this box before the rest.**
+>
+> The owner set this document aside on 7 September 2026 and directed that payroll be
+> planned from the scope given that day: the customer is the **CA firm**, every module
+> must be strong enough to buy on its own (breadth *and* depth), and there are no live
+> users. See `docs/audits/2026-09-07-where-we-are-against-the-one-platform-goal.md`
+> §12.3 for what replaces what.
+>
+> **Still current — the model, and it follows from the customer being the firm:** the
+> bureau shape (firm screen = client-month queue, client screen = employee-slip
+> queue); two-axis grading, *defensible* and *changed*; named gaps instead of silent
+> zeros; and the three refusals — never hold client funds or initiate payouts, never
+> generate Form 16 Part B (CBDT Notification 09/2019 requires it from TRACES), never
+> auto-submit to EPFO, ESIC or TRACES.
+>
+> **No longer current — the sequencing.** The 1 April 2027 cutover and the deliberate
+> non-building of mid-year migration were a calendar device to dodge the
+> opening-position problem. `payroll_opening_positions` is to be built properly
+> instead: a CA firm wins clients year-round. The deferrals — FVU-validated 24Q, Form
+> 16 distribution, bank advice — come back into scope under "depth".
+>
+> **Also stale in detail:** the phase list marks items as to-do that have since
+> shipped — salary structures are wired (`domain/payroll/salary_structure.py`),
+> per-client statutory registrations exist (migration 325), and `statutory_gaps` now
+> reaches the screen (`apps/web/app/clients/[id]/payroll/page.tsx:574-591`).
+>
+> **The two defects this box named on 7 September are FIXED (8 September 2026)**,
+> and three more that the fix work surfaced went with them. Recorded here because
+> each is a fact about the module this document still describes wrongly elsewhere:
+>
+> * the ECR declared EPF wages of `basic + DA` while the run remitted on the stored
+>   Code-on-Social-Security base — an internally inconsistent file, since EPFO
+>   validates EPS at 8.33% of the declared wages;
+> * 24Q Annexure II applied the new regime's ₹75,000 standard deduction to every
+>   employee, including old-regime rows entitled to ₹50,000;
+> * the **pre-commencement** PF base was the s.2(88) aggregate rather than EPF Act
+>   s.6's `basic + DA + retaining allowance`, so any historic month with a medical or
+>   special allowance over-deducted — and it recomputes on demand, so a reprinted
+>   payslip disagreed with the challan actually remitted;
+> * `/statutory-position` projected PF on `basic + DA` while `_compute_slip` deducted
+>   on the wage base, so one screen said ₹1,200 and the other ₹1,680 and only the
+>   second was remitted. One `_pf_wage_base` now serves both;
+> * an unbound `logger` (the module uses `_logger`) would have raised `NameError` on
+>   the path that reached it.
+>
+> Deliberately unchanged and now pinned by a test: **ESI still computes on gross.**
+> The Code's definition is narrower, so ESI may err the other way — unconfirmed, and
+> gross is the direction that cannot under-deduct.
+>
+> The reasoning below is kept because it is the record of why the model is what it is.
+
 The payroll module, redesigned 2026-09-04. This is the design the code follows;
 where they disagree, fix one of them the same day.
 

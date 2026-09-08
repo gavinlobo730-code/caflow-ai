@@ -136,8 +136,18 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     except (ValueError, KeyError, IndexError):
         due = None  # a malformed FY/quarter loses the due-date extras only
 
+    # THE FIGURE MUST AGREE WITH THE TITLE. The title above already reads
+    # "Form 138" for a 2026-27 quarter (vocabulary.statement, from the
+    # Income-tax Act 2025), and a figure beside it reading "24Q" would look
+    # like a contradiction on the same screen — the CA would reasonably ask
+    # which one the portal wants. The period's own form number leads; the
+    # 1961-Act label is kept beside it in brackets where the two differ,
+    # because every stored challan, every earlier return and every
+    # conversation with a client still uses it, and both remain valid
+    # vocabulary permanently (the transition is a fork, not a migration).
+    form_label = form_no if form_no == form else f"{form_no} (was {form})"
     figures = [
-        {"label": "Form", "text": form},
+        {"label": "Form", "text": form_label},
         {"label": "TDS deducted", "paise": deducted},
         {"label": "TDS deposited", "paise": deposited},
         {"label": "Deductees", "text": str(deductee_count)},
@@ -240,7 +250,11 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         common.otp_stage(
             "An EVC would now be sent to the mobile number and email "
             "registered for the deductor on the e-filing portal.",
-            "Any six digits will do here — there is no OTP to be right about.",
+            "The code is entered on incometax.gov.in, never here. PracticeSync"
+            " has no field that takes an OTP and will not have one when"
+            " filing is real — a box in your practice software that"
+            " accepts a portal credential is a credential-capture"
+            " surface whatever it is labelled.",
         ),
         common.transmit_stage([
             {"key": "generate", "label": "Return file generated"},
@@ -284,5 +298,20 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
                     ".fvu upload is manual on the e-filing portal (or a "
                     "TIN-FC counter with a signed Form 27A).",
         },
+        # What changes when this is real — and here the honest answer is that
+        # NO registration unlocks it, which is a different answer from every
+        # other flow and worth saying rather than implying a roadmap that has
+        # no gate to pass. The Department publishes no filing API for TDS
+        # statements at all; the upload is a human act on the portal.
+        "Nothing PracticeSync can register for changes this one, and that is "
+        "worth being straight about: the Income Tax Department publishes no "
+        "filing API for TDS statements, so the .fvu upload under the "
+        "deductor's TAN login stays a human act on incometax.gov.in (or a "
+        "TIN-FC counter with a signed Form 27A). An ERI registration — the "
+        "one that would let software file an ITR — does not reach quarterly "
+        "statements. What PracticeSync can do, and is where the effort "
+        "belongs, is everything up to the upload: the statement, the challan "
+        "reconciliation the FVU will run, and the §234E exposure before it "
+        "is charged rather than after.",
         stages,
     )

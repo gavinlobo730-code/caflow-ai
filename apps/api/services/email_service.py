@@ -393,6 +393,11 @@ def send_engagement_letter(
 def send_statement_to_customer(
     to: str,
     customer_name: str,
+    # The name of WHOSE ACCOUNT this is — the CA firm's CLIENT, not the
+    # practice. The parameter keeps its name because every caller and test
+    # already uses it; what changed is who the caller passes. A statement
+    # demanding payment under a chartered accountant's name misstates who is
+    # owed, and the practice is not a party to the debt.
     firm_name: str,
     period_start: str,
     period_end: str,

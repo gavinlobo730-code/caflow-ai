@@ -2,16 +2,37 @@
 
 /**
  * Income Tax / ITR Tracking Module
- * IT Act Section 139 — ITR filing due dates:
- *   - Non-audit cases: 31st July
- *   - Audit cases: 31st October
- * IT Act Section 208 — Advance tax installments
+ *
+ * THE DUE DATE IS NOT DECIDED HERE. Explanation 2 to IT Act §139(1) is applied
+ * by apps/api — services/compliance_obligation_service.itr_due_date_for_client,
+ * reached through GET /api/compliance/itr-due-date — and this page displays
+ * what comes back, including whether the backend could settle it at all.
+ *
+ * It used to decide it, and got it wrong for every company:
+ *
+ *     const AUDIT_ENTITY_TYPES = new Set(["private_limited","public_limited", …]);
+ *     isAuditCase(t) -> AUDIT_ENTITY_TYPES.has(t?.toLowerCase() ?? "")
+ *
+ * `clients.entity_type` is constrained by migration 001's CHECK to title case
+ * WITH A SPACE — 'Private Limited' — and ClientFormModal.tsx writes exactly
+ * that. toLowerCase() gives 'private limited', which is not 'private_limited',
+ * so the lookup missed on precisely the two multi-word values, which are
+ * precisely the companies. Every Private Limited and Public Limited client was
+ * given 31 July where Explanation 2(a)(i) fixes 31 October unconditionally.
+ * The same table also asserted that every LLP, partnership firm and trust is an
+ * audit case, which no fact in this product establishes — and that direction
+ * costs §234A interest, a §234F fee and the §80 carry-forward.
+ *
+ * CLAUDE.md: zero business logic in the frontend. A statutory rule kept in two
+ * places drifts, and only one of the two is law.
+ *
+ * IT Act Section 208 — Advance tax installments.
  *
  * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
  * All filing actions require explicit CA confirmation. Never auto-submit to Income Tax Portal.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   FileText,
@@ -27,6 +48,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { request, type ApiResp } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
@@ -56,44 +78,41 @@ interface ITREntry {
 const ITR_FORMS = ["ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6", "ITR-7"] as const;
 type ITRForm = (typeof ITR_FORMS)[number];
 
-const ASSESSMENT_YEARS = ["2024-25", "2025-26", "2026-27"] as const;
-type AY = (typeof ASSESSMENT_YEARS)[number];
+/**
+ * THE YEAR ON THIS PAGE IS A FINANCIAL YEAR, and it was labelled "Assessment
+ * Year" while behaving as one — which was the second half of the same bug.
+ *
+ * FY_PERIOD (below) maps "2025-26" to 1 Apr 2025 – 31 Mar 2026, which is the
+ * FINANCIAL year, and that pair is what is written to compliance_calendar's
+ * period_start / period_end. fyFromPeriodStart reads the same label back off a
+ * stored row, and routers/compliance.py's seeder writes the same pair. Only the
+ * deleted DUE_DATE_* tables read the label the other way, giving 31 July 2025
+ * for a period that ends in March 2026 — a return quoted a year before the year
+ * it reports on had finished. The backend computes from the period, so the date
+ * and the period now agree; the label is corrected to match them.
+ */
+const FINANCIAL_YEARS = ["2024-25", "2025-26", "2026-27"] as const;
+type FY = (typeof FINANCIAL_YEARS)[number];
 
-const AY_PERIOD: Record<AY, { start: string; end: string }> = {
+const FY_PERIOD: Record<FY, { start: string; end: string }> = {
   "2024-25": { start: "2024-04-01", end: "2025-03-31" },
   "2025-26": { start: "2025-04-01", end: "2026-03-31" },
   "2026-27": { start: "2026-04-01", end: "2027-03-31" },
 };
 
-// IT Act Section 139 — due dates
-const DUE_DATE_AUDIT: Record<AY, string> = {
-  "2024-25": "2024-10-31",
-  "2025-26": "2025-10-31",
-  "2026-27": "2026-10-31",
+/** What the backend says about one client's ITR due date for one FY.
+ *  `decided` false means `due_date` is the EARLIER of the two statutory dates
+ *  and `statutory_gaps` names the question nobody has answered. */
+type ItrDueDate = {
+  due_date: string;
+  is_audit: boolean;
+  decided: boolean;
+  basis: string;
+  statutory_gaps: string[];
 };
-const DUE_DATE_NON_AUDIT: Record<AY, string> = {
-  "2024-25": "2024-07-31",
-  "2025-26": "2025-07-31",
-  "2026-27": "2026-07-31",
-};
 
-// Entity types that require audit (October deadline) — IT Act Section 44AB
-const AUDIT_ENTITY_TYPES = new Set([
-  "private_limited",
-  "public_limited",
-  "llp",
-  "partnership",
-  "trust",
-  "aop",
-  "boi",
-]);
-
-function isAuditCase(entityType: string): boolean {
-  return AUDIT_ENTITY_TYPES.has(entityType?.toLowerCase() ?? "");
-}
-
-/** Derive assessment year (e.g. "2025-26") from a period's start date. */
-function getAYFromDates(periodStart: string): string {
+/** Derive the financial-year label (e.g. "2025-26") from a period's start. */
+function fyFromPeriodStart(periodStart: string): string {
   const year = parseInt(periodStart.slice(0, 4));
   const month = parseInt(periodStart.slice(5, 7));
   const fyStart = month >= 4 ? year : year - 1;
@@ -316,7 +335,7 @@ function BulkMarkFiledModal({
                         {entry.clients?.client_name ?? "Client"}
                       </p>
                       <p className="text-xs text-[#94A3B8] mt-0.5 font-mono">
-                        {entry.compliance_type} · AY {getAYFromDates(entry.period_start)}
+                        {entry.compliance_type} · FY {fyFromPeriodStart(entry.period_start)}
                       </p>
                     </div>
                     {isDone ? (
@@ -393,11 +412,18 @@ export default function IncomeTaxPage() {
   const [addForm, setAddForm] = useState({
     client_id: "",
     itr_form: "ITR-1" as ITRForm,
-    assessment_year: "2025-26" as AY,
-    due_date: "2025-07-31",
+    financial_year: "2025-26" as FY,
+    due_date: "",
   });
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  // What the backend said about this client + FY. Null until a client is
+  // chosen; the Due Date field stays empty until then, because there is no
+  // honest date to pre-fill without knowing the assessee.
+  const [dueDate, setDueDate] = useState<ItrDueDate | null>(null);
+  const [dueDateLoading, setDueDateLoading] = useState(false);
+  const [dueDateError, setDueDateError] = useState<string | null>(null);
+  const dueDateSeq = useRef(0);
 
   // Mark as Filed modal
   const [filedModal, setFiledModal] = useState<{ entry: ITREntry } | null>(null);
@@ -453,7 +479,7 @@ export default function IncomeTaxPage() {
   // ---------------------------------------------------------------------------
 
   const today = todayLocalISO();
-  const currentAY = "2025-26";
+  const currentFY = "2025-26";
 
   const totalDue = entries.length;
   const filed = entries.filter((e) => e.filing_status === "filed").length;
@@ -473,27 +499,57 @@ export default function IncomeTaxPage() {
   // Add ITR deadline
   // ---------------------------------------------------------------------------
 
+  /**
+   * Ask apps/api for the due date. Explanation 2 to §139(1) turns on facts the
+   * browser does not hold — whether the client is a company, whether its
+   * accounts are required to be audited — and the answer comes back with
+   * `decided` saying whether the backend could settle it, so an ASSUMED date is
+   * shown as assumed rather than pre-filled as fact.
+   */
+  const resolveDueDate = useCallback(async (clientId: string, fy: FY) => {
+    // Changing the client twice quickly starts two lookups, and the first can
+    // land last. Only the newest answer is allowed to reach the form — a stale
+    // reply would put one client's due date against another's name.
+    const seq = ++dueDateSeq.current;
+    if (!clientId) {
+      setDueDate(null);
+      setDueDateError(null);
+      setDueDateLoading(false);
+      return;
+    }
+    setDueDateLoading(true);
+    setDueDateError(null);
+    try {
+      const res = await request<ApiResp<ItrDueDate>>(
+        `/api/compliance/itr-due-date?client_id=${encodeURIComponent(clientId)}` +
+          `&financial_year=${encodeURIComponent(fy)}`
+      );
+      if (seq !== dueDateSeq.current) return;
+      setDueDate(res.data);
+      setAddForm((prev) => ({ ...prev, due_date: res.data.due_date }));
+    } catch (err) {
+      if (seq !== dueDateSeq.current) return;
+      // The field is left as the CA typed it and no date is invented. A guess
+      // here is what this whole change removed.
+      setDueDate(null);
+      setDueDateError(
+        err instanceof Error ? err.message : "Could not compute the due date"
+      );
+    } finally {
+      if (seq === dueDateSeq.current) setDueDateLoading(false);
+    }
+  }, []);
+
   function handleAddFormChange(
     field: keyof typeof addForm,
     value: string
   ) {
-    setAddForm((prev) => {
-      const updated = { ...prev, [field]: value };
-
-      // Auto-fill due date based on AY and entity type
-      if (field === "client_id" || field === "assessment_year") {
-        const clientId = field === "client_id" ? value : prev.client_id;
-        const ay = (field === "assessment_year" ? value : prev.assessment_year) as AY;
-        const client = clients.find((c) => c.id === clientId);
-        if (client) {
-          updated.due_date = isAuditCase(client.entity_type)
-            ? DUE_DATE_AUDIT[ay]
-            : DUE_DATE_NON_AUDIT[ay];
-        }
-      }
-
-      return updated;
-    });
+    setAddForm((prev) => ({ ...prev, [field]: value }));
+    if (field === "client_id" || field === "financial_year") {
+      const clientId = field === "client_id" ? value : addForm.client_id;
+      const fy = (field === "financial_year" ? value : addForm.financial_year) as FY;
+      void resolveDueDate(clientId, fy);
+    }
   }
 
   async function handleAddSubmit() {
@@ -504,9 +560,13 @@ export default function IncomeTaxPage() {
     setAddLoading(true);
     setAddError(null);
     try {
+      if (!addForm.due_date) {
+        setAddError("No due date yet — pick a client so the due date can be computed.");
+        return;
+      }
       const firmId = await getFirmId();
-      const ay = addForm.assessment_year as AY;
-      const period = AY_PERIOD[ay];
+      const fy = addForm.financial_year as FY;
+      const period = FY_PERIOD[fy];
 
       const sb = getSupabaseClient();
       const { error: insertErr } = await sb.from("compliance_calendar").insert({
@@ -521,7 +581,9 @@ export default function IncomeTaxPage() {
 
       if (insertErr) throw new Error(insertErr.message);
       setShowAddModal(false);
-      setAddForm({ client_id: "", itr_form: "ITR-1", assessment_year: "2025-26", due_date: "2025-07-31" });
+      setAddForm({ client_id: "", itr_form: "ITR-1", financial_year: "2025-26", due_date: "" });
+      setDueDate(null);
+      setDueDateError(null);
       await loadData();
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add ITR deadline");
@@ -636,9 +698,9 @@ export default function IncomeTaxPage() {
       ),
     },
     {
-      key: "ay", header: "AY", sortable: true,
-      accessor: (e) => getAYFromDates(e.period_start),
-      render: (e) => <span className="text-[#475569] text-xs">{getAYFromDates(e.period_start)}</span>,
+      key: "fy", header: "FY", sortable: true,
+      accessor: (e) => fyFromPeriodStart(e.period_start),
+      render: (e) => <span className="text-[#475569] text-xs">{fyFromPeriodStart(e.period_start)}</span>,
     },
     {
       key: "due_date", header: "Due Date", sortable: true,
@@ -683,9 +745,9 @@ export default function IncomeTaxPage() {
     }
     defs.push(
       {
-        key: "ay", label: "AY / FY", type: "select",
-        accessor: (e) => getAYFromDates(e.period_start),
-        options: [...ASSESSMENT_YEARS].map((ay) => ({ value: ay, label: ay })),
+        key: "fy", label: "Financial Year", type: "select",
+        accessor: (e) => fyFromPeriodStart(e.period_start),
+        options: [...FINANCIAL_YEARS].map((fy) => ({ value: fy, label: fy })),
       },
       {
         key: "itr_form", label: "ITR Form", type: "select",
@@ -817,7 +879,7 @@ export default function IncomeTaxPage() {
           <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-[#0F172A]">
-                ITR Status — AY {currentAY}
+                ITR Status — FY {currentFY}
               </h2>
               {overdue > 0 && (
                 <span className="flex items-center gap-1 text-xs text-red-600 font-medium">
@@ -1135,32 +1197,37 @@ export default function IncomeTaxPage() {
                 </select>
               </div>
 
-              {/* Assessment Year */}
+              {/* Financial Year — the period the return reports on. The label
+                  used to read "Assessment Year" while mapping to 1 Apr–31 Mar,
+                  which is the FY; see FY_PERIOD. */}
               <div>
                 <label className="block text-xs font-medium text-[#334155] mb-1.5">
-                  Assessment Year
+                  Financial Year
+                  <span className="ml-1 text-[#94A3B8] font-normal">
+                    (the year the return reports on)
+                  </span>
                 </label>
                 <select
-                  value={addForm.assessment_year}
+                  value={addForm.financial_year}
                   onChange={(e) =>
-                    handleAddFormChange("assessment_year", e.target.value)
+                    handleAddFormChange("financial_year", e.target.value)
                   }
                   className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {ASSESSMENT_YEARS.map((ay) => (
-                    <option key={ay} value={ay}>
-                      {ay}
+                  {FINANCIAL_YEARS.map((fy) => (
+                    <option key={fy} value={fy}>
+                      {fy}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Due Date — pre-filled, editable */}
+              {/* Due Date — computed by apps/api, editable */}
               <div>
                 <label className="block text-xs font-medium text-[#334155] mb-1.5">
                   Due Date
                   <span className="ml-1 text-[#94A3B8] font-normal">
-                    (31 Jul — non-audit · 31 Oct — audit, IT Act S.139)
+                    (IT Act §139(1), Explanation 2 — computed for this client)
                   </span>
                 </label>
                 <input
@@ -1171,6 +1238,50 @@ export default function IncomeTaxPage() {
                   }
                   className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+
+                {dueDateLoading && (
+                  <p className="mt-1.5 text-xs text-[#94A3B8]">
+                    Computing the due date…
+                  </p>
+                )}
+
+                {!dueDateLoading && !dueDate && !dueDateError && (
+                  <p className="mt-1.5 text-xs text-[#94A3B8]">
+                    Pick a client — the due date depends on the assessee, not on
+                    the year alone.
+                  </p>
+                )}
+
+                {dueDateError && (
+                  <p className="mt-1.5 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+                    {dueDateError} — enter the date yourself and check it against
+                    §139(1).
+                  </p>
+                )}
+
+                {/* A DECIDED date says which clause it rests on. An ASSUMED one
+                    says so first, and says what would settle it — the backend
+                    returns the earlier of the two dates in that case, so the
+                    CA is chased early rather than told a date that has passed. */}
+                {dueDate && !dueDateLoading && (
+                  dueDate.decided ? (
+                    <p className="mt-1.5 text-xs text-[#64748B]">
+                      {dueDate.basis}
+                    </p>
+                  ) : (
+                    <div className="mt-1.5 flex gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="font-medium">
+                          Assumed — please confirm before saving.
+                        </p>
+                        {dueDate.statutory_gaps.map((gap) => (
+                          <p key={gap}>{gap}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
 
               {addError && (
@@ -1187,9 +1298,12 @@ export default function IncomeTaxPage() {
               >
                 Cancel
               </button>
+              {/* Also waits on the due-date lookup: saving mid-fetch would
+                  either store a blank date or store the one left over from the
+                  previously-selected client. */}
               <button
                 onClick={handleAddSubmit}
-                disabled={actionInFlight}
+                disabled={actionInFlight || dueDateLoading}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {addLoading ? "Adding…" : "Add Deadline"}

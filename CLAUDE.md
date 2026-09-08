@@ -85,8 +85,80 @@ change. The code is the authority; keep this file in step with it.
 - GSTR-9 (annual): 31st December
 - TDS return (24Q salary / 26Q residents / 27Q non-residents — Rule 31A(2) sets one due date per quarter regardless of form): Q1 31 Jul, Q2 31 Oct, Q3 31 Jan, Q4 31 May. Q4 is the exception — it is NOT the end of the month following quarter end (that would be 30 Apr). services/compliance_engine.py::tds_return_due_date is the authority; keep any prose in step with it. **The DUE DATES above survive the 2025 Act unchanged. The FORM AND SECTION NUMBERS do not — see the next bullet.**
 - **From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it.** The Income-tax Act 2025 with the Income-tax Rules 2026 (CBDT Notification 22/2026, 20-03-2026, G.S.R. 198(E), plus a corrigendum) renumbered the statements — **24Q→138, 26Q→140, 27Q→144, 27EQ→143** — and the certificates — **Form 16→130** (three parts now), **16A→131** (quarterly now), **26AS→168**, **15G/15H→121**. It also collapsed the sections: **192→392**, the whole **194-series→393(1)**, **195→393(2)** (NOT 400 — one widely-copied source has that wrong), TCS→394, and returns now carry numeric payment codes 1001–1067. **Rates and thresholds are unchanged**, so `section_rates.py` holds right numbers under 1961-Act keys — and it stays that way. **This is a FORK, not a migration.** The transition is **by EVENT — credit or payment, whichever is earlier** — so periods up to 31-03-2026 keep the old forms and sections indefinitely, including belated and revised returns; both vocabularies are permanent. `act_for_date` is the definition and `act_for_fy` is derived from it, sound because commencement is exactly an FY boundary. **Translate at the boundary, never rekey a store**: ask the module where a form number or section code is emitted, and leave every rate lookup, stored challan and test on the 1961 keys. Challan matching accepts BOTH labels in every period — a challan records what somebody typed, not which Act governs the quarter. Three refusals are deliberate: the **s. 393 payment-code table is not held** (a wrong code is accepted and then wrong — a human step, like the ITR schemas), **s. 393(1) has no reverse**, and **a form cannot be asked for without a period**. ITR-1..7 are NOT renumbered — AY 2026-27 is still the 1961 Act. Verified 2026-09-04; see `docs/compliance/03-income-tax-and-tds.md`.
+- **A TDS threshold is a TRIGGER, not a deductible allowance, and most of the
+  §194 series aggregates over the year.** §194C(5) charges where "the aggregate
+  of the amounts of such sums credited or paid ... exceeds one lakh rupees", and
+  §§194A/194D/194G/194H/194J carry the same "aggregate of the sums" limb. So
+  crossing the limit does not exempt the earlier payments — it makes them due,
+  and the charge is on the WHOLE aggregate. The bill that crosses carries the
+  year's tax; every bill after it credits what was already withheld (§200), or
+  the same aggregate is taxed again and again. `domain/tds/section_rates.py`
+  holds which sections have an aggregate limb and `resolve_tds` takes BOTH
+  `fy_prior_taxable_paise` and `fy_prior_tds_paise` — a caller passing the first
+  without the second re-charges the growing aggregate on every later bill.
+  **§194I and §194B deliberately have no aggregate**: §194I's limit is per month
+  or part of a month, and FA 2025 made §194B per single transaction, so an FY
+  aggregate on either would deduct where the statute does not charge.
+  **§194Q is the one section charged on the EXCESS** — §194Q(1), "0.1 per cent
+  of such sum exceeding fifty lakh rupees" — carried on the rule as
+  `charge_on_excess_only` so the engine never tests a section by name. Its ₹50
+  lakh is both limbs at once ("the value OR AGGREGATE OF SUCH VALUE"). What this
+  engine does NOT decide for §194Q is whether it applies: the first proviso
+  binds only a buyer whose own turnover exceeded ₹10 crore in the preceding FY,
+  and no client turnover figure reaches it — the CA marks the vendor.
+- **The Finance (No. 2) Act 2024 forked capital gains on 23-07-2024, and it is
+  the DATE OF TRANSFER that decides.** §111A 15%→20%, §112A 10%/₹1,00,000 →
+  12.5%/₹1,25,000, §112 20%-with-indexation → 12.5%-without, and §2(42A)'s
+  holding periods moved — a non-property, non-listed asset needed **36** months
+  before that date, not 24. A transfer before it is governed by the earlier law
+  indefinitely, the same "fork, not migration" shape as the TDS vocabulary, and
+  the register holds real historical transfers. §2(42A) also runs to the day
+  **immediately preceding** transfer, so the test is `sale > purchase + N
+  months`, not a whole-month count. The fifth proviso to §112(1) — the lower of
+  12.5% without indexation and 20% with it — reaches only a **resident
+  individual or HUF**, only immovable property, and only property acquired
+  before the cutoff; `domain/income_tax/capital_gains_engine.py` withholds it
+  and says why rather than granting it by default. **FY 2024-25 straddles the
+  fork**, so `statutory_rates.FYTaxRates` (one CG rate set per FY) cannot
+  represent that year — it holds only post-fork years today, and adding 2024-25
+  needs pre/post buckets, as the ITR form itself splits them.
+- **A capital LOSS does not relieve other income** (§71(3), §74), and **§80G has
+  a ceiling** (§80G(4): 10% of adjusted gross total income, where adjusted GTI
+  is GTI less the capital-gains buckets and less every other Chapter VI-A
+  deduction). §80G's four categories are the PRODUCT of two independent facts
+  about the donee — the percentage and whether the qualifying limit applies —
+  so `Donation80G` carries both, defaulting to "subject to the limit" because
+  that is the residual category the section itself puts an unlisted donee in.
+  §80G(5D) bars a cash donation over ₹2,000 outright.
 - Advance tax due dates: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
-- ITR (IT Act §139): 31 July, or 31 October where audit applies
+- ITR (IT Act §139): 31 July, or 31 October where audit applies, or 30 November
+  where a §92E transfer-pricing report is required
+- **The §44AB AUDIT REPORT is due a month before the RETURN, and they are two
+  dates.** Explanation (ii) to §44AB (substituted by the Finance Act 2020,
+  w.e.f. AY 2020-21) defines the "specified date" as "date one month prior to
+  the due date for furnishing the return of income under sub-section (1) of
+  section 139" — so **30 September**, not the 31 October the return is due.
+  Dating the report at the return's date shows every audit client a deadline a
+  month late, on the obligation whose lateness carries §271B (0.5% of turnover,
+  capped at ₹1,50,000), and it is the wrong sequence: §139(1)'s own date
+  assumes the report is already on record.
+  `compliance_engine.tax_audit_report_due_date` DERIVES it from
+  `itr_due_date` rather than stating it, so a CBDT extension of one moves the
+  other. The §92E variant is deliberately not modelled — "one month prior" to
+  30 November is 30 October by calendar arithmetic while professional sources
+  commonly say 31 October, and that one-day difference is unconfirmed.
+- **Which ITR date applies is decided, or refused, in
+  `compliance_obligation_service.itr_due_date_for_client`.** Explanation 2 to
+  §139(1) settles it on facts the app holds in exactly three cases: (a)(i) a
+  Companies Act company is 31 October on entity type alone; (a)(ii) a client
+  with an active audit engagement is 31 October; (aa) a §92E report is
+  30 November and outranks both. Everything else — LLP, Partnership, Trust,
+  Proprietorship, Individual — is REFUSED: §44AB turns on the year's turnover,
+  an LLP's audit on LLP Act §34(4) with Rule 24(8) (a different test entirely),
+  a trust's on §12A(1)(b), and none of those figures is held against a client.
+  The refusal returns 31 July, the EARLIER of the two, with `decided: false`
+  and a named gap — early costs nothing, late costs §234A interest at 1% a
+  month, a §234F fee and the §80 carry-forward.
 - MCA/ROC offsets from the AGM date: ADT-1 +15d (§139), AOC-4 +30d (§137), MGT-7 +60d (§92)
 - **GSTR-3B Table 4** follows Notification 14/2022-Central Tax with Circular
   170/02/2022-GST, live on the portal from 01-09-2022: 4(A) is **gross** (it is
@@ -99,6 +171,22 @@ change. The code is the authority; keep this file in step with it.
   same return is not. `domain/gst/gstr3b_computer.py` carries the circular's
   wording and is the authority; the pre-2022 layout looks plausible and gets the
   tax right, which is why it survived so long.
+- **GSTR-3B Table 6 — the set-off has FOUR steps, and the total is not the
+  challan.** §49(5)(a) spends IGST credit on IGST and then, with Rule 88A, on
+  CGST and SGST; §49(5)(b) then lets CGST credit pay CGST **and then IGST**, and
+  §49(5)(c) lets SGST credit pay SGST and then IGST. CGST is worked before SGST
+  because the proviso to §49(5)(c) allows SGST credit against IGST only where
+  CGST credit is not available for it. §49(5)(e)/(f) bar CGST↔SGST entirely.
+  Implementing only the IGST limb left local credit stranded and demanded cash
+  the client did not owe. **Reverse-charge tax is never part of that**: §49(4)
+  allows the credit ledger to pay only "output tax", and §2(82) defines output
+  tax as EXCLUDING "tax payable by him on reverse charge basis" — so §9(3)/(4)
+  tax is always cash, always on top, and `cash_payable_paise` rather than
+  `net_*` is the challan figure. **A zero-rated supply carries tax when it is
+  made on payment of tax** (§16(3)(b), refunded under §54); nil only under an
+  LUT or bond (§16(3)(a)). `domain/gst/gstr3b_computer.py` is the authority for
+  all three, and the callers carry them — a figure the computer gets right and
+  no screen shows is not a fixed bug.
 - **Correction window** (CGST §37(3), §39(9), §16(4)): 30 November following the FY, **or
   the date GSTR-9 was furnished, whichever is EARLIER**. Filing the annual return early
   shuts the window early. `compliance_engine.correction_window_closes()` is the function
@@ -178,10 +266,16 @@ number**, computed at last year's rates and presented with no warning. That is
 the whole reason this has to be a checklist someone works through, rather than
 something that surfaces on its own.
 
-There is one live instance right now. `CII_BY_FY` stops at 2025-26, so on any
-date in FY 2026-27 `cii_for("2026-27")` returns 380 — the 2025-26 index. Post
-Budget 2024 indexation survives only as the grandfathered option on immovable
-property, so the blast radius is small, but the number is wrong, not absent.
+That trap was live until 2026-09-08 and is now closed, but read what actually
+happened, because the fallback was the SECOND problem. `CII_BY_FY` stopped at
+2025-26 and held **380** for it — and 380 was itself wrong; six independent
+sources say **376**. So `cii_for("2026-27")` returned last year's index AND
+last year's index was a figure nobody had checked. Both are fixed: 2025-26 is
+376, 2026-27 is 384, and `LATEST_CII_FY` deliberately stays at `"2025-26"`
+because both figures are secondary-sourced and moving the anchor promotes a
+guess to a verified figure. Post Budget 2024 indexation survives only as the
+grandfathered option on immovable property, so the blast radius was small —
+which is exactly why it sat there unnoticed.
 
 ### 1. The FY-versioned rate registries
 
@@ -250,11 +344,24 @@ print('payroll     latest', max(RATES_BY_FY), '| verified', LATEST_VERIFIED_FY)"
 ```
 
 **The PF wage BASE changed on 21-11-2025 and is now handled.** The Code on
-Social Security subsumed the EPF Act and adopts the Code on Wages `s.2(y)`
-definition: the listed EXCLUSIONS are capped at **50% of total remuneration**
-and the excess is **deemed wages**. `domain/payroll/wage_base.py` implements it,
-period-aware — any month ending before commencement reproduces the old
-`basic + DA` exactly — and migration 334 stores the working on the slip. Of the
+Social Security subsumed the EPF Act and adopts that Code's own wage
+definition — **Code on Social Security 2020 `s.2(88)`**, which is the operative
+provision for provident fund; the Code on Wages `s.2(y)` is the same words in
+the other Code, and citing it for a PF computation is imprecise. The listed
+EXCLUSIONS are capped at **50% of total remuneration** and the excess is
+**deemed wages**. `domain/payroll/wage_base.py` implements it, period-aware,
+and migration 334 stores the working on the slip.
+
+**The pre-commencement branch takes its own figure, and that is not cosmetic.**
+`compute()` used to return the s.2(88) wage aggregate for an earlier month too,
+and the router had — correctly, for s.2(88) — folded medical, special and other
+allowance into it. EPF Act **s.6** named three things: "basic wages, dearness
+allowance and retaining allowance". So an October 2025 month on ₹10,000 basic
+with ₹2,000 medical and ₹3,000 special deducted ₹1,800 where s.6 gives ₹1,200 —
+wrong on every historic month carrying an allowance, and it recomputes on
+demand, so a reprinted payslip disagreed with the challan actually remitted.
+`pre_code_wages_paise` is now passed explicitly and the docstring says what it
+is rather than claiming a reproduction that was false. Of the
 components modelled, only **HRA** (clause f) and **LTA** (clause d, "the value
 of any travelling concession") are excluded; everything else stays on the wage
 side, because that is the direction that cannot under-deduct and because a cash
@@ -268,8 +375,18 @@ is deliberate. Gratuity likewise. Verified 2026-09-04; see
 
 **Partly a gap: professional tax and the Labour Welfare Fund.** PT slabs are
 still bare literals in `routers/payroll.py`, covering **Maharashtra, Tamil Nadu,
-Karnataka and West Bengal** — four of the twenty-two states that levy it. LWF
-has no amounts at all.
+Karnataka and West Bengal** — four of the twenty-two states
+`domain/payroll/professional_tax.py` records as levying it. LWF has no amounts
+at all.
+
+⚠️ **That count of twenty-two is `[S]`-graded and probably one or two too high.**
+The 7 September 2026 research pass found Odisha reported as having repealed its
+levy from 01-04-2026 and Punjab's charge described as a Development Tax rather
+than professional tax. Neither was confirmable — egress is blocked, see
+`docs/audits/2026-09-07-market-research/` — and the list is deliberately NOT
+changed on that evidence, because the error direction is benign: naming a state
+that no longer levies produces a false GAP warning, never a wrong deduction.
+Settle it against the state notifications before removing either.
 
 What is no longer a gap is the SILENCE. `domain/payroll/professional_tax.py` and
 `domain/payroll/lwf.py` carry which states levy each, so an unmodelled state now
@@ -319,8 +436,17 @@ Recorded so nobody goes looking:
 - **GST rate slabs.** Rates are per-line on the document, not a central table.
 - **The FY label itself.** Derived from the date (`ist_fy_label`), never stored
   as a constant.
-- **Depreciation.** Schedule II rates come from the asset register's own
-  configuration, not a statutory table in code.
+- **Depreciation — but read this, it changed.** There IS a statutory table in
+  code now: `routers/fixed_assets.py::_SCHEDULE_II_PART_C` holds Schedule II
+  Part C's useful LIVES, and the WDV rate is derived from them as
+  `R = 1 − (residual/cost)^(1/n)` with residual capped at 5% (Part C Note 5).
+  It still does not belong in the April sweep — lives change only by MCA
+  amendment, not by Finance Act — which is why it is listed here rather than
+  above. What it replaced was a set of flat literals in which Furniture 10.00%
+  and Intangibles 25.00% were **Income-tax Act block rates** sitting under a
+  form field labelled "Companies Act 2013 Sch II rate", every one of them
+  under-depreciating. An asset's own stored `wdv_rate_percent` still wins over
+  the default whenever it has one.
 
 ## Code rules — always follow
 
@@ -626,6 +752,21 @@ decision of 2026-09-03 that reversed the earlier "draft only" rule. The
 posting path is still only `bank_posting_service.post`. `docs/audits/` and
 the batch completion reports are historical records, not current specs.
 
+**Three exceptions in `docs/audits/`, all from 7 September 2026, which ARE
+current and are where to start on any "what should we fix next" question:**
+
+| File | What it is |
+|---|---|
+| `2026-09-07-where-we-are-against-the-one-platform-goal.md` | the full platform audit against the one-platform goal: 278 findings, the module scorecard, the market comparison, and the staged plan. §13 records the verification pass |
+| `2026-09-07-findings/` | the 278 findings as JSON, one file per subsystem. **Sort by `verification.corrected_severity`, not `severity`** — the raw severity is the reader's first impression, the corrected one survived an adversarial check |
+| `2026-09-07-a-plus-roadmap.md` | what each of the 14 modules needs to reach A+, defined as five testable properties, in a seven-stage order that starts by proving correctness |
+
+`docs/audits/2026-09-07-market-research/` holds the statutory re-check behind
+them. **Nothing in it is graded `[P]`** — direct egress is refused at the proxy
+(`curl https://example.com` → CONNECT 403), which is this environment's network
+policy rather than a gov.in block, so every claim rests on a search engine's
+summary of a page nobody opened. Each file ends with a ranked re-verify list.
+
 ## Scope
 
 Well past MVP. Shipped and mounted: accounting/GL, GST (GSTR-1/3B/9, 2A/2B recon,
@@ -681,6 +822,15 @@ through the app is intended, and needs:
   reference recorded before the call and checked after a timeout, never a blind
   retry.
 
+**`docs/compliance/07-getting-permission-to-file.md` is the playbook**: what to
+apply for, in what order, what it costs, and what each one unblocks. Read it
+before starting any of this. Its headline: the Third Party Software Utility
+Developer registration that yields `SW########` is self-service and available
+now, while ERI, GSP and NIC production credentials are months of commercial
+work — and **e-invoice IRN and e-way bill are the only two statutory outputs
+software can complete end to end**, because the IRP signs and there is no
+taxpayer signature.
+
 Demo filing walk-throughs exist to SHOW these flows before they are real. There
 is exactly ONE implementation: the shared filing-demo framework —
 `services/filing_demo/` (a flow per statutory filing, GSTR-3B included), served
@@ -696,7 +846,22 @@ reach it**: turning the kill switch off left it simulating filings anyway.
 `apps/web/scripts/one-filing-demo-and-the-kill-switch-reaches-it.test.ts` holds
 the line, and every screen offering the wizard must probe
 `fetchFilingDemoCapabilities` first. A demo belongs on the screen where the
-RETURN lives, never on the deadline list — a deadline row is not a return. They are portal-faithful
+RETURN lives, never on the deadline list — a deadline row is not a return.
+
+**Fidelity is a product requirement, and so is disowning the result.** CAs are
+being shown these flows to judge whether real filing will be worth switching
+for, so each walks the portal's actual sequence — IMS before GSTR-3B Table 4,
+GSTR-1A before §37(3), GSTR-9C beside GSTR-9, the §140A challan, the ECR's
+wage-month order, SRN-is-not-filed on MCA. And every flow states **what changes
+when this is real**, which `envelope()` RAISES without, so the honesty is
+structural rather than a reminder; three of them say plainly that no
+registration is even waiting, because TDS, PF and ESI have no API to be
+granted. **There is no OTP input anywhere in it** — an EVC field in this app is
+a credential capture surface whatever it is labelled, and it is also simply
+wrong: the OTP is typed on the portal, never in the software that prepared the
+return.
+
+They are portal-faithful
 in sequence, transmit nothing, write nothing, and every response carries an
 honest `SIM-NOT-FILED` reference; any realistic-looking reference they display
 is labelled SPECIMEN at the point of display. `ENABLE_FILING_SIMULATION`
@@ -710,8 +875,16 @@ file.
 
 The genuine path today is unchanged and stays: the CA files on the portal, then
 records it here (`PATCH /gstr3b/{id}/status` with `status=submitted`), which
-writes the real ARN, the filing date, and the `gst_filings` row that
-`journal_period_lock_reason` reads to lock the period.
+writes the real ARN, the filing date, and the **`public.filings`** row that
+`journal_period_lock_reason` reads to lock the period. (There is no
+`gst_filings` table — this file said so for a long time.
+`services/gst_filing_record_service.py` is the authority.) Until 2026-09-08 no
+screen called that endpoint: `lib/data/gst.ts` wrote `status: "submitted"`
+straight into `gstr3b_returns` over PostgREST, so `rbac()` never ran, the
+backend's `record_filing` never ran either, and **a filed return did not lock
+its period**. It now PATCHes, and checks `res.success` — the GST workspace
+router answers refusals as HTTP 200 with `{success: false}`, so an unchecked
+call showed "Filed" for a request the server had declined.
 
 ### Live bank feeds through the Account Aggregator
 
@@ -754,7 +927,19 @@ imprecise:
   amount, both were accepted.
 - a blank field gives `NaN`, and `JSON.stringify` sends that as `null`.
 
-All 61 call sites across 28 files are converted. The module also carries
+All 61 call sites across 28 files are converted — and that sentence stood here
+unguarded while **nine more** lived on until 2026-09-08, in the bank settlement
+modal (which posts to the GL), the bank match filter, the bank rules editor,
+the recurring journal, client billing, the budget grid and the GSTR-2A import.
+`components/banking/shared.ts::rsToP` was the reason: it took a `number` and did
+`Math.round(rs * 100)`, so every caller had to `parseFloat` first. It now takes
+the text as typed and returns null.
+**`apps/web/scripts/every-amount-field-uses-the-one-parser.test.ts` is what
+holds the claim up now** — it sweeps `apps/web` for `rsToP(parseFloat`,
+`Math.round(parseFloat` and `parseFloat(…) * 100`, allowlisting only the three
+deliberate exceptions below. Prose was not the guard.
+
+The module also carries
 `bpsFromPercentInput` (a typed percentage → basis points) and `parseQuantity`
 (up to three decimals, matching `NUMERIC(10,3)` on the line tables), and
 `lib/money/lineInput.parseLineAmounts` reads a document line's quantity and rate

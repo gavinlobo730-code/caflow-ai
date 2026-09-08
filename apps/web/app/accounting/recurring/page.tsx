@@ -14,6 +14,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { api } from "@/lib/api";
 import { todayLocalISO } from "@/lib/dateMath";
 import type { Account, Client } from "@/lib/types";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -198,12 +199,14 @@ export default function RecurringPage() {
     if (!form.debit_account_id) { setFormError("Debit account is required"); return; }
     if (!form.credit_account_id) { setFormError("Credit account is required"); return; }
     if (form.debit_account_id === form.credit_account_id) { setFormError("Debit and credit accounts must differ"); return; }
-    const rupees = parseFloat(form.amount_rupees);
-    if (isNaN(rupees) || rupees <= 0) { setFormError("Enter a valid amount"); return; }
+    // Integer paise through the one parser. This was
+    // `Math.round(parseFloat(form.amount_rupees) * 100)`, and
+    // parseFloat("1,25,000") is 1 — a recurring entry a CA set up for
+    // ₹1,25,000 a month posted ₹1 a month, every month, unattended.
+    const amount_paise = paiseFromRupeeInput(form.amount_rupees);
+    if (amount_paise === null) { setFormError("Amount isn't a number. Type it in rupees, like 125000 or 125000.50."); return; }
+    if (amount_paise <= 0) { setFormError("Enter a valid amount"); return; }
     if (!form.start_date) { setFormError("Start date is required"); return; }
-
-    // All money stored as integer paise — no floating point
-    const amount_paise = Math.round(rupees * 100);
 
     const newTpl: RecurringTemplate = {
       id: crypto.randomUUID(),
