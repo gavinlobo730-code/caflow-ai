@@ -8,6 +8,7 @@ Status flow: draft → pending_review → approved → posted
 
 All monetary values: integer paise (BIGINT). Never float.
 """
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +24,7 @@ from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
+_logger = logging.getLogger("caflow.year_end_adjustments")
 
 router = APIRouter(prefix="/year-end", tags=["year-end-adjustments"])
 
@@ -31,6 +33,30 @@ _VALID_ADJUSTMENT_TYPES = {
     "reclassification", "depreciation_adj", "manual",
 }
 _VALID_STATUSES = {"draft", "pending_review", "approved", "posted", "rejected"}
+
+# journal_entries.source_type for an adjustment posted from this router. Snake
+# case, matching the values the other posting paths use ("bank_transaction",
+# "purchase_payment", "receipt"). Deliberately NOT 'manual': migrations 275/276
+# let a MANUAL entry be edited or discarded while its period is open, and a
+# year-end adjustment carries its own draft → submitted → approved → posted
+# trail, so it is a source document rather than a hand-written entry.
+_JOURNAL_SOURCE_TYPE = "year_end_adjustment"
+
+# journal_entries.entry_type is CHECK-constrained (migration 003) to
+# Sales / Purchase / Payment / Receipt / Journal / Contra / Opening. An
+# adjustment is a Journal; the fact that it came from the year-end workflow is
+# carried by _JOURNAL_SOURCE_TYPE, not by inventing an eighth entry type.
+_JOURNAL_ENTRY_TYPE = "Journal"
+
+
+def _journal_reference(adjustment_id: str) -> str:
+    """The posting kernel's idempotency key is (firm, client, reference_no,
+    entry_date), so the reference has to be derived from something unique to
+    this adjustment — the same reasoning as
+    phase2_journal_service.purchase_bill_journal_ref. The adjustment's own id
+    is unique; reference_no on the adjustment row is free text a CA types and
+    two adjustments dated the same day may share it."""
+    return f"YEA-{str(adjustment_id)[:8].upper()}"
 
 # ── Mock store ────────────────────────────────────────────────────────────────
 # engagement_id → list of adjustment dicts
@@ -444,8 +470,9 @@ def post_adjustment(
     current_user: dict = Depends(rbac("year_end", "approve")),
 ):
     """
-    Post an approved adjustment — creates a journal entry via accounting service.
-    source='YEAR_END_ADJUSTMENT' tags the journal entry for traceability.
+    Post an approved adjustment — creates a journal entry through the single
+    posting kernel (phase2_journal_service._create_journal).
+    source_type='year_end_adjustment' tags the journal entry for traceability.
     """
     now = datetime.now(timezone.utc).isoformat()
 
@@ -472,8 +499,9 @@ def post_adjustment(
         return api_response(True, adj)
 
     from core.supabase_client import get_supabase
+    from services.phase2_journal_service import phase2_journal_service
     db = get_supabase()
-    _assert_engagement_scope(db, engagement_id, current_user, require_unlocked=True)
+    eng = _assert_engagement_scope(db, engagement_id, current_user, require_unlocked=True)
 
     try:
         existing = (
@@ -499,52 +527,138 @@ def post_adjustment(
     # see the identical check in the mock branch above for context.
     period_validation_service.validate_posting_date(current_user["firm_id"], existing["adjustment_date"])
 
-    # Create journal entry via accounting domain service with source tag
-    journal_id = str(uuid.uuid4())
-    journal_entry = {
-        "id":           journal_id,
-        "firm_id":      current_user["firm_id"],
-        "entry_date":   existing["adjustment_date"],
-        "reference_no": f"YEA-{adjustment_id[:8].upper()}",
-        "narration":    existing["description"],
-        "source":       "YEAR_END_ADJUSTMENT",
-        "source_ref_id":adjustment_id,
-        "is_posted":    True,
-        "created_at":   now,
-    }
-    journal_lines = [
+    # ── The journal goes through the ONE posting kernel ───────────────────────
+    # This used to assemble a journal_entries dict here, insert it, then insert
+    # the two journal_lines in a separate statement. Two things were wrong with
+    # that, and the second is the one that matters.
+    #
+    # (a) The columns were not the live ones. It sent `source` and
+    #     `source_ref_id`; journal_entries has `source_type` and `source_id`
+    #     (migration 104). It omitted `client_id` and `entry_type`, both NOT
+    #     NULL with no default (migration 003). So in production the insert
+    #     failed on EVERY approved adjustment: the CA worked the whole
+    #     workflow — draft, submitted, approved — clicked Post and got a 500,
+    #     nothing reached the ledger, and the Balance Sheet and P&L they went
+    #     on to sign were the UNADJUSTED ones.
+    #
+    # (b) It was a second write path into the general ledger, which CLAUDE.md
+    #     forbids outright. _create_journal asserts double-entry balance,
+    #     refuses a zero-value entry, checks the CLIENT's own year lock
+    #     (migration 289 — the firm-level lock above is a different lock),
+    #     dedupes on (firm, client, reference_no, entry_date), and writes the
+    #     header and every line in ONE transaction via post_journal_atomic
+    #     (migration 152). The hand-rolled path had none of that — and a line
+    #     insert failing after the header committed stranded an orphan header
+    #     that the immutability trigger makes unrepairable.
+    #
+    # Routing through the kernel fixes (a) as a side effect: the kernel is the
+    # thing that knows what the columns are called.
+    #
+    # client_id comes from the (firm-validated) engagement for the same reason
+    # create_adjustment derives it from there rather than from the request.
+    client_id = eng.get("client_id") or existing.get("client_id")
+    amount_paise = existing["amount_paise"]          # integer paise — BIGINT
+    lines = [
         {
-            "journal_entry_id": journal_id,
-            "account_id":       existing["debit_account_id"],
-            "debit_paise":      existing["amount_paise"],   # integer paise
-            "credit_paise":     0,
-            "narration":        existing["description"],
+            "account_id":   existing["debit_account_id"],
+            "debit_paise":  amount_paise,
+            "credit_paise": 0,
+            "narration":    existing["description"],
         },
         {
-            "journal_entry_id": journal_id,
-            "account_id":       existing["credit_account_id"],
-            "debit_paise":      0,
-            "credit_paise":     existing["amount_paise"],   # integer paise
-            "narration":        existing["description"],
+            "account_id":   existing["credit_account_id"],
+            "debit_paise":  0,
+            "credit_paise": amount_paise,
+            "narration":    existing["description"],
         },
     ]
-    db.table("journal_entries").insert(journal_entry).execute()
-    db.table("journal_lines").insert(journal_lines).execute()
 
-    # Update adjustment status
-    updated = (
+    # Claim the posting FIRST, conditionally on the row still being `approved`
+    # — the same discipline as fixed_assets.dispose_asset and
+    # purchase_bills.receive_purchase_bill. A second click, or a retry that
+    # raced the first, matches zero rows and 409s before touching the ledger.
+    claim = (
         db.table("year_end_adjustments")
         .update({
-            "status":           "posted",
-            "posted_by":        current_user.get("auth_user_id"),
-            "posted_at":        now,
-            "journal_entry_id": journal_id,
-            "updated_at":       now,
+            "status":     "posted",
+            "posted_by":  current_user.get("auth_user_id"),
+            "posted_at":  now,
+            "updated_at": now,
         })
         .eq("id", adjustment_id)
+        .eq("engagement_id", engagement_id)
+        .eq("status", "approved")
         .execute()
-        .data[0]
+        .data
     )
+    if not claim:
+        raise HTTPException(status_code=409, detail="This adjustment has already been posted")
+
+    def _rollback_claim() -> None:
+        """Nothing reached the ledger, so the adjustment must not be left
+        `posted` with no journal behind it — put it back where a retry can
+        pick it up."""
+        db.table("year_end_adjustments").update({
+            "status":     "approved",
+            "posted_by":  None,
+            "posted_at":  None,
+            "updated_at": now,
+        }).eq("id", adjustment_id).eq("engagement_id", engagement_id).execute()
+
+    try:
+        journal_id = phase2_journal_service._create_journal(
+            db=db,
+            firm_id=current_user["firm_id"],
+            client_id=client_id,
+            entry_date=existing["adjustment_date"],
+            reference_no=_journal_reference(adjustment_id),
+            narration=existing["description"],
+            entry_type=_JOURNAL_ENTRY_TYPE,
+            lines=lines,
+            is_posted=True,
+            source_type=_JOURNAL_SOURCE_TYPE,
+            source_id=adjustment_id,
+            # journal_entries.created_by FKs public.users.id (the internal user
+            # id), NOT the Supabase auth id — see CLAUDE.md. year_end_adjustments
+            # .posted_by above has no FK and has always carried auth_user_id;
+            # the two columns genuinely hold different identifiers.
+            created_by=current_user.get("id"),
+        )
+        if not journal_id:
+            raise RuntimeError("year-end adjustment journal posting returned no id")
+    except Exception as jerr:
+        _rollback_claim()
+        if isinstance(jerr, HTTPException):
+            # A deliberate refusal (a closed client year, say) carries a
+            # sentence the CA can act on; collapsing it into a generic message
+            # would tell them to retry something that can never succeed.
+            raise
+        if isinstance(jerr, ValueError):
+            # The kernel's own rejections — imbalance, a zero-value entry, a
+            # client financial year already finalised.
+            raise HTTPException(status_code=422, detail=str(jerr))
+        _logger.error(
+            "post_adjustment: journal posting failed for adjustment %s; the "
+            "adjustment was rolled back to approved: %s", adjustment_id, jerr,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Could not post this year-end adjustment — nothing was written "
+                   "to the ledger. The failure has been logged for the team.",
+        )
+
+    # Link the journal only after it exists, so journal_entry_id never names an
+    # entry that was not written.
+    linked = (
+        db.table("year_end_adjustments")
+        .update({"journal_entry_id": journal_id, "updated_at": now})
+        .eq("id", adjustment_id)
+        .eq("engagement_id", engagement_id)
+        .execute()
+        .data
+    )
+    updated = linked[0] if linked else {**claim[0], "journal_entry_id": journal_id}
     log_event(
         current_user["firm_id"], "year_end_adjustment", adjustment_id, "post",
         actor_id=current_user.get("auth_user_id"),
