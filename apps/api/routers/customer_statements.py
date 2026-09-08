@@ -120,15 +120,20 @@ def email_statement(
         db, firm_id, data.client_id, data.customer_id, data.start_date, data.end_date,
         to_email, actor_id, actor_email)
 
-    from services.statement_pdf_service import build_statement_pdf
-    from services.invoice_pdf_service import _load_firm
+    from services.statement_pdf_service import build_statement_pdf, load_account_holder
     from services.email_service import send_statement_to_customer
-    firm = _load_firm(firm_id)
-    pdf_bytes = build_statement_pdf(stmt, firm, stmt["customer"])
+    # The CLIENT, not the practice. The customer owes the client; the CA firm
+    # is not a party to the debt, and a statement demanding payment under a
+    # chartered accountant's name misstates who is owed — in the PDF's
+    # letterhead and in the covering email alike. This loaded the firm.
+    holder = load_account_holder(db, firm_id, data.client_id)
+    holder_name = (holder.get("legal_name") or holder.get("trade_name")
+                   or holder.get("client_name") or "your supplier")
+    pdf_bytes = build_statement_pdf(stmt, holder, stmt["customer"])
     name = (stmt["customer"].get("name") or "customer").replace(" ", "-").lower()
     success, provider_id = send_statement_to_customer(
         to=to_email, customer_name=stmt["customer"].get("name") or "Customer",
-        firm_name=firm.get("name") or "Your Chartered Accountant",
+        firm_name=holder_name,
         period_start=data.start_date, period_end=data.end_date,
         closing_balance_paise=stmt["closing_balance_paise"],
         pdf_bytes=pdf_bytes, pdf_filename=f"statement-{name}.pdf")
