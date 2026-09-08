@@ -182,3 +182,95 @@ def test_no_gaps_are_claimed_when_there_is_no_salary_at_all():
     a = build_annexure_ii(slips=[], employees_by_id={},
                           standard_deduction_paise=STD_DEDUCTION)
     assert a.rows == [] and a.gaps == [] and a.problems == []
+
+
+# ── §16(ia) is not one number ────────────────────────────────────────────────
+#
+# Finance Act 2023 extended the standard deduction to the new regime and Finance
+# (No. 2) Act 2024 raised the NEW regime's figure to ₹75,000, leaving the OLD
+# regime's at ₹50,000. §16(ia) is the single clause of section 16 that survives
+# §115BAC(2)(i), which is exactly what makes it easy to treat as regime-blind —
+# and this builder did, handing every employee ₹75,000 although the row already
+# consulted `uses_new_regime` for professional tax a few lines away.
+#
+# ₹25,000 per old-regime employee of understated income under the head
+# Salaries, on the annexure TRACES builds Form 16 Part B from. Wrong in the
+# employee's favour and traceable to the employer.
+
+OLD_STD_DEDUCTION = 50_000_00
+
+
+def _declaration(**over):
+    from domain.payroll import declarations as d
+    base = dict(employee_id="e1", fy="2026-27", regime=d.REGIME_OLD,
+                status=d.STATUS_VERIFIED, proofs_verified=True)
+    base.update(over)
+    return d.Declaration(**base)
+
+
+def _build_with_regime(decl, *, old_std=OLD_STD_DEDUCTION):
+    return build_annexure_ii(
+        slips=[_slip()] * 12,
+        employees_by_id={"e1": _emp()},
+        standard_deduction_paise=STD_DEDUCTION,
+        old_regime_standard_deduction_paise=old_std,
+        declarations_by_employee={"e1": decl},
+    )
+
+
+def test_an_old_regime_employee_gets_the_old_regimes_standard_deduction():
+    r = _build_with_regime(_declaration()).rows[0]
+    assert r.uses_new_regime is False
+    assert r.standard_deduction_16_ia_paise == OLD_STD_DEDUCTION
+    # Income under the head is HIGHER by the ₹25,000 that was being given away,
+    # net of the §16(iii) professional tax this employee is entitled to.
+    assert r.income_under_salaries_paise == (
+        12 * 70_000_00 - OLD_STD_DEDUCTION - 12 * 200_00)
+
+
+def test_a_new_regime_employee_still_gets_seventy_five_thousand():
+    """The mirror. Fixing the old regime must not move the new one."""
+    from domain.payroll import declarations as d
+    r = _build_with_regime(_declaration(regime=d.REGIME_NEW)).rows[0]
+    assert r.uses_new_regime is True
+    assert r.standard_deduction_16_ia_paise == STD_DEDUCTION
+    assert r.allowable_professional_tax_paise == 0
+
+
+def test_the_two_regimes_differ_by_exactly_the_statutory_gap():
+    from domain.payroll import declarations as d
+    old = _build_with_regime(_declaration()).rows[0]
+    new = _build_with_regime(_declaration(regime=d.REGIME_NEW)).rows[0]
+    assert (new.standard_deduction_16_ia_paise
+            - old.standard_deduction_16_ia_paise) == 25_000_00
+
+
+def test_the_old_regime_figure_is_still_capped_at_the_salary():
+    """§16 deductions come out of salary; the head cannot produce a loss."""
+    a = build_annexure_ii(
+        slips=[_slip(basic_paise=30_000_00, hra_paise=0, pt_paise=0)],
+        employees_by_id={"e1": _emp()},
+        standard_deduction_paise=STD_DEDUCTION,
+        old_regime_standard_deduction_paise=OLD_STD_DEDUCTION,
+        declarations_by_employee={"e1": _declaration()},
+        months_expected=1,
+    )
+    assert a.rows[0].standard_deduction_16_ia_paise == 30_000_00
+    assert a.rows[0].income_under_salaries_paise == 0
+
+
+def test_an_old_regime_row_with_no_old_figure_supplied_says_so():
+    """A caller with only new-regime employees need not supply the old figure.
+    Where one turns up anyway the row keeps what it was given and the annexure
+    NAMES it — a wrong number nobody is told about is the failure this module
+    exists to prevent."""
+    a = _build_with_regime(_declaration(), old_std=None)
+    assert a.rows[0].standard_deduction_16_ia_paise == STD_DEDUCTION
+    assert any("old-regime §16(ia)" in g and "Asha Kumar".upper() in g.upper()
+               for g in a.gaps), a.gaps
+
+
+def test_a_new_regime_only_annexure_never_reports_that_gap():
+    from domain.payroll import declarations as d
+    a = _build_with_regime(_declaration(regime=d.REGIME_NEW), old_std=None)
+    assert not any("old-regime §16(ia)" in g for g in a.gaps)

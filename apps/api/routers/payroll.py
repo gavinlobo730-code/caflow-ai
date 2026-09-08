@@ -877,6 +877,49 @@ def _percent_of(base_paise: int, percent) -> int:
         _Decimal("1"), rounding=_ROUND_HALF_UP))
 
 
+def _pf_wage_base(*, basic_paise: int, da_paise: int, hra_paise: int,
+                  lta_paise: int, medical_paise: int,
+                  special_allowance_paise: int, other_allowances_paise: int,
+                  fy: Optional[str], month: Optional[int]):
+    """The PF wage base for one employee-month, and its §2(y) working.
+
+    Until 21-11-2025: EPF Act §6, PF wages = Basic + DA (task #229 — basic alone
+    under-computed PF). From the commencement of the four Labour Codes the Code
+    on Social Security subsumed the EPF Act and adopts the Code on Wages §2(y)
+    definition, which caps the listed EXCLUSIONS at half of total remuneration
+    and deems the excess to be wages.
+
+    HRA is clause (f) verbatim and LTA is clause (d), "the value of any
+    travelling concession". Everything else — medical, special, other — stays on
+    the wage side, which is both the correct reading (see the module) and the
+    only direction that cannot under-deduct. domain/payroll/wage_base.py holds
+    the reasoning and the period test; it returns the old figure unchanged for
+    any month ending before 21-11-2025, so historic payslips recompute
+    identically.
+
+    MODULE LEVEL, AND CALLED FROM BOTH PLACES, BECAUSE THEY HAD DRIFTED.
+    _compute_slip deducted on this base while /statutory-position projected PF
+    on `basic + da` — the pre-Code rule — so the same employee on ₹10,000 basic
+    with ₹18,000 HRA showed ₹1,200 of employee PF on one screen and ₹1,680 on
+    the other, and only the second was remitted. Which components are wages and
+    which are the clause (a)-(i) exclusions is a statutory reading, not an
+    arithmetic detail, and two copies of it drift the way these two did.
+    """
+    return wage_base.compute(
+        wage_components_paise=(basic_paise + da_paise + medical_paise
+                               + special_allowance_paise + other_allowances_paise),
+        excluded_components_paise=hra_paise + lta_paise,
+        # EPF Act §6 for any month before the Codes commenced: basic wages,
+        # dearness allowance and retaining allowance, and nothing else. The
+        # §2(y) aggregate above is the right base only from 21-11-2025 — passing
+        # it for an earlier month deducted PF on medical and special allowance
+        # too, which §6 never reached.
+        pre_code_wages_paise=basic_paise + da_paise,
+        fy_label=fy,
+        month=month,
+    )
+
+
 def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str] = None,
                   esi_covered_at_period_start: bool = False,
                   pt_month: Optional[int] = None,
@@ -953,26 +996,14 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     recurring = basic + hra + da + lta + medical + special + other
     gross     = recurring + ot.total_paise
 
-    # THE PF WAGE BASE, WHICH CHANGED ON 21-11-2025.
-    #
-    # Until then: EPF Act §6, PF wages = Basic + DA (task #229 — basic alone
-    # under-computed PF). From the commencement of the four Labour Codes the
-    # Code on Social Security subsumed the EPF Act and adopts the Code on Wages
-    # §2(y) definition, which caps the listed EXCLUSIONS at half of total
-    # remuneration and deems the excess to be wages.
-    #
-    # HRA is clause (f) verbatim and LTA is clause (d), "the value of any
-    # travelling concession". Everything else — medical, special, other — stays
-    # on the wage side, which is both the correct reading (see the module) and
-    # the only direction that cannot under-deduct. domain/payroll/wage_base.py
-    # holds the reasoning and the period test; it returns the old figure
-    # unchanged for any month ending before 21-11-2025, so historic payslips
-    # recompute identically.
-    _wb = wage_base.compute(
-        wage_components_paise=basic + da + medical + special + other,
-        excluded_components_paise=hra + lta,
-        fy_label=fy,
-        month=pt_month,
+    # THE PF WAGE BASE, WHICH CHANGED ON 21-11-2025 — see _pf_wage_base, which
+    # holds the rule and which /statutory-position calls too, so there is one
+    # classification rather than the two that had drifted apart.
+    _wb = _pf_wage_base(
+        basic_paise=basic, da_paise=da, hra_paise=hra, lta_paise=lta,
+        medical_paise=medical, special_allowance_paise=special,
+        other_allowances_paise=other,
+        fy=fy, month=pt_month,
     )
     # One-time earnings are deliberately outside the §2(y) test — a bonus is an
     # exclusion at (a) and a commission at (i), and putting them in the
@@ -1033,6 +1064,30 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     annual_gross = (max(0, gross_already_paid_paise)
                     + recurring * months_left
                     + ot.taxable_paise)
+    # THE YEAR IS AS LONG AS THE EMPLOYMENT, HERE TOO.
+    #
+    # `annual_gross` above is already months-employed aware, and these three
+    # figures were not: each was this month's amount times TWELVE, for an
+    # employee the very same computation knows is paid for six months. Every one
+    # of them is a per-year total feeding a per-year rule, so a twelve-month
+    # figure sitting beside a six-month salary gets the rule wrong:
+    #
+    #   * §10(13A) with Rule 2A — the exemption is the least of the HRA
+    #     received, 50%/40% of salary, and rent paid less 10% of salary, all
+    #     "for the period during which the accommodation was occupied". A
+    #     doubled salary doubles the 10% subtracted from rent and can wipe the
+    #     third limb out entirely, so the exemption collapses and the tax rises.
+    #     Measured on an October joiner at ₹1,00,000 basic + 50% HRA paying
+    #     ₹20,000 a month of metro rent: ₹85,800 of annual tax against ₹73,320.
+    #   * §16(iii) — professional tax is deductible as ACTUALLY PAID, and a
+    #     six-month employee pays it for six months.
+    #
+    # `months_employed_in_fy` is what §192(1)'s "estimated income ... for that
+    # financial year" already rests on for the salary; the reliefs against that
+    # salary have to be estimated over the same period. Floored at zero for the
+    # employee whose joining date falls after this year ends — the projection is
+    # then zero salary, and a relief against nothing is nothing.
+    months_in_year = max(0, months_employed_in_fy)
     tds_monthly = _monthly_tds(
         declaration=declaration,
         annual_gross_paise=annual_gross,
@@ -1043,9 +1098,9 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         # cut this year's exemption on rent that was paid against this year's
         # salary. Arrears relief has its own path — §89 and Form 10E,
         # domain/payroll/arrears.py — which is where the earlier year belongs.
-        basic_plus_da_paise=(basic + da) * 12,
-        hra_received_paise=hra * 12,
-        professional_tax_paise=pt * 12,
+        basic_plus_da_paise=(basic + da) * months_in_year,
+        hra_received_paise=hra * months_in_year,
+        professional_tax_paise=pt * months_in_year,
         fy=fy,
         month=pt_month,
         tds_already_deducted_paise=tds_already_deducted_paise,
@@ -3475,7 +3530,7 @@ def payroll_employee_exceptions(
         # No declarations table reachable means nobody has intimated the old
         # regime, which is the §115BAC(1A) default and the safe reading: it
         # reports FEWER date-of-birth gaps, never invented ones.
-        logger.exception("could not read declarations for the exception index")
+        _logger.exception("could not read declarations for the exception index")
 
     out = []
     for emp in employees:
@@ -4407,7 +4462,14 @@ def form_24q_annexure_ii(
     ann = build_annexure_ii(
         slips=slips,
         employees_by_id={e["id"]: e for e in employees},
+        # BOTH figures, because §16(ia) is not the same number under the two
+        # regimes: Finance (No. 2) Act 2024 took the new regime's to ₹75,000 and
+        # left the old regime's at ₹50,000. Passing only the new one gave every
+        # old-regime employee ₹25,000 too much and understated income under the
+        # head Salaries on the annexure TRACES builds Form 16 Part B from. The
+        # builder selects per row on the regime the employee was withheld on.
         standard_deduction_paise=rates.new_regime_standard_deduction_paise,
+        old_regime_standard_deduction_paise=rates.old_regime_standard_deduction_paise,
         months_expected=len(usable) or 12,
         declarations_by_employee=declarations,
         perquisites_by_employee=perquisites,
@@ -4932,13 +4994,29 @@ def statutory_position(
         basic = int(emp.get("basic_paise") or 0)
         da = _percent_of(basic, emp.get("da_percent", 0))
         hra = _percent_of(basic, emp.get("hra_percent", 0))
-        gross = (basic + hra + da
-                 + int(emp.get("lta_paise") or 0)
-                 + int(emp.get("medical_paise") or 0)
-                 + int(emp.get("special_allowance_paise") or 0)
-                 + int(emp.get("other_allowances_paise") or 0))
+        lta = int(emp.get("lta_paise") or 0)
+        medical = int(emp.get("medical_paise") or 0)
+        special = int(emp.get("special_allowance_paise") or 0)
+        other = int(emp.get("other_allowances_paise") or 0)
+        gross = basic + hra + da + lta + medical + special + other
 
-        pf = (_compute_pf(basic + da, fy, eps_eligible=emp.get("eps_eligible", True))
+        # THE SAME WAGE BASE THE RUN DEDUCTS ON, through the same helper. This
+        # projected `basic + da`, which has been the wrong rule since the Labour
+        # Codes commenced on 21-11-2025 — so this screen showed ₹1,200 of
+        # employee PF for an employee the payroll run deducted ₹1,680 from
+        # (₹10,000 basic, ₹18,000 HRA: exclusions are 64% of total, the excess
+        # over half is deemed wages and the base is ₹14,000). Two PF figures for
+        # one employee, and the CA has no way to tell which the challan will
+        # carry. The month decides which side of commencement this sits on, so
+        # a position asked for an earlier month still answers at that month's
+        # rule.
+        _wb = _pf_wage_base(
+            basic_paise=basic, da_paise=da, hra_paise=hra, lta_paise=lta,
+            medical_paise=medical, special_allowance_paise=special,
+            other_allowances_paise=other,
+            fy=fy, month=m,
+        )
+        pf = (_compute_pf(_wb.wages_paise, fy, eps_eligible=emp.get("eps_eligible", True))
               if emp.get("pf_applicable")
               else {"employee": 0, "employer": 0, "employer_eps": 0,
                     "employer_epf": 0, "edli": 0, "admin": 0})
@@ -4966,6 +5044,12 @@ def statutory_position(
             "basic_paise": basic,
             "da_paise": da,
             "gross_paise": gross,
+            # The §2(y) working, the same three fields the payslip stores
+            # (migration 334), so a CA reconciling this screen against a
+            # challan can see WHY the base differs from basic + DA.
+            "pf_wages_paise": _wb.wages_paise,
+            "pf_wages_addback_paise": _wb.deemed_addback_paise,
+            "pf_wages_rule_applied": _wb.rule_applied,
             "pf_applicable": bool(emp.get("pf_applicable")),
             "esi_applicable": bool(emp.get("esi_applicable")),
             "pf_employee_paise": pf["employee"],

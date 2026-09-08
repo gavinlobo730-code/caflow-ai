@@ -229,3 +229,76 @@ def test_arrears_of_basic_still_reach_the_pf_base_on_top():
     # 14,000 from the wage base + 2,000 arrears, then the 15,000 ceiling bites.
     assert slip["pf_wages_paise"] == 14_000_00      # the §2(y) figure alone
     assert slip["pf_employee_paise"] == 1_800_00    # 12% of the capped 15,000
+
+
+# ── The pre-commencement branch is EPF Act s.6, not a narrower s.2(y) ────────
+
+def test_a_month_before_commencement_charges_pf_on_basic_and_da_only():
+    """The claim this module's docstring made, now actually true.
+
+    It said the pre-commencement branch "reproduces the old basic + DA
+    exactly". It returned `wage_components_paise`, and routers/payroll.py had
+    folded medical, special and other allowance into that — correctly, for
+    s.2(y), which sweeps in everything that is not an enumerated exclusion.
+    EPF Act s.6 named three things: "basic wages, dearness allowance and
+    retaining allowance". So an October 2025 month on Rs 10,000 basic with
+    Rs 2,000 medical and Rs 3,000 special computed PF on Rs 15,000 and
+    deducted Rs 1,800 where s.6 gives Rs 1,200.
+
+    That is a wrong figure on every historic month carrying an allowance, and
+    it recomputes on demand rather than sitting still in a stored slip — so a
+    payslip reprinted after commit 9239255 disagreed with the challan actually
+    remitted.
+    """
+    r = wage_base.compute(
+        wage_components_paise=15_000_00,        # basic 10,000 + medical 2,000 + special 3,000
+        excluded_components_paise=0,
+        pre_code_wages_paise=10_000_00,         # EPF Act s.6: basic + DA
+        fy_label="2025-26", month=10,
+    )
+    assert r.rule_applied is False
+    assert r.wages_paise == 10_000_00
+    assert r.deemed_addback_paise == 0
+    assert r.wages_paise * 12 // 100 == 1_200_00       # employee PF at 12%
+
+
+def test_the_same_month_after_commencement_takes_the_whole_wage_side():
+    """The fork is the point: s.2(y) DOES reach medical and special allowance,
+    so the identical pay computes a larger base from 21-11-2025. Pinning both
+    sides together is what stops the fix being read as "allowances never count"."""
+    r = wage_base.compute(
+        wage_components_paise=15_000_00,
+        excluded_components_paise=0,
+        pre_code_wages_paise=10_000_00,
+        fy_label="2025-26", month=12,
+    )
+    assert r.rule_applied is True
+    assert r.wages_paise == 15_000_00
+
+
+def test_the_pre_code_figure_is_optional_and_falls_back():
+    """A caller whose wage components genuinely ARE basic + DA need not pass it,
+    which is what keeps every earlier call in this file reading the same."""
+    r = wage_base.compute(wage_components_paise=10_000_00,
+                          excluded_components_paise=18_000_00,
+                          fy_label="2025-26", month=10)
+    assert r.wages_paise == 10_000_00
+
+
+def test_the_payroll_route_passes_the_section_6_base():
+    """The defect was at the CALL SITE, so assert the call site, not only the
+    function: routers/payroll.py::_pf_wage_base folds five components into the
+    s.2(y) figure and must hand s.6 its own."""
+    from routers.payroll import _pf_wage_base
+
+    r = _pf_wage_base(basic_paise=10_000_00, da_paise=0, hra_paise=0, lta_paise=0,
+                      medical_paise=2_000_00, special_allowance_paise=3_000_00,
+                      other_allowances_paise=0, fy="2025-26", month=10)
+    assert r.wages_paise == 10_000_00, (
+        "a pre-commencement month must charge PF on EPF Act s.6's basic + DA"
+    )
+
+    after = _pf_wage_base(basic_paise=10_000_00, da_paise=0, hra_paise=0, lta_paise=0,
+                          medical_paise=2_000_00, special_allowance_paise=3_000_00,
+                          other_allowances_paise=0, fy="2025-26", month=12)
+    assert after.wages_paise == 15_000_00

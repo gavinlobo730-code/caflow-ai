@@ -170,6 +170,7 @@ def compute(
     *,
     wage_components_paise: int,
     excluded_components_paise: int,
+    pre_code_wages_paise: int | None = None,
     fy_label: str | None = None,
     month: int | None = None,
 ) -> WageBase:
@@ -179,16 +180,37 @@ def compute(
     exclusion list — basic, DA, and by the default above anything unclassified.
     `excluded_components_paise` is the clause (a)-(i) total: here, HRA and LTA.
 
-    Before 21-11-2025 the exclusions are simply left out and no add-back
-    happens, which reproduces the old `basic + DA` exactly.
+    `pre_code_wages_paise` is what the EPF Act s.6 charged BEFORE 21-11-2025:
+    "basic wages, dearness allowance and retaining allowance". It is a separate
+    figure because the two definitions are not the same set — s.2(y) sweeps in
+    everything that is not an enumerated exclusion, and s.6 named three things.
+
+    THIS PARAMETER EXISTS BECAUSE THE DOCSTRING USED TO BE FALSE. It said the
+    pre-commencement branch "reproduces the old basic + DA exactly", and it did
+    only when there were no other allowances: the branch returned
+    `wage_components_paise`, into which routers/payroll.py had (correctly, for
+    s.2(y)) folded medical, special and other. So an October 2025 month on
+    Rs 10,000 basic + Rs 2,000 medical + Rs 3,000 special computed PF on
+    Rs 15,000 and deducted Rs 1,800 where s.6 gives Rs 1,200 — a wrong figure
+    on every historic month with an allowance, and one that recomputes on
+    demand rather than sitting still in a stored slip.
+
+    Left None it falls back to `wage_components_paise`, which keeps the callers
+    that genuinely have no other components (and every existing test) reading
+    the same. A caller that folds anything beyond basic and DA into
+    `wage_components_paise` MUST pass this.
     """
     wage_components_paise = max(0, int(wage_components_paise or 0))
     excluded_components_paise = max(0, int(excluded_components_paise or 0))
     total = wage_components_paise + excluded_components_paise
 
     if not rule_in_force(fy_label, month):
+        # EPF Act s.6 — basic wages + DA + retaining allowance, and nothing
+        # else. Not s.2(y)'s "everything that is not an exclusion".
+        pre = (wage_components_paise if pre_code_wages_paise is None
+               else max(0, int(pre_code_wages_paise or 0)))
         return WageBase(
-            wages_paise=wage_components_paise,
+            wages_paise=pre,
             total_remuneration_paise=total,
             excluded_paise=excluded_components_paise,
             deemed_addback_paise=0,
