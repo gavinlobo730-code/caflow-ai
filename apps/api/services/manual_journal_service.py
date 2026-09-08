@@ -37,6 +37,24 @@ _logger = logging.getLogger("caflow.manual_journal")
 # invoices/receipts/bank/etc.) for the approval queue and audit.
 MANUAL_SOURCE = "manual"
 
+
+def _is_manual(entry: dict) -> bool:
+    """Whether this entry was typed by a person rather than posted by a
+    document. NULL counts as NOT manual — the sales-invoice journal carries no
+    source_type at all (phase2_journal_service._create_journal passes none on
+    that path), so a blocklist of known source types would have let exactly the
+    entry this guard exists for straight through."""
+    return (entry.get("source_type") or "") == MANUAL_SOURCE
+
+
+def _not_manual_message(entry: dict) -> str:
+    """Migration 338's sentence, so the screen and the database say the same
+    thing whichever of them refuses first."""
+    what = (entry.get("source_type") or "").strip() or "source document"
+    return (f"This entry was posted automatically from a {what}. Correct the "
+            "document itself — editing its journal would leave the document "
+            "and the ledger saying different things.")
+
 ALLOWED_ENTRY_TYPES = {
     "Journal", "Contra", "Payment", "Receipt", "Sales", "Purchase", "Opening",
 }
@@ -161,7 +179,12 @@ class ManualJournalService:
         entry["status"] = "posted" if entry.get("is_posted") else "draft"
         entry["lock_reason"] = self._lock_reason(
             db, firm_id, entry.get("client_id"), entry.get("entry_date"))
-        entry["editable"] = entry["lock_reason"] is None and not entry.get("is_reversed")
+        # `editable` is what the editor reads before the CA types anything, so
+        # it carries the same three limits the write path enforces — including
+        # the manual-only one, which it did not until migration 338.
+        entry["editable"] = (entry["lock_reason"] is None
+                             and not entry.get("is_reversed")
+                             and _is_manual(entry))
         return entry
 
     def _lock_reason(self, db, firm_id: str, client_id: Optional[str],
@@ -206,6 +229,20 @@ class ManualJournalService:
         how the passbook drifted the last time.
         """
         entry = self.get(db, firm_id, entry_id)
+
+        # MANUAL ONLY — the gate migration 275 gave the discard path and 338
+        # gives this one. An auto-posted journal is corrected by correcting its
+        # DOCUMENT: rewriting the entry alone leaves the GL saying one thing and
+        # client_sales_invoices another, and since GSTR-1 is built from the
+        # invoice rows and the trial balance from the GL, the return and the
+        # books stop agreeing with nothing recording why.
+        #
+        # Checked in the database as well, which is what makes it a rule rather
+        # than a convention. It is repeated here so the CA gets the sentence
+        # instead of a SQLSTATE, and so a DRAFT auto-posted entry — which never
+        # reaches the RPC — is refused too.
+        if not _is_manual(entry):
+            raise HTTPException(status_code=422, detail=_not_manual_message(entry))
 
         if entry.get("is_reversed"):
             raise HTTPException(

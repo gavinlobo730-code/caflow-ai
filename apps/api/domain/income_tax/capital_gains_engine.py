@@ -114,11 +114,29 @@ CII_BY_FY: dict[str, int] = {
 # incometax.gov.in, confirm 376 and 384, then set this to "2026-27".
 LATEST_CII_FY = "2025-26"
 
+#: The newest year the TABLE holds, which is a different fact from the newest
+#: year a human has verified, and is what an unknown year must fall back to.
+#:
+#: These two were the same variable until 2026-09-08, and holding LATEST_CII_FY
+#: back at 2025-26 (deliberately — see above) while 2026-27 went into the table
+#: made `cii_for("2027-28")` return **376**, older AND LOWER than the table's
+#: own newest value. A lower index on the acquisition year means a smaller
+#: indexed cost, a larger gain and more tax — so the verification marker, whose
+#: whole purpose is to stop a guess being promoted to a fact, was quietly
+#: changing a taxpayer's liability. Derived rather than written down, so the
+#: two cannot drift again.
+_NEWEST_CII_FY = max(CII_BY_FY)
+
 
 def cii_for(fy: str) -> int:
-    """CII for a given FY string ('2025-26'); falls back to the latest known
-    FY's value for anything not yet in the table (matches
-    statutory_rates.rates_for's same unknown-future-year convention).
+    """CII for a given FY string ('2025-26'); falls back to the NEWEST YEAR IN
+    THE TABLE for anything not in it (matches statutory_rates.rates_for's same
+    unknown-future-year convention).
+
+    The fallback anchor is `_NEWEST_CII_FY`, not `LATEST_CII_FY`. The second is
+    a verification marker — the last year somebody read the notification — and
+    using it as the anchor made an unknown year read an index older than one
+    the table already holds. See the note on _NEWEST_CII_FY.
 
     KNOWN GAP, flagged rather than guessed: the fallback is written for a
     not-yet-notified FUTURE year. An acquisition FY BEFORE the 2001-02 base
@@ -129,7 +147,7 @@ def cii_for(fy: str) -> int:
     FMV is a valuation nobody in this system holds. It cannot be derived
     from the cost, so it is not invented here; the direction of the error is
     over-taxation, never under."""
-    return CII_BY_FY.get(fy, CII_BY_FY[LATEST_CII_FY])
+    return CII_BY_FY.get(fy, CII_BY_FY[_NEWEST_CII_FY])
 
 
 def fy_for_date(d: date) -> str:

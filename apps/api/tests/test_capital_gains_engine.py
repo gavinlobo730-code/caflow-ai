@@ -72,8 +72,24 @@ def test_latest_verified_cii_fy_is_not_moved_by_a_secondary_source():
     assert LATEST_CII_FY == "2025-26"
 
 
-def test_cii_unknown_future_year_falls_back_to_latest():
-    assert cii_for("2030-31") == CII_BY_FY[LATEST_CII_FY]
+def test_cii_unknown_future_year_falls_back_to_the_newest_in_the_table():
+    """And to the NEWEST ENTRY, not to the verification marker.
+
+    THE REGRESSION THIS PINS. The fallback used to read LATEST_CII_FY, which is
+    deliberately held behind the table (the test above). Once 2026-27 went in at
+    384, `cii_for("2027-28")` answered **376** — older and LOWER than a figure
+    the table already held. A lower index on the acquisition year shrinks the
+    indexed cost, grows the gain and raises the tax, so a marker whose whole
+    purpose is to stop a guess becoming a fact was changing a liability.
+    """
+    newest = max(CII_BY_FY)
+    assert cii_for("2030-31") == CII_BY_FY[newest] == 384
+    assert cii_for("2030-31") > CII_BY_FY[LATEST_CII_FY], (
+        "the fallback must not be older than the table's own newest entry")
+    # Every year in the table still answers itself — the fallback is only for
+    # years that are not there.
+    for fy, cii in CII_BY_FY.items():
+        assert cii_for(fy) == cii, fy
 
 
 # ── Holding-period classification (Section 2(42A)) ────────────────────────────

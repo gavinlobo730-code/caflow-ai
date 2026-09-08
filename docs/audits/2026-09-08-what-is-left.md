@@ -43,6 +43,14 @@ summary.
 |---|--:|--:|--:|
 | **275 findings** | **27** | **15** | **233** |
 
+Those three columns are **against `46bd46c`**, which is what makes them
+checkable. Section 2's work has since closed **ACC-04** (medium) and
+**SALES-15** (high, five of its six paths), and turned **FA-08** (high) from a
+wrong number into a refusal — so the live figures are three better than the
+table. The table is deliberately not rewritten: a count that moves every commit
+stops being evidence of anything, and the commit it was taken against is how a
+reader checks it.
+
 **248 items of remaining work** (open + partial), by corrected severity:
 
 | critical | high | medium | low |
@@ -72,6 +80,32 @@ Accounting moved by one; banking's backend is byte-identical to the audit tree.
 
 These are **new**, they are on `main`, and none of them has a finding id. They
 come before anything else on this list.
+
+> **CLOSED, 8 September 2026.** All nine are done, across three commits on
+> `claude/ca-platform-audit-roadmap-yuoad3`. Each carries a negative control —
+> how many of its new tests fail against the previous code:
+>
+> | | what was done | negative control |
+> |---|---|--:|
+> | 2.1–2.4 | the deduction is bounded by the payment; the draft-credit argument is refuted in-code; four sections gain the aggregate limb; a `tds_is_a_fy_catch_up` gap | 2 (cap), 5 (sections) |
+> | 2.5 | the guard is rewritten as the RULE, not three spellings of it; **17 files** converted to the one parser | 4 tests / 26 sites |
+> | 2.6 | `_annual_pt_paise` sums the months instead of multiplying one; the existing test had the defect written into it and is corrected | 6 of 10 |
+> | 2.7 | the payslip letterhead is the EMPLOYER; `load_employer` refuses a missing client rather than falling back to the firm | 5 of 8 |
+> | 2.8 | `cii_for` anchors to the table's newest year, not the verification marker; §80G(5D) is tri-state at the screen; Total Output Tax includes zero-rated IGST; **ACC-04 closed** (migration 338); **SALES-15 closed** for notes and every issue path; **FA-08 refuses** a disposal with unposted depreciation | 8 (338), 6 (SALES-15), 5 (FA-08), 9 (ACC-04 service) |
+> | 2.9 | measured against production rather than estimated — see below | — |
+>
+> **Two "probably nil" blast radii were CHECKED against the live database**, on
+> the principle that probably-nil is not the same as nil:
+>
+> * the pre-Code PF change orphaning historic slips — production holds **0
+>   payroll slips, 0 employees, 0 ECR filings and one draft run** (2026-08), so
+>   nothing was stored at the old base and nothing was remitted on it;
+> * the 26Q consequence in 2.9 — production holds **759 purchase bills, none
+>   with TDS**, 0 rows in the TDS register and 0 TDS filings, so no already-filed
+>   quarter can disagree with anything.
+>
+> Both remain true statements about *this* deployment on *this* date, and the
+> reasoning stays here because a second deployment will not have the same book.
 
 ### 2.1 A purchase bill can be permanently wedged — CONFIRMED BY TWO READERS
 
@@ -182,9 +216,29 @@ PDF services, so nothing catches it. Third instance, third file.
   `journal_period_lock_reason` could never fire for anything. It now fires for
   sales invoices and purchase bills, and still not for credit notes, sales debit
   notes, receipts or invoice issue.
+  **Closed for five of those six.** Credit-note create/update/issue,
+  sales-debit-note create/update/issue and `issue_invoice` now call
+  `period_lock_service.assert_open`. **Receipts are deliberately excluded**, and
+  the argument is in `services/receipt_service.py` beside the decision: a
+  receipt moves Bank and Debtors and touches no output tax, and the only filing
+  types written to `public.filings` are GSTR-1 and GSTR-3B — returns of
+  SUPPLIES, not of collections. Blocking one would refuse an ordinary thing
+  (a payment received 20 June, entered 15 July, after GSTR-1 went on the 11th)
+  for no statutory gain. A test pins the premise: if
+  `gst_filing_record_service.FILING_TYPE_*` ever grows past those two, the
+  decision has to be retaken.
 - **FA-08 became more convincing while staying wrong.** Accumulated depreciation
   was frozen at 0 for everyone before FA-01; it is now a real number, so the
   stale WDV shown at disposal looks trustworthy for the first time.
+  **Now refused rather than computed.** `dispose_asset` will not post while any
+  whole month between the purchase and the disposal month is undepreciated, and
+  it names them in order — the same rule, and the same reasoning, that
+  `post_depreciation` already applies to a skipped month: "each month is its own
+  journal needing its own CA review". The part month between the last month end
+  and the disposal date is still uncharged, and the response now says so
+  (`part_month_depreciation_not_charged`) instead of absorbing it into the gain.
+  Charging it properly — pro-rating on days, as the purchase month is — remains
+  FA-08's own item.
 - **The pre-Code PF fix orphaned historic slips.** For a month ending before
   21-11-2025 on ₹10,000 basic + ₹2,000 medical + ₹3,000 special, HEAD now
   computes a ₹10,000 base and ₹1,200 of PF; the previous code computed ₹15,000

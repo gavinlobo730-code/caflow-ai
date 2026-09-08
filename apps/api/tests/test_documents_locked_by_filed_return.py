@@ -26,6 +26,9 @@ from fastapi import HTTPException
 
 import routers.sales_invoices as si
 import routers.purchase_bills as pb
+import routers.credit_notes as cn
+import routers.sales_debit_notes as sdn
+from models.invoices import InvoiceLineIn
 from services import period_lock_service
 from tests.e2e_harness import FakeDB, wire_e2e
 
@@ -39,7 +42,7 @@ USER = {"id": "u1", "firm_id": FIRM, "auth_user_id": "u1",
 def db(monkeypatch):
     d = FakeDB()
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.test")
-    wire_e2e(monkeypatch, d, [si, pb, period_lock_service])
+    wire_e2e(monkeypatch, d, [si, pb, cn, sdn, period_lock_service])
     d.seed("firms", {"id": FIRM, "name": "F1", "locked_financial_years": []})
     return d
 
@@ -205,3 +208,168 @@ def test_editing_a_purchase_bill_inside_a_filed_period_is_refused(db):
 
     assert e.value.status_code == 422
     assert "GSTR-3B" in e.value.detail
+
+
+# ── every document that lands in the return, not only the invoice ────────────
+#
+# SALES-15. Until migration 267's lock reached them, only sales invoices and
+# purchase bills consulted it: credit notes, sales debit notes and the ISSUE
+# transitions checked the financial-year lock alone. That was theoretical while
+# nothing wrote public.filings, and stopped being theoretical the moment
+# lib/data/gst.ts started PATCHing the status through the API — the lock fires
+# for invoices and bills and, until now, silently did not for the rest.
+
+def _line():
+    return InvoiceLineIn(description="x", quantity=1, rate_paise=1_000_00,
+                         gst_rate_percent=18.0, service_catalogue_id="SVC-1")
+
+
+def _seed_party_and_catalogue(db):
+    db.seed("customers", {"id": "CUST1", "firm_id": FIRM, "client_id": CLIENT,
+                          "name": "Acme", "state_code": "27", "is_active": True})
+    db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": CLIENT,
+                                  "name": "Materials", "kind": "good"})
+
+
+def test_a_credit_note_dated_inside_a_filed_period_is_refused(db):
+    """§34(2) lets a credit note be declared only up to 30 November following
+    the FY or the date GSTR-9 was furnished — and once GSTR-1 for the note's own
+    period is filed, THAT return can no longer take it. The reduction goes in a
+    later period's amendment tables."""
+    _seed_party_and_catalogue(db)
+    _file_gstr1_for_june(db)
+
+    with pytest.raises(HTTPException) as e:
+        cn.create_credit_note(cn.CreditNoteIn(
+            client_id=CLIENT, customer_id="CUST1", credit_note_date="2026-06-15",
+            reason="rate correction", lines=[_line()]), current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-1" in e.value.detail
+    assert "amendment" in e.value.detail.lower(), "refusing must say what to do instead"
+
+
+def test_a_credit_note_in_an_open_period_is_still_allowed(db):
+    """The control. A guard that refuses everything is an outage, not a rule."""
+    _seed_party_and_catalogue(db)
+    _file_gstr1_for_june(db)
+
+    resp = cn.create_credit_note(cn.CreditNoteIn(
+        client_id=CLIENT, customer_id="CUST1", credit_note_date="2026-07-15",
+        reason="rate correction", lines=[_line()]), current_user=USER)
+
+    assert resp["success"] is True, resp.get("error")
+
+
+def test_moving_a_credit_note_into_a_filed_period_is_refused(db):
+    _file_gstr1_for_june(db)
+    db.seed("credit_notes", {
+        "id": "CN1", "firm_id": FIRM, "client_id": CLIENT, "status": "draft",
+        "credit_note_date": "2026-07-15", "credit_note_no": "CN-1", "deleted_at": None,
+    })
+
+    with pytest.raises(HTTPException) as e:
+        cn.update_credit_note("CN1", cn.CreditNoteUpdateIn(credit_note_date="2026-06-15"),
+                              current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-1" in e.value.detail
+
+
+def test_issuing_a_credit_note_into_a_filed_period_is_refused(db):
+    """THE DEFERRED-POSTING GAP. A draft raised in June and issued in September
+    posts with its JUNE date, so checking only at create is checking at the
+    moment nothing was posted."""
+    db.seed("credit_notes", {
+        "id": "CN2", "firm_id": FIRM, "client_id": CLIENT, "status": "draft",
+        "credit_note_date": "2026-06-15", "credit_note_no": "CN-2",
+        "total_paise": 1_18_000, "deleted_at": None,
+    })
+    _file_gstr1_for_june(db, filed_on="2026-09-11")
+
+    with pytest.raises(HTTPException) as e:
+        cn.issue_credit_note("CN2", current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-1" in e.value.detail
+
+
+def test_a_sales_debit_note_dated_inside_a_filed_period_is_refused(db):
+    """§34(3) makes a debit note a declaration in the return for the month it is
+    issued in, and CGST §37 stops a filed return taking one."""
+    _seed_party_and_catalogue(db)
+    _file_gstr1_for_june(db)
+
+    with pytest.raises(HTTPException) as e:
+        sdn.create_sales_debit_note(sdn.SalesDebitNoteIn(
+            client_id=CLIENT, customer_id="CUST1", debit_note_date="2026-06-15",
+            reason="undercharged", lines=[_line()]), current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-1" in e.value.detail
+
+
+def test_issuing_a_sales_debit_note_into_a_filed_period_is_refused(db):
+    db.seed("sales_debit_notes", {
+        "id": "SDN1", "firm_id": FIRM, "client_id": CLIENT, "status": "draft",
+        "debit_note_date": "2026-06-15", "debit_note_no": "SDN-1",
+        "total_paise": 1_18_000, "deleted_at": None,
+    })
+    _file_gstr1_for_june(db, filed_on="2026-09-11")
+
+    with pytest.raises(HTTPException) as e:
+        sdn.issue_sales_debit_note("SDN1", current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-1" in e.value.detail
+
+
+def test_issuing_a_sales_invoice_into_a_filed_period_is_refused(db):
+    """The same gap on the invoice itself: create checked the lock, issue did
+    not, so a June draft could still be posted into a filed June."""
+    db.seed("client_sales_invoices", {
+        "id": "INV9", "firm_id": FIRM, "client_id": CLIENT, "status": "draft",
+        "invoice_date": "2026-06-15", "invoice_no": "INV-9",
+        "taxable_amount_paise": 1_00_000, "cgst_paise": 9_000, "sgst_paise": 9_000,
+        "igst_paise": 0, "total_paise": 1_18_000,
+    })
+    _file_gstr1_for_june(db, filed_on="2026-09-11")
+
+    with pytest.raises(HTTPException) as e:
+        si.issue_invoice("INV9", current_user=USER)
+
+    assert e.value.status_code == 422
+    assert "GSTR-1" in e.value.detail
+
+
+def test_a_receipt_is_deliberately_NOT_locked_by_a_filed_return():
+    """The one path SALES-15 asked for that is withheld, and the reason is in
+    services/receipt_service.py beside the decision.
+
+    A receipt moves Bank and Debtors and touches no output tax, and the only
+    filing types written to public.filings are GSTR-1 and GSTR-3B — returns of
+    SUPPLIES, not of collections. So a receipt back-dated into a filed period
+    makes neither return disagree with anything, while refusing it would block
+    an ordinary thing: recording a payment received on 20 June, entered on
+    15 July, after GSTR-1 for June was filed on the 11th.
+
+    Pinned as a DECISION so that adding the guard later is deliberate, and so
+    that the reason travels with it.
+    """
+    import inspect
+
+    from services import receipt_service
+    from services import gst_filing_record_service as gfr
+
+    src = inspect.getsource(receipt_service)
+    assert "period_lock_service.assert_open" not in src.replace(
+        "# DELIBERATELY NOT period_lock_service.assert_open", "")
+    assert "DELIBERATELY NOT" in src, "the omission must be argued, not silent"
+
+    # The premise the decision rests on. If a filing type appears that depends
+    # on collections or on the balance sheet, the decision has to be retaken.
+    types = {v for k, v in vars(gfr).items()
+             if k.startswith("FILING_TYPE_") and isinstance(v, str)}
+    assert types == {"GSTR-1", "GSTR-3B"}, (
+        f"public.filings now records {sorted(types)} — re-read the argument in "
+        "receipt_service before leaving receipts unguarded")

@@ -69,6 +69,20 @@ test("a zero-rated supply prints the IGST it actually carries", () => {
     "the zero-rated row must print the tax on the supply, not always a dash");
 });
 
+test("Total Output Tax includes the zero-rated IGST the row above it prints", () => {
+  // Fixing the row above made this line CONTRADICT it: the total summed
+  // taxable_igst_paise alone, so a s.16(3)(b) exporter saw a zero-rated IGST
+  // figure and a "total" that did not contain it — and that total is what the
+  // Table 6 liability below is set off against. §16(3)(b) tax is owed in THIS
+  // return and refunded later under §54; Table 6.1 on the portal includes it,
+  // and services/filing_demo/gstr3b.py's head_liability already did.
+  const src = code(GSTR3B);
+  assert.match(
+    src,
+    /taxable_igst_paise\s*\+\s*w\.outward\.zero_rated_igst_paise/,
+    "the IGST total must add the zero-rated IGST, not just the taxable IGST");
+});
+
 test("no GST screen states the withdrawn Rule 36(4) buffer", () => {
   // Rule 36(4)'s provisional buffer — 120%, then 110%, then 105% — was
   // WITHDRAWN by Notification 40/2021-Central Tax with effect from

@@ -207,3 +207,132 @@ def test_asset_not_found_raises_404():
     with pytest.raises(HTTPException) as exc:
         fa_router.dispose_asset("missing-asset", _disposal(), {"firm_id": FIRM, "id": "u1"})
     assert exc.value.status_code == 404
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FA-08 — the gain or loss is computed from what has been POSTED
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# dispose_asset computes `wdv = purchase_cost_paise - accumulated_depreciation_
+# paise`, and accumulated depreciation is whatever the CA has actually posted.
+# An asset bought in April, depreciated to June and sold in November therefore
+# books a WDV four months too high, a gain four months too small (or a loss too
+# large), and the year's depreciation expense short by the same amount — with
+# nothing on the screen saying so.
+#
+# FA-01 made this look MORE trustworthy while leaving it wrong: accumulated
+# depreciation used to be frozen at 0 for every asset, so the stale figure is
+# now a real number.
+#
+# It REFUSES rather than posting the gap, because post_depreciation already
+# refuses a skipped month for a reason that applies here word for word: "each
+# month is its own journal needing its own CA review ... quietly posting three
+# entries behind one click is exactly the unprompted acting this codebase does
+# not do." Four such journals inside a transaction the CA thinks is about a sale
+# would be worse, not better.
+
+def _held_asset(db, **overrides):
+    """Bought 10 April 2026, depreciated through 30 June 2026."""
+    fields = {"purchase_date": "2026-04-10",
+              "depreciation_posted_through": "2026-06-30"}
+    fields.update(overrides)
+    return _seed_asset(db, **fields)
+
+
+def test_disposing_with_months_unposted_is_refused_and_names_them():
+    db = FakeDB()
+    _held_asset(db)
+    fa_router._db = lambda: db
+    called = []
+    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: called.append(1) or "je-x"
+
+    with pytest.raises(HTTPException) as exc:
+        fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-11-20"),
+                                {"firm_id": FIRM, "id": "u1"})
+
+    assert exc.value.status_code == 422
+    for month in ("2026-07", "2026-08", "2026-09", "2026-10"):
+        assert month in exc.value.detail, f"{month} must be named"
+    assert "4 months too high" in exc.value.detail
+    assert "Post 2026-07 first" in exc.value.detail, "in order, one click each"
+    assert not called, "nothing may reach the ledger on the way to the refusal"
+    assert db.store["fixed_assets"][0]["is_disposed"] is False
+
+
+def test_the_disposal_month_itself_is_not_required():
+    """Depreciation to a disposal DATE is a part month, and the engine posts
+    whole months only. Requiring the disposal month would make every mid-month
+    sale unpostable."""
+    db = FakeDB()
+    _held_asset(db, depreciation_posted_through="2026-10-31")
+    fa_router._db = lambda: db
+    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-2"
+
+    result = fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-11-20"),
+                                     {"firm_id": FIRM, "id": "u1"})
+
+    assert result["success"] is True
+    assert result["data"]["part_month_depreciation_not_charged"] is True, (
+        "1-20 November is not charged and the CA has to be told")
+
+
+def test_a_disposal_on_a_charged_month_end_leaves_nothing_uncharged():
+    db = FakeDB()
+    _held_asset(db, depreciation_posted_through="2026-11-30")
+    fa_router._db = lambda: db
+    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-3"
+
+    result = fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-11-30"),
+                                     {"firm_id": FIRM, "id": "u1"})
+
+    assert result["success"] is True
+    assert result["data"]["part_month_depreciation_not_charged"] is False
+
+
+def test_an_asset_never_depreciated_at_all_is_refused_from_its_purchase_month():
+    """The commonest shape of the defect, and the one FA-01 changed the look of:
+    accumulated depreciation of 0 used to be every asset's state."""
+    db = FakeDB()
+    _seed_asset(db, purchase_date="2026-04-10",
+                accumulated_depreciation_paise=0)
+    fa_router._db = lambda: db
+    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-4"
+
+    with pytest.raises(HTTPException) as exc:
+        fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-07-05"),
+                                {"firm_id": FIRM, "id": "u1"})
+
+    assert "2026-04" in exc.value.detail, "the pro-rated purchase month counts too"
+    assert "2026-06" in exc.value.detail
+    assert "2026-07" not in exc.value.detail, "the disposal month is a part month"
+
+
+def test_a_disposal_in_the_purchase_month_needs_nothing_posted():
+    """Bought and sold inside one month: there is no WHOLE month to charge, so
+    refusing would make the sale unpostable for no gain."""
+    db = FakeDB()
+    _seed_asset(db, purchase_date="2026-04-10", accumulated_depreciation_paise=0)
+    fa_router._db = lambda: db
+    fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-5"
+
+    result = fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-04-25"),
+                                     {"firm_id": FIRM, "id": "u1"})
+
+    assert result["success"] is True
+
+
+def test_the_months_outstanding_helper_on_its_own():
+    """The arithmetic, without the router around it."""
+    f = fa_router._depreciation_months_outstanding
+    asset = {"purchase_date": "2026-04-10", "depreciation_posted_through": "2026-06-30"}
+    assert f(asset, "2026-11-20") == ["2026-07", "2026-08", "2026-09", "2026-10"]
+    assert f(asset, "2026-07-01") == []
+    assert f(asset, "2026-06-30") == []
+    # Across a year boundary.
+    assert f({"purchase_date": "2025-11-01", "depreciation_posted_through": "2025-12-31"},
+             "2026-03-15") == ["2026-01", "2026-02"]
+    # Never depreciated: the purchase month is outstanding too.
+    assert f({"purchase_date": "2026-04-10"}, "2026-07-05") == ["2026-04", "2026-05", "2026-06"]
+    # An asset with no purchase date recorded cannot be reasoned about, and a
+    # refusal on no evidence would block every legacy row.
+    assert f({}, "2026-07-05") == []

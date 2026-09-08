@@ -1,6 +1,7 @@
 "use client";
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { errorMessage } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
@@ -845,6 +846,11 @@ function DisposalTab({ clientId }: { clientId: string }) {
           sale_proceeds_paise:   proceedsPaise as number,
         }),
       });
+      // A refusal is a SENTENCE, and FastAPI puts it in `detail` — a 422 body
+      // has no `error` key, so `j.error ?? "Failed"` showed the CA the word
+      // "Failed" where the server had named the months of depreciation still
+      // to post. errorMessage is the one place that reads either shape.
+      if (!res.ok) throw new Error(await errorMessage(res));
       const j = await res.json();
       if (!j.success) throw new Error(j.error ?? "Failed");
       setSelected(null); setProceeds(""); await load();

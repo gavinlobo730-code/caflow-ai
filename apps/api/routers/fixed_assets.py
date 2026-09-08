@@ -314,6 +314,52 @@ def _months_missing_before(posted_through_month: str, period: str) -> list[str]:
         gap.append(label)
 
 
+def _depreciation_months_outstanding(asset: dict, disposal_date: str) -> list[str]:
+    """Whole months held that have NOT been depreciated, up to the month before
+    disposal.
+
+    FA-08. `dispose_asset` computes the gain or loss from
+    `purchase_cost_paise - accumulated_depreciation_paise`, which is whatever
+    has been POSTED. An asset bought in April, depreciated to June and sold in
+    November therefore books a WDV four months too high, a gain four months too
+    small (or a loss too large), and a year's depreciation expense short by the
+    same amount — with nothing on the screen saying so. FA-01 made this worse
+    in one sense that is really a correction: accumulated depreciation used to
+    be frozen at 0 for every asset, so the stale figure is now a real number
+    that looks trustworthy.
+
+    WHY THIS REFUSES RATHER THAN POSTING THE GAP. `post_depreciation` already
+    refuses a skipped month and says which ones are missing, in its own words:
+    "each month is its own journal needing its own CA review ... quietly posting
+    three entries behind one click is exactly the unprompted acting this
+    codebase does not do." A disposal that silently posted four months of
+    depreciation would be that, and it would do it inside a transaction the CA
+    thinks is about a sale.
+
+    THE MONTH OF DISPOSAL IS DELIBERATELY NOT REQUIRED. Depreciation to a
+    disposal DATE is a part month, and the engine posts whole months only (the
+    purchase month is the single pro-rated exception, Schedule II Note 3). Every
+    whole month up to the one before disposal is charged; the part month is not,
+    and `dispose_asset` reports it rather than pretending it charged it.
+    """
+    posted = _month_label(asset.get("depreciation_posted_through"))
+    purchase_month = str(asset.get("purchase_date") or "")[:7]
+    disposal_month = str(disposal_date)[:7]
+    if not purchase_month or not disposal_month:
+        return []
+    # Depreciation is due for whole months from purchase up to the month BEFORE
+    # disposal. `_months_missing_before(x, y)` gives the months strictly between
+    # x and y, so passing the disposal month gives exactly that set.
+    if posted is None:
+        # Nothing posted at all: the purchase month itself is outstanding too.
+        if purchase_month >= disposal_month:
+            return []
+        return [purchase_month] + _months_missing_before(purchase_month, disposal_month)
+    if posted >= disposal_month:
+        return []
+    return _months_missing_before(posted, disposal_month)
+
+
 def _prorate_purchase_month(monthly_paise: int, purchase_date: str) -> int:
     """Schedule II Note 3 / IT Act §32: an asset isn't held for the WHOLE of
     its purchase month — pro-rate that one month's charge by the fraction of
@@ -611,6 +657,24 @@ def dispose_asset(
     # checked before any mutation, same as the purchase/depreciation paths.
     period_validation_service.validate_posting_date(current_user["firm_id"], disposal_date)
 
+    # FA-08: the gain or loss is computed from what has been POSTED, so every
+    # unposted month is a WDV that is too high and a gain that is too small.
+    # Refused, and named, exactly as post_depreciation refuses a skipped month —
+    # posting them here would be four journals behind one click, in a
+    # transaction the CA thinks is about a sale.
+    outstanding = _depreciation_months_outstanding(asset, disposal_date)
+    if outstanding:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Depreciation for {', '.join(outstanding)} has not been posted. "
+                f"The gain or loss on disposal is computed from the written-down "
+                f"value, so posting it now would book a WDV {len(outstanding)} "
+                f"month{'s' if len(outstanding) > 1 else ''} too high. Post "
+                f"{outstanding[0]} first."
+            ),
+        )
+
     # Capture pre-disposal values for rollback before any mutation.
     prior_disposal_date  = asset.get("disposal_date")
     prior_disposal_value = asset.get("disposal_value_paise")
@@ -651,6 +715,23 @@ def dispose_asset(
     wdv = asset["purchase_cost_paise"] - asset.get("accumulated_depreciation_paise", 0)
     gain_loss = sale_proceeds - wdv
 
+    # The days between the last whole month charged and the disposal date are
+    # NOT charged — the engine posts whole months only, the purchase month
+    # being the single pro-rated exception (Schedule II Note 3). Reported
+    # rather than silently absorbed into the gain, because a figure nobody is
+    # told about is how FA-08 survived this long: the WDV looked right.
+    #
+    # Nothing is left uncharged only when the disposal falls on the last day of
+    # a month that has itself been depreciated. The refusal above guarantees
+    # every EARLIER whole month is charged, so this is the whole of the gap.
+    _posted_month = _month_label(asset.get("depreciation_posted_through")) or ""
+    _dy, _dm = int(str(disposal_date)[:4]), int(str(disposal_date)[5:7])
+    _last_day_of_disposal_month = calendar.monthrange(_dy, _dm)[1]
+    part_month_uncharged = not (
+        _posted_month >= str(disposal_date)[:7]
+        and int(str(disposal_date)[8:10]) == _last_day_of_disposal_month
+    )
+
     timeline_service.log(asset["client_id"], "accounting", "Asset Disposed",
         f"{asset.get('asset_code')}: {disposal_type} — ₹{sale_proceeds//100:,} proceeds, "
         f"{'gain' if gain_loss >= 0 else 'loss'} ₹{abs(gain_loss)//100:,}", "warning")
@@ -662,6 +743,10 @@ def dispose_asset(
         "wdv_at_disposal": wdv,
         "gain_loss_paise": gain_loss,
         "journal_entry_id": journal_id,
+        # Whole months are charged; the days between the last month end and the
+        # disposal date are not. Stated so the CA can see the figure is a whole
+        # month short rather than discovering it in the accounts.
+        "part_month_depreciation_not_charged": part_month_uncharged,
     })
 
 
