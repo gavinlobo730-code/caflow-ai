@@ -632,9 +632,23 @@ def _roc_obligations(financial_year: str, agm_date: Optional[str] = None) -> lis
 
 
 def _tax_audit_obligation(financial_year: str) -> list[dict]:
+    """The s.44AB audit report — due on the SPECIFIED DATE, not the return's.
+
+    This dated the report at ce.itr_due_date(fye, is_audit=True), i.e. the
+    31 October the RETURN is due. Explanation (ii) to s.44AB makes the
+    specified date one month prior to that — 30 September — so the calendar
+    showed every audit client a deadline a month late, on the obligation whose
+    lateness carries s.271B (0.5% of turnover, capped at Rs 1,50,000). It is
+    also the wrong sequence: the return's own s.139(1) date assumes the report
+    is already on record.
+
+    ce.tax_audit_report_due_date derives it from the return's date rather than
+    stating it, so a CBDT extension of one moves the other.
+    """
     fye = fy_end_year(financial_year)
     return [_spec("TAX_AUDIT", "Income Tax", f"Tax Audit FY {financial_year}",
-                  date(fye - 1, 4, 1), date(fye, 3, 31), ce.itr_due_date(fye, is_audit=True))]
+                  date(fye - 1, 4, 1), date(fye, 3, 31),
+                  ce.tax_audit_report_due_date(fye))]
 
 
 def ce_date(v) -> date:

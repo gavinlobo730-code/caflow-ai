@@ -131,7 +131,34 @@ change. The code is the authority; keep this file in step with it.
   that is the residual category the section itself puts an unlisted donee in.
   §80G(5D) bars a cash donation over ₹2,000 outright.
 - Advance tax due dates: 15 Jun (15%), 15 Sep (45%), 15 Dec (75%), 15 Mar (100%)
-- ITR (IT Act §139): 31 July, or 31 October where audit applies
+- ITR (IT Act §139): 31 July, or 31 October where audit applies, or 30 November
+  where a §92E transfer-pricing report is required
+- **The §44AB AUDIT REPORT is due a month before the RETURN, and they are two
+  dates.** Explanation (ii) to §44AB (substituted by the Finance Act 2020,
+  w.e.f. AY 2020-21) defines the "specified date" as "date one month prior to
+  the due date for furnishing the return of income under sub-section (1) of
+  section 139" — so **30 September**, not the 31 October the return is due.
+  Dating the report at the return's date shows every audit client a deadline a
+  month late, on the obligation whose lateness carries §271B (0.5% of turnover,
+  capped at ₹1,50,000), and it is the wrong sequence: §139(1)'s own date
+  assumes the report is already on record.
+  `compliance_engine.tax_audit_report_due_date` DERIVES it from
+  `itr_due_date` rather than stating it, so a CBDT extension of one moves the
+  other. The §92E variant is deliberately not modelled — "one month prior" to
+  30 November is 30 October by calendar arithmetic while professional sources
+  commonly say 31 October, and that one-day difference is unconfirmed.
+- **Which ITR date applies is decided, or refused, in
+  `compliance_obligation_service.itr_due_date_for_client`.** Explanation 2 to
+  §139(1) settles it on facts the app holds in exactly three cases: (a)(i) a
+  Companies Act company is 31 October on entity type alone; (a)(ii) a client
+  with an active audit engagement is 31 October; (aa) a §92E report is
+  30 November and outranks both. Everything else — LLP, Partnership, Trust,
+  Proprietorship, Individual — is REFUSED: §44AB turns on the year's turnover,
+  an LLP's audit on LLP Act §34(4) with Rule 24(8) (a different test entirely),
+  a trust's on §12A(1)(b), and none of those figures is held against a client.
+  The refusal returns 31 July, the EARLIER of the two, with `decided: false`
+  and a named gap — early costs nothing, late costs §234A interest at 1% a
+  month, a §234F fee and the §80 carry-forward.
 - MCA/ROC offsets from the AGM date: ADT-1 +15d (§139), AOC-4 +30d (§137), MGT-7 +60d (§92)
 - **GSTR-3B Table 4** follows Notification 14/2022-Central Tax with Circular
   170/02/2022-GST, live on the portal from 01-09-2022: 4(A) is **gross** (it is

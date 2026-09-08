@@ -48,6 +48,7 @@ NEGATIVE CONTROL (each of these fails against the previous code)
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -454,3 +455,64 @@ def test_the_gap_is_still_reported_on_the_second_run(monkeypatch):
     assert second["generated"] == 0 and second["skipped"] == first["generated"]
     assert second["statutory_gaps"] == first["statutory_gaps"]
     MOCK_COMPLIANCE_RECORDS.clear()
+
+
+# ── The s.44AB specified date is not the return's date ──────────────────────
+
+def test_the_audit_report_is_due_a_month_before_the_return():
+    """IT Act s.44AB, Explanation (ii), as substituted by the Finance Act 2020
+    with effect from AY 2020-21: the "specified date" is "date one month prior
+    to the due date for furnishing the return of income under sub-section (1)
+    of section 139".
+
+    The generator dated the report at the RETURN's 31 October, so every audit
+    client's calendar showed it a month late — on the obligation whose lateness
+    carries s.271B, 0.5% of turnover capped at Rs 1,50,000. It is also the
+    wrong sequence: s.139(1)'s own date assumes the report is already on
+    record.
+    """
+    from services import compliance_engine as ce
+
+    for fye in (2026, 2027, 2028):
+        report = ce.tax_audit_report_due_date(fye)
+        assert report == date(fye, 9, 30)
+        assert report < ce.itr_due_date(fye, is_audit=True)
+
+
+def test_the_report_date_is_derived_from_the_return_date_not_stated():
+    """Explanation (ii) defines this date BY REFERENCE to s.139(1). If a CBDT
+    notification moves the return, the report has to move with it — which a
+    literal 30 September would not."""
+    from datetime import date as _date
+
+    from services import compliance_engine as ce
+
+    real = ce.itr_due_date
+    try:
+        ce.itr_due_date = lambda fye, **kw: _date(fye, 12, 31)   # a hypothetical extension
+        assert ce.tax_audit_report_due_date(2027) == _date(2027, 11, 30)
+    finally:
+        ce.itr_due_date = real
+
+
+def test_one_month_before_clamps_to_the_shorter_month():
+    """31 October has no counterpart on 31 September, and the statute says a
+    DATE one month prior rather than "thirty days"."""
+    from datetime import date as _date
+
+    from services.compliance_engine import _one_month_before
+
+    assert _one_month_before(_date(2026, 10, 31)) == _date(2026, 9, 30)
+    assert _one_month_before(_date(2026, 3, 31)) == _date(2026, 2, 28)
+    assert _one_month_before(_date(2028, 3, 31)) == _date(2028, 2, 29)   # leap
+    assert _one_month_before(_date(2026, 1, 15)) == _date(2025, 12, 15)  # year boundary
+
+
+def test_the_generated_obligation_carries_the_specified_date():
+    """The engine being right is not enough — the calendar row is what a CA
+    reads."""
+    from services import compliance_obligation_service as ob
+
+    audit = ob.obligations_for_service("Statutory Audit", "2025-26")
+    assert [s["obligation_type"] for s in audit] == ["TAX_AUDIT"]
+    assert audit[0]["due_date"] == "2026-09-30"
