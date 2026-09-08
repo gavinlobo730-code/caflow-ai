@@ -15,6 +15,13 @@
     "status": "confirmed",
     "by": "hand",
     "probe": "checked journal_entries columns in production: no source/source_ref_id; client_id and entry_type are NOT NULL"
+   },
+   "rescore_2026_09_08": {
+    "state": "fixed",
+    "what_is_true_now": "Closed by commit 46bd46c. Posting an approved year-end adjustment routes through the single kernel, which supplies client_id and entry_type, uses migration 104's real source_type/source_id names, and writes header and lines in one post_journal_atomic transaction. The router additionally claims the posting conditionally (status='approved' -> 'posted') before calling the kernel and rolls the claim back if the kernel refuses, so a failed post leaves the adjustment re-postable rather than stranded. The class of bug (mock-mode writes of columns production does not have) is now caught by tests/production_types.py wired into FakeDB, so the FakeDB blind spot the finding named is closed too.",
+    "remaining": null,
+    "probe": "apps/api/routers/year_end_adjustments.py:609 now reads `journal_id = phase2_journal_service._create_journal(db=db, firm_id=..., client_id=client_id, entry_date=existing[\"adjustment_date\"], reference_no=_journal_reference(adjustment_id), narration=..., entry_type=_JOURNAL_ENTRY_TYPE, lines=lines, is_posted=True, source_type=_JOURNAL_SOURCE_TYPE, source_id=adjustment_id, created_by=current_user.get(\"id\"))`. `grep -n 'journal_entries' routers/year_end_adjustments.py` returns only comment lines (37, 45, 532, 536) \u2014 no `.table(\"journal_entries\").insert(...)` remains. `pytest tests/test_year_end_adjustment_posts_through_the_kernel.py -q` -> 11 passed. Negative control on the guard that now backs it: `python -c \"from tests.e2e_harness import FakeDB; FakeDB().table('journal_entries').insert({'source':'X'}).execute()\"` -> AssertionError 'journal_entries.source is not a column in production \u2014 PostgREST rejects the WHOLE write with PGRST204'. Fixture check: year_end_adjustments already carries client_id and journal_entry_id (tests/fixtures/production_schema_2026-09-03.json).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -37,6 +44,13 @@
     "lens_notes": {
      "first_pass_lens": "REACH"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged since 7 September. Every receipt and vendor payment still debits/credits the single account resolved by system_account_key='bank' (or account_name ILIKE '%Bank%'); payment_mode='cash' is captured, CHECK-constrained and stored, and never consulted when choosing the GL leg, so Cash in Hand (1001) and Petty Cash (1002) never move and the \u00a740A(3) cash-payment detector still sees nothing.",
+    "remaining": null,
+    "probe": "`grep -rn 'payment_account_id|settlement_account_id' apps/api --include=*.py --include=*.sql` -> 0 hits. services/phase2_journal_service.py:210 is still `bank_id = self._find_account(db, firm_id, client_id, \"%Bank%\", system_key=\"bank\")` in receipt_journal_lines, :769 the same in journal_for_purchase_payment, and the atomic paths services/receipt_service.py:178 and services/purchase_payment_service.py:443 both do `K._find_account(db, firm_id, client_id, \"%Bank%\", system_key=\"bank\")`. `grep -n payment_mode services/phase2_journal_service.py` -> 0 hits; payment_mode appears in receipt_service.py only at :217/:566/:634 as a stored column value, never in account resolution. Latest migration on disk is 337 (security-definer revocation), which touches none of this.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -59,6 +73,13 @@
     "lens_notes": {
      "first_pass_lens": "REACH"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Receipts and vendor payments cannot name the bank the money moved through \u2014 the column does not exist, the request models carry an unused bank_account_id, and the journal builders resolve one firm-wide account \u2014 while bank-statement postings and bank opening balances post to the correct per-bank coa_account_id. The two resolvers are still separate code, so they can still diverge.",
+    "remaining": null,
+    "probe": "receipts columns in tests/fixtures/production_schema_2026-09-03.json are still ['allocated_paise','amount_paise','client_id',...,'payment_mode',...] with no bank_account_id. `grep -rn 'bank_account_id' apps/api/routers/receipts.py apps/api/routers/purchase_payments.py apps/api/services/receipt_service.py apps/api/services/purchase_payment_service.py` -> 0 hits; models/invoices.py:400 (ReceiptIn) and :451 (PurchasePaymentIn) still declare `bank_account_id: Optional[str] = None` and nothing reads it. services/bank_posting_service.py:104 still falls back to the same generic `%Bank%` resolver, while its per-bank branch resolves bank_accounts.coa_account_id. phase2_journal_service.py:1191 and :1296 (fixed-asset acquisition and disposal) still use the generic resolver too.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -81,6 +102,13 @@
     "lens_notes": {
      "first_pass_lens": "REACH"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, and the surface has grown by one. Nothing on the edit path restricts a correction to source_type='manual', while the discard path explicitly does. The ACC-01 fix now stamps source_type='year_end_adjustment' on year-end adjustment journals, so an approved, posted year-end adjustment's GL entry is one more auto-posted entry that PATCH /api/accounting/journal/{id} can silently rewrite away from the document it came from.",
+    "remaining": null,
+    "probe": "`awk '/CREATE OR REPLACE FUNCTION public.edit_posted_journal/,/^\\$\\$/' migrations/266_editable_journals_until_locked_or_filed.sql | grep -E 'source_type'` -> 0 hits; the function's only refusals are not-found, is_reversed, the two period-lock checks, <2 lines and Dr<>Cr. `grep -n source_type services/manual_journal_service.py` -> 115, 129 (both the CREATE path writing MANUAL_SOURCE) and 150 (the projection in get()); update() at :185-297 never tests it. By contrast migrations/275:82 and 276:224 both carry `IF COALESCE(v_entry.source_type, '') <> 'manual' THEN`. routers/accounting.py:452-490 PATCH /journal/{entry_id} guards only with _assert_journal_scope_db (firm + client + deleted_at, :682-686).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -105,6 +133,13 @@
      "guards": "No guard rescues this. Migration 289 GRANTs SELECT/INSERT/UPDATE/DELETE on public.client_year_locks to `authenticated` (289_client_scoped_year_locks.sql:105), so a direct PostgREST delete is theoretically possible \u2014 but grep across apps/web finds no reference to client_year_locks except a comment at apps/web/app/clients/[id]/accounting/page.tsx:3413 describing where the lock is written. There is no test asserting an unlock path exists; apps/api/tests/test_year_lock_management.py only pins that finalising locks ONE client (:89-113) and that a missing client_id locks nothing (:117-127). The FIRM-level lock does have a working unlock \u2014 routers/accounting.py:626 POST /year-lock with lock=false, via set_lock's else-branch at year_lock_service.py:81-82 \u2014 but that is a different table and does not clear client_year_locks.",
      "reach": "Fully reachable. year_end.router is mounted at apps/api/main.py:344 and the engagement screens exist at apps/web/app/clients/[id]/year-end/. A route dump of the live app confirms the omission directly: /api/year-end/engagements/{engagement_id}/status is the only status route and there is no DELETE or unlock route anywhere under /api/year-end."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Finalising a year-end engagement writes an irreversible client_year_locks row; phase2_journal_service.py:1566-1580 then refuses every posting for that client-year with 'Reopen the year before posting to it', and no endpoint or screen can reopen it. Only the firm-level lock has an unlock.",
+    "remaining": null,
+    "probe": "`grep -rn 'set_client_lock' apps/api apps/web` -> 3 hits only: the definition at services/year_lock_service.py:125, the import at services/year_end_workflow_service.py:61 and the single call at :62 with `lock=True`. `python -c \"import main; [print(sorted(r.methods), r.path) for r in main.app.routes if 'year-end' in r.path]\"` -> 30 routes, the only status route is ['PATCH'] /api/year-end/engagements/{engagement_id}/status; no /lock, no /unlock, no DELETE. routers/year_end.py:92-97 still has `\"locked\": []`. `grep -rn 'client_year_locks' apps/api --include=*.py` (excluding tests) -> only year_lock_service.py:117/136/144.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -129,6 +164,13 @@
      "guards": "No server-side equivalent exists for any of the three. Backend 'recurring' code is recurring INVOICES (services/recurring_invoice_service.py, routers/recurring_invoices.py) and recurring TASKS (services/recurring_task_service.py) \u2014 neither is a recurring journal template. Grep for 'budget' across apps/api/migrations, services and routers returns only ageing_schedule_service, bank_column_mapping_service and document_intelligence_v1 \u2014 no budget table, no budget endpoint. Nothing sweeps or backs up localStorage. The one accurate part of the suggested fix is verified: the scheduler's recurring-invoice job is drafts-only by locked decision (apps/api/jobs/scheduler.py:225-227, 'Drafts only: never auto-issue, auto-post a journal, or auto-email').",
      "reach": "Reachable and advertised. /accounting is a workspace defaultRoute (apps/web/lib/workspace/workspaceConfig.ts:77,126) and the hub renders all three cards. Post Now does reach the real kernel \u2014 api.accounting.createJournalEntry \u2192 manual_journal_service \u2192 phase2_journal_service._create_journal \u2014 so posted entries are real; it is only the templates, budgets, retainers and schedule that live in the browser."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged in substance. Commit 46bd46c touched budget/page.tsx and recurring/page.tsx, but only to route the typed amount through paiseFromRupeeInput \u2014 so the number is now parsed correctly and then still saved to that browser's localStorage. No table, no endpoint, no RLS, no scheduler; Post Now still stamps today rather than the occurrence's due date; the hub still advertises automation.",
+    "remaining": null,
+    "probe": "apps/web/app/accounting/recurring/page.tsx:42 `const LS_KEY = \"practicesync_recurring_templates\"` with localStorage read/write at :47 and :54; budget/page.tsx:43,52 localStorage per-FY key; retainer/page.tsx:84,91,96,103,108,115 three localStorage keys. `grep -rln budget apps/api/migrations apps/api/services apps/api/routers` -> no budget table or endpoint. recurring/page.tsx:269 still `entry_date: today`. The hub card at apps/web/app/accounting/page.tsx:19 still reads 'Recurring Transactions \u2014 Automate monthly, quarterly & yearly entries'.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -153,6 +195,13 @@
      "guards": "None. The volume claim checks out: migration 266 lines 125-128 attach trg_audit_capture_line AFTER INSERT OR UPDATE OR DELETE on public.journal_lines FOR EACH ROW, so every posting writes one audit row per line; and services/audit_service.py:26 records '46,311 rows' measured in production on 2026-09-05. The trigger writes entity_type='journal_line' with entity_id set to the PARENT entry id (migration 266:111-117, with a comment explaining exactly that an auditor asks 'what changed on this entry') \u2014 so the data needed for a per-entry history is already shaped for the query nobody makes. The misleading copy is real: apps/web/app/clients/[id]/accounting/page.tsx:808 tells the CA deleted entries 'stay in Settings \u2192 Audit Log with their lines'.",
      "reach": "Reachable. audit.router is mounted at apps/api/main.py:280 and the page is Partner-gated (rbac('accounting','approve')). No journal screen links to it: grep for api.audit across apps/web returns exactly one hit, the audit-log page itself."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The Rule 3(1) edit log is written by the triggers and remains unusable: 200 firm-wide rows, filtered in the browser, no pagination, and no screen anywhere passes entity_id to get one entry's history even though the endpoint accepts it. Migration 336 ('the audit log stops collecting identifiers') changed what is stored, not what can be read back.",
+    "remaining": null,
+    "probe": "apps/api/routers/audit.py:18 is still `limit: int = Query(50, le=200)` with no date range, no cursor and no offset; the handler ends `.order(\"created_at\", desc=True).limit(limit)`. apps/web/app/settings/audit-log/page.tsx:205 `const FETCH_LIMIT = 200`, :225 `api.audit.list({ limit: FETCH_LIMIT })`, :251 'Apply filters (client-side over the most recent FETCH_LIMIT events)'. `grep -n entity_id` on that page -> only :135/:162/:174/:185/:399-400, all rendering, never a query parameter.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -175,6 +224,13 @@
     "lens_notes": {
      "first_pass_lens": "REACH"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The Trial Balance takes no period start, so from year two on its income and expense rows are inception-to-date; picking an FY only moves the as-at date; and the XLSX/portal export is still labelled 'Trial Balance \u2026 FY 20xx-yy' while the P&L exported by the same function is FY-windowed, so the two still disagree by every prior year's revenue.",
+    "remaining": null,
+    "probe": "apps/api/domain/reporting/service.py:218-233 \u2014 `def trial_balance(self, firm_id, client_id, as_of_date, basis='accrual')`, both branches pass `None` as the window start (`self.source.snapshot(firm_id, client_id, None, as_of)` at :223 and `self._passbook_accrual_lines(firm_id, client_id, None, as_of)` at :230). routers/accounting.py:894-899 exposes only as_of_date/client_id/basis. apps/web/app/clients/[id]/accounting/page.tsx:1176 `api.accounting.trialBalance({ basis, as_of_date: asOf, client_id: clientId })` and the export at :3180 uses `as_of_date: end` from `fyDateRange(financialYear)` while naming the file by FY. domain/reporting/builders.py:512 still synthesises 'Retained Earnings / Net Profit'.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -199,6 +255,13 @@
      "guards": "The endpoints are real and correct \u2014 POST /api/accounting/accounts and PATCH /api/accounting/accounts/{account_id} both write the live chart_of_accounts table (routers/accounting.py:90-136 and :157+), with rbac('accounting','write'), a required account_code (:113-118) and firm-scoped writes. That is what makes this a reach problem rather than a backend gap. apps/web/lib/api/index.ts:728-729 defines createAccount/updateAccount; grep across apps/web (excluding node_modules) finds no caller of either. The only frontend path that inserts into chart_of_accounts is the CSV importer at coa-import/page.tsx:160.",
      "reach": "A capability that exists in the backend and is reachable from no screen \u2014 which the instructions say CONFIRMS the gap. There is no /accounting/chart-of-accounts page (ls apps/web/app/accounting shows account-groups, budget, coa-export, coa-import, fixed-assets, invoices, loans, lock-year, msme-tracker, receivables, recurring, retainer, schedule-iii, schedule-iii-mapping, suppliers, trial-balance-import \u2014 no CoA CRUD screen). The client workspace's 'Accounts' tab (clients/[id]/accounting/page.tsx:43) is read-only: it selects from chart_of_accounts at :224 and never inserts."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. POST/PATCH /api/accounting/accounts exist and are wrapped in lib/api, and no screen calls them; the only way to add a ledger is the whole-chart CSV import. The chart stays flat \u2014 nothing in apps/api writes parent_id, parent_group or sub_group.",
+    "remaining": null,
+    "probe": "`grep -rn 'createAccount|updateAccount' apps/web --exclude-dir=node_modules` -> 2 hits, both the wrapper definitions at apps/web/lib/api/index.ts:758-759; no component calls either. `grep -rn 'parent_group|sub_group' apps/api --include=*.py` -> only tests/test_coa_architecture.py. In apps/web the only writer is app/accounting/coa-import/page.tsx:168. `python -c \"from services.coa_seed_service import STANDARD_COA; print(len(STANDARD_COA), len(STANDARD_COA[0]))\"` -> 57 4 \u2014 the tuple is (code, name, type, subtype), no group, no parent.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -221,6 +284,13 @@
     "lens_notes": {
      "first_pass_lens": "GUARDS"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. chart_of_accounts.schedule_iii_mapping is still written only by the CSV importer, displayed by the read-only Schedule III Mapping screen and read by no computation; statutory presentation is still decided by substring scans of account_subtype in four places with no shared vocabulary and no parity test.",
+    "remaining": null,
+    "probe": "`grep -rn 'schedule_iii_mapping' apps/api --include=*.py` -> hits only in tests/test_coa_architecture.py (lines 25, 38, 227-244). No production module reads it. apps/api/domain/reporting/schedule_iii.py:22-33 still opens `sub = (account_subtype or \"\").lower()` and matches free-text substrings; apps/web/lib/accounting/scheduleIiiCaptions.ts and routers/year_end_mappings.py / account_group_mappings remain the parallel classifiers.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -243,6 +313,13 @@
     "lens_notes": {
      "first_pass_lens": "LITERAL"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. An account created through the API still cannot carry account_subtype and cannot be given one later, so asset/liability/expense accounts fall into the Schedule III catch-alls and an 'Income'-typed account is dropped from the Schedule III P&L entirely. The mock-mode KeyError noted inside this finding's verification block is still live and still has no finding id of its own.",
+    "remaining": null,
+    "probe": "apps/api/models/accounting.py:19-25 \u2014 AccountIn is still `name, code, account_type, parent_id, description, is_active`, no account_subtype; AccountUpdateIn at :35-39 is still `name, code, description, is_active`. routers/accounting.py:118-126 writes firm_id, client_id, account_code, account_name, account_type, parent_id, is_active only. schedule_iii.py catch-alls unchanged. The mock-mode branch is still broken too: `env -u SUPABASE_URL python -c \"from routers.accounting import create_account; from models.accounting import AccountIn; create_account(data=AccountIn(name='Test Ledger', code='9999', account_type='Asset'), client_id=None, current_user={'firm_id':'f1','id':'u1','role':'Partner','auth_user_id':'a1'})\"` -> `RAISED: KeyError 'account_code'` (domain/accounting_service.py:199 reads data['account_code'] from a model_dump keyed 'code').",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -267,6 +344,13 @@
      "guards": "Partial, and only on the edit side. manual_journal_service._lock_reason (:167-181) does call the journal_period_lock_reason RPC, and update() refuses on it at :214-215 and again for a date move at :238-241; migration 266:380-383 re-checks inside edit_posted_journal, and migration 275:104 does the same for discard. So EDITING and DELETING inside a filed period are properly blocked in SQL, inside the transaction. CREATING is not \u2014 nothing on the create path consults either RPC. Both RPCs fail closed on error, so the asymmetry is a genuine coverage gap and not a fail-open bug.",
      "reach": "Reachable on every posting path \u2014 bank posting, payroll, depreciation, receipts, payments, credit/debit notes, opening balances, trial-balance import and reversals all enter through _create_journal, which has no filed-return check. Note the FY-lock half is still enforced on many of those via validate_posting_date, so this is specifically the filed-return half."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The filed-return lock still bites on edits and deletes and on sales-invoice/purchase-bill writes, but no create/post path consults it \u2014 manual journals, draft posting, reversals, bank entries, payroll, depreciation, receipts, payments, opening balances, TB import and now year-end adjustments all post into a period whose GSTR-3B is filed. And only GST writes `filings`, so a filed ITR or TDS return still locks nothing.",
+    "remaining": null,
+    "probe": "`grep -rn 'period_lock_service' apps/api --include=*.py` (excluding tests) -> imports and calls in routers/purchase_bills.py (25, 1353, 1355) and routers/sales_invoices.py (22, 825, 1252, 1254) only. services/manual_journal_service.py:92 still calls only `period_validation_service.validate_posting_date(firm_id, entry_date)`; phase2_journal_service.py:1566-1580 still checks only the client year lock. `grep -rn '\\\"filings\\\"' apps/api --include=*.py` (excluding tests) -> services/gst_filing_record_service.py:139/146/149 only (the payroll.py hits are response-body dict keys).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -291,6 +375,13 @@
      "guards": "There is a deliberate, documented design decision behind the Journal filter \u2014 a 12-line comment at apps/web/app/clients/[id]/accounting/page.tsx:618-633 argues the tab is the AUTHORED list, that a 'Show system-generated entries' toggle was deliberately removed, and that auto-postings live 'per account in Trial Balance and the Ledger drill-down' and in the Audit Log. That defends the FILTER but does not supply a day book: a per-account drill-down is not a chronological all-voucher register, and (see ACC-07) the Audit Log screen shows only 200 rows. The tab list at :42-52 has no Day Book entry, and apps/web/app/clients/[id]/reports/ holds only ageing, bank-book, ratios and trend. Party ledgers do exist as a separate artefact \u2014 services/customer_statement_service.py and vendor_statement_service.py, exposed at routers/customer_statements.py \u2014 which is what the finding already says.",
      "reach": "The client accounting workspace is the main screen a CA lives in, so the absence is front-and-centre."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. No chronological voucher register exists anywhere, no cost-centre dimension, no bill-wise reference, and parties remain master tables settling against one Trade Receivables / Trade Payables control account rather than GL ledgers.",
+    "remaining": null,
+    "probe": "`grep -rniE 'day.?book|cost cent|cost_cent|bill.?wise|bill_wise' apps/api apps/web/app apps/web/components apps/web/lib` -> 1 line, the unrelated comment at apps/api/domain/banking/splits.py:7. apps/web/app/clients/[id]/accounting/page.tsx:648 is still `entries.filter((e) => e.source_type === \"manual\")`.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -315,6 +406,13 @@
      "guards": "The separation is deliberate and documented, and that documentation confirms the double-count exposure rather than closing it: trial_balance_import_service.py:17-28 states the two services 'must not share a journal family' because opening_balance_service reverses anything in source_type='Opening' the masters do not justify, so the TB import posts under a different family and 'neither touches the other's entries'. There is therefore no cross-check between them by design \u2014 a bank opening entered on the master AND present in the imported TB posts twice, once in each family. tests/test_trial_balance_import_service.py pins the separation, not any reconciliation.",
      "reach": "Both paths are live: /accounting/trial-balance-import is a hub card (apps/web/app/accounting/page.tsx:26) and the master opening-balance fields are on the customer/vendor/bank masters."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Opening balances still plan exactly three legs \u2014 aggregate AR, aggregate AP, per-bank \u2014 with nothing for fixed assets, accumulated depreciation, inventory, loans, capital, reserves, statutory dues or prepayments, and no party- or bill-level opening; those still come only from the separate CSV trial-balance import, which does not reconcile against the master figures.",
+    "remaining": null,
+    "probe": "apps/api/services/opening_balance_service.py:155 `AR, AP, BANK = \"ar\", \"ap\", \"bank\"`, :156 `ALL_LEGS = frozenset({AR, AP, BANK})`, :219 `def _plan_opening`, :228-229 `ar_total = _sum_opening(customers)` / `ap_total = _sum_opening(vendors)`. services/trial_balance_import_service.py still posts its own separate family (TB_SOURCE).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -337,6 +435,13 @@
     "lens_notes": {
      "first_pass_lens": "LITERAL"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, both halves. A discarded draft can still be re-approved and posted, producing is_posted=true with deleted_at set \u2014 a posted entry that account_period_balances and every report exclude. And on every single draft approval the 'Journal Posted' timeline event is still written with a null client_id, so it never appears on the client's timeline.",
+    "remaining": null,
+    "probe": "apps/api/services/journal_posting_service.py:31-33 `_SELECT = (\"id, entry_date, reference_no, narration, entry_type, is_posted, status, source_type, source_id, created_by, created_at, posted_at, posted_by, journal_lines(account_id, debit_paise, credit_paise)\")` \u2014 still no deleted_at and no client_id. post_draft at :84-85 selects exactly that with `.eq(id).eq(firm_id).single()` and no `.is_(\"deleted_at\", \"null\")`, so the guard at :89 `if je.get(\"deleted_at\")` can never fire and :116 `timeline_service.log(je.get(\"client_id\"), ...)` always passes None. routers/accounting.py:696-700 `_assert_draft_scope` also selects only client_id with no deleted_at filter (contrast :684, where _assert_journal_scope_db does have `.is_(\"deleted_at\", None)`).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -359,6 +464,13 @@
     "lens_notes": {
      "first_pass_lens": "LITERAL"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. journal_lines has no ordering column, no read path orders the lines, and edit_posted_journal still deletes and re-inserts them \u2014 so line order is whatever the query plan yields. Presentational only; no figure moves.",
+    "remaining": null,
+    "probe": "journal_lines columns in tests/fixtures/production_schema_2026-09-03.json are ['account_id','base_currency','created_at','credit_paise','debit_paise','exchange_rate','id','journal_entry_id','narration','rate_date','rate_source','rate_type','txn_credit','txn_currency','txn_debit'] \u2014 no line_no/sequence. `grep -rn 'line_no|sequence|line_order' apps/api/migrations/*.sql | grep journal_lines` -> 0 hits. services/manual_journal_service.py:149 still selects `lines:journal_lines(id, account_id, debit_paise, credit_paise, narration)` with no .order().",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -381,6 +493,13 @@
     "lens_notes": {
      "first_pass_lens": "LITERAL"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, seven endpoints. A Manager or Executive who simply omits client_id still gets the whole practice's consolidated books. Firm isolation holds \u2014 firm_id is always applied \u2014 so this is intra-firm only, and needs a hand-made request since no frontend caller omits client_id.",
+    "remaining": null,
+    "probe": "apps/api/routers/accounting.py:876-885 still carries the verbatim comment 'client_id is checked when named; when omitted, every reporting endpoint below aggregates across the WHOLE FIRM rather than narrowing to the caller's own assigned clients \u2026 Recorded, not fixed.' The handlers below it (/ledger :886-892, /trial-balance :894, /profit-loss :938, /balance-sheet, /schedule-iii, /cash-flow, and /statement-analysis :1255-1261) all still do `if client_id: assert_client_access(...)` and pass client_id straight through. Contrast /ledger-span :930 `ids = effective_client_ids(current_user)`.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -403,6 +522,13 @@
     "lens_notes": {
      "first_pass_lens": "LITERAL"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The current FY 2026-27 is still absent from both screens, so the in-progress year cannot be locked from the UI, and a firm lock written on any year outside the four would be stored, enforced on posting, and invisible/un-unlockable on the only screen that manages firm locks.",
+    "remaining": null,
+    "probe": "apps/web/app/accounting/lock-year/page.tsx:39-44 is still the four hardcoded rows `FY_LIST = [{label:\"2025-26\"...},{\"2024-25\"},{\"2023-24\"},{\"2022-23\"}]`. The duplicate is still there too: apps/web/app/clients/[id]/year-end/page.tsx:15 `const FY_OPTIONS = [\"2025-26\", \"2024-25\", \"2023-24\", \"2022-23\"]`. Backend unchanged and unrestricted (routers/accounting.py accepts any FYLabel).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -427,6 +553,13 @@
      "guards": "None that helps. The kernel refusal is real \u2014 phase2_journal_service.py:1597-1602 raises 'Multi-currency posting requires an active currency policy; only INR postings are permitted while the feature is dormant.' GET /api/currencies/policy exists (routers/currencies.py:45-77) and the client accounting page consumes it (apps/web/app/clients/[id]/accounting/page.tsx:242-253 \u2192 setMcActive), gating the FX section at :3374 \u2014 but it is read-only. render.yaml:205 declares MULTI_CURRENCY_ENABLED with sync:false (value set in the Render dashboard), so even L1 is not visibly on, and L2/L3 have no writer at any layer.",
      "reach": "Confirmed by route dump: the only currency endpoints are GET /api/currencies and GET /api/currencies/policy, plus GET /api/fx-reports/rate-audit. There is no write endpoint for either entitlement flag, so 'the only route is direct SQL' is literally true."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. All three gates still default off, the firm and client flags are read in nine places and written in none, and apps/web never mentions them \u2014 the whole multi-currency subsystem still cannot be enabled for any firm or client without direct SQL.",
+    "remaining": null,
+    "probe": "`grep -rn 'multi_currency_entitled|multi_currency_enabled' apps/api --include=*.py` (excluding tests) -> 16 hits, every one inside a `.select(...)`: phase2_journal_service.py:1498-1499, receipt_service.py:108-109, purchase_payment_service.py:370-371, routers/banking.py:171-173, routers/currencies.py:63-69, routers/purchase_bills.py:695-696, routers/sales_invoices.py:699-700, routers/purchase_payments.py:583-584, domain/currency/policy.py:49-50. No UPDATE, no insert. `grep -rn 'multi_currency' apps/web --exclude-dir=node_modules` -> 0 hits.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -449,6 +582,13 @@
     "lens_notes": {
      "first_pass_lens": "LITERAL"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The legacy route is still mounted, still Partner-callable and still backed by the in-memory demo engine. As the verifier found, in a production deployment it 404s rather than reporting a false success \u2014 dead code to delete, not a live integrity risk.",
+    "remaining": null,
+    "probe": "`python -c \"import main; [print(sorted(r.methods), r.path) for r in main.app.routes if '/accounting/journal' in r.path]\"` -> includes `['PATCH'] /api/accounting/journal/{entry_id}/post` alongside the real `['POST'] /api/accounting/journals/{journal_id}/post`. routers/accounting.py:735-740 is still `@router.patch(\"/journal/{entry_id}/post\")` -> `_assert_journal_scope(current_user, entry_id)` -> `accounting_service.post_journal_entry(entry_id)`, the module-level in-memory store.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -471,6 +611,13 @@
     "lens_notes": {
      "first_pass_lens": "LITERAL"
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Neither post_journal_atomic nor edit_posted_journal checks that a line's account belongs to the entry's firm or client, at any layer. The reachable half is the intra-firm one: nothing stops a line posting to another client's account inside the caller's own firm.",
+    "remaining": null,
+    "probe": "The live definition is migrations/274_reversal_stamps_its_original_atomically.sql. Its guards at :80-103 cover only the entry header \u2014 firm_id, `public.can_access_client(p_entry->>'client_id')`, and the internal-client Partner rule \u2014 then :145-152 inserts each line with a bare `(l->>'account_id')::uuid` and no check. `awk` over edit_posted_journal in migration 266 shows the same omission (its only refusals are not-found, is_reversed, two period locks, <2 lines, Dr<>Cr). journal_lines' only constraint remains the global FK to chart_of_accounts(id) (migration 003:142). models/accounting.py:41-43 JournalLineIn takes account_id as a bare str; manual_journal_service.create passes it straight through.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -495,6 +642,13 @@
      "guards": "No other layer supplies the drill-through. The Journal tab is explicitly manual-only \u2014 page.tsx:646-649 `entries.filter((e) => e.source_type === \"manual\")`, with a long comment at :610-641 saying auto-posted entries are deliberately not listed there and are 'moved to where they belong: per account in Trial Balance and the Ledger drill-down'. So the ledger IS the designated place to meet an auto-posted entry, and it is the one place with no next step. Drill-through does exist in the opposite direction (InvoiceViewDrawer.tsx:159, PurchaseBillViewDrawer.tsx:147 etc. fetch the journal behind a document), which is document\u2192journal, not ledger\u2192document.",
      "reach": "Reaches real users. Accounting is a first-class client workspace tab (apps/web/lib/workspace/ClientNavContext.tsx:63, workspaceConfig.ts:74-77); the ledger drawer is opened from the Trial Balance / CoA screens on that page."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. entry_id is on every ledger row and used only as a React key; the href builder 460 lines above is never called from the ledger, so a ledger line is still a dead end for exactly the auto-posted entries the Journal tab excludes.",
+    "remaining": null,
+    "probe": "apps/web/app/clients/[id]/accounting/page.tsx:1067-1076 \u2014 the ledger DataTable still has `getRowId={(l) => l.entry_id}` and no onRowClick (`sed -n '1067,1095p' \u2026 | grep onRowClick` -> no match). `grep -n journalEditorHref` on the same file -> defined at :606, used only at :851 ('new') and :867 (the manual-only Journal table).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -519,6 +673,13 @@
      "guards": "Three of the finding's stated consequences are wrong. (1) The suggested fix's premise \u2014 'otherwise it would double count' \u2014 is false and is pinned by a test: apps/api/services/year_end_financial_service.py:634-645 explains that deriving is exactly self-correcting when a CA posts their own close (the close reduces cumulative PAT by P at the moment it credits equity by P), and apps/api/tests/test_year_end_financial_service.py:614-647 test_a_manually_posted_closing_entry_is_not_double_counted asserts a closed and an unclosed ledger produce identical balance sheets. (2) 'cannot be split between reserves and current-year profit as Schedule III requires' is refuted for the statutory statements: year_end_financial_service.py:761-762 and :805-806 emit surplus_brought_forward_paise / profit_for_the_year_paise / surplus_carried_forward_paise, and tests/test_year_end_financial_service.py:600-612 asserts opening + profit = closing. (3) Appropriations and partner-capital allocation are postable today as ordinary manual journals through the kernel; the code even distinguishes them from a close deliberately (year_end_financial_service.py:238-247 keeps 'Dr Partners' Remuneration / Cr Partner's Current Account' out of the closing-entry heuristic).",
      "reach": "The year-end statements engine is mounted (apps/api/main.py:347 year_end_statements). The synthetic single-line Retained Earnings the finding objects to is what the day-to-day Accounting > Balance Sheet screen shows (builders.py:506-517); the Schedule III statements do not use it."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. There is still no closing/appropriation journal; the Balance Sheet still derives 'Retained Earnings / Net Profit' on the fly. As the verifier established this is a defensible design choice, and the one real residue survives: a CA who posts their own closing entry gets closing_entry_dates computed to explain the nilled P&L, and no screen shows it.",
+    "remaining": null,
+    "probe": "services/year_end_workflow_service.py:24-66 `lock_year_if_completing` still ends at `set_client_lock(..., lock=True)` and posts nothing. `grep -rn 'Retained Earnings' apps/api --include=*.py` (excluding tests) -> the seed at coa_seed_service.py:81, the legacy mock at domain/accounting_service.py:31/503, and the synthetic balance-sheet line at domain/reporting/builders.py:512. `grep -rn closing_entry_dates apps/web` -> 1 hit, the type declaration at lib/api/yearEnd.ts:149; the field is computed at year_end_financial_service.py:774 and rendered nowhere.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -543,6 +704,13 @@
      "guards": "None. No migration backfills the columns, no API endpoint sets them, and no test covers the seeded shape (apps/api/tests/test_coa_architecture.py:35-36 only exercises hand-built rows that already carry the values).",
      "reach": "Reachable and prominently linked: apps/web/components/panels/AccountingPanel.tsx:37 ('Account Groups'), apps/web/app/DashboardContent.tsx:53, plus links from schedule-iii-mapping/page.tsx:85, coa-import/page.tsx:300 and trial-balance-import/page.tsx:387."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. A firm that did not import a CSV chart still sees all 57 seeded accounts under one 'Ungrouped -> General' block on a screen linked from the Accounting panel \u2014 a degraded flat list, not an empty one.",
+    "remaining": null,
+    "probe": "`python -c \"from services.coa_seed_service import STANDARD_COA; print(len(STANDARD_COA), STANDARD_COA[0])\"` -> `57 ('1001', 'Cash in Hand', 'Asset', 'Cash')` \u2014 a four-tuple with no group. seed_firm_coa's insert payload is still `{... \"account_type\": atype, \"account_subtype\": asub, \"is_active\": True}` (coa_seed_service.py:138). `grep -rn 'parent_group|sub_group' apps/api --include=*.py` -> tests only; in apps/web the only writer is coa-import/page.tsx:168.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -567,6 +735,13 @@
      "guards": "None, and the gap is one-directional rather than destructive: manual_journal_service.update (services/manual_journal_service.py:242-292) never touches the attachments column and models.accounting.JournalEntryUpdateIn (:79-83) has no attachments field, so an edit cannot wipe attachments either \u2014 it simply can never set them. Attachments with a real UI exist elsewhere in the product (apps/web/components/banking/EntryDetailModal.tsx:103-121 uploads via api.banking.attachments.add), which is what makes the journal omission an inconsistency rather than an unbuilt subsystem.",
      "reach": "JournalEditor is the only journal create/edit surface (apps/web/app/clients/[id]/accounting/journal/[entryId]/edit/page.tsx), so no screen can populate the field; a CA cannot attach a working paper to a voucher from anywhere."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The whole backend chain accepts attachments and no frontend ever sends them; the editor has no upload control and omits the key.",
+    "remaining": null,
+    "probe": "`grep -n attachments apps/web/components/journal/JournalEditor.tsx` -> 0 hits. buildPayload at :142-162 still returns only `{entry_date, entry_type, reference_no, narration, lines}`. The backend chain is intact: models/accounting.py:102 `attachments: list[dict] = []`, manual_journal_service passes it to the kernel, phase2_journal_service writes it onto the entry.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -591,6 +766,13 @@
      "guards": "The stated user impact is refuted by the frontend. apps/web/lib/accounting/useLedgerSpan.ts:20-50 wraps the call in try/catch and sets span to null on any failure, and every caller (apps/web/app/clients/[id]/accounting/page.tsx:1152-1155, 1348-1351, 1684-1691, 2007-2014, 2496-2503) passes that null into splitPeriodColumns, which falls back to the financial year. So 'All Time' does not break the reports tab; the only effect is an unnecessary 500 in the API log.",
      "reach": "No production reach at all \u2014 Render sets SUPABASE_URL, so _prod_db() is never None there. It fires only in mock/dev, where the sibling reports do degrade (probe below)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged and reproduced exactly. The endpoint raises where every sibling report degrades. As the verifier found, useLedgerSpan.ts catches it and the period picker falls back to the FY, so nothing visible breaks \u2014 it is an inconsistency, not a user-facing failure.",
+    "remaining": null,
+    "probe": "routers/accounting.py:914-935 `get_ledger_span` still ends `from core.supabase_client import get_supabase; \u2026 ledger_span(get_supabase(), \u2026)` with no `_prod_db()` None check. Reproduced: `env -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY python -c \"from routers.accounting import get_ledger_span, get_trial_balance; \u2026\"` -> `ledger-span RAISED: RuntimeError SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.` while `trial-balance OK, success= True`.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -615,6 +797,13 @@
      "guards": "One guard exists and it is the reason this is narrow rather than wide \u2014 but it does not close the hole, it opens the exact crack. For a POSTED entry, manual_journal_service.py:90-92 calls period_validation_service.validate_posting_date, whose get_fy_for_date (services/period_validation_service.py:34-36) uses datetime.strptime('%Y-%m-%d'), which ACCEPTS non-zero-padded dates that date.fromisoformat REJECTS. So '2025-4-1' passes the firm-level lock check (and is a valid Postgres DATE literal), while the kernel's fromisoformat fails and the CLIENT-scoped year lock \u2014 the one a year-end finalisation actually writes (migration 289, year_end_workflow_service.py:60-66) \u2014 is silently skipped. Genuinely malformed shapes ('2025/04/01', '01-04-2025') are caught by strptime and become a 500 from routers/accounting.py:280-287. A DRAFT skips validate_posting_date entirely (the `if is_posted:` at :90), so nothing but the Postgres DATE column stands between a garbage date and the row. No test covers any of this.",
      "reach": "Not reachable from the UI: JournalEditor's date field is an <input type=\"date\"> which always emits YYYY-MM-DD. It needs a non-browser caller of POST /api/accounting/journal (mounted at apps/api/main.py:243) \u2014 an integration, script or import \u2014 with accounting:write."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged and reproduced. entry_date is still an unvalidated str, and the kernel still treats an unparseable date as 'no client year lock' rather than an error \u2014 so '2025-4-1' passes the firm-level strptime check, fails the kernel's fromisoformat, is a valid Postgres DATE, and posts into a client year that year-end finalisation has locked. Needs a non-UI caller.",
+    "remaining": null,
+    "probe": "models/accounting.py:79 `entry_date: Optional[str] = None` and :97 `entry_date: str` \u2014 the only field_validators in the file are for entry_type (:85, :105), status (:114), lines (:121), name (:27) and the fixed-asset amounts. Reproduced: `JournalEntryIn(client_id='c1', entry_date='2025-4-1', lines=[...])` -> `model accepted entry_date = '2025-4-1'`; then `'2025-4-1' | strptime -> 2025-04-01 | fromisoformat -> RAISED ValueError` (same for '2025-04-1'). services/period_validation_service.py:35 uses strptime; phase2_journal_service.py:1571-1573 uses date.fromisoformat inside `try/except (TypeError, ValueError): _d = None`, and :1574 `fy = ist_fy_label(_d) if _d else None` then skips the lock check when fy is None.",
+    "against_commit": "46bd46c"
    }
   }
  ],

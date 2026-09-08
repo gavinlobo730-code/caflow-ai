@@ -53,3 +53,17 @@ security | data_integrity | performance | ux), `severity` (critical | high | med
 Reporting and year-end, practice management, the AI layer, portals and identity,
 platform and security, the frontend as a whole, the marketing site. A second pass
 over those seven is the first thing to do after Stage 1.
+
+## Re-scored 8 September 2026
+
+Every finding now also carries a `rescore_2026_09_08` block: its state against
+the code as merged (`46bd46c`), with a probe. **That block is the current
+answer; `verification` is the 7 September one and is kept because it is the
+evidence the fixes were aimed at.**
+
+States are `fixed` (27), `partially_fixed` (15) and `still_open` (233). Read
+`partially_fixed`'s `remaining` field before planning anything — three of the
+five outstanding criticals are in that state, and each was counted as done by
+the tranche that half-closed it.
+
+`../2026-09-08-what-is-left.md` is the readable summary.

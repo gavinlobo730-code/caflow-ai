@@ -440,6 +440,13 @@ than merely complete.
 
 ## 12. Stage 0 and Stage 1, landed 8 September 2026
 
+> **The counts in this section are the TRANCHE'S OWN summary, and a re-score on
+> 8 September found them optimistic.** It says nineteen of the twenty criticals;
+> the true figure is fifteen fixed, three partial, two never touched. The
+> re-score also found eight regressions the tranche introduced. Read
+> `2026-09-08-what-is-left.md` for what is actually left — this section is left
+> as written because a report rewritten after the fact cannot be checked.
+
 Everything listed below is **merged, tested and pushed**, each with a stated
 negative control — how many tests fail against the previous code. Nine commits
 on `claude/ca-platform-audit-roadmap-yuoad3`. Read this section as the record of

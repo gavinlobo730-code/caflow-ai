@@ -22,6 +22,13 @@
      "guards": "None. tests/test_statement_printed_totals.py has 20 tests and not one puts two totals-shaped rows in a file (test names cover the label variants, three-numbers refusal, adapter ordering, a date not being mistaken for a total \u2014 never a second Total row). The only relaxations in the module are the opposite direction: three numbers in the row => None, no debit/credit columns => None. No DB constraint, no migration, no scheduler, no flag bears on this.",
      "reach": "Fully reachable. routers/banking.py:761 POST /banking/statements/upload, router mounted at main.py:341. The frontend calls it via apps/web/lib/api/index.ts:917-928 `uploadStatement` from components/banking/AccountsPanel.tsx. There is no server-side bypass: the upload form fields are file/client_id/bank_name/account_number/bank_account_id/column_mapping/save_mapping/opening_balance_paise/closing_balance_paise/allow_vision (routers/banking.py:762-773) \u2014 nothing skips the totals check. `overrideBalance` (AccountsPanel.tsx:583, 910, 992) only relaxes the CLIENT-side preview gate on balance_check; it is never sent to the server."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged since 7 September. The first row labelled Total/Totals/Grand Total with exactly two numeric cells still wins, a page or period subtotal still refuses the whole import, and the refusal still blames the column mapping. There is still no server-side acknowledgement path.",
+    "remaining": null,
+    "probe": "Ran a probe at HEAD (46bd46c): parse_statement_detailed() on a 6-col cheque-layout CSV carrying a page 'Total' row before the real 'Grand Total'. Printed: \"printed: {'label': 'Total', 'total_debits_paise': 0, 'total_credits_paise': 50000}\" / \"verified: False\" / \"refusal: This statement does not match its own \\\"Total\\\" row: withdrawals came to Rs100.00 against the statement's Rs0.00 and deposits came to Rs800.00 against the statement's Rs500.00. Either some lines were not read, or a column is mapped to the wrong thing. Nothing has been imported.\" The code is unchanged: domain/banking/tie_out.py printed_totals() still `return`s from inside `for row in rows:` on the FIRST label match, and routers/banking.py:855 still does `raise HTTPException(status_code=422, detail=check[\"refusal\"])` before anything is written. `grep -n 'skip_totals\\|override' routers/banking.py` -> no match.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -46,6 +53,13 @@
      "guards": "None, and the downstream consequence is real. domain/reporting/schedule_iii.py:53 routes 'overdraft'/'cc limit' to 'Short Term Borrowings' only when account_type is LIABILITY; the asset branch (:74-75) sends any subtype containing 'bank' to 'Cash & Cash Equivalents', and there is no negative-balance reclassification anywhere in the module (the only sign handling is at :498, a display helper). domain/banking/account_category.py:161 additionally hard-requires account_type == 'Asset' for a ledger to count as a bank/cash account, so even a hand-linked Liability ledger would break Transfer derivation. The only banking-backend read of `account_type` is services/bank_register_service.py:221, which echoes the bank account's type into the register header for display.",
      "reach": "Fully reachable \u2014 the account-type dropdown is on the live Add/Edit Bank Account form (AccountsPanel.tsx:414-417) and the ledger is auto-created on POST /banking/accounts (routers/banking.py:445-447). The API would accept a Liability coa_account_id (create_bank_account does no type check, :448-457 only checks for a conflicting bank), but no screen can supply one because the picker query filters to Asset."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. An Overdraft or Cash Credit account still gets an Asset/Bank ledger and the picker still offers nothing else, so a utilised limit reads as negative Cash & Cash Equivalents rather than Schedule III Short Term Borrowings.",
+    "remaining": null,
+    "probe": "routers/banking.py:250 still reads `\"account_type\": \"Asset\", \"account_subtype\": \"Bank\", \"is_active\": True,` inside _ensure_bank_ledger, with no reference to the bank account's own account_type. apps/web/components/banking/AccountsPanel.tsx:342 still `.eq(\"account_type\", \"Asset\")` on the manual ledger picker, and :416 still offers `[\"Current\",\"Savings\",\"Cash Credit\",\"Overdraft\"]`.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -70,6 +84,13 @@
      "guards": "Two the finding missed. (1) FX revaluation of a foreign bank balance DOES exist \u2014 domain/currency/fx_revaluation_service.py:178 `revalue` emits item_type 'bank' adjustments keyed on the bank's GL account, proven by tests/test_multi_currency_phase5.py:442-464 and :468-476 (idempotent) and :478-485 (currency_exposure includes the bank). So the sub-claim 'There is no FX revaluation of the bank balance at year end either' is FALSE. (2) The whole surface is triple-gated: domain/currency/policy.py:48-56 needs MULTI_CURRENCY_ENABLED (core/feature_flags.py:15-21, default OFF; declared `sync: false` in render.yaml:205, i.e. unset in the manifest) AND firms.multi_currency_entitled AND clients.multi_currency_enabled.",
      "reach": "Much narrower than claimed. apps/web/components/banking/AccountsPanel.tsx contains no 'currency' string at all \u2014 the Add/Edit Bank Account form has no currency field, so no screen can create a non-INR bank account. The only frontend mention of a bank account's currency is a read-only FX exposure row (apps/web/app/clients/[id]/accounting/page.tsx:1313). Reaching this bug needs the platform flag on, the firm entitled, the client enabled, and a hand-crafted POST to /api/banking/accounts."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, and still latent for the same reason: the import/post path books minor units as paise at 1:1, but no screen can create a foreign-currency bank account and the feature needs three default-off flags.",
+    "remaining": null,
+    "probe": "`grep -rn currency apps/web/components/banking/AccountsPanel.tsx` -> no match (still no currency field on the form). routers/banking.py:166-180 _guard_foreign_bank_currency still PERMITS a non-INR account when multi-currency is active. services/bank_posting_service.py:556-563 still calls `phase2_journal_service._create_journal(db, firm_id=..., entry_date=..., reference_no=f\"BANK-{txn_id}\", ... lines=lines, is_posted=True, source_type=\"bank_transaction\", ...)` with no txn_currency/exchange_rate argument. `grep -n currency services/banking_service.py` -> no match.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -94,6 +115,13 @@
      "guards": "None, and the near-miss does not help: the 'uncleared' status in the Bank Book (services/bank_register_service.py:41, 107) is also a STATEMENT-line concept \u2014 services/bank_register_service.py:59-85 `_txns` reads bank_transactions only \u2014 so nothing anywhere in the module lists a book entry with no statement line. A repo-wide grep for 'unpresented', 'not presented', 'in transit', 'cheques issued' across apps/ finds no such feature.",
      "reach": "Fully reachable and this IS the accountant-facing artefact: routers/banking.py:1962 GET /reconciliations/{id}/report.pdf, plus :2007 /report and :2021 /report.csv; the Reconcile tab is apps/web/components/banking/ReconcileTab.tsx and 'Bank reconciliation' is linked from apps/web/app/clients/[id]/reports/page.tsx:122-123. Book-side entries with no statement line genuinely exist \u2014 a Receipt or Payment voucher posts to the bank ledger independently of any statement import."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The BRS is still a one-sided tie-off over statement lines only; nothing in the module reads the book side, so cheques issued but not presented and deposits in transit have no representation anywhere.",
+    "remaining": null,
+    "probe": "`grep -n 'journal_entries\\|journal_lines' apps/api/services/bank_reconciliation_service.py apps/api/services/bank_reconciliation_pdf_service.py apps/api/domain/banking/reconciliation.py` -> exit 1, no output. `grep -rniE 'unpresented|not presented|in transit|cheques issued' apps/api apps/web` -> only an unrelated comment in test_sales_invoice_bulk_create.py and a payroll test string. services/bank_reconciliation_service.py:71 still ends _posted_account_txns with `return [t for t in rows if t.get(\"posted_journal_id\")]`.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -118,6 +146,13 @@
      "guards": "The opposite \u2014 the module shows it knows how to demand a reason and does not here. models/banking.py:312-329 `ReconciliationReopenIn.substantive` requires >=10 characters and says a DB CHECK (migration 253) backs it. Nothing equivalent exists for the adjustment. Stronger still: core/permissions.py:181-185 defines `banking.approve` = Manager+ with the comment 'sign off a reconciliation', and `grep -rn 'rbac(\"banking\", \"approve\")' routers/` returns NOTHING \u2014 POST /reconciliations/{id}/complete uses rbac('banking','write') (routers/banking.py:1909-1912), which is _AT_LEAST_EXECUTIVE. So the Manager gate the permission table was written for is not wired up.",
      "reach": "Fully reachable. PATCH /banking/reconciliations/{recon_id} (routers/banking.py:1846-1859, rbac banking.write) is called from apps/web/components/banking/ReconcileTab.tsx:420-431 \u2014 a free 'Adjustment (\u20b9)' number box with an Apply button that PATCHes adjustments_paise. Complete then freezes a snapshot (bank_reconciliation_service.py:407-414) which services/bank_reconciliation_pdf_service.py renders as a certified statement, printing 'Adjustments' with the figure and no explanation (:87)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. A non-zero adjustment is still an unvalidated, unaudited, un-narrated plug any Executive can write, and it still satisfies the completion gate that freezes the certified BRS snapshot.",
+    "remaining": null,
+    "probe": "`grep -rn 'rbac(\"banking\", \"approve\")' apps/api/routers/` -> exit 1, no output (the Manager tier core/permissions.py defines is still referenced by no router). `grep -rn 'adjustments_paise\\|adjustment_reason' apps/api/migrations/*.sql` -> only migration 102 lines 20 and 33; still no reason column and no CHECK. domain/banking/reconciliation.py still folds adjustments straight into book_balance and services/bank_reconciliation_service.py's complete() still gates only on summary[\"reconciles\"].",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -142,6 +177,13 @@
      "guards": "The remedies that exist do not reach it. POST /transactions/{id}/undo (:1286) reverses a POSTING, not the import; batch-exclude (:1385) only marks lines ignored and leaves the statement and its totals; services/bank_erasure.py is a DPDP retention path for deleting a whole bank ACCOUNT and is itself blocked by _DELETE_BLOCKERS (routers/banking.py:268-273, first entry 'bank statements have been imported for it'). The dedup fingerprint at domain/banking/dedup.py:30-40 includes bank_account_id, so a re-import to the correct account is allowed and the wrong-account copy is permanent.",
      "reach": "Fully reachable, and easy to hit. apps/web/components/banking/AccountsPanel.tsx:565 defaults the import modal's account to `accounts[0]?.id`, and the statements table (:233-252) has one action per row: a View/Hide toggle. There is no Delete."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. A statement imported against the wrong bank account is still permanent, still blocks deleting that account, and the only remedy is still per-line batch-exclude.",
+    "remaining": null,
+    "probe": "`grep -n '@router.delete' apps/api/routers/banking.py` -> 548 /accounts/{id}, 1071 /statements/column-mappings/{id}, 1496 /transactions/{id}/transfer-pair, 2166 /rules/{rule_id}. Still no DELETE for a statement. `grep -rn 'bank_statements' apps/web --include=*.ts --include=*.tsx` -> no output. AccountsPanel.tsx:565 still `useState(accounts[0]?.id ?? \"\")` for the import modal's account.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -166,6 +208,13 @@
      "guards": "None. There is no SQL function for the register (grep of migrations for a register/bank-book function finds nothing \u2014 the SQL-side reports are public.cash_flow_report, migration 277, and public.schedule_iii_ageing, migration 303). The route is not behind a flag. `fetch_all` makes the read CORRECT (the docstring records the PostgREST 1000-row truncation it fixed) but that is exactly what makes it proportional to volume.",
      "reach": "Fully reachable and default-heavy. routers/banking.py:1139-1151 GET /banking/register, mounted at main.py:341; apps/web/app/clients/[id]/reports/bank-book/page.tsx renders components/banking/BankBook.tsx, linked as 'Bank Book' under Operational at apps/web/app/clients/[id]/reports/page.tsx:119-121. BankBook.tsx:92-95 defaults dateFrom/dateTo empty and status 'all', so the first render is the worst case. The same read shape is in services/bank_reconciliation_service.py:60-72 and is re-run by `opening_suggestion` (:165) on every session create."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, and reproduced today at 32.4 s of pure CPU inside one request before any network. The Bank Book still fetches rows proportional to transaction volume and computes the running balance in Python, which the reporting rule forbids.",
+    "remaining": null,
+    "probe": "Ran the timing probe at HEAD against domain/banking/register.py with 12,836 synthetic rows: 'build_register over 12836 rows: 0.071s' then 'min(filtered,key=lines.index) over 12836: 32.407s'. services/bank_register_service.py:59-85 still pages every bank_transaction via fetch_all, and :212-215 still does `earliest = min(filtered, key=lambda l: all_lines.index(l))` \u2014 a linear .index() inside a min() over the whole list.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -190,6 +239,13 @@
      "guards": "Nothing bounds it, and the deployment makes it worse than the finding says. apps/api/Dockerfile:22 runs `gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --timeout 120`: ONE worker, so a blocked event loop is the whole API, and the 120s gunicorn timeout kills the worker (dropping every other in-flight request) rather than just failing the upload. `allow_vision` defaults False (routers/banking.py:772), which limits the 20-call path to opt-in uploads, but the deterministic pdfplumber parse still runs on the loop for every PDF upload, inspect and preview.",
      "reach": "Fully reachable. All three routes are called from the import modal: apps/web/lib/api/index.ts:917-928 uploadStatement and :930-944 postStatementForm (used by inspectStatement :946-947 and previewStatement :949-950). Both use a bare `fetch` with no AbortController, unlike `request` at lib/api/index.ts:358-374, which arms a 45-second abort \u2014 so the browser has no client-side ceiling either."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The router's only three async routes are the three multipart ones, their bodies are still fully synchronous (pdfplumber, 150-dpi rasterisation of up to 20 pages, one blocking Gemini call per page), and nothing is offloaded to a thread.",
+    "remaining": null,
+    "probe": "`grep -n 'async def' apps/api/routers/banking.py` -> exactly 762, 956, 994 (upload_statement, inspect_statement_file, preview_statement_with_mapping). `grep -rn 'run_in_threadpool|anyio.to_thread|asyncio.to_thread' routers/banking.py domain/banking/*.py services/statement_vision.py` -> no output. `grep -n workers apps/api/Dockerfile` -> `--workers 1 ... --timeout 120`.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -214,6 +270,13 @@
      "guards": "Every guard I could find either misses this or makes it worse. (1) tie_out/statement_check runs pre-dedup (above), so `verified: true` is returned for an import that stored one row fewer. (2) balance_agreement is also computed on `txns` (routers/banking.py:882) and in any case returns checked:false when there is no balance column \u2014 domain/banking/tie_out.py:13-15 says so in the module's own words. (3) Migration 224 (uq_bank_txns_client_import_hash, a UNIQUE index on (client_id, import_hash)) does not catch it \u2014 it ENFORCES the collapse at the DB level, so the suggested fix of \"keep both rows\" needs a migration, not just a service change. (4) tests/test_bank_feed_import.py:335-344 (test_import_dedups_duplicate_rows_within_file) asserts imported==1 / duplicates_skipped==1 for two identical rows, and :378-385 (test_distinct_same_day_same_amount_kept) shows the design relies on a DIFFERENT RUNNING BALANCE to tell two real transactions apart \u2014 the very column this case lacks. Nothing in CLAUDE.md records the no-balance case as a deliberate decision.",
      "reach": "Real. routers/banking.py's router is mounted at apps/api/main.py:341, the import endpoint is the only way statement data enters the product (CLAUDE.md, 'Bank data'), and the PDF/vision paths that most often lack a balance column go through the same _import_core."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. With no balance column every row's balance_paise is 0, so two genuinely identical transactions still collapse to one, silently, and the totals check that would catch it still runs on the list before the merge.",
+    "remaining": null,
+    "probe": "Ran at HEAD: `transaction_hash('c1','a1','2026-04-10',50000,0,0,'UPI/DR/RAMESH KUMAR',None)` twice -> 'identical hashes: True 950030cb41b728ab'. services/banking_service.py:172-181 still keeps only the first of a within-file hash collision (`if h not in seen: seen.add(h); deduped.append(...)`) and reports the loss only as `duplicates_skipped`. routers/banking.py:853 still runs statement_check on the PRE-dedup `txns`.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -238,6 +301,13 @@
      "guards": "Find Match does list the document \u2014 services/bank_candidate_search_service.py:73-94 and :121-144 fetch by DATE with no amount band and carry outstanding_paise \u2014 but domain/banking/candidate_search.py:142 computes difference_paise against c.amount_paise (the TOTAL) and :158-168 ranks on abs(difference_paise), and describe() (:176-186) prints 'Bank line is short by <total shortfall>'. The TDS label at :153 fires whenever total_shortfall/total lands on one of matcher.TDS_RATES_BPS (0.1/1/2/5/10/20%) within \u00b1\u20b91, so a \u20b91,00,000 invoice with \u20b910,000 already paid and a \u20b990,000 second instalment is described as '10% TDS'. The auditor's own \u20b93,00,000/\u20b91,00,000 example is 33%, which is not in the table, so that specific quoted sentence would not appear \u2014 the mechanism is real, the illustration is off. Settlement is correct, as claimed: services/bank_posting_service.py:498-511 (_invoice_outstanding/_bill_outstanding) and _settle_doc (:637) allocate against true outstanding.",
      "reach": "Live. The suggestion path feeds the Entries drafts (services/bank_entry_service.py:371-373 -> suggestions_for_many, then E.from_documents), and the Find Match search is mounted at routers/banking.py:1197-1221."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. A Rs 2,00,000 receipt that exactly clears the Rs 2,00,000 outstanding on a Rs 3,00,000 invoice still yields no auto-suggestion, and Find Match still ranks and labels the shortfall against the document total.",
+    "remaining": null,
+    "probe": "Ran at HEAD: `rank_suggestions(20000000,'2026-04-01','NEFT ACME',[Candidate('sales_invoice','i1','INV-1',30000000,'2026-04-01',outstanding_paise=20000000)])` -> `[]`. services/bank_matching_service.py:305/319/327 still band and re-filter invoices on `total_paise`; :355/369-379 still uses `net_payable_paise` for bills (the gross, not the outstanding).",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -262,6 +332,13 @@
      "guards": "None that closes the gap. domain/banking/splits.py exists and is tested, but splits are a manual per-line action, not a rule action. GST rate and interstate are extra rule payload (migration 254), which is more than the finding credits but is not a second condition. There is no reorder endpoint or drag handle in RulesTab.tsx; the only workaround for shadowing is turning a rule off (RulesTab.tsx:355-358) and recreating it.",
      "reach": "The Rules tab is one of the three live bank tabs (docs/architecture/09-bank-entries.md:210-215), and trusted rules post unattended (services/bank_entry_service.py:536-551), so the expressiveness limit reaches every client."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. One substring, one amount range, one direction; no regex, no multiple conditions, no party, no TDS, no split legs, no priority and no reorder.",
+    "remaining": null,
+    "probe": "domain/banking/rules.py:52-70 rule_matches is still `pattern not in narration.lower()` plus an amount min/max plus a debit/credit/any txn_type, and nothing else. `grep -rn priority apps/api/migrations/*.sql | grep -i bank` -> no match (bank_matching_rules still has no priority column); precedence is still created_at order.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -286,6 +363,13 @@
      "guards": "Two guards refute the damage claim. (1) The pass-time audit row survives the delete: services/bank_entry_service.py:540-548 calls audit_service.log_event with rule_id, rule_name AND trusted_by in new_data and source='bank_trusted_rule' \u2014 that record is in audit_log independently of the rule row, and the journal's created_by is trusted_by regardless. (2) Migration 111:98-143 attaches trg_audit_capture AFTER INSERT OR UPDATE OR DELETE to every firm-scoped table with an id that is not in its exclusion list; bank_matching_rules qualifies (migration 054:150-163 has firm_id and id) and is not excluded, so the DELETE writes an audit_log row whose old_data is the whole rule. That trigger only fires when auth.uid() is non-null (111:41-45), and in production it is: render.yaml:174-197 records that USE_USER_JWT is true, and routers/banking.py:84-89 -> core/supabase_client.py:134-138 then returns the caller-JWT client. So 'there is no audit_log row saying the rule ever existed' is wrong for the live deployment.",
      "reach": "Two of the three named consequences do not exist to lose. The register sentence 'Passed by rule Bank charges, trusted by Priya on 3 Sep' (docs/architecture/09-bank-entries.md:195) is not implemented anywhere \u2014 the UI only ever renders a flag, ' \u00b7 rule' (apps/web/components/banking/EntriesTab.tsx:502-503) and ' \u00b7 by a trusted rule' (EntryDetailModal.tsx:354). The Rules tab has no 'what it has passed' count: RulesTab.tsx:210 shows the rule count and trusted count only, and there is no rule filter on the Entries list either. So what actually goes blank on delete is a two-word badge."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, including the stale docstring. The permission asymmetry (Executive can delete a rule a Manager trusted) and the loss of the on-row rule attribution both stand; the per-entry audit row written at pass time still survives, which is why the verifier corrected this to low.",
+    "remaining": null,
+    "probe": "routers/banking.py:2166-2181 delete_rule is still `Depends(rbac(\"banking\", \"write\"))` doing a hard `.delete()` with no audit call, and its docstring still says \"it has never written anything to the ledger\" \u2014 while migrations/322:62 still declares `posted_by_rule_id UUID REFERENCES public.bank_matching_rules(id) ON DELETE SET NULL` and services/bank_entry_service.py:538 still stamps it. Trusting a rule is still gated on banking.approve at :2116-2129.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -310,6 +394,13 @@
      "guards": "None. Migration 096:24 defaults needs_review to false and nothing sets it. There is no endpoint or model field that accepts needs_review (routers/banking.py has it only in the register status pattern at :1145; models/banking.py has none), so a CA cannot even flag a line by hand.",
      "reach": "Both halves reach a user, which is what makes it worth fixing. The dead filter is live: services/bank_register_service.py:41 lists needs_review among STATUS_FILTERS, :115 filters on the column, routers/banking.py:1145 accepts it, and apps/web/components/banking/BankBook.tsx:80 renders 'Needs review' as an option on the Bank Book report page (apps/web/app/clients/[id]/reports/bank-book/page.tsx), which is linked from the reports index (apps/web/app/clients/[id]/reports/page.tsx:119-121). The exception engine reaches nobody. A backend capability reachable from no screen CONFIRMS the gap."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The exception-rules module and its 25 tests are still imported by nothing but the tests, the service its docstring names still does not exist, and the Bank Book's 'Needs review' filter still always returns an empty table.",
+    "remaining": null,
+    "probe": "`ls apps/api/services/bank_exception_service.py` -> 'No such file or directory'. `grep -rn 'banking.exceptions|bank_exception' apps/api --include=*.py` -> two hits only: tests/test_bank_exception_rules.py:15 and the module's own docstring at domain/banking/exceptions.py:22. `grep -rn needs_review` -> the only writes are `\"needs_review\": False` (bank_matching_service.py:816, bank_posting_service.py:1060); the filter is still live at bank_register_service.py:41,115 and BankBook.tsx:80.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -334,6 +425,13 @@
      "guards": "tie_out is the intended backstop and it fails in exactly this case. tie_out.printed_totals (domain/banking/tie_out.py:144-175) reads the bank's own 'Grand Total' line out of the SAME rows list, so if the totals row is on a page that was dropped there are no printed totals and totals_agreement reports checked:false. balance_agreement (normalizer.py:631-664) is a consecutive-delta check whose own module docstring (tie_out.py:17-21) records that truncating from either end leaves the chain self-consistent. statement_check (tie_out.py:272-302) then returns verified:false with a gap rather than a refusal unless the CA typed the opening/closing balances or a vision read was used (routers/banking.py:854-866). So the import proceeds with an amber note.",
      "reach": "Live: _pdf_rows is reached from parse_statement's extension dispatch (normalizer.py:979+) on the same POST /banking/statements/import path that is mounted at main.py:341."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, both halves. A PDF whose first page is ruled and whose later pages are not still silently imports page 1 only, and a page without repeated headings still yields no rows.",
+    "remaining": null,
+    "probe": "domain/banking/normalizer.py:850-860 still loops every page collecting `page.extract_tables()` and then `if rows: return rows` before the geometric fallback runs \u2014 the strategy is still chosen per DOCUMENT. _rows_by_position still has `header = next((ln for ln in lines if _looks_like_header(...)), None)` followed by `if header is None: return []` (normalizer.py:922-925), so a continuation page that does not repeat its headings still contributes nothing.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -358,6 +456,13 @@
      "guards": "None. tests/test_bank_reads_are_complete.py exercises bank_register_service, bank_matching_service and bank_reconciliation_service (lines 334, 356, 366, 387, 400) and never touches bank_transfer_service, so the finding is right that this is the uncovered read. detect_pairs already takes an optional txns= argument (bank_transfer_service.py:48-50), so the per-chunk recomputation is avoidable today; nothing calls it that way. There is no date-window narrowing on the fetch.",
      "reach": "Live on the Entries tab: every redraft chunk pays for a full 1,000-row fetch plus the quadratic scan, and the transfer draft is one of the four sources E.choose ranks (bank_entry_service.py:400-415)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The newest-1,000-row cap, the missing date window, the quadratic out x in pairing and the per-chunk re-run are all present, and it is still the one bank read the completeness test does not cover.",
+    "remaining": null,
+    "probe": "services/bank_transfer_service.py:29 still `SCAN_LIMIT = 1000` and :58 still `.limit(SCAN_LIMIT).execute()` with no date window and no fetch_all. services/bank_entry_service.py:417-431 _pairs_by_txn still calls `bank_transfer_service.detect_pairs(db, firm_id, client_id)` for the whole client, and :372 still calls it inside redraft, which runs REDRAFT_CHUNK = 100 lines at a time (:48). `grep -n transfer apps/api/tests/test_bank_reads_are_complete.py` -> no output.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -382,6 +487,13 @@
      "guards": "None found. banking_service.set_account (services/banking_service.py:307-334) writes account_id/match_status/category only \u2014 draft_rule_id survives. Migration 322's trigger (migrations/322_...sql, the entry_state function) clears draft_error on a human answer but never the draft columns. redraft only touches rows with drafted_at IS NULL or older than stale_before (bank_entry_service.py:317-333), so a row already drafted keeps its draft_rule_id, and even a re-draft would recompute the same rule hit. Nothing in tests/test_bank_entry_service.py covers a human-coded row reaching the trusted sweep.",
      "reach": "Live. jobs/bank_trusted_rules_job.py:75-83 calls pass_ready(only_trusted=True) in a loop; jobs/scheduler.py:345-359 runs it as job #12 of the daily sweep, gated only on ENABLE_SCHEDULER. Trusted rules are a shipped feature (migration 322 \u00a72, Manager+ promotion)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The nightly sweep still posts a line the CA re-coded by hand, credits it to the person who trusted the rule, and stamps posted_by_rule_id and a 'bank_trusted_rule' audit row. The ledger and the amount are right; the authorisation and the attribution are not.",
+    "remaining": null,
+    "probe": "Re-ran the verifier's scenario at HEAD against tests/test_bank_entry_service.TriggeredDB: seed a trusted rule (account Bank Charges, trusted_by mgr-1), redraft one 'NEFT CHARGES' line, then banking_service.set_account(..., RENT, derive_category=True) as the CA, then pass_ready(only_trusted=True, actor_id='exec-1'). Printed: 'after CA codes it: account_id=acc-rent draft_rule_id=trusted state=ready coded_by_a_human=True' / \"sweep: {'passed': 1, 'failed': 0, 'skipped': 0, 'remaining': 0}\" / \"post calls: [{'txn_id': 'chg', 'actor_id': 'mgr-1', 'by_rule': None}]\" / 'row after: account_id=acc-rent posted_by=mgr-1 posted_by_rule_id=trusted'. services/bank_entry_service.py:635-651 still has no E.coded_by_a_human filter in pass_ready's query.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -406,6 +518,13 @@
      "guards": "The finding's severity rests on 'nobody is told', and that is FALSE. services/reconciliation_service.py:350-448 check_bank_reconciliation_discrepancies compares every completed session's frozen snapshot against live data and raises a CRITICAL finding with reason='journal_not_posted' when 'the journal behind a transaction reconciled in the completed reconciliation ... is no longer posted \u2014 it was reversed or deleted after the period was certified'. Its own docstring names it: 'This is the check QuickBooks calls the Reconciliation Discrepancy Report.' It is in _CHECKS (reconciliation_service.py:518-527), runs nightly as scheduler job #9 (jobs/scheduler.py:315-330) and on demand via POST /api/reconciliation/verify (routers/reconciliation.py:37-60). So the market-standard detection the finding says is absent is implemented.",
      "reach": "routers/reconciliation.py is mounted (main.py:68, :284). The findings surface on a real screen: apps/web/app/clients/[id]/accounting/page.tsx:39,51,301 has a 'Verify Books' tab, linked from app/clients/[id]/reports/page.tsx:88. The undo itself is reachable from the posted-row Undo button."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Undo still silently reverses a line inside a completed, certified reconciliation and the register keeps reporting it as 'R'; the Verify Books sweep still catches the consequence later, which is why this is polish rather than a market gap.",
+    "remaining": null,
+    "probe": "`grep -n reconciliation_id apps/api/services/bank_posting_service.py apps/api/services/bank_matching_service.py apps/api/services/bank_entry_service.py` -> exit 1, zero hits. So undo still never reads the line's reconciliation, never refuses, never warns and never clears the flag. The after-the-fact detection is still there: services/reconciliation_service.py:442-445 still raises the 'journal_not_posted' finding for a certified period.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -430,6 +549,13 @@
      "guards": "None. The refusals really are HTTPException with a `detail` string, so the browser sees {\"detail\":\"...\"}: routers/banking.py:854 raises 422 with check['refusal'] (the tie_out sentences at domain/banking/tie_out.py:110-115 and :264-268, Indian-grouped via _r at :119-126), :843 with StatementParseError text, and :856-866 with the scan refusal. looksLikeAFormatProblem (AccountsPanel.tsx:552-558) still matches because it does .includes() on the whole raw body, so the auto-open-the-mapper behaviour survives the bug \u2014 which is why it went unnoticed.",
      "reach": "Live and central. AccountsPanel.tsx:697 is the only caller of uploadStatement and is the product's only statement-import path (grep for statements/upload in apps/web finds nothing else)."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The tie-out and scan refusals still reach the CA as `API error 422: {\"detail\":\"...\"}` while the function immediately below unwraps them correctly. Still a one-line fix.",
+    "remaining": null,
+    "probe": "apps/web/lib/api/index.ts:956 (moved from :927 by 46bd46c's edits to this file, still the same line of code): `if (!res.ok) throw new Error(\\`API error ${res.status}: ${await res.text()}\\`);` inside uploadStatement. Its sibling postStatementForm at :972 still does `throw new Error(await errorMessage(res));`.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -454,6 +580,13 @@
      "guards": "Partial, and they are what keeps this out of 'high'. Every one of these inputs is type=\"number\" (RulesTab.tsx:235,240; SettleDocumentsModal.tsx:248,267; FindMatchModal.tsx:180,186; SplitAcrossLedgersModal.tsx:218), so a comma'd Indian amount yields value=\"\" rather than parseFloat's 1 \u2014 the rule bound silently vanishes instead of becoming \u20b91. The split total is also pinned: splitBlock (lib/banking/splitLegs.ts:75-90) and its server twin refuse anything that does not sum exactly to the line's paise, so a rounded leg shows as short/over rather than saving quietly. The enforcement test that exists (apps/web/scripts/payroll-money-is-exact.test.ts:60-63) only scans PAYROLL files, so nothing stops rsToP in components/banking/.",
      "reach": "All four components are live banking screens. Also worth reporting under the same pattern but outside this batch: apps/web/app/income-tax/deductions/page.tsx:108 rsToPaise is the full forbidden Math.round(parseFloat(x)*100) form. By contrast app/accounting/suppliers/page.tsx:66 and app/income-tax/capital-gains/page.tsx:73 define a local rsToP that DELEGATES to paiseFromRupeeInput, so those are fine."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "partially_fixed",
+    "what_is_true_now": "Three of the four banking call sites (RulesTab, FindMatchModal, SettleDocumentsModal, all via components/banking/shared.ts::rsToP) were fixed by 46bd46c and now go through paiseFromRupeeInput and refuse rather than coerce. The split editor was not.",
+    "remaining": "apps/web/lib/banking/splitLegs.ts::rupeesToPaise still does Math.round(Number(cleaned) * 100) and still coerces an unreadable amount to 0 instead of refusing; it feeds amount_paise on the split-replace RPC, which posts to the GL. The comma-stripping means the 1,25,000 case is safe, but '1e3' is accepted as Rs 1,000, '0x10' as Rs 16, a three-decimal entry is silently rounded, and nonsense becomes a zero leg. The new guard test does NOT cover it: its three forbidden regexes are all parseFloat-shaped (/rsToP\\s*\\(\\s*parseFloat/, /Math\\.round\\s*\\(\\s*parseFloat/, /parseFloat\\s*\\([^)]*\\)\\s*\\*\\s*100\\b/) and this file uses Number().",
+    "probe": "`grep -rn rsToP apps/web --include=*.ts --include=*.tsx`: components/banking/shared.ts:44 is now `export function rsToP(rs: string): number | null { return paiseFromRupeeInput(rs || \"0\"); }` \u2014 the Math.round(rs*100) form is gone, and RulesTab.tsx:107, FindMatchModal.tsx:90-91 and SettleDocumentsModal.tsx:159,167 all handle the null (RulesTab refuses the save with \"The minimum amount isn't a number\"; SettleDocumentsModal blocks on badAllocIds). Closed by 46bd46c. BUT apps/web/lib/banking/splitLegs.ts:38-44 is untouched and still reads `const n = Number(cleaned); if (!Number.isFinite(n)) return 0; return Math.round(n * 100);`, and SplitAcrossLedgersModal.tsx:140 still sends `amount_paise: rupeesToPaise(l.amount)` to the split-replace RPC. Ran its exact code: '\"1e3\" -> 100000 paise = 1000 rupees', '\"0x10\" -> 1600', '\"1.005\" -> 100 (silently rounded, not refused)', '\"abc\" -> 0 (coerced to 0)'. And `node --test scripts/every-amount-field-uses-the-one-parser.test.ts` PASSES 4/4 with that file in the tree.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -478,6 +611,13 @@
      "guards": "Two partial workarounds exist and the finding overstates their absence. (a) Manual journal entries are a live screen (apps/web/app/clients/[id]/accounting/page.tsx:854 'New Journal Entry'), so cash CAN reach the GL. (b) A running cash balance IS obtainable: GET /accounting/ledger (apps/api/routers/accounting.py:857-891) returns opening, per-line running and closing balances server-side for any account, and the frontend drill-down renders it (accounting/page.tsx:924-1064) \u2014 pointing it at '1002 Petty Cash' is a cash book in all but name and column headings. Migration 288 also reads cash accounts out of the GL for \u00a740A(3), so cash in the ledger is an expected state. What genuinely does not exist: cash Receipt/Payment/Contra vouchers, a labelled Cash Book report, and any negative-cash warning. Worse, and not mentioned by the finding: receipts and purchase payments ACCEPT payment_mode='cash' (migration 050:101-102, widened by 161; models/invoices.py:399) but the journal always debits/credits the BANK account \u2014 services/receipt_service.py:178 and services/purchase_payment_service.py:443 both call _find_account(..., '%Bank%', system_key='bank') with no cash branch (phase2_journal_service.py:213-220, :1404-1445). A receipt recorded as cash therefore lands in the bank ledger and overstates the bank balance.",
      "reach": "Confirms the gap rather than refuting it \u2014 there is no backend cash-voucher capability hidden behind a missing screen either. The mispost above is reachable from the live receipts and purchase-payments screens."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, including the sharper defect the verifier added: payment_mode='cash' is still accepted on receipts and purchase payments while the posting still resolves the Bank account, so cash movements still land in the bank ledger.",
+    "remaining": null,
+    "probe": "`grep -rni 'cash book|cashbook|petty cash' apps/api apps/web` -> 5 incidental hits (coa_seed_service.py:52 seeds the ledger, two test fixtures, dpdp/retention.py:111 prose, EntryDetailModal.tsx:514 help text). `ls apps/web/app/clients/[id]/reports/` -> ageing, bank-book, page.tsx, ratios, trend \u2014 no cash book. `grep -n '%Bank%' apps/api/services/receipt_service.py apps/api/services/purchase_payment_service.py` -> :178 and :443, both still `K._find_account(db, firm_id, client_id, \"%Bank%\", system_key=\"bank\")` with no cash alternative.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -502,6 +642,13 @@
      "guards": "None \u2014 the DB CHECK is the enforcement, and models/banking.py:19 does not even validate, so an out-of-list value is a 500-shaped DB error rather than a refusal. grep -rni 'credit card|credit_card' across apps/api finds only domain/banking/narration.py:142 and tests/test_bank_narration.py:155-158, which deliberately treat 'CREDIT CARD' as a product name in a narration, not an account type.",
      "reach": "Confirms the gap rather than refuting it: there is no backend capability hidden behind a missing screen. Nothing anywhere in apps/api or apps/web models a card account, a card liability ledger, or a card-payment contra."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. A credit-card account still cannot be created at all, so a company card statement cannot be imported through the bank workflow.",
+    "remaining": null,
+    "probe": "`grep -rn 'Cash Credit' apps/api/migrations/*.sql` -> 054:101 and 093:132, both `CHECK (account_type IN ('Current','Savings','Cash Credit','Overdraft'))`; no migration since adds 'Credit Card'. AccountsPanel.tsx:416 still renders `[\"Current\",\"Savings\",\"Cash Credit\",\"Overdraft\"]`. routers/banking.py:250 still hardcodes an Asset ledger.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -526,6 +673,13 @@
      "guards": "banking_service.py:164-169 validates ownership when bank_account_id IS supplied but never requires it. No CHECK, no Pydantic validator, no router guard.",
      "reach": "This is what pulls the severity down. The web UI has exactly one caller of the upload endpoint and it always sends an account (AccountsPanel.tsx:668-684 refuses with 'Select a bank account.' before building the form). The JSON /statements/import endpoint has one frontend wrapper, importBankStatement at apps/web/lib/data/bankStatements.ts:150-170, which omits bank_account_id entirely \u2014 but it is DEAD: the only import of that module (AccountsPanel.tsx:22) pulls getBankStatements/getBankTransactions and not importBankStatement, and grep finds no other caller. So the only live route to the bug is a hand-crafted API call."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged, including the caveat that keeps it low: the mechanism is real and the generic fallback still posts to the firm-wide master Bank ledger, but the only helper that omits bank_account_id is still dead code with no callers.",
+    "remaining": null,
+    "probe": "models/banking.py:83 still `bank_account_id: Optional[str] = None` on StatementImportIn, and routers/banking.py:767 still `bank_account_id: Optional[str] = Form(None)` on the upload route. services/bank_posting_service.py:104 still ends _resolve_bank with `return phase2_journal_service._find_account(db, firm_id, txn[\"client_id\"], \"%Bank%\", system_key=\"bank\")`. `grep -rn importBankStatement apps/web` -> only its own definition at lib/data/bankStatements.ts:150; still zero callers.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -550,6 +704,13 @@
      "guards": "None that names unposted lines. The opening-balance warning (domain/banking/reconciliation.py:78-111, rendered at ReconcileTab.tsx:373-390) is about a PREVIOUS completed session's closing balance, not about lines in this period with no journal. grepping ReconcileTab.tsx for pass/post/queue/unposted returns only an interface field and an unrelated sentence. The Bank Register does have a status='unposted' filter (bank_register_service.py:106-109) but that is a different tab and is not linked from the reconciliation.",
      "reach": "Live. apps/web/components/banking/ReconcileTab.tsx:565 hardcodes the three buttons ['unreconciled','reconciled','exceptions'] from report.counts, so the screen offers exactly what the service computes."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. An in-period statement line still sitting unpassed in Entries still contributes to the tie-out difference while appearing in none of the three buckets and in none of the refusal text.",
+    "remaining": null,
+    "probe": "services/bank_reconciliation_service.py:71 still `return [t for t in rows if t.get(\"posted_journal_id\")]`; _classify (:84-100) still buckets only those into reconciled/unreconciled/exceptions; complete() at :392-395 still refuses with a count of unreconciled POSTED lines only and says nothing about lines never passed.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -574,6 +735,13 @@
      "guards": "The finding's stated harm does not occur. GSTR-3B Table 4(A) ITC is built from POSTED PURCHASE BILLS, not from the ledger \u2014 services/gst_return_service.py:678-691 loops _posted_bills into PurchaseTransaction \u2014 so bank-charge ITC never enters the return and cannot 'reduce the net payable'. The 2A/2B reconciliation (routers/gst_workspace.py:844-868) matches caller-supplied book INVOICES against 2B docDetails by (invoice_no, GSTIN), so a bank charge is not in that report at all. What DOES fire is a different and sharper check: _gl_gst_movements (gst_return_service.py, the gst_input net-debit read) sums the same GST Input account the charge debited, and gst_return_service.py:833 sets itc_matched = books_itc == gl['itc_paise'] \u2014 so the books-vs-ledger ITC comparator reports a difference every month there is a GST-bearing bank charge.",
      "reach": "The bank-charge GST split is live (a rule can carry the rate; bank_posting_service._charge_lines is on the posting path). The mismatch it produces is surfaced: apps/web/app/clients/[id]/compliance/gst/page.tsx:931-934 renders 'ITC \u2014 Books: \u2026 vs Ledger: \u2026' from the reconciliation block. The GSTR-3B screen itself (app/gst/gstr3b/page.tsx) does not render it."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The bank-charge journal still carries no supplier GSTIN and no invoice reference, so \u2014 per the verifier's correction \u2014 the ledger recognises input credit the document-driven return never claims, and the mismatch surfaces as an unexplained ITC books-vs-ledger difference.",
+    "remaining": null,
+    "probe": "`grep -n 'gstin|GSTIN|invoice' apps/api/domain/banking/charge_gst.py` -> no match. build_inclusive_lines (charge_gst.py:114-165) still emits legs of only {account_id, debit_paise, credit_paise, narration}; bank_matching_rules still carries only suggested_gst_rate_bps and suggested_is_interstate.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -598,6 +766,13 @@
      "guards": "None. No trigger or function in apps/api/migrations touches import_status \u2014 the only other bank_statements references in migrations are the GRANT statements (010:30, 039:22, 041:21). The frontend has no PostgREST second path here either: grep for from(\"bank_statements\") in apps/web returns nothing, so the column is written once by the API and never again. STATUS_COLORS at AccountsPanel.tsx:131-135 maps pending\u2192amber / reviewed\u2192blue / posted\u2192green; only the amber branch is ever reachable.",
      "reach": "Reachable but shallow. The chip is inside BankAccounts (AccountsPanel.tsx:25-307), which is rendered only inside the \"Bank accounts and statements\" modal opened from the Entries screen (EntriesTab.tsx:791, guarded by showAccounts) \u2014 a setup dialog, not the working queue. The screen a CA actually works is Entries, whose per-line entry_state (needs_you/proposed/ready/passed/set_aside) is trigger-maintained and correct."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. The chip is still permanently amber. Still display-only in a setup modal, which is why the verifier corrected it to low.",
+    "remaining": null,
+    "probe": "`grep -rn import_status apps/api apps/web` -> 5 hits: services/banking_service.py:204 writes `\"import_status\": \"pending\"`, migrations/006:81 is the CHECK, AccountsPanel.tsx:243 renders the chip, lib/data/bankStatements.ts:33,187 are a type and a mock. Nothing updates it, and there is still no PostgREST writer.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -622,6 +797,13 @@
      "guards": "The account scoping is deliberate only in ONE direction, and it is a different direction. find_mapping's docstring and tests/test_bank_statement_column_mapping.py:232-248 pin 'never reuse a mapping for a DIFFERENT layout on the same account' \u2014 nothing pins 'never reuse the SAME layout across accounts', which is what the finding asks for. header_fingerprint (normalizer.py:591-607) is a sha256 of the case/whitespace-normalised header row, so cross-account reuse on an identical fingerprint would carry the same safety argument the module already makes for itself.",
      "reach": "Real, and the second half of the finding is worse than stated. GET /api/banking/statements/column-mappings (routers/banking.py:1055-1068) actually DOES support a firm-wide listing \u2014 client_id and bank_account_id are both optional Query params, and list_mappings (bank_column_mapping_service.py:56-68) applies them only when present. But apps/web/lib/api/index.ts:951-954 defines listColumnMappings and deleteColumnMapping and NO component calls either (grep across apps/web returns only those two definition lines). So the library capability exists in the backend and is reachable from no screen \u2014 which confirms the gap rather than refuting it."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. Every other bank still needs a manual mapping, the mapping is still keyed per bank account so thirty clients at one bank teach the same fingerprint thirty times, and no screen lists learned layouts.",
+    "remaining": null,
+    "probe": "domain/banking/normalizer.py:97-125 still holds exactly seven adapter keys (hdfc, generic_cheque, sbi, icici, axis, generic, generic_amount_drcr). services/bank_column_mapping_service.py:42-46 still looks a saved mapping up with three .eq filters \u2014 firm_id, bank_account_id, header_fingerprint \u2014 so there is still no firm-level or bank-name-level reuse. `grep -rn 'listColumnMappings|deleteColumnMapping' apps/web` -> still only the two definitions in lib/api/index.ts with zero call sites.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -646,6 +828,13 @@
      "guards": "Partial and in the wrong place. routers/banking.py:426-473 (create) and :477-509 (update) validate the ledger link and the currency but never the date. The frontend form (AccountsPanel.tsx:419-427) renders 'Opening Balance (\u20b9)' and 'Opening Balance Date' side by side, neither marked required, and submits opening_balance_date: openingDate || null (:364, :370). The GL side DOES have a fallback \u2014 services/opening_balance_service.py:114-152 _default_opening_date dates the opening journal from the posted family, else the client's financial_year_start, else the earliest master date \u2014 so the GL opening entry gets a sensible date while the Bank Book's register gets None. That makes the two disagree rather than making either safe. BankBook.tsx:288-299 even renders the 'N transactions are dated before this account's opening balance' note with the date omitted when it is null \u2014 a note that can never fire, because with a null date precedes_opening_count is always 0.",
      "reach": "Live. bank_register_service.py:196 passes account.get(\"opening_balance_date\") straight into build_register, and BankBook.tsx (the Bank \u203a Book tab) renders both the running balance column and the divergence banner (BankBook.tsx:270-287) built from it."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged and reproduced. Nothing requires an opening-balance date when a non-zero opening balance is saved, and a null date still means 'nothing precedes', so pre-opening lines are folded into the running balance and the self-check reports a false divergence.",
+    "remaining": null,
+    "probe": "Ran build_register at HEAD with opening_balance_paise=450000, a Rs 1,000 credit dated 2026-01-10 and a Rs 500 credit dated 2026-04-05 whose stated balance is Rs 5,000. opening_date=None -> [('a',550000,None,False), ('b',600000,-100000,False)] \u2014 the pre-opening line is re-added and the second line reports a fabricated Rs 1,000 divergence. opening_date='2026-04-01' -> [('a',450000,None,True), ('b',500000,0,False)]. models/banking.py:20-21 still has `opening_balance_paise: int = 0` and `opening_balance_date: Optional[str] = None` with no cross-validation.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -670,6 +859,13 @@
      "guards": "Two mitigations the finding does not credit. (1) The vision/scanned path is not blind to it: domain/banking/vision.py:89 asks the model for a 'reference' field per row and :202-206 puts it on reference_no, so a photographed statement WITH a cheque column still yields the number \u2014 the gap is confined to statements where the number appears only inside the narration text. (2) Nothing is lost from the CA's view: the full narration is stored as description and is emitted on every BRS line (bank_reconciliation_service.py:608) and every register line (register.py:192), so the instrument number is on screen, just not in a structured field.",
      "reach": "parse_narration is consumed by bank_matching_service.py:648, bank_entry_service.py:215, bank_payee_service.py:131, matcher.py:164 and history.py:100 \u2014 all live \u2014 but none of them matches on an instrument number today, so adding the field changes nothing until something reads it."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged. A cheque number written inside a narration is still discarded as noise; it survives only where the export has its own cheque column feeding reference_no.",
+    "remaining": null,
+    "probe": "domain/banking/narration.py:104-115 ParsedNarration still has raw, channel, utr, vpa, counterparty, ifsc, direction, tokens and no cheque field (`grep -n cheque domain/banking/narration.py` -> no match). _is_noise_word at :155-159 still returns True for any token with no letter in it, i.e. pure digits.",
+    "against_commit": "46bd46c"
    }
   },
   {
@@ -694,6 +890,13 @@
      "guards": "Bulk Set aside exists and the finding misses it: apps/web/components/banking/EntriesTab.tsx:559-562 offers a multi-select 'Set aside' action calling api.banking.batchExclude, so it is one selection per statement, not 50-100 individual clicks. More importantly the suggested fix has a real cost the finding does not weigh: the OPENING BALANCE row is the anchor for two other things \u2014 services/banking_service.py:52-82 _opening_closing_balance derives the statement header's opening_balance_paise from the earliest-dated row's balance column (drop the row and the header's 'opening balance' becomes the balance AFTER the first transaction), and normalizer.py:638-660 balance_agreement checks consecutive deltas pairwise, so removing the first row removes the pair that validates the first real transaction.",
      "reach": "Live on the ordinary CSV/XLSX import path (parse_csv \u2192 import_normalized), which is the only way bank data enters the product. The vision path already skips these rows \u2014 vision.py:198-201 returns None for a row with a date and a narration but no money."
     }
+   },
+   "rescore_2026_09_08": {
+    "state": "still_open",
+    "what_is_true_now": "Unchanged and reproduced. An opening/closing-balance row is still stored as a zero-amount transaction that sits in needs_you and can never be passed (bank_posting_service refuses it as 'Transaction has zero amount'); bulk 'Set aside' is still the only clean-up.",
+    "remaining": null,
+    "probe": "Ran parse_csv at HEAD on an HDFC-header CSV of OPENING BALANCE / one UPI debit / CLOSING BALANCE. Printed three transactions: '2026-04-01 OPENING BALANCE 0 0 1000000', '2026-04-02 UPI/DR/RAMESH 50000 0 950000', '2026-04-30 CLOSING BALANCE 0 0 950000'. Then `entry_state({'description':'OPENING BALANCE','debit_paise':0,'credit_paise':0,'match_status':'unmatched'})` -> 'needs_you'. The amount/drcr branch still has its `if amount == 0 ... continue` guard; the two-column branch still does not.",
+    "against_commit": "46bd46c"
    }
   }
  ],

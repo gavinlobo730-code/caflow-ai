@@ -197,9 +197,15 @@ Ageing built twice on purpose because the two answers have different shapes.
 
 Each of these I reproduced myself in this session. The figures are from those runs.
 
-> **STATUS, 8 September 2026 — every defect in this section is FIXED**, and so
-> is every other confirmed critical bar one (GST-04, the 2A/2B reconciliation,
-> which is a feature build rather than a correction). Seventeen commits on
+> **STATUS — CORRECTED 8 September 2026.** An earlier version of this box said
+> every defect in this section was fixed and only GST-04 remained. A re-score of
+> all 275 findings against the merged code says otherwise: of the twenty
+> criticals, **fifteen are fixed, three are partial (FA-02, GST-01, PUR-01) and
+> two were never touched (GST-04, IT-01)**. The re-score also found eight
+> regressions the fix tranche introduced, one of which can permanently wedge a
+> purchase bill against real Postgres. `2026-09-08-what-is-left.md` is the
+> current picture; this section stays as written because it is the evidence the
+> fixes were aimed at. Seventeen commits on
 > `claude/ca-platform-audit-roadmap-yuoad3`, each carrying its own negative
 > control; `docs/audits/2026-09-07-a-plus-roadmap.md` §12 is the
 > table of what landed where. **This section is left exactly as written**,
