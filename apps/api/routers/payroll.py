@@ -2128,8 +2128,15 @@ def download_salary_slip_pdf(
 
     try:
         pdf_bytes, filename = get_payslip_pdf(slip_id, current_user.get("firm_id"))
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Salary slip not found")
+    except ValueError as e:
+        # `str(e)`, not a fixed sentence. The service raises "Salary slip not
+        # found" itself when the slip is genuinely missing, but it also refuses
+        # when the RUN carries no client — because a payslip whose employer is
+        # unknown would go out headed with the CA firm's name (PAY-03). Mapping
+        # both to "not found" told the CA the slip does not exist when it does,
+        # and hid the one thing they could act on. The runs ZIP route below has
+        # always done this correctly; this one had not.
+        raise HTTPException(status_code=404, detail=str(e))
     except PermissionError:
         raise HTTPException(status_code=403, detail="Access denied")
 

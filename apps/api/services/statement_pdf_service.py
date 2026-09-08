@@ -115,9 +115,9 @@ def build_statement_pdf(statement: dict, account_holder: dict, customer: dict) -
 
     tot = statement["totals"]
     elems.append(Paragraph(
-        f"Invoiced: ₹{_paise_to_rupee_str(tot['invoiced_paise'])} &nbsp;|&nbsp; "
-        f"Received: ₹{_paise_to_rupee_str(tot['received_paise'])} &nbsp;|&nbsp; "
-        f"Credits: ₹{_paise_to_rupee_str(tot['credited_paise'])}", sub))
+        f"Invoiced: Rs.{_paise_to_rupee_str(tot['invoiced_paise'])} &nbsp;|&nbsp; "
+        f"Received: Rs.{_paise_to_rupee_str(tot['received_paise'])} &nbsp;|&nbsp; "
+        f"Credits: Rs.{_paise_to_rupee_str(tot['credited_paise'])}", sub))
     elems.append(Spacer(1, 6))
     elems.append(Paragraph("This is a statement of account, not a tax invoice. Amounts in INR.", sub))
 

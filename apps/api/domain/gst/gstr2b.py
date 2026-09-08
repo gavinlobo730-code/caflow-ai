@@ -122,6 +122,14 @@ class GSTR2BFile:
     #: client has no imports.
     sections_seen: dict[str, int] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
+    #: `data.docdata` was present and was an object — i.e. this IS a GSTR-2B,
+    #: whatever it turned out to contain. It is the discriminator between "a 2B
+    #: in which nobody filed anything", which is a legitimate answer that must be
+    #: recorded, and "not a 2B at all", which must not be. Held as a flag rather
+    #: than inferred from `gstin` or `problems` being empty, because inferring a
+    #: fact from the absence of a string is how the two got confused in the first
+    #: place (migration 341).
+    docdata_seen: bool = False
 
 
 def _iso_date(value: Any) -> Optional[str]:
@@ -226,6 +234,7 @@ def parse_gstr2b(raw: Any) -> GSTR2BFile:
         out.problems.append(
             "No `data.docdata`. Nothing in this file describes any document.")
         return out
+    out.docdata_seen = True
 
     for section in SECTIONS:
         rows = docdata.get(section)

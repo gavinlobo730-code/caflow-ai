@@ -324,6 +324,10 @@ class _Q:
     def select(self, *_a, **_k):
         return self
 
+    def limit(self, n):
+        # read_reconciliation and was_reconciled ask for one header row.
+        return self
+
     def eq(self, k, v):
         self.rows = [r for r in self.rows if str(r.get(k)) == str(v)]
         return self

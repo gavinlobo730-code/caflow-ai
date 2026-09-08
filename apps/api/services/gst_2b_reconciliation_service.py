@@ -51,6 +51,37 @@ _logger = logging.getLogger("caflow.gst_2b_reconciliation")
 BILL_ON_THE_BOOKS = ("received", "partially_paid", "paid")
 
 
+def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
+    """Fetch EVERY row via keyset paging on `key`.
+
+    An un-paged `.execute()` is silently capped at PostgREST's ~1000-row limit.
+    Eleven other services in this codebase carry this helper and this module
+    shipped without it, so `read_book_bills` truncated a busy month's purchase
+    register — and every 2B document belonging to a dropped bill was then
+    reported as `missing_in_books`, telling the CA to chase a document they
+    already hold. `read_reconciliation` truncated the answer the screen reads
+    back.
+
+    Test doubles that do not implement order/limit/gt return their whole (small)
+    fixture from one execute(), which is already correct.
+    """
+    first = make_query()
+    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
+        return first.execute().data or []
+    out: list = []
+    cursor = None
+    while True:
+        q = make_query()
+        if cursor is not None:
+            q = q.gt(key, cursor)
+        rows = q.order(key).limit(page).execute().data or []
+        out.extend(rows)
+        if len(rows) < page:
+            break
+        cursor = rows[-1][key]
+    return out
+
+
 def _period_bounds(period: str) -> tuple[str, str]:
     """'MMYYYY' → (first_iso, last_iso). Deliberately a duplicate of
     gst_return_service._period_bounds rather than an import: this module must
@@ -75,14 +106,13 @@ def read_book_bills(db, firm_id: str, client_id: str, period: str) -> list[BookB
     to find unfiled ones.
     """
     start, end = _period_bounds(period)
-    rows = (db.table("purchase_bills")
+    rows = _paginate_all(lambda: db.table("purchase_bills")
             .select("id, vendor_id, bill_no, bill_date, taxable_amount_paise, "
                     "igst_paise, cgst_paise, sgst_paise, status")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(BILL_ON_THE_BOOKS))
             .is_("deleted_at", "null")
-            .gte("bill_date", start).lte("bill_date", end)
-            .execute().data) or []
+            .gte("bill_date", start).lte("bill_date", end))
 
     vendor_ids = sorted({r.get("vendor_id") for r in rows if r.get("vendor_id")})
     gstins: dict[str, str] = {}
@@ -188,9 +218,11 @@ def reconcile_2b(db, *, firm_id: str, client_id: str, period: str,
     of "Matched 12" is not an answer to "how much credit may I take".
     """
     parsed = parse_gstr2b(raw)
-    if not parsed.documents:
-        # An empty parse is REPORTED, never persisted. Writing zero rows and
-        # calling it reconciled is exactly the false clean result this replaces.
+
+    # A FILE THAT IS NOT A 2B IS REPORTED AND NEVER PERSISTED. Writing zero rows
+    # and calling it reconciled is exactly the false clean result this module
+    # replaces. `docdata_seen` is the test, not `documents` — see below.
+    if not parsed.docdata_seen:
         return {
             "period": period,
             "gstin": parsed.gstin,
@@ -204,6 +236,12 @@ def reconcile_2b(db, *, firm_id: str, client_id: str, period: str,
             "defaulters": [],
         }
 
+    # A 2B THAT PARSED AND CARRIES NO DOCUMENTS IS AN ANSWER, and it is recorded.
+    # It means nobody the client bought from filed anything for the month, which
+    # under §16(2)(aa) means NO input credit is available — the single most
+    # consequential thing this reconciliation can discover. Treating it as "not
+    # reconciled", which is what the first version did by returning early here,
+    # left Rule 36(4) uncapped and let the return claim the whole book ITC.
     bills = read_book_bills(db, firm_id, client_id, period)
     rec = reconcile(bills, _portal_documents(parsed))
     rows = _record_rows(firm_id, client_id, period, parsed, rec)
@@ -223,6 +261,16 @@ def reconcile_2b(db, *, firm_id: str, client_id: str, period: str,
             f"This file is GSTR-2B for {parsed.return_period} and you are "
             f"reconciling {period}. The documents below were matched against "
             f"{period}'s bills, which is almost certainly not what you meant.")
+
+    # THE HEADER IS WRITTEN EVEN WHEN `rows` IS EMPTY, and that is the point of
+    # it: it is the only record that this period was reconciled at all, and
+    # everything downstream — the Rule 36(4) cap, the Purchases column, the
+    # read-back — asks it rather than inferring from the presence of document
+    # rows. Written AFTER the documents so a failed document insert leaves no
+    # header claiming a reconciliation that did not land.
+    _record_reconciliation(
+        db, firm_id=firm_id, client_id=client_id, period=period, parsed=parsed,
+        document_count=len(rows), book_bill_count=len(bills), problems=problems)
 
     return {
         "period": period,
@@ -268,15 +316,30 @@ def read_reconciliation(db, *, firm_id: str, client_id: str, period: str) -> dic
     The whole point of persisting: the browser reconciliation this replaces
     started from zero every time it was opened.
     """
-    rows = (db.table("gstr2a_records").select("*")
+    rows = _paginate_all(lambda: db.table("gstr2a_records").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("return_period", period).execute().data) or []
+            .eq("return_period", period))
     counts: dict[str, int] = {}
     for r in rows:
         counts[r.get("match_status") or "unmatched"] = counts.get(
             r.get("match_status") or "unmatched", 0) + 1
+
+    # The HEADER, so the screen can tell "reconciled, and the 2B was empty" from
+    # "never reconciled". Zero records means opposite things in those two cases
+    # and the record count alone cannot say which.
+    header = (db.table("gstr2b_reconciliations").select("*")
+              .eq("firm_id", firm_id).eq("client_id", client_id)
+              .eq("return_period", period).limit(1).execute().data) or []
+    head = header[0] if header else None
+
     return {
         "period": period,
+        "reconciled": head is not None,
+        "reconciled_at": (head or {}).get("reconciled_at"),
+        "gstin": (head or {}).get("gstin"),
+        "generated_on": (head or {}).get("generated_on"),
+        "book_bill_count": (head or {}).get("book_bill_count"),
+        "problems": (head or {}).get("problems") or [],
         "record_count": len(rows),
         "by_status": counts,
         "records": rows,
@@ -306,3 +369,61 @@ def status_for_bills(db, *, firm_id: str, client_id: str,
             if r.get("purchase_bill_id"):
                 out[str(r["purchase_bill_id"])] = r
     return out
+
+
+def _record_reconciliation(db, *, firm_id: str, client_id: str, period: str,
+                           parsed: GSTR2BFile, document_count: int,
+                           book_bill_count: int, problems: list[str]) -> None:
+    """One row per (client, period) saying a 2B was reconciled — see migration 341.
+
+    Replace, not upsert-by-id: a re-upload for the same period supersedes the
+    earlier answer completely, exactly as the document rows do. Two statements
+    rather than one because the FakeDB used by the mock suite has no upsert.
+    """
+    (db.table("gstr2b_reconciliations")
+       .delete().eq("firm_id", firm_id).eq("client_id", client_id)
+       .eq("return_period", period).execute())
+    now = datetime.now(timezone.utc).isoformat()
+    db.table("gstr2b_reconciliations").insert({
+        "firm_id": firm_id,
+        "client_id": client_id,
+        "return_period": period,
+        "gstin": parsed.gstin or None,
+        "file_return_period": parsed.return_period or None,
+        "generated_on": parsed.generated_on or None,
+        "sections_seen": sorted(parsed.sections_seen),
+        "document_count": int(document_count),
+        "book_bill_count": int(book_bill_count),
+        "parsed_ok": True,
+        "problems": list(problems),
+        "reconciled_at": now,
+        "updated_at": now,
+    }).execute()
+
+
+def was_reconciled(db, *, firm_id: str, client_id: str, period: str) -> bool:
+    """Has a GSTR-2B been reconciled for this period at all?
+
+    THE QUESTION RULE 36(4) NEEDS, and it is not the same question as "are there
+    any 2B rows". A 2B on file showing no eligible credit caps the head at NIL;
+    no 2B at all leaves book ITC alone. Asking the document rows conflates them
+    and answers "no cap" to both — which claims the credit §16(2)(aa) withholds.
+    """
+    rows = (db.table("gstr2b_reconciliations").select("id")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("return_period", period).limit(1).execute().data) or []
+    return len(rows) > 0
+
+
+def reconciled_periods(db, *, firm_id: str, client_id: str) -> list[str]:
+    """Every period this client has had a 2B reconciled for.
+
+    For the Purchases tab, which must tell "this period was never reconciled"
+    apart from "reconciled, and the supplier has not filed this bill". Those are
+    different sentences to a CA: one is their own job, the other is a phone call
+    to the supplier.
+    """
+    rows = _paginate_all(lambda: db.table("gstr2b_reconciliations")
+                         .select("id, return_period")
+                         .eq("firm_id", firm_id).eq("client_id", client_id))
+    return sorted({str(r.get("return_period") or "") for r in rows if r.get("return_period")})

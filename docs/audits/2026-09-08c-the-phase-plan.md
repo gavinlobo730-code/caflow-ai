@@ -53,15 +53,34 @@ days≈3d, weeks≈10d, months≈40d. **It double-counts** wherever a phase fixe
 root cause behind several findings, which is the whole point of the grouping —
 treat each number as a ceiling, not a forecast.
 
-### Phase 0 — Undo my own damage · 7 items · ~4 days
+### Phase 0 — Undo my own damage · 7 items · ~4 days · **DONE**
 
 The seven regressions the last tranche introduced (`2026-09-08b` §2). No finding
 ids; two are high. **First, for the same reason §2 came first last time:** new
 breakage on `main` outranks old breakage, and one of these destroys data.
 
-*Shape:* code I wrote this week, so the diagnosis is already done.
-*Guard:* a reconciliation records its own existence; the 2B natural key includes
-`document_type`.
+**Closed.** Migration 341 adds `gstr2b_reconciliations` — one row per (client,
+period) recording that a 2B was reconciled at all — and puts `document_type`
+into the 2B natural key. `compute_gstr3b` now TAKES `have_2b` instead of
+deriving it from a list the caller has already filtered; `gst_return_service`
+answers it from the header. The service paginates. `rates_verified` now means
+verified *for the year asked*, and names both years when it substitutes. The
+payslip route reports the real refusal. `domain/reporting/pdf_text.py` is the
+one place that knows a core-font PDF cannot print ₹, and three services stopped
+emitting it. Three UTC "today"s in `routers/fixed_assets.py` became IST.
+
+*Guard:* `tests/test_a_reconciliation_records_that_it_happened.py` — 13 tests,
+**8 fail against the previous code**. The other five are honest: two assert
+primitives that were already correct (the cap function, the parser — the bugs
+were in the caller and in the index), two exercise files the revert could not
+remove, and one is the control that the FY guard must not simply always answer
+False.
+
+*Two things the guard caught that the re-score had missed:* `_PLAIN_HEADER` in
+`invoice_pdf_service` still carried ₹, so the simple invoice layout printed a
+box in its column head; and a first version of the PDF guard flagged the two
+COMMENTS explaining why "Rs." is used — the money-parser mistake again, fixed by
+walking the AST for emitted string literals rather than grepping the file.
 
 ### Phase 1 — The ledger model: cash is not bank · 6 findings · ≤32 days
 `ACC-02 ACC-03 SALES-08 BANK-20 BANK-02 FA-07`

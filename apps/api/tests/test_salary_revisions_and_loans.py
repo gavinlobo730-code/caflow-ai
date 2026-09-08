@@ -288,7 +288,7 @@ def test_the_payslip_shows_every_deduction_that_reduced_net_pay():
             "loan_recovery_paise": 1_000_00}
     rows, total = deduction_lines(slip)
     assert total == 8_000_00
-    assert ["Loan / Advance Recovery", "₹1,000.00"] in rows
+    assert ["Loan / Advance Recovery", "Rs.1,000.00"] in rows
     # And the payslip reconciles: gross less the deductions shown IS the net.
     assert slip["gross_paise"] - total == 42_000_00
 

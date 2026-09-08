@@ -9,7 +9,11 @@ Companies Act 2013 Schedule II prescribes a useful LIFE per class of asset, not
 a WDV percentage — see _SCHEDULE_II_PART_C below, which is the one table, and
 the only source the create form's defaults come from.
 """
-from core.ist_clock import month_end_date
+# ist_today, not datetime.now(timezone.utc): at 00:20 IST on 1 April a UTC
+# "today" is still 31 March, so a defaulted depreciation period or disposal
+# date lands in the PREVIOUS financial year — quite possibly one the CA has
+# just locked.
+from core.ist_clock import ist_today, month_end_date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from datetime import datetime, timezone, date
@@ -490,7 +494,7 @@ def post_depreciation(
     current month). Computes depreciation and creates journal entry.
     Idempotent: checks depreciation_posted_through before posting.
     """
-    period = data.period or datetime.now(timezone.utc).strftime("%Y-%m")
+    period = data.period or ist_today().strftime("%Y-%m")
     if not _PERIOD_RE.match(period):
         raise HTTPException(status_code=422, detail="period must be in YYYY-MM format.")
 
@@ -650,7 +654,7 @@ def dispose_asset(
 
     disposal_type   = data.disposal_type
     sale_proceeds   = data.sale_proceeds_paise
-    disposal_date   = data.disposal_date or str(datetime.now(timezone.utc).date())
+    disposal_date   = data.disposal_date or ist_today().isoformat()
     disposal_notes  = data.notes if data.notes is not None else asset.get("notes")
 
     # task #232 audit finding: fixed_assets.py never checked the FY lock —
@@ -781,7 +785,7 @@ def depreciation_schedule(
     # cached depreciation_fy/depreciation_fy_start_accum_paise (task #232) so
     # the figure shown here matches what the next actual posting will charge,
     # instead of recomputing from the live (already-reduced) WDV every call.
-    today_period = datetime.now(timezone.utc).strftime("%Y-%m")
+    today_period = ist_today().strftime("%Y-%m")
     schedule = []
     for a in assets:
         # An asset with no statutory basis for its charge reports itself as a
