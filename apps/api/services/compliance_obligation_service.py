@@ -326,10 +326,285 @@ _PAYROLL_OBLIGATION_TYPE = {
 }
 
 
-def _itr_obligation(financial_year: str, is_audit: bool = False) -> list[dict]:
+# ── Explanation 2 to §139(1): WHICH ITR due date, and when we cannot say ─────
+#
+# ce.itr_due_date has known all three dates since it was written. What nothing
+# knew was WHICH ONE APPLIES, so every backend caller passed is_audit=False and
+# every client in the product was quoted 31 July. The frontend kept its own
+# answer, and it was broken in exactly the place it mattered:
+#
+#     AUDIT_ENTITY_TYPES = new Set(["private_limited", "public_limited", ...])
+#     isAuditCase(t) -> AUDIT_ENTITY_TYPES.has(t?.toLowerCase() ?? "")
+#
+# clients.entity_type is constrained by migration 001's CHECK to title-case
+# spellings WITH SPACES — 'Private Limited', 'Public Limited' — and the client
+# form writes exactly those. toLowerCase() yields 'private limited', which is
+# not 'private_limited'. So the test failed on precisely the two multi-word
+# values, which are precisely the companies; 'LLP', 'Partnership' and 'Trust'
+# matched by luck. Four of the seven clients on this deployment are Private
+# Limited, and every one of them was told 31 July.
+#
+# The rule therefore lives here, once, in apps/api — CLAUDE.md, "zero business
+# logic in the frontend" — and normalise_entity_type folds underscores as well
+# as spaces so this class of mismatch cannot come back through a different
+# spelling.
+#
+# WHAT THE STATUTE ACTUALLY SAYS. Explanation 2 to §139(1) fixes the "due date"
+# by the ASSESSEE, not by turnover:
+#
+#   (a)(i)   a COMPANY .......................................... 31 October
+#   (a)(ii)  any other person whose accounts are required to be
+#            audited under this Act or under any other law ...... 31 October
+#   (a)(iii) a partner of a firm whose accounts are so audited
+#            (and the spouse, where §5A applies) ................ 31 October
+#   (aa)     a person required to furnish a report under §92E .... 30 November
+#   (c)      any other case ..................................... 31 July
+#
+# ENTITY TYPE ALONE DOES NOT DECIDE IT, and treating it as though it does is
+# how the frontend's table came to say a partnership firm is always an audit
+# case. Only clause (a)(i) is settled by the entity type: a company is
+# 31 October whatever its turnover, and its accounts are audited under
+# Companies Act 2013 §139 read with §143 regardless of turnover in any event.
+# For everyone else the trigger is a FIGURE nothing here holds:
+#
+#   * §44AB(a) — business turnover above ₹1 crore, or ₹10 crore where cash
+#     receipts AND cash payments are each within 5% (second and third provisos);
+#     §44AB(b) — ₹50 lakh of professional gross receipts; §44AB(e) with
+#     §44AD(4)/(5);
+#   * an LLP — LLP Act 2008 §34(4) with Rule 24(8): turnover above ₹40 lakh or
+#     contribution above ₹25 lakh, which is not the §44AB test at all;
+#   * a trust — §12A(1)(b), where total income before exemption exceeds the
+#     basic exemption limit.
+#
+# So the answer is COMPUTED where it can be and REFUSED where it cannot, and
+# the refusal comes back as a named gap — the house shape (payroll's
+# statutory_gaps, the TDS register's, domain/reporting/ageing's unclassified
+# vendors). Guessing "audited" for an LLP or a firm is the expensive direction:
+# §234A charges 1% a month on the tax outstanding, §234F a fee of up to ₹5,000,
+# and §80 forfeits the carry-forward of business and capital losses if the
+# return is late. Being told 31 July when 31 October was available costs
+# nothing but an early chase, which is the same reasoning gstr3b_due_date
+# already applies to an unknown state code.
+#
+# §92E IS DELIBERATELY NOT A GAP. It is carried as a parameter so a caller that
+# knows can say so, but nothing in the product records an international or
+# specified domestic transaction, and a transfer-pricing warning attached to
+# every client of every firm would be noise of exactly the kind that stops a
+# compliance calendar being read — the same refusal _gst_obligations makes
+# about IFF.
+
+def normalise_entity_type(entity_type: Optional[str]) -> str:
+    """The comparison key for clients.entity_type.
+
+    Runs of whitespace AND underscores fold to a single space, and the whole
+    thing lower-cases, so 'Private Limited', 'private_limited' and
+    'PRIVATE  LIMITED' are one value. The underscore fold is not decoration:
+    the income-tax page renders entity types with `.replace(/_/g, " ")`, so
+    underscored spellings have been seen in this data, and the bug this
+    replaces was a title-case value tested against an underscored constant.
+    """
+    return re.sub(r"[\s_]+", " ", str(entity_type or "")).strip().lower()
+
+
+#: Every value migration 001's CHECK constraint allows on clients.entity_type.
+#: tests/test_compliance_itr_due_date.py reads the CHECK out of the migration
+#: and walks it against this tuple, so a value added to the schema cannot be
+#: left unclassified here — which is the failure this whole block exists to
+#: make impossible.
+CLIENT_ENTITY_TYPES: tuple[str, ...] = (
+    "Proprietorship", "Partnership", "LLP", "Private Limited",
+    "Public Limited", "Trust", "Society", "Individual",
+)
+
+# Incorporated under the Companies Act 2013 — the assessees Explanation
+# 2(a)(i) gives 31 October unconditionally. 'One Person Company' and
+# 'Section 8' are companies in law and are recognised here so that adding
+# either to the CHECK cannot silently drop a real company back to 31 July;
+# 'opc' is the short code mca_companies.company_type uses, and
+# apps/web/lib/entityObligations.ts recognises the identical set for the MCA
+# gate.
+_COMPANIES_ACT_COMPANY = frozenset({
+    "private limited",
+    "public limited",
+    "one person company",
+    "opc",
+    "section 8",
+    "section 8 company",
+})
+
+
+def is_companies_act_company(entity_type: Optional[str]) -> bool:
+    """Companies Act 2013 company — the only entity type that settles the ITR
+    due date on its own (Explanation 2(a)(i) to §139(1))."""
+    return normalise_entity_type(entity_type) in _COMPANIES_ACT_COMPANY
+
+
+def itr_due_date_for_client(financial_year: str,
+                            entity_type: Optional[str] = None,
+                            has_tax_audit_engagement: bool = False,
+                            has_transfer_pricing_report: bool = False) -> dict:
+    """The ITR due date for one client and one FY, and how sure we are.
+
+    Returns
+        due_date        ISO date — always a real date, never None. A calendar
+                        with a hole in it is not the answer; a date the CA is
+                        told is ASSUMED is.
+        is_audit        whether the 31 October branch was taken.
+        decided         True where the statute settles it on facts held here.
+                        False means due_date is the EARLIER of the two dates,
+                        taken because early costs nothing and late costs
+                        §234A interest, a §234F fee and the §80 carry-forward.
+        basis           the clause relied on, in words, for display.
+        statutory_gaps  named, machine-readable, empty when decided.
+
+    Pure and deterministic: every fact is a parameter, so the FY-boundary
+    arithmetic and the statutory branching can be unit-tested without a
+    database — the same reason gst_frequency and client_has_non_resident_vendors
+    are parameters of obligations_for_service. itr_profile_for() does the
+    reading.
+    """
     fye = fy_end_year(financial_year)
-    return [_spec("ITR", "Income Tax", f"ITR FY {financial_year}",
-                  date(fye - 1, 4, 1), date(fye, 3, 31), ce.itr_due_date(fye, is_audit))]
+
+    if has_transfer_pricing_report:
+        # Explanation 2(aa) — and it outranks (a): a company with a §92E
+        # report is 30 November, not 31 October.
+        return {
+            "financial_year": financial_year,
+            "due_date": ce.itr_due_date(fye, has_transfer_pricing_report=True).isoformat(),
+            "is_audit": True,
+            "decided": True,
+            "basis": ("IT Act §139(1), Explanation 2(aa) — a report under §92E "
+                      "is required, so the due date is 30 November."),
+            "statutory_gaps": [],
+        }
+
+    if is_companies_act_company(entity_type):
+        return {
+            "financial_year": financial_year,
+            "due_date": ce.itr_due_date(fye, is_audit=True).isoformat(),
+            "is_audit": True,
+            "decided": True,
+            "basis": (f"IT Act §139(1), Explanation 2(a)(i) — a {str(entity_type).strip()} "
+                      "is a company, whose due date is 31 October whatever its "
+                      "turnover. Its accounts are required to be audited under "
+                      "Companies Act 2013 §139 read with §143 in any event."),
+            "statutory_gaps": [],
+        }
+
+    if has_tax_audit_engagement:
+        return {
+            "financial_year": financial_year,
+            "due_date": ce.itr_due_date(fye, is_audit=True).isoformat(),
+            "is_audit": True,
+            "decided": True,
+            "basis": ("IT Act §139(1), Explanation 2(a)(ii) — the accounts are "
+                      "required to be audited: the firm holds an active audit "
+                      f"engagement for this client, so FY {financial_year} is "
+                      "31 October."),
+            "statutory_gaps": [],
+        }
+
+    shown = str(entity_type).strip() if entity_type else ""
+    if shown:
+        gap = (
+            f"ITR due date assumed for a {shown}: whether the accounts are "
+            "required to be audited is not established. §44AB turns on the "
+            "year's turnover or gross receipts (₹1 crore, or ₹10 crore where "
+            "cash receipts and cash payments are each within 5%; ₹50 lakh for "
+            "a profession), an LLP's audit on LLP Act 2008 §34(4) with Rule "
+            "24(8), a trust's on §12A(1)(b) — and no turnover, contribution or "
+            "total income is held against this client. 31 July is shown, the "
+            "earlier of the two dates. Record an audit engagement for FY "
+            f"{financial_year} if the accounts are audited and the date "
+            "becomes 31 October under Explanation 2(a)(ii) to §139(1)."
+        )
+    else:
+        gap = (
+            "ITR due date assumed: this client's entity type is not recorded, "
+            "so not even the company test could be applied. Explanation "
+            "2(a)(i) to §139(1) gives a company 31 October whatever its "
+            "turnover. 31 July is shown, the earlier of the two dates."
+        )
+
+    return {
+        "financial_year": financial_year,
+        "due_date": ce.itr_due_date(fye).isoformat(),
+        "is_audit": False,
+        "decided": False,
+        "basis": ("IT Act §139(1), Explanation 2(c) — ASSUMED. The audit "
+                  "question could not be settled from the facts held, so the "
+                  "earlier of the two dates is shown."),
+        "statutory_gaps": [gap],
+    }
+
+
+def itr_profile_for(client_id: str,
+                    firm_id: Optional[str] = None) -> tuple[Optional[str], bool]:
+    """(entity_type, whether an ACTIVE audit engagement exists for this client).
+
+    Defensive in the same shape as gst_profile_for and has_non_resident_vendors,
+    and here BOTH failures point the same way: an unreadable client or an
+    unreadable engagement list yields (None, False), which resolves to 31 July
+    WITH A NAMED GAP. That is the honest direction — the earlier date, so the
+    client is chased early rather than told a deadline that has passed, and the
+    CA is told the question was not settled rather than shown a confident date.
+
+    The substring test is `"audit" in service_type.lower()`, character for
+    character the one obligations_for_service already uses to emit the
+    TAX_AUDIT obligation. Two different tests would let one engagement produce
+    a tax-audit deadline and a 31 July ITR deadline in the same calendar. The
+    ACTIVE-status filter on top of it is generate_due's — a lapsed engagement
+    is not evidence that this year's accounts are audited.
+    """
+    entity_type: Optional[str] = None
+    try:
+        c = client_repo.find_by_id(client_id, firm_id=firm_id) or {}
+        entity_type = c.get("entity_type") or None
+    except Exception:  # noqa: BLE001 - a missing client must not stop generation
+        _logger.warning("itr_profile_for: could not read client %s", client_id)
+
+    has_audit = False
+    try:
+        engagements = engagement_repo.find_all(firm_id=firm_id, client_id=client_id)
+        has_audit = any(
+            e.get("status") in _ACTIVE_ENGAGEMENT_STATUSES
+            and "audit" in (e.get("service_type") or "").lower()
+            for e in engagements
+        )
+    except Exception:  # noqa: BLE001 - same reason; a read must not stop generation
+        _logger.warning(
+            "itr_profile_for: could not read engagements for client %s — the ITR "
+            "due date will be reported as assumed", client_id)
+
+    return entity_type, has_audit
+
+
+def _itr_obligation(financial_year: str, *,
+                    entity_type: Optional[str] = None,
+                    has_tax_audit_engagement: bool = False,
+                    has_transfer_pricing_report: bool = False) -> list[dict]:
+    """The one ITR obligation, at the date Explanation 2 to §139(1) actually
+    gives it.
+
+    The keyword-only star is deliberate. The parameter this replaced was
+    `is_audit: bool = False`, so a positional second argument used to be a
+    boolean and is now an entity type — and `_itr_obligation(fy, True)` would
+    otherwise quietly classify the client as an entity type named `True`.
+    """
+    fye = fy_end_year(financial_year)
+    resolved = itr_due_date_for_client(
+        financial_year, entity_type, has_tax_audit_engagement,
+        has_transfer_pricing_report)
+    spec = _spec("ITR", "Income Tax", f"ITR FY {financial_year}",
+                 date(fye - 1, 4, 1), date(fye, 3, 31), resolved["due_date"])
+    # Carried BESIDE the spec rather than inside the record payload: the
+    # generator writes a fixed column list to compliance_records, so an extra
+    # key here reaches the caller and never the table. A gap that only exists
+    # in a log is the failure this shape was invented to fix.
+    spec["due_date_basis"] = resolved["basis"]
+    if resolved["statutory_gaps"]:
+        spec["statutory_gaps"] = resolved["statutory_gaps"]
+    return [spec]
 
 
 def _advance_tax_obligations(financial_year: str) -> list[dict]:
@@ -370,7 +645,9 @@ def obligations_for_service(service_type: str, financial_year: str,
                             agm_date: Optional[str] = None,
                             gst_frequency: str = ce.MONTHLY,
                             gst_state_code: Optional[str] = None,
-                            client_has_non_resident_vendors: bool = False) -> list[dict]:
+                            client_has_non_resident_vendors: bool = False,
+                            entity_type: Optional[str] = None,
+                            client_has_tax_audit_engagement: bool = False) -> list[dict]:
     """Deterministic, pure: the statutory obligations a service engagement implies for
     one FY. Keyword-matched on service_type. Accounting and bookkeeping imply no
     filing obligations and return [].
@@ -385,6 +662,19 @@ def obligations_for_service(service_type: str, financial_year: str,
     gst_state_code are parameters. has_non_resident_vendors() does the reading.
     Defaults to False, so every existing caller keeps generating exactly the
     obligations it generated before.
+
+    entity_type and client_has_tax_audit_engagement are the same shape and the
+    same contract: itr_profile_for() reads them, this stays pure, and the
+    defaults reproduce the previous behaviour exactly — an unknown entity type
+    is the undecided case, which is 31 July WITH a named gap on the spec rather
+    than 31 July stated as fact. See itr_due_date_for_client.
+
+    client_has_tax_audit_engagement is a fact about the CLIENT, not about this
+    engagement: a firm commonly holds one engagement for the return and another
+    for the audit, and the audit one is what makes the return's due date
+    31 October under Explanation 2(a)(ii) to §139(1). Reading it off
+    `service_type` alone would give the same client two different answers
+    depending on which engagement generation happened to be running.
     """
     s = (service_type or "").lower()
     specs: list[dict] = []
@@ -395,7 +685,13 @@ def obligations_for_service(service_type: str, financial_year: str,
     if "advance tax" in s:
         specs += _advance_tax_obligations(financial_year)
     elif _names(s, "itr") or "income tax" in s:
-        specs += _itr_obligation(financial_year)
+        specs += _itr_obligation(
+            financial_year,
+            entity_type=entity_type,
+            # An engagement that names an audit ITSELF establishes the audit,
+            # so a single "Income Tax Return and Tax Audit" engagement answers
+            # its own question without a second lookup.
+            has_tax_audit_engagement=client_has_tax_audit_engagement or "audit" in s)
     if _names(s, "roc") or _names(s, "mca"):
         specs += _roc_obligations(financial_year, agm_date)
     if "audit" in s:
@@ -500,8 +796,14 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
     # Read once per engagement, not once per obligation — Rule 31A(4)(b)'s 27Q
     # is generated only for a client that actually pays a non-resident.
     non_resident = has_non_resident_vendors(client_id, firm_id)
+    # The ITR due date is 31 July or 31 October by Explanation 2 to §139(1), and
+    # which one is a fact about the CLIENT — its entity type, and whether its
+    # accounts are audited — not about this engagement. Read once, here.
+    entity_type, tax_audit_engagement = itr_profile_for(client_id, firm_id)
     specs = obligations_for_service(engagement.get("service_type", ""), financial_year,
-                                    agm_date, freq, state_code, non_resident)
+                                    agm_date, freq, state_code, non_resident,
+                                    entity_type=entity_type,
+                                    client_has_tax_audit_engagement=tax_audit_engagement)
     existing = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
     seen = {(r.get("obligation_type"), str(r.get("period_start"))[:10])
             for r in existing if r.get("obligation_type")}
@@ -529,7 +831,17 @@ def generate_for_engagement(firm_id: str, engagement: dict, financial_year: str,
         seen.add(key)
         generated.append(rec["id"])
         _audit_timeline_generate(firm_id, rec, actor)
-    return {"generated": len(generated), "skipped": skipped, "generated_ids": generated}
+    out = {"generated": len(generated), "skipped": skipped, "generated_ids": generated}
+    # Named, machine-readable, and beside the obligation it is about — the same
+    # shape payroll's statutory_gaps and the TDS register's use. Reported for
+    # every spec that carried one, INCLUDING the ones dedup skipped: an
+    # assumed due date already on the row is still assumed on the second run,
+    # and a gap that stops being reported the moment it has been written is a
+    # gap nobody ever sees.
+    gaps = sorted({g for s in specs for g in s.get("statutory_gaps", ())})
+    if gaps:
+        out["statutory_gaps"] = gaps
+    return out
 
 
 def generate_default_for_client(firm_id: str, client_id: str, financial_year: str,
@@ -590,10 +902,12 @@ def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: 
     total_gen = total_skip = 0
     per_engagement = []
     covered_client_ids = set()
+    gaps: set = set()
     for e in active:
         res = generate_for_engagement(firm_id, e, fy, actor=actor)
         total_gen += res["generated"]
         total_skip += res["skipped"]
+        gaps.update(res.get("statutory_gaps", ()))
         per_engagement.append({"engagement_id": e["id"], **{k: res[k] for k in ("generated", "skipped")}})
         covered_client_ids.add(e["client_id"])
 
@@ -612,8 +926,14 @@ def generate_due(firm_id: str, client_id: Optional[str] = None, financial_year: 
         per_engagement.append({"engagement_id": None, "client_id": cid,
                                **{k: res[k] for k in ("generated", "skipped")}})
 
-    return {"financial_year": fy, "generated": total_gen, "skipped": total_skip,
-            "engagements": per_engagement}
+    out = {"financial_year": fy, "generated": total_gen, "skipped": total_skip,
+           "engagements": per_engagement}
+    # Every assumed statutory date this run produced, once each. The daily
+    # scheduler calls this too; a gap that only reaches a log is the failure
+    # this shape exists to fix, so it rides the response the router returns.
+    if gaps:
+        out["statutory_gaps"] = sorted(gaps)
+    return out
 
 
 def assign(firm_id: str, record_id: str, preparer_id: Optional[str] = None,
