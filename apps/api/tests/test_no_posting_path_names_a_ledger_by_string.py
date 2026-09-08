@@ -36,11 +36,6 @@ RESOLVER = "domain/accounting/payment_account.py"
 #: only shrink. Adding to it needs the same argument as adding to the money
 #: parser's allowlist, and for the same reason.
 STILL_NAMING_IT: dict[str, str] = {
-    "services/phase2_journal_service.py": (
-        "journal_for_asset_acquisition and journal_for_asset_disposal (FA-07). "
-        "An asset bought on credit needs a vendor, a bill link and an ITC split "
-        "before the credit leg means anything — Phase 1b, not a rename."
-    ),
     "services/opening_balance_service.py": (
         "Deliberate and correct. The lines above it already route each bank's "
         "opening balance to that bank's own coa_account_id; this names the "

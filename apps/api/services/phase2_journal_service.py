@@ -1208,21 +1208,88 @@ class Phase2JournalService:
                 "Intangibles":              "%Intangible Assets%",
             }
             asset_acct = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
-            bank_id    = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
 
-            cost = asset["purchase_cost_paise"]
+            cost = int(asset["purchase_cost_paise"])
+            tax = (int(asset.get("igst_paise") or 0)
+                   + int(asset.get("cgst_paise") or 0)
+                   + int(asset.get("sgst_paise") or 0))
+            mode = asset.get("acquisition_mode") or "paid"
+
+            # ── the DEBIT side ──────────────────────────────────────────────
+            # `purchase_cost_paise` is the capitalised cost and ALREADY includes
+            # any tax that s.17(5) blocks — routers/fixed_assets.py adds it there
+            # so depreciation is computed on it, which is the whole reason the
+            # eligibility is a stored fact. So the asset leg is the cost as
+            # given, and only ELIGIBLE tax gets its own input-credit line.
+            lines = [
+                {"account_id": asset_acct, "debit_paise": cost, "credit_paise": 0,
+                 "narration": f"Fixed asset: {asset['asset_name']}"},
+            ]
+            claimable = tax if asset.get("itc_eligible") is True else 0
+            if claimable:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%GST Input%", system_key="gst_input"),
+                    "debit_paise": claimable, "credit_paise": 0,
+                    "narration": "Input tax credit on asset acquisition",
+                })
+
+            # ── the CREDIT side, which is what FA-07 is about ───────────────
+            if mode == "from_bill":
+                # The bill ALREADY POSTED Dr Purchases/Expense, Dr GST Input,
+                # Cr Trade Payables. Posting an acquisition entry here would
+                # double the cost and credit Bank for something bought on
+                # credit. What is needed is a RECLASSIFICATION: move the cost
+                # out of the expense the bill charged and into the asset,
+                # touching neither the payable nor any cash account.
+                expense_id = self._find_account(db, firm_id, client_id, "%Purchase%")
+                return self._create_journal(
+                    db=db, firm_id=firm_id, client_id=client_id,
+                    entry_date=asset["purchase_date"],
+                    reference_no=f"FA-CAP-{asset.get('asset_code', asset['id'][:8])}",
+                    narration=(f"Capitalised from purchase bill: {asset['asset_name']}"),
+                    entry_type="Journal",
+                    lines=[
+                        {"account_id": asset_acct, "debit_paise": cost, "credit_paise": 0,
+                         "narration": f"Fixed asset: {asset['asset_name']}"},
+                        {"account_id": expense_id, "debit_paise": 0, "credit_paise": cost,
+                         "narration": "Reversed out of purchases — capitalised"},
+                    ],
+                )
+
+            if mode == "credit":
+                # Bought on credit from a named vendor with no bill in the
+                # system. The vendor IS owed, so Trade Payables is the honest
+                # credit; a later payment relieves it through the ordinary path.
+                credit_id = self._find_account(
+                    db, firm_id, client_id, "%Trade Payable%", system_key="ap")
+                credit_narration = "Payable to vendor for asset acquisition"
+            else:
+                # Paid now — and to the account the money actually left, not a
+                # firm-wide guess. Same resolver as receipts and vendor
+                # payments (Phase 1a); this is the call that takes the asset
+                # journals off that guard's debt list.
+                paid_from = resolve_payment_account(
+                    db, firm_id=firm_id, client_id=client_id,
+                    bank_account_id=asset.get("bank_account_id"),
+                    payment_mode=asset.get("payment_mode"),
+                    find_account=self._find_account)
+                credit_id = paid_from.account_id
+                credit_narration = ("Cash paid for asset acquisition"
+                                    if paid_from.source == "cash"
+                                    else "Bank payment for asset acquisition")
+
+            lines.append({"account_id": credit_id, "debit_paise": 0,
+                          "credit_paise": cost + claimable,
+                          "narration": credit_narration})
+
             return self._create_journal(
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=asset["purchase_date"],
                 reference_no=f"FA-ACQ-{asset.get('asset_code', asset['id'][:8])}",
                 narration=f"Asset acquisition: {asset['asset_name']}",
                 entry_type="Journal",
-                lines=[
-                    {"account_id": asset_acct, "debit_paise": cost, "credit_paise": 0,
-                     "narration": f"Fixed asset: {asset['asset_name']}"},
-                    {"account_id": bank_id, "debit_paise": 0, "credit_paise": cost,
-                     "narration": "Bank payment for asset acquisition"},
-                ],
+                lines=lines,
             )
         except ValueError:
             # Re-raise account resolution errors (unmapped asset-category CoA
@@ -1313,7 +1380,15 @@ class Phase2JournalService:
             }
             asset_acct    = self._find_account(db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
             accum_dep_id  = self._find_account(db, firm_id, client_id, "%Accumulated Depreciation%")
-            bank_id       = self._find_account(db, firm_id, client_id, "%Bank%", system_key="bank")
+            # Disposal proceeds land in the account that RECEIVED them, not a
+            # firm-wide guess — the sale of an asset for cash is as ordinary as
+            # a cash receipt, and the old line put it in Bank either way.
+            received_into = resolve_payment_account(
+                db, firm_id=firm_id, client_id=client_id,
+                bank_account_id=asset.get("disposal_bank_account_id"),
+                payment_mode=asset.get("disposal_payment_mode"),
+                find_account=self._find_account)
+            bank_id       = received_into.account_id
 
             cost        = asset["purchase_cost_paise"]
             accum_depn  = asset.get("accumulated_depreciation_paise", 0)
@@ -1324,7 +1399,9 @@ class Phase2JournalService:
                 {"account_id": accum_dep_id, "debit_paise": accum_depn, "credit_paise": 0,
                  "narration": "Accumulated depreciation cleared on disposal"},
                 {"account_id": bank_id,       "debit_paise": sale_proceeds_paise, "credit_paise": 0,
-                 "narration": "Sale proceeds from asset disposal"},
+                 "narration": ("Cash proceeds from asset disposal"
+                                if received_into.source == "cash"
+                                else "Sale proceeds from asset disposal")},
                 {"account_id": asset_acct,    "debit_paise": 0, "credit_paise": cost,
                  "narration": f"Fixed asset removed: {asset['asset_name']}"},
             ]

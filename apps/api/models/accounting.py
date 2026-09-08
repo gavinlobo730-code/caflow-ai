@@ -159,6 +159,69 @@ class FixedAssetIn(BaseModel):
     location: Optional[str] = None
     notes: Optional[str] = None
 
+    # ── FA-07: how it was acquired, and from whom ───────────────────────────
+    # 'paid' | 'credit' | 'from_bill'. Decides the CREDIT leg — see
+    # phase2_journal_service.journal_for_asset_acquisition and migration 343.
+    # Defaulted to 'paid' so an existing caller keeps today's behaviour, except
+    # that 'paid' now credits the account the money actually left.
+    acquisition_mode: str = "paid"
+    vendor_id: Optional[str] = None
+    purchase_bill_id: Optional[str] = None
+    bank_account_id: Optional[str] = None
+    payment_mode: Optional[str] = None
+    # Tax on the acquisition, as it appeared on the document.
+    igst_paise: int = 0
+    cgst_paise: int = 0
+    sgst_paise: int = 0
+    # None = not stated. False = CGST Act §17(5) blocked, so the tax is
+    # capitalised into the asset's cost and DEPRECIATES rather than being
+    # claimed or expensed.
+    itc_eligible: Optional[bool] = None
+    itc_blocked_reason: Optional[str] = None
+
+    @field_validator("igst_paise", "cgst_paise", "sgst_paise")
+    @classmethod
+    def tax_must_be_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Tax amounts must be non-negative paise integers.")
+        return v
+
+    @field_validator("acquisition_mode")
+    @classmethod
+    def known_mode(cls, v: str) -> str:
+        if v not in ("paid", "credit", "from_bill"):
+            raise ValueError(
+                "acquisition_mode must be 'paid' (bought and paid for now), "
+                "'credit' (owed to a vendor) or 'from_bill' (the purchase bill "
+                "already posted, so this only reclassifies its cost).")
+        return v
+
+    @model_validator(mode="after")
+    def acquisition_facts_must_agree(self):
+        """A mode that names no counterparty posts to the wrong account silently.
+
+        'from_bill' without a bill would post a reclassification out of an
+        expense nothing put there; 'credit' without a vendor would credit Trade
+        Payables with no one owed. Both balance, and both are wrong — which is
+        the shape of defect this whole finding is about.
+        """
+        if self.acquisition_mode == "from_bill" and not self.purchase_bill_id:
+            raise ValueError(
+                "acquisition_mode 'from_bill' needs purchase_bill_id — the entry "
+                "reclassifies that bill's cost out of purchases, and without the "
+                "bill there is nothing to reclassify.")
+        if self.acquisition_mode == "credit" and not self.vendor_id:
+            raise ValueError(
+                "acquisition_mode 'credit' needs vendor_id — the entry credits "
+                "Trade Payables, and a payable with no vendor cannot be settled.")
+        if (self.igst_paise or self.cgst_paise or self.sgst_paise) \
+                and self.itc_eligible is None:
+            raise ValueError(
+                "Tax was entered but itc_eligible was not set. Whether CGST Act "
+                "§17(5) blocks the credit changes both the balance sheet and the "
+                "depreciable cost, so it cannot be left to a default.")
+        return self
+
     @field_validator("purchase_cost_paise", "salvage_value_paise")
     @classmethod
     def must_be_non_negative(cls, v: int) -> int:
