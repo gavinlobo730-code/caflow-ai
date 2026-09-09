@@ -1334,7 +1334,7 @@ EXEMPT: dict[str, str] = {
         "the statutory Schedule III -> MCA XBRL taxonomy tag table "
         "(domain/income_tax/xbrl_service.DEFAULT_MAPPINGS) — identical for "
         "every firm and every client, no stored data read.",
-    # income_tax.py — five stateless calculators. None of their request
+    # income_tax.py — ten stateless calculators. None of their request
     # models carry a client_id; nothing is persisted or read from a table.
     "/api/income-tax/compute":
         "ComputeITRRequest has no client_id — a pure tax computation over "
@@ -1362,6 +1362,27 @@ EXEMPT: dict[str, str] = {
         "ComputeAdvanceTaxRequest has no client_id — a stateless Section "
         "234C interest estimator, does not persist anything (unlike POST "
         "/advance-tax, which does and is guarded).",
+    "/api/income-tax/interest/234ab":
+        "ComputeSection234ABRequest has no client_id — the §234A/§234B "
+        "companions to the §234C estimator above, and stateless in the same "
+        "way. It takes the three FACTS that decide the §139(1) due date "
+        "(entity type, audit engagement, §92E report) rather than a client to "
+        "read them from, so no row is touched: "
+        "compliance_obligation_service.itr_due_date_for_client is pure.",
+    "/api/income-tax/presumptive/44ad":
+        "Compute44ADRequest has no client_id — §44AD presumptive income over "
+        "caller-supplied turnover figures, nothing stored or read.",
+    "/api/income-tax/presumptive/44ada":
+        "Compute44ADARequest has no client_id — §44ADA presumptive income "
+        "over caller-supplied receipts, nothing stored or read.",
+    "/api/income-tax/presumptive/44ae":
+        "Compute44AERequest has no client_id — §44AE presumptive income over "
+        "a caller-supplied list of goods carriages, nothing stored or read.",
+    "/api/income-tax/itr/field-placements":
+        "ITRFieldPlacementsRequest has no client_id — it maps caller-supplied "
+        "figures onto the Department's own committed schema paths and rounds "
+        "them to rupees. The mapping is a property of the SOFTWARE, identical "
+        "for every firm and client; no row is read and no file is produced.",
     # compliance.py (sharing the /api/compliance prefix with compliance_ops.py
     # — see the AUDITED comment) — the one stateless route.
     "/api/compliance/due-dates/calculate":
