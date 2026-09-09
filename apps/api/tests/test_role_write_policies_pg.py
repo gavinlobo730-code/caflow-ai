@@ -308,6 +308,10 @@ GUARDED = [
     "tax_audits", "tax_planning_records", "shared_reports", "scheduled_reports",
     "client_documents", "document_requests", "suppliers", "msme_payments",
     "client_timeline_events",
+    # migration 345 — the TDS register. Executive+ to insert or amend (the tier
+    # every write route in routers/tds_workspace.py already enforces via
+    # rbac("tds","compute")), Manager+ to delete.
+    "tds_deductions", "tds_returns", "tds_challans", "tds_certificates",
 ]
 
 
