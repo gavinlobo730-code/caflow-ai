@@ -61,22 +61,58 @@ test("customers: garbage opening_balance is a clear per-row error, not a silent 
 });
 
 // ── Vendors ──────────────────────────────────────────────────────────────────
-test("vendors: TDS rate % → bps when applicable", () => {
+test("vendors: a TDS rate in the spreadsheet is ignored, not converted", () => {
+  // This asserted tds_rate_bps === 200 from a "2" in the sheet. That column is
+  // vendors.tds_rate_bps — the dead field PUR-06 removed from the vendor form,
+  // which the engine has never read: it resolves the rate from the section,
+  // the payee's PAN, the year's aggregate and §206AA. In production every rate
+  // a CA had typed was 200 bps, the §194C COMPANY rate, sitting on individual
+  // contractors whose statutory rate is 1% — so honouring the column would
+  // have doubled their withholding.
   const { records, errors } = buildVendors([
     row({ name: "Supplier A", tds_applicable: "yes", tds_section: "194C", tds_rate: "2" }),
   ], "c1");
   assert.equal(errors.length, 0);
   assert.equal(records[0].tds_applicable, true);
-  assert.equal(records[0].tds_rate_bps, 200);
   assert.equal(records[0].tds_section, "194C");
+  assert.equal(records[0].tds_rate_bps, 0,
+    "whatever the sheet says, the rate is the engine's answer and not this one");
 });
 
-test("vendors: TDS applicable without valid section is rejected", () => {
+test("vendors: TDS applicable with no section at all is rejected here", () => {
+  // Presence is the only thing this file can honestly check.
   const { records, errors } = buildVendors([
-    row({ name: "Supplier B", tds_applicable: "yes", tds_section: "999", tds_rate: "2" }),
+    row({ name: "Supplier B", tds_applicable: "yes", tds_section: "" }),
   ], "c1");
   assert.equal(records.length, 0);
   assert.match(errors[0], /tds_section/i);
+});
+
+test("vendors: WHICH section is valid is the server's question, not this file's", () => {
+  // It used to hold ["194C","194I","194J","194H","194A"] and reject anything
+  // else — which silently refused eight sections the engine DOES hold (193,
+  // 194, 194B, 194D, 194G, 194K, 194LA, 194Q). A third list, narrower than the
+  // screen's and narrower than the registry.
+  //
+  // The row now goes to the server, which refuses an unanswerable section with
+  // a sentence naming it and listing what is available
+  // (domain/tds/residency.deduction_section_refusal). Both directions are
+  // asserted, because a client-side list can be wrong either way.
+  const { records: good } = buildVendors([
+    row({ name: "Interest Payee", tds_applicable: "yes", tds_section: "194A" }),
+    row({ name: "Securities Payee", tds_applicable: "yes", tds_section: "193" }),
+    row({ name: "Goods Payee", tds_applicable: "yes", tds_section: "194Q" }),
+  ], "c1");
+  assert.equal(good.length, 3,
+    "sections the engine holds must not be refused by the importer");
+
+  const { records: passed, errors } = buildVendors([
+    row({ name: "Property Payee", tds_applicable: "yes", tds_section: "194IA" }),
+  ], "c1");
+  assert.equal(errors.length, 0);
+  assert.equal(passed[0].tds_section, "194IA",
+    "an unknown section is passed through for the server to refuse with a " +
+    "sentence, rather than rejected here with a stale list");
 });
 
 test("vendors: blank/absent opening_balance maps to 0, never NaN", () => {

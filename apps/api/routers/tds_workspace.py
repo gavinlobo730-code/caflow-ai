@@ -381,6 +381,7 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
     from datetime import date as _date
     from domain.tds import manual_register
     from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
+    from domain.tds.residency import deduction_section_refusal
     from services.tds_register_service import fy_quarter
 
     section = (body.get("section") or "").upper().strip()
@@ -418,7 +419,11 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
             has_pan=has_pan(pan),
         )
     except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
+        # Same rule the vendor master asks — see routers/purchase_bills.py.
+        # A hand-typed register row can name any section at all, so this is
+        # the only place that refusal can be made for it.
+        named = deduction_section_refusal(section, manual_register.fy_label(when))
+        raise HTTPException(status_code=422, detail=named or str(ve))
 
     # Named on EVERY row, not only where it currently bites. The CA cannot tell
     # from the number whether the register this aggregate does not see would

@@ -281,7 +281,15 @@ const TDS_SECTIONS = [
   // rate is floored at 20% by §206AA when no PAN is on file, and below the
   // section's threshold the rate is nil. The engine resolves all of that from
   // the vendor when the bill is priced.
-  { value: "192", label: "192 — Salary" },
+  //
+  // s.192 IS DELIBERATELY ABSENT. It was here, and it was the worst entry in
+  // the list: section_rates.py holds it as a SENTINEL (0/0/0) so that lookups
+  // succeed, because salary is slab-based and computed by Payroll. So a vendor
+  // set to s.192 did not fail — it saved every bill with NIL withholding, a
+  // stored rate of 0, and no register row and no gap, because nothing was
+  // deducted. A section the engine cannot honestly answer for is now refused
+  // at the vendor master (domain/tds/residency.deduction_section_refusal), and
+  // this list must not offer one.
   { value: "194A", label: "194A — Interest" },
   { value: "194B", label: "194B — Lottery / winnings" },
   { value: "194C", label: "194C — Contractors" },

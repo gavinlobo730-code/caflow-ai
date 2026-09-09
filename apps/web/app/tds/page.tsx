@@ -193,6 +193,12 @@ interface TDSCertificate {
   status: "pending" | "generated" | "issued" | "downloaded";
 }
 
+// Sections a DEDUCTION may be recorded under here — every label above except
+// s.192, for the reason given where this is used. The authoritative list comes
+// from GET /api/tds/sections, which reads domain/tds/section_rates.py; this is
+// the fallback shown until it answers.
+const DEDUCTIBLE_SECTIONS = Object.keys(SECTION_LABELS).filter(s => s !== "192");
+
 const TABS = ["Deductions", "Challans", "Returns", "Certificates"];
 
 // TDS returns (IT Act §200(3)) and certificates (Form 16/16A) are loaded from the
@@ -220,8 +226,14 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
   const [challanNo, setChallanNo] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // The section list, with its rates and thresholds, from the engine.
-  const [sections, setSections] = useState<string[]>(Object.keys(SECTION_LABELS));
+  // The section list, with its rates and thresholds, from the engine. The seed
+  // is only what shows before that fetch lands (or if it fails), and it EXCLUDES
+  // s.192: section_rates.py holds s.192 as a sentinel because salary is
+  // slab-based, so resolve_tds answers nil for it — a deduction recorded under
+  // s.192 here would save with zero tax and say nothing about it. Payroll
+  // computes s.192. A CHALLAN under s.192 is a different matter and is still
+  // offered below: a salary TDS deposit is a real ITNS 281 payment.
+  const [sections, setSections] = useState<string[]>(DEDUCTIBLE_SECTIONS);
   // What the SERVER says this deduction comes to. There is no local answer to
   // fall back on — that was the bug.
   const [quote, setQuote] = useState<Awaited<ReturnType<typeof previewTdsDeduction>> | null>(null);
@@ -502,6 +514,10 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-[#334155] block mb-1">Section</label>
+            {/* s.192 IS offered here and only here. A challan is a DEPOSIT, and
+                salary TDS is deposited on an ITNS 281 like any other — Payroll
+                computes it, and the CA records the challan. The deduction form
+                above deliberately excludes it. */}
             <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={section} onChange={e => setSection(e.target.value)}>
               {Object.entries(SECTION_LABELS).map(([k, v]) => <option key={k} value={k}>{k} — {v}</option>)}
             </select>

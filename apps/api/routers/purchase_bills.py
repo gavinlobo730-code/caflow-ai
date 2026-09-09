@@ -25,16 +25,16 @@ from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
 
-# IT Act §194C: 2% (companies/firms); §194I: 10%; §194J: 10%
-# Default rates when vendor master tds_rate_bps is 0
-_TDS_DEFAULT_BPS: dict[str, int] = {
-    "194C":  200,   # 2% for companies/firms (conservative default)
-    "194I":  1000,  # 10% on rent
-    "194IA": 100,   # 1% on immovable property transfer
-    "194J":  1000,  # 10% professional/technical fees
-    "194H":  500,   # 5% commission/brokerage
-    "194A":  1000,  # 10% interest (other than bank)
-}
+# _TDS_DEFAULT_BPS WAS HERE AND IS DELETED. It mapped six sections to flat
+# rates and had no readers — grep proved it dead — but it was the last place in
+# apps/api asserting a rate for §194IA, and it was demonstrably a Finance Act
+# behind: it gave §194H 500 bps where domain/tds/section_rates.py records the
+# Finance (No. 2) Act 2024 cut to 200. Left in place it is a plausible-looking
+# source for exactly the numbers Phase 4 refuses to guess at.
+#
+# There is one rate table and it is domain/tds/section_rates.py, which carries
+# per-payee-type rates, thresholds, aggregate limbs and a verified flag per FY.
+# A flat map cannot express any of those.
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_bills")
@@ -389,6 +389,7 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
             detail="Vendor is marked TDS-applicable but has no TDS section set.",
         )
     from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
+    from domain.tds.residency import deduction_section_refusal
     # FY-aggregate of this vendor's prior taxable under the same section, so the
     # §194C ₹1L aggregate threshold is honoured across multiple bills.
     fy_prior = 0
@@ -459,7 +460,13 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
             has_pan=has_pan(vendor.get("pan")),
         )
     except ValueError as ve:
-        raise HTTPException(status_code=422, detail=str(ve))
+        # The ENGINE's ValueError is the backstop, not the message. A vendor
+        # created before models/parties.py started refusing an unanswerable
+        # section still reaches here, and "Unknown TDS section '194IA'" is an
+        # internal string with no statute and no next step. Ask the same rule
+        # the vendor master asks, so the legacy row gets the same sentence.
+        named = deduction_section_refusal(tds_section, bill_fy)
+        raise HTTPException(status_code=422, detail=named or str(ve))
     # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
     # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
     #

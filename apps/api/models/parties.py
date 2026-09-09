@@ -11,7 +11,8 @@ from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from core.validators import (validate_gstin, validate_pan, validate_tan,
                              validate_phone, validate_email, validate_pincode)
-from domain.tds.residency import NON_RESIDENT, RESIDENTIAL_STATUSES, section_refusal
+from domain.tds.residency import (NON_RESIDENT, RESIDENTIAL_STATUSES,
+                                  deduction_section_refusal, section_refusal)
 from domain.tds.section_195_rates import (
     ALL_NATURES, NATURE_BUSINESS_PROFITS_NO_PE)
 
@@ -86,6 +87,31 @@ def _normalise_residency(model) -> list[str]:
             "Withholding nil on business profits rests on the payee having no "
             "permanent establishment in India, so no_pe_declaration_on_file "
             "must be set with this nature of income.")
+
+    # CAN THE ENGINE ANSWER FOR THIS SECTION AT ALL — asked before the
+    # payee-fit question below, because a section nothing can rate is wrong for
+    # every payee and saying so first gives the CA the useful sentence.
+    #
+    # Caught HERE, where the section is recorded, rather than at the first
+    # bill. tds_section is a bare string on the way in, so s.194IA, s.194R,
+    # s.194T and s.194M all saved fine over the API and the bulk import and
+    # then wedged every bill on `ValueError: Unknown TDS section '194IA'` — a
+    # raw internal string, weeks later, with no statute and no next step. And
+    # s.192 did not even wedge: the registry holds it as a sentinel, so
+    # resolve_tds answered applies=True at 0%, the bill saved with nil
+    # withholding, and the register wrote no row and no gap because nothing was
+    # deducted. That silent nil is the more dangerous half of TDS-07.
+    # Gated on the SECTION being supplied, not on tds_applicable. Two reasons,
+    # and the second is a hole the obvious gate would leave: VendorUpdateIn is
+    # PATCH-shaped, so tds_applicable is None whenever a request does not
+    # mention it — a PATCH setting only tds_section would slip past
+    # `if model.tds_applicable`. And a section recorded while TDS is off is not
+    # harmless, it is a landmine: it wedges the first bill after somebody
+    # switches TDS on, which is exactly the delayed failure this moves.
+    if model.tds_section:
+        unanswerable = deduction_section_refusal(model.tds_section)
+        if unanswerable:
+            errors.append(unanswerable)
 
     # s.194C and its neighbours charge, in their own words, sums paid "to a
     # resident", so the two facts contradict each other. This used to be caught
