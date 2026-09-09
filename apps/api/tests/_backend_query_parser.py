@@ -338,3 +338,164 @@ def unverifiable_columns(migrations_dir: Path, failed: set[str]) -> set[str]:
         if path.exists():
             seen |= columns_declared_in(path.read_text(encoding="utf-8"))
     return seen
+
+
+# ── Insert payloads, with the local variable followed ────────────────────────
+#
+# scan() above reads a payload only when it is written INLINE at the call site.
+# That is enough to check the columns a write NAMES, but not the ones it
+# OMITS — and omitting a NOT NULL column with no default is the failure this
+# codebase has actually shipped: routers/tds_workspace.create_return never
+# supplied tds_returns.quarter_end (DATE NOT NULL, migration 037), so the
+# insert raised on every real database while every mock-mode test passed,
+# because a dict store has no NOT NULL.
+#
+# The dominant idiom here is
+#
+#     record = {...}
+#     if something:
+#         record["extra"] = x
+#     db.table("t").insert(record).execute()
+#
+# so a scanner that only reads `insert({...})` literally cannot see the very
+# bug it exists to catch. This pass follows that one step: a name assigned a
+# dict literal EXACTLY ONCE in its function, plus any `name["key"] = ...`
+# additions in the same function. Anything less certain — two assignments, a
+# comprehension, a `**spread`, a computed key, a name from a parameter — is
+# reported as unreadable rather than guessed at, because a payload read wrongly
+# would report a column as missing that is supplied.
+
+_INSERTING = frozenset({"insert", "upsert"})
+
+
+def _calls_in(scope: ast.AST):
+    """Every node in `scope` that is not inside a nested function.
+
+    Same boundary _scope_dicts uses, so a call is only ever matched against the
+    variables of the scope that actually holds it.
+    """
+    for child in ast.iter_child_nodes(scope):
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue
+        yield child
+        yield from _calls_in(child)
+
+
+def _dict_keys(d: ast.Dict) -> tuple[set[str], bool]:
+    """(literal string keys, readable). A `**spread` or computed key → False."""
+    keys: set[str] = set()
+    for k in d.keys:
+        if isinstance(k, ast.Constant) and isinstance(k.value, str):
+            keys.add(k.value)
+        else:
+            return keys, False           # None key == **spread
+    return keys, True
+
+
+def _scope_dicts(scope: ast.AST) -> dict[str, tuple[set[str], bool]]:
+    """name → (keys, readable) for dict literals bound once in this scope.
+
+    Nested function bodies are excluded: a name bound in an inner function is a
+    different variable, and treating it as the same one is how a scanner starts
+    reporting confident nonsense.
+    """
+    assigns: dict[str, list[ast.expr]] = {}
+    subscripts: dict[str, set[str]] = {}
+    unreadable_sub: set[str] = set()
+
+    body = getattr(scope, "body", [])
+
+    def _walk(n):
+        """ast.walk, but stopping at a nested function — a name bound in an
+        inner function is a different variable."""
+        yield n
+        for child in ast.iter_child_nodes(n):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                continue
+            yield from _walk(child)
+
+    for stmt in body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for node in _walk(stmt):
+            if isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name):
+                        assigns.setdefault(tgt.id, []).append(node.value)
+                    elif (isinstance(tgt, ast.Subscript)
+                          and isinstance(tgt.value, ast.Name)):
+                        idx = tgt.slice
+                        if isinstance(idx, ast.Constant) and isinstance(idx.value, str):
+                            subscripts.setdefault(tgt.value.id, set()).add(idx.value)
+                        else:
+                            unreadable_sub.add(tgt.value.id)
+
+    out: dict[str, tuple[set[str], bool]] = {}
+    for name, values in assigns.items():
+        if len(values) != 1 or not isinstance(values[0], ast.Dict):
+            continue                      # rebound, or not a dict literal
+        keys, readable = _dict_keys(values[0])
+        keys |= subscripts.get(name, set())
+        out[name] = (keys, readable and name not in unreadable_sub)
+    return out
+
+
+def insert_payloads(api_root: Path) -> tuple[list[tuple[str, int, str, set[str]]], int]:
+    """[(relpath, lineno, relation, column names)] for every readable INSERT,
+    and a count of the ones that could not be read.
+
+    UPDATE is deliberately excluded: a partial update is the normal thing, so
+    "this update omits a required column" is not a defect. INSERT and UPSERT
+    both create a row when none matches, so both must satisfy NOT NULL.
+    """
+    found: list[tuple[str, int, str, set[str]]] = []
+    unreadable = 0
+
+    for path in sorted(api_root.rglob("*.py")):
+        if _SKIP_DIRS & set(path.relative_to(api_root).parts):
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            unreadable += 1
+            continue
+
+        scopes = [tree] + [n for n in ast.walk(tree)
+                           if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        names_in: dict[int, dict[str, tuple[set[str], bool]]] = {
+            id(s): _scope_dicts(s) for s in scopes}
+
+        rel_path = str(path.relative_to(api_root))
+        for scope in scopes:
+            local = names_in[id(scope)]
+            for node in _calls_in(scope):
+                if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                    continue
+                if node.func.attr not in _INSERTING or not node.args:
+                    continue
+                rel = _relation_of(node)
+                if rel is None or not node.args:
+                    continue
+                arg = node.args[0]
+                if isinstance(arg, ast.Dict):
+                    keys, readable = _dict_keys(arg)
+                elif isinstance(arg, ast.Name) and arg.id in local:
+                    keys, readable = local[arg.id]
+                else:
+                    unreadable += 1
+                    continue
+                if not readable:
+                    unreadable += 1
+                    continue
+                found.append((rel_path, node.lineno, rel, keys))
+
+    # A call inside a function is walked twice — once from the module scope and
+    # once from its own — so the same site can be recorded twice. Dedupe on
+    # (file, line, relation), keeping the reading with the MOST keys, which is
+    # the one made in the scope that actually owns the variable.
+    best: dict[tuple[str, int, str], set[str]] = {}
+    for f, ln, rel, keys in found:
+        k = (f, ln, rel)
+        if k not in best or len(keys) > len(best[k]):
+            best[k] = keys
+    return [(f, ln, rel, keys) for (f, ln, rel), keys in sorted(best.items())], unreadable

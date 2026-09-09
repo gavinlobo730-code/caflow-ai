@@ -169,7 +169,7 @@ snapshot was 12 migrations stale and `ADDED_AFTER_THE_SNAPSHOT` had grown to 41
 entries — one over its own cap. Refreshed and proved equal to production
 (md5 `dff5c56d…`, 3,999 columns in 270 tables); the list is back to 3.
 
-### Phase 3 — One TDS engine, and the browser copy deleted · 8 findings · ≤19 days
+### Phase 3 — One TDS engine, and the browser copy deleted · 8 findings · ≤19 days · **DONE**
 `TDS-05 TDS-11 TDS-03 TDS-15 TDS-04 TDS-14 PUR-06 PUR-14`
 
 `/tds` computes TDS in TypeScript from a stale hardcoded table and writes
@@ -181,6 +181,126 @@ different ways. The engine that would give the right answer is already tested.
 This is exactly the filing-demo lesson in CLAUDE.md: two implementations of one
 thing drift, and one of them is silently exempt from the guard.
 *Guard:* the zero-business-logic-in-the-frontend rule, made testable for TDS.
+
+**All eight done: TDS-11, TDS-05, PUR-06, TDS-03, TDS-15, TDS-04, TDS-14,
+PUR-14.**
+
+**The browser's table was wrong in EIGHT ways, not the two TDS-05 named.**
+Checked row by row against `section_rates.py` and each is now a test:
+§194C flat at the company rate (an individual/HUF is 1% — **double**);
+§194D flat 5% against 2% individual / 10% company (**wrong both ways**, and the
+company case *under*-deducts, which disallows the expenditure under §40(a)(ia));
+§194H 5% against 2% since the Finance (No. 2) Act 2024; §194Q on the whole sum
+where §194Q(1) charges on the **excess** over ₹50 lakh (₹6,000 vs ₹1,000 on a
+₹60 lakh purchase); §194IA offered at 1% and **absent from the engine**; §192
+leaving the previous rate in the box so salary wrote at 10% into a 26Q register;
+no threshold anywhere; no FY aggregate, so §200 never credited.
+
+**And the table had THREE copies.** `/tds`'s `TDS_SECTIONS`, the vendor form's
+`TDS_DEFAULT_RATES`, and the rates baked into the vendor form's section dropdown
+*labels* — where §194D and §194H both read "(5%)". The third is what seeded
+`vendors.tds_rate_bps`, which is PUR-06's dead field: production's five §194C
+vendors carry 200 bps, the **company** rate, so honouring it would have doubled
+every individual contractor's withholding. The field is gone from the form.
+
+**Two structural facts nobody had written down:**
+- `tds_26q_from_books` builds the return from **`purchase_bills`**, never from
+  `tds_deductions`. The /tds register is a parallel book no return path reads.
+- The two registers therefore do not share an FY aggregate. Unifying them means
+  keying both halves on the PAN; it changes a delicately argued, heavily tested
+  path, so it is **named on every row as a gap** rather than half-done.
+
+*Also found by the guard, and not Phase 3's:* `lib/services/payrollTdsEstimate.ts`
+computes §192 salary TDS in the browser. Its own docstring already declares it a
+standing CLAUDE.md violation tracked as **roadmap R2.10**, so it is allowlisted
+with that reference rather than absorbed here.
+
+**Two more unguarded direct writes the corrected scan found, now closed.**
+Widening the guard from a 400-character window to the whole statement did not
+only surface the four TDS tables — it also found `loans` and `fixed_deposits`,
+inserted straight from `app/accounting/loans/page.tsx`. Both carried firm and
+assignment rules and **no role rule**, so a Reviewer assigned to a client could
+record or amend that client's borrowings: principal, outstanding balance,
+interest rate, EMI — figures the cash-flow report and the risk screen read.
+Neither table has an API endpoint, so there was no `rbac()` tier to mirror and
+they sat in `AWAITING_DECISION` until the owner answered on 2026-09-09:
+**Executive+ for insert, update and delete alike**, on the reasoning that a
+client handed to an Executive is theirs to run. Migration 346 writes that rule.
+The delete tier is deliberately not raised a rank — an Executive who cannot undo
+their own typo without a Manager is a rule that gets worked around.
+
+*Named follow-up, not done here:* because these are browser writes, a delete
+still leaves **no `audit_log` row** — `log_event` runs only on the API path. The
+role rule stops a Reviewer; it cannot record what a legitimate Executive
+removed. Closing that means giving the pair a real endpoint, the way the TDS
+register got one in this phase. It is a Phase 7 shape (a screen for an engine),
+not a Phase 3 one.
+
+**TDS-03 was four breaks, and the fourth was invisible to 10,000 tests.**
+`POST /returns` never supplied `tds_returns.quarter_end` — `DATE NOT NULL`, no
+default, migration 037 — so the insert raised on any real database while every
+mock-mode test passed, because a dict store has no NOT NULL. The other three:
+`compute26Q`/`compute24Q` sent no `Authorization` header at all; the register
+never wrote `financial_year`; and it wrote `quarter` as the compound
+`"Q3 2025-26"` while every reader filtered `.eq("quarter","Q3")` — the format
+migration 014 gave this one column, where `tds_returns`, `tds_challans` and
+`tds_certificates` have always held the year separately and CHECKed
+`quarter IN ('Q1'..'Q4')`. Migration 347 puts the register on the schema's own
+vocabulary. A fifth, found on the way: `getTDSChallans` filtered the quarter and
+not the year, so a Q3 return reconciled against every Q3 the client had ever
+deposited.
+
+**The missing Authorization header was 11 call sites, not 2.** Sweeping the
+tree for the pattern rather than the finding: 11 of 36 `fetch` calls to this
+backend carried no Bearer token, and every one reaches an `rbac()`-guarded
+route that answers 401 without one. Seven of them are the WHOLE of
+`app/clients/[id]/fixed-assets/page.tsx`, each sending `credentials: "include"`
+— a cookie this API does not read, which is what made it look like an auth
+decision had been taken. Also `documents.parse` (so document parsing had never
+worked once) and the HRA calculator. All 11 fixed;
+`apps/web/scripts/every-api-call-is-authenticated.test.ts` states the rule, with
+`app/sign/page.tsx`'s tokenised public endpoints as the named exception.
+
+**TDS-15 and TDS-04 are the same defect in two directions**, and both were live:
+a screen writing a value the CHECK forbids (`"Form 16A"` where migration 037
+accepts `'16A'`, so every certificate draft was rejected and the refusal was
+swallowed into an HTTP 200 nobody read), and a screen comparing against values
+the CHECK cannot store (`"Pending"|"Filed"|"Overdue"` on `tds_returns`, so three
+counters read 0/0/0 for ever). The /tds Challans tab additionally had no writer
+and no reader at all — the modal pushed a row into React state and
+`POST /api/tds-workspace/challans` had no caller.
+
+**TDS-14 — the bill editor's TDS is now the server's answer, not the browser's.**
+The editor showed `estimateForeignTds(base, vendor.tds_rate_bps)` and subtracted
+it as "Net payable", while the save branches on RESIDENCY first and then applies
+the section threshold, the year's AGGREGATE and the §206AA floor — or §195 by
+nature of income with surcharge and cess, or a refusal. So a sub-threshold §194J
+bill previewed tax and saved zero, and a §194C individual previewed the company
+rate. `POST /api/purchase-bills/tds-preview` runs the save's own code path
+(`_compute_bill_lines_and_totals`, reached through the same vendor and currency
+resolvers, which were extracted for it), and the editor renders its figure, its
+reason, and its refusal. `estimateForeignTds` and `convertBaseToForeignMinor`
+are DELETED with their tests, not merely uncalled — a rate × base helper left in
+the tree is one import away from being the preview again.
+
+**PUR-14 — five gap codes computed on every foreign-supplier bill since the
+register was written, and none of them had ever reached a screen.** The receive
+response has always carried `tds_register.gap_details`; the purchases page read
+`result.success` and nothing else. Both receive paths now capture them, and a
+bulk receive deduplicates by vendor and sentence. A failed register sync is the
+loudest case: `_sync_tds_register` deliberately never raises, so a bill can be
+in the books and missing from 26Q — which is exactly why it has to be said on
+the screen instead.
+
+⚠️ **The status-vocabulary check found ELEVEN more files, and they are not
+Phase 3's.** `tests/test_frontend_status_values_match_the_check_pg.py` carries
+them as a shrinking ratchet with the values each uses. They belong to their own
+modules' phases — GST (5), MCA (7), sales, payroll, lifecycle — and fixing them
+inside the TDS phase is the scope creep this plan exists to prevent. **One is
+confirmed real rather than a heuristic's guess and should be picked up early:**
+`app/mca/page.tsx` UPDATEs `mca_filings` with `status: "Filed"` where the CHECK
+accepts `'filed'`, so marking an ROC filing as filed is rejected by the
+database and does nothing.
 
 ### Phase 4 — TDS statutory correctness · 9 findings (8 distinct) · ≤60 days
 `TDS-07 TDS-22 TDS-26 PUR-03 TDS-06 PUR-10 TDS-09 PUR-07≡TDS-13`

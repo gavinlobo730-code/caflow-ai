@@ -21,7 +21,8 @@ from datetime import date
 
 import pytest
 
-from services.tds_register_service import IN_THE_BOOKS, fy_quarter, sync_for_bill
+from services.tds_register_service import (IN_THE_BOOKS, fy_label, fy_quarter,
+                                          sync_for_bill)
 
 
 class _DB:
@@ -175,25 +176,42 @@ def test_it_is_reported_as_26Q():
 
 # ── The quarter, which decides which return it lands in ──────────────────────
 
-@pytest.mark.parametrize("day,expected", [
-    ("2025-04-01", "Q1 2025-26"), ("2025-06-30", "Q1 2025-26"),
-    ("2025-07-01", "Q2 2025-26"), ("2025-09-30", "Q2 2025-26"),
-    ("2025-10-01", "Q3 2025-26"), ("2025-12-31", "Q3 2025-26"),
-    ("2026-01-01", "Q4 2025-26"), ("2026-03-31", "Q4 2025-26"),
-    ("2026-04-01", "Q1 2026-27"),
+@pytest.mark.parametrize("day,quarter,fy", [
+    ("2025-04-01", "Q1", "2025-26"), ("2025-06-30", "Q1", "2025-26"),
+    ("2025-07-01", "Q2", "2025-26"), ("2025-09-30", "Q2", "2025-26"),
+    ("2025-10-01", "Q3", "2025-26"), ("2025-12-31", "Q3", "2025-26"),
+    ("2026-01-01", "Q4", "2025-26"), ("2026-03-31", "Q4", "2025-26"),
+    ("2026-04-01", "Q1", "2026-27"),
 ])
-def test_the_quarter_follows_the_indian_financial_year(day, expected):
+def test_the_quarter_follows_the_indian_financial_year(day, quarter, fy):
     """The FY runs 1 April to 31 March, so Q1 is Apr-Jun — not Jan-Mar. A bill
     dated 31 March belongs in Q4 of the year that is ending, and one dated
     1 April in Q1 of the year beginning; getting that boundary wrong files a
-    deduction in the wrong quarter's return."""
-    assert fy_quarter(date.fromisoformat(day)) == expected
+    deduction in the wrong quarter's return.
+
+    TWO VALUES, not one string. fy_quarter returned "Q1 2025-26" until
+    migration 347 — the compound form migration 014 gave this column and the
+    only one of the four TDS tables to use it. The year lives in
+    financial_year now, which is what every reader already filtered on."""
+    assert fy_quarter(date.fromisoformat(day)) == quarter
+    assert fy_label(date.fromisoformat(day)) == fy
 
 
-def test_the_row_carries_the_quarter_it_will_be_filed_in():
+def test_the_row_carries_the_period_it_will_be_filed_in():
+    """Both columns, because a challan is matched to a deduction on
+    (financial_year, quarter) and half a key matches nothing."""
     db = _DB()
     sync_for_bill(db, "f1", "c1", bill(bill_date="2026-01-15"), VENDOR)
-    assert db.rows["b1"]["quarter"] == "Q4 2025-26"
+    assert db.rows["b1"]["quarter"] == "Q4"
+    assert db.rows["b1"]["financial_year"] == "2025-26"
+
+
+def test_the_register_holds_no_compound_quarter():
+    """The regression itself. A quarter carrying its year passes no CHECK
+    migration 347 adds and matches no reader's .eq("quarter", "Q4")."""
+    db = _DB()
+    sync_for_bill(db, "f1", "c1", bill(bill_date="2026-01-15"), VENDOR)
+    assert db.rows["b1"]["quarter"] in ("Q1", "Q2", "Q3", "Q4")
 
 
 # ── Failure must not take the bill down with it ──────────────────────────────

@@ -32,7 +32,8 @@ MIGRATION_SOURCES = [_MIG_DIR / "260_role_aware_write_policies.sql",
                      _MIG_DIR / "261_role_aware_write_policies_part2.sql",
                      _MIG_DIR / "296_employee_income_tax_declarations.sql",
                      _MIG_DIR / "297_let_an_employee_file_their_own_declaration.sql",
-                     _MIG_DIR / "345_the_tds_register_is_role_guarded.sql"]
+                     _MIG_DIR / "345_the_tds_register_is_role_guarded.sql",
+                     _MIG_DIR / "346_loans_and_deposits_carry_a_role_rule.sql"]
 
 # Covered by migration 260 — each mirrors a live rbac() guard on an endpoint
 # that writes the same table.
@@ -59,33 +60,27 @@ GUARDED = {
     # with rbac("tds", "compute") = Executive+. They were invisible to this
     # scan until _chains stopped capping the tail at 400 characters.
     "tds_deductions", "tds_returns", "tds_challans", "tds_certificates",
+    # migration 346 — the two the corrected scan found. No endpoint writes
+    # either, so the tier is an OWNER decision of 2026-09-09 rather than a
+    # mirrored one: Executive for insert, update and delete alike, because a
+    # client handed to an Executive is theirs to run and a rule that makes them
+    # fetch a Manager to fix their own typo gets worked around. The assignment
+    # rule (loans_assignment_scope) was already in force and is untouched; what
+    # 346 adds is that a REVIEWER assigned to the client can no longer write.
+    "loans", "fixed_deposits",
 }
 
 # Written from the browser and NOT yet role-guarded. An entry needs a product
 # decision — "who may edit this?" — before a rule can be written, because no API
 # endpoint exists whose rbac() guard could be copied.
 #
-# Empty: every table the browser writes now carries a role rule (260 + 261). The
-# category stays because the NEXT unguarded direct write should land here, with
-# the question it raises, rather than being waved through — which is exactly
-# what test_no_unaccounted_direct_write_table_appears enforces.
-AWAITING_DECISION: dict[str, str] = {
-    # Found by the corrected scan (see _chains). app/accounting/loans/page.tsx
-    # inserts both straight over PostgREST, and NO API endpoint writes either
-    # one — grep apps/api for table("loans") / table("fixed_deposits") returns
-    # nothing outside tests. So there is no rbac() guard to mirror, which is
-    # precisely what this category is for: migration 261's header argues that
-    # guessing a tier "would silently lock someone out of their job with no
-    # error message that explains why".
-    "loans": "Who may record or amend a client's borrowing? It is a balance "
-             "sheet liability that feeds the cash-flow report and the risk "
-             "screen, so it is at least accounting:write (Manager+) — but no "
-             "endpoint exists to copy that from, and Executive+ is arguable "
-             "since entering one is data entry, not a judgement.",
-    "fixed_deposits": "Same question as loans, same screen, same absence of an "
-                      "API twin. Decide the pair together — splitting them "
-                      "would let a role edit one side of the same page.",
-}
+# Empty again: loans and fixed_deposits sat here from the moment the corrected
+# scan found them until the owner answered the question on 2026-09-09, and
+# migration 346 moved them to GUARDED. The category stays because the NEXT
+# unguarded direct write should land here, with the question it raises, rather
+# than being waved through — which is exactly what
+# test_no_unaccounted_direct_write_table_appears enforces.
+AWAITING_DECISION: dict[str, str] = {}
 
 # Direct writes that CANNOT succeed, so no role policy would add anything. Kept
 # as a third category rather than lumped in above, because "already impossible"
@@ -260,33 +255,50 @@ def test_the_old_windowed_scan_could_not_see_a_long_write():
     some shorter READ chain elsewhere in the file, which is why it looked
     accounted for rather than missing.
 
-    Asserted against the real file, not a fixture: app/tds/page.tsx's insert is
-    464 characters from its `.from(` to its `;`.
+    Measured against the real file, and against the LONGEST browser write that
+    exists rather than a named one. It used to point at app/tds/page.tsx's
+    tds_deductions insert (464 characters); Phase 3b deleted that insert, which
+    is what the screen rewrite was for, and this test correctly failed rather
+    than passing on a premise that had gone. Picking the longest write each time
+    is the version of the assertion that survives the next such fix.
     """
-    page = WEB / "app" / "tds" / "page.tsx"
-    if not page.is_file():                                    # pragma: no cover
-        pytest.skip("the /tds screen has moved")
-    src = _strip_comments(page.read_text(encoding="utf-8"))
+    longest = None
+    for path in WEB.rglob("*.ts*"):
+        if set(path.parts) & {"node_modules", ".next", "out", ".vercel"}:
+            continue
+        try:
+            src = _strip_comments(path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, OSError):                 # pragma: no cover
+            continue
+        for table, tail in _chains(src):
+            m = _WRITE.search(tail)
+            if m and (longest is None or len(tail) > longest[0]):
+                longest = (len(tail), table, path, src, m.start())
+
+    assert longest, "no browser writes found at all — the scan is broken"
+    length, table, path, src, verb_at = longest
+    assert length > 400, (
+        f"the longest browser write is now only {length} characters "
+        f"({table} in {path.name}) — every write fits inside the old 400-char "
+        "cap, so this test no longer measures anything. That is a GOOD state; "
+        "delete this test rather than weakening it.")
 
     old_chain = re.compile(
         r'\.from\("([a-z_]+)"\)((?:[^;]|\n){0,400}?)(?=\.from\("|;|\Z)', re.S)
     old_writes = {t for t, tail in old_chain.findall(src) if _WRITE.search(tail)}
     new_writes = {t for t, tail in _chains(src) if _WRITE.search(tail)}
 
-    assert "tds_deductions" not in old_writes, (
-        "the old regex now sees this write — if the statement was shortened, "
-        "this test is measuring nothing; point it at whatever the longest "
-        "browser write is now")
-    assert "tds_deductions" in new_writes, "the statement-bounded scan must see it"
+    assert table not in old_writes, (
+        f"the old regex now sees {table}'s {length}-character write — it should "
+        "not be able to reach the statement's ';' within 400 characters")
+    assert table in new_writes, "the statement-bounded scan must see it"
 
-    # ...and it is the LENGTH that did it, not the table.
-    i = src.index('.from("tds_deductions")')
-    to_insert = src.index(".insert(", i) - i
-    to_semicolon = src.index(";", i) - i
-    assert to_insert < 400 < to_semicolon, (
-        f"the write verb is only {to_insert} chars in — well inside the old "
-        f"400-char cap — but the statement runs {to_semicolon} chars to its "
-        "';', and that is what the old pattern had to consume")
+    # ...and it is the LENGTH that hid it, not the table or the verb: the write
+    # verb itself sits well inside the old cap.
+    assert verb_at < 400 < length, (
+        f"the write verb is {verb_at} characters in — inside the old 400-char "
+        f"cap — but the statement runs {length} characters to its ';', and that "
+        "is what the old pattern had to consume before it could match")
 
 
 def test_the_tds_tier_matches_the_endpoints_it_mirrors():
@@ -301,10 +313,23 @@ def test_the_tds_tier_matches_the_endpoints_it_mirrors():
     write_routes = re.findall(r'@router\.(post|patch|put|delete)\([^)]*\)\s*\ndef \w+\('
                               r'(?:[^)]|\n)*?rbac\("tds",\s*"(\w+)"\)', ws)
     assert write_routes, "no TDS write routes found — has the router moved?"
-    assert {action for _verb, action in write_routes} == {"compute"}, (
-        "a TDS write route now uses a different rbac action than the "
-        "Executive-tier policies in migration 345 mirror")
 
+    # PER VERB, because the two tiers are different on purpose and asserting
+    # one tier for everything hides that. INSERT and UPDATE are tds:compute
+    # (Executive); DELETE is tds:write (Manager), because removing a statutory
+    # register row is not data entry — the same split migration 345 encodes.
+    expected = {"post": "compute", "patch": "compute",
+                "put": "compute", "delete": "write"}
+    for verb, action in write_routes:
+        assert action == expected[verb], (
+            f"@router.{verb} is guarded rbac(\"tds\", \"{action}\") but "
+            f"migration 345's policy for that command mirrors tds:{expected[verb]}. "
+            "One of the two has moved; they have to agree or the app-layer check "
+            "and the RLS check disagree about who may write.")
+
+    # ...and the tiers those actions resolve to are the ones in the migration.
+    from core.permissions import PERMISSIONS
+    assert PERMISSIONS["tds"]["compute"] is not None
     mig = (_MIG_DIR / "345_the_tds_register_is_role_guarded.sql").read_text()
     for table in ("tds_deductions", "tds_returns", "tds_challans", "tds_certificates"):
         assert re.search(rf"\['{table}',\s*'Executive',\s*'Manager'\]", mig), table

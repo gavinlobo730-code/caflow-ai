@@ -75,14 +75,22 @@ def db(pg_template):
 
 
 def _upsert(dsn: str, tds_paise: int) -> subprocess.CompletedProcess:
-    """Exactly what PostgREST emits for upsert(on_conflict='purchase_bill_id')."""
+    """Exactly what PostgREST emits for upsert(on_conflict='purchase_bill_id').
+
+    The period is TWO columns since migration 347 — financial_year '2025-26'
+    and quarter 'Q3'. It was one compound 'Q3 2025-26' in `quarter`, which the
+    CHECK that migration adds now refuses, and refusing it is the point: the
+    other three TDS tables have always spelt it this way and every reader was
+    written against them.
+    """
     return _psql(dsn, f"""
         INSERT INTO tds_deductions
           (firm_id, client_id, purchase_bill_id, deductee_name, section,
            transaction_date, payment_amount_paise, tds_rate_pct, tds_paise,
-           quarter, return_type)
+           financial_year, quarter, return_type)
         VALUES ('{FIRM}', '{CLIENT}', '{BILL}', 'Pinnacle', '194C',
-                '2025-10-25', 1800000, 20.00, {tds_paise}, 'Q3 2025-26', '26Q')
+                '2025-10-25', 1800000, 20.00, {tds_paise},
+                '2025-26', 'Q3', '26Q')
         ON CONFLICT (purchase_bill_id) DO UPDATE SET tds_paise = EXCLUDED.tds_paise;
     """)
 

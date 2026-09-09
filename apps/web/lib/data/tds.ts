@@ -113,33 +113,35 @@ export interface TDSReturn {
 
 // ── API Calls ──────────────────────────────────────────────────────────────
 
+// AUTHENTICATED, like every other call in this file. Both of these used to be
+// a bare fetch carrying only Content-Type, while routers/tds.py guards each
+// with Depends(rbac("tds","compute")) and core/auth.py raises 401 when there is
+// no Bearer header (the dev fallback applies only when SUPABASE_URL is unset).
+// So "Prepare a Return" could not compute anything in production — it threw
+// "26Q compute failed: Unauthorized" whatever the books held (TDS-03).
 export async function compute26Q(req: Compute26QRequest): Promise<TDSReturnPayload> {
-  const res = await fetch(`${API_BASE}/api/tds/26q/compute`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+  const json = await authedFetch<TDSReturnPayload>("/api/tds/26q/compute", {
+    method: "POST", body: JSON.stringify(req),
   });
-  if (!res.ok) throw new Error(`26Q compute failed: ${res.statusText}`);
-  const json = await res.json();
   if (!json.success) throw new Error(json.error ?? "26Q computation error");
-  return json.data as TDSReturnPayload;
+  return json.data;
 }
 
 export async function compute24Q(req: Compute24QRequest): Promise<TDSReturnPayload> {
-  const res = await fetch(`${API_BASE}/api/tds/24q/compute`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+  const json = await authedFetch<TDSReturnPayload>("/api/tds/24q/compute", {
+    method: "POST", body: JSON.stringify(req),
   });
-  if (!res.ok) throw new Error(`24Q compute failed: ${res.statusText}`);
-  const json = await res.json();
   if (!json.success) throw new Error(json.error ?? "24Q computation error");
-  return json.data as TDSReturnPayload;
+  return json.data;
 }
 
-/** Authenticated fetch to the TDS API — used by listTdsSections/computeTdsAmount
- * below so the single-payment TDS calculator delegates to the authoritative
- * TDSComputer rather than re-implementing section rates/thresholds itself. */
+/** Authenticated fetch to the TDS API — the ONE way this file talks to it.
+ *
+ * Every route it reaches is Depends(rbac("tds", …)), and core/auth.py answers
+ * 401 to a request with no Bearer header, so a bare fetch here is not a style
+ * choice: it is a call that cannot succeed. Declared below its first callers
+ * because function declarations hoist; the alternative is moving it above the
+ * types, which reads worse. */
 async function authedFetch<T>(path: string, init?: RequestInit): Promise<{ success: boolean; data: T; error: string | null }> {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const res = await fetch(`${API_BASE}${path}`, {
@@ -201,6 +203,157 @@ export async function computeTdsAmount(params: {
   return resp.data;
 }
 
+/** What the server answers when a deduction is recorded or re-costed.
+ *
+ *  `explain` is the engine's working, not decoration. A CA needs to see WHY a
+ *  figure is what it is — below the threshold, floored by §206AA, or charged on
+ *  a year's aggregate with §200 crediting what earlier entries withheld — and
+ *  `gaps` names what the calculation could not see. */
+export type DeductionExplain = {
+  applies: boolean;
+  reason: string | null;
+  rate_pct: number;
+  tds_paise: number;
+  fy_prior_taxable_paise: number;
+  fy_prior_tds_paise: number;
+  gaps: string[];
+  gap_messages: string[];
+};
+
+export type RecordedDeduction = Record<string, unknown> & {
+  id?: string;
+  explain?: DeductionExplain;
+};
+
+/** Record a deduction. THE RATE AND THE TAX ARE NOT SENT — they are the
+ *  engine's answers (IT Act Chapter XVII-B), resolved server-side from the
+ *  section, the amount, the payee's PAN and the year's running aggregate.
+ *
+ *  This replaces a browser-side `Math.round(gross * rate / 100)` against a
+ *  hardcoded table that had §194D and §194H at 5% where the statute says 2%,
+ *  §194C flat at the company rate, §194Q on the whole sum instead of the
+ *  excess, and no threshold on anything. */
+export async function createTdsDeduction(body: {
+  client_id: string;
+  deductee_name: string;
+  deductee_pan?: string | null;
+  section: string;
+  payment_amount_paise: number;
+  transaction_date: string;
+  nature_of_payment?: string | null;
+  challan_no?: string | null;
+  notes?: string | null;
+}): Promise<RecordedDeduction> {
+  const resp = await authedFetch<RecordedDeduction>("/api/tds-workspace/deductions", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!resp.success) throw new Error(resp.error ?? "Could not record the deduction");
+  return resp.data;
+}
+
+/** What WOULD be deducted, without recording anything.
+ *
+ *  Uses the SAME server function as the save, so the figure a CA approves is
+ *  the figure that lands. Deliberately NOT computeTdsAmount(): that endpoint
+ *  has no place for the year's running aggregate, so it always answers as
+ *  though this were the payee's first payment — and on the entry that crosses
+ *  a §194C/§194H/§194J aggregate threshold that is the whole difference. */
+export async function previewTdsDeduction(body: {
+  client_id: string;
+  deductee_name: string;
+  deductee_pan?: string | null;
+  section: string;
+  payment_amount_paise: number;
+  transaction_date: string;
+}): Promise<{
+  tds_rate_pct: number;
+  tds_paise: number;
+  quarter: string;
+  financial_year: string;
+  explain: DeductionExplain;
+}> {
+  const resp = await authedFetch<{
+    tds_rate_pct: number; tds_paise: number; quarter: string;
+    financial_year: string; explain: DeductionExplain;
+  }>("/api/tds-workspace/deductions/preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!resp.success) throw new Error(resp.error ?? "Could not compute the deduction");
+  return resp.data;
+}
+
+/** Correct a hand-entered deduction; the engine re-runs on whatever changed.
+ *  A row that came from a purchase bill is refused server-side — it is rebuilt
+ *  from the bill on every receive, so an edit here would silently revert. */
+export async function updateTdsDeduction(
+  id: string,
+  body: Partial<{
+    deductee_name: string;
+    deductee_pan: string | null;
+    section: string;
+    payment_amount_paise: number;
+    transaction_date: string;
+    nature_of_payment: string | null;
+    challan_no: string | null;
+    notes: string | null;
+  }>,
+): Promise<RecordedDeduction> {
+  const resp = await authedFetch<RecordedDeduction>(
+    `/api/tds-workspace/deductions/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(body) });
+  if (!resp.success) throw new Error(resp.error ?? "Could not update the deduction");
+  return resp.data;
+}
+
+/** Remove a hand-entered deduction. Manager+ server-side (tds:write), the same
+ *  tier migration 345 gives DELETE on the table. */
+export interface CreateChallanInput {
+  client_id: string;
+  bsr_code: string;
+  challan_date: string;      // YYYY-MM-DD
+  amount_paise: number;
+  challan_no: string;
+  section: string;
+  financial_year: string;
+  quarter: string;           // 'Q1'..'Q4'
+}
+
+/** Record an ITNS 281 deposit. IT Act s.200(1).
+ *
+ *  Through the API, not PostgREST: the server validates the payment date
+ *  against a locked period, writes the audit-log entry and logs the client
+ *  timeline event. The /tds Challans tab had no writer at all — the modal
+ *  pushed a row into React state and the endpoint had no caller (TDS-15). */
+export async function createTdsChallan(input: CreateChallanInput): Promise<RecordedChallan> {
+  const resp = await authedFetch<RecordedChallan>("/api/tds-workspace/challans", {
+    method: "POST", body: JSON.stringify(input),
+  });
+  if (!resp.success) throw new Error(resp.error ?? "Could not record the challan");
+  return resp.data;
+}
+
+/** tds_challans as migration 037 defines it. */
+export interface RecordedChallan {
+  id: string;
+  bsr_code: string;
+  challan_no: string;
+  payment_date: string;
+  total_paise: number;
+  tds_paise: number;
+  financial_year: string;
+  quarter: string;
+  section: string | null;
+  status: "deposited" | "matched" | "unmatched";
+}
+
+export async function deleteTdsDeduction(id: string): Promise<void> {
+  const resp = await authedFetch<{ deleted: string }>(
+    `/api/tds-workspace/deductions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!resp.success) throw new Error(resp.error ?? "Could not delete the deduction");
+}
+
 // ── Supabase Queries ───────────────────────────────────────────────────────
 
 export async function getTDSReturns(clientId: string): Promise<TDSReturn[]> {
@@ -235,7 +388,18 @@ export async function getTDSDeductions(
   return (data ?? []) as unknown as Record<string, unknown>[];
 }
 
-export async function getTDSChallans(clientId: string, quarter?: string): Promise<Record<string, unknown>[]> {
+/** The quarter's deposits.
+ *
+ *  BOTH halves of the period, or neither. tds_challans holds financial_year
+ *  and quarter separately (migration 037) and this filtered on the quarter
+ *  alone, so a return for Q3 2026-27 also collected every Q3 challan the
+ *  client had ever deposited — reconciling this year's deduction against last
+ *  year's payment, and reporting a shortfall or a surplus that is not real. */
+export async function getTDSChallans(
+  clientId: string,
+  financialYear?: string,
+  quarter?: string,
+): Promise<Record<string, unknown>[]> {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
   let q = sb
@@ -243,6 +407,7 @@ export async function getTDSChallans(clientId: string, quarter?: string): Promis
     .select("*")
     .eq("firm_id", firmId)
     .eq("client_id", clientId);
+  if (financialYear) q = q.eq("financial_year", financialYear);
   if (quarter) q = q.eq("quarter", quarter);
   const { data, error } = await q.order("payment_date", { ascending: false });
   if (error) throw new Error(error.message);

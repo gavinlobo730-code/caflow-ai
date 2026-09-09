@@ -6,6 +6,7 @@ import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loade
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
+import { registerNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
 import { DebitNoteViewDrawer } from "@/components/purchases/DebitNoteViewDrawer";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
 import { writeDebitNoteDuplicateSeed } from "@/lib/purchases/debitNoteDuplicateSeed";
@@ -269,30 +270,28 @@ const STATUS_COLORS: Record<string, string> = {
 // ── TDS section options ────────────────────────────────────────────────────
 
 const TDS_SECTIONS = [
+  // NAMES ONLY — no rates. Two of the rates that used to be in these labels
+  // were simply wrong: §194D and §194H both read "(5%)" when the Finance
+  // (No. 2) Act 2024 put §194H at 2% and §194D at 2% for an individual and 10%
+  // for a company. A CA picks a section by reading this list, so a stale
+  // percentage here is a wrong number at the moment of the decision.
+  //
+  // A rate cannot honestly be shown next to a section anyway: §194C is 1% or
+  // 2% depending on whether the payee is an individual or a company, every
+  // rate is floored at 20% by §206AA when no PAN is on file, and below the
+  // section's threshold the rate is nil. The engine resolves all of that from
+  // the vendor when the bill is priced.
   { value: "192", label: "192 — Salary" },
-  { value: "194A", label: "194A — Interest (10%)" },
-  { value: "194B", label: "194B — Lottery/Winnings (30%)" },
-  { value: "194C", label: "194C — Contractors (1%/2%)" },
-  { value: "194D", label: "194D — Insurance Commission (5%)" },
-  { value: "194H", label: "194H — Commission/Brokerage (5%)" },
-  { value: "194I", label: "194I — Rent (10%)" },
-  { value: "194IA", label: "194IA — Purchase of Immovable Property (1%)" },
-  { value: "194J", label: "194J — Professional/Technical (10%)" },
-  { value: "194Q", label: "194Q — Purchase of Goods (0.1%)" },
+  { value: "194A", label: "194A — Interest" },
+  { value: "194B", label: "194B — Lottery / winnings" },
+  { value: "194C", label: "194C — Contractors" },
+  { value: "194D", label: "194D — Insurance commission" },
+  { value: "194H", label: "194H — Commission / brokerage" },
+  { value: "194I", label: "194I — Rent" },
+  { value: "194J", label: "194J — Professional / technical" },
+  { value: "194Q", label: "194Q — Purchase of goods" },
 ];
 
-const TDS_DEFAULT_RATES: Record<string, number> = {
-  "192":   0,    // variable
-  "194A":  1000, // 10%
-  "194B":  3000, // 30%
-  "194C":  200,  // 2% in bps
-  "194D":  500,  // 5%
-  "194H":  500,  // 5%
-  "194I":  1000, // 10%
-  "194IA": 100,  // 1%
-  "194J":  1000, // 10%
-  "194Q":  10,   // 0.1%
-};
 
 // ── Purchase Bills ─────────────────────────────────────────────────────────
 
@@ -351,6 +350,11 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
   const [loadFailed, setLoadFailed] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  // What the TDS register could not establish on the bills just received
+  // (PUR-14). Separate state from `msg` because it is not a failure and is
+  // answered differently: the bill posted, and a fact only the CA holds is
+  // missing. Same shape as payroll's runGaps.
+  const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const router = useRouter();
 
@@ -469,6 +473,15 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
       const result = await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token);
       if (!result.success) throw new Error(result.error ?? "Failed to receive purchase bill");
       setMsg({ type: "ok", text: "Purchase bill received" });
+      // PUR-14. Receiving a bill writes its TDS deduction into the register,
+      // and the register REPORTS what it could not establish — an unclassified
+      // residency, missing 27Q identifiers, an unverified §195 rate, an undated
+      // no-PE declaration, a Form 15CA not recorded, a deduction that is a
+      // catch-up on the year's aggregate. Five gap codes have been computed on
+      // every foreign-supplier bill since the register was written and NONE of
+      // them has ever reached a screen: the response carried them and nothing
+      // read it. A gap that only exists in a log is not a gap anybody acts on.
+      setRegisterNotes(registerNotesFrom(result.data));
       load();
     } catch (err) {
       setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to receive purchase bill" });
@@ -568,12 +581,12 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
     const draftRows = rows.filter((b) => b.status === "draft");
     const skipped = rows.length - draftRows.length;
 
-    type ReceiveResult = { ok: true } | { ok: false; reason: string };
+    type ReceiveResult = { ok: true; notes: RegisterNote[] } | { ok: false; reason: string };
     const results: ReceiveResult[] = await mapWithConcurrency(draftRows, 8, async (b): Promise<ReceiveResult> => {
       try {
         // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token);
-        if (result.success) return { ok: true };
+        if (result.success) return { ok: true, notes: registerNotesFrom(result.data) };
         return { ok: false, reason: result.error ?? "Failed to receive bill" };
       } catch (e) {
         return { ok: false, reason: e instanceof Error ? e.message : "Failed to receive bill" };
@@ -581,6 +594,12 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
     });
 
     const received = results.filter((r) => r.ok).length;
+    // Every bill's register notes, deduplicated by vendor + sentence: a batch
+    // of twenty bills to one unclassified supplier raises the same gap twenty
+    // times, and twenty copies of one sentence is how a real warning gets
+    // scrolled past.
+    setRegisterNotes(dedupeRegisterNotes(
+      results.flatMap((r) => (r.ok ? r.notes : []))));
     const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
     const failed = failures.length;
 
@@ -900,6 +919,48 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
         </div>
       )}
+
+      {/* PUR-14 — what the TDS register could not establish about the bills
+          just received. NOT an error and deliberately not styled as one: the
+          bill received, its journal posted and the register row was written.
+          What is missing is a fact only the CA holds — a supplier's residency,
+          a country and TIN for the 27Q deductee row, a date on a no-PE
+          declaration, a Form 15CA. Left unfixed each one is a 26Q or 27Q that
+          cannot be assembled at the quarter end, by which time the bill is
+          months old.
+
+          The last case is different and is why the wording comes from the
+          backend rather than being written here: a deduction that is a CATCH-UP
+          on the year's aggregate is CORRECT and looks wrong — tds_paise is not
+          taxable x rate, because s.200 credits what earlier bills withheld and
+          this one carries the balance. */}
+      {registerNotes.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">
+                Received. {registerNotes.length} thing{registerNotes.length === 1 ? "" : "s"} the
+                TDS register could not establish:
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {registerNotes.map((n, i) => (
+                  <li key={i} className="text-xs text-amber-800">
+                    {n.vendor ? <span className="font-medium">{n.vendor}: </span> : null}{n.text}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-amber-700 mt-1.5">
+                Nothing is blocked — the bill and its journal are posted. These decide which
+                statement the deduction lands in and what its deductee row must carry, so they
+                are cheaper to settle now than at the quarter end.
+              </p>
+            </div>
+            <button onClick={() => setRegisterNotes([])} className="text-amber-700"><X size={13} /></button>
+          </div>
+        </div>
+      )}
+
 
       {/* Summary strip */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1302,7 +1363,6 @@ function Vendors({ clientId }: { clientId: string }) {
       const token = await getAuthToken();
       const cleanGstin = gstin.trim().toUpperCase() || undefined;
       const stateCode = cleanGstin ? cleanGstin.slice(0, 2) : undefined;
-      const rateBps = tdsApplicable ? bpsFromPercentInput(tdsRate) : 0;
 
       const result = await apiCall(
         "/api/vendors/",
@@ -1339,7 +1399,10 @@ function Vendors({ clientId }: { clientId: string }) {
             residentialStatus === "non_resident" && treatyRate.trim()
               ? bpsFromPercentInput(treatyRate) ?? undefined
               : undefined,
-          tds_rate_bps: rateBps,
+          // tds_rate_bps is deliberately NOT written any more — see the form.
+          // The column stays for now so the reads elsewhere keep type-checking;
+          // it is dead data either way, since no backend path reads it.
+          tds_rate_bps: 0,
           opening_balance_paise: opening,
         },
         token
@@ -1501,8 +1564,7 @@ function Vendors({ clientId }: { clientId: string }) {
           : v.residential_status === "resident"
             ? <span className="text-[#64748B]">Resident</span>
             : <span className="text-[#94A3B8]" title="Not established — deductions are reported on 26Q as assumed resident">Not set</span> },
-    { key: "tds_rate", header: "Rate", accessor: (v) => v.tds_rate_bps, sortable: true, align: "right",
-      render: (v) => <span className="text-[#475569]">{v.tds_rate_bps > 0 ? `${(v.tds_rate_bps / 100).toFixed(1)}%` : "—"}</span> },
+
     { key: "opening_balance", header: "Opening Bal", accessor: (v) => v.opening_balance_paise, sortable: true, align: "right",
       render: (v) => <span className="font-mono text-[#334155]">{v.opening_balance_paise > 0 ? fmt(v.opening_balance_paise) : "—"}</span> },
     { key: "email", header: "Email", accessor: (v) => v.email ?? "", searchable: true, defaultHidden: true,
@@ -1939,7 +2001,7 @@ function Vendors({ clientId }: { clientId: string }) {
                   <Combobox
                     options={TDS_SECTIONS}
                     value={TDS_SECTIONS.find((s) => s.value === tdsSection) ?? null}
-                    onChange={(v) => { const s = v && !Array.isArray(v) ? v : null; if (s) { setTdsSection(s.value); setTdsRate(String(TDS_DEFAULT_RATES[s.value] / 100)); } }}
+                    onChange={(v) => { const s = v && !Array.isArray(v) ? v : null; if (s) setTdsSection(s.value); }}
                     getOptionId={(s) => s.value}
                     getLabel={(s) => s.label}
                     getSearchFields={(s) => [s.value, s.label]}
@@ -1948,10 +2010,26 @@ function Vendors({ clientId }: { clientId: string }) {
                     ariaLabel="TDS section"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-[#475569] mb-1">TDS Rate (%)</label>
-                  <input type="number" min="0" max="30" step="0.1" value={tdsRate} onChange={(e) => setTdsRate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
+                {/* NO TDS RATE INPUT (PUR-06).
+                    The field was collected here, shown in the vendor list, and
+                    read by nothing: routers/purchase_bills.py resolves the rate
+                    from the SECTION through the FY registry and never looks at
+                    vendors.tds_rate_bps. A CA with a §197 lower-deduction
+                    certificate could type 1%, see "1.0%" in the list, and have
+                    every bill deduct 2% or 10%.
+
+                    Honouring it instead would be worse than removing it. The
+                    stored value was seeded from a table that had §194D and
+                    §194H at 5% (both are 2% since the Finance (No. 2) Act 2024)
+                    and §194C at the company rate — so the five §194C vendors in
+                    this database carry 2%, and §194C is 1% for an individual or
+                    HUF. Applying the stored rate would double every individual
+                    contractor's withholding.
+
+                    A §197 certificate is not a rate anyway: it carries a
+                    number, a validity period and a ceiling amount, and a bare
+                    percentage cannot express any of that. That is PUR-07/TDS-13
+                    and is scheduled for Phase 4. */}
               </div>
             )}
           </div>
