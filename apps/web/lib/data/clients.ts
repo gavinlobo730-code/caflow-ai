@@ -23,6 +23,19 @@ export type CreateClientInput = {
   pincode?: string;
   address_line1?: string;
   gst_filing_frequency: string;
+  /** Whether this client's ADVANCES bear GST — GSTR-1 Tables 11A and 11B.
+   *
+   *  CGST s.13(2) charges an advance for SERVICES when it is received;
+   *  Notification 66/2017-Central Tax removed the charge for goods, where the
+   *  liability arises at the invoice instead. It is a fact about the client's
+   *  business, not about their ledger, so two clients with identical receipts
+   *  can owe different tax.
+   *
+   *  The column has existed since migration 286 and gst_advance_service has
+   *  read it since; NOTHING EVER WROTE IT, so Table 11 was empty for every
+   *  client and no screen said whether that meant "no advances" or "not
+   *  switched on". */
+  gst_advance_tax_applicable?: boolean;
   notes?: string;
 };
 

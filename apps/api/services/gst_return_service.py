@@ -1250,6 +1250,10 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     for key in ("at", "txpd"):
         if table_11.get(key):
             payload.payload[key] = table_11[key]
+    # An advance the client's own settings make taxable, that this return does
+    # not declare because nobody recorded its rate or its place of supply. Same
+    # list as the builder's own gaps: a document the return does not carry.
+    payload.gaps.extend(table_11.get("gaps") or [])
 
     # Reconcile output tax to the GL. GSTR-1 tax total is gross (before credit
     # notes, before debit notes); compare against sales-only GST in the GL

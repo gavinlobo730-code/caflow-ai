@@ -454,6 +454,64 @@ class ReceiptIn(BaseModel):
     # are in that currency's minor units. Settlement uses the invoice's frozen rate.
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
+    # ── GSTR-1 Table 11A: tax on an advance received (migration 286) ─────────
+    #
+    # CGST Act s.13(2) makes an advance for SERVICES taxable when it is
+    # received; Notification 66/2017-Central Tax removed the charge for GOODS,
+    # where the liability arises at the invoice instead (s.12(2) proviso). So
+    # these matter only for a client marked gst_advance_tax_applicable, and are
+    # optional for everyone else.
+    #
+    # gst_advance_service.table_11_sections has read these three columns since
+    # migration 286 and skips any receipt missing a rate or a place of supply.
+    # NOTHING HAS EVER WRITTEN THEM: they were absent from this model, from
+    # both receipt payloads and from the frontend, so the only place they were
+    # ever set was a test fixture seeding the database directly — green in CI
+    # and dead in production. The same shape as bank_account_id (SALES-08),
+    # which was accepted by this model and dropped by the service.
+    #
+    # An advance without them is still RECORDED and still appears in
+    # advances_report; what it cannot do is be declared, because a guessed rate
+    # is a guessed liability on a filed return.
+    gst_rate_bps: Optional[int] = None
+    place_of_supply: Optional[str] = None   # 2-digit state code
+    is_interstate: Optional[bool] = None
+
+    @field_validator("gst_rate_bps")
+    @classmethod
+    def _rate_in_range(cls, v: Optional[int]) -> Optional[int]:
+        """Bounded, not enumerated.
+
+        CLAUDE.md is explicit that GST rate slabs are per-line on the document
+        and deliberately NOT a central table in this codebase — so a list of
+        allowed rates here would be the very thing that file says not to build,
+        and would refuse a rate a notification adds. 0 to 100% is the range a
+        basis-point rate can occupy at all; anything outside it is a typo or a
+        unit mix-up (1800 is 18%, 18 is 0.18%).
+        """
+        if v is None:
+            return None
+        if not 0 <= v <= 10000:
+            raise ValueError(
+                "gst_rate_bps is BASIS POINTS: 1800 is 18%. It must be between "
+                "0 and 10000.")
+        return v
+
+    @field_validator("place_of_supply")
+    @classmethod
+    def _pos_is_a_state(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        from domain.gst.validator import VALID_STATE_CODES
+        if v not in VALID_STATE_CODES:
+            raise ValueError(
+                f"'{v}' is not a GST state code. Table 11A is declared per "
+                "place of supply, so an advance with the wrong one is declared "
+                "against the wrong state.")
+        return v
 
     @field_validator("amount_paise")
     @classmethod

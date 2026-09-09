@@ -107,6 +107,19 @@ class ClientUpdate(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
     gst_filing_frequency: Optional[GSTFilingFrequency] = None
+    # Whether this client's ADVANCES bear tax — GSTR-1 Tables 11A and 11B.
+    #
+    # CGST s.13(2) charges an advance for SERVICES when it is received;
+    # Notification 66/2017-Central Tax removed the charge for GOODS, where the
+    # liability arises at the invoice (s.12(2) proviso). So it is a fact about
+    # the client's business, not about their ledger, and two clients with
+    # identical receipts can owe different tax.
+    #
+    # The column has existed since migration 286 and gst_advance_service has
+    # read it since; NOTHING HAS EVER WRITTEN IT. Table 11 was therefore empty
+    # for every client on the platform, and no screen said whether that meant
+    # "no advances" or "not switched on".
+    gst_advance_tax_applicable: Optional[bool] = None
     status: Optional[ClientStatus] = None
     is_test: Optional[bool] = None
     notes: Optional[str] = None

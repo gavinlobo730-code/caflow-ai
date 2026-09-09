@@ -31,7 +31,7 @@ const EMPTY: CreateClientInput = {
   client_name: "", entity_type: "Proprietorship", pan: "",
   gstin: "", mobile: "", email: "", city: "", state: "Maharashtra",
   state_code: "27", pincode: "", address_line1: "",
-  gst_filing_frequency: "monthly", notes: "",
+  gst_filing_frequency: "monthly", gst_advance_tax_applicable: false, notes: "",
 };
 
 export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
@@ -54,6 +54,8 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
         pincode: editClient.pincode ?? "",
         address_line1: editClient.address_line1 ?? "",
         gst_filing_frequency: editClient.gst_filing_frequency ?? "monthly",
+        gst_advance_tax_applicable: Boolean(
+          (editClient as { gst_advance_tax_applicable?: boolean | null }).gst_advance_tax_applicable),
         notes: editClient.notes ?? "",
       });
     } else {
@@ -62,7 +64,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
     setError(null);
   }, [editClient, open]);
 
-  function set(field: keyof CreateClientInput, value: string) {
+  function set(field: keyof CreateClientInput, value: string | boolean) {
     setForm(f => ({ ...f, [field]: value }));
   }
 
@@ -162,6 +164,34 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               </select>
             </div>
           </div>
+
+          {/* GSTR-1 Tables 11A and 11B. Off by default, which is the right
+              default: Notification 66/2017-Central Tax removed the charge on
+              advances for GOODS, so most registered persons have no Table 11 at
+              all. A supplier of SERVICES turns it on (CGST s.13(2)).
+
+              The column has existed since migration 286 and the return builder
+              has read it since; nothing ever wrote it, so Table 11 was empty
+              for every client on the platform and no screen said whether that
+              meant "no advances" or "not switched on". */}
+          <label className="flex items-start gap-2 text-sm text-[#334155] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={Boolean(form.gst_advance_tax_applicable)}
+              onChange={e => set("gst_advance_tax_applicable", e.target.checked)}
+              className="mt-0.5 rounded"
+            />
+            <span>
+              Advances received bear GST
+              <span className="block text-xs text-[#64748B]">
+                CGST s.13(2) — tax on an advance is due when it is received for a
+                SUPPLY OF SERVICES. Notification 66/2017-Central Tax removed the
+                charge for goods, where the liability arises at the invoice. Turn
+                this on and the receipt form asks for the rate and place of
+                supply an advance is declared at in GSTR-1 Table 11A.
+              </span>
+            </span>
+          </label>
 
           {/* Tax IDs */}
           <div className="grid grid-cols-2 gap-4">
