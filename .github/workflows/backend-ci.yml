@@ -145,9 +145,31 @@ jobs:
           cache: "pip"
           cache-dependency-path: apps/api/requirements.txt
 
+      # THIRD-PARTY APT SOURCES ARE DROPPED BEFORE THE UPDATE, and that is not
+      # belt-and-braces — it is what keeps this REQUIRED check from being taken
+      # down by a repository nothing here uses.
+      #
+      # `apt-get update` exits 100 if ANY configured source is inconsistent, and
+      # the runner image ships several this job has no use for. On 2026-09-09
+      # Google's Chrome repository served a Packages.gz whose SHA256 was
+      # bc1428ab... while its own Release file said 233e56de..., and this check
+      # failed on a pull request that touches neither Chrome nor apt. It failed
+      # identically on a re-run twenty minutes later, so it was not a blip: it
+      # would have blocked every PR in this repository until Google fixed their
+      # CDN.
+      #
+      # Only dl.google.com sources are removed, matched by CONTENT rather than
+      # by filename so the .list/.sources format change does not matter. The
+      # Ubuntu archive is untouched and a genuine failure there is still fatal,
+      # which is the property worth keeping: postgresql-client comes from
+      # Ubuntu, and if THAT cannot be fetched this job must not proceed.
       - name: Install psql client
         if: needs.scope.outputs.api == 'true'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+        run: |
+          sudo grep -rlE 'dl\.google\.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
 
       # Full requirements, not just pytest. The glob below collects every
       # tests/test_*_pg.py, and such a test may legitimately import application
