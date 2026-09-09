@@ -317,7 +317,12 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     found NOTHING while reporting a clean result — exactly the failure a floor
     like this catches."""
     assert len(scan_filters(WEB)) >= 400, "filter scan found too little — parser likely broke"
-    assert len(scan_writes(WEB)) >= 200, "write scan found too little — parser likely broke"
+    # Raised from 200 on 2026-09-09. blank_comments() made the scan see writes
+    # it had been silently skipping — an apostrophe in a comment inside a
+    # payload used to desynchronise _skip_args and drop the whole call — and
+    # the count went from ~230 to 256. Leaving the floor at 200 would let the
+    # fix be reverted without this noticing.
+    assert len(scan_writes(WEB)) >= 250, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG

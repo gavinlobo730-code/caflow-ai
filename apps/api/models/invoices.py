@@ -150,11 +150,45 @@ class SalesInvoiceIn(BaseModel):
     # to have the sub-rupee remainder pushed to the 'Round Off' ledger. Ignored
     # for foreign-currency invoices, which are never rupee-rounded.
     round_off_enabled: bool = False
+    # THE SHIPPING BILL AN EXPORT IS REFUNDED AGAINST (migration 349) — GSTR-1
+    # Table 6A's sbnum / sbdt / sbpcode. The builder used to emit three empty
+    # strings because there was nowhere to record them. CGST Rule 96(1) makes
+    # the shipping bill the application for refund of the IGST paid on an
+    # export, matched against ICEGATE, so on an export WITH PAYMENT these are
+    # what the refund turns on.
+    #
+    # Optional, and no format CHECK on the port code: the ICEGATE list is
+    # theirs and grows, and a pattern written from memory would refuse a real
+    # port with no way round it. Shape is guarded where a human types it.
+    shipping_bill_no: Optional[str] = None
+    shipping_bill_date: Optional[str] = None   # YYYY-MM-DD
+    port_code: Optional[str] = None
 
     @field_validator("invoice_no")
     @classmethod
     def _invoice_no_shape(cls, v: str) -> str:
         return _validate_invoice_no_shape(v)
+
+    @field_validator("port_code")
+    @classmethod
+    def _port_code_shape(cls, v: Optional[str]) -> Optional[str]:
+        """Upper-cased and length-checked, not membership-checked.
+
+        An ICEGATE port code is six characters ("INMAA1"). Refusing anything
+        else would refuse a port this file has never heard of; refusing nothing
+        at all lets a typo reach a statutory payload. Six characters is the one
+        property the whole list shares.
+        """
+        if v is None:
+            return None
+        v = v.strip().upper()
+        if not v:
+            return None
+        if len(v) != 6:
+            raise ValueError(
+                "An ICEGATE port code is 6 characters, e.g. INMAA1 "
+                "(GSTR-1 Table 6A sbpcode).")
+        return v
 
     @field_validator("lines")
     @classmethod
@@ -191,6 +225,21 @@ class SalesInvoiceUpdateIn(BaseModel):
     supply_type: Optional[str] = None       # taxable|zero_rated|nil_rated|exempt|non_gst
     invoice_type: Optional[str] = None      # Regular|SEZ_with_payment|SEZ_without_payment|Deemed_export
     is_reverse_charge: Optional[bool] = None
+    # THE SHIPPING BILL, AND IT IS EDITABLE AFTER ISSUE (migration 349).
+    #
+    # Customs issues the shipping bill AFTER the export invoice is raised —
+    # often days later, once the goods are actually shipped. If these were
+    # locked with the rest of the Rule 46 content at issue, there would be no
+    # moment at which a CA could ever record them, and Table 6A would go on
+    # carrying three empty strings for a different reason.
+    #
+    # Adding them to _SOFT_UPDATE_FIELDS does not weaken s.34: none of the
+    # three is a particular of the tax invoice under Rule 46. They are
+    # customs's own reference for the consignment, and correcting one does not
+    # change what was supplied, to whom, or the tax on it.
+    shipping_bill_no: Optional[str] = None
+    shipping_bill_date: Optional[str] = None
+    port_code: Optional[str] = None
     reference_no: Optional[str] = None
     notes: Optional[str] = None
     is_inter_state: Optional[bool] = None

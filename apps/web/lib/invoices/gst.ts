@@ -113,6 +113,13 @@ export interface InvoiceDetail {
   supply_type?: string | null;
   invoice_type?: string | null;
   is_reverse_charge?: boolean | null;
+  // The shipping bill an export is refunded against (migration 349) — GSTR-1
+  // Table 6A's sbnum / sbdt / sbpcode. Null on everything that is not an
+  // export, which is most invoices, and null on an export whose shipping bill
+  // customs has not issued yet.
+  shipping_bill_no?: string | null;
+  shipping_bill_date?: string | null;
+  port_code?: string | null;
   notes: string | null;
   // Invoice-level round-off to the nearest ₹1 is opt-in (migration 247);
   // absent/false means the invoice carries its exact calculated amount.

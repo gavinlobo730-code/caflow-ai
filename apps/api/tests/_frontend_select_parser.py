@@ -137,6 +137,71 @@ _OR_CLAUSE = re.compile(r'(?:\A|,)\s*([a-z_][a-z_0-9]*)\.'
                         r'(?:eq|neq|gt|gte|lt|lte|like|ilike|is|in|cs|cd|fts|plfts|phfts|wfts|not)\.')
 
 
+def blank_comments(src: str) -> str:
+    """`src` with every comment replaced by spaces of the SAME LENGTH.
+
+    WHY BLANKING AND NOT STRIPPING
+        Every offset the scanners compute — `_FROM` match positions, the walk
+        through `_STEP`/_skip_args — has to stay valid, so the text is replaced
+        in place rather than removed.
+
+    WHY IT IS NEEDED AT ALL, WHICH IS THE INTERESTING PART
+        _skip_args is quote-aware and NOT comment-aware, so a lone apostrophe
+        inside a comment opens a string that never closes. lib/data/gst.ts has
+        one, inside the gstr3b_returns upsert payload:
+
+            // GSTR-2A comparison — that is the 2A/2B reconciliation screen's job
+
+        The `'` in "screen's" swallowed the rest of the call, `_skip_args`
+        returned -1, and that write was SILENTLY NOT SCANNED — the direction
+        that matters, because an unscanned write is a column error the check
+        reports as clean. It had been that way for as long as the comment had.
+
+        The same defect can also over-run instead of giving up: once a later
+        apostrophe happens to close the string, the walk continues into
+        unrelated code and attributes ITS keys to this table. That is how it
+        surfaced — `gstr3b_returns.onConflict` and
+        `gstr3b_returns.aggregate_turnover_paise`, neither of them anywhere
+        near a gstr3b payload.
+
+        parse_write_keys already stripped comments for exactly this family of
+        reason (its docstring records a phantom `DB` column from a `// CA
+        REVIEW REQUIRED` line). It was doing it one level too late.
+    """
+    out = list(src)
+    i, n = 0, len(src)
+    quote = None
+    while i < n:
+        ch = src[i]
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in "\"'`":
+            quote = ch
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and src[i + 1] == "/":
+            while i < n and src[i] != "\n":
+                out[i] = " "
+                i += 1
+            continue
+        if ch == "/" and i + 1 < n and src[i + 1] == "*":
+            end = src.find("*/", i + 2)
+            end = n if end == -1 else end + 2
+            for j in range(i, end):
+                if src[j] != "\n":
+                    out[j] = " "
+            i = end
+            continue
+        i += 1
+    return "".join(out)
+
+
 def _skip_args(src: str, open_paren: int) -> int:
     """Index just past the `)` matching the `(` at `open_paren`.
 
@@ -317,6 +382,10 @@ def scan_writes(web_root: Path) -> list[tuple[str, str, str]]:
         except (UnicodeDecodeError, OSError):
             continue
         rel_path = path.relative_to(web_root).as_posix()
+        # Comments blanked (same length, so offsets stay valid) BEFORE the walk
+        # — see blank_comments. An apostrophe in a comment inside a payload
+        # otherwise desynchronises _skip_args and the write is not scanned.
+        src = blank_comments(src)
         for m in _FROM.finditer(src):
             table, tail, pos = m.group(1), src[m.end():], 0
             while True:
@@ -353,6 +422,10 @@ def scan_filters(web_root: Path) -> list[tuple[str, str, str]]:
         except (UnicodeDecodeError, OSError):
             continue
         rel_path = path.relative_to(web_root).as_posix()
+        # Comments blanked (same length, so offsets stay valid) BEFORE the walk
+        # — see blank_comments. An apostrophe in a comment inside a payload
+        # otherwise desynchronises _skip_args and the write is not scanned.
+        src = blank_comments(src)
         for m in _FROM.finditer(src):
             for rel, col in parse_chain_filters(m.group(1), src[m.end():]):
                 found.append((rel_path, rel, col))
@@ -379,6 +452,10 @@ def scan(web_root: Path) -> tuple[list[tuple[str, str, str]], int]:
         except (UnicodeDecodeError, OSError):
             continue
         rel_path = path.relative_to(web_root).as_posix()
+        # Comments blanked (same length, so offsets stay valid) BEFORE the walk
+        # — see blank_comments. An apostrophe in a comment inside a payload
+        # otherwise desynchronises _skip_args and the write is not scanned.
+        src = blank_comments(src)
         for m in _FROM.finditer(src):
             table = m.group(1)
             tail = src[m.end():]

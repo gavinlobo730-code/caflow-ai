@@ -68,6 +68,16 @@ class InvoiceForGSTR1:
     # reported invoice value reconciles to the invoice's printed total. Does not
     # affect taxable value or tax (CGST Act §15).
     round_off_paise: int = 0
+    # THE SHIPPING BILL AN EXPORT IS REFUNDED AGAINST — GSTN sbnum / sbdt /
+    # sbpcode in Table 6A. These were emitted as empty string literals because
+    # there was nowhere to record them (migration 349 adds the columns). CGST
+    # Rule 96(1) makes the shipping bill the application for refund of the IGST
+    # paid on an export, matched against ICEGATE: with no number and no date
+    # there is nothing to match. None means not recorded, which is reported as
+    # a gap rather than filed as "".
+    shipping_bill_no: str | None = None
+    shipping_bill_date: str | None = None    # YYYY-MM-DD; DD-MM-YYYY at the boundary
+    port_code: str | None = None
 
 
 # GSTR-1 permits paise, so its GSTN JSON uses 2-decimal rupees. Canonical
@@ -208,6 +218,27 @@ def build_gstr1(
                 "their refund claim matches on. This document has none "
                 "recorded, so it cannot be declared. Record the recipient's "
                 "GSTIN, or reclassify the supply."),
+        })
+    for inv in exp_invoices:
+        if inv.gst_invoice_category is not GSTInvoiceCategory.EXP_WP:
+            # Under an LUT or bond the refund is claimed by a separate
+            # application under Rule 89, so a missing shipping bill does not
+            # break a matching that never happens. The field is still emitted
+            # when recorded; it is only the GAP that is scoped to WPAY, so the
+            # warning stays worth reading.
+            continue
+        if inv.shipping_bill_no and inv.shipping_bill_date:
+            continue
+        gaps.append({
+            "kind": "EXP_WP",
+            "reference_no": inv.reference_no,
+            "reason": (
+                "This export was made on payment of IGST and no shipping bill "
+                "is recorded. CGST Rule 96(1) makes the shipping bill the "
+                "application for refund of that tax, granted by matching this "
+                "Table 6A entry against ICEGATE — with no number and date "
+                "there is nothing to match and the refund does not arrive. "
+                "Record the shipping bill number, its date and the port code."),
         })
     for inv in _cdnur_unreportable(cdnur_invoices):
         gaps.append({
@@ -652,9 +683,15 @@ def _build_exp(invoices: list[InvoiceForGSTR1]) -> list[dict]:
                     "inum": inv.reference_no,
                     "idt": _format_date_gstn(inv.transaction_date),
                     "val": _paise_to_rupees(inv.taxable_amount_paise + inv.igst_paise + inv.cess_paise + inv.round_off_paise),
-                    "sbpcode": "",
-                    "sbnum": "",
-                    "sbdt": "",
+                    # Empty where nothing is recorded — the portal accepts an
+                    # export declared before the shipping bill is available and
+                    # the details are furnished later by amendment. What is NOT
+                    # acceptable is doing that silently, which is why an export
+                    # WITH PAYMENT and no shipping bill is reported as a gap.
+                    "sbpcode": inv.port_code or "",
+                    "sbnum": inv.shipping_bill_no or "",
+                    "sbdt": (_format_date_gstn(inv.shipping_bill_date)
+                             if inv.shipping_bill_date else ""),
                     "itms": _build_invoice_items(inv),
                 }
                 for inv in invs

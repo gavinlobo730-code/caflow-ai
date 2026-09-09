@@ -1180,6 +1180,14 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             # single "OTH" row — for notes too, which _build_hsn_summary now
             # nets rather than skipping.
             lines=lines_by_doc.get(doc_type, {}).get(r.get("id") or "", []),
+            # Table 6A's shipping bill — migration 349. Only a sales invoice
+            # carries one; a credit note against an export has no shipping bill
+            # of its own, and .get on a row that has no such column returns
+            # None anyway, which is the "not recorded" state.
+            shipping_bill_no=(r.get("shipping_bill_no") or None),
+            shipping_bill_date=(str(r.get("shipping_bill_date"))[:10]
+                                if r.get("shipping_bill_date") else None),
+            port_code=(r.get("port_code") or None),
         )
 
     invoices = ([_to_gstr1(r, "sales_invoice") for r in invoices_raw]

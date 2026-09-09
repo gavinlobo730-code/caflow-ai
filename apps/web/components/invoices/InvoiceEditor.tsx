@@ -162,6 +162,21 @@ export function InvoiceEditor({
   const [supplyType, setSupplyType] = useState<SupplyType>(initialClassification.supplyType);
   const [invoiceType, setInvoiceType] = useState<InvoiceType>(initialClassification.invoiceType);
   const [isReverseCharge, setIsReverseCharge] = useState(initialClassification.isReverseCharge);
+  // THE SHIPPING BILL an export is refunded against (migration 349) — GSTR-1
+  // Table 6A's sbnum / sbdt / sbpcode, which the builder used to emit as three
+  // empty strings because there was nowhere to record them.
+  //
+  // NOT frozen at issue, unlike the classification above. Customs issues the
+  // shipping bill AFTER the invoice, often days later when the goods actually
+  // ship; locked with the rest of the Rule 46 content there would be no moment
+  // at which a CA could record it. None of the three is a Rule 46 particular —
+  // they are customs's reference for the consignment — so CGST s.34 is
+  // untouched. The server agrees: _SOFT_UPDATE_FIELDS carries them.
+  const [shippingBillNo, setShippingBillNo] = useState(
+    existing?.shipping_bill_no ?? "");
+  const [shippingBillDate, setShippingBillDate] = useState(
+    existing?.shipping_bill_date ?? "");
+  const [portCode, setPortCode] = useState(existing?.port_code ?? "");
   // Invoice-level round-off to the nearest ₹1 is opt-in (migration 247) — an
   // invoice shows its exact calculated amount unless the CA turns this on.
   const [roundOffEnabled, setRoundOffEnabled] = useState(
@@ -272,9 +287,12 @@ export function InvoiceEditor({
     supplyType: initialClassification.supplyType,
     invoiceType: initialClassification.invoiceType,
     isReverseCharge: initialClassification.isReverseCharge,
+    shippingBillNo: existing?.shipping_bill_no ?? "",
+    shippingBillDate: existing?.shipping_bill_date ?? "",
+    portCode: existing?.port_code ?? "",
     lines: initialLines, currency, exchangeRate,
   });
-  const currentSnapshot = { customerId, invoiceNo, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, roundOffEnabled, supplyType, invoiceType, isReverseCharge, lines, currency, exchangeRate };
+  const currentSnapshot = { customerId, invoiceNo, invoiceDate, dueDate, referenceNo, creditDays, supplyStateCode, isInterstate, notes, roundOffEnabled, supplyType, invoiceType, isReverseCharge, shippingBillNo, shippingBillDate, portCode, lines, currency, exchangeRate };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && saving === null, undefined, confirmDialog);
 
@@ -457,6 +475,11 @@ export function InvoiceEditor({
             notes: notes.trim() || undefined,
             due_date: dueDate || undefined,
             credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
+            // Sent even on an ISSUED invoice — see the state declaration above.
+            // This is the only moment the shipping bill exists to be recorded.
+            shipping_bill_no: shippingBillNo.trim() || undefined,
+            shipping_bill_date: shippingBillDate || undefined,
+            port_code: portCode.trim().toUpperCase() || undefined,
             line_units: Object.keys(lineUnits).length ? lineUnits : undefined,
           }, token);
           if (!upd.success) throw new Error(upd.error ?? "Failed to update invoice");
@@ -479,6 +502,9 @@ export function InvoiceEditor({
           // changing which GSTR-1 table an issued invoice belongs to needs a
           // credit note (CGST §34), not a silent edit.
           ...toClassificationPayload({ supplyType, invoiceType, isReverseCharge }),
+          shipping_bill_no: shippingBillNo.trim() || undefined,
+          shipping_bill_date: shippingBillDate || undefined,
+          port_code: portCode.trim().toUpperCase() || undefined,
           lines: linePayload,
         }, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update invoice");
@@ -496,6 +522,9 @@ export function InvoiceEditor({
           notes: notes.trim() || undefined,
           round_off_enabled: roundOffEnabled,
           ...toClassificationPayload({ supplyType, invoiceType, isReverseCharge }),
+          shipping_bill_no: shippingBillNo.trim() || undefined,
+          shipping_bill_date: shippingBillDate || undefined,
+          port_code: portCode.trim().toUpperCase() || undefined,
           lines: linePayload,
           currency: isForeign ? currency : undefined,
           exchange_rate: isForeign ? exchangeRate : undefined,
@@ -775,6 +804,54 @@ export function InvoiceEditor({
               </p>
             </div>
           </div>
+
+          {/* THE SHIPPING BILL — GSTR-1 Table 6A (migration 349).
+              Shown for a supply that leaves India: a zero-rated supply, or one
+              whose place of supply is 96 (outside India). NOT for an SEZ supply
+              or a deemed export, which are Tables 6B and 6C and have no
+              shipping bill.
+
+              Editable after issue, unlike everything above it. Customs issues
+              the shipping bill AFTER the invoice, so freezing these at issue
+              would mean they could never be recorded at all. */}
+          {(supplyType === "zero_rated" || supplyStateCode === "96")
+            && invoiceType === "Regular" && (
+            <div className="mt-3 pt-3 border-t border-[#F1F5F9]">
+              <p className="text-xs font-medium text-[#475569] mb-2">
+                Shipping bill
+                <span className="ml-1 font-normal text-[#94A3B8]">
+                  — GSTR-1 Table 6A. On an export made on payment of IGST this is
+                  what the refund is matched against (CGST Rule 96(1)); customs
+                  issues it after the invoice, so it can still be filled in once
+                  the invoice is issued.
+                </span>
+              </p>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                <div>
+                  <label htmlFor="inv-sb-no" className="block text-xs font-medium text-[#475569] mb-1">Shipping bill no.</label>
+                  <input id="inv-sb-no" type="text" value={shippingBillNo}
+                    onChange={(e) => setShippingBillNo(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label htmlFor="inv-sb-date" className="block text-xs font-medium text-[#475569] mb-1">Shipping bill date</label>
+                  <input id="inv-sb-date" type="date" value={shippingBillDate}
+                    onChange={(e) => setShippingBillDate(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label htmlFor="inv-port-code" className="block text-xs font-medium text-[#475569] mb-1">Port code</label>
+                  <input id="inv-port-code" type="text" value={portCode} maxLength={6}
+                    onChange={(e) => setPortCode(e.target.value.toUpperCase())}
+                    placeholder="INMAA1"
+                    className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase" />
+                  <p className="mt-1 text-[10px] text-[#94A3B8]">
+                    ICEGATE port code, 6 characters.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Anything other than a plain domestic taxable sale is worth seeing
               before issuing — these are the invoices that get filed in the wrong
