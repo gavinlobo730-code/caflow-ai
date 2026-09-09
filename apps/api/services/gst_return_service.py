@@ -1141,6 +1141,12 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                                  + int(r.get("cess_paise") or 0)
                                  + int(r.get("round_off_paise") or 0)),
             transaction_date=r.get(_DATE_FIELD[doc_type]) or "",
+            # IGST Act s.16(3): a zero-rated supply either bears IGST (limb b,
+            # refunded afterwards) or does not (limb a, under an LUT or bond).
+            # The classifier could not tell, so every export was declared
+            # WOPAY — asking for a refund of accumulated credit rather than of
+            # the tax actually paid.
+            igst_paise=int(r.get("igst_paise") or 0),
         )
         return InvoiceForGSTR1(
             id=r.get("id", ""),
@@ -1270,6 +1276,11 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # reads one contract whichever way the payload was produced.
         "validation_errors": [e.as_dict() for e in validation if e.severity == "error"],
         "validation_warnings": [e.as_dict() for e in validation if e.severity == "warning"],
+        # DOCUMENTS THE PAYLOAD DOES NOT CARRY. Distinct from validation: a
+        # validation error is a document that IS in the return and is wrong; a
+        # gap is a document that is NOT in the return at all. Filing short is
+        # the failure a CA finds out about from the recipient.
+        "payload_gaps": payload.gaps,
         "reconciliation": {
             "net_output_gst": {
                 "books_paise": net_books_output,

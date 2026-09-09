@@ -55,14 +55,35 @@ test("status is not unconditionally validated", () => {
   assert.doesNotMatch(src, /status:\s*"validated"\s*,/,
     'an unconditional status: "validated" claims the checks passed without ' +
     "looking at them");
-  assert.match(src, /result\.validation_errors\.length === 0 \? "validated" : "draft"/);
+  assert.match(src, /status:\s*readyToFile \? "validated" : "draft"/);
+});
+
+test("one predicate decides the status, and it reads BOTH lists", () => {
+  // Named rather than inlined twice, so the status and its timestamp cannot
+  // disagree about the same return — and asserted on the predicate rather than
+  // on a spelling of the condition, which is what the first version of this
+  // test did and what broke it the next time the condition grew a term.
+  const src = code("lib/data/gst.ts");
+  const decl = /const readyToFile\s*=([\s\S]*?);/.exec(src);
+  assert.ok(decl, "saveGSTR1Return must name the condition it files on");
+  assert.match(decl![1], /validation_errors/,
+    "an error the portal rejects must stop a return being called validated");
+  assert.match(decl![1], /payload_gaps/,
+    "so must a document the payload does not carry — filing SHORT is the " +
+    "failure a CA hears about from the recipient, not from us");
 });
 
 test("validated_at is not stamped on a draft", () => {
   // A timestamp saying when it was validated, on a return that was not, is the
   // same false claim in a second column.
-  assert.match(code("lib/data/gst.ts"),
-    /validated_at:\s*result\.validation_errors\.length === 0 \?/);
+  assert.match(code("lib/data/gst.ts"), /validated_at:\s*readyToFile \?/);
+});
+
+test("the GSTR-1 screen shows what the return does NOT carry", () => {
+  const src = code("app/gst/gstr1/page.tsx");
+  assert.match(src, /result\.payload_gaps\.length > 0/);
+  assert.match(src, /result\.payload_gaps\.map/,
+    "a gap the builder computes and no screen shows is not a fixed bug");
 });
 
 test("both status values are ones the table's CHECK accepts", () => {

@@ -80,6 +80,7 @@ def _category(**invoice_fields) -> str:
                              + int(row.get("igst_paise") or 0)
                              + int(row.get("cess_paise") or 0)),
         transaction_date=row.get("invoice_date") or "2026-04-10",
+        igst_paise=int(row.get("igst_paise") or 0),
     )
     return classify_transaction(txn).value
 
@@ -90,18 +91,38 @@ def test_an_ordinary_domestic_sale_is_b2b():
     assert _category() == "B2B"
 
 
-def test_an_sez_supply_without_payment_is_zero_rated_not_b2b():
-    """CGST §16(3): supply to an SEZ under LUT/bond. Declared as B2B, the
-    recipient has nothing to match a refund claim against."""
-    assert _category(invoice_type="SEZ_without_payment") == "EXP_WOP"
+def test_an_sez_supply_without_payment_is_table_6b():
+    """IGST Act s.16(3): a supply to an SEZ unit or developer under LUT/bond.
+
+    This asserted "EXP_WOP" — the Table 6A export table — under a docstring
+    saying that filing it as B2B leaves the recipient nothing to match against.
+    The docstring was right about the problem and the assertion had the wrong
+    remedy: Table 6A has NO ctin field either, so 6A loses the recipient GSTIN
+    exactly as B2B-with-the-wrong-inv_typ did. 6B is inside the b2b section,
+    against the recipient's GSTIN, which is what their refund claim matches on.
+    """
+    assert _category(invoice_type="SEZ_without_payment") == "SEZ_WOP"
 
 
-def test_an_sez_supply_with_payment_of_igst_is_its_own_table():
-    assert _category(invoice_type="SEZ_with_payment") == "EXP_WP"
+def test_an_sez_supply_with_payment_of_igst_is_table_6b_too():
+    assert _category(invoice_type="SEZ_with_payment") == "SEZ_WP"
 
 
-def test_a_deemed_export_is_zero_rated():
-    assert _category(invoice_type="Deemed_export") == "EXP_WOP"
+def test_a_deemed_export_is_table_6c():
+    """Notification 48/2017-Central Tax with CGST s.147. Always on payment of
+    tax — the notification works by charging the tax and refunding it, to
+    either the supplier or the recipient — so there is no LUT limb to detect."""
+    assert _category(invoice_type="Deemed_export") == "DEEMED_EXPORT"
+
+
+def test_a_real_export_declares_whether_the_tax_was_paid():
+    """IGST Act s.16(3). Both limbs are real and the invoice says which: it
+    either carries IGST or it does not. The classifier could not see the tax,
+    so it assumed the LUT limb for everyone."""
+    assert _category(supply_type="zero_rated", place_of_supply="96",
+                     is_interstate=True) == "EXP_WOP"
+    assert _category(supply_type="zero_rated", place_of_supply="96",
+                     is_interstate=True, igst_paise=18_000_00) == "EXP_WP"
 
 
 @pytest.mark.parametrize("supply_type", ["nil_rated", "exempt", "non_gst"])
@@ -150,32 +171,63 @@ def _invoice_numbers(section) -> set[str]:
     return {inv["inum"] for group in (section or []) for inv in group.get("inv", [])}
 
 
-def test_an_sez_invoice_lands_in_the_export_table_not_b2b(db):
+def _inv_typ(payload, invoice_no) -> str | None:
+    for group in payload.get("b2b") or []:
+        for inv in group.get("inv", []):
+            if inv["inum"] == invoice_no:
+                return inv["inv_typ"]
+    return None
+
+
+def test_an_sez_invoice_is_declared_in_6b_against_the_recipients_gstin(db):
     """THE test for this change, and the one the first draft of this file got
     wrong. An earlier version built the classifier's input itself and asserted
     on that — which passes whether or not gst_return_service reads the column,
     so restoring the hardcoded "Regular" failed nothing. This goes through
     gstr1_from_books and looks at the payload that would be filed.
+
+    It then asserted the SEZ supply belonged in `exp`, which was the second
+    wrong answer: Table 6A carries no ctin, so the SEZ unit's refund claim had
+    nothing to match. 6B rides in the b2b section with an inv_typ that says
+    what it is.
     """
     _seed_invoice(db, invoice_no="INV-SEZ", invoice_type="SEZ_without_payment")
     _seed_invoice(db, invoice_no="INV-REG", invoice_type="Regular")
 
     payload = _payload(db)
 
-    assert _invoice_numbers(payload.get("exp")) == {"INV-SEZ"}, \
-        "the SEZ supply was not declared as zero-rated"
-    assert _invoice_numbers(payload.get("b2b")) == {"INV-REG"}, \
-        "the SEZ supply was filed as an ordinary B2B invoice"
-    assert payload["exp"][0]["exp_typ"] == "WOPAY", "LUT/bond, not with payment of IGST"
+    assert _invoice_numbers(payload.get("exp")) == set(), \
+        "an SEZ supply is not a Table 6A export"
+    assert _invoice_numbers(payload.get("b2b")) == {"INV-SEZ", "INV-REG"}
+    assert _inv_typ(payload, "INV-SEZ") == "SEWOP"
+    assert _inv_typ(payload, "INV-REG") == "R"
+    # The whole reason it belongs here: the recipient's GSTIN survives.
+    ctins = {g["ctin"] for g in payload["b2b"]}
+    assert ctins == {"27BBBBB1111B1Z5"}
 
 
 def test_an_sez_supply_with_payment_is_declared_as_such(db):
     _seed_invoice(db, invoice_no="INV-SEZP", invoice_type="SEZ_with_payment")
-
     payload = _payload(db)
+    assert _inv_typ(payload, "INV-SEZP") == "SEWP"
 
-    assert _invoice_numbers(payload.get("exp")) == {"INV-SEZP"}
-    assert payload["exp"][0]["exp_typ"] == "WPAY"
+
+def test_a_deemed_export_is_declared_in_6c(db):
+    _seed_invoice(db, invoice_no="INV-DE", invoice_type="Deemed_export")
+    payload = _payload(db)
+    assert _inv_typ(payload, "INV-DE") == "DE"
+    assert _invoice_numbers(payload.get("exp")) == set()
+
+
+def test_this_applications_own_strings_never_reach_the_payload(db):
+    """inv_typ used to be `invoice_type if != "Regular" else "R"`, which would
+    have written "SEZ_with_payment" into a field the portal parses as an enum.
+    It never fired only because the routing sent those invoices elsewhere."""
+    for i, t in enumerate(("SEZ_with_payment", "SEZ_without_payment", "Deemed_export")):
+        _seed_invoice(db, id=f"I{i}", invoice_no=f"INV-{i}", invoice_type=t)
+    payload = _payload(db)
+    emitted = {inv["inv_typ"] for g in payload["b2b"] for inv in g["inv"]}
+    assert emitted <= {"R", "SEWP", "SEWOP", "DE"}, emitted
 
 
 def test_a_nil_rated_supply_does_not_appear_as_a_taxable_b2b_invoice(db):

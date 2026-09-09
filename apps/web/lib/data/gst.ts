@@ -220,7 +220,20 @@ export interface GSTR1BuildResult {
   /** Judgement calls, not rejections — an invoice dated outside the s.37(3)
    *  window, tax that does not follow from the rate. */
   validation_warnings: ValidationError[];
+  /** Documents the payload does NOT carry, and why. A different thing from a
+   *  validation error: an error is a document that IS in the return and is
+   *  wrong; a gap is a document that is not in the return at all. Filing short
+   *  is the failure a CA hears about from the recipient. */
+  payload_gaps: PayloadGap[];
   ca_review_required: true;
+}
+
+/** One document the GSTR-1 payload leaves out. `kind` is the category it was
+ *  classified as (SEZ_WOP, DEEMED_EXPORT, CDNUR). */
+export interface PayloadGap {
+  kind: string;
+  reference_no: string;
+  reason: string;
 }
 
 /** Raw shape of POST /api/gst/gstr1/from-books. */
@@ -235,6 +248,7 @@ interface FromBooksGSTR1 {
   reconciliation: GLReconciliation;
   validation_errors: ValidationError[];
   validation_warnings: ValidationError[];
+  payload_gaps: PayloadGap[];
 }
 
 /** Raw shape of POST /api/gst/gstr3b/from-books. */
@@ -560,6 +574,7 @@ export async function buildGSTR1(
     // now.
     validation_errors: result.validation_errors ?? [],
     validation_warnings: result.validation_warnings ?? [],
+    payload_gaps: result.payload_gaps ?? [],
     ca_review_required: true,
   };
 
@@ -576,6 +591,19 @@ export async function saveGSTR1Return(
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
 
+  // ONE PREDICATE, used for both the status and its timestamp, so they cannot
+  // disagree about the same return.
+  //
+  // "validated" is a claim that the checks RAN AND PASSED. It used to be
+  // unconditional, under a comment saying a result in hand is a validated one
+  // — true while the validator was unreachable from this path, false the
+  // moment it was wired in. A gap counts the same as an error: a return that
+  // leaves a document out is not one whose checks passed, and the CA has to
+  // act on it before filing (record the recipient's GSTIN, or fold the note
+  // into Table 7).
+  const readyToFile =
+    result.validation_errors.length === 0 && result.payload_gaps.length === 0;
+
   await sb.from("gstr1_returns").upsert({
     firm_id: firmId,
     client_id: clientId,
@@ -589,8 +617,8 @@ export async function saveGSTR1Return(
     // comment saying a result in hand is a validated one — true while the
     // validator was unreachable from this path and false the moment it was
     // wired in. A return carrying an error the portal will reject is a draft.
-    status: result.validation_errors.length === 0 ? "validated" : "draft",
-    validated_at: result.validation_errors.length === 0 ? new Date().toISOString() : null,
+    status: readyToFile ? "validated" : "draft",
+    validated_at: readyToFile ? new Date().toISOString() : null,
     updated_at: new Date().toISOString(),
   }, { onConflict: "client_id,period" });
 }

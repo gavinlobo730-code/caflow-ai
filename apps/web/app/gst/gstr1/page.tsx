@@ -275,6 +275,12 @@ export default function GSTR1Page() {
                   {result.validation_errors.length} error{result.validation_errors.length !== 1 ? "s" : ""}
                 </span>
               )}
+              {result.payload_gaps.length > 0 && (
+                <span className="flex items-center gap-1 text-xs text-red-600 font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  {result.payload_gaps.length} not declared
+                </span>
+              )}
               {result.validation_warnings.length > 0 && (
                 <span className="flex items-center gap-1 text-xs text-amber-600">
                   <AlertTriangle className="w-3.5 h-3.5" />
@@ -386,6 +392,28 @@ export default function GSTR1Page() {
                       </tr>
                     </tbody>
                   </table>
+                  {/* NOT DECLARED — first, because it is the one a CA cannot
+                      see any other way. An error is a document that IS in the
+                      return and is wrong; this is a document the return does
+                      not carry at all, and filing short is found out from the
+                      recipient. */}
+                  {result.payload_gaps.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Not declared in this return
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {result.payload_gaps.map((g, i) => (
+                          <li key={i} className="text-xs text-red-700">
+                            <span className="font-mono mr-1">[{g.reference_no}]</span>
+                            <span className="font-medium mr-1">{g.kind}</span>
+                            {g.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {/* ERRORS FIRST, and separately. These are the things the
                       portal rejects — a duplicate invoice number, IGST on an
                       intra-state supply, a place of supply that is not a state

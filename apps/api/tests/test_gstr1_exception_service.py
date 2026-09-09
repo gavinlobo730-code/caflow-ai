@@ -198,6 +198,32 @@ def test_an_invoice_reclassified_after_filing_is_found(db):
 
     rec = out["documents"]["reclassified"]
     assert [r["doc_no"] for r in rec] == ["INV-1"]
+    # BOTH SIDES ARE NOW `b2b`, and that is the point of the assertion rather
+    # than a weakening of it. Tables 4A, 6B and 6C all ride in the GSTN `b2b`
+    # section and are told apart by inv_typ, so once SEZ supplies were routed
+    # to 6B where they belong — instead of to the Table 6A export table, which
+    # has no ctin and loses the recipient's GSTIN — a Regular-to-SEZ correction
+    # stopped changing section. Comparing sections alone went blind to exactly
+    # the case this test exists for.
+    assert rec[0]["filed_section"] == "b2b"
+    assert rec[0]["books_section"] == "b2b"
+    assert rec[0]["filed_inv_typ"] == "R"
+    assert rec[0]["books_inv_typ"] == "SEWOP"
+
+
+def test_a_move_between_sections_is_still_a_reclassification(db):
+    """The case the section comparison always caught, kept — a real export
+    does leave the b2b section for Table 6A."""
+    row = _invoice(db, "INV-1", 100_000)
+    _file_return(db, _books_payload(db))
+
+    db.table("client_sales_invoices").update({
+        "supply_type": "zero_rated", "supply_state_code": "96",
+        "is_interstate": True,
+    }).eq("id", row["id"]).execute()
+
+    rec = _report(db)["documents"]["reclassified"]
+    assert [r["doc_no"] for r in rec] == ["INV-1"]
     assert rec[0]["filed_section"] == "b2b"
     assert rec[0]["books_section"] == "exp"
 

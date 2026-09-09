@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Sequence
 
-from .classifier import GSTInvoiceCategory
+from .classifier import B2B_SECTION_CATEGORIES, GSTInvoiceCategory
 
 
 @dataclass(frozen=True)
@@ -93,6 +93,22 @@ class GSTR1Payload:
     invoice_count: int
     taxable_total_paise: int
     tax_total_paise: int
+    # DOCUMENTS THIS PAYLOAD DOES NOT CARRY, and why.
+    #
+    # A GSTR-1 that silently omits a document is worse than one that refuses to
+    # build: the CA files a return short and finds out from the recipient. Two
+    # omissions were already happening without a word —
+    #
+    #   * a note to an unregistered person that Table 9B has no row for
+    #     (_cdnur_unreportable existed, said in its own docstring that it
+    #     "reports how many were dropped", and was CALLED BY NOTHING);
+    #   * an SEZ supply or deemed export with no recipient GSTIN, which cannot
+    #     go in the b2b section because ctin is what the recipient's return
+    #     matches on.
+    #
+    # Each entry is {"kind", "reference_no", "reason"}. Empty is the normal
+    # case and means the payload is complete.
+    gaps: list[dict] = field(default_factory=list)
 
 
 def build_gstr1(
@@ -113,7 +129,10 @@ def build_gstr1(
     Returns:
         GSTR1Payload with GSTN-compatible JSON and human-readable summary.
     """
-    b2b_invoices = [i for i in invoices if i.gst_invoice_category == GSTInvoiceCategory.B2B]
+    # Tables 4A, 6B and 6C all live in the GSTN `b2b` section, distinguished by
+    # inv_typ — see classifier.B2B_SECTION_CATEGORIES and _INV_TYP below.
+    b2b_invoices = [i for i in invoices
+                    if i.gst_invoice_category in B2B_SECTION_CATEGORIES]
     b2cs_invoices = [i for i in invoices if i.gst_invoice_category == GSTInvoiceCategory.B2CS]
     b2cl_invoices = [i for i in invoices if i.gst_invoice_category == GSTInvoiceCategory.B2CL]
     cdnr_invoices = [i for i in invoices if i.gst_invoice_category == GSTInvoiceCategory.CDNR]
@@ -133,7 +152,13 @@ def build_gstr1(
         ),
     }
 
-    b2b = _build_b2b(b2b_invoices)
+    # An SEZ / deemed-export document with no recipient GSTIN is reported as a
+    # gap below and kept OUT of the section — a group keyed on ctin "" is a
+    # rejection at upload, and one bad document would take the whole return
+    # with it.
+    b2b = _build_b2b([i for i in b2b_invoices
+                      if i.party_gstin
+                      or i.gst_invoice_category is GSTInvoiceCategory.B2B])
     if b2b:
         payload["b2b"] = b2b
 
@@ -169,6 +194,32 @@ def build_gstr1(
     if doc_issue:
         payload["doc_issue"] = {"doc_det": doc_issue}
 
+    # ── What is NOT in the payload, said out loud ───────────────────────────
+    gaps: list[dict] = []
+    for inv in b2b_invoices:
+        if inv.gst_invoice_category is GSTInvoiceCategory.B2B or inv.party_gstin:
+            continue
+        gaps.append({
+            "kind": inv.gst_invoice_category.value,
+            "reference_no": inv.reference_no,
+            "reason": (
+                "A supply to an SEZ or a deemed export is declared inside the "
+                "b2b section against the RECIPIENT's GSTIN, which is what "
+                "their refund claim matches on. This document has none "
+                "recorded, so it cannot be declared. Record the recipient's "
+                "GSTIN, or reclassify the supply."),
+        })
+    for inv in _cdnur_unreportable(cdnur_invoices):
+        gaps.append({
+            "kind": "CDNUR",
+            "reference_no": inv.reference_no,
+            "reason": (
+                "Table 9B has no row for an intra-state note to an "
+                "unregistered person. Its effect belongs in the Table 7 "
+                "summary — reduce the B2CS figure for that rate and place of "
+                "supply."),
+        })
+
     all_sales = [i for i in invoices if i.transaction_type == "sales_invoice"]
     taxable_total = sum(i.taxable_amount_paise for i in all_sales)
     tax_total = sum(i.cgst_paise + i.sgst_paise + i.igst_paise for i in all_sales)
@@ -183,6 +234,13 @@ def build_gstr1(
             "credit_notes_registered": len(cdnr_invoices),
             "credit_notes_unregistered": len(cdnur_invoices),
             "exports": len(exp_invoices),
+            # Table 6B and 6C, counted separately from 4A even though all three
+            # ride in the same `b2b` section — a CA reviewing the summary needs
+            # to see that a zero-rated supply was declared as one.
+            "sez": sum(1 for i in b2b_invoices if i.gst_invoice_category in (
+                GSTInvoiceCategory.SEZ_WP, GSTInvoiceCategory.SEZ_WOP)),
+            "deemed_exports": sum(1 for i in b2b_invoices
+                                  if i.gst_invoice_category is GSTInvoiceCategory.DEEMED_EXPORT),
             # Table 8. Counted so a CA reviewing the summary can see nil/exempt
             # turnover was declared — it was absent from the payload entirely
             # before, and absent from this summary too, so nothing on screen
@@ -205,13 +263,36 @@ def build_gstr1(
         invoice_count=len(all_sales),
         taxable_total_paise=taxable_total,
         tax_total_paise=tax_total,
+        gaps=gaps,
     )
 
 
-# ── Table 4A: B2B Invoices ────────────────────────────────────────────────────
+# ── Tables 4A, 6B and 6C: the GSTN `b2b` section ─────────────────────────────
+
+# inv_typ — which of the three tables inside `b2b` an invoice belongs to.
+#
+# THE FOUR CODES ARE THE ONE THING HERE THAT COULD NOT BE VERIFIED FROM INSIDE
+# THIS REPOSITORY. Direct egress is refused by this environment's proxy (see
+# docs/audits/2026-09-07-market-research/), so the GSTN schema could not be
+# re-read; they come from the 2026-09-07 audit's evidence and match the
+# published GSTR-1 JSON schema as recorded there. Held as ONE map so a
+# correction is a single edit rather than a search.
+#
+# What was there before was certainly wrong under any reading: `inv.invoice_type
+# if != "Regular" else "R"` emitted this application's OWN internal strings —
+# "SEZ_with_payment", "Deemed_export" — into a field the portal parses as an
+# enum. And the routing meant it never fired anyway, because SEZ and deemed
+# exports were sent to Table 6A instead, which has no inv_typ and no ctin.
+_INV_TYP = {
+    GSTInvoiceCategory.B2B: "R",                 # regular — Table 4A
+    GSTInvoiceCategory.SEZ_WP: "SEWP",           # SEZ, with payment — Table 6B
+    GSTInvoiceCategory.SEZ_WOP: "SEWOP",         # SEZ, under LUT/bond — Table 6B
+    GSTInvoiceCategory.DEEMED_EXPORT: "DE",      # deemed export — Table 6C
+}
+
 
 def _build_b2b(invoices: list[InvoiceForGSTR1]) -> list[dict]:
-    """Group B2B invoices by receiver GSTIN.
+    """Group B2B, SEZ and deemed-export invoices by receiver GSTIN.
 
     GSTN format: [{ctin, inv: [{inum, idt, val, pos, rchrg, inv_typ, itms}]}]
     """
@@ -230,7 +311,10 @@ def _build_b2b(invoices: list[InvoiceForGSTR1]) -> list[dict]:
                 "val": _paise_to_rupees(inv.taxable_amount_paise + inv.cgst_paise + inv.sgst_paise + inv.igst_paise + inv.cess_paise + inv.round_off_paise),
                 "pos": inv.place_of_supply or "",
                 "rchrg": "Y" if inv.is_reverse_charge else "N",
-                "inv_typ": inv.invoice_type if inv.invoice_type != "Regular" else "R",
+                # From the CATEGORY, which is what routed the invoice here, so
+                # the section it lands in and the code it declares cannot
+                # disagree. Anything not in the map is a regular supply.
+                "inv_typ": _INV_TYP.get(inv.gst_invoice_category, "R"),
                 "itms": _build_invoice_items(inv),
             })
         result.append({"ctin": receiver_gstin, "inv": invoice_list})
