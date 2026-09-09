@@ -41,6 +41,13 @@ THE ORDER OF THE QUESTIONS IS THE WHOLE THING
        payment, and under-deduction disallows the WHOLE expenditure under
        s.40(a)(i).
 
+    6. ...BUT NOT ON A TREATY RATE, AND THE COMPARISON IS OF TOTALS. A DTAA
+       rate is a CEILING on the tax, so surcharge and cess sit inside it rather
+       than on top of it. Two things follow, and both must hold together or the
+       defect merely moves: s.90(2) picks the lower FINISHED TOTAL rather than
+       the lower headline rate, and a treaty-basis resolution carries no
+       surcharge and no cess. Owner decision of 2026-09-09.
+
 WHERE IT REFUSES, AND WHY REFUSING IS THE SAFE DIRECTION
 
     A refusal stops a bill and makes a human decide. A wrong number is
@@ -119,6 +126,22 @@ def _surcharge_percent(rates: FY195Rates, amount_paise: int, is_company: bool,
     if nature in ("stcg_111a", "ltcg_112", "ltcg_112a"):
         pct = min(pct, rates.capital_gains_surcharge_cap_percent)
     return pct
+
+
+def _with_surcharge_and_cess(rates: FY195Rates, amount_paise: int, rate_bps: int,
+                             is_company: bool, nature: str) -> tuple[int, int, int]:
+    """(base tax, surcharge, cess) for a rate deducted under the ACT.
+
+    Hoisted out of resolve_section_195 so the s.90(2) comparison below can ask
+    for the Act's FINISHED total before choosing. Comparing bare rates was the
+    defect: a treaty rate carries no surcharge and no cess, so a treaty rate
+    EQUAL to the Act rate is still the cheaper of the two and used to lose.
+    """
+    base_tax = amount_paise * rate_bps // 10000
+    sur_pct = _surcharge_percent(rates, amount_paise, is_company, nature)
+    surcharge = base_tax * sur_pct // 100
+    cess = (base_tax + surcharge) * rates.cess_percent // 100
+    return base_tax, surcharge, cess
 
 
 def resolve_section_195(
@@ -227,7 +250,17 @@ def resolve_section_195(
                         f"(Rule 21AB); {rule.citation} is the Act alternative")
         else:
             citation = f"s.90(2) treaty rate; {rule.citation} is the Act alternative"
-        if treaty_rate_bps < act_bps:
+        # s.90(2) gives the assessee whichever is MORE BENEFICIAL, and that is
+        # a comparison of what is actually withheld — not of the two headline
+        # rates. The Act rate carries surcharge and the 4% cess; a treaty rate
+        # does not (see the block below), so an Act rate of 20% withholds 22.88%
+        # of the payment for a non-corporate payee above Rs 1 crore while a
+        # treaty rate of 20% withholds 20%. Comparing the bare numbers made that
+        # case a tie and left it on the Act — the treaty was established, held
+        # on file, and then not applied.
+        act_base, act_sur, act_cess = _with_surcharge_and_cess(
+            rates, amount_paise, act_bps, is_company, key)
+        if amount_paise * treaty_rate_bps // 10000 < act_base + act_sur + act_cess:
             rate_bps = treaty_rate_bps
             basis = "treaty"
 
@@ -254,10 +287,33 @@ def resolve_section_195(
     #    already gives: the tool should over-flag rather than silently
     #    under-deduct, and a CA reviews every figure before the challan. A CA
     #    taking the other view lowers the withholding themselves.
-    base_tax = amount_paise * rate_bps // 10000
-    sur_pct = _surcharge_percent(rates, amount_paise, is_company, key)
-    surcharge = base_tax * sur_pct // 100
-    cess = (base_tax + surcharge) * rates.cess_percent // 100
+    #    AND NOT ON A TREATY RATE. A DTAA rate is a CEILING on the tax, not a
+    #    base to be grossed up: the agreement's own "Taxes covered" article
+    #    brings surcharge and cess inside the tax it caps, so adding them on
+    #    top withholds more than the treaty permits. On a Rs 1 crore royalty at
+    #    a recorded 10% this deducted Rs 11,44,000 where the treaty allows
+    #    Rs 10,00,000 — Rs 1,44,000 taken from a supplier who can recover it
+    #    only by filing an Indian return.
+    #
+    #    THE TWO DECISIONS POINT OPPOSITE WAYS, DELIBERATELY. Over-deducting
+    #    under s.206AA is conservative because the deductor's own exposure is
+    #    one-sided — s.40(a)(i) disallows the WHOLE expenditure. Over-deducting
+    #    under s.90(2) is not conservative at all: it takes money from the
+    #    PAYEE, on a rate the assessee is entitled to by statute, and costs the
+    #    deductor nothing. Owner decision of 2026-09-09; see
+    #    docs/compliance/03-income-tax-and-tds.md.
+    #
+    #    Keyed on `basis`, NOT on `treaty_rate_bps is not None`. Where no PAN is
+    #    held and Rule 37BC does not relieve, the block above overwrites basis
+    #    with "206aa_floor" — and that branch must keep surcharge and cess
+    #    exactly as the paragraph above says.
+    if basis == "treaty":
+        base_tax = amount_paise * rate_bps // 10000
+        surcharge = 0
+        cess = 0
+    else:
+        base_tax, surcharge, cess = _with_surcharge_and_cess(
+            rates, amount_paise, rate_bps, is_company, key)
     total = base_tax + surcharge + cess
 
     return Section195Resolution(

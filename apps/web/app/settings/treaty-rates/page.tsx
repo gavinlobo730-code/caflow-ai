@@ -17,7 +17,7 @@
  *   an Indian return. A CA reads the agreement and records what they read.
  *
  * Zero business logic here (CLAUDE.md): the backend validates every field and
- * owns §90(2), which gives the assessee whichever of this and the Act rate is
+ * owns §90(2), which gives the assessee whichever of this and the Act TOTAL is
  * lower.
  */
 import { useState, useEffect, useCallback } from "react";
@@ -158,7 +158,9 @@ export default function TreatyRatesPage() {
               and nature of income. Nothing is shipped or suggested here: India has agreements
               with over ninety countries, MFN clauses need their own §90(1) notification, and a
               wrong rate too low disallows the whole expenditure under §40(a)(i). §90(2) then
-              applies whichever of your rate and the Act rate is lower.
+              applies whichever comes to LESS IN TOTAL. Your treaty rate is a ceiling on
+              the whole tax, so it carries no surcharge and no cess; the Act rate does. A
+              treaty rate equal to the Act rate is therefore still the cheaper of the two.
             </p>
           </div>
           <button

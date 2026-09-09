@@ -345,14 +345,27 @@ def test_a_trc_without_a_recorded_treaty_rate_stops_the_bill():
     assert "treaty rate" in e.value.detail
 
 
-def test_a_recorded_treaty_rate_is_applied_when_it_is_lower():
+def test_a_recorded_treaty_rate_is_applied_as_a_ceiling_on_the_whole_tax():
+    """The bill path's half of the s.90(2) ceiling.
+
+    This asserted Rs 52,000 — "10% + 4% cess on Rs 5,00,000" — which is the
+    defect PUR-03 named, pinned as correct behaviour. A DTAA rate is a ceiling
+    on the tax the agreement covers, and its own "Taxes covered" article brings
+    surcharge and cess inside that, so nothing is added on top. Owner decision
+    of 2026-09-09; docs/compliance/03-income-tax-and-tds.md s.5b.
+
+    The cess is asserted at zero explicitly rather than left implied by the
+    total, because that is the component this case actually moved.
+    """
     out = _compute({"id": "v1", "pan": "AAGCP7788R",
                     "residential_status": "non_resident",
                     "country_of_residence": "CH", "trc_on_file": True,
                     "form_10f_on_file": True, "treaty_rate_bps": 1000,
                     "section_195_nature_of_income": "royalty"})
     assert out["tds_rate_bps"] == 1000
-    assert out["tds_paise"] == 52_000_00      # 10% + 4% cess on Rs 5,00,000
+    assert out["tds_paise"] == 50_000_00, "10% of Rs 5,00,000, and nothing on top"
+    assert out["tds_cess_paise"] == 0
+    assert out["tds_surcharge_paise"] == 0
 
 
 def test_no_pan_floors_a_treaty_rate_back_up_to_twenty_percent():

@@ -38,6 +38,18 @@ PRECEDENCE
     payee whose position genuinely differs from the firm's country reading —
     an advance ruling, or a failed beneficial-ownership condition the country
     row assumes. Otherwise the country table answers.
+
+WHAT THE RATE RECORDED HERE MEANS
+
+    A CEILING ON THE WHOLE TAX, not a base rate. The agreement's own "Taxes
+    covered" article brings surcharge and cess inside the tax it caps, so
+    domain/tds/section_195.py adds neither to a treaty-basis withholding — and
+    s.90(2) picks the lower FINISHED TOTAL rather than the lower headline rate,
+    which is why a treaty rate EQUAL to the Act rate still wins. Owner decision
+    of 2026-09-09; see docs/compliance/03-income-tax-and-tds.md.
+
+    So record the article's rate as the article states it. Do not gross it up
+    for surcharge or cess, and do not net anything out of it.
 """
 from __future__ import annotations
 

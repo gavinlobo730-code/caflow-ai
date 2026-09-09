@@ -144,6 +144,129 @@ def test_a_treaty_rate_of_zero_is_honoured():
     assert r.applies and r.tds_paise == 0 and r.basis == "treaty"
 
 
+# ── 3a. A treaty rate is a CEILING, not a base to be grossed up ──────────────
+#
+# THE EXISTING TESTS ABOVE COULD NOT SEE THIS DEFECT, and that is worth naming
+# rather than quietly fixing: test_a_lower_treaty_rate_wins asserts rate_bps
+# and base_tax_paise and never tds_paise, and test_a_treaty_rate_of_zero_is
+# _honoured asserts tds_paise == 0, which is trivially true at a 0% base. So
+# surcharge and cess were added on top of every treaty rate and the suite
+# stayed green. Every test below is NEW for that reason — see the PR's negative
+# control count.
+#
+# The rule, decided by the owner on 2026-09-09: the agreement's own "Taxes
+# covered" article brings surcharge and cess inside the tax the treaty caps, so
+# s.90(2) compares FINISHED TOTALS and a treaty-basis resolution carries
+# neither.
+
+ONE_CRORE = 1_00_00_000_00
+
+
+def _treaty(**kw):
+    base = dict(amount_paise=ONE_CRORE, nature="royalty", fy="2026-27",
+                trc_on_file=True, form_10f_on_file=True, has_pan=True)
+    return resolve_section_195(**{**base, **kw})
+
+
+def test_a_treaty_rate_carries_no_surcharge_and_no_cess():
+    """THE Rs 1,44,000 THE FINDING MEASURED, ASSERTED AS A NUMBER.
+
+    A non-corporate payee above Rs 1 crore attracts a Part II surcharge, so
+    this case fails on all four assertions against the previous code: it
+    returned Rs 11,44,000 with surcharge Rs 10,00,000 and cess Rs 4,40,000.
+    """
+    r = _treaty(is_company=False, treaty_rate_bps=1000)
+    assert r.basis == "treaty"
+    assert r.tds_paise == 10_00_000_00
+    assert r.surcharge_paise == 0
+    assert r.cess_paise == 0
+    assert r.base_tax_paise == r.tds_paise
+    assert r.effective_rate_bps == r.rate_bps == 1000
+
+
+def test_a_foreign_company_treaty_rate_carries_no_cess_either():
+    """The second payee class, because _surcharge_percent picks between two
+    ladders and the two failures have different causes. A foreign company's
+    surcharge band at Rs 1 crore is 0, so this isolates the cess: against the
+    previous code it returned Rs 10,40,000."""
+    r = _treaty(is_company=True, treaty_rate_bps=1000)
+    assert r.basis == "treaty"
+    assert r.tds_paise == 10_00_000_00
+    assert r.cess_paise == 0
+
+
+def test_a_treaty_rate_equal_to_the_act_rate_still_wins():
+    """THE CASE THE FINDING NEVER PROBED, and the half a rate-only fix misses.
+
+    s.90(2) gives whichever is more beneficial, and that is a comparison of
+    what is actually withheld. The Act's 20% carries surcharge and cess; the
+    treaty's 20% does not. Comparing the bare numbers made this a tie and left
+    it on the Act — the treaty established, on file, and not applied.
+    """
+    r = _treaty(is_company=False, treaty_rate_bps=2000)
+    assert r.basis == "treaty", "an equal headline rate is still the cheaper total"
+    assert r.tds_paise == 20_00_000_00
+
+
+def test_a_treaty_rate_above_the_act_total_still_does_not_win():
+    """The boundary from the other side, so the fix cannot be 'always prefer
+    the treaty'. The Act's effective rate here is 2288 bps, so a 25% treaty
+    rate must lose."""
+    r = _treaty(is_company=False, treaty_rate_bps=2500)
+    assert r.basis == "act"
+    assert r.surcharge_paise > 0 and r.cess_paise > 0
+
+
+def test_the_effective_rate_never_exceeds_the_treaty_rate_for_any_nature():
+    """The PROPERTY, not an instance — so the defect cannot return through a
+    nature added later. At Rs 10 crore, the top of both ladders."""
+    for nature in sorted(ALL_NATURES):
+        for is_company in (True, False):
+            r = resolve_section_195(
+                amount_paise=10_00_00_000_00, nature=nature, is_company=is_company,
+                fy="2026-27", trc_on_file=True, form_10f_on_file=True,
+                has_pan=True, treaty_rate_bps=500)
+            if r.basis != "treaty":
+                continue
+            assert r.effective_rate_bps <= r.rate_bps, (
+                f"{nature} (company={is_company}) withholds "
+                f"{r.effective_rate_bps} bps against a treaty ceiling of "
+                f"{r.rate_bps} bps")
+
+
+def test_the_206aa_floor_still_carries_surcharge_and_cess():
+    """THE INTERACTION CONTROL, and the reason the suppression is keyed on
+    `basis` rather than on `treaty_rate_bps is not None`.
+
+    Where no PAN is held and Rule 37BC does not relieve, s.206AA overwrites the
+    basis with "206aa_floor" — and THAT branch keeps surcharge and cess, which
+    is the conservative decision recorded in the module. Keying on the presence
+    of a treaty rate would have silently reversed it.
+    """
+    floored = _treaty(is_company=False, treaty_rate_bps=1000,
+                      has_pan=False, rule_37bc_particulars_held=False)
+    assert floored.basis == "206aa_floor"
+    assert floored.rate_bps == 2000
+    assert floored.surcharge_paise > 0 and floored.cess_paise > 0
+
+    # ...and Rule 37BC relief puts it back on the treaty, with neither.
+    relieved = _treaty(is_company=False, treaty_rate_bps=1000,
+                       has_pan=False, rule_37bc_particulars_held=True)
+    assert relieved.basis == "treaty"
+    assert relieved.tds_paise == 10_00_000_00
+    assert relieved.surcharge_paise == 0 and relieved.cess_paise == 0
+
+
+def test_an_act_basis_resolution_is_completely_unchanged():
+    """The non-regression half. Nothing about a payment with no treaty moved."""
+    r = resolve_section_195(amount_paise=ONE_CRORE, nature="royalty",
+                            is_company=False, fy="2026-27", has_pan=True)
+    assert r.basis == "act"
+    assert r.base_tax_paise == 20_00_000_00
+    assert r.surcharge_paise > 0 and r.cess_paise > 0
+    assert r.tds_paise == r.base_tax_paise + r.surcharge_paise + r.cess_paise
+
+
 def test_no_trc_means_no_treaty_relief_and_is_not_a_refusal():
     """s.90(4): without a TRC there is no treaty relief, which is a complete
     answer rather than missing information."""
