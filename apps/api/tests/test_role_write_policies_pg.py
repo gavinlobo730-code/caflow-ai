@@ -103,7 +103,9 @@ def db(pg_template):
     dsn = f"{admin} dbname={name}"
     try:
         for mig in ("260_role_aware_write_policies.sql",
-                    "261_role_aware_write_policies_part2.sql"):
+                    "261_role_aware_write_policies_part2.sql",
+                    "345_the_tds_register_is_role_guarded.sql",
+                    "346_loans_and_deposits_carry_a_role_rule.sql"):
             assert mig not in pg_template.failed, (
                 f"{mig} did not apply — everything below would pass vacuously")
         rows = [
@@ -312,6 +314,11 @@ GUARDED = [
     # every write route in routers/tds_workspace.py already enforces via
     # rbac("tds","compute")), Manager+ to delete.
     "tds_deductions", "tds_returns", "tds_challans", "tds_certificates",
+    # migration 346 — a client's borrowings and deposits. Executive+ for all
+    # three commands. No endpoint writes either table, so the tier is an owner
+    # decision rather than a mirrored rbac() guard; the behavioural proof is
+    # below, because a catalogue entry alone would not show which role moved.
+    "loans", "fixed_deposits",
 ]
 
 
@@ -395,3 +402,82 @@ def test_a_portal_client_cannot_append_to_the_client_timeline(db):
     allowed, client_rank = r.stdout.strip().split("|")
     assert allowed == "t"          # Reviewer clears the bar
     assert int(client_rank) == 0   # Client sits below it
+
+
+# ── Migration 346: the borrowings a Reviewer could edit ──────────────────────
+
+_LOAN_COLS = ("firm_id, client_id, loan_type, lender_name, principal_paise, "
+              "outstanding_paise, interest_rate_percent, disbursement_date")
+_LOAN_VALS = (f"'{FIRM}', '{CLIENT}', 'term_loan', 'HDFC', 5000000, "
+              f"4000000, 9.50, DATE '2026-04-01'")
+_LOAN = f"INSERT INTO loans ({_LOAN_COLS}) VALUES ({_LOAN_VALS});"
+
+_FD = (f"INSERT INTO fixed_deposits (firm_id, client_id, bank_name, principal_paise, "
+       f"interest_rate_percent, start_date, maturity_date, maturity_amount_paise) "
+       f"VALUES ('{FIRM}', '{CLIENT}', 'SBI', 10000000, 7.10, "
+       f"DATE '2026-04-01', DATE '2027-04-01', 10710000);")
+
+
+def test_reviewer_cannot_insert_a_loan(db):
+    """The hole 346 closes. Both tables carried firm and assignment rules and no
+    role rule at all, and app/accounting/loans/page.tsx writes them straight over
+    PostgREST — so a Reviewer assigned to the client could record a liability."""
+    assert _denied(_as(db, "Reviewer", _LOAN))
+
+
+def test_reviewer_cannot_insert_a_fixed_deposit(db):
+    """The pair is decided together on purpose: they are two halves of one
+    screen, and a role able to edit one side of it is able to edit that page."""
+    assert _denied(_as(db, "Reviewer", _FD))
+
+
+def test_executive_can_insert_a_loan_and_a_fixed_deposit(db):
+    """The other half of the decision, and the reason the tier is Executive
+    rather than Manager: a client handed to an Executive is theirs to run, so
+    recording its borrowings must not need an escalation."""
+    for stmt in (_LOAN, _FD):
+        r = _as(db, "Executive", stmt)
+        assert r.returncode == 0, r.stderr
+
+
+def test_a_reviewer_update_to_a_loan_changes_nothing_and_an_executive_can(db):
+    """ROW COUNTS, not "no error": a policy-denied UPDATE reports success having
+    changed nothing, so an exit-code assertion would pass with no policy at
+    all. The outstanding balance is the field that matters — it is what the
+    cash-flow report and the risk screen read."""
+    seeded = _psql(db, _LOAN)
+    assert seeded.returncode == 0, seeded.stderr
+
+    stmt = f"UPDATE loans SET outstanding_paise = 1 WHERE firm_id = '{FIRM}'"
+    assert _rows_changed(db, "Reviewer", stmt) == 0
+    assert _rows_changed(db, "Executive", stmt) == 1
+
+
+def test_a_reviewer_cannot_delete_a_loan_but_an_executive_can(db):
+    """DELETE takes the same tier as INSERT here, and that is deliberate rather
+    than inherited: 260's default would put it a rank higher, which would leave
+    an Executive able to enter a loan and needing a Manager to undo their own
+    typo."""
+    seeded = _psql(db, _LOAN)
+    assert seeded.returncode == 0, seeded.stderr
+
+    stmt = f"DELETE FROM loans WHERE firm_id = '{FIRM}'"
+    assert _rows_changed(db, "Reviewer", stmt) == 0
+    assert _rows_changed(db, "Executive", stmt) == 1
+
+
+def test_a_reviewer_can_still_read_a_loan(db):
+    """FOR ALL would have gated SELECT too. A Reviewer reviews; taking their
+    read away would break the role rather than scope it."""
+    seeded = _psql(db, _LOAN)
+    assert seeded.returncode == 0, seeded.stderr
+
+    r = _psql(
+        db,
+        f"BEGIN; SET LOCAL ROLE authenticated; "
+        f"SET LOCAL request.jwt.claims = '{{\"sub\":\"{UID['Reviewer']}\"}}'; "
+        f"SELECT count(*) FROM loans WHERE firm_id = '{FIRM}'; ROLLBACK;",
+        tuples=True,
+    )
+    assert r.returncode == 0, r.stderr
+    assert [ln for ln in r.stdout.strip().splitlines() if ln.strip()][-1] == "1"

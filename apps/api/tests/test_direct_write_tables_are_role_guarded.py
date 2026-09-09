@@ -32,7 +32,8 @@ MIGRATION_SOURCES = [_MIG_DIR / "260_role_aware_write_policies.sql",
                      _MIG_DIR / "261_role_aware_write_policies_part2.sql",
                      _MIG_DIR / "296_employee_income_tax_declarations.sql",
                      _MIG_DIR / "297_let_an_employee_file_their_own_declaration.sql",
-                     _MIG_DIR / "345_the_tds_register_is_role_guarded.sql"]
+                     _MIG_DIR / "345_the_tds_register_is_role_guarded.sql",
+                     _MIG_DIR / "346_loans_and_deposits_carry_a_role_rule.sql"]
 
 # Covered by migration 260 — each mirrors a live rbac() guard on an endpoint
 # that writes the same table.
@@ -59,33 +60,27 @@ GUARDED = {
     # with rbac("tds", "compute") = Executive+. They were invisible to this
     # scan until _chains stopped capping the tail at 400 characters.
     "tds_deductions", "tds_returns", "tds_challans", "tds_certificates",
+    # migration 346 — the two the corrected scan found. No endpoint writes
+    # either, so the tier is an OWNER decision of 2026-09-09 rather than a
+    # mirrored one: Executive for insert, update and delete alike, because a
+    # client handed to an Executive is theirs to run and a rule that makes them
+    # fetch a Manager to fix their own typo gets worked around. The assignment
+    # rule (loans_assignment_scope) was already in force and is untouched; what
+    # 346 adds is that a REVIEWER assigned to the client can no longer write.
+    "loans", "fixed_deposits",
 }
 
 # Written from the browser and NOT yet role-guarded. An entry needs a product
 # decision — "who may edit this?" — before a rule can be written, because no API
 # endpoint exists whose rbac() guard could be copied.
 #
-# Empty: every table the browser writes now carries a role rule (260 + 261). The
-# category stays because the NEXT unguarded direct write should land here, with
-# the question it raises, rather than being waved through — which is exactly
-# what test_no_unaccounted_direct_write_table_appears enforces.
-AWAITING_DECISION: dict[str, str] = {
-    # Found by the corrected scan (see _chains). app/accounting/loans/page.tsx
-    # inserts both straight over PostgREST, and NO API endpoint writes either
-    # one — grep apps/api for table("loans") / table("fixed_deposits") returns
-    # nothing outside tests. So there is no rbac() guard to mirror, which is
-    # precisely what this category is for: migration 261's header argues that
-    # guessing a tier "would silently lock someone out of their job with no
-    # error message that explains why".
-    "loans": "Who may record or amend a client's borrowing? It is a balance "
-             "sheet liability that feeds the cash-flow report and the risk "
-             "screen, so it is at least accounting:write (Manager+) — but no "
-             "endpoint exists to copy that from, and Executive+ is arguable "
-             "since entering one is data entry, not a judgement.",
-    "fixed_deposits": "Same question as loans, same screen, same absence of an "
-                      "API twin. Decide the pair together — splitting them "
-                      "would let a role edit one side of the same page.",
-}
+# Empty again: loans and fixed_deposits sat here from the moment the corrected
+# scan found them until the owner answered the question on 2026-09-09, and
+# migration 346 moved them to GUARDED. The category stays because the NEXT
+# unguarded direct write should land here, with the question it raises, rather
+# than being waved through — which is exactly what
+# test_no_unaccounted_direct_write_table_appears enforces.
+AWAITING_DECISION: dict[str, str] = {}
 
 # Direct writes that CANNOT succeed, so no role policy would add anything. Kept
 # as a third category rather than lumped in above, because "already impossible"

@@ -215,6 +215,27 @@ computes §192 salary TDS in the browser. Its own docstring already declares it 
 standing CLAUDE.md violation tracked as **roadmap R2.10**, so it is allowlisted
 with that reference rather than absorbed here.
 
+**Two more unguarded direct writes the corrected scan found, now closed.**
+Widening the guard from a 400-character window to the whole statement did not
+only surface the four TDS tables — it also found `loans` and `fixed_deposits`,
+inserted straight from `app/accounting/loans/page.tsx`. Both carried firm and
+assignment rules and **no role rule**, so a Reviewer assigned to a client could
+record or amend that client's borrowings: principal, outstanding balance,
+interest rate, EMI — figures the cash-flow report and the risk screen read.
+Neither table has an API endpoint, so there was no `rbac()` tier to mirror and
+they sat in `AWAITING_DECISION` until the owner answered on 2026-09-09:
+**Executive+ for insert, update and delete alike**, on the reasoning that a
+client handed to an Executive is theirs to run. Migration 346 writes that rule.
+The delete tier is deliberately not raised a rank — an Executive who cannot undo
+their own typo without a Manager is a rule that gets worked around.
+
+*Named follow-up, not done here:* because these are browser writes, a delete
+still leaves **no `audit_log` row** — `log_event` runs only on the API path. The
+role rule stops a Reviewer; it cannot record what a legitimate Executive
+removed. Closing that means giving the pair a real endpoint, the way the TDS
+register got one in this phase. It is a Phase 7 shape (a screen for an engine),
+not a Phase 3 one.
+
 ### Phase 4 — TDS statutory correctness · 9 findings (8 distinct) · ≤60 days
 `TDS-07 TDS-22 TDS-26 PUR-03 TDS-06 PUR-10 TDS-09 PUR-07≡TDS-13`
 
