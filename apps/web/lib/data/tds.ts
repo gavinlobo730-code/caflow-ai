@@ -309,6 +309,45 @@ export async function updateTdsDeduction(
 
 /** Remove a hand-entered deduction. Manager+ server-side (tds:write), the same
  *  tier migration 345 gives DELETE on the table. */
+export interface CreateChallanInput {
+  client_id: string;
+  bsr_code: string;
+  challan_date: string;      // YYYY-MM-DD
+  amount_paise: number;
+  challan_no: string;
+  section: string;
+  financial_year: string;
+  quarter: string;           // 'Q1'..'Q4'
+}
+
+/** Record an ITNS 281 deposit. IT Act s.200(1).
+ *
+ *  Through the API, not PostgREST: the server validates the payment date
+ *  against a locked period, writes the audit-log entry and logs the client
+ *  timeline event. The /tds Challans tab had no writer at all — the modal
+ *  pushed a row into React state and the endpoint had no caller (TDS-15). */
+export async function createTdsChallan(input: CreateChallanInput): Promise<RecordedChallan> {
+  const resp = await authedFetch<RecordedChallan>("/api/tds-workspace/challans", {
+    method: "POST", body: JSON.stringify(input),
+  });
+  if (!resp.success) throw new Error(resp.error ?? "Could not record the challan");
+  return resp.data;
+}
+
+/** tds_challans as migration 037 defines it. */
+export interface RecordedChallan {
+  id: string;
+  bsr_code: string;
+  challan_no: string;
+  payment_date: string;
+  total_paise: number;
+  tds_paise: number;
+  financial_year: string;
+  quarter: string;
+  section: string | null;
+  status: "deposited" | "matched" | "unmatched";
+}
+
 export async function deleteTdsDeduction(id: string): Promise<void> {
   const resp = await authedFetch<{ deleted: string }>(
     `/api/tds-workspace/deductions/${encodeURIComponent(id)}`, { method: "DELETE" });

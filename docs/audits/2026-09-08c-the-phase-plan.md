@@ -182,8 +182,8 @@ This is exactly the filing-demo lesson in CLAUDE.md: two implementations of one
 thing drift, and one of them is silently exempt from the guard.
 *Guard:* the zero-business-logic-in-the-frontend rule, made testable for TDS.
 
-**Progress: TDS-11 and TDS-05 done, PUR-06 done. Five findings left**
-(TDS-03, TDS-15, TDS-04, TDS-14, PUR-14).
+**Progress: TDS-11, TDS-05, PUR-06, TDS-03, TDS-15, TDS-04 done. Two findings
+left** (TDS-14, PUR-14).
 
 **The browser's table was wrong in EIGHT ways, not the two TDS-05 named.**
 Checked row by row against `section_rates.py` and each is now a test:
@@ -235,6 +235,50 @@ role rule stops a Reviewer; it cannot record what a legitimate Executive
 removed. Closing that means giving the pair a real endpoint, the way the TDS
 register got one in this phase. It is a Phase 7 shape (a screen for an engine),
 not a Phase 3 one.
+
+**TDS-03 was four breaks, and the fourth was invisible to 10,000 tests.**
+`POST /returns` never supplied `tds_returns.quarter_end` — `DATE NOT NULL`, no
+default, migration 037 — so the insert raised on any real database while every
+mock-mode test passed, because a dict store has no NOT NULL. The other three:
+`compute26Q`/`compute24Q` sent no `Authorization` header at all; the register
+never wrote `financial_year`; and it wrote `quarter` as the compound
+`"Q3 2025-26"` while every reader filtered `.eq("quarter","Q3")` — the format
+migration 014 gave this one column, where `tds_returns`, `tds_challans` and
+`tds_certificates` have always held the year separately and CHECKed
+`quarter IN ('Q1'..'Q4')`. Migration 347 puts the register on the schema's own
+vocabulary. A fifth, found on the way: `getTDSChallans` filtered the quarter and
+not the year, so a Q3 return reconciled against every Q3 the client had ever
+deposited.
+
+**The missing Authorization header was 11 call sites, not 2.** Sweeping the
+tree for the pattern rather than the finding: 11 of 36 `fetch` calls to this
+backend carried no Bearer token, and every one reaches an `rbac()`-guarded
+route that answers 401 without one. Seven of them are the WHOLE of
+`app/clients/[id]/fixed-assets/page.tsx`, each sending `credentials: "include"`
+— a cookie this API does not read, which is what made it look like an auth
+decision had been taken. Also `documents.parse` (so document parsing had never
+worked once) and the HRA calculator. All 11 fixed;
+`apps/web/scripts/every-api-call-is-authenticated.test.ts` states the rule, with
+`app/sign/page.tsx`'s tokenised public endpoints as the named exception.
+
+**TDS-15 and TDS-04 are the same defect in two directions**, and both were live:
+a screen writing a value the CHECK forbids (`"Form 16A"` where migration 037
+accepts `'16A'`, so every certificate draft was rejected and the refusal was
+swallowed into an HTTP 200 nobody read), and a screen comparing against values
+the CHECK cannot store (`"Pending"|"Filed"|"Overdue"` on `tds_returns`, so three
+counters read 0/0/0 for ever). The /tds Challans tab additionally had no writer
+and no reader at all — the modal pushed a row into React state and
+`POST /api/tds-workspace/challans` had no caller.
+
+⚠️ **The status-vocabulary check found ELEVEN more files, and they are not
+Phase 3's.** `tests/test_frontend_status_values_match_the_check_pg.py` carries
+them as a shrinking ratchet with the values each uses. They belong to their own
+modules' phases — GST (5), MCA (7), sales, payroll, lifecycle — and fixing them
+inside the TDS phase is the scope creep this plan exists to prevent. **One is
+confirmed real rather than a heuristic's guess and should be picked up early:**
+`app/mca/page.tsx` UPDATEs `mca_filings` with `status: "Filed"` where the CHECK
+accepts `'filed'`, so marking an ROC filing as filed is rejected by the
+database and does nothing.
 
 ### Phase 4 — TDS statutory correctness · 9 findings (8 distinct) · ≤60 days
 `TDS-07 TDS-22 TDS-26 PUR-03 TDS-06 PUR-10 TDS-09 PUR-07≡TDS-13`

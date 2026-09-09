@@ -678,7 +678,14 @@ function CertificatesTab({ clientId }: { clientId: string }) {
   // Distinguishes "fetch failed" from "no certificates generated".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ deductee_pan: "", deductee_name: "", financial_year: "", certificate_type: "Form 16A", section: "", tds_amount_rupees: "" });
+  // "16A", not "Form 16A". migration 037's CHECK on tds_certificates accepts
+  // '16','16A','16B','16C' and nothing else, so every draft this screen ever
+  // generated was rejected by the database — and the router's `except
+  // Exception` turned that into an HTTP 200 saying success: false, which
+  // saveNew did not read (TDS-04). The label the CA sees comes back from the
+  // server, in the FY's own vocabulary.
+  const [form, setForm] = useState({ deductee_pan: "", deductee_name: "", financial_year: "", certificate_type: "16A", section: "", tds_amount_rupees: "" });
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -699,10 +706,21 @@ function CertificatesTab({ clientId }: { clientId: string }) {
       alert("TDS amount must be a non-negative amount in rupees, e.g. 12450 or 12450.50.");
       return;
     }
-    await apiFetch("/api/tds-workspace/certificates", {
-      method: "POST",
-      body: JSON.stringify({ ...form, client_id: clientId, tds_amount_paise: tdsAmount }),
-    });
+    // CHECK res.success. This router answers a refusal as HTTP 200 with
+    // {success: false, error}, so an unchecked call closes the panel and
+    // reloads an unchanged list — which is exactly how a constraint violation
+    // looked like a successful save for as long as this screen has existed.
+    setSaveError(null);
+    try {
+      const res = await apiFetch("/api/tds-workspace/certificates", {
+        method: "POST",
+        body: JSON.stringify({ ...form, client_id: clientId, tds_amount_paise: tdsAmount }),
+      });
+      if (!res.success) { setSaveError(res.error ?? "Could not generate the certificate draft."); return; }
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Could not generate the certificate draft.");
+      return;
+    }
     setShowNew(false);
     load();
   }
@@ -739,10 +757,15 @@ function CertificatesTab({ clientId }: { clientId: string }) {
             <select value={form.certificate_type}
               onChange={(e) => setForm((f) => ({ ...f, certificate_type: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
-              <option>Form 16</option>
-              <option>Form 16A</option>
+              {/* The VALUE is the stored key; the label is what a CA calls it.
+                  From FY 2026-27 the server returns Form 130 / Form 131 for
+                  these same keys (CBDT Notification 22/2026), which is why the
+                  table below renders certificate_form and not this text. */}
+              <option value="16">Form 16 — salary</option>
+              <option value="16A">Form 16A — non-salary</option>
             </select>
           </div>
+          {saveError && <p className="text-sm text-red-600">{saveError}</p>}
           <div className="flex gap-2">
             <button onClick={saveNew} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Generate Draft</button>
             <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
@@ -765,7 +788,17 @@ function CertificatesTab({ clientId }: { clientId: string }) {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id as string} className="border-b hover:bg-[#F8FAFC]">
-                <td className="px-3 py-2">{r.certificate_type as string}</td>
+                {/* The form's name in ITS OWN period. The register holds
+                    several years at once and the stored '16A' is Form 16A for
+                    2025-26 and Form 131 for 2026-27; the server derives it per
+                    row from domain/tds/vocabulary.py. The note says what ELSE
+                    changed — Form 131 is quarterly where 16A was annual. */}
+                <td className="px-3 py-2">
+                  Form {(r.certificate_form as string) ?? (r.certificate_type as string)}
+                  {r.certificate_note ? (
+                    <span className="block text-[11px] text-amber-700">{r.certificate_note as string}</span>
+                  ) : null}
+                </td>
                 <td className="px-3 py-2">{r.deductee_name as string}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.deductee_pan as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string}</td>

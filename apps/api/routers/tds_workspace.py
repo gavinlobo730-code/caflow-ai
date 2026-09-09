@@ -15,7 +15,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from models.common import api_response
 from core.permissions import rbac
@@ -93,6 +93,35 @@ def _tds_return_due_date(quarter: str, fy: str) -> str:
         return quarter_dates(fy, quarter)[2]
     except ValueError:
         return quarter_dates(fy, "Q1")[2]  # preserve old .get(quarter, Q1) fallback
+
+
+def _certificate_display(certificate_type: str, fy: str) -> dict:
+    """What this certificate is CALLED in its own period, and what else changed.
+
+    The stored key stays the 1961-Act one — '16' / '16A' — because that is what
+    migration 037's CHECK holds and because CLAUDE.md's rule is to translate at
+    the boundary and never rekey a store. This is that boundary.
+
+    `certificate_note` is not decoration. Form 131 is issued QUARTERLY where
+    Form 16A was annual, and Form 130 has three parts where Form 16 had two, so
+    a screen that swapped the number and kept the cadence would show one
+    certificate where four are due. domain/tds/vocabulary.py holds both.
+
+    16B and 16C (s. 194-IA / s. 194-IB property deductions) have no kind in the
+    vocabulary module, so they are returned under their own name rather than
+    guessed at — a wrong form number is worse than an unchanged one.
+    """
+    from domain.tds import vocabulary
+    kind = _CERTIFICATE_KIND.get(certificate_type)
+    if kind is None:
+        return {"certificate_form": certificate_type, "certificate_note": None}
+    try:
+        return {"certificate_form": vocabulary.certificate_form(kind, fy_label=fy),
+                "certificate_note": vocabulary.certificate_note(kind, fy_label=fy)}
+    except vocabulary.VocabularyError:
+        # An FY the vocabulary cannot place. Say the stored name rather than
+        # inventing one; the row is still correct, only its label is unknown.
+        return {"certificate_form": certificate_type, "certificate_note": None}
 
 
 def _tds_quarter_end(quarter: str, fy: str) -> str:
@@ -199,14 +228,53 @@ class UpdateReturnStatusRequest(BaseModel):
     filing_date: Optional[str] = None
 
 
+#: What the CHECK on tds_certificates.certificate_type accepts (migration 037),
+#: keyed by every label a caller has ever sent. The screen sent "Form 16A" and
+#: the constraint wanted "16A", so EVERY certificate insert was rejected by the
+#: database — and the handler's `except Exception` turned that into an HTTP 200
+#: carrying {success: false} that the screen never inspected (TDS-04).
+#:
+#: Normalising here rather than only fixing the screen, because the value is
+#: what a HUMAN calls the form and there are several right spellings of it. The
+#: 2025 Act numbers are accepted and map to the SAME stored key: CLAUDE.md's
+#: rule is translate at the boundary and never rekey a store, so a certificate
+#: for FY 2026-27 is stored '16A' and DISPLAYED as Form 131.
+_CERTIFICATE_TYPES = {
+    "16": "16", "form 16": "16", "130": "16", "form 130": "16",
+    "16a": "16A", "form 16a": "16A", "131": "16A", "form 131": "16A",
+    "16b": "16B", "form 16b": "16B",
+    "16c": "16C", "form 16c": "16C",
+}
+
+#: The certificate KIND each stored key is, for domain/tds/vocabulary.py — the
+#: single module that knows the 2025 Act renumbering. 16B and 16C (s. 194-IA
+#: and s. 194-IB property deductions) have no kind there; they are stored and
+#: displayed under their own name rather than guessed at.
+_CERTIFICATE_KIND = {"16": "salary_certificate", "16A": "non_salary_certificate"}
+
+
 class CreateCertificateRequest(BaseModel):
     client_id: str
     deductee_pan: str
     deductee_name: str
     financial_year: FYLabel
-    certificate_type: str = Field(..., description="Form 16 or Form 16A")
+    certificate_type: str = Field(
+        ..., description="16, 16A, 16B or 16C — 'Form 16A' and the 2025 Act's "
+                         "130/131 are accepted and normalised")
     tds_amount_paise: int = Field(default=0, description="Integer paise only")
     section: str
+
+    @field_validator("certificate_type")
+    @classmethod
+    def _known_certificate(cls, v: str) -> str:
+        key = _CERTIFICATE_TYPES.get((v or "").strip().lower())
+        if key is None:
+            raise ValueError(
+                f"{v!r} is not a TDS certificate. Expected 16 (salary), "
+                "16A (non-salary), 16B or 16C — the values migration 037's "
+                "CHECK accepts. 'Form 16A' and the 2025 Act's 130/131 are "
+                "accepted too and stored under the 1961-Act key.")
+        return key
 
 
 class Form26ASUploadRequest(BaseModel):
@@ -924,6 +992,13 @@ def list_certificates(
         else:
             from core.supabase_client import get_supabase
             rows = get_supabase().table("tds_certificates").select("*").eq("firm_id", firm_id).eq("client_id", client_id).range(offset, offset + limit - 1).execute().data or []
+        # Every row labelled in ITS OWN period's vocabulary, not the current
+        # one: a register holds certificates from several years at once, and
+        # the same stored '16A' is Form 16A for FY 2025-26 and Form 131 for
+        # 2026-27. Derived per row for that reason.
+        rows = [{**r, **_certificate_display(str(r.get("certificate_type") or ""),
+                                             str(r.get("financial_year") or ""))}
+                for r in rows]
         return api_response(True, rows)
     except Exception as e:
         return api_response(False, None, str(e))
@@ -971,6 +1046,14 @@ def create_certificate(
             "status": "pending",
             "created_at": datetime.utcnow().isoformat(),
         }
+        # THE FORM'S NAME IN ITS OWN PERIOD, derived rather than stored — the
+        # same posture the register takes with return_type. From 01-04-2026
+        # Form 16 is 130 and Form 16A is 131 (CBDT Notification 22/2026), and
+        # 131 is issued QUARTERLY where 16A was annual, which is a change of
+        # SHAPE and not just of number. domain/tds/vocabulary.py is the one
+        # module that knows this; certificate_note is what stops a caller
+        # renumbering and issuing one certificate where four are due.
+        display = _certificate_display(record["certificate_type"], body.financial_year)
 
         if _USE_MOCK:
             _MOCK_CERTIFICATES[record["id"]] = record
@@ -980,7 +1063,7 @@ def create_certificate(
 
         log_event(firm_id, "tds_certificate", record["id"], "create",
                   actor_id=current_user.get("id"), new_data=record)
-        return api_response(True, record)
+        return api_response(True, {**record, **display})
     except HTTPException:
         raise
     except Exception as e:
