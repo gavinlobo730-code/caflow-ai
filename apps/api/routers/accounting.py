@@ -126,6 +126,11 @@ def create_account(
             "account_name": data.name,
             "account_type": data.account_type.value if hasattr(data.account_type, "value") else str(data.account_type),
             "parent_id": data.parent_id,
+            # ACC-09: written for the first time here. Migration 057 added them
+            # and only the CSV import ever set them, so every account created
+            # through the API landed under "Ungrouped → General".
+            "parent_group": (data.parent_group or "").strip() or None,
+            "sub_group": (data.sub_group or "").strip() or None,
             "is_active": data.is_active,
         }).execute()
     except Exception as e:                                      # noqa: BLE001
@@ -193,12 +198,22 @@ def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = 
         update["account_code"] = fields["code"]
     if "is_active" in fields:
         update["is_active"] = fields["is_active"]
+    if "parent_id" in fields:
+        if fields["parent_id"] == account_id:
+            raise HTTPException(status_code=422,
+                                detail="An account cannot be its own parent.")
+        update["parent_id"] = fields["parent_id"]
+    if "parent_group" in fields:
+        update["parent_group"] = (fields["parent_group"] or "").strip() or None
+    if "sub_group" in fields:
+        update["sub_group"] = (fields["sub_group"] or "").strip() or None
     if not update:
         # `description` has no column on chart_of_accounts — accepting it and
         # silently dropping it is the same lie this endpoint is being fixed for.
         raise HTTPException(
             status_code=422,
-            detail="Only name, code and is_active can be changed on an account.")
+            detail=("Only name, code, is_active, parent_id, parent_group and "
+                    "sub_group can be changed on an account."))
     try:
         res = (db.table("chart_of_accounts").update(update)
                .eq("id", account_id).eq("firm_id", current_user["firm_id"]).execute())

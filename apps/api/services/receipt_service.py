@@ -22,6 +22,7 @@ from domain.accounting.payment_account import resolve_payment_account
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+from services.numbering import sequence_after
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.receipt_service")
@@ -69,18 +70,9 @@ def _current_fy_long() -> str:
 
 
 def _next_receipt_seq(db, firm_id: str, client_id: str, fy: str) -> int:
-    try:
-        resp = (
-            db.table("receipts")
-            .select("id", count="exact")
-            .eq("firm_id", firm_id)
-            .eq("client_id", client_id)
-            .like("receipt_no", f"RCPT-{fy}-%")
-            .execute()
-        )
-        return (resp.count or 0) + 1
-    except Exception:
-        return 1
+    from services.numbering import next_sequence
+    return next_sequence(db, "receipts", f"RCPT-{fy}-",
+                         firm_id=firm_id, client_id=client_id)
 
 
 def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
@@ -586,7 +578,9 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     fy = _current_fy()
 
     if db is None:
-        seq = len([r for r in MOCK_RECEIPTS if r["client_id"] == client_id]) + 1
+        seq = sequence_after(
+            (r.get("receipt_no") for r in MOCK_RECEIPTS
+             if r["client_id"] == client_id), f"RCPT-{fy}-")
         receipt_no = f"RCPT-{fy}-{seq:04d}"
         receipt_id = str(uuid.uuid4())
         receipt = {

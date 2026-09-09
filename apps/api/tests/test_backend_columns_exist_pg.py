@@ -212,7 +212,35 @@ UNFIXED: dict[str, str] = {}
 # payload can carry into real PostgreSQL, which proves they exist, that their
 # types accept the values, and that the CHECKs and the one-Regular-per-month
 # unique index refuse what they should. A scanner proves only the first.
-MAX_UNREADABLE = 443
+# 443 -> 446: Phase 6 adds three, and each is a deliberate shape rather than a
+# payload someone could have written literally.
+#
+#   services/numbering.py::next_sequence  —  db.table(table).select(field)
+# The table and the number column are ARGUMENTS: seven document series share
+# one reader, which is the fix for SALES-04 (seven copies of count("exact") + 1,
+# each able to wedge its client's numbering permanently). Writing it literally
+# would mean seven copies again, which is the defect.
+#
+#   routers/fixed_assets.py::correct_asset and ::reverse_depreciation  —
+#   .update(update), where `update` is assembled in Python
+# A correction sends only the fields the CA actually changed (FA-10's three
+# tiers), and a depreciation reversal clears depreciation_fy only when the year
+# empties. A literal dict cannot express "these keys and not the others", and
+# sending the whole row back would reverse and re-post an acquisition journal
+# for a typo in a name field.
+#
+# Checked elsewhere, and more strictly than a scanner can. The numbering
+# helper's tables come from NUMBER_SERIES, a literal dict in the same module,
+# and tests/test_document_number_scope_matches_the_constraint_pg.py reads every
+# one of them out of real Postgres's unique indexes — which proves the table
+# and the number column exist AND that the sequence is computed over the scope
+# the constraint covers. The fixed_assets payloads pass through
+# tests/production_types.py on every FakeDB write in the suite (it fails a
+# column production does not have, and a value its type would reject), and
+# tests/test_an_asset_can_be_corrected.py writes all of them end to end;
+# migration 351 adds the four new ones and test_schema_matches_production_pg.py
+# compares the result against production.
+MAX_UNREADABLE = 446
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

@@ -281,6 +281,17 @@ class _Q:
         self.f.append((k, v))
         return self
 
+    # migration 351 gave fixed_assets a deleted_at, so every read now excludes a
+    # soft-deleted asset, and the row-addressed read takes limit(1) rather than
+    # single(). Modelled rather than stubbed: a fake that ignored the filter
+    # would pass while a deleted asset was still reachable.
+    def is_(self, col, _null="null"):
+        self.f.append((col, None))
+        return self
+
+    def limit(self, _n):
+        return self
+
     def update(self, *_a, **_k):
         raise AssertionError("asset mutated despite a denied client scope")
 

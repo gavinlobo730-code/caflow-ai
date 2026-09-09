@@ -66,6 +66,14 @@ class _Q:
         # only used by _next_payment_seq; no real matching needed for these tests
         return self
 
+    # _next_payment_seq now reads the highest number back rather than counting
+    # rows (SALES-04), so it orders and bounds the read.
+    def order(self, *a, **k):
+        return self
+
+    def limit(self, *a, **k):
+        return self
+
     def limit(self, _n):
         return self
 

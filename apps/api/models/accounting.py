@@ -24,6 +24,19 @@ class AccountIn(BaseModel):
     description: Optional[str] = None
     is_active: bool = True
 
+    # ACC-09. chart_of_accounts has carried these since migration 057 and
+    # nothing but the CSV import ever wrote them, so Account Groups rendered
+    # every account of every firm under one "Ungrouped → General" heading —
+    # the screen was not broken, it was being told nothing.
+    #
+    # They are TEXT and not a foreign key on purpose: they are the Indian
+    # chart's own vocabulary ("Current Assets" → "Sundry Debtors"), which every
+    # practice words slightly differently and which the Tally import brings in
+    # verbatim. parent_id is the structural link; these two are the grouping a
+    # CA reads the trial balance by.
+    parent_group: Optional[str] = None
+    sub_group: Optional[str] = None
+
     @field_validator("name")
     @classmethod
     def name_not_empty(cls, v: str) -> str:
@@ -33,10 +46,16 @@ class AccountIn(BaseModel):
 
 
 class AccountUpdateIn(BaseModel):
+    """A correction to a ledger. account_type is deliberately absent — it
+    decides which side of the trial balance the account falls on, so changing
+    it after a posting silently restates every report."""
     name: Optional[str] = None
     code: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    parent_id: Optional[str] = None
+    parent_group: Optional[str] = None
+    sub_group: Optional[str] = None
 
 
 class JournalLineIn(BaseModel):
@@ -232,6 +251,78 @@ class FixedAssetIn(BaseModel):
 
 class DepreciationIn(BaseModel):
     period: Optional[str] = None  # YYYY-MM; defaults to current month
+
+
+class FixedAssetUpdateIn(BaseModel):
+    """A correction to an asset already in the register (FA-10).
+
+    Every field is Optional and unset means "leave alone" — `model_dump(
+    exclude_unset=True)` is what the router splits into tiers, NOT
+    exclude_none, because clearing `location` to null is a real edit and
+    exclude_none would silently drop it (PAY-12's mechanism).
+
+    The three tiers are NOT a presentation choice, they are three different
+    mechanisms:
+
+      A — asset_name, location, notes: no GL, no statutory consequence.
+      B — purchase_cost_paise, asset_category, purchase_date and the
+          acquisition facts: the acquisition JOURNAL is wrong too, so the
+          correction is a reversal and a re-post through the one kernel.
+      C — useful_life_years, salvage_value_paise, depreciation_method,
+          wdv_rate_percent: a revision of an accounting ESTIMATE (Schedule II
+          Part C Note 7, AS 10), which applies to the remaining carrying
+          amount over the remaining life. Prospective — never a rewrite of a
+          month already posted.
+
+    purchase_cost_paise here is the CAPITALISED figure the register holds, not
+    the typed cost: capitalised_cost_paise() has already folded §17(5)-blocked
+    tax into it, the raw cost is stored nowhere, and re-capitalising a stored
+    value would add the blocked tax a second time. Sending the tax fields
+    alongside a cost re-runs that calculation once, from the figures given.
+    """
+    asset_name: Optional[str] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
+
+    purchase_cost_paise: Optional[int] = None
+    asset_category: Optional[str] = None
+    purchase_date: Optional[str] = None
+    acquisition_mode: Optional[str] = None
+    vendor_id: Optional[str] = None
+    purchase_bill_id: Optional[str] = None
+    bank_account_id: Optional[str] = None
+    payment_mode: Optional[str] = None
+    igst_paise: Optional[int] = None
+    cgst_paise: Optional[int] = None
+    sgst_paise: Optional[int] = None
+    itc_eligible: Optional[bool] = None
+    itc_blocked_reason: Optional[str] = None
+
+    useful_life_years: Optional[int] = None
+    salvage_value_paise: Optional[int] = None
+    depreciation_method: Optional[DepreciationMethod] = None
+    wdv_rate_percent: Optional[float] = None
+
+    #: Why the correction is being made. Recorded on the audit entry and on the
+    #: re-posted journal's narration, because a reversal on the ledger with no
+    #: reason beside it is what an auditor asks about first.
+    reason: Optional[str] = None
+
+    @field_validator("purchase_cost_paise", "salvage_value_paise",
+                     "igst_paise", "cgst_paise", "sgst_paise")
+    @classmethod
+    def money_must_be_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Amounts must be non-negative paise integers.")
+        return v
+
+    @field_validator("acquisition_mode")
+    @classmethod
+    def known_mode(cls, v):
+        if v is not None and v not in ("paid", "credit", "from_bill"):
+            raise ValueError(
+                "acquisition_mode must be 'paid', 'credit' or 'from_bill'.")
+        return v
 
 
 class DisposalIn(BaseModel):

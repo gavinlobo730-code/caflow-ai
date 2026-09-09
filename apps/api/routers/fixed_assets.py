@@ -23,12 +23,16 @@ import math
 import re
 
 from models.common import api_response
-from models.accounting import FixedAssetIn, DepreciationIn, DisposalIn
+from models.accounting import (FixedAssetIn, FixedAssetUpdateIn, DepreciationIn,
+                               DisposalIn)
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from services.timeline_service import timeline_service
 from services.phase2_journal_service import Phase2JournalService
 from services.period_validation_service import period_validation_service, get_fy_for_date
+from services import period_lock_service
+from services.audit_service import log_event
+from services.numbering import next_sequence
 
 router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
 
@@ -238,6 +242,45 @@ def _db():
     return get_supabase()
 
 
+#: The three tiers a correction to an asset falls into. They are three
+#: different MECHANISMS, and conflating any two is how a register and a ledger
+#: come apart:
+#:
+#:   A  no GL and no statutory consequence — write it and log it.
+#:   B  the acquisition JOURNAL is wrong too, so the correction is a reversal
+#:      and a re-post through the one kernel, never an in-place rewrite.
+#:   C  a revision of an accounting ESTIMATE (Companies Act 2013 Schedule II
+#:      Part C Note 7, AS 10 / Ind AS 16 §51): it applies to the remaining
+#:      carrying amount over the remaining life, PROSPECTIVELY. Rewriting
+#:      months already posted at the old basis would restate periods a return
+#:      may already cover.
+_TIER_A_FIELDS = frozenset({"asset_name", "location", "notes"})
+_TIER_B_FIELDS = frozenset({
+    "purchase_cost_paise", "asset_category", "purchase_date",
+    "acquisition_mode", "vendor_id", "purchase_bill_id", "bank_account_id",
+    "payment_mode", "igst_paise", "cgst_paise", "sgst_paise",
+    "itc_eligible", "itc_blocked_reason",
+})
+_TIER_C_FIELDS = frozenset({
+    "useful_life_years", "salvage_value_paise", "depreciation_method",
+    "wdv_rate_percent",
+})
+
+
+def _live_asset(db, asset_id: str, firm_id: str) -> Optional[dict]:
+    """The asset row, firm-scoped, excluding a soft-deleted one (migration 351).
+
+    `.single()` raises where PostgREST returns no row, so the filter has to be
+    part of the query rather than a check afterwards — a deleted asset must
+    read as absent, not as a row with a deleted_at on it.
+    """
+    res = (db.table("fixed_assets").select("*")
+           .eq("id", asset_id).eq("firm_id", firm_id)
+           .is_("deleted_at", "null").limit(1).execute())
+    rows = res.data if isinstance(res.data, list) else ([res.data] if res.data else [])
+    return rows[0] if rows else None
+
+
 def _compute_annual_depreciation(asset: dict) -> int:
     """
     Compute ONE YEAR's depreciation in paise from the asset's current state,
@@ -443,7 +486,8 @@ def list_assets(
     db = _db()
     if not db:
         return api_response(True, [])
-    q = db.table("fixed_assets").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+    q = (db.table("fixed_assets").select("*").eq("firm_id", current_user["firm_id"])
+         .eq("client_id", client_id).is_("deleted_at", "null"))
     if not include_disposed:
         q = q.eq("is_disposed", False)
     res = q.order("purchase_date", desc=True).execute()
@@ -504,6 +548,7 @@ def create_asset(
         clash = (db.table("fixed_assets").select("id, asset_code")
                  .eq("firm_id", current_user["firm_id"])
                  .eq("purchase_bill_id", data.purchase_bill_id)
+                 .is_("deleted_at", "null")
                  .limit(1).execute().data) or []
         if clash:
             raise HTTPException(
@@ -523,10 +568,17 @@ def create_asset(
         data.purchase_cost_paise, data.igst_paise, data.cgst_paise,
         data.sgst_paise, data.itc_eligible)
 
-    # Generate asset code
-    count_res = db.table("fixed_assets").select("id", count="exact").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).execute()
-    count = (count_res.count or 0) + 1
-    asset_code = f"FA-{count:04d}"
+    # The asset code, one past the HIGHEST in the client's series. It was a
+    # COUNT of the client's assets — the SALES-04 shape — and here the
+    # consequence is worse than a wedge: FA-ACQ-{code} is the acquisition
+    # journal's reference and the posting kernel dedupes on (client_id,
+    # reference_no, entry_date), so a reused code makes a new asset's
+    # acquisition land on the OLD asset's entry and its cost never reach the
+    # balance sheet. Soft-deleted rows keep their codes and are deliberately
+    # still counted here (no deleted_at filter).
+    asset_code = "FA-{:04d}".format(next_sequence(
+        db, "fixed_assets", "FA-",
+        firm_id=current_user["firm_id"], client_id=client_id))
 
     row = db.table("fixed_assets").insert({
         "firm_id":                     current_user["firm_id"],
@@ -592,7 +644,7 @@ def post_depreciation(
     if not db:
         return api_response(True, {"asset_id": asset_id, "period": period, "depreciation_paise": 0})
 
-    asset = db.table("fixed_assets").select("*").eq("id", asset_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    asset = _live_asset(db, asset_id, current_user["firm_id"])
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     # Row-addressed by asset_id with no client_id in the request, so the
@@ -733,7 +785,7 @@ def dispose_asset(
     if not db:
         return api_response(True, {"asset_id": asset_id, "disposed": True})
 
-    asset = db.table("fixed_assets").select("*").eq("id", asset_id).eq("firm_id", current_user["firm_id"]).single().execute().data
+    asset = _live_asset(db, asset_id, current_user["firm_id"])
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     # Same row-addressed gap as post_depreciation, and likewise a WRITE: this
@@ -844,6 +896,428 @@ def dispose_asset(
     })
 
 
+# ─────────────────────── FA-10: correcting the register ──────────────────────
+#
+# Until this, an asset was final the moment it was saved. A CA who typed
+# ₹15,00,000 for ₹1,50,000 had three options and all three were wrong: dispose
+# at nil proceeds (which books a fabricated loss, and first demands every
+# unposted month be depreciated); reverse the journal through the generic
+# accounting endpoint (which leaves the register claiming a cost the ledger no
+# longer carries, and register-integrity does not notice because
+# journal_entry_id is still populated); or a database console.
+#
+# The shape here is the one migrations 266/275/276 established for journals:
+# append-only on the ledger, a correction while the period is OPEN, and the
+# audit log — not the row — is what is immutable.
+
+
+def _reverse_tolerating_already_reversed(db, firm_id: str, entry_id: str,
+                                         reversal_date: str, narration: str,
+                                         actor_id: Optional[str]) -> Optional[str]:
+    """Reverse, treating "already reversed" as work that is done.
+
+    A correction that failed partway is completed by RETRYING it, and on the
+    retry the reversal is already on the ledger. Surfacing reverse_entry's 409
+    there would report a failure for the one step that had succeeded.
+    """
+    try:
+        return _journal_svc.reverse_entry(
+            db, firm_id, entry_id, reversal_date,
+            narration=narration, created_by=actor_id)
+    except HTTPException as exc:
+        if exc.status_code == 409 and "already been reversed" in str(exc.detail):
+            return None
+        raise
+
+
+def _next_unposted_month(asset: dict) -> Optional[str]:
+    """The month a further posting would charge, or None if none is posted yet."""
+    posted = _month_label(asset.get("depreciation_posted_through"))
+    if not posted:
+        return None
+    y, m = int(posted[:4]), int(posted[5:7])
+    return f"{y + 1}-01" if m == 12 else f"{y}-{m + 1:02d}"
+
+
+def _previous_month(period: str) -> str:
+    y, m = int(period[:4]), int(period[5:7])
+    return f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
+
+
+@router.patch("/{asset_id}")
+def correct_asset(
+    asset_id: str,
+    data: FixedAssetUpdateIn,
+    current_user: dict = Depends(rbac("accounting", "write"))
+):
+    """Correct an asset already in the register.
+
+    exclude_unset, NOT exclude_none: clearing `location` to null is a real
+    edit, and exclude_none would drop it silently — PAY-12's mechanism.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"asset_id": asset_id, "corrected": []})
+
+    asset = _live_asset(db, asset_id, current_user["firm_id"])
+    # Row-addressed by asset_id with no client_id in the request, so the
+    # mount-level guard never fires — the same IDOR family as post_depreciation
+    # and dispose_asset, and likewise a WRITE. One message for both branches so
+    # the response is not an oracle for which asset ids exist.
+    if not asset or not can_access_client(current_user, asset.get("client_id")):
+        raise HTTPException(status_code=404, detail="Asset not found")
+    firm_id, client_id = current_user["firm_id"], asset["client_id"]
+
+    changes = data.model_dump(exclude_unset=True)
+    reason = (changes.pop("reason", None) or "").strip()
+    if not changes:
+        raise HTTPException(status_code=422, detail="Nothing to correct — no field was sent.")
+
+    tier_a = set(changes) & _TIER_A_FIELDS
+    tier_b = set(changes) & _TIER_B_FIELDS
+    tier_c = set(changes) & _TIER_C_FIELDS
+
+    # The period the asset SITS in has to be open before anything moves, and
+    # where the date itself moves, so does the period it moves INTO. Both, the
+    # way edit_posted_journal checks both (migration 266). This is
+    # period_lock_service and not period_validation_service on purpose: the
+    # latter is firm-FY only and takes no client_id, so it would happily
+    # correct an asset inside a period whose GSTR-3B has been filed.
+    if tier_b or tier_c:
+        period_lock_service.assert_open(db, firm_id, client_id, asset.get("purchase_date"))
+        if changes.get("purchase_date"):
+            period_lock_service.assert_open(db, firm_id, client_id, changes["purchase_date"])
+
+    if asset.get("is_disposed") and (tier_b or tier_c):
+        raise HTTPException(
+            status_code=422,
+            detail=("This asset has been disposed, so its cost and depreciation "
+                    "basis are settled — the gain or loss was computed from them. "
+                    "Its name, location and notes can still be corrected."))
+
+    posted_month = _month_label(asset.get("depreciation_posted_through"))
+
+    # TIER B on a depreciated asset. Every posted month was computed from the
+    # cost being corrected, so correcting it silently would leave the ledger
+    # carrying charges no basis in the register supports. Named rather than
+    # refused blankly, in the shape post_depreciation uses for a skipped month.
+    if tier_b and posted_month:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"Depreciation is posted through {posted_month} on the current "
+                    f"cost. Reverse it a month at a time (most recent first) before "
+                    f"correcting {', '.join(sorted(tier_b))} — each posted month was "
+                    f"computed from the figure being changed."))
+
+    # TIER C on a financial year that already carries postings. Schedule II
+    # charges ONE annual figure divided by twelve (see
+    # _annual_depreciation_for_period), so a revised life or rate part-way
+    # through a year would give the remaining months a different monthly charge
+    # from the ones already posted — the fixed-annual-charge rule broken with
+    # nothing on the screen saying so. AS 10 makes the revision prospective;
+    # the clean boundary this engine has is the financial year.
+    if tier_c and posted_month:
+        next_month = _next_unposted_month(asset)
+        if asset.get("depreciation_fy") == get_fy_for_date(f"{next_month}-01"):
+            raise HTTPException(
+                status_code=422,
+                detail=(f"{asset.get('depreciation_fy')} already carries depreciation "
+                        f"posted through {posted_month} on the current basis. A revised "
+                        f"life, rate, method or salvage value applies prospectively "
+                        f"(Schedule II Part C Note 7), and this engine holds one annual "
+                        f"charge per financial year — so change it from the start of the "
+                        f"next year, or reverse {posted_month} back to the start of "
+                        f"{asset.get('depreciation_fy')} first."))
+
+    update: dict = {k: v for k, v in changes.items() if k in _TIER_A_FIELDS | _TIER_C_FIELDS}
+    if "depreciation_method" in update and update["depreciation_method"] is not None:
+        update["depreciation_method"] = getattr(
+            update["depreciation_method"], "value", update["depreciation_method"])
+
+    journal_id = asset.get("journal_entry_id")
+    if tier_b:
+        # The stored purchase_cost_paise is the CAPITALISED figure —
+        # capitalised_cost_paise() already folded §17(5)-blocked tax into it and
+        # the raw cost is stored nowhere. Re-capitalising the stored value would
+        # add that tax a second time and over-depreciate for the asset's life,
+        # so a change to the tax facts must arrive WITH the cost they apply to.
+        tax_fields = {"igst_paise", "cgst_paise", "sgst_paise", "itc_eligible"}
+        if (set(changes) & tax_fields) and "purchase_cost_paise" not in changes:
+            raise HTTPException(
+                status_code=422,
+                detail=("Send purchase_cost_paise with any change to the tax on the "
+                        "acquisition. The register holds the cost AFTER blocked tax "
+                        "was capitalised into it (CGST Act §17(5)) and does not keep "
+                        "the figure as typed, so the two have to be given together."))
+
+        merged = dict(asset)
+        merged.update({k: v for k, v in changes.items() if k in _TIER_B_FIELDS})
+        merged.update(update)
+        if "purchase_cost_paise" in changes:
+            merged["purchase_cost_paise"] = capitalised_cost_paise(
+                int(changes["purchase_cost_paise"]),
+                int(merged.get("igst_paise") or 0), int(merged.get("cgst_paise") or 0),
+                int(merged.get("sgst_paise") or 0), merged.get("itc_eligible"))
+
+        revision = int(asset.get("corrections_count") or 0) + 1
+
+        # Reverse first, then post the correction, then move the row. If the
+        # post fails the acquisition is reversed and the register is unchanged
+        # — recoverable by sending the same correction again, which is what the
+        # 502 below says, because the reversal is then already done.
+        if journal_id:
+            _reverse_tolerating_already_reversed(
+                db, firm_id, journal_id, asset["purchase_date"],
+                f"Correction of asset {asset.get('asset_code')}" + (f": {reason}" if reason else ""),
+                current_user.get("id"))
+
+        try:
+            new_journal = _journal_svc.journal_for_asset_acquisition(
+                merged, firm_id, client_id, reference_suffix=f"-R{revision}")
+        except Exception:
+            raise
+        if journal_id and new_journal is None:
+            raise HTTPException(
+                status_code=502,
+                detail=("The acquisition journal was reversed but the corrected one "
+                        "could not be posted. The asset is unchanged — send the same "
+                        "correction again to complete it."))
+
+        update.update({k: v for k, v in changes.items() if k in _TIER_B_FIELDS})
+        update["purchase_cost_paise"] = merged["purchase_cost_paise"]
+        update["current_wdv_paise"] = (
+            merged["purchase_cost_paise"] - int(asset.get("accumulated_depreciation_paise") or 0))
+        update["corrections_count"] = revision
+        if new_journal:
+            update["journal_entry_id"] = new_journal
+
+    # Written BEFORE the mutation and unswallowed by design (audit_capture's
+    # triggers skip service-role writes — migration 111).
+    log_event(
+        firm_id, "fixed_asset", asset_id, "update",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data={k: asset.get(k) for k in sorted(set(update) | {"asset_code"})},
+        new_data=update,
+        metadata={"reason": reason or None,
+                  "tiers": sorted({t for t, present in
+                                   (("A", tier_a), ("B", tier_b), ("C", tier_c)) if present})},
+    )
+
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    db.table("fixed_assets").update(update).eq("id", asset_id).eq("firm_id", firm_id).execute()
+
+    timeline_service.log(client_id, "accounting", "Asset Corrected",
+        f"{asset.get('asset_code')}: {', '.join(sorted(changes))}"
+        + (f" — {reason}" if reason else ""), "info")
+
+    return api_response(True, {
+        "asset_id": asset_id,
+        "corrected": sorted(changes),
+        "journal_entry_id": update.get("journal_entry_id", journal_id),
+        "acquisition_reposted": bool(tier_b),
+    })
+
+
+@router.delete("/{asset_id}")
+def delete_asset(
+    asset_id: str,
+    current_user: dict = Depends(rbac("accounting", "write"))
+):
+    """Remove an asset that should never have been created.
+
+    SOFT, and narrow: only where nothing has been posted against it beyond the
+    acquisition. Anything with a depreciation month or a disposal behind it is
+    a history, not a mistake, and is corrected by reversing those first.
+
+    The row stays, and so does its asset_code, because FA-ACQ-{code} is the
+    acquisition journal's reference and the kernel dedupes on (client_id,
+    reference_no, entry_date) — hand the code to the next asset and its
+    acquisition lands on this one's entry.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"asset_id": asset_id, "deleted": True})
+
+    asset = _live_asset(db, asset_id, current_user["firm_id"])
+    # Row-addressed by asset_id with no client_id in the request, so the
+    # mount-level guard never fires — the same IDOR family as post_depreciation
+    # and dispose_asset, and likewise a WRITE. One message for both branches so
+    # the response is not an oracle for which asset ids exist.
+    if not asset or not can_access_client(current_user, asset.get("client_id")):
+        raise HTTPException(status_code=404, detail="Asset not found")
+    firm_id, client_id = current_user["firm_id"], asset["client_id"]
+
+    posted_month = _month_label(asset.get("depreciation_posted_through"))
+    if posted_month:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"Depreciation is posted through {posted_month} on this asset. "
+                    f"Reverse it a month at a time (most recent first) before deleting "
+                    f"— a deleted asset would leave those charges in the P&L with "
+                    f"nothing in the register behind them."))
+    if asset.get("is_disposed"):
+        raise HTTPException(
+            status_code=422,
+            detail="This asset has been disposed. A disposal is a transaction, not a "
+                   "mistake to remove — reverse the disposal journal instead.")
+
+    period_lock_service.assert_open(db, firm_id, client_id, asset.get("purchase_date"))
+
+    if asset.get("journal_entry_id"):
+        _reverse_tolerating_already_reversed(
+            db, firm_id, asset["journal_entry_id"], asset["purchase_date"],
+            f"Asset {asset.get('asset_code')} deleted — acquisition reversed",
+            current_user.get("id"))
+
+    # The WHOLE row, in the same request and unswallowed — migration 276's rule
+    # for a journal deletion, and for the same reason: the log is what is
+    # immutable, not the row.
+    log_event(
+        firm_id, "fixed_asset", asset_id, "delete",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data=dict(asset),
+    )
+
+    db.table("fixed_assets").update({
+        "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "deleted_by": current_user.get("id"),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", asset_id).eq("firm_id", firm_id).execute()
+
+    timeline_service.log(client_id, "accounting", "Asset Deleted",
+        f"{asset.get('asset_code')}: {asset.get('asset_name')} — acquisition reversed",
+        "warning")
+
+    return api_response(True, {"asset_id": asset_id, "deleted": True,
+                               "acquisition_reversed": bool(asset.get("journal_entry_id"))})
+
+
+@router.post("/{asset_id}/depreciation/{period}/reverse")
+def reverse_depreciation(
+    asset_id: str,
+    period: str,
+    current_user: dict = Depends(rbac("accounting", "write"))
+):
+    """Undo the LAST posted month of depreciation.
+
+    Last only, so the register can only unwind in the order it was built and
+    can never be left with a hole: post_depreciation refuses any month at or
+    below depreciation_posted_through, and that column otherwise only moves
+    forward, so a hole in the middle would be permanently uncharged.
+
+    The reversal is dated the SAME day as what it reverses. Reversing April in
+    November would credit November's P&L and leave April overstated — right
+    when April is closed, wrong when it is open, and this endpoint refuses
+    unless it is open.
+    """
+    if not _PERIOD_RE.match(period or ""):
+        raise HTTPException(status_code=422, detail="period must be in YYYY-MM format.")
+
+    db = _db()
+    if not db:
+        return api_response(True, {"asset_id": asset_id, "period": period, "reversed": True})
+
+    asset = _live_asset(db, asset_id, current_user["firm_id"])
+    # Row-addressed by asset_id with no client_id in the request, so the
+    # mount-level guard never fires — the same IDOR family as post_depreciation
+    # and dispose_asset, and likewise a WRITE. One message for both branches so
+    # the response is not an oracle for which asset ids exist.
+    if not asset or not can_access_client(current_user, asset.get("client_id")):
+        raise HTTPException(status_code=404, detail="Asset not found")
+    firm_id, client_id = current_user["firm_id"], asset["client_id"]
+
+    posted_month = _month_label(asset.get("depreciation_posted_through"))
+    if not posted_month:
+        raise HTTPException(status_code=422, detail="No depreciation has been posted on this asset.")
+    if period != posted_month:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"{posted_month} is the last month posted — reverse that first. "
+                    f"Months come off in the order they went on, because a month "
+                    f"below the posted-through mark can never be posted again."))
+    if asset.get("is_disposed"):
+        raise HTTPException(
+            status_code=422,
+            detail="This asset has been disposed and the gain or loss was computed "
+                   "from its written-down value. Reverse the disposal first.")
+
+    entry_date = _period_end_date(period)
+    period_lock_service.assert_open(db, firm_id, client_id, entry_date)
+
+    reference = f"FA-DEPN-{asset.get('asset_code') or asset['id'][:8]}-{period}"
+    entry = ((db.table("journal_entries").select("id, entry_date")
+              .eq("firm_id", firm_id).eq("client_id", client_id)
+              .eq("reference_no", reference).eq("is_reversed", False)
+              .limit(1).execute().data) or [None])[0]
+    if not entry:
+        raise HTTPException(
+            status_code=404,
+            detail=(f"No live depreciation journal found for {period} ({reference}). "
+                    f"It may already have been reversed."))
+
+    lines = (db.table("journal_lines").select("debit_paise")
+             .eq("journal_entry_id", entry["id"]).execute().data) or []
+    charge = max([int(l.get("debit_paise") or 0) for l in lines] or [0])
+    if charge <= 0:
+        raise HTTPException(status_code=422,
+                            detail=f"The {period} depreciation journal carries no charge to reverse.")
+
+    _reverse_tolerating_already_reversed(
+        db, firm_id, entry["id"], entry.get("entry_date") or entry_date,
+        f"Reversal of depreciation on {asset.get('asset_code')} for {period}",
+        current_user.get("id"))
+
+    # Roll the register back to where it stood before that month. The previous
+    # month is only the new mark if it was actually POSTED — the first posting
+    # may legitimately start at any month, so a purchase in April first charged
+    # in August must go back to nothing, not to July.
+    previous = _previous_month(period)
+    prev_ref = f"FA-DEPN-{asset.get('asset_code') or asset['id'][:8]}-{previous}"
+    prev_entry = ((db.table("journal_entries").select("id")
+                   .eq("firm_id", firm_id).eq("client_id", client_id)
+                   .eq("reference_no", prev_ref).eq("is_reversed", False)
+                   .limit(1).execute().data) or [None])[0]
+    new_posted_through = _period_end_date(previous) if prev_entry else None
+
+    new_accum = max(0, int(asset.get("accumulated_depreciation_paise") or 0) - charge)
+    update = {
+        "accumulated_depreciation_paise": new_accum,
+        "current_wdv_paise": int(asset["purchase_cost_paise"]) - new_accum,
+        "depreciation_posted_through": new_posted_through,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # The FY's fixed annual charge is cached on the row. Once the year holds no
+    # posted month, the cache is a claim about a year that has none — clear it
+    # so the next posting re-bases from the year's real opening WDV.
+    if new_posted_through is None or get_fy_for_date(new_posted_through) != asset.get("depreciation_fy"):
+        update["depreciation_fy"] = None
+        update["depreciation_fy_start_accum_paise"] = None
+
+    log_event(
+        firm_id, "fixed_asset", asset_id, "update",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data={"period": period, "reference_no": reference,
+                  "accumulated_depreciation_paise": asset.get("accumulated_depreciation_paise"),
+                  "depreciation_posted_through": asset.get("depreciation_posted_through"),
+                  "depreciation_fy": asset.get("depreciation_fy")},
+        new_data=update,
+        metadata={"action": "depreciation_reversed", "charge_paise": charge},
+    )
+
+    db.table("fixed_assets").update(update).eq("id", asset_id).eq("firm_id", firm_id).execute()
+
+    timeline_service.log(client_id, "accounting", "Depreciation Reversed",
+        f"{asset.get('asset_code')}: ₹{charge//100:,} for {period} reversed", "warning")
+
+    return api_response(True, {
+        "asset_id": asset_id,
+        "period": period,
+        "reversed_paise": charge,
+        "accumulated_depreciation_paise": new_accum,
+        "depreciation_posted_through": new_posted_through,
+    })
+
+
 @router.get("/depreciation-schedule")
 def depreciation_schedule(
     client_id: str = Query(...),
@@ -869,6 +1343,7 @@ def depreciation_schedule(
         .eq("firm_id", current_user["firm_id"])
         .eq("client_id", client_id)
         .eq("is_disposed", False)
+        .is_("deleted_at", "null")
         .execute().data or []
     )
     # Projected as of the CURRENT financial year — reuses each asset's own
@@ -983,7 +1458,8 @@ def register_integrity(
                          .select("id, asset_code, asset_name, purchase_cost_paise, "
                                  "journal_entry_id, acquisition_mode, purchase_bill_id, "
                                  "is_disposed")
-                         .eq("firm_id", firm_id).eq("client_id", client_id))
+                         .eq("firm_id", firm_id).eq("client_id", client_id)
+                         .is_("deleted_at", "null"))
 
     findings: list[dict] = []
     by_bill: dict[str, list[dict]] = {}

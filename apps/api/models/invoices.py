@@ -403,6 +403,34 @@ class PurchaseBillUpdateIn(BaseModel):
     # Attach (or replace) the original invoice after the bill was already
     # created — e.g. the CA scans a paper copy later. See PurchaseBillIn.
     document_url: Optional[str] = None
+    # Editable on a DRAFT, like everything above it. It was on PurchaseBillIn
+    # and not here, so a bill created with the wrong answer could not be
+    # corrected even while it was still a draft — while the same flag has
+    # always been editable on a draft sales invoice.
+    is_reverse_charge: Optional[bool] = None
+    # ── FORM 15CA / 15CB, AND THEY ARE EDITABLE AFTER RECEIPT ────────────────
+    #
+    # Same shape as the shipping bill on an export (migration 349): these come
+    # into existence AFTER the document they belong to.
+    #
+    #   Form 15CB is the chartered accountant's certificate on a remittance to
+    #   a non-resident, and its UDIN is generated on the ICAI portal when the
+    #   CA signs it. Form 15CA is the remitter's own declaration, filed on the
+    #   income-tax portal, and the acknowledgement number only exists once it
+    #   has been filed.
+    #
+    # A bill is entered when it arrives; the remittance, the certificate and
+    # the declaration follow. Locked with the rest of the bill at receipt there
+    # would be no moment at which a CA could record any of the three, so the
+    # columns (which the create path has always written) would stay empty for
+    # every bill that was not born complete.
+    #
+    # None of the three is a particular of the SUPPLIER's invoice, so CGST s.34
+    # is untouched: they are this client's own compliance references for the
+    # payment, not a statement about what was supplied.
+    form_15ca_ack_no: Optional[str] = None
+    form_15ca_filed_on: Optional[str] = None
+    form_15cb_udin: Optional[str] = None
     # {line_id: new unit} — always allowed regardless of status, same
     # rationale as SalesInvoiceUpdateIn.line_units above.
     line_units: Optional[dict[str, str]] = None

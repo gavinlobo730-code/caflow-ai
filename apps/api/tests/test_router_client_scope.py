@@ -38,7 +38,7 @@ import pytest
 AUDITED: dict[str, tuple[str, ...]] = {
     "/api/banking/": (
         "assert_client_access", "_scope_rows", "filter_by_client",
-        "_assert_txn_scope", "_assert_recon_scope", "_assert_txn_batch_scope",
+        "_assert_txn_scope", "_assert_recon_scope", "_assert_statement_scope", "_assert_txn_batch_scope",
     ),
     "/api/sales-invoices": (
         "assert_client_access", "filter_by_client",

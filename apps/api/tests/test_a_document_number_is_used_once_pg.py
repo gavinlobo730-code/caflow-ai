@@ -186,6 +186,19 @@ def test_every_document_type_still_carries_its_guarantee(seeded):
                      "debit_notes_firm_client_debit_note_no_key",
                      "purchase_payments_firm_payment_no_key",
                      "receipts_firm_client_receipt_no_key",
-                     "sales_debit_notes_firm_id_debit_note_no_key",
+                     # Both PER CLIENT since migration 350. They were the last
+                     # two per-FIRM keys, and that was not a stricter rule than
+                     # the others — it was the launch blocker migration 151
+                     # fixed for invoices and 159 for debit notes and receipts,
+                     # re-introduced by 210: the router numbers per client, so
+                     # the firm's SECOND client computed 0001, the per-firm key
+                     # rejected it, and services/numbering.py recomputed the
+                     # same 0001 on all six retries. Widening a unique key only
+                     # relaxes it, so each client keeps its own continuous
+                     # series and no document type became duplicable.
+                     "sales_debit_notes_firm_client_debit_note_no_key",
+                     # Never listed here at all, which is why nothing noticed
+                     # it had the same defect as its sales-side twin.
+                     "purchase_credit_notes_firm_client_credit_note_no_key",
                      "uq_purchase_bills_vendor_invoice"):
         assert expected in r.stdout, f"{expected} is gone — that document type is duplicable"

@@ -37,6 +37,17 @@ class _Q:
         self.f.append((k, v))
         return self
 
+    # migration 351 gave fixed_assets a deleted_at, so every read now excludes a
+    # soft-deleted asset. Modelled faithfully rather than as a no-op: a fake
+    # that ignored the filter would pass while a deleted asset still counted in
+    # the register.
+    def is_(self, col, _null="null"):
+        self.f.append((col, None))
+        return self
+
+    def limit(self, _n):
+        return self
+
     def execute(self):
         rows = self.s.setdefault(self.t, [])
         return _Resp([r for r in rows if all(r.get(k) == v for k, v in self.f)])
