@@ -41,6 +41,9 @@ Section 31, CGST Act 2017), and where each one comes from:
   (n)     place of supply (inter-State)   supply_state_code
   (p)     reverse-charge statement        is_reverse_charge
   (q)     signature of the SUPPLIER       "For <supplier>"
+  (r)     QR code with embedded IRN       einvoice_records.irn / qr_data, and
+                                          ONLY where status == "generated" —
+                                          see _einvoice_particulars()
 
 Nothing is invented. A particular that is not held is left blank and named in a
 "Not recorded" note under the table — the house style used elsewhere for
@@ -61,6 +64,8 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.graphics.barcode import qr
+from reportlab.graphics.shapes import Drawing
 
 logger = logging.getLogger("caflow.services")
 
@@ -231,6 +236,66 @@ def _state_name(code: Optional[str]) -> Optional[str]:
             _STATE_NAMES.setdefault(c, " ".join(
                 w if w in ("and", "&") else w.capitalize() for w in name.split()))
     return _STATE_NAMES.get(str(code).strip())
+
+
+# ── Rule 46(r): the IRN and its signed QR ────────────────────────────────────
+#
+# WHAT MAY BE PRINTED, AND WHAT MAY NEVER BE
+#     An IRN is minted by the Invoice Registration Portal and nothing else. This
+#     application PREPARES e-invoices (CLAUDE.md: "prepare-only e-invoice/e-way/
+#     XBRL rails"); domain/income_tax/einvoice_service.record_irn_generated
+#     exists to record that "CA has generated IRN on the government portal", and
+#     it is the only writer of `irn`, `ack_number`, `ack_date` and `qr_data`. It
+#     sets status "generated".
+#
+#     So a record at status "generated" carries a REAL IRN the CA obtained from
+#     the IRP, and printing it is Rule 46(r). A record at any other status
+#     carries none, and inventing or simulating one would put a fabricated
+#     statutory particular on a document that goes to the recipient — the same
+#     line the filing demo holds, for the same reason.
+#
+#     The QR is rendered from the IRP's own signed payload, verbatim. It is not
+#     built from the invoice's fields: the whole value of the QR is that it
+#     carries the portal's signature, and a QR this application composed would
+#     scan and verify as nothing.
+_EINVOICE_GENERATED = "generated"
+
+
+def _einvoice_particulars(record: Optional[dict]) -> dict:
+    """The Rule 46(r) fields, or {} when there is no real IRN to print."""
+    if not record or record.get("status") != _EINVOICE_GENERATED:
+        return {}
+    if not record.get("irn"):
+        # "generated" with no IRN is a contradiction, and the safe reading is
+        # that nothing was generated.
+        return {}
+    return {
+        "irn": str(record["irn"]).strip(),
+        "ack_number": (record.get("ack_number") or "") and str(record["ack_number"]).strip(),
+        "ack_date": str(record.get("ack_date") or "")[:10],
+        "qr_data": record.get("qr_data") or None,
+    }
+
+
+def _qr_flowable(qr_data: Optional[str]):
+    """The IRP's signed QR payload as a drawing, or None.
+
+    Returns None rather than raising: a PDF that fails to render is worse than
+    one missing a QR, and the IRN itself is printed either way.
+    """
+    if not qr_data:
+        return None
+    try:
+        widget = qr.QrCodeWidget(str(qr_data))
+        bounds = widget.getBounds()
+        w, h = bounds[2] - bounds[0], bounds[3] - bounds[1]
+        side = 28 * mm
+        d = Drawing(side, side, transform=[side / w, 0, 0, side / h, 0, 0])
+        d.add(widget)
+        return d
+    except Exception:                       # pragma: no cover - defensive
+        logger.warning("caflow.invoice_pdf: could not render the e-invoice QR")
+        return None
 
 
 def _place_of_supply_label(code: Optional[str]) -> Optional[str]:
@@ -426,12 +491,23 @@ def _render_tax_invoice(
     place_of_supply = _place_of_supply_label(invoice.get("supply_state_code"))
     if place_of_supply:
         meta_lines.append(f"<b>Place of Supply:</b> {place_of_supply}")
+    # Rule 46(r). Present only where the CA has recorded an IRN obtained from
+    # the IRP — see _einvoice_particulars. Never simulated.
+    if invoice.get("irn"):
+        meta_lines.append(f"<b>IRN:</b> {invoice['irn']}")
+        if invoice.get("ack_number"):
+            ack = f"<b>Ack No:</b> {invoice['ack_number']}"
+            if invoice.get("ack_date"):
+                ack += f" &nbsp;<b>Ack Date:</b> {invoice['ack_date']}"
+            meta_lines.append(ack)
 
+    qr_drawing = _qr_flowable(invoice.get("qr_data"))
     header = Table(
         [[Paragraph("<br/>".join(_party_lines(supplier)), styles["Normal"]),
-          Paragraph("<br/>".join(meta_lines), styles["Normal"])],
-         [Paragraph("<b>Bill To:</b><br/>" + "<br/>".join(_party_lines(recipient)), styles["Normal"]), ""]],
-        colWidths=[100 * mm, 80 * mm],
+          Paragraph("<br/>".join(meta_lines), styles["Normal"]),
+          qr_drawing or ""],
+         [Paragraph("<b>Bill To:</b><br/>" + "<br/>".join(_party_lines(recipient)), styles["Normal"]), "", ""]],
+        colWidths=[80 * mm, 68 * mm, 32 * mm],
     )
     header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -693,6 +769,26 @@ _SUPPLIER_COLUMNS = (
 )
 
 
+def _einvoice_record_for(db, firm_id: str, invoice_id: str) -> Optional[dict]:
+    """The e-invoice record for this invoice, or None.
+
+    Firm-scoped like every other query here. A failure to read is None rather
+    than an exception: a PDF that will not render is worse than one without the
+    Rule 46(r) block, and the CA can see the IRN on the e-invoice screen either
+    way.
+    """
+    try:
+        res = (db.table("einvoice_records")
+               .select("irn, ack_number, ack_date, qr_data, status")
+               .eq("firm_id", firm_id).eq("sales_invoice_id", invoice_id)
+               .limit(1).execute())
+        return (getattr(res, "data", None) or [None])[0]
+    except Exception:                       # pragma: no cover - defensive
+        logger.warning("caflow.invoice_pdf: could not read einvoice_records for %s",
+                       invoice_id)
+        return None
+
+
 def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
     """
     Load a client_sales_invoice and render the client's own GST tax invoice.
@@ -767,6 +863,11 @@ def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
         "is_interstate": data.get("is_interstate"),
         "is_reverse_charge": data.get("is_reverse_charge"),
         "lines":        lines_resp.data or [],
+        # Rule 46(r) — the IRN and the IRP's own signed QR, where the CA has
+        # recorded one. einvoice_records is read here rather than joined above
+        # because a missing record is the normal case (e-invoicing applies by
+        # turnover) and must not cost the invoice its PDF.
+        **_einvoice_particulars(_einvoice_record_for(db, firm_id, invoice_id)),
     }
     pdf = build_sales_invoice_pdf(invoice_dict, client, customer)
     filename = f"invoice-{data.get('invoice_no', invoice_id)}.pdf"
