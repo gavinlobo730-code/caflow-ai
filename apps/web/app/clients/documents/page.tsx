@@ -16,6 +16,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
 import type { Client } from "@/lib/types";
 
+import { todayLocalISO } from "@/lib/dateMath";
 type DocCategory = "Identity" | "GST" | "Income Tax" | "MCA" | "Financials" | "Other";
 
 const CATEGORIES: DocCategory[] = ["Identity", "GST", "Income Tax", "MCA", "Financials", "Other"];
@@ -252,7 +253,7 @@ export default function ClientDocumentsPage() {
     }
   }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const expiringDocs = documents.filter(d => {
     if (!d.expiry_date) return false;
     return daysUntilExpiry(d.expiry_date) <= 60 && d.expiry_date >= today;

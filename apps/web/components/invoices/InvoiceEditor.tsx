@@ -36,6 +36,7 @@ import {
 } from "@/lib/invoices/classification";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
+import { todayLocalISO } from "@/lib/dateMath";
 import {
   apiCall, apiGet, getAuthToken, fmt,
   GST_RATES, INDIAN_STATES, STATUS_BADGE,
@@ -116,7 +117,7 @@ export function InvoiceEditor({
   /** Called when the user cancels (the caller navigates; guarded by dirty check). */
   onCancel: () => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const isEdit = !!existing;
   // Once an invoice is issued, the backend only accepts reference_no/notes/
   // due_date/credit_days (+ per-line units) on PATCH (routers/sales_invoices.py
@@ -712,7 +713,7 @@ export function InvoiceEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Supply State</label>
-              <StateLookup states={INDIAN_STATES} value={supplyStateCode ?? ""} onChange={onSupplyStateChange}
+              <StateLookup value={supplyStateCode ?? ""} onChange={onSupplyStateChange}
                 placeholder="— Select —" ariaLabel="Supply state" disabled={isLocked} />
               {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued (CGST Act §34).</p>}
             </div>

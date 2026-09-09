@@ -13,6 +13,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
+import { todayLocalISO } from "@/lib/dateMath";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
  * balance sheet required by Schedule III to the Companies Act 2013 as amended
@@ -88,10 +89,7 @@ const MSME_OPTIONS: { value: "" | MsmeStatus; label: string }[] = [
   { value: "not_registered", label: "Not registered under MSMED" },
 ];
 
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+
 
 function Amount({ paise }: { paise: number }) {
   return (
@@ -170,7 +168,7 @@ export default function ClientAgeingSchedulePage() {
   const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("note");
-  const [asOf, setAsOf] = useState<string>(todayISO());
+  const [asOf, setAsOf] = useState<string>(todayLocalISO());
   const [schedule, setSchedule] = useState<AgeingSchedule | null>(null);
   const [invoices, setInvoices] = useState<AgeingDocument[] | null>(null);
   const [bills, setBills] = useState<AgeingDocument[] | null>(null);

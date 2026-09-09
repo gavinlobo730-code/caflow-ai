@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Modal as ModalShell } from "@/components/ui/modal";
 import { apiCall, getAuthToken, fmt, type InvoiceDetail } from "@/lib/invoices/shared";
+import { todayLocalISO } from "@/lib/dateMath";
 import {
   gstTreatment, treatmentLabel, validatePlaceOfSupply,
   irnEligibility, ewayEligibility, irnStatus, ewayStatus,
@@ -303,7 +304,7 @@ function PrepareIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: 
 }
 
 function RecordIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: () => void; onSubmit: (f: { irn: string; ack_number: string; ack_date: string; qr_data: string }) => void }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [irn, setIrn] = useState(""); const [ack, setAck] = useState(""); const [date, setDate] = useState(today); const [qr, setQr] = useState("");
   const ok = irn.trim().length > 0 && ack.trim().length > 0;
   return (
@@ -337,7 +338,7 @@ function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean;
 }
 
 function RecordEwayModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: () => void; onSubmit: (f: { ewb_number: string; ewb_date: string; ewb_valid_upto: string }) => void }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [num, setNum] = useState(""); const [date, setDate] = useState(today); const [valid, setValid] = useState(today);
   return (
     <ModalShell title="Record E-Way Bill" note="Enter the EWB details from the NIC portal." onClose={onClose}>

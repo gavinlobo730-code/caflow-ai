@@ -27,6 +27,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { apiCall, getAuthToken, fmt, GST_RATES } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { todayLocalISO } from "@/lib/dateMath";
 import {
   isValidPurchaseCreditNoteLine, previewPurchaseCreditNoteTotals, validatePurchaseCreditNoteEditor,
   type PurchaseCreditNoteEditorLine,
@@ -38,7 +39,7 @@ const EMPTY_LINE: PurchaseCreditNoteEditorLine = { description: "", hsn_sac: "",
 type EditorLine = PurchaseCreditNoteEditorLine & { _k: number; product?: ServiceCatalogueItem | null };
 
 function todayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return todayLocalISO();
 }
 
 function purchaseServiceToLine(item: ServiceCatalogueItem): Partial<PurchaseCreditNoteEditorLine> {

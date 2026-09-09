@@ -28,7 +28,7 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
-import { daysBetweenLocalISO } from "@/lib/dateMath";
+import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
@@ -101,7 +101,7 @@ const LOAN_TYPE_LABELS: Record<LoanType, string> = {
   other: "Other",
 };
 
-const TODAY_ISO = new Date().toISOString().slice(0, 10);
+const TODAY_ISO = todayLocalISO();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

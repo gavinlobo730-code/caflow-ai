@@ -25,6 +25,7 @@ import { cfUnion, cfAmount, aggregateCashFlow, mapWithLimit, type CFData, type C
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
 
+import { todayLocalISO } from "@/lib/dateMath";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -833,7 +834,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
         (e) => e.is_posted,
         (e) => api.accounting.reverseJournalEntry(
           e.id,
-          new Date().toISOString().slice(0, 10),
+          todayLocalISO(),
           `Reversal of ${e.reference_no || "journal entry"}`,
         ),
         "reverse", "reversed",

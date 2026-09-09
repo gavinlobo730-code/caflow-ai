@@ -12,6 +12,7 @@ import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
+import { todayLocalISO } from "@/lib/dateMath";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function getToken(): Promise<string> {
@@ -411,7 +412,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   function openConfirmFiling(row: Record<string, unknown>) {
     setConfirmFiling(row);
     setSrn("");
-    setFilingDate(new Date().toISOString().slice(0, 10));
+    setFilingDate(todayLocalISO());
     setConfirmError(null);
   }
 

@@ -14,6 +14,7 @@ import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 
+import { todayLocalISO } from "@/lib/dateMath";
 // Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
 type Role = "Partner" | "Manager" | "Executive" | "Reviewer";
 
@@ -182,7 +183,7 @@ export default function WorkAllocationPage() {
       }));
 
       const clientMap = new Map((clientList).map(c => [c.id, c.client_name]));
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayLocalISO();
 
       const taskList: TaskItem[] = (tasksRes.data ?? []).map((t: TaskItem) => ({
         ...t,
@@ -215,7 +216,7 @@ export default function WorkAllocationPage() {
     return true;
   });
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">

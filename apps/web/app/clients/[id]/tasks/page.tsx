@@ -12,6 +12,7 @@ import type { Task, Client, FirmUser } from "@/lib/types";
 import { formatDate } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
+import { todayLocalISO } from "@/lib/dateMath";
 /**
  * A client's tasks — and, since this change, a place to create and close them.
  *
@@ -53,7 +54,7 @@ export default function TasksPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
 
   const load = useCallback(() => {
     if (!clientId || clientId === "_placeholder") return;

@@ -58,6 +58,7 @@ import { partyCreditsApi, type PartyCreditDetail } from "@/lib/api/partyCredits"
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 
+import { todayLocalISO } from "@/lib/dateMath";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements";
@@ -146,7 +147,7 @@ function isOverdueForUi(inv: SalesInvoice): boolean {
   const outstanding = inv.total_paise - (inv.paid_paise ?? 0);
   if (outstanding <= 0) return false;
   if (inv.is_overdue) return true;
-  if (inv.due_date) return inv.due_date < new Date().toISOString().slice(0, 10);
+  if (inv.due_date) return inv.due_date < todayLocalISO();
   return false;
 }
 
@@ -598,7 +599,7 @@ function RecurringEditor({
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [frequency, setFrequency] = useState(existing?.frequency ?? "monthly");
-  const [startDate, setStartDate] = useState(existing?.start_date ?? new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(existing?.start_date ?? todayLocalISO());
   const [endDate, setEndDate] = useState(existing?.end_date ?? "");
   const [isInterState, setIsInterState] = useState(existing?.is_inter_state ?? false);
   // Reuses the invoice form's vocabulary and its unknown-value fallback rather
@@ -3202,7 +3203,7 @@ function Receipts({
     try {
       const token = await getAuthToken();
       const result = await apiCall(`/api/receipts/${r.id}/reverse`, "POST",
-        { reversal_date: new Date().toISOString().slice(0, 10) }, token);
+        { reversal_date: todayLocalISO() }, token);
       if (!result.success) throw new Error(result.error ?? "Failed to reverse receipt");
       showToast(`${r.receipt_no} reversed — journal and allocations rolled back`, "success");
       load();
@@ -3340,7 +3341,7 @@ function ReceiptForm({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [customerId, setCustomerId] = useState("");
   const [receiptDate, setReceiptDate] = useState(today);
   const [amount, setAmount] = useState("");

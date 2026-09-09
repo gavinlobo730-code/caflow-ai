@@ -8,6 +8,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 
+import { todayLocalISO } from "@/lib/dateMath";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "₹0";
@@ -302,7 +303,7 @@ function AdjustmentForm({
   onSaved: (adj: Adjustment) => void;
   onCancel: () => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [type, setType] = useState<AdjustmentType>("accrual");
   const [description, setDescription] = useState("");
   const [debitAccount, setDebitAccount] = useState("");

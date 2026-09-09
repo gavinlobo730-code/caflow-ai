@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
-import { todayLocalISO } from "@/lib/dateMath";
+import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
 import { getComplianceCalendar, markFiled as markObligationFiled } from "@/lib/data/compliance";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { getClients } from "@/lib/data/clients";
@@ -183,8 +183,8 @@ function DeadlinesContent() {
     [clients],
   );
 
-  const today = new Date().toISOString().split("T")[0];
-  const in7Days = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+  const today = todayLocalISO();
+  const in7Days = toLocalISO(new Date(Date.now() + 7 * 86400000));
   // Deliberately separate from `today` above (left as-is — it feeds the Overdue /
   // Due This Week KPI counts, a business classification out of Phase 4's cosmetic
   // scope): this is only for the Due Date cell's text color below.

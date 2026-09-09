@@ -23,6 +23,7 @@ import { formatServicePrice } from "@/lib/catalogue/service";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
+import { todayLocalISO } from "@/lib/dateMath";
 interface StockItem {
   id: string;
   name: string;
@@ -394,7 +395,7 @@ function AdjustStockModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [direction, setDirection] = useState<"increase" | "decrease">("decrease");
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("physical_count_shortage");
@@ -537,7 +538,7 @@ function NrvWritedownModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const avgCostPaise = item.avg_cost_paise ?? 0;
   const [nrvPerUnit, setNrvPerUnit] = useState("");
   const [writedownDate, setWritedownDate] = useState(today);

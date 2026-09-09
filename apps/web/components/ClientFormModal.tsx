@@ -5,29 +5,20 @@ import { X } from "lucide-react";
 import type { Client } from "@/lib/types";
 import type { CreateClientInput } from "@/lib/data/clients";
 
+import { INDIAN_STATES } from "@/lib/constants/indianStates";
 const ENTITY_TYPES = [
   "Proprietorship", "Partnership", "LLP", "Private Limited",
   "Public Limited", "Trust", "Society", "Individual",
 ];
 
-const STATES = [
-  { code: "01", name: "Jammu & Kashmir" }, { code: "02", name: "Himachal Pradesh" },
-  { code: "03", name: "Punjab" }, { code: "04", name: "Chandigarh" },
-  { code: "05", name: "Uttarakhand" }, { code: "06", name: "Haryana" },
-  { code: "07", name: "Delhi" }, { code: "08", name: "Rajasthan" },
-  { code: "09", name: "Uttar Pradesh" }, { code: "10", name: "Bihar" },
-  { code: "11", name: "Sikkim" }, { code: "12", name: "Arunachal Pradesh" },
-  { code: "13", name: "Nagaland" }, { code: "14", name: "Manipur" },
-  { code: "15", name: "Mizoram" }, { code: "16", name: "Tripura" },
-  { code: "17", name: "Meghalaya" }, { code: "18", name: "Assam" },
-  { code: "19", name: "West Bengal" }, { code: "20", name: "Jharkhand" },
-  { code: "21", name: "Odisha" }, { code: "22", name: "Chhattisgarh" },
-  { code: "23", name: "Madhya Pradesh" }, { code: "24", name: "Gujarat" },
-  { code: "27", name: "Maharashtra" }, { code: "29", name: "Karnataka" },
-  { code: "30", name: "Goa" }, { code: "32", name: "Kerala" },
-  { code: "33", name: "Tamil Nadu" }, { code: "36", name: "Telangana" },
-  { code: "37", name: "Andhra Pradesh" },
-];
+// THE CANONICAL LIST, not a fifth copy. This held 31 of the 36 live codes —
+// Dadra & Nagar Haveli and Daman & Diu (26), Lakshadweep (31), Puducherry (34),
+// Andaman & Nicobar (35) and Ladakh (38) were absent — on the CLIENT master,
+// where state_code is the field every downstream document reads to decide
+// CGST+SGST against IGST. A client in Ladakh could not be onboarded with a
+// state code at all. The names here were identical to the canonical ones, so
+// this is purely additive and orphans no stored value.
+const STATES = INDIAN_STATES;
 
 interface Props {
   open: boolean;

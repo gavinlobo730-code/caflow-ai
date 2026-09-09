@@ -23,6 +23,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
+import { todayLocalISO } from "@/lib/dateMath";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function apiFetch(path: string, opts?: RequestInit) {
@@ -169,7 +170,7 @@ const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }>
 /** Map backend lead row → frontend Lead shape */
 function fromApiLead(row: Record<string, unknown>): Lead {
   const meta = (row.notes as string | null) ?? "";
-  let lastContactDate = new Date().toISOString().split("T")[0];
+  let lastContactDate = todayLocalISO();
   let nextFollowUpDate = "";
   let notes = meta;
   let entityType: EntityType = "Proprietorship";
@@ -288,7 +289,7 @@ function paiseToDRupeeString(paise: number): string {
 
 function isOverdueOrToday(dateStr: string): boolean {
   if (!dateStr) return false;
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   return dateStr <= today;
 }
 
@@ -327,7 +328,7 @@ const EMPTY_FORM = {
   estimatedMonthlyFeeRupees: "",
   source: "Referral" as Source, // maps to "referral" in DB
   notes: "",
-  lastContactDate: new Date().toISOString().split("T")[0],
+  lastContactDate: todayLocalISO(),
   nextFollowUpDate: "",
 };
 
@@ -356,7 +357,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
           nextFollowUpDate: initial.nextFollowUpDate,
         });
       } else {
-        setForm({ ...EMPTY_FORM, lastContactDate: new Date().toISOString().split("T")[0] });
+        setForm({ ...EMPTY_FORM, lastContactDate: todayLocalISO() });
       }
     }
   }, [open, initial]);

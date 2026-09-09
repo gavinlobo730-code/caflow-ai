@@ -122,7 +122,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
   const [serviceType, setServiceType] = useState<ServiceType>("GST Filing");
   const [feeRs, setFeeRs] = useState("");
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("Monthly");
-  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
+  const [startDate, setStartDate] = useState(todayLocalISO());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
