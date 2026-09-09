@@ -171,6 +171,24 @@ class EmployeeUpdateIn(BaseModel):
     uan: Optional[str] = None
     esi_number: Optional[str] = None
     status: Optional[str] = None
+    # THE DATE OF JOINING, which this model did not carry (PAY-12).
+    #
+    # components/payroll/AddEmployeeModal.tsx has always sent joining_date on
+    # the edit path, and Pydantic ignores unknown keys by default, so the field
+    # was dropped in silence:
+    #
+    #     EmployeeUpdateIn(name="A", joining_date="2026-10-01")
+    #         .model_dump(exclude_none=True)          -> {"name": "A"}
+    #
+    # The router then wrote whatever survived and reported success. A wrong
+    # joining date could therefore never be corrected — and it is not cosmetic:
+    # it decides gratuity's five years of continuous service (Payment of
+    # Gratuity Act s.4(1)), the EPS eligibility test on first joining, and the
+    # proportion of the year a leaver is paid for.
+    #
+    # apps/web/scripts/employee-form-captures-what-filing-needs.test.ts asserts
+    # joining_date is on the FORM, and passed throughout.
+    joining_date: Optional[str] = None
 
     # task #229: EmployeeUpdateIn had NO numeric validation at all — not even
     # the non-negative check EmployeeIn applies on create. A PATCH with a

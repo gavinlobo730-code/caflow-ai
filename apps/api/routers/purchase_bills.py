@@ -1457,7 +1457,17 @@ def delete_purchase_bill(
 # Once a bill is received, only these fields may still change — mirrors the
 # same rule on sales invoices (routers/sales_invoices.py:_SOFT_UPDATE_FIELDS).
 # line_units is handled separately, always allowed regardless of status.
-_SOFT_BILL_UPDATE_FIELDS = {"notes", "due_date", "credit_days", "our_reference", "document_url"}
+# The last three are the Form 15CA / 15CB references, and they are here for the
+# same reason the shipping bill is on a sales invoice: they come into existence
+# AFTER the document. Form 15CB's UDIN is generated when the CA signs the
+# certificate; Form 15CA's acknowledgement number only exists once the
+# declaration has been filed on the income-tax portal; the remittance itself
+# follows the bill. None of the three is a particular of the supplier's
+# invoice — they are this client's own compliance references for the payment —
+# so CGST s.34 is untouched.
+_SOFT_BILL_UPDATE_FIELDS = {"notes", "due_date", "credit_days", "our_reference",
+                            "document_url", "form_15ca_ack_no",
+                            "form_15ca_filed_on", "form_15cb_udin"}
 
 
 def _reject_locked_bill_fields(data: dict) -> None:
