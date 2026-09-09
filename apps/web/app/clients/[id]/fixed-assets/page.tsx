@@ -1,7 +1,7 @@
 "use client";
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { errorMessage } from "@/lib/api";
+import { request } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
@@ -10,7 +10,14 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// NO local API base and no bare fetch. Every call on this screen used to be
+// `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
+// `credentials` carries a COOKIE — which this API does not read. core/auth.py
+// accepts an Authorization header and nothing else, and every route in
+// routers/fixed_assets.py is Depends(rbac("accounting", …)), so all seven
+// calls answered 401 in production and the whole screen was dead. `request`
+// from lib/api is the one client that attaches the Bearer token (and refreshes
+// it once on a 401, and reads a refusal out of `detail`).
 
 type FATab = "register" | "depreciation" | "disposal" | "reports";
 
@@ -121,6 +128,11 @@ function scheduleIINote(cat: AssetCategory | undefined, cls: ScheduleIIClass | u
 /** The sentence out of a refusal. FastAPI answers with {"detail": "..."} and
  *  these details are written for the CA — "Depreciation for 2026-09 has not
  *  been posted". Swallowing them is what made a skipped month invisible. */
+/** Every backend response is { success, data, error } — models/common.api_response.
+ *  `detail` is FastAPI's own shape for a 4xx and rides along so refusalMessage
+ *  can read either. */
+interface ApiEnvelope<T = unknown> { success: boolean; data?: T; error?: string; detail?: unknown }
+
 function refusalMessage(body: { detail?: unknown; error?: unknown }, fallback: string): string {
   const detail = body?.detail ?? body?.error;
   if (typeof detail === "string" && detail.trim()) return detail.trim();
@@ -407,8 +419,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   const loadCategories = useCallback(async () => {
     setCatsLoading(true);
     try {
-      const res = await fetch(`${API}/api/fixed-assets/categories?client_id=${clientId}`, { credentials: "include" });
-      const j = await res.json();
+      const j = await request<ApiEnvelope<AssetCategory[]>>(`/api/fixed-assets/categories?client_id=${clientId}`);
       if (!j.success) throw new Error(refusalMessage(j, "Failed to load categories"));
       const cats: AssetCategory[] = j.data ?? [];
       setCategories(cats);
@@ -468,8 +479,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
       if (body.useful_life_years !== undefined && !Number.isInteger(body.useful_life_years)) {
         setError("The useful life must be a whole number of years."); return;
       }
-      const res = await fetch(`${API}/api/fixed-assets/`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = await res.json();
+      const j = await request<ApiEnvelope>("/api/fixed-assets/", { method: "POST", body: JSON.stringify(body) });
       if (!j.success) throw new Error(refusalMessage(j, "Failed to add asset"));
       onSaved(); onClose();
     } catch (e: unknown) {
@@ -618,8 +628,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
       // browser from the live, already-reduced accumulated depreciation — its
       // own copy of the rule, giving a different answer from the one the Post
       // button was about to write. Disposed assets are excluded server-side.
-      const res = await fetch(`${API}/api/fixed-assets/depreciation-schedule?client_id=${clientId}`, { credentials: "include" });
-      const j = await res.json();
+      const j = await request<ApiEnvelope<ScheduleRow[]>>(`/api/fixed-assets/depreciation-schedule?client_id=${clientId}`);
       if (!j.success) throw new Error(refusalMessage(j, "Failed to load"));
       setRows(j.data ?? []);
       setLoadFailed(false);
@@ -641,12 +650,10 @@ function DepreciationTab({ clientId }: { clientId: string }) {
     // sentence never sits under a request that has since succeeded.
     setErrors(e => Object.fromEntries(Object.entries(e).filter(([id]) => id !== assetId)));
     try {
-      const res = await fetch(`${API}/api/fixed-assets/${assetId}/depreciate`, {
-        method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json" },
+      const j = await request<ApiEnvelope>(`/api/fixed-assets/${assetId}/depreciate`, {
+        method: "POST",
         body: JSON.stringify({ period }),
       });
-      const j = await res.json();
       if (!j.success) throw new Error(refusalMessage(j, "Failed to post depreciation."));
       await load();
     } catch (e: unknown) {
@@ -812,8 +819,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
     try {
       // include_disposed defaults to false server-side — already-disposed
       // assets are excluded without needing a (nonexistent) status filter.
-      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}`, { credentials: "include" });
-      const j = await res.json();
+      const j = await request<ApiEnvelope<Asset[]>>(`/api/fixed-assets/?client_id=${clientId}`);
       if (!j.success) throw new Error(j.error ?? "Failed to load");
       setAssets(j.data ?? []);
       setLoadFailed(false);
@@ -838,20 +844,18 @@ function DisposalTab({ clientId }: { clientId: string }) {
     }
     setDisposing(true); setError("");
     try {
-      const res = await fetch(`${API}/api/fixed-assets/${selected.id}/dispose`, {
-        method: "PATCH", credentials: "include",
-        headers: { "Content-Type": "application/json" },
+      // A refusal is a SENTENCE, and FastAPI puts it in `detail` — a 422 body
+      // has no `error` key, so `j.error ?? "Failed"` showed the CA the word
+      // "Failed" where the server had named the months of depreciation still
+      // to post. `request` throws with errorMessage(res), which reads either
+      // shape, so the non-2xx case is handled before this line.
+      const j = await request<ApiEnvelope>(`/api/fixed-assets/${selected.id}/dispose`, {
+        method: "PATCH",
         body: JSON.stringify({
           disposal_date:         disposalDate,
           sale_proceeds_paise:   proceedsPaise as number,
         }),
       });
-      // A refusal is a SENTENCE, and FastAPI puts it in `detail` — a 422 body
-      // has no `error` key, so `j.error ?? "Failed"` showed the CA the word
-      // "Failed" where the server had named the months of depreciation still
-      // to post. errorMessage is the one place that reads either shape.
-      if (!res.ok) throw new Error(await errorMessage(res));
-      const j = await res.json();
       if (!j.success) throw new Error(j.error ?? "Failed");
       setSelected(null); setProceeds(""); await load();
     } catch (e: unknown) {
@@ -976,8 +980,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
       // include_disposed=true — this report needs the disposed/fully-
       // depreciated breakdown too, unlike the other tabs which only work
       // with currently-held assets.
-      const res = await fetch(`${API}/api/fixed-assets/?client_id=${clientId}&include_disposed=true`, { credentials: "include" });
-      const j = await res.json();
+      const j = await request<ApiEnvelope<Omit<Asset, "status">[]>>(`/api/fixed-assets/?client_id=${clientId}&include_disposed=true`);
       if (!j.success) throw new Error(j.error ?? "Failed to load");
       const rows = ((j.data ?? []) as Omit<Asset, "status">[]).map((a) => ({ ...a, status: computeAssetStatus(a) }));
       setAssets(rows);

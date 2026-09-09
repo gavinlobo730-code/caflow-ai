@@ -95,6 +95,26 @@ def _tds_return_due_date(quarter: str, fy: str) -> str:
         return quarter_dates(fy, "Q1")[2]  # preserve old .get(quarter, Q1) fallback
 
 
+def _tds_quarter_end(quarter: str, fy: str) -> str:
+    """The quarter's last day — 30 Jun, 30 Sep, 31 Dec, 31 Mar.
+
+    tds_returns.quarter_end is DATE NOT NULL with no default (migration 037).
+    create_return never wrote it, so the insert raised on every real database
+    and the handler's `except Exception` turned that into an HTTP 200 carrying
+    {success: false} that the screen did not inspect (TDS-03). Mock mode never
+    saw it: a dict store has no NOT NULL.
+
+    Same quarter_dates call the due date uses, and the same Q1 fallback, so an
+    unrecognised quarter cannot give a row whose end and due date describe
+    different periods.
+    """
+    from domain.tds.section_rates import quarter_dates
+    try:
+        return quarter_dates(fy, quarter)[1]
+    except ValueError:
+        return quarter_dates(fy, "Q1")[1]
+
+
 # ── Request Models ─────────────────────────────────────────────────────────────
 
 class CreateChallanRequest(BaseModel):
@@ -359,12 +379,13 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         # nature of income, which is the purchase-bill path's job.
         "surcharge_paise": 0,
         "cess_paise": 0,
-        # ONE quarter vocabulary. services/tds_register_service.fy_quarter is
-        # what the bill path already writes ("Q3 2025-26", the format migration
-        # 014's own column comment gives), so it is imported rather than spelt
-        # again here. The /tds screen used to write "Q1 (Apr-Jun)" — a third
-        # spelling on a column that has no CHECK, which nothing downstream
-        # matches.
+        # ONE quarter vocabulary, and it is now the schema's own:
+        # services/tds_register_service.fy_quarter returns the bare "Q3" and
+        # the year goes in financial_year, matching tds_returns, tds_challans
+        # and tds_certificates and the CHECK migration 347 adds. It is imported
+        # rather than spelt again here. The /tds screen used to write
+        # "Q1 (Apr-Jun)" and the bill path "Q3 2025-26" — three spellings on a
+        # column that had no CHECK, which is why no reader matched any of them.
         "quarter": fy_quarter(when),
         "financial_year": manual_register.fy_label(when),
         "challan_no": body.get("challan_no") or None,
@@ -754,6 +775,12 @@ def create_return(
             "quarter": body.quarter,
             "financial_year": body.financial_year,
             "status": "pending",
+            # quarter_end is DATE NOT NULL with no default (migration 037) and
+            # nothing ever supplied it, so this insert failed outright on any
+            # real database while every mock-mode test passed — the dict store
+            # has no NOT NULL. Same source as the due date, so the two cannot
+            # disagree about which quarter this is.
+            "quarter_end": _tds_quarter_end(body.quarter, body.financial_year),
             "due_date": _tds_return_due_date(body.quarter, body.financial_year),
             "created_at": datetime.utcnow().isoformat(),
         }

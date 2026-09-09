@@ -184,8 +184,12 @@ export async function computeHRAExemption(
     rent_paid_paise: String(rentPaidPaise),
     is_metro: String(isMetro),
   });
+  // Authenticated: routers/income_tax.py guards /hra/compute with
+  // Depends(rbac("income_tax", "compute")), and core/auth.py answers 401 when
+  // there is no Bearer header. This was the one call in this file that sent
+  // none, so the HRA calculator could not compute against a real deployment.
   const res = await fetch(`${API_BASE}/api/income-tax/hra/compute?${params}`, {
-    method: "POST",
+    method: "POST", headers: await _authHeaders(),
   });
   if (!res.ok) throw new Error(`HRA compute failed: ${res.statusText}`);
   const json = await res.json();

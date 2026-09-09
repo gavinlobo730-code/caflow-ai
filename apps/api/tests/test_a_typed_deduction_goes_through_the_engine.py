@@ -201,14 +201,17 @@ def test_a_row_with_no_pan_is_never_aggregated_with_another(app_db):
 # ── what it stores, and what it says about itself ────────────────────────────
 
 def test_the_quarter_is_the_one_vocabulary_the_bill_path_uses(app_db):
-    """The screen used to write "Q1 (Apr-Jun)" — a third spelling on a column
-    with no CHECK, matched by nothing downstream."""
+    """The screen used to write "Q1 (Apr-Jun)" and the bill path "Q3 2026-27" —
+    three spellings on a column that had no CHECK, matched by nothing
+    downstream. Migration 347 settles it on the schema's own: the bare quarter
+    here, the year in financial_year, as on the other three TDS tables."""
     app, db = app_db
     _post(app, transaction_date="2026-11-20", payment_amount_paise=1_00_000_00)
-    from services.tds_register_service import fy_quarter
+    from services.tds_register_service import fy_label, fy_quarter
     from datetime import date
-    assert db.rows("tds_deductions")[0]["quarter"] == fy_quarter(date(2026, 11, 20))
-    assert db.rows("tds_deductions")[0]["quarter"] == "Q3 2026-27"
+    row = db.rows("tds_deductions")[0]
+    assert row["quarter"] == fy_quarter(date(2026, 11, 20)) == "Q3"
+    assert row["financial_year"] == fy_label(date(2026, 11, 20)) == "2026-27"
 
 
 def test_the_unified_aggregate_gap_is_reported_on_every_row(app_db):

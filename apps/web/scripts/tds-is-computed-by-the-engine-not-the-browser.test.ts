@@ -170,3 +170,44 @@ test("every allowlisted rate holder gives its reason", () => {
     assert.ok(why.length > 40, `${file}: say which finding covers it`);
   }
 });
+
+test("a TDS period is a financial year AND a quarter, never one of them", () => {
+  // TDS-03's structural half. tds_deductions.quarter carried the compound
+  // "Q3 2025-26" while tds_returns, tds_challans and tds_certificates all hold
+  // the year in financial_year and CHECK quarter IN ('Q1'..'Q4'). Migration 347
+  // normalises the register onto the schema's own vocabulary; these are the
+  // reads that have to speak it.
+  const src = code(path.join(WEB, "lib/data/tds.ts"));
+
+  // Anything that filters a TDS table by quarter must filter by year too — a
+  // Q3 filter alone collects every Q3 the client has ever had.
+  // PER EXPORTED FUNCTION, not per statement and not per fixed window. Both
+  // readers build the query in pieces —
+  //     let q = sb.from("tds_challans")…;
+  //     if (financialYear) q = q.eq("financial_year", financialYear);
+  //     if (quarter)       q = q.eq("quarter", quarter);
+  // — so the filters are in different STATEMENTS from the .from(), and a scan
+  // that stopped at the first `;` would find no quarter filter and pass
+  // vacuously. That is the same blind spot the backend's direct-write scan had
+  // with its 400-character cap, and it is worth not repeating.
+  const fns = src.split(/\nexport /).map(f => "export " + f);
+  for (const table of ["tds_deductions", "tds_challans"]) {
+    const readers = fns.filter(f => f.includes(`.from("${table}")`));
+    assert.ok(readers.length > 0, `${table} is no longer read here — re-point this test`);
+    for (const fn of readers) {
+      if (!/\.eq\("quarter"/.test(fn)) continue;
+      assert.match(
+        fn, /\.eq\("financial_year"/,
+        `${table} is filtered by quarter and not by financial_year, so a Q3 ` +
+        "return reconciles against every Q3 the client has ever filed",
+      );
+    }
+  }
+
+  // And the screen must send the bare quarter, not a label. "Q1 (Apr-Jun)" was
+  // a third spelling that matched nothing on either side.
+  const page = code(path.join(WEB, "app/tds/returns/page.tsx"));
+  assert.match(page, /QUARTERS(?::\s*TDSQuarter\[\])?\s*=\s*\["Q1",\s*"Q2",\s*"Q3",\s*"Q4"\]/,
+    "the quarter sent to the API must be Q1..Q4 — the label belongs in " +
+    "QUARTER_LABELS, which is what it is for");
+});

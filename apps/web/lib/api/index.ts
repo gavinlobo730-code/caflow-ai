@@ -759,8 +759,26 @@ export const api = {
      *  one: an attachment holds the document's id and asks for a link at the
      *  moment somebody opens it. */
     downloadUrl: (docId: string) => request(`/api/documents/${docId}/download-url`),
-    parse: (formData: FormData) =>
-      fetch(`${BASE_URL}/api/documents/parse`, { method: "POST", body: formData }).then((r) => r.json()),
+    /** Same shape as upload above, and for the same reason: multipart, so the
+     *  browser sets the boundary and Content-Type is not ours to send — which
+     *  is why this cannot go through `request`.
+     *
+     *  It sent NO Authorization header at all. routers/documents.py::
+     *  parse_document is Depends(rbac("document", "write")) and core/auth.py
+     *  answers 401 without a Bearer header, so document parsing never once
+     *  worked against a real deployment; the caller read `.json()` of the 401
+     *  body and got {detail: …} with no `success`. */
+    parse: async (formData: FormData) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${BASE_URL}/api/documents/parse`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await errorMessage(res));
+      return res.json();
+    },
   },
   assistant: {
     ask: (body: { question: string; conversation_history?: unknown[]; client_id?: string }) =>

@@ -104,7 +104,7 @@ export default function TDSReturnsPage() {
     try {
       // Fetch raw deductions and challans from Supabase
       const deductions = await getTDSDeductions(clientId, financialYear, quarter);
-      const challans = await getTDSChallans(clientId, quarter);
+      const challans = await getTDSChallans(clientId, financialYear, quarter);
 
       if (deductions.length === 0) {
         setError("No TDS deductions found for this period. Add deductions from the TDS Deductions tab.");

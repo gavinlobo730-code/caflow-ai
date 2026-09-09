@@ -113,33 +113,35 @@ export interface TDSReturn {
 
 // ── API Calls ──────────────────────────────────────────────────────────────
 
+// AUTHENTICATED, like every other call in this file. Both of these used to be
+// a bare fetch carrying only Content-Type, while routers/tds.py guards each
+// with Depends(rbac("tds","compute")) and core/auth.py raises 401 when there is
+// no Bearer header (the dev fallback applies only when SUPABASE_URL is unset).
+// So "Prepare a Return" could not compute anything in production — it threw
+// "26Q compute failed: Unauthorized" whatever the books held (TDS-03).
 export async function compute26Q(req: Compute26QRequest): Promise<TDSReturnPayload> {
-  const res = await fetch(`${API_BASE}/api/tds/26q/compute`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+  const json = await authedFetch<TDSReturnPayload>("/api/tds/26q/compute", {
+    method: "POST", body: JSON.stringify(req),
   });
-  if (!res.ok) throw new Error(`26Q compute failed: ${res.statusText}`);
-  const json = await res.json();
   if (!json.success) throw new Error(json.error ?? "26Q computation error");
-  return json.data as TDSReturnPayload;
+  return json.data;
 }
 
 export async function compute24Q(req: Compute24QRequest): Promise<TDSReturnPayload> {
-  const res = await fetch(`${API_BASE}/api/tds/24q/compute`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+  const json = await authedFetch<TDSReturnPayload>("/api/tds/24q/compute", {
+    method: "POST", body: JSON.stringify(req),
   });
-  if (!res.ok) throw new Error(`24Q compute failed: ${res.statusText}`);
-  const json = await res.json();
   if (!json.success) throw new Error(json.error ?? "24Q computation error");
-  return json.data as TDSReturnPayload;
+  return json.data;
 }
 
-/** Authenticated fetch to the TDS API — used by listTdsSections/computeTdsAmount
- * below so the single-payment TDS calculator delegates to the authoritative
- * TDSComputer rather than re-implementing section rates/thresholds itself. */
+/** Authenticated fetch to the TDS API — the ONE way this file talks to it.
+ *
+ * Every route it reaches is Depends(rbac("tds", …)), and core/auth.py answers
+ * 401 to a request with no Bearer header, so a bare fetch here is not a style
+ * choice: it is a call that cannot succeed. Declared below its first callers
+ * because function declarations hoist; the alternative is moving it above the
+ * types, which reads worse. */
 async function authedFetch<T>(path: string, init?: RequestInit): Promise<{ success: boolean; data: T; error: string | null }> {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const res = await fetch(`${API_BASE}${path}`, {
@@ -347,7 +349,18 @@ export async function getTDSDeductions(
   return (data ?? []) as unknown as Record<string, unknown>[];
 }
 
-export async function getTDSChallans(clientId: string, quarter?: string): Promise<Record<string, unknown>[]> {
+/** The quarter's deposits.
+ *
+ *  BOTH halves of the period, or neither. tds_challans holds financial_year
+ *  and quarter separately (migration 037) and this filtered on the quarter
+ *  alone, so a return for Q3 2026-27 also collected every Q3 challan the
+ *  client had ever deposited — reconciling this year's deduction against last
+ *  year's payment, and reporting a shortfall or a surplus that is not real. */
+export async function getTDSChallans(
+  clientId: string,
+  financialYear?: string,
+  quarter?: string,
+): Promise<Record<string, unknown>[]> {
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
   let q = sb
@@ -355,6 +368,7 @@ export async function getTDSChallans(clientId: string, quarter?: string): Promis
     .select("*")
     .eq("firm_id", firmId)
     .eq("client_id", clientId);
+  if (financialYear) q = q.eq("financial_year", financialYear);
   if (quarter) q = q.eq("quarter", quarter);
   const { data, error } = await q.order("payment_date", { ascending: false });
   if (error) throw new Error(error.message);

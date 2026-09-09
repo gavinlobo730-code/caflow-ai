@@ -88,13 +88,26 @@ def fy_label(on: date) -> str:
 
 
 def fy_quarter(on: date) -> str:
-    """'Q3 2025-26' — the Indian financial year and the quarter within it.
+    """'Q3' — the quarter of the financial year, and nothing else.
 
     Q1 Apr-Jun, Q2 Jul-Sep, Q3 Oct-Dec, Q4 Jan-Mar, because the FY runs 1 April
-    to 31 March. The format matches the column's own comment in migration 014.
+    to 31 March.
+
+    THIS USED TO RETURN 'Q3 2025-26', the compound form migration 014 documented
+    for tds_deductions.quarter. Its three sibling tables — tds_returns,
+    tds_challans, tds_certificates — all hold the year in `financial_year` and
+    CHECK `quarter IN ('Q1'..'Q4')`, and every reader was written against that:
+    /tds/returns filters .eq("financial_year", fy).eq("quarter", "Q3"), and so
+    does routers/tds_workspace.py::list_deductions. Against a register storing
+    the compound string those filters matched nothing and the screen reported
+    "No TDS deductions found" whatever the books held (TDS-03). Migration 347
+    normalises the column and adds the sibling CHECK; this is the writing half.
+
+    The name is kept deliberately: every caller had to be visited to add
+    financial_year alongside, so a caller that still wants a display string is
+    one this change would have had to touch anyway.
     """
-    quarter = ((on.month - 4) % 12) // 3 + 1
-    return f"Q{quarter} {fy_label(on)}"
+    return f"Q{((on.month - 4) % 12) // 3 + 1}"
 
 
 def _as_date(v) -> Optional[date]:
@@ -252,6 +265,11 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             # deducts at the bare section rate and carries neither.
             "surcharge_paise": int(bill.get("tds_surcharge_paise") or 0),
             "cess_paise": int(bill.get("tds_cess_paise") or 0),
+            # Both halves of the period, in the vocabulary the other three TDS
+            # tables use. financial_year has existed since migration 263 and
+            # nothing wrote it until now, which is half of why the register was
+            # unreadable; the other half was the compound quarter above.
+            "financial_year": fy_label(when),
             "quarter": fy_quarter(when),
             # THE ROUTING KEY IS STORED; THE DISPLAY NAME IS NOT. return_type
             # stays "26Q"/"27Q" — what is_27q compares against and what every
@@ -267,6 +285,7 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             "non_deduction_reason": non_deduction_reason,
         }, on_conflict="purchase_bill_id").execute()
         out = {"synced": True, "action": "recorded", "tds_paise": deducted,
+               "financial_year": fy_label(when),
                "quarter": fy_quarter(when), "return_type": return_type,
                "return_form": _display_form(return_type, when)}
         if gaps:
