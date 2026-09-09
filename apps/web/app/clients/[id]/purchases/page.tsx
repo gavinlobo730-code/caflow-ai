@@ -1258,6 +1258,10 @@ function Vendors({ clientId }: { clientId: string }) {
   // business logic in the frontend) — these are four facts a human records and
   // one rate a human reads off a treaty.
   const [natureOfIncome, setNatureOfIncome] = useState("");
+  // Part II First Schedule payee class — which SURCHARGE ladder §195 takes.
+  // Not derivable from the PAN: a foreign supplier commonly has no Indian PAN,
+  // and the engine refuses rather than guessing a ladder (migration 348).
+  const [payeeClass, setPayeeClass] = useState("");
   const [trcOnFile, setTrcOnFile] = useState(false);
   const [form10fOnFile, setForm10fOnFile] = useState(false);
   const [noPeDeclaration, setNoPeDeclaration] = useState(false);
@@ -1393,6 +1397,8 @@ function Vendors({ clientId }: { clientId: string }) {
             residentialStatus === "non_resident" ? taxIdentificationNumber.trim() || undefined : undefined,
           section_195_nature_of_income:
             residentialStatus === "non_resident" ? natureOfIncome || undefined : undefined,
+          non_resident_payee_class:
+            residentialStatus === "non_resident" ? payeeClass || undefined : undefined,
           trc_on_file: residentialStatus === "non_resident" ? trcOnFile : false,
           form_10f_on_file: residentialStatus === "non_resident" ? form10fOnFile : false,
           no_pe_declaration_on_file: residentialStatus === "non_resident" ? noPeDeclaration : false,
@@ -1421,7 +1427,7 @@ function Vendors({ clientId }: { clientId: string }) {
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
       setTdsApplicable(false); setTdsSection("194C"); setTdsRate("2"); setOpeningBalance("");
       setResidentialStatus(""); setCountryOfResidence(""); setTaxIdentificationNumber("");
-      setNatureOfIncome(""); setTrcOnFile(false); setForm10fOnFile(false);
+      setNatureOfIncome(""); setPayeeClass(""); setTrcOnFile(false); setForm10fOnFile(false);
       setNoPeDeclaration(false); setTreatyRate("");
       setNoPeDeclarationOn(""); setNoPeDeclarationRef("");
       load();
@@ -1921,6 +1927,35 @@ function Vendors({ clientId }: { clientId: string }) {
                       <option value="stcg_111a">Short-term capital gains — §111A</option>
                       <option value="other_sums">Other sums chargeable</option>
                     </select>
+                  </div>
+                  <div>
+                    {/* THE SURCHARGE LADDER, and it cannot be read off the PAN.
+                        Part II gives a foreign company 2%/5% and an individual
+                        10/15/25/37, and a non-resident payee often has no
+                        Indian PAN at all. Left unset, the bill REFUSES rather
+                        than picking a ladder — there is no safe default, since
+                        one over-deducts and the other under-deducts, and an
+                        under-deduction disallows the whole expense under
+                        §40(a)(i). */}
+                    <label htmlFor="payee-class" className="block text-xs font-medium text-[#475569] mb-1">Payee class — decides the §195 surcharge</label>
+                    <select
+                      id="payee-class"
+                      value={payeeClass}
+                      onChange={(e) => setPayeeClass(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Not established</option>
+                      <option value="foreign_company">Foreign company</option>
+                      <option value="individual_huf">Individual or HUF</option>
+                      <option value="aop_boi">Association of persons / body of individuals</option>
+                      <option value="firm_llp">Firm or LLP</option>
+                      <option value="co_operative">Co-operative society</option>
+                    </select>
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                      Firm/LLP and co-operative are recordable but not yet rateable — this
+                      software does not hold Part II&apos;s ladder for them, and will say so
+                      rather than guess.
+                    </p>
                   </div>
                   <div>
                     <label htmlFor="treaty-rate" className="block text-xs font-medium text-[#475569] mb-1">DTAA rate (%) — from the treaty</label>

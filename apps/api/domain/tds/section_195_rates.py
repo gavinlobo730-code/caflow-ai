@@ -74,6 +74,7 @@ All rates are integer BASIS POINTS (2000 = 20.00%). Never float.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from domain.income_tax.statutory_rates import current_fy
 
@@ -104,6 +105,46 @@ RULE_37BC_NATURES = frozenset({
 })
 
 
+# ── The payee's CLASS, which decides the Part II ladder ──────────────────────
+#
+# Part II of the First Schedule does not have one surcharge ladder, and this
+# module used to model it as a boolean: `is_company` picked between two, so a
+# foreign FIRM or LLP, an AOP, a trust and a payee with no PAN at all were all
+# treated as foreign companies and given the 2%/5% bands instead of the
+# 10/15/25/37 ones. On a Rs 2 crore royalty that is Rs 80,000 of surcharge
+# where the other ladder gives Rs 6,00,000 — an UNDER-deduction, which is the
+# s.40(a)(i) direction: it disallows the whole expenditure.
+#
+# A class with no ladder in surcharge_by_class is REFUSED, not defaulted. That
+# is the whole point of naming the classes: "unknown" has to be a value the
+# type can hold, or the absence goes back to being a silent guess.
+PAYEE_FOREIGN_COMPANY = "foreign_company"
+PAYEE_INDIVIDUAL_HUF = "individual_huf"
+PAYEE_FIRM_LLP = "firm_llp"
+PAYEE_AOP_BOI = "aop_boi"
+PAYEE_CO_OPERATIVE = "co_operative"
+PAYEE_UNKNOWN = "unknown"
+
+PayeeClass = Literal["foreign_company", "individual_huf", "firm_llp",
+                     "aop_boi", "co_operative", "unknown"]
+
+ALL_PAYEE_CLASSES: tuple[str, ...] = (
+    PAYEE_FOREIGN_COMPANY, PAYEE_INDIVIDUAL_HUF, PAYEE_FIRM_LLP,
+    PAYEE_AOP_BOI, PAYEE_CO_OPERATIVE, PAYEE_UNKNOWN,
+)
+
+#: What a CA sees in the vendor form. The wording matters: these are the
+#: classes Part II distinguishes, not the entity types the Companies Act does.
+PAYEE_CLASS_LABELS: dict[str, str] = {
+    PAYEE_FOREIGN_COMPANY: "Foreign company",
+    PAYEE_INDIVIDUAL_HUF: "Individual or HUF",
+    PAYEE_FIRM_LLP: "Firm or LLP",
+    PAYEE_AOP_BOI: "Association of persons / body of individuals",
+    PAYEE_CO_OPERATIVE: "Co-operative society",
+    PAYEE_UNKNOWN: "Not established",
+}
+
+
 @dataclass(frozen=True)
 class NatureRule:
     """One nature of income: its Act rate and the provision it comes from."""
@@ -126,11 +167,21 @@ class FY195Rates:
     fy: str
     verified: bool
     natures: dict[str, NatureRule]
-    # Part II First Schedule. Two different ladders, and using the wrong one is
-    # a large error: a foreign company's top surcharge is 5%, an individual's
-    # is 37%.
-    surcharge_non_corporate: tuple[SurchargeBand, ...]
-    surcharge_foreign_company: tuple[SurchargeBand, ...]
+    # Part II First Schedule, PER PAYEE CLASS. Using the wrong ladder is a large
+    # error: a foreign company's top surcharge is 5%, an individual's is 37%.
+    #
+    # A DICT, AND DELIBERATELY INCOMPLETE. It used to be two fields selected by
+    # one boolean, which forced every payee into one of two buckets — so a
+    # foreign FIRM or LLP (PAN 4th character F) took the foreign-company ladder
+    # and its 2%/5% bands, and so did an AOP, a trust, and a payee with no PAN
+    # at all. A class with NO ENTRY here is refused rather than defaulted:
+    # firm_llp and co_operative are absent because Part II's ladders for them
+    # are not held, and inventing one would withhold a wrong figure that is
+    # remitted to the Government and discovered by the supplier.
+    #
+    # Adding a ladder later is a pure data change of the same kind as flipping
+    # `verified`.
+    surcharge_by_class: dict[str, tuple[SurchargeBand, ...]]
     # s.111A/112/112A surcharge is capped even where the payee's band is higher
     # — the same cap statutory_rates.py applies to a resident's capital gains.
     capital_gains_surcharge_cap_percent: int
@@ -175,16 +226,35 @@ _FY_2025_26 = FY195Rates(
                   "force, non-corporate payee",
             company_rate_bps=3500),
     },
-    surcharge_non_corporate=(
-        SurchargeBand(50_00_000_00, 10),
-        SurchargeBand(1_00_00_000_00, 15),
-        SurchargeBand(2_00_00_000_00, 25),
-        SurchargeBand(5_00_00_000_00, 37),
-    ),
-    surcharge_foreign_company=(
-        SurchargeBand(1_00_00_000_00, 2),
-        SurchargeBand(10_00_00_000_00, 5),
-    ),
+    surcharge_by_class={
+        # The ladder this file has always called "non-corporate". It is the one
+        # Part II gives an individual and a HUF; an AOP/BOI is grouped with
+        # them here because that is the reconciliation this file already made
+        # when there were only two buckets, and narrowing it would be a NEW
+        # statutory claim rather than a preserved one.
+        PAYEE_INDIVIDUAL_HUF: (
+            SurchargeBand(50_00_000_00, 10),
+            SurchargeBand(1_00_00_000_00, 15),
+            SurchargeBand(2_00_00_000_00, 25),
+            SurchargeBand(5_00_00_000_00, 37),
+        ),
+        PAYEE_AOP_BOI: (
+            SurchargeBand(50_00_000_00, 10),
+            SurchargeBand(1_00_00_000_00, 15),
+            SurchargeBand(2_00_00_000_00, 25),
+            SurchargeBand(5_00_00_000_00, 37),
+        ),
+        PAYEE_FOREIGN_COMPANY: (
+            SurchargeBand(1_00_00_000_00, 2),
+            SurchargeBand(10_00_00_000_00, 5),
+        ),
+        # PAYEE_FIRM_LLP and PAYEE_CO_OPERATIVE are ABSENT ON PURPOSE — see the
+        # field's comment. The nearest figure in this repo is
+        # domain/income_tax/entity_rates.py's firm surcharge of 12% above
+        # Rs 1 crore, and that is PART I (surcharge on a firm's total income),
+        # a different provision from Part II (rates for deduction at source).
+        # They must not be treated as one.
+    },
     capital_gains_surcharge_cap_percent=15,
     cess_percent=4,
     section_206aa_floor_bps=2000,
@@ -194,8 +264,7 @@ _FY_2026_27 = FY195Rates(
     fy="2026-27",
     verified=False,
     natures=_FY_2025_26.natures,
-    surcharge_non_corporate=_FY_2025_26.surcharge_non_corporate,
-    surcharge_foreign_company=_FY_2025_26.surcharge_foreign_company,
+    surcharge_by_class=_FY_2025_26.surcharge_by_class,
     capital_gains_surcharge_cap_percent=_FY_2025_26.capital_gains_surcharge_cap_percent,
     cess_percent=_FY_2025_26.cess_percent,
     section_206aa_floor_bps=_FY_2025_26.section_206aa_floor_bps,

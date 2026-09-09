@@ -11,6 +11,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from core.validators import (validate_gstin, validate_pan, validate_tan,
                              validate_phone, validate_email, validate_pincode)
+from domain.tds.section_195_rates import ALL_PAYEE_CLASSES
 from domain.tds.residency import (NON_RESIDENT, RESIDENTIAL_STATUSES,
                                   deduction_section_refusal, section_refusal)
 from domain.tds.section_195_rates import (
@@ -54,6 +55,18 @@ def _normalise_residency(model) -> list[str]:
             errors.append(
                 "country_of_residence must be a 2-letter ISO 3166-1 alpha-2 "
                 f"code such as AE, SG or US (got '{model.country_of_residence}').")
+
+    if model.non_resident_payee_class is not None:
+        model.non_resident_payee_class = (
+            model.non_resident_payee_class.strip().lower() or None)
+        if (model.non_resident_payee_class is not None
+                and model.non_resident_payee_class not in ALL_PAYEE_CLASSES):
+            errors.append(
+                "non_resident_payee_class must be one of: "
+                + ", ".join(ALL_PAYEE_CLASSES)
+                + f" (got '{model.non_resident_payee_class}'). It decides which "
+                  "Part II First Schedule surcharge ladder a s.195 withholding "
+                  "takes, and the ladders differ by a wide margin.")
 
     if model.tax_identification_number is not None:
         # No format check: a TIN's shape is whatever the payee's own country
@@ -312,6 +325,13 @@ class VendorIn(BaseModel):
     residential_status: Optional[str] = None
     country_of_residence: Optional[str] = None
     tax_identification_number: Optional[str] = None
+    # Part II First Schedule payee class — which SURCHARGE ladder a s.195
+    # withholding takes. A foreign company's tops at 5%, an individual's at
+    # 37%, and this used to be inferred from the PAN's 4th character, which
+    # answers nothing for the many non-resident payees who have no Indian PAN.
+    # NULL is a real third state: the engine refuses rather than defaulting.
+    # Migration 348; domain/tds/section_195.py is the authority.
+    non_resident_payee_class: Optional[str] = None
     # s.195 withholding — see domain/tds/section_195.py. All optional: a
     # non-resident vendor can be recorded before anyone has decided how it will
     # be taxed, and the bill path refuses at deduction time rather than making
@@ -393,6 +413,13 @@ class VendorUpdateIn(BaseModel):
     residential_status: Optional[str] = None
     country_of_residence: Optional[str] = None
     tax_identification_number: Optional[str] = None
+    # Part II First Schedule payee class — which SURCHARGE ladder a s.195
+    # withholding takes. A foreign company's tops at 5%, an individual's at
+    # 37%, and this used to be inferred from the PAN's 4th character, which
+    # answers nothing for the many non-resident payees who have no Indian PAN.
+    # NULL is a real third state: the engine refuses rather than defaulting.
+    # Migration 348; domain/tds/section_195.py is the authority.
+    non_resident_payee_class: Optional[str] = None
     section_195_nature_of_income: Optional[str] = None
     trc_on_file: Optional[bool] = None
     form_10f_on_file: Optional[bool] = None

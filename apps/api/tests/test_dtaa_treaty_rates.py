@@ -21,6 +21,7 @@ import pytest
 from domain.tds.section_195 import (
     REFUSED_NO_PE_DECLARATION, REFUSED_TREATY_RATE_UNKNOWN, resolve_section_195,
 )
+from domain.tds.section_195_rates import PAYEE_FOREIGN_COMPANY
 from services.treaty_rate_service import treaty_position
 
 TEN_LAKH = 10_00_000_00
@@ -147,7 +148,7 @@ def test_a_treaty_with_no_article_for_this_nature_withholds_nil():
 
     r = resolve_section_195(
         amount_paise=TEN_LAKH, nature="fees_for_technical_services",
-        is_company=True, trc_on_file=True, treaty_has_no_article=True,
+        payee_class=PAYEE_FOREIGN_COMPANY, trc_on_file=True, treaty_has_no_article=True,
         no_pe_declaration_on_file=True)
     assert r.applies and r.tds_paise == 0 and r.basis == "not_chargeable"
 
@@ -158,7 +159,7 @@ def test_no_article_still_needs_the_no_pe_declaration():
     zero rate."""
     r = resolve_section_195(
         amount_paise=TEN_LAKH, nature="fees_for_technical_services",
-        is_company=True, trc_on_file=True, treaty_has_no_article=True)
+        payee_class=PAYEE_FOREIGN_COMPANY, trc_on_file=True, treaty_has_no_article=True)
     assert not r.applies and r.refusal == REFUSED_NO_PE_DECLARATION
 
 
@@ -168,9 +169,11 @@ def test_no_article_is_not_the_same_as_no_row():
     treaty nobody has opened."""
     read_it = resolve_section_195(
         amount_paise=TEN_LAKH, nature="royalty", trc_on_file=True,
+        payee_class=PAYEE_FOREIGN_COMPANY,
         treaty_has_no_article=True, no_pe_declaration_on_file=True)
     never_read = resolve_section_195(
         amount_paise=TEN_LAKH, nature="royalty", trc_on_file=True,
+        payee_class=PAYEE_FOREIGN_COMPANY,
         no_pe_declaration_on_file=True)
     assert read_it.applies and read_it.tds_paise == 0
     assert not never_read.applies and never_read.refusal == REFUSED_TREATY_RATE_UNKNOWN
@@ -180,7 +183,8 @@ def test_no_article_without_a_trc_does_not_reach_the_treaty_branch_at_all():
     """s.90(4): no TRC, no treaty relief. The Act rate applies and the
     no-article flag is irrelevant."""
     r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty",
-                            is_company=True, treaty_has_no_article=True)
+                            payee_class=PAYEE_FOREIGN_COMPANY,
+                            treaty_has_no_article=True)
     assert r.applies and r.rate_bps == 2000 and r.basis == "act"
 
 

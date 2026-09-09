@@ -507,8 +507,8 @@ def _resolve_bill_section_195(vendor: dict, total_taxable: int, bill_date: str,
     decide; a wrong number is withheld, paid to the Government, reported on 27Q
     and discovered by the supplier.
     """
-    from domain.tds.section_195 import resolve_section_195
-    from domain.tds.tds_computer import is_company_pan, has_pan
+    from domain.tds.section_195 import payee_class_from_pan, resolve_section_195
+    from domain.tds.tds_computer import has_pan
     from services.treaty_rate_service import treaty_position
 
     nature = vendor.get("section_195_nature_of_income")
@@ -519,7 +519,13 @@ def _resolve_bill_section_195(vendor: dict, total_taxable: int, bill_date: str,
     res = resolve_section_195(
         amount_paise=total_taxable,
         nature=nature,
-        is_company=is_company_pan(vendor.get("pan")),
+        # THE RECORDED CLASS WINS OVER THE DERIVED ONE, the same precedence
+        # treaty_position already gives a per-vendor treaty rate over the
+        # firm's country table. A non-resident payee often has no Indian PAN,
+        # so the derivation answers "unknown" in the ordinary case — and
+        # "unknown" is a refusal, not a guess.
+        payee_class=(vendor.get("non_resident_payee_class")
+                     or payee_class_from_pan(vendor.get("pan"))),
         has_pan=has_pan(vendor.get("pan")),
         trc_on_file=bool(vendor.get("trc_on_file")),
         form_10f_on_file=bool(vendor.get("form_10f_on_file")),
