@@ -19,11 +19,14 @@ from __future__ import annotations
 import pytest
 
 from domain.tds.section_195 import (
+    REFUSED_PAYEE_CLASS_UNKNOWN, payee_class_from_pan,
     REFUSED_NO_NATURE, REFUSED_NO_PE_DECLARATION, REFUSED_TREATY_RATE_UNKNOWN,
     REFUSED_UNKNOWN_NATURE, resolve_section_195,
 )
 from domain.tds.section_195_rates import (
     ALL_NATURES, LATEST_VERIFIED_FY, NATURE_BUSINESS_PROFITS_NO_PE,
+    ALL_PAYEE_CLASSES, PAYEE_AOP_BOI, PAYEE_FIRM_LLP,
+    PAYEE_FOREIGN_COMPANY, PAYEE_INDIVIDUAL_HUF, PAYEE_UNKNOWN,
     RATES_BY_FY, RULE_37BC_NATURES, rates_for,
 )
 
@@ -82,6 +85,7 @@ def test_every_nature_in_the_registry_resolves(nature):
     """A nature the CHECK constraint allows and the engine cannot price would
     be a vendor that saves and a bill that never books."""
     r = resolve_section_195(amount_paise=TEN_LAKH, nature=nature,
+                            payee_class=PAYEE_FOREIGN_COMPANY,
                             no_pe_declaration_on_file=True)
     assert r.applies, f"{nature} is allowed on a vendor but has no rate"
 
@@ -90,7 +94,7 @@ def test_fts_to_a_foreign_company_is_twenty_percent_plus_cess():
     """Rs 10,00,000 FTS: 20% = Rs 2,00,000, no surcharge below Rs 1 crore,
     4% cess = Rs 8,000, total Rs 2,08,000."""
     r = resolve_section_195(amount_paise=TEN_LAKH,
-                            nature="fees_for_technical_services", is_company=True)
+                            nature="fees_for_technical_services", payee_class=PAYEE_FOREIGN_COMPANY)
     assert r.rate_bps == 2000
     assert r.base_tax_paise == 2_00_000_00
     assert r.surcharge_paise == 0
@@ -101,8 +105,8 @@ def test_fts_to_a_foreign_company_is_twenty_percent_plus_cess():
 
 def test_other_sums_charge_a_foreign_company_more_than_a_non_corporate_payee():
     """The one nature whose Act rate depends on the payee class."""
-    co = resolve_section_195(amount_paise=TEN_LAKH, nature="other_sums", is_company=True)
-    ind = resolve_section_195(amount_paise=TEN_LAKH, nature="other_sums", is_company=False)
+    co = resolve_section_195(amount_paise=TEN_LAKH, nature="other_sums", payee_class=PAYEE_FOREIGN_COMPANY)
+    ind = resolve_section_195(amount_paise=TEN_LAKH, nature="other_sums", payee_class=PAYEE_INDIVIDUAL_HUF)
     assert co.rate_bps > ind.rate_bps
 
 
@@ -112,13 +116,13 @@ def test_a_trc_with_no_recorded_treaty_rate_refuses_rather_than_using_the_act():
     """Falling back to the Act rate here would over-deduct in exactly the case
     where somebody has already established that a treaty applies."""
     r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty",
-                            is_company=True, trc_on_file=True)
+                            payee_class=PAYEE_FOREIGN_COMPANY, trc_on_file=True)
     assert not r.applies and r.refusal == REFUSED_TREATY_RATE_UNKNOWN
     assert "does not hold treaty rates" in r.refusal_detail
 
 
 def test_a_lower_treaty_rate_wins():
-    r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty", is_company=True,
+    r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty", payee_class=PAYEE_FOREIGN_COMPANY,
                             trc_on_file=True, form_10f_on_file=True,
                             treaty_rate_bps=1000)
     assert r.applies and r.rate_bps == 1000 and r.basis == "treaty"
@@ -128,7 +132,7 @@ def test_a_lower_treaty_rate_wins():
 def test_a_higher_treaty_rate_does_not_win():
     """s.90(2) gives the assessee whichever is MORE BENEFICIAL — it is not a
     licence for the treaty to raise the withholding above the Act."""
-    r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty", is_company=True,
+    r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty", payee_class=PAYEE_FOREIGN_COMPANY,
                             trc_on_file=True, form_10f_on_file=True,
                             treaty_rate_bps=3000)
     assert r.rate_bps == 2000 and r.basis == "act"
@@ -139,15 +143,138 @@ def test_a_treaty_rate_of_zero_is_honoured():
     read as 'unset' — that is why the parameter is Optional[int] and not an
     int defaulting to 0."""
     r = resolve_section_195(amount_paise=TEN_LAKH, nature="fees_for_technical_services",
-                            is_company=True, trc_on_file=True,
+                            payee_class=PAYEE_FOREIGN_COMPANY, trc_on_file=True,
                             form_10f_on_file=True, treaty_rate_bps=0)
     assert r.applies and r.tds_paise == 0 and r.basis == "treaty"
+
+
+# ── 3a. A treaty rate is a CEILING, not a base to be grossed up ──────────────
+#
+# THE EXISTING TESTS ABOVE COULD NOT SEE THIS DEFECT, and that is worth naming
+# rather than quietly fixing: test_a_lower_treaty_rate_wins asserts rate_bps
+# and base_tax_paise and never tds_paise, and test_a_treaty_rate_of_zero_is
+# _honoured asserts tds_paise == 0, which is trivially true at a 0% base. So
+# surcharge and cess were added on top of every treaty rate and the suite
+# stayed green. Every test below is NEW for that reason — see the PR's negative
+# control count.
+#
+# The rule, decided by the owner on 2026-09-09: the agreement's own "Taxes
+# covered" article brings surcharge and cess inside the tax the treaty caps, so
+# s.90(2) compares FINISHED TOTALS and a treaty-basis resolution carries
+# neither.
+
+ONE_CRORE = 1_00_00_000_00
+
+
+def _treaty(**kw):
+    base = dict(amount_paise=ONE_CRORE, nature="royalty", fy="2026-27",
+                trc_on_file=True, form_10f_on_file=True, has_pan=True)
+    return resolve_section_195(**{**base, **kw})
+
+
+def test_a_treaty_rate_carries_no_surcharge_and_no_cess():
+    """THE Rs 1,44,000 THE FINDING MEASURED, ASSERTED AS A NUMBER.
+
+    A non-corporate payee above Rs 1 crore attracts a Part II surcharge, so
+    this case fails on all four assertions against the previous code: it
+    returned Rs 11,44,000 with surcharge Rs 10,00,000 and cess Rs 4,40,000.
+    """
+    r = _treaty(payee_class=PAYEE_INDIVIDUAL_HUF, treaty_rate_bps=1000)
+    assert r.basis == "treaty"
+    assert r.tds_paise == 10_00_000_00
+    assert r.surcharge_paise == 0
+    assert r.cess_paise == 0
+    assert r.base_tax_paise == r.tds_paise
+    assert r.effective_rate_bps == r.rate_bps == 1000
+
+
+def test_a_foreign_company_treaty_rate_carries_no_cess_either():
+    """The second payee class, because _surcharge_percent picks between two
+    ladders and the two failures have different causes. A foreign company's
+    surcharge band at Rs 1 crore is 0, so this isolates the cess: against the
+    previous code it returned Rs 10,40,000."""
+    r = _treaty(payee_class=PAYEE_FOREIGN_COMPANY, treaty_rate_bps=1000)
+    assert r.basis == "treaty"
+    assert r.tds_paise == 10_00_000_00
+    assert r.cess_paise == 0
+
+
+def test_a_treaty_rate_equal_to_the_act_rate_still_wins():
+    """THE CASE THE FINDING NEVER PROBED, and the half a rate-only fix misses.
+
+    s.90(2) gives whichever is more beneficial, and that is a comparison of
+    what is actually withheld. The Act's 20% carries surcharge and cess; the
+    treaty's 20% does not. Comparing the bare numbers made this a tie and left
+    it on the Act — the treaty established, on file, and not applied.
+    """
+    r = _treaty(payee_class=PAYEE_INDIVIDUAL_HUF, treaty_rate_bps=2000)
+    assert r.basis == "treaty", "an equal headline rate is still the cheaper total"
+    assert r.tds_paise == 20_00_000_00
+
+
+def test_a_treaty_rate_above_the_act_total_still_does_not_win():
+    """The boundary from the other side, so the fix cannot be 'always prefer
+    the treaty'. The Act's effective rate here is 2288 bps, so a 25% treaty
+    rate must lose."""
+    r = _treaty(payee_class=PAYEE_INDIVIDUAL_HUF, treaty_rate_bps=2500)
+    assert r.basis == "act"
+    assert r.surcharge_paise > 0 and r.cess_paise > 0
+
+
+def test_the_effective_rate_never_exceeds_the_treaty_rate_for_any_nature():
+    """The PROPERTY, not an instance — so the defect cannot return through a
+    nature added later. At Rs 10 crore, the top of both ladders."""
+    for nature in sorted(ALL_NATURES):
+        for payee_class in (PAYEE_FOREIGN_COMPANY, PAYEE_INDIVIDUAL_HUF):
+            r = resolve_section_195(
+                amount_paise=10_00_00_000_00, nature=nature,
+                payee_class=payee_class, fy="2026-27", trc_on_file=True,
+                form_10f_on_file=True, has_pan=True, treaty_rate_bps=500)
+            if r.basis != "treaty":
+                continue
+            assert r.effective_rate_bps <= r.rate_bps, (
+                f"{nature} ({payee_class}) withholds "
+                f"{r.effective_rate_bps} bps against a treaty ceiling of "
+                f"{r.rate_bps} bps")
+
+
+def test_the_206aa_floor_still_carries_surcharge_and_cess():
+    """THE INTERACTION CONTROL, and the reason the suppression is keyed on
+    `basis` rather than on `treaty_rate_bps is not None`.
+
+    Where no PAN is held and Rule 37BC does not relieve, s.206AA overwrites the
+    basis with "206aa_floor" — and THAT branch keeps surcharge and cess, which
+    is the conservative decision recorded in the module. Keying on the presence
+    of a treaty rate would have silently reversed it.
+    """
+    floored = _treaty(payee_class=PAYEE_INDIVIDUAL_HUF, treaty_rate_bps=1000,
+                      has_pan=False, rule_37bc_particulars_held=False)
+    assert floored.basis == "206aa_floor"
+    assert floored.rate_bps == 2000
+    assert floored.surcharge_paise > 0 and floored.cess_paise > 0
+
+    # ...and Rule 37BC relief puts it back on the treaty, with neither.
+    relieved = _treaty(payee_class=PAYEE_INDIVIDUAL_HUF, treaty_rate_bps=1000,
+                       has_pan=False, rule_37bc_particulars_held=True)
+    assert relieved.basis == "treaty"
+    assert relieved.tds_paise == 10_00_000_00
+    assert relieved.surcharge_paise == 0 and relieved.cess_paise == 0
+
+
+def test_an_act_basis_resolution_is_completely_unchanged():
+    """The non-regression half. Nothing about a payment with no treaty moved."""
+    r = resolve_section_195(amount_paise=ONE_CRORE, nature="royalty",
+                            payee_class=PAYEE_INDIVIDUAL_HUF, fy="2026-27", has_pan=True)
+    assert r.basis == "act"
+    assert r.base_tax_paise == 20_00_000_00
+    assert r.surcharge_paise > 0 and r.cess_paise > 0
+    assert r.tds_paise == r.base_tax_paise + r.surcharge_paise + r.cess_paise
 
 
 def test_no_trc_means_no_treaty_relief_and_is_not_a_refusal():
     """s.90(4): without a TRC there is no treaty relief, which is a complete
     answer rather than missing information."""
-    r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty", is_company=True,
+    r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty", payee_class=PAYEE_FOREIGN_COMPANY,
                             treaty_rate_bps=1000)
     assert r.applies and r.rate_bps == 2000 and r.basis == "act"
 
@@ -156,7 +283,7 @@ def test_a_missing_form_10f_is_reported_but_does_not_change_the_rate():
     """Rule 21AB wants the form; the treaty rate is still the operative one,
     and a missing document is something to chase rather than a reason to
     withhold at a different number."""
-    r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty", is_company=True,
+    r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty", payee_class=PAYEE_FOREIGN_COMPANY,
                             trc_on_file=True, treaty_rate_bps=1000)
     assert r.applies and r.rate_bps == 1000
     assert "Form 10F NOT on file" in r.citation
@@ -166,7 +293,7 @@ def test_a_missing_form_10f_is_reported_but_does_not_change_the_rate():
 
 def test_no_pan_floors_the_rate_at_twenty_percent():
     r = resolve_section_195(amount_paise=TEN_LAKH, nature="interest_194lc",
-                            is_company=True, has_pan=False)
+                            payee_class=PAYEE_FOREIGN_COMPANY, has_pan=False)
     assert r.rate_bps == 2000 and r.basis == "206aa_floor"
 
 
@@ -174,7 +301,7 @@ def test_rule_37bc_lifts_the_floor_for_a_non_resident_who_furnished_the_particul
     """s.206AA(7) with Rule 37BC. A resident gets no such relief, which is why
     the floor cannot be applied uniformly across both."""
     r = resolve_section_195(amount_paise=TEN_LAKH, nature="interest_194lc",
-                            is_company=True, has_pan=False,
+                            payee_class=PAYEE_FOREIGN_COMPANY, has_pan=False,
                             rule_37bc_particulars_held=True)
     assert r.rate_bps == 500 and r.basis == "act"
 
@@ -184,13 +311,14 @@ def test_rule_37bc_does_not_reach_a_nature_it_does_not_list():
     sums' is not in it, so the floor stands."""
     assert "other_sums" not in RULE_37BC_NATURES
     r = resolve_section_195(amount_paise=TEN_LAKH, nature="other_sums",
+                            payee_class=PAYEE_INDIVIDUAL_HUF,
                             has_pan=False, rule_37bc_particulars_held=True)
     assert r.rate_bps == 3000, "the Act rate already exceeds the floor here"
 
 
 def test_the_floor_never_lowers_a_rate_that_is_already_higher():
     r = resolve_section_195(amount_paise=TEN_LAKH, nature="other_sums",
-                            is_company=True, has_pan=False)
+                            payee_class=PAYEE_FOREIGN_COMPANY, has_pan=False)
     assert r.rate_bps == 3500
 
 
@@ -209,7 +337,7 @@ def test_the_floor_does_not_resurrect_a_nil_on_business_profits():
 def test_a_foreign_company_over_a_crore_carries_surcharge():
     """Part II First Schedule: 2% above Rs 1 crore for a foreign company."""
     r = resolve_section_195(amount_paise=TWO_CRORE, nature="fees_for_technical_services",
-                            is_company=True)
+                            payee_class=PAYEE_FOREIGN_COMPANY)
     assert r.base_tax_paise == 40_00_000_00        # 20%
     assert r.surcharge_paise == 80_000_00          # 2%
     assert r.cess_paise == 1_63_200_00             # 4% of (base + surcharge)
@@ -219,8 +347,8 @@ def test_a_foreign_company_over_a_crore_carries_surcharge():
 def test_the_two_surcharge_ladders_are_not_the_same():
     """A non-corporate payee's ladder is far steeper than a foreign company's —
     37% at the top against 5%. Using the wrong one is a large error."""
-    co = resolve_section_195(amount_paise=TWO_CRORE, nature="other_sums", is_company=True)
-    ind = resolve_section_195(amount_paise=TWO_CRORE, nature="other_sums", is_company=False)
+    co = resolve_section_195(amount_paise=TWO_CRORE, nature="other_sums", payee_class=PAYEE_FOREIGN_COMPANY)
+    ind = resolve_section_195(amount_paise=TWO_CRORE, nature="other_sums", payee_class=PAYEE_INDIVIDUAL_HUF)
     co_pct = co.surcharge_paise * 100 // co.base_tax_paise
     ind_pct = ind.surcharge_paise * 100 // ind.base_tax_paise
     assert co_pct == 2 and ind_pct == 15
@@ -228,20 +356,22 @@ def test_the_two_surcharge_ladders_are_not_the_same():
 
 def test_capital_gains_surcharge_is_capped():
     """The same cap statutory_rates.py applies to a resident's capital gains."""
-    capped = resolve_section_195(amount_paise=10_00_00_000_00, nature="ltcg_112")
-    uncapped = resolve_section_195(amount_paise=10_00_00_000_00, nature="other_sums")
+    capped = resolve_section_195(amount_paise=10_00_00_000_00, nature="ltcg_112",
+                                 payee_class=PAYEE_INDIVIDUAL_HUF)
+    uncapped = resolve_section_195(amount_paise=10_00_00_000_00, nature="other_sums",
+                                   payee_class=PAYEE_INDIVIDUAL_HUF)
     cap_pct = capped.surcharge_paise * 100 // capped.base_tax_paise
     unc_pct = uncapped.surcharge_paise * 100 // uncapped.base_tax_paise
     assert cap_pct == 15 and unc_pct == 37
 
 
 def test_cess_is_charged_on_tax_plus_surcharge_not_on_tax_alone():
-    r = resolve_section_195(amount_paise=TWO_CRORE, nature="other_sums", is_company=True)
+    r = resolve_section_195(amount_paise=TWO_CRORE, nature="other_sums", payee_class=PAYEE_FOREIGN_COMPANY)
     assert r.cess_paise == (r.base_tax_paise + r.surcharge_paise) * 4 // 100
 
 
 def test_the_total_is_the_three_components_and_nothing_else():
-    r = resolve_section_195(amount_paise=TWO_CRORE, nature="royalty", is_company=True)
+    r = resolve_section_195(amount_paise=TWO_CRORE, nature="royalty", payee_class=PAYEE_FOREIGN_COMPANY)
     assert r.tds_paise == r.base_tax_paise + r.surcharge_paise + r.cess_paise
 
 
@@ -257,7 +387,7 @@ def test_withholding_never_exceeds_the_payment():
     """The rate-bound the resident engine has (audit L1), restated here where
     surcharge and cess sit on top of the base."""
     for nature in ALL_NATURES:
-        r = resolve_section_195(amount_paise=TEN_LAKH, nature=nature, is_company=True,
+        r = resolve_section_195(amount_paise=TEN_LAKH, nature=nature, payee_class=PAYEE_FOREIGN_COMPANY,
                                 no_pe_declaration_on_file=True)
         assert r.tds_paise <= TEN_LAKH, nature
 
@@ -616,3 +746,88 @@ def test_a_cancelled_nil_remittance_still_loses_its_row():
         "bill_date": "2025-05-08", "tds_paise": 0, "tds_section": "195",
     }, {"id": "v1", "residential_status": "non_resident"})
     assert out["action"] == "removed"
+
+
+# ── 3b. The payee CLASS decides the surcharge ladder, and is REFUSED if unknown
+
+def test_a_firm_no_longer_silently_takes_the_foreign_company_ladder():
+    """THE DEFECT, ASSERTED AS A REFUSAL.
+
+    `is_company` was a boolean fed by is_company_pan(), which returns True for
+    any PAN whose 4th character is not P or H. So a foreign FIRM or LLP (F), an
+    AOP (A) and a trust (T) all took the foreign-company ladder — 2%/5% instead
+    of 10/15/25/37. On a Rs 2 crore royalty that is Rs 80,000 of surcharge
+    against Rs 6,00,000: an UNDER-deduction, which disallows the whole
+    expenditure under s.40(a)(i).
+
+    Part II's ladder for a firm is not held here, so the answer is a refusal
+    naming what IS held — not the other ladder, which would be a second guess.
+    """
+    r = resolve_section_195(amount_paise=TWO_CRORE, nature="royalty",
+                            payee_class=PAYEE_FIRM_LLP)
+    assert not r.applies
+    assert r.refusal == REFUSED_PAYEE_CLASS_UNKNOWN
+    assert "Firm or LLP" in r.refusal_detail
+    assert "Foreign company" in r.refusal_detail, "say which ladders ARE held"
+
+
+def test_an_unrecorded_payee_class_refuses_rather_than_defaulting():
+    """There is no safe default. The non-corporate ladder over-deducts on a
+    foreign company; the foreign-company ladder under-deducts on everyone else,
+    which is the s.40(a)(i) direction. So neither is chosen."""
+    r = resolve_section_195(amount_paise=TWO_CRORE, nature="royalty")
+    assert not r.applies and r.refusal == REFUSED_PAYEE_CLASS_UNKNOWN
+    assert "has not been established" in r.refusal_detail
+
+
+def test_the_two_held_ladders_still_differ_by_the_margin_that_makes_this_matter():
+    """The non-regression half, and the number that makes the refusal worth
+    having: at Rs 2 crore the two ladders are 15% and 2%."""
+    ind = resolve_section_195(amount_paise=TWO_CRORE, nature="royalty",
+                              payee_class=PAYEE_INDIVIDUAL_HUF)
+    co = resolve_section_195(amount_paise=TWO_CRORE, nature="royalty",
+                             payee_class=PAYEE_FOREIGN_COMPANY)
+    assert ind.surcharge_paise == 6_00_000_00
+    assert co.surcharge_paise == 80_000_00
+    assert ind.tds_paise > co.tds_paise
+
+
+def test_other_sums_takes_the_company_rate_only_for_a_foreign_company():
+    """s.115A gives 'other sums' a different rate for a COMPANY payee, and that
+    IS a two-way question — unlike the surcharge ladder. Under the boolean, a
+    firm got the 35% company rate as well as the wrong ladder."""
+    co = resolve_section_195(amount_paise=TEN_LAKH, nature="other_sums",
+                             payee_class=PAYEE_FOREIGN_COMPANY)
+    ind = resolve_section_195(amount_paise=TEN_LAKH, nature="other_sums",
+                              payee_class=PAYEE_INDIVIDUAL_HUF)
+    assert co.rate_bps == 3500 and ind.rate_bps == 3000
+
+
+def test_every_named_payee_class_either_has_a_ladder_or_refuses():
+    """THE RULE, over the enum rather than over a list of cases: adding a class
+    without a ladder must fail loudly here rather than fall into a default."""
+    for payee_class in ALL_PAYEE_CLASSES:
+        r = resolve_section_195(amount_paise=TEN_LAKH, nature="royalty",
+                                payee_class=payee_class)
+        held = payee_class in rates_for("2026-27").surcharge_by_class
+        assert r.applies is held, (
+            f"{payee_class}: applies={r.applies} but a ladder is "
+            f"{'held' if held else 'NOT held'} for it")
+        if not held:
+            assert r.refusal == REFUSED_PAYEE_CLASS_UNKNOWN
+
+
+def test_the_class_derived_from_a_pan_maps_only_letters_this_repo_asserts():
+    """T (trust) and J (AJP) are deliberately unmapped, and a missing PAN is
+    "unknown" — which refuses. is_company_pan returns True for a missing PAN
+    and calls it conservative; that is true for the resident s.194 series and
+    FALSE here, where the conservative ladder is the non-corporate one."""
+    assert payee_class_from_pan("AAAPA1234A") == PAYEE_INDIVIDUAL_HUF
+    assert payee_class_from_pan("AAAHA1234A") == PAYEE_INDIVIDUAL_HUF
+    assert payee_class_from_pan("AAACA1234A") == PAYEE_FOREIGN_COMPANY
+    assert payee_class_from_pan("AAAFA1234A") == PAYEE_FIRM_LLP
+    assert payee_class_from_pan("AAAAA1234A") == PAYEE_AOP_BOI
+    assert payee_class_from_pan("AAATA1234A") == PAYEE_UNKNOWN, "trust is not mapped"
+    assert payee_class_from_pan(None) == PAYEE_UNKNOWN, "no PAN is the ordinary case"
+    assert payee_class_from_pan("") == PAYEE_UNKNOWN
+    assert payee_class_from_pan("SHORT") == PAYEE_UNKNOWN

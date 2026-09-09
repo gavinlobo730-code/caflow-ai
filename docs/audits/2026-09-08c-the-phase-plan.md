@@ -302,7 +302,7 @@ confirmed real rather than a heuristic's guess and should be picked up early:**
 accepts `'filed'`, so marking an ROC filing as filed is rejected by the
 database and does nothing.
 
-### Phase 4 — TDS statutory correctness · 9 findings (8 distinct) · ≤60 days
+### Phase 4 — TDS statutory correctness · 9 findings (8 distinct) · ≤60 days · **4a–4d DONE, 4e–4h DEFERRED**
 `TDS-07 TDS-22 TDS-26 PUR-03 TDS-06 PUR-10 TDS-09 PUR-07≡TDS-13`
 
 §194IA unknown to the engine but offered in the dropdown; §194J's 2% technical
@@ -316,6 +316,50 @@ stamped with the first challan found; no TDS on a vendor payment; no 27Q; no
 *Guard:* the section registry test, extended.
 *Runs after Phase 3 deliberately:* fixing the engine while a browser copy still
 overrides it fixes nothing a CA can see.
+
+**SPLIT, 2026-09-09 — an owner decision, and the reason is that the eight are
+not one shape.** Four are the ENGINE being wrong on a payment it already
+computes: a wrong answer reaches a CA today. The other four are things the
+software does not do at all, each a screen, a table or a file format, and none
+of them is smaller for being done beside the first four. Grouping by fix shape
+is what this plan is for, so:
+
+| | Findings | What it is | State |
+|---|---|---|---|
+| **4a–4d** | TDS-07, PUR-03, TDS-26, TDS-22 | the engine's four wrong answers | **DONE** |
+| **4e–4h** | PUR-10, TDS-06, TDS-09, PUR-07≡TDS-13 | four new builds — TDS on a vendor payment, challan→deduction mapping, the 27Q builder, §197 certificates | **deferred to a later phase, not started** |
+
+What landed, and the one thing each turned on:
+
+- **4a (TDS-07)** — a section the engine cannot answer for is REFUSED where it
+  is recorded, on the vendor, not discovered on the bill. The dangerous case
+  was not the §194IA 422 the finding named: recording §192 on a vendor made the
+  engine withhold NIL in silence, because salary is not in the purchase-bill
+  registry at all.
+- **4b (PUR-03)** — a DTAA rate is a CEILING on the whole tax, not a base to
+  add surcharge and cess to. §90(2) compares finished totals. Owner decision:
+  ₹10,00,000 on a ₹1 crore royalty at a 10% treaty rate, not ₹11,44,000.
+- **4c (TDS-26)** — a boolean is not a classification. Part II of the First
+  Schedule gives a different surcharge ladder to a foreign company, an
+  individual/HUF, a firm/LLP, an AOP/BOI and a co-operative; the engine had
+  `is_company`, fed by the PAN's 4th character, so a foreign firm, an AOP and
+  every payee with NO PAN got the foreign-company ladder and UNDER-deducted —
+  which disallows the whole expenditure under §40(a)(i). Migration 348 records
+  the class; two ladders that are not held are refused rather than guessed.
+- **4d (TDS-22)** — §194I and §194J each charge two limbs at two rates and the
+  registry holds one. Shipped as a NAMED GAP, not a rate: the two concessional
+  figures are not held anywhere verified — this repository stated §194-I(a) as
+  2% in one file and 5% in another — and a split registry key would have put an
+  unconfirmable clause code on a 26Q deductee row, which is worse than the
+  over-deduction it would fix. The withholding stays at the higher rate, which
+  over-deducts recoverably, and the bill says so.
+
+**Why 4e–4h are deferred rather than dropped.** Each is a real gap and PUR-10
+is the one a CA meets soonest — a vendor payment outside the purchase-bill path
+withholds nothing. But they are builds, and this plan's own rule is that a
+phase teaches one pattern and ends with one guard test. Four screens and a file
+format do not share a pattern with four engine corrections. They are carried
+forward whole, with their findings and their severities unchanged.
 
 ### Phase 5 — A GSTR-1 the portal accepts · 8 findings · ≤24 days
 `GST-07 GST-08 SALES-06 SALES-10 SALES-09 GST-16 SALES-03 GST-12`
@@ -385,8 +429,14 @@ Then §32 block-of-assets (the IT-09/FA-06 duplicate), the missed-month catch-up
 the note that reports a theoretical charge, §234C for a presumptive assessee,
 and the §44AB report due date.
 
-### Phase 11 — The remaining big builds · 15 findings · ≤168 days
+### Phase 11 — The remaining big builds · 15 + 4 findings · ≤168 days
 `IT-11 IT-19 GST-10 GST-11 GST-20 PUR-15 ACC-06 ACC-10 SALES-11 INV-01 INV-06 PUR-09 SALES-05 PAY-09 PAY-14`
+**+ the four deferred out of Phase 4:** `PUR-10 TDS-06 TDS-09 PUR-07≡TDS-13` —
+TDS on a vendor payment, challan→deduction mapping, the 27Q builder, §197
+certificates. They land here because they are builds, which is what this phase
+is; they are NOT features, so the "which ones will a CA pay for" question below
+does not reach them. PUR-10 is the one to take first — a vendor payment made
+outside the purchase-bill path withholds nothing at all today.
 
 Form 3CD, §54 reinvestment exemptions, GSTR-9, QRMP, multi-GSTIN, the MSME
 §43B(h) tracker, recurring journals out of `localStorage`, Schedule III mapping

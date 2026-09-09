@@ -150,7 +150,17 @@ export function buildCustomers(rows: Record<string, string>[], clientId: string)
 
 // ── Vendors → POST /api/vendors/ ─────────────────────────────────────────────
 
-const TDS_SECTIONS = ["194C", "194I", "194J", "194H", "194A"];
+// NO SECTION LIST HERE, DELIBERATELY. This held ["194C","194I","194J","194H",
+// "194A"] and rejected the row for anything else — which meant it refused
+// eight sections the engine DOES hold (193, 194, 194B, 194D, 194G, 194K,
+// 194LA, 194Q). A third list, narrower than the screen's and narrower than the
+// registry, silently unimportable.
+//
+// The server is the authority and now says something a CA can act on: a
+// section the engine cannot answer for is refused at the vendor master with a
+// sentence naming it and listing what IS available
+// (domain/tds/residency.deduction_section_refusal). Re-stating a subset of
+// that here can only be wrong in one of two directions.
 
 export interface BuiltVendor {
   client_id: string;
@@ -173,8 +183,7 @@ export const VENDOR_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "email", label: "Email", required: false, hint: "Contact email (optional)" },
   { key: "phone", label: "Phone", required: false, hint: "Contact phone (optional)" },
   { key: "tds_applicable", label: "TDS Applicable", required: false, hint: "yes / no" },
-  { key: "tds_section", label: "TDS Section", required: false, hint: "194C / 194I / 194J / 194H / 194A (if TDS applicable)" },
-  { key: "tds_rate", label: "TDS Rate %", required: false, hint: "e.g. 2 (for 2%); required if TDS applicable" },
+  { key: "tds_section", label: "TDS Section", required: false, hint: "e.g. 194C, 194J, 194I (if TDS applicable)" },
   { key: "opening_balance", label: "Opening Balance (₹)", required: false, hint: "Opening payable in rupees, e.g. 0" },
 ];
 
@@ -196,17 +205,22 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
 
     const tdsApplicable = toBool(r.tds_applicable);
     let tdsSection: string | undefined;
-    let tdsRateBps = 0;
     if (tdsApplicable) {
       tdsSection = str(r.tds_section).toUpperCase();
-      if (!TDS_SECTIONS.includes(tdsSection)) {
-        errors.push(`Row ${rowNo}: tds_section must be one of ${TDS_SECTIONS.join(", ")} when TDS applies`); return;
-      }
-      tdsRateBps = toBps(r.tds_rate);
-      if (!Number.isFinite(tdsRateBps) || tdsRateBps <= 0) {
-        errors.push(`Row ${rowNo}: tds_rate % must be a positive number when TDS applies`); return;
+      // Presence only. WHICH section is valid is the engine's question, and it
+      // answers it with a sentence naming the section and listing the ones it
+      // holds; a list here could only be a stale copy of that.
+      if (!tdsSection) {
+        errors.push(`Row ${rowNo}: tds_section is required when TDS applies`); return;
       }
     }
+    // NO RATE IS READ. vendors.tds_rate_bps is the dead field PUR-06 removed
+    // from the vendor form: the engine resolves the rate from the section, the
+    // payee's PAN, the year's aggregate and s.206AA, and never reads this
+    // column. Requiring it here made a CSV import demand a number that is
+    // ignored — and every rate a CA typed into that column was, in production,
+    // the s.194C COMPANY rate applied to individual contractors.
+    const tdsRateBps = 0;
 
     // A blank/absent opening_balance must map to 0, not NaN — toPaise("") is
     // NaN, which JSON.stringify turns into `null` on the wire, and the

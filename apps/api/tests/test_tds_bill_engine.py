@@ -130,12 +130,27 @@ def test_l1_tds_never_reaches_full_taxable(monkeypatch):
 
 
 def test_l6_unknown_section_rejected(monkeypatch):
+    """Still 422 — but the sentence is now one a CA can act on.
+
+    This asserted the engine's own `Unknown TDS section '194ZZ'`, which is an
+    internal string: it names no statute, offers no alternative and does not
+    say the vendor record is what is wrong. The refusal is now
+    domain/tds/residency.deduction_section_refusal, asked at the vendor master
+    when the section is RECORDED and again here for rows that predate it.
+
+    Asserted as properties rather than as the new literal, so rewording the
+    sentence does not break the test while dropping the section number would.
+    """
     db = _setup(monkeypatch)
     v = _vendor(db, "194ZZ")                        # not a real section
     with pytest.raises(HTTPException) as ex:
         _bill(db, v, 40_000_00, "X1")
     assert ex.value.status_code == 422
-    assert "Unknown TDS section" in str(ex.value.detail)
+    detail = str(ex.value.detail)
+    assert "194ZZ" in detail, "the CA must be told WHICH section"
+    assert "194J" in detail, "and which sections are available instead"
+    assert "Unknown TDS section" not in detail, (
+        "the engine's internal string must not reach the CA")
 
 
 def test_tds_applicable_without_section_rejected(monkeypatch):

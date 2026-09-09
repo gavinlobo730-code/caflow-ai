@@ -247,14 +247,22 @@ def test_the_24q_salary_return_did_not_grow_a_non_resident_key():
 # ── The bill path refuses, rather than deducting at the wrong section ────────
 
 def _compute(vendor, section="194C"):
-    """Drive the shared create/update compute path for a one-line bill."""
+    """Drive the shared create/update compute path for a one-line bill.
+
+    Every non-resident vendor below carries non_resident_payee_class unless the
+    case is ABOUT its absence. Migration 348 made it a fact a CA records: Part
+    II of the First Schedule gives a different surcharge ladder to each class,
+    and the engine refuses rather than picking one. Defaulted here so each test
+    keeps asking the question it was written to ask.
+    """
     from domain.currency.document_currency import identity_currency
     from routers.purchase_bills import _compute_bill_lines_and_totals
     return _compute_bill_lines_and_totals(
         lines_data=[{"description": "Job work", "quantity": 1,
                      "rate_paise": 5_00_000_00, "gst_rate": 18}],
         is_interstate=False,
-        vendor={**vendor, "tds_applicable": True, "tds_section": section,
+        vendor={"non_resident_payee_class": "foreign_company", **vendor,
+                "tds_applicable": True, "tds_section": section,
                 "state_code": "27"},
         bill_date="2025-10-25",
         firm_id="f1",
@@ -345,14 +353,27 @@ def test_a_trc_without_a_recorded_treaty_rate_stops_the_bill():
     assert "treaty rate" in e.value.detail
 
 
-def test_a_recorded_treaty_rate_is_applied_when_it_is_lower():
+def test_a_recorded_treaty_rate_is_applied_as_a_ceiling_on_the_whole_tax():
+    """The bill path's half of the s.90(2) ceiling.
+
+    This asserted Rs 52,000 — "10% + 4% cess on Rs 5,00,000" — which is the
+    defect PUR-03 named, pinned as correct behaviour. A DTAA rate is a ceiling
+    on the tax the agreement covers, and its own "Taxes covered" article brings
+    surcharge and cess inside that, so nothing is added on top. Owner decision
+    of 2026-09-09; docs/compliance/03-income-tax-and-tds.md s.5b.
+
+    The cess is asserted at zero explicitly rather than left implied by the
+    total, because that is the component this case actually moved.
+    """
     out = _compute({"id": "v1", "pan": "AAGCP7788R",
                     "residential_status": "non_resident",
                     "country_of_residence": "CH", "trc_on_file": True,
                     "form_10f_on_file": True, "treaty_rate_bps": 1000,
                     "section_195_nature_of_income": "royalty"})
     assert out["tds_rate_bps"] == 1000
-    assert out["tds_paise"] == 52_000_00      # 10% + 4% cess on Rs 5,00,000
+    assert out["tds_paise"] == 50_000_00, "10% of Rs 5,00,000, and nothing on top"
+    assert out["tds_cess_paise"] == 0
+    assert out["tds_surcharge_paise"] == 0
 
 
 def test_no_pan_floors_a_treaty_rate_back_up_to_twenty_percent():
@@ -454,3 +475,61 @@ def test_omitting_the_filter_does_not_422_a_direct_caller():
         "the premise of this test — the default is a truthy non-string")
     src = inspect.getsource(get_tds_deductions)
     assert "isinstance(return_type, str)" in src
+
+
+# ── The payee class on the BILL path (migration 348) ─────────────────────────
+
+def _refusal(vendor):
+    """The 422 the bill path raises, or None if it computed."""
+    import pytest
+    from fastapi import HTTPException
+    try:
+        _compute(vendor)
+        return None
+    except HTTPException as e:
+        return str(e.detail)
+
+
+_NR = {"id": "v1", "residential_status": "non_resident",
+       "country_of_residence": "CH", "section_195_nature_of_income": "royalty"}
+
+
+def test_a_bill_refuses_when_the_payee_class_is_not_established():
+    """The engine change and its remedy ship together, so this is what a CA
+    sees until they record the class: a refusal naming what to do, not a
+    withholding computed on a guessed ladder.
+
+    The direction is why it refuses rather than defaulting. The boolean it
+    replaced sent every non-company payee — and every payee with NO PAN, which
+    is the ordinary non-resident case — into the foreign-company ladder at
+    2%/5% instead of 10/15/25/37. That UNDER-deducts, and an under-deduction
+    under s.195 disallows the whole expenditure under s.40(a)(i).
+    """
+    detail = _refusal({**_NR, "pan": None, "non_resident_payee_class": None})
+    assert detail and "payee class has not been established" in detail
+    assert "Foreign company" in detail, "name the ladders that ARE held"
+
+
+def test_the_recorded_class_beats_the_one_derived_from_the_pan():
+    """A PAN whose 4th character is C reads as a foreign company and computes.
+    Recording something else must change the answer — here to a refusal, which
+    is the unambiguous way to show the recorded value was read at all."""
+    assert _refusal({**_NR, "pan": "AAGCP7788R",
+                     "non_resident_payee_class": None}) is None, (
+        "the PAN's 4th character C is a foreign company, which has a ladder")
+    detail = _refusal({**_NR, "pan": "AAGCP7788R",
+                       "non_resident_payee_class": "firm_llp"})
+    assert detail and "Firm or LLP" in detail, (
+        "the recorded class must win over the derived one, the same precedence "
+        "a per-vendor treaty rate has over the firm's country table")
+
+
+def test_a_class_whose_ladder_is_not_held_refuses_rather_than_borrowing_one():
+    """firm_llp is recordable — it is a true statement about the supplier — and
+    not rateable, because Part II's ladder for it is not in
+    section_195_rates.py. Refusing is the honest answer; borrowing the
+    foreign-company ladder is exactly the defect."""
+    detail = _refusal({**_NR, "pan": "AAGFA7788R",
+                       "non_resident_payee_class": "firm_llp"})
+    assert detail and "does not hold Part II" in detail
+    assert "Read the ladder" in detail, "say what would unblock it"

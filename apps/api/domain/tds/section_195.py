@@ -41,6 +41,13 @@ THE ORDER OF THE QUESTIONS IS THE WHOLE THING
        payment, and under-deduction disallows the WHOLE expenditure under
        s.40(a)(i).
 
+    6. ...BUT NOT ON A TREATY RATE, AND THE COMPARISON IS OF TOTALS. A DTAA
+       rate is a CEILING on the tax, so surcharge and cess sit inside it rather
+       than on top of it. Two things follow, and both must hold together or the
+       defect merely moves: s.90(2) picks the lower FINISHED TOTAL rather than
+       the lower headline rate, and a treaty-basis resolution carries no
+       surcharge and no cess. Owner decision of 2026-09-09.
+
 WHERE IT REFUSES, AND WHY REFUSING IS THE SAFE DIRECTION
 
     A refusal stops a bill and makes a human decide. A wrong number is
@@ -65,7 +72,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 from domain.tds.section_195_rates import (
-    NATURE_BUSINESS_PROFITS_NO_PE, RULE_37BC_NATURES, FY195Rates, rates_for,
+    NATURE_BUSINESS_PROFITS_NO_PE, PAYEE_AOP_BOI, PAYEE_CLASS_LABELS,
+    PAYEE_FIRM_LLP, PAYEE_FOREIGN_COMPANY, PAYEE_INDIVIDUAL_HUF, PAYEE_UNKNOWN,
+    RULE_37BC_NATURES, FY195Rates, PayeeClass, rates_for,
 )
 
 # Refusal codes, so a caller can branch without matching on prose.
@@ -73,6 +82,7 @@ REFUSED_NO_NATURE = "section_195_nature_not_recorded"
 REFUSED_NO_PE_DECLARATION = "section_195_no_pe_declaration_missing"
 REFUSED_TREATY_RATE_UNKNOWN = "section_195_treaty_rate_not_recorded"
 REFUSED_UNKNOWN_NATURE = "section_195_nature_not_priced"
+REFUSED_PAYEE_CLASS_UNKNOWN = "section_195_payee_class_not_established"
 
 
 @dataclass(frozen=True)
@@ -102,15 +112,82 @@ class Section195Resolution:
     rates_verified: bool = False
 
 
-def _surcharge_percent(rates: FY195Rates, amount_paise: int, is_company: bool,
+def _payee_class_refusal(rates: FY195Rates, payee_class: str) -> Optional[str]:
+    """Why this payee's surcharge cannot be worked out, or None.
+
+    A REFUSAL rather than a fallback, and the direction matters. Falling back
+    to the non-corporate ladder would over-deduct on a foreign company; falling
+    back to the foreign-company ladder is what the boolean did, and it
+    UNDER-deducts on everyone else — which disallows the whole expenditure
+    under s.40(a)(i). There is no safe default, so there is no default.
+    """
+    if payee_class in rates.surcharge_by_class:
+        return None
+
+    held = ", ".join(PAYEE_CLASS_LABELS.get(c, c)
+                     for c in sorted(rates.surcharge_by_class))
+    if payee_class == PAYEE_UNKNOWN:
+        return (
+            "This vendor's payee class has not been established, and section "
+            "195 needs it: Part II of the First Schedule gives a different "
+            "surcharge ladder to each — a foreign company's tops at 5%, an "
+            "individual's at 37%. It cannot be read off the PAN here, because "
+            "a foreign supplier commonly has no Indian PAN at all. Record the "
+            "payee class on the vendor. This software currently holds the "
+            f"ladder for: {held}.")
+    label = PAYEE_CLASS_LABELS.get(payee_class, payee_class)
+    return (
+        f"This vendor is recorded as '{label}', and this software does not "
+        f"hold Part II of the First Schedule's surcharge ladder for that "
+        f"class, so it cannot work out the withholding. It holds: {held}. "
+        f"Read the ladder for {label.lower()} off the Finance Act for the year "
+        f"you are withholding in and deduct under section 195 outside this "
+        f"bill, or record the class the payee actually falls in.")
+
+
+def payee_class_from_pan(pan: Optional[str]) -> str:
+    """The payee's Part II class, as far as an Indian PAN can say.
+
+    ONLY THE LETTERS THIS REPOSITORY ALREADY ASSERTS — domain/tds/tds_computer
+    .py's is_company_pan names P, H, C, F, A, T and no others. Everything else,
+    and a missing PAN, is "unknown", which is a REFUSAL and not a default.
+
+    That last part is the fix. is_company_pan returns True for a missing PAN
+    and calls it "the conservative higher rate", which is true for the resident
+    s.194 series (1% vs 2%) and FALSE here: on the Part II surcharge the
+    conservative ladder is the non-corporate one, topping at 37%, and a missing
+    PAN was landing in the foreign-company ladder that tops at 5%. A foreign
+    supplier commonly has no Indian PAN at all — that is why s.206AA(7) and
+    Rule 37BC exist — so this was the ordinary case, under-deducting, which is
+    the s.40(a)(i) direction.
+
+    T (trust) and J (artificial juridical person) are deliberately NOT mapped:
+    which Part II ladder they take is not established here, and guessing is the
+    thing this function exists to stop.
+    """
+    code = (pan or "").strip().upper()
+    if len(code) != 10:
+        return PAYEE_UNKNOWN
+    return {
+        "P": PAYEE_INDIVIDUAL_HUF,
+        "H": PAYEE_INDIVIDUAL_HUF,
+        "C": PAYEE_FOREIGN_COMPANY,
+        "F": PAYEE_FIRM_LLP,
+        "A": PAYEE_AOP_BOI,
+        "B": PAYEE_AOP_BOI,
+    }.get(code[3], PAYEE_UNKNOWN)
+
+
+def _surcharge_percent(rates: FY195Rates, amount_paise: int, payee_class: str,
                        nature: str) -> int:
     """Part II First Schedule surcharge for this payee class and amount.
 
-    Two ladders, and picking the wrong one is a large error: a foreign
-    company's top band is 5%, a non-corporate payee's is 37%.
+    Picking the wrong ladder is a large error: a foreign company's top band is
+    5%, an individual's is 37%. The caller has already refused a class this
+    table does not hold — see _payee_class_refusal — so a missing key here is a
+    programming error rather than a data gap, and KeyError is the right noise.
     """
-    bands = (rates.surcharge_foreign_company if is_company
-             else rates.surcharge_non_corporate)
+    bands = rates.surcharge_by_class[payee_class]
     pct = 0
     for band in bands:
         if amount_paise > band.above_paise:
@@ -121,11 +198,31 @@ def _surcharge_percent(rates: FY195Rates, amount_paise: int, is_company: bool,
     return pct
 
 
+def _with_surcharge_and_cess(rates: FY195Rates, amount_paise: int, rate_bps: int,
+                             payee_class: str, nature: str) -> tuple[int, int, int]:
+    """(base tax, surcharge, cess) for a rate deducted under the ACT.
+
+    Hoisted out of resolve_section_195 so the s.90(2) comparison below can ask
+    for the Act's FINISHED total before choosing. Comparing bare rates was the
+    defect: a treaty rate carries no surcharge and no cess, so a treaty rate
+    EQUAL to the Act rate is still the cheaper of the two and used to lose.
+    """
+    base_tax = amount_paise * rate_bps // 10000
+    sur_pct = _surcharge_percent(rates, amount_paise, payee_class, nature)
+    surcharge = base_tax * sur_pct // 100
+    cess = (base_tax + surcharge) * rates.cess_percent // 100
+    return base_tax, surcharge, cess
+
+
 def resolve_section_195(
     *,
     amount_paise: int,
     nature: Optional[str],
-    is_company: bool = False,
+    # THE PAYEE'S PART II CLASS, not a boolean. `is_company` forced every payee
+    # into one of two ladders; see payee_class_from_pan for what that cost.
+    # Defaults to "unknown", which REFUSES — a caller that does not say gets a
+    # refusal rather than a guess.
+    payee_class: str = PAYEE_UNKNOWN,
     has_pan: bool = True,
     trc_on_file: bool = False,
     form_10f_on_file: bool = False,
@@ -175,8 +272,19 @@ def resolve_section_195(
             applies=True, tds_paise=0, nature=key, basis="not_chargeable",
             citation=rule.citation, **meta)
 
-    act_bps = rule.company_rate_bps if (is_company and rule.company_rate_bps
-                                        is not None) else rule.rate_bps
+    # The class ladder is needed from here on, so refuse now — before any
+    # arithmetic — if Part II's ladder for this payee is not held.
+    class_refusal = _payee_class_refusal(rates, payee_class)
+    if class_refusal is not None:
+        return Section195Resolution(
+            applies=False, refusal=REFUSED_PAYEE_CLASS_UNKNOWN, nature=key,
+            refusal_detail=class_refusal, **meta)
+
+    # s.115A gives "other sums" a different rate for a COMPANY payee, and this
+    # is a genuine two-way question — unlike the surcharge ladder, which is not.
+    act_bps = rule.company_rate_bps if (payee_class == PAYEE_FOREIGN_COMPANY
+                                        and rule.company_rate_bps is not None
+                                        ) else rule.rate_bps
 
     # 2. s.90(2) — the more beneficial of the Act and the agreement.
     basis = "act"
@@ -227,7 +335,17 @@ def resolve_section_195(
                         f"(Rule 21AB); {rule.citation} is the Act alternative")
         else:
             citation = f"s.90(2) treaty rate; {rule.citation} is the Act alternative"
-        if treaty_rate_bps < act_bps:
+        # s.90(2) gives the assessee whichever is MORE BENEFICIAL, and that is
+        # a comparison of what is actually withheld — not of the two headline
+        # rates. The Act rate carries surcharge and the 4% cess; a treaty rate
+        # does not (see the block below), so an Act rate of 20% withholds 22.88%
+        # of the payment for a non-corporate payee above Rs 1 crore while a
+        # treaty rate of 20% withholds 20%. Comparing the bare numbers made that
+        # case a tie and left it on the Act — the treaty was established, held
+        # on file, and then not applied.
+        act_base, act_sur, act_cess = _with_surcharge_and_cess(
+            rates, amount_paise, act_bps, payee_class, key)
+        if amount_paise * treaty_rate_bps // 10000 < act_base + act_sur + act_cess:
             rate_bps = treaty_rate_bps
             basis = "treaty"
 
@@ -254,10 +372,33 @@ def resolve_section_195(
     #    already gives: the tool should over-flag rather than silently
     #    under-deduct, and a CA reviews every figure before the challan. A CA
     #    taking the other view lowers the withholding themselves.
-    base_tax = amount_paise * rate_bps // 10000
-    sur_pct = _surcharge_percent(rates, amount_paise, is_company, key)
-    surcharge = base_tax * sur_pct // 100
-    cess = (base_tax + surcharge) * rates.cess_percent // 100
+    #    AND NOT ON A TREATY RATE. A DTAA rate is a CEILING on the tax, not a
+    #    base to be grossed up: the agreement's own "Taxes covered" article
+    #    brings surcharge and cess inside the tax it caps, so adding them on
+    #    top withholds more than the treaty permits. On a Rs 1 crore royalty at
+    #    a recorded 10% this deducted Rs 11,44,000 where the treaty allows
+    #    Rs 10,00,000 — Rs 1,44,000 taken from a supplier who can recover it
+    #    only by filing an Indian return.
+    #
+    #    THE TWO DECISIONS POINT OPPOSITE WAYS, DELIBERATELY. Over-deducting
+    #    under s.206AA is conservative because the deductor's own exposure is
+    #    one-sided — s.40(a)(i) disallows the WHOLE expenditure. Over-deducting
+    #    under s.90(2) is not conservative at all: it takes money from the
+    #    PAYEE, on a rate the assessee is entitled to by statute, and costs the
+    #    deductor nothing. Owner decision of 2026-09-09; see
+    #    docs/compliance/03-income-tax-and-tds.md.
+    #
+    #    Keyed on `basis`, NOT on `treaty_rate_bps is not None`. Where no PAN is
+    #    held and Rule 37BC does not relieve, the block above overwrites basis
+    #    with "206aa_floor" — and that branch must keep surcharge and cess
+    #    exactly as the paragraph above says.
+    if basis == "treaty":
+        base_tax = amount_paise * rate_bps // 10000
+        surcharge = 0
+        cess = 0
+    else:
+        base_tax, surcharge, cess = _with_surcharge_and_cess(
+            rates, amount_paise, rate_bps, payee_class, key)
     total = base_tax + surcharge + cess
 
     return Section195Resolution(

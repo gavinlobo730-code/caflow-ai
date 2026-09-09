@@ -11,7 +11,9 @@ from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from core.validators import (validate_gstin, validate_pan, validate_tan,
                              validate_phone, validate_email, validate_pincode)
-from domain.tds.residency import NON_RESIDENT, RESIDENTIAL_STATUSES, section_refusal
+from domain.tds.section_195_rates import ALL_PAYEE_CLASSES
+from domain.tds.residency import (NON_RESIDENT, RESIDENTIAL_STATUSES,
+                                  deduction_section_refusal, section_refusal)
 from domain.tds.section_195_rates import (
     ALL_NATURES, NATURE_BUSINESS_PROFITS_NO_PE)
 
@@ -54,6 +56,18 @@ def _normalise_residency(model) -> list[str]:
                 "country_of_residence must be a 2-letter ISO 3166-1 alpha-2 "
                 f"code such as AE, SG or US (got '{model.country_of_residence}').")
 
+    if model.non_resident_payee_class is not None:
+        model.non_resident_payee_class = (
+            model.non_resident_payee_class.strip().lower() or None)
+        if (model.non_resident_payee_class is not None
+                and model.non_resident_payee_class not in ALL_PAYEE_CLASSES):
+            errors.append(
+                "non_resident_payee_class must be one of: "
+                + ", ".join(ALL_PAYEE_CLASSES)
+                + f" (got '{model.non_resident_payee_class}'). It decides which "
+                  "Part II First Schedule surcharge ladder a s.195 withholding "
+                  "takes, and the ladders differ by a wide margin.")
+
     if model.tax_identification_number is not None:
         # No format check: a TIN's shape is whatever the payee's own country
         # says it is, and there are over ninety of them. Only whitespace is
@@ -86,6 +100,31 @@ def _normalise_residency(model) -> list[str]:
             "Withholding nil on business profits rests on the payee having no "
             "permanent establishment in India, so no_pe_declaration_on_file "
             "must be set with this nature of income.")
+
+    # CAN THE ENGINE ANSWER FOR THIS SECTION AT ALL — asked before the
+    # payee-fit question below, because a section nothing can rate is wrong for
+    # every payee and saying so first gives the CA the useful sentence.
+    #
+    # Caught HERE, where the section is recorded, rather than at the first
+    # bill. tds_section is a bare string on the way in, so s.194IA, s.194R,
+    # s.194T and s.194M all saved fine over the API and the bulk import and
+    # then wedged every bill on `ValueError: Unknown TDS section '194IA'` — a
+    # raw internal string, weeks later, with no statute and no next step. And
+    # s.192 did not even wedge: the registry holds it as a sentinel, so
+    # resolve_tds answered applies=True at 0%, the bill saved with nil
+    # withholding, and the register wrote no row and no gap because nothing was
+    # deducted. That silent nil is the more dangerous half of TDS-07.
+    # Gated on the SECTION being supplied, not on tds_applicable. Two reasons,
+    # and the second is a hole the obvious gate would leave: VendorUpdateIn is
+    # PATCH-shaped, so tds_applicable is None whenever a request does not
+    # mention it — a PATCH setting only tds_section would slip past
+    # `if model.tds_applicable`. And a section recorded while TDS is off is not
+    # harmless, it is a landmine: it wedges the first bill after somebody
+    # switches TDS on, which is exactly the delayed failure this moves.
+    if model.tds_section:
+        unanswerable = deduction_section_refusal(model.tds_section)
+        if unanswerable:
+            errors.append(unanswerable)
 
     # s.194C and its neighbours charge, in their own words, sums paid "to a
     # resident", so the two facts contradict each other. This used to be caught
@@ -286,6 +325,13 @@ class VendorIn(BaseModel):
     residential_status: Optional[str] = None
     country_of_residence: Optional[str] = None
     tax_identification_number: Optional[str] = None
+    # Part II First Schedule payee class — which SURCHARGE ladder a s.195
+    # withholding takes. A foreign company's tops at 5%, an individual's at
+    # 37%, and this used to be inferred from the PAN's 4th character, which
+    # answers nothing for the many non-resident payees who have no Indian PAN.
+    # NULL is a real third state: the engine refuses rather than defaulting.
+    # Migration 348; domain/tds/section_195.py is the authority.
+    non_resident_payee_class: Optional[str] = None
     # s.195 withholding — see domain/tds/section_195.py. All optional: a
     # non-resident vendor can be recorded before anyone has decided how it will
     # be taxed, and the bill path refuses at deduction time rather than making
@@ -367,6 +413,13 @@ class VendorUpdateIn(BaseModel):
     residential_status: Optional[str] = None
     country_of_residence: Optional[str] = None
     tax_identification_number: Optional[str] = None
+    # Part II First Schedule payee class — which SURCHARGE ladder a s.195
+    # withholding takes. A foreign company's tops at 5%, an individual's at
+    # 37%, and this used to be inferred from the PAN's 4th character, which
+    # answers nothing for the many non-resident payees who have no Indian PAN.
+    # NULL is a real third state: the engine refuses rather than defaulting.
+    # Migration 348; domain/tds/section_195.py is the authority.
+    non_resident_payee_class: Optional[str] = None
     section_195_nature_of_income: Optional[str] = None
     trc_on_file: Optional[bool] = None
     form_10f_on_file: Optional[bool] = None

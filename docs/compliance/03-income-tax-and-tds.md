@@ -423,6 +423,79 @@ notices, challan status, Form 13.
 advertising "direct TRACES integration" is in fact driving the web UI behind a
 captcha. The only evidence otherwise is the unconfirmed dev host above.
 
+## 5b. §90(2): a treaty rate is a CEILING on the whole tax
+
+**Owner decision, 2026-09-09.** Recorded here because it is a legal position
+rather than a bug fix, and because the code now depends on it in two places
+that must move together.
+
+### The question
+
+A vendor holds a TRC and Form 10F, and the firm has recorded a treaty rate of,
+say, 10% for royalty. §195 withholds "at the rates in force", which for the Act
+means the §115A / Part II rate **plus** surcharge under Part II of the First
+Schedule **plus** the 4% health and education cess. Does the treaty's 10% carry
+those too?
+
+| Reading | Withheld on a ₹1 crore royalty, non-corporate payee |
+|---|---|
+| The treaty rate is a ceiling on the whole tax | **₹10,00,000** |
+| The treaty rate is a base, grossed up | ₹11,44,000 |
+
+### The decision, and why
+
+**The treaty rate is the ceiling.** The agreement's own *Taxes covered* article
+brings surcharge and cess within the tax the treaty caps, so they cannot be
+added on top of a rate the treaty has already fixed. This is the mainstream
+professional position.
+
+**Two consequences, and they must hold together or the defect merely moves:**
+
+1. §90(2) gives the assessee whichever is **more beneficial**, and that is a
+   comparison of what is actually withheld — the **finished totals**, not the
+   two headline rates. An Act rate of 20% withholds 22.88% of the payment for a
+   non-corporate payee above ₹1 crore; a treaty rate of 20% withholds 20%. So a
+   treaty rate **equal** to the Act rate still wins. Comparing bare rates made
+   that case a tie and left it on the Act — the treaty established, held on
+   file, and not applied.
+2. A treaty-basis resolution carries **no surcharge and no cess**.
+
+### The asymmetry with §206AA, which points the other way on purpose
+
+`domain/tds/section_195.py` applies surcharge and cess **on top of** the
+§206AA 20% no-PAN floor, and that is a recorded conservative decision. The two
+choices look contradictory and are not:
+
+- Over-deducting under **§206AA** is conservative because the deductor's
+  exposure is one-sided — under-deduction disallows the **whole** expenditure
+  under §40(a)(i), and the excess is the payee's to reclaim.
+- Over-deducting under **§90(2)** is not conservative at all. It takes money
+  from the **payee**, on a rate the assessee is entitled to **by statute**, and
+  costs the deductor nothing. The supplier can recover it only by filing an
+  Indian return.
+
+So the suppression is keyed on the resolution's `basis`, never on "is a treaty
+rate present": where no PAN is held and Rule 37BC does not relieve, the basis
+becomes `206aa_floor` and that branch keeps surcharge and cess.
+
+### What is still unverified
+
+Every §195 rate year in `domain/tds/section_195_rates.py` is `verified=False`
+and surfaces as `GAP_195_RATES_UNVERIFIED`. The Act-side ladders and the 4%
+cess this decision stops applying to treaty bills are themselves
+reconciled-not-confirmed figures. That is a small argument in the decision's
+favour and no argument for delaying it, but it must not be forgotten when the
+Part II ladders are read against the bare Act.
+
+### Where it lives
+
+`domain/tds/section_195.py` — the module docstring's rule 6, the §90(2)
+comparison, and the arithmetic. Pinned by
+`tests/test_section_195_rates.py`'s "a treaty rate is a CEILING" block, whose
+tests are all NEW: the existing suite asserted `rate_bps` and `base_tax_paise`
+and never `tds_paise`, so surcharge and cess were added to every treaty rate
+with the suite green.
+
 ## 6. Verify before relying on any of this
 
 1. **Whether the 2025 Act renumbering is real and what it does to §0.** Highest

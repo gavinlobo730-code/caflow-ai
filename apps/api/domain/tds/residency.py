@@ -274,6 +274,118 @@ def section_refusal(section: Optional[str],
     )
 
 
+#: The one section the registry holds a row for that a VENDOR may never carry.
+#: section_rates.py's entry for it is `TDSSectionRule(0, 0, 0)` and that file's
+#: own docstring calls it a sentinel, present so a lookup succeeds — salary is
+#: slab-based and lives in domain/income_tax/statutory_rates.py. resolve_tds
+#: therefore answers `applies=True, rate_bps=0, tds_paise=0` for it, which is a
+#: SILENT NIL: the bill saves, the rate is stored as 0, the explanation reads
+#: "s.192 at 0%", and tds_register_service writes no row and no gap because
+#: nothing was deducted. A vendor bill is never salary.
+SECTION_192_SALARY = "192"
+
+#: Deductions made by a property BUYER, which this software cannot file. Kept
+#: as a set rather than tested by name in the message, so adding s.194-IC or
+#: s.194M later is a one-line change beside the reason rather than a new branch.
+_PROPERTY_SECTIONS = frozenset({"194IA", "194-IA", "194IB", "194-IB"})
+
+
+def deduction_section_refusal(section: Optional[str],
+                              fy: Optional[str] = None) -> Optional[str]:
+    """Why the engine cannot withhold under this section at all, or None.
+
+    A COMPANION TO section_refusal ABOVE, AND A DIFFERENT QUESTION. That one
+    asks whether the section fits the PAYEE; this asks whether the engine can
+    answer for the section at all, for anybody. Both belong here because both
+    are "this section must not be recorded", and both return a sentence a CA
+    reads rather than a code.
+
+    WHY IT REFUSES RATHER THAN COMPUTING. Two cases, and the second is the one
+    that was doing damage:
+
+      * A section the registry does not hold. resolve_tds already raises
+        ValueError for it (tds_computer.py), which reaches the CA as the bare
+        string "Unknown TDS section '194IA'" at the FIRST BILL — long after the
+        vendor was created, with no statute, no reason and no next step. The
+        vendor master accepted it silently: VendorIn.tds_section is a bare
+        Optional[str], so s.194IA, s.194R, s.194T and s.194M all save fine over
+        the API, the bulk import, or any row predating the screen that stopped
+        offering them.
+
+      * s.192. Not missing from the registry — present as a sentinel, and
+        therefore WORSE than missing: it computes a nil instead of raising, so
+        nothing anywhere says the withholding did not happen.
+
+    WHY NOT JUST ADD THE MISSING SECTIONS TO THE REGISTRY. For s.194IA in
+    particular, a rate alone would make the engine confidently wrong in three
+    directions at once: the base is the consideration OR the stamp-duty value,
+    whichever is higher, and no column here holds a stamp-duty value; the
+    deduction is made without a TAN, which the whole challan model assumes; and
+    return_type_for() picks a statement by RESIDENCY alone, so the row would be
+    stamped 26Q — reporting a property deduction on a statement it does not
+    belong on, by a deductor who is not filing 26Q at all. tds_deductions.
+    return_type CHECKs ('24Q','26Q','27Q','27EQ') (migration 014), so there is
+    nowhere correct to put it. A 422 stops a CA; a 26Q row that looks right
+    does not.
+
+    The same call was already made one module over, on the same section:
+    routers/tds_workspace.py refuses to name a form for 16B/16C because "a
+    wrong form number is worse than an unchanged one".
+    """
+    from domain.tds.section_rates import tds_rates_for
+
+    code = (section or "").upper().strip()
+    if not code:
+        return None                      # TDS off, or not recorded yet
+
+    if code == SECTION_195:
+        return None                      # s.195 has its own module and its own refusals
+
+    if code == SECTION_192_SALARY:
+        return (
+            "Section 192 is salary withholding, and it cannot be recorded "
+            "against a vendor. It is charged on the year's estimated salary at "
+            "the slab rates, not at a flat section rate, so a bill for this "
+            "vendor would deduct NOTHING and say nothing about it. Run salary "
+            "through Payroll, which computes section 192 properly, and give "
+            "this vendor the section that fits what they actually supply."
+        )
+
+    if code in tds_rates_for(fy).sections:
+        return None
+
+    # s.192 is excluded from the suggestion for the same reason it is refused
+    # two branches above: offering it here would answer one refusal with
+    # another, on the one section whose failure is silent.
+    known = ", ".join(sorted(set(tds_rates_for(fy).sections) - {SECTION_192_SALARY}))
+    why = (
+        f"This software holds no rate or threshold for section {code}, so it "
+        f"cannot work out what to withhold on a bill for this vendor. The "
+        f"sections it can compute are: {known}. "
+    )
+    if code in _PROPERTY_SECTIONS:
+        # Named, because these two are the ones a CA reaches for first and a
+        # rate alone would not fix them. Only what this repository proves is
+        # asserted: the certificate side already refuses to name their form
+        # (routers/tds_workspace.py's _CERTIFICATE_KIND deliberately omits 16B
+        # and 16C), and return_type_for() picks a statement by RESIDENCY alone
+        # while tds_deductions.return_type CHECKs ('24Q','26Q','27Q','27EQ') —
+        # so a computed row here would be stamped 26Q, which is not where a
+        # property deduction is reported.
+        why += (
+            f"Section {code} is also not simply a missing rate: this software "
+            f"has no way to file it. Every deduction it records is routed to "
+            f"24Q, 26Q, 27Q or 27EQ, and a property deduction belongs on none "
+            f"of them, so a figure computed here would be reported on the "
+            f"wrong return. "
+        )
+    return why + (
+        f"Either record the section this payment actually falls under, or turn "
+        f"TDS off on this vendor and deduct under section {code} outside the "
+        f"bill."
+    )
+
+
 def missing_27q_identifiers(vendor: Optional[dict]) -> list[str]:
     """Which 27Q deductee identifiers this vendor is missing.
 

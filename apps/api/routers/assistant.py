@@ -153,10 +153,15 @@ TDS (rates and thresholds below are generated from the engine that computes \
 them — domain/tds/section_rates.py — so they cannot drift from what the app does):
 """ + _tds_lines() + """
 - Section 192 salary: applicable slab rates
-- On Section 194I the rate above is the 194I(b) one — land, building, furniture \
-or fittings, 10%. Letting of plant, machinery or equipment is Section 194I(a) at \
-2%, and the engine does not carry that rate, so say which limb you are answering \
-on and tell the CA the app will compute 194I at 10%.
+- Sections 194I and 194J each have TWO LIMBS with different rates, and the \
+engine carries only the higher one of each. On 194I the rate above is for land, \
+building, furniture or fittings; letting of plant, machinery or equipment is \
+charged lower. On 194J the rate above is for professional fees; fees for \
+technical services are charged lower. This software does not hold either \
+concessional rate — two places in the codebase state the 194I one differently \
+and neither is verified — so do NOT quote a figure for them. Say which limb the \
+question is about, say the app will compute at the higher rate shown above, and \
+say that over-deducts if the concessional limb applies.
 - 24Q/26Q returns: 31 July (Q1), 31 October (Q2), 31 January (Q3), 31 May (Q4). \
 Q4 is 31 May, NOT 30 April — it is the one quarter that does not follow the \
 "end of the month after quarter end" pattern.
