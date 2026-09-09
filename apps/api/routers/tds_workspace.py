@@ -407,19 +407,79 @@ def create_deduction(
         from core.supabase_client import get_supabase
         db = get_supabase()
         resolved = _resolve_manual_deduction(db, firm_id, body.client_id, payload)
-        ins = db.table("tds_deductions").insert(resolved["row"]).execute().data or []
-        rec = ins[0] if ins else resolved["row"]
+        row = resolved["row"]
+        # Keys spelt INLINE. tests/test_backend_columns_exist_pg.py can only
+        # read a payload whose keys are string constants; .insert(a_variable) is
+        # counted as an unreadable reference and its columns stop being checked
+        # against the real schema. Same reason the year-end and compliance
+        # writes are spelt out.
+        ins = db.table("tds_deductions").insert({
+            "firm_id": row["firm_id"],
+            "client_id": row["client_id"],
+            "deductee_name": row["deductee_name"],
+            "deductee_pan": row["deductee_pan"],
+            "section": row["section"],
+            "nature_of_payment": row["nature_of_payment"],
+            "transaction_date": row["transaction_date"],
+            "payment_amount_paise": row["payment_amount_paise"],
+            "tds_rate_pct": row["tds_rate_pct"],
+            "tds_paise": row["tds_paise"],
+            "surcharge_paise": row["surcharge_paise"],
+            "cess_paise": row["cess_paise"],
+            "quarter": row["quarter"],
+            "financial_year": row["financial_year"],
+            "challan_no": row["challan_no"],
+            "notes": row["notes"],
+        }).execute().data or []
+        rec = ins[0] if ins else row
         log_event(firm_id, "tds_deduction", rec.get("id", ""), "create",
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
-                  new_data={"section": resolved["row"]["section"],
-                            "tds_paise": resolved["row"]["tds_paise"]})
+                  new_data={"section": row["section"],
+                            "tds_paise": row["tds_paise"]})
         return api_response(True, {**rec, "explain": resolved["explain"]})
     except HTTPException:
         raise
     except Exception as e:                                        # noqa: BLE001
         _logger.error("create_deduction failed: %s", e)
         return api_response(False, None, "Could not record the deduction.")
+
+
+@router.post("/deductions/preview")
+def preview_deduction(
+    body: CreateDeductionRequest,
+    current_user: dict = Depends(rbac("tds", "compute")),
+):
+    """What WOULD be deducted, without recording anything.
+
+    THE SAME FUNCTION AS THE SAVE, deliberately. A preview computed by a
+    different route than the write is the defect TDS-14 describes on the
+    purchase-bill side — the editor shows a browser-side rate x base and the
+    server then applies a threshold, a s.206AA floor and an FY aggregate, so
+    the figure a CA approved is not the figure that lands.
+
+    POST /api/tds/compute-amount is close but NOT sufficient here: its request
+    model has no fy_prior_taxable_paise / fy_prior_tds_paise, so it always
+    answers as though this were the payee's first payment of the year. On the
+    bill that crosses an aggregate threshold that is the whole difference.
+    """
+    assert_client_access(current_user, body.client_id)
+    firm_id = current_user["firm_id"]
+    db = None
+    if not _USE_MOCK:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+    resolved = _resolve_manual_deduction(db, firm_id, body.client_id, body.model_dump())
+    return api_response(True, {
+        # Everything the CA needs to see BEFORE committing, and nothing stored.
+        "section": resolved["row"]["section"],
+        "payment_amount_paise": resolved["row"]["payment_amount_paise"],
+        "tds_rate_pct": resolved["row"]["tds_rate_pct"],
+        "tds_paise": resolved["row"]["tds_paise"],
+        "quarter": resolved["row"]["quarter"],
+        "financial_year": resolved["row"]["financial_year"],
+        "explain": resolved["explain"],
+    })
 
 
 @router.patch("/deductions/{deduction_id}")
@@ -460,13 +520,30 @@ def update_deduction(
         merged = {**rec, **{k: v for k, v in body.model_dump().items() if v is not None}}
         resolved = _resolve_manual_deduction(db, firm_id, rec["client_id"], merged,
                                              exclude_id=deduction_id)
-        upd = (db.table("tds_deductions").update(resolved["row"])
-               .eq("id", deduction_id).eq("firm_id", firm_id).execute().data) or []
+        row = resolved["row"]
+        # Inline again, and only the columns an edit may move — firm_id and
+        # client_id are the row's identity, not its content.
+        upd = (db.table("tds_deductions").update({
+            "deductee_name": row["deductee_name"],
+            "deductee_pan": row["deductee_pan"],
+            "section": row["section"],
+            "nature_of_payment": row["nature_of_payment"],
+            "transaction_date": row["transaction_date"],
+            "payment_amount_paise": row["payment_amount_paise"],
+            "tds_rate_pct": row["tds_rate_pct"],
+            "tds_paise": row["tds_paise"],
+            "surcharge_paise": row["surcharge_paise"],
+            "cess_paise": row["cess_paise"],
+            "quarter": row["quarter"],
+            "financial_year": row["financial_year"],
+            "challan_no": row["challan_no"],
+            "notes": row["notes"],
+        }).eq("id", deduction_id).eq("firm_id", firm_id).execute().data) or []
         log_event(firm_id, "tds_deduction", deduction_id, "update",
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
-                  new_data={"tds_paise": resolved["row"]["tds_paise"]})
-        return api_response(True, {**(upd[0] if upd else resolved["row"]),
+                  new_data={"tds_paise": row["tds_paise"]})
+        return api_response(True, {**(upd[0] if upd else row),
                                    "explain": resolved["explain"]})
     except HTTPException:
         raise

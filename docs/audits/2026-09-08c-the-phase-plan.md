@@ -182,6 +182,39 @@ This is exactly the filing-demo lesson in CLAUDE.md: two implementations of one
 thing drift, and one of them is silently exempt from the guard.
 *Guard:* the zero-business-logic-in-the-frontend rule, made testable for TDS.
 
+**Progress: TDS-11 and TDS-05 done, PUR-06 done. Five findings left**
+(TDS-03, TDS-15, TDS-04, TDS-14, PUR-14).
+
+**The browser's table was wrong in EIGHT ways, not the two TDS-05 named.**
+Checked row by row against `section_rates.py` and each is now a test:
+§194C flat at the company rate (an individual/HUF is 1% — **double**);
+§194D flat 5% against 2% individual / 10% company (**wrong both ways**, and the
+company case *under*-deducts, which disallows the expenditure under §40(a)(ia));
+§194H 5% against 2% since the Finance (No. 2) Act 2024; §194Q on the whole sum
+where §194Q(1) charges on the **excess** over ₹50 lakh (₹6,000 vs ₹1,000 on a
+₹60 lakh purchase); §194IA offered at 1% and **absent from the engine**; §192
+leaving the previous rate in the box so salary wrote at 10% into a 26Q register;
+no threshold anywhere; no FY aggregate, so §200 never credited.
+
+**And the table had THREE copies.** `/tds`'s `TDS_SECTIONS`, the vendor form's
+`TDS_DEFAULT_RATES`, and the rates baked into the vendor form's section dropdown
+*labels* — where §194D and §194H both read "(5%)". The third is what seeded
+`vendors.tds_rate_bps`, which is PUR-06's dead field: production's five §194C
+vendors carry 200 bps, the **company** rate, so honouring it would have doubled
+every individual contractor's withholding. The field is gone from the form.
+
+**Two structural facts nobody had written down:**
+- `tds_26q_from_books` builds the return from **`purchase_bills`**, never from
+  `tds_deductions`. The /tds register is a parallel book no return path reads.
+- The two registers therefore do not share an FY aggregate. Unifying them means
+  keying both halves on the PAN; it changes a delicately argued, heavily tested
+  path, so it is **named on every row as a gap** rather than half-done.
+
+*Also found by the guard, and not Phase 3's:* `lib/services/payrollTdsEstimate.ts`
+computes §192 salary TDS in the browser. Its own docstring already declares it a
+standing CLAUDE.md violation tracked as **roadmap R2.10**, so it is allowlisted
+with that reference rather than absorbed here.
+
 ### Phase 4 — TDS statutory correctness · 9 findings (8 distinct) · ≤60 days
 `TDS-07 TDS-22 TDS-26 PUR-03 TDS-06 PUR-10 TDS-09 PUR-07≡TDS-13`
 

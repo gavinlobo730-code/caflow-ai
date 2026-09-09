@@ -201,6 +201,118 @@ export async function computeTdsAmount(params: {
   return resp.data;
 }
 
+/** What the server answers when a deduction is recorded or re-costed.
+ *
+ *  `explain` is the engine's working, not decoration. A CA needs to see WHY a
+ *  figure is what it is — below the threshold, floored by §206AA, or charged on
+ *  a year's aggregate with §200 crediting what earlier entries withheld — and
+ *  `gaps` names what the calculation could not see. */
+export type DeductionExplain = {
+  applies: boolean;
+  reason: string | null;
+  rate_pct: number;
+  tds_paise: number;
+  fy_prior_taxable_paise: number;
+  fy_prior_tds_paise: number;
+  gaps: string[];
+  gap_messages: string[];
+};
+
+export type RecordedDeduction = Record<string, unknown> & {
+  id?: string;
+  explain?: DeductionExplain;
+};
+
+/** Record a deduction. THE RATE AND THE TAX ARE NOT SENT — they are the
+ *  engine's answers (IT Act Chapter XVII-B), resolved server-side from the
+ *  section, the amount, the payee's PAN and the year's running aggregate.
+ *
+ *  This replaces a browser-side `Math.round(gross * rate / 100)` against a
+ *  hardcoded table that had §194D and §194H at 5% where the statute says 2%,
+ *  §194C flat at the company rate, §194Q on the whole sum instead of the
+ *  excess, and no threshold on anything. */
+export async function createTdsDeduction(body: {
+  client_id: string;
+  deductee_name: string;
+  deductee_pan?: string | null;
+  section: string;
+  payment_amount_paise: number;
+  transaction_date: string;
+  nature_of_payment?: string | null;
+  challan_no?: string | null;
+  notes?: string | null;
+}): Promise<RecordedDeduction> {
+  const resp = await authedFetch<RecordedDeduction>("/api/tds-workspace/deductions", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!resp.success) throw new Error(resp.error ?? "Could not record the deduction");
+  return resp.data;
+}
+
+/** What WOULD be deducted, without recording anything.
+ *
+ *  Uses the SAME server function as the save, so the figure a CA approves is
+ *  the figure that lands. Deliberately NOT computeTdsAmount(): that endpoint
+ *  has no place for the year's running aggregate, so it always answers as
+ *  though this were the payee's first payment — and on the entry that crosses
+ *  a §194C/§194H/§194J aggregate threshold that is the whole difference. */
+export async function previewTdsDeduction(body: {
+  client_id: string;
+  deductee_name: string;
+  deductee_pan?: string | null;
+  section: string;
+  payment_amount_paise: number;
+  transaction_date: string;
+}): Promise<{
+  tds_rate_pct: number;
+  tds_paise: number;
+  quarter: string;
+  financial_year: string;
+  explain: DeductionExplain;
+}> {
+  const resp = await authedFetch<{
+    tds_rate_pct: number; tds_paise: number; quarter: string;
+    financial_year: string; explain: DeductionExplain;
+  }>("/api/tds-workspace/deductions/preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  if (!resp.success) throw new Error(resp.error ?? "Could not compute the deduction");
+  return resp.data;
+}
+
+/** Correct a hand-entered deduction; the engine re-runs on whatever changed.
+ *  A row that came from a purchase bill is refused server-side — it is rebuilt
+ *  from the bill on every receive, so an edit here would silently revert. */
+export async function updateTdsDeduction(
+  id: string,
+  body: Partial<{
+    deductee_name: string;
+    deductee_pan: string | null;
+    section: string;
+    payment_amount_paise: number;
+    transaction_date: string;
+    nature_of_payment: string | null;
+    challan_no: string | null;
+    notes: string | null;
+  }>,
+): Promise<RecordedDeduction> {
+  const resp = await authedFetch<RecordedDeduction>(
+    `/api/tds-workspace/deductions/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(body) });
+  if (!resp.success) throw new Error(resp.error ?? "Could not update the deduction");
+  return resp.data;
+}
+
+/** Remove a hand-entered deduction. Manager+ server-side (tds:write), the same
+ *  tier migration 345 gives DELETE on the table. */
+export async function deleteTdsDeduction(id: string): Promise<void> {
+  const resp = await authedFetch<{ deleted: string }>(
+    `/api/tds-workspace/deductions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!resp.success) throw new Error(resp.error ?? "Could not delete the deduction");
+}
+
 // ── Supabase Queries ───────────────────────────────────────────────────────
 
 export async function getTDSReturns(clientId: string): Promise<TDSReturn[]> {
