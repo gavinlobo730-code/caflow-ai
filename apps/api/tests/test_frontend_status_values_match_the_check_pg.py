@@ -82,7 +82,14 @@ KNOWN: dict[str, set[str]] = {
     "app/clients/[id]/accounting/page.tsx": {"failed"},
     "app/clients/[id]/lifecycle/page.tsx": {"done", "skipped"},
     "app/clients/[id]/purchases/page.tsx": {"resident"},
-    "app/clients/[id]/sales/page.tsx": {"active", "archived", "failed", "generated", "paused"},
+    # "active" and "archived" left this list on 2026-09-09, and the reason is
+    # worth keeping: they were never a real report. They are
+    # recurring_invoice_templates.status values, and the scanner attributed
+    # them to a table whose CHECK does not allow them because _skip_args ran on
+    # past the query they belong to — an apostrophe inside a comment in a
+    # payload had desynchronised it (see _frontend_select_parser.blank_comments).
+    # Blanking comments before the walk removed the false positive.
+    "app/clients/[id]/sales/page.tsx": {"failed", "generated", "paused"},
     "app/gst/page.tsx": {"Filed", "Overdue", "Pending", "pending"},
     "app/income-tax/page.tsx": {"filed", "pending"},
     "app/mca/page.tsx": {"Filed", "Overdue", "Pending"},
