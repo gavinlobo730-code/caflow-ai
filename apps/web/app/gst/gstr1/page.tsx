@@ -269,6 +269,12 @@ export default function GSTR1Page() {
                 · Taxable <strong>{p(result.taxable_total_paise)}</strong>
                 · Tax <strong>{p(result.tax_total_paise)}</strong>
               </span>
+              {result.validation_errors.length > 0 && (
+                <span className="flex items-center gap-1 text-xs text-red-600 font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  {result.validation_errors.length} error{result.validation_errors.length !== 1 ? "s" : ""}
+                </span>
+              )}
               {result.validation_warnings.length > 0 && (
                 <span className="flex items-center gap-1 text-xs text-amber-600">
                   <AlertTriangle className="w-3.5 h-3.5" />
@@ -380,6 +386,29 @@ export default function GSTR1Page() {
                       </tr>
                     </tbody>
                   </table>
+                  {/* ERRORS FIRST, and separately. These are the things the
+                      portal rejects — a duplicate invoice number, IGST on an
+                      intra-state supply, a place of supply that is not a state
+                      — and until this change they were computed by nothing on
+                      this path and shown nowhere. Folding them in with the
+                      warnings would make a rejection look like a judgement
+                      call. */}
+                  {result.validation_errors.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Errors — the portal will reject these
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {result.validation_errors.map((e, i) => (
+                          <li key={i} className="text-xs text-red-700">
+                            {e.invoice_ref && <span className="font-mono mr-1">[{e.invoice_ref}]</span>}
+                            {e.message}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {result.validation_warnings.length > 0 && (
                     <div className="mt-4">
                       <h4 className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">

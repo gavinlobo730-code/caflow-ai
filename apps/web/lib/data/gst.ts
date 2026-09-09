@@ -211,6 +211,14 @@ export interface GSTR1BuildResult {
   taxable_total_paise: number;
   tax_total_paise: number;
   reconciliation: GLReconciliation;
+  /** Things that get the return REJECTED at the portal or filed wrong — a
+   *  duplicate invoice number, IGST on an intra-state supply, CGST != SGST, a
+   *  place of supply that is not a state. These used to be unreachable: the
+   *  validator ran only on POST /gst/gstr1/build and POST /gst/validate/gstr1,
+   *  and this file has always posted to /from-books. */
+  validation_errors: ValidationError[];
+  /** Judgement calls, not rejections — an invoice dated outside the s.37(3)
+   *  window, tax that does not follow from the rate. */
   validation_warnings: ValidationError[];
   ca_review_required: true;
 }
@@ -225,6 +233,8 @@ interface FromBooksGSTR1 {
   taxable_total_paise: number;
   tax_total_paise: number;
   reconciliation: GLReconciliation;
+  validation_errors: ValidationError[];
+  validation_warnings: ValidationError[];
 }
 
 /** Raw shape of POST /api/gst/gstr3b/from-books. */
@@ -234,6 +244,8 @@ interface FromBooksGSTR3B {
   payload: Record<string, unknown>;
   working: GSTR3BWorking;
   reconciliation: GLReconciliation;
+  validation_errors: ValidationError[];
+  validation_warnings: ValidationError[];
 }
 
 export interface ClassifyResult {
@@ -419,13 +431,16 @@ export async function computeGSTR3B(
     period,
   });
 
-  // The from-books endpoint reports no validation_warnings: a GSTIN or period it
-  // cannot accept is a 422 raised before any computation, which apiPost turns
-  // into a thrown error. An empty list is therefore accurate, not a placeholder.
+  // Carried, not assumed empty. This said "the from-books endpoint reports no
+  // validation_warnings", which described the endpoint rather than the rules:
+  // validate_gstr3b existed and ran only from POST /gst/gstr3b/compute, the
+  // path that takes invoices from the CALLER and that no screen uses. Its one
+  // substantive rule — ITC more than three times the output tax — now runs on
+  // the books, and a warning is a thing the CA should see before filing.
   const shaped: GSTR3BComputeResult = {
     payload: result.payload,
     working: result.working,
-    validation_warnings: [],
+    validation_warnings: result.validation_warnings ?? [],
     period: result.period,
     gstin: result.gstin,
     ca_review_required: true,
@@ -540,7 +555,11 @@ export async function buildGSTR1(
     taxable_total_paise: result.taxable_total_paise,
     tax_total_paise: result.tax_total_paise,
     reconciliation: result.reconciliation,
-    validation_warnings: [],
+    // Carried, not discarded. This was `validation_warnings: []` — a literal
+    // empty array — because the endpoint returned nothing to carry. It does
+    // now.
+    validation_errors: result.validation_errors ?? [],
+    validation_warnings: result.validation_warnings ?? [],
     ca_review_required: true,
   };
 
@@ -564,13 +583,14 @@ export async function saveGSTR1Return(
     gstin,
     payload_json: result.payload,
     summary_json: result.summary,
-    validation_errors: result.validation_warnings,
-    // The from-books builder raises on anything it will not compute, so a result
-    // in hand is a validated one. The old "draft unless errors" branch could not
-    // fire any more and would have pinned every return to "validated" implicitly
-    // — stated outright instead.
-    status: "validated",
-    validated_at: new Date().toISOString(),
+    validation_errors: [...result.validation_errors, ...result.validation_warnings],
+    // "validated" means the checks RAN AND PASSED, which is a different claim
+    // from "the builder did not raise". It used to be unconditional, under a
+    // comment saying a result in hand is a validated one — true while the
+    // validator was unreachable from this path and false the moment it was
+    // wired in. A return carrying an error the portal will reject is a draft.
+    status: result.validation_errors.length === 0 ? "validated" : "draft",
+    validated_at: result.validation_errors.length === 0 ? new Date().toISOString() : null,
     updated_at: new Date().toISOString(),
   }, { onConflict: "client_id,period" });
 }

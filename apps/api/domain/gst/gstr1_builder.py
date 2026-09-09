@@ -302,17 +302,42 @@ def _build_b2cs(invoices: list[InvoiceForGSTR1]) -> list[dict]:
     Key includes is_interstate so INTER and INTRA are never merged.
     """
     # Key: (rate, place_of_supply, is_interstate) — all three determine a distinct GSTN row
+    #
+    # GROUPED BY THE RATE ON EACH LINE, not by a rate inferred from the whole
+    # invoice. _infer_rate is total tax / taxable value, so an invoice carrying
+    # a 5% line and an 18% line produced a single row at 11.5% — a rate that
+    # does not exist in the tariff and that the portal has no bucket for. The
+    # tax TOTAL was right, which is why it survived: the return balanced and the
+    # rate-wise breakup was fiction.
+    #
+    # This is the grouping _build_invoice_items has always done for B2B; Table 7
+    # is the same question asked across invoices instead of within one. The
+    # header-level fallback below is that function's too, and applies for the
+    # same reason: an invoice with no stored lines has one rate by definition,
+    # so inferring it is a reading of the data rather than a blend of rates.
     by_key: dict[tuple, dict] = {}
     for inv in invoices:
-        rate = _infer_rate(inv)
-        key = (rate, inv.place_of_supply or "", inv.is_interstate)
-        if key not in by_key:
-            by_key[key] = {"txval": 0, "iamt": 0, "camt": 0, "samt": 0, "csamt": 0}
-        by_key[key]["txval"] += inv.taxable_amount_paise
-        by_key[key]["iamt"] += inv.igst_paise
-        by_key[key]["camt"] += inv.cgst_paise
-        by_key[key]["samt"] += inv.sgst_paise
-        by_key[key]["csamt"] += inv.cess_paise
+        pos, inter = inv.place_of_supply or "", inv.is_interstate
+        if inv.lines:
+            contributions = [
+                (ln.gst_rate, ln.taxable_paise, ln.igst_paise, ln.cgst_paise,
+                 ln.sgst_paise, ln.cess_paise)
+                for ln in inv.lines
+            ]
+        else:
+            contributions = [
+                (_infer_rate(inv), inv.taxable_amount_paise, inv.igst_paise,
+                 inv.cgst_paise, inv.sgst_paise, inv.cess_paise)
+            ]
+        for rate, txval, iamt, camt, samt, csamt in contributions:
+            key = (rate, pos, inter)
+            if key not in by_key:
+                by_key[key] = {"txval": 0, "iamt": 0, "camt": 0, "samt": 0, "csamt": 0}
+            by_key[key]["txval"] += txval
+            by_key[key]["iamt"] += iamt
+            by_key[key]["camt"] += camt
+            by_key[key]["samt"] += samt
+            by_key[key]["csamt"] += csamt
 
     return [
         {
