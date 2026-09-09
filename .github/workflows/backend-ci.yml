@@ -246,7 +246,14 @@ jobs:
           python-version: "3.11"
 
       - name: Install psql client
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+        # The SAME drop as the migrations job above, and it has to be here too:
+        # this job has its own runner, so hardening one copy left the other
+        # exposed. That is exactly what happened — see the commit message.
+        run: |
+          sudo grep -rlE 'dl\.google\.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
 
       - name: Apply pending migrations to production
         working-directory: apps/api
