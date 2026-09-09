@@ -136,7 +136,7 @@ def table_11_sections(db, firm_id: str, client_id: str, period: str) -> dict:
     cli = (db.table("clients").select("id, gst_advance_tax_applicable")
            .eq("id", client_id).limit(1).execute().data) or []
     if not cli or not cli[0].get("gst_advance_tax_applicable"):
-        return {"at": [], "txpd": [], "applicable": False}
+        return {"at": [], "txpd": [], "applicable": False, "gaps": []}
 
     start, end = _period_bounds(period)
     receipts = _paginate_all(lambda: db.table("receipts")
@@ -148,6 +148,7 @@ def table_11_sections(db, firm_id: str, client_id: str, period: str) -> dict:
 
     at_buckets: dict = {}
     txpd_buckets: dict = {}
+    undeclarable: list[dict] = []
     for r in receipts:
         rate = r.get("gst_rate_bps")
         pos = r.get("place_of_supply")
@@ -155,6 +156,24 @@ def table_11_sections(db, firm_id: str, client_id: str, period: str) -> dict:
         # It still appears in advances_report(), so it is visible rather than
         # dropped — but a guessed rate is a guessed liability.
         if rate is None or not pos:
+            # Declared nowhere, and SAID SO. This used to `continue` in silence
+            # under a comment explaining that a guessed rate is a guessed
+            # liability — which is right — but the advance then vanished from
+            # the return with nothing on screen to say a Table 11A row was
+            # missing. It is still not guessed at; it is named.
+            undeclarable.append({
+                "kind": "TABLE_11A",
+                "reference_no": str(r.get("id") or ""),
+                "reason": (
+                    "This advance is not declared in Table 11A: it has "
+                    + ("no GST rate" if rate is None else "")
+                    + (" and " if rate is None and not pos else "")
+                    + ("no place of supply" if not pos else "")
+                    + " recorded. CGST s.13(2) charges tax on an advance for "
+                    "services when it is received, and the rate and the place "
+                    "of supply are what the row is declared at — neither can "
+                    "be guessed without guessing the liability."),
+            })
             continue
         key = (str(pos), bool(r.get("is_interstate")), int(rate))
         mine = allocs.get(r["id"], [])
@@ -179,6 +198,7 @@ def table_11_sections(db, firm_id: str, client_id: str, period: str) -> dict:
         "at": _table_11_rows(at_buckets),
         "txpd": _table_11_rows(txpd_buckets),
         "applicable": True,
+        "gaps": undeclarable,
     }
 
 

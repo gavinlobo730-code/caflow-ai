@@ -40,12 +40,13 @@ import {
 } from "@/lib/invoices/shared";
 import { validateSalesDebitNoteEditor } from "@/lib/sales/salesDebitNoteEditor";
 
+import { todayLocalISO } from "@/lib/dateMath";
 const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: "", gst_rate: 18, unit: "NOS" };
 
 type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null };
 
 function todayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return todayLocalISO();
 }
 
 /** Open invoices this customer has — the "Against Invoice" picker. Filtered

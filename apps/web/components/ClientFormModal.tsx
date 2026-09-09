@@ -5,29 +5,20 @@ import { X } from "lucide-react";
 import type { Client } from "@/lib/types";
 import type { CreateClientInput } from "@/lib/data/clients";
 
+import { INDIAN_STATES } from "@/lib/constants/indianStates";
 const ENTITY_TYPES = [
   "Proprietorship", "Partnership", "LLP", "Private Limited",
   "Public Limited", "Trust", "Society", "Individual",
 ];
 
-const STATES = [
-  { code: "01", name: "Jammu & Kashmir" }, { code: "02", name: "Himachal Pradesh" },
-  { code: "03", name: "Punjab" }, { code: "04", name: "Chandigarh" },
-  { code: "05", name: "Uttarakhand" }, { code: "06", name: "Haryana" },
-  { code: "07", name: "Delhi" }, { code: "08", name: "Rajasthan" },
-  { code: "09", name: "Uttar Pradesh" }, { code: "10", name: "Bihar" },
-  { code: "11", name: "Sikkim" }, { code: "12", name: "Arunachal Pradesh" },
-  { code: "13", name: "Nagaland" }, { code: "14", name: "Manipur" },
-  { code: "15", name: "Mizoram" }, { code: "16", name: "Tripura" },
-  { code: "17", name: "Meghalaya" }, { code: "18", name: "Assam" },
-  { code: "19", name: "West Bengal" }, { code: "20", name: "Jharkhand" },
-  { code: "21", name: "Odisha" }, { code: "22", name: "Chhattisgarh" },
-  { code: "23", name: "Madhya Pradesh" }, { code: "24", name: "Gujarat" },
-  { code: "27", name: "Maharashtra" }, { code: "29", name: "Karnataka" },
-  { code: "30", name: "Goa" }, { code: "32", name: "Kerala" },
-  { code: "33", name: "Tamil Nadu" }, { code: "36", name: "Telangana" },
-  { code: "37", name: "Andhra Pradesh" },
-];
+// THE CANONICAL LIST, not a fifth copy. This held 31 of the 36 live codes —
+// Dadra & Nagar Haveli and Daman & Diu (26), Lakshadweep (31), Puducherry (34),
+// Andaman & Nicobar (35) and Ladakh (38) were absent — on the CLIENT master,
+// where state_code is the field every downstream document reads to decide
+// CGST+SGST against IGST. A client in Ladakh could not be onboarded with a
+// state code at all. The names here were identical to the canonical ones, so
+// this is purely additive and orphans no stored value.
+const STATES = INDIAN_STATES;
 
 interface Props {
   open: boolean;
@@ -40,7 +31,7 @@ const EMPTY: CreateClientInput = {
   client_name: "", entity_type: "Proprietorship", pan: "",
   gstin: "", mobile: "", email: "", city: "", state: "Maharashtra",
   state_code: "27", pincode: "", address_line1: "",
-  gst_filing_frequency: "monthly", notes: "",
+  gst_filing_frequency: "monthly", gst_advance_tax_applicable: false, notes: "",
 };
 
 export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
@@ -63,6 +54,8 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
         pincode: editClient.pincode ?? "",
         address_line1: editClient.address_line1 ?? "",
         gst_filing_frequency: editClient.gst_filing_frequency ?? "monthly",
+        gst_advance_tax_applicable: Boolean(
+          (editClient as { gst_advance_tax_applicable?: boolean | null }).gst_advance_tax_applicable),
         notes: editClient.notes ?? "",
       });
     } else {
@@ -71,7 +64,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
     setError(null);
   }, [editClient, open]);
 
-  function set(field: keyof CreateClientInput, value: string) {
+  function set(field: keyof CreateClientInput, value: string | boolean) {
     setForm(f => ({ ...f, [field]: value }));
   }
 
@@ -171,6 +164,34 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               </select>
             </div>
           </div>
+
+          {/* GSTR-1 Tables 11A and 11B. Off by default, which is the right
+              default: Notification 66/2017-Central Tax removed the charge on
+              advances for GOODS, so most registered persons have no Table 11 at
+              all. A supplier of SERVICES turns it on (CGST s.13(2)).
+
+              The column has existed since migration 286 and the return builder
+              has read it since; nothing ever wrote it, so Table 11 was empty
+              for every client on the platform and no screen said whether that
+              meant "no advances" or "not switched on". */}
+          <label className="flex items-start gap-2 text-sm text-[#334155] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={Boolean(form.gst_advance_tax_applicable)}
+              onChange={e => set("gst_advance_tax_applicable", e.target.checked)}
+              className="mt-0.5 rounded"
+            />
+            <span>
+              Advances received bear GST
+              <span className="block text-xs text-[#64748B]">
+                CGST s.13(2) — tax on an advance is due when it is received for a
+                SUPPLY OF SERVICES. Notification 66/2017-Central Tax removed the
+                charge for goods, where the liability arises at the invoice. Turn
+                this on and the receipt form asks for the rate and place of
+                supply an advance is declared at in GSTR-1 Table 11A.
+              </span>
+            </span>
+          </label>
 
           {/* Tax IDs */}
           <div className="grid grid-cols-2 gap-4">

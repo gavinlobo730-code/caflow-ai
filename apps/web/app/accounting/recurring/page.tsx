@@ -12,7 +12,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { api } from "@/lib/api";
-import { todayLocalISO } from "@/lib/dateMath";
+import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
 import type { Account, Client } from "@/lib/types";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
@@ -63,7 +63,11 @@ function nextDueDate(tpl: RecurringTemplate): string {
   const today = todayISO();
   const last = tpl.last_posted_date || tpl.start_date;
 
-  const d = new Date(last);
+  // Local-midnight parse to match the local setMonth/setDate below and the
+  // local toLocalISO at the end — see lib/dateMath's header. `new Date(last)`
+  // on a bare "YYYY-MM-DD" is UTC midnight, so the arithmetic ran one frame
+  // and the formatting another.
+  const d = new Date(last + "T00:00:00");
   switch (tpl.frequency) {
     case "Monthly":
       d.setMonth(d.getMonth() + 1);
@@ -76,7 +80,7 @@ function nextDueDate(tpl: RecurringTemplate): string {
       break;
   }
   d.setDate(Math.min(tpl.day_of_month, 28));
-  const iso = d.toISOString().slice(0, 10);
+  const iso = toLocalISO(d);
   // If we haven't posted yet and start_date is today or past, it's due now
   if (!tpl.last_posted_date && tpl.start_date <= today) return tpl.start_date;
   return iso;

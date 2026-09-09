@@ -361,7 +361,7 @@ phase teaches one pattern and ends with one guard test. Four screens and a file
 format do not share a pattern with four engine corrections. They are carried
 forward whole, with their findings and their severities unchanged.
 
-### Phase 5 — A GSTR-1 the portal accepts · 8 findings · ≤24 days
+### Phase 5 — A GSTR-1 the portal accepts · 8 findings · ≤24 days · **DONE**
 `GST-07 GST-08 SALES-06 SALES-10 SALES-09 GST-16 SALES-03 GST-12`
 
 Deemed exports filed as physical; a blended B2CS rate that does not exist; seven
@@ -372,6 +372,41 @@ modal throwing on every save; the invoice PDF always saying "reverse charge: No"
 *Shape:* one payload builder, one validator, and the validator actually wired to
 the path in use.
 *Guard:* the validator runs on the CA's path, not only on the test's.
+
+**Shipped as 5a–5f. Rescored first, and one finding had moved:** SALES-03 was
+half fixed already — the reverse-charge line was conditional and the place of
+supply printed — so only its IRN/QR half remained. Four of the others turned
+out wider than written.
+
+| | Findings | What it was |
+|---|---|---|
+| **5a** | GST-12, SALES-06 | the Add Filing modal threw a RangeError on EVERY save (the option's `value` and `label` were one string and two readers parsed it differently). Two more defects sat in the same three lines: the month end was read back through UTC (every period ended a day early in IST) and GSTR-9's due date read the CALENDAR year off the period, so January–March showed a date a year late. The browser's `getDueDate` is deleted — `GET /api/compliance/due-dates/calculate` existed all along with `api.compliance.calculateDueDates` already in `lib/api` and NO CALLER, the same shape Phase 3 deleted for TDS |
+| **5b** | GST-08 | Table 7 declared blended rates that do not exist in the tariff — 11.5% for a 5%+18% invoice, 13.26% for four rates. The tax TOTAL was always right, which is why it survived |
+| **5c** | GST-16 | the validator ran on two endpoints no screen calls. **GSTR-3B had the identical hole** and is fixed too. `lib/data/gst.ts` also marked every return `"validated"` unconditionally |
+| **5d** | GST-07, SALES-10 | SEZ supplies and deemed exports were filed in Table 6A, **which has no `ctin`** — so the recipient's GSTIN, the thing their refund claim matches on, was dropped. They belong in 6B/6C inside `b2b`. `inv_typ` was emitting this application's own strings. An export made ON PAYMENT of IGST was filed as WOPAY. Migration 349 adds the shipping-bill columns, which nothing anywhere had |
+| **5e** | SALES-09 | four columns migration 286 added, that `gst_advance_service` has read ever since and **nothing has ever written** — including the client flag that gates the whole table, which had no model field, no endpoint and no screen |
+| **5f** | SALES-03 | Rule 46(r), the IRN and the IRP's signed QR. Printed only where `status == "generated"` AND an IRN exists; a simulated one is never rendered |
+
+**Three things this phase found that were not in the audit:**
+
+1. **A FIFTH Indian-state list** (`components/ClientFormModal.tsx`), on the
+   CLIENT master where `state_code` drives CGST+SGST against IGST downstream. A
+   client in Ladakh could not be onboarded. The guard found it on its first run.
+2. **Fifty sites producing a calendar date from a UTC instant**, across thirty
+   files — including the default date of the invoice editor, the purchase-bill
+   editor and all four note editors. For anyone in IST between 00:00 and 05:30
+   those defaulted to YESTERDAY, on a Rule 46(b) particular. `lib/dateMath.ts`
+   already documented the fix and named the helper; two other modules said so
+   too; nothing checked.
+3. **A pre-existing hole in the frontend column checker.** `_skip_args` was
+   quote-aware and not comment-aware, so an apostrophe in a comment inside a
+   payload (`screen's job`) opened a string that never closed and the whole
+   write went UNSCANNED — silently, which is the direction that matters. Fixed
+   with `blank_comments()`; the write scan went from ~230 to 256 references.
+
+**Four guard tests, each stating the RULE rather than a spelling of it** — no
+calendar date cut out of a UTC instant, one state master, the due date comes
+from the engine, a return with errors is not "validated".
 
 ### Phase 6 — You can correct a mistake · 5 findings · ≤17 days
 `SALES-04 FA-10 ACC-09 PAY-12 BANK-06`

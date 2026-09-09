@@ -180,7 +180,11 @@ def test_a_goods_client_gets_no_table_11_at_all(db):
     _client(db, applicable=False)
     _adv(db, "RCT-1", "2025-06-10", 1_18_000)
     out = _t11(db)
-    assert out == {"at": [], "txpd": [], "applicable": False}
+    assert out == {"at": [], "txpd": [], "applicable": False, "gaps": []}
+    assert out["gaps"] == [], (
+        "and NO gap either — an advance for goods is not undeclared, it is "
+        "not chargeable. Reporting one here would put a warning on every "
+        "receipt of every goods client on the platform.")
 
 
 def test_a_services_client_declares_the_advance_in_11a(db):

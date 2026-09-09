@@ -27,6 +27,7 @@ import { formatPaise, formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 
+import { todayLocalISO } from "@/lib/dateMath";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ReportId = "gst_summary" | "pl_statement" | "compliance_status" | "outstanding_invoices";
@@ -571,7 +572,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
   const [selectedClientId, setSelectedClientId] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr());
   const [fromDate, setFromDate] = useState(currentFYStart());
-  const [toDate, setToDate] = useState(new Date().toISOString().split("T")[0]);
+  const [toDate, setToDate] = useState(todayLocalISO());
 
   // Load clients once
   const ensureClients = useCallback(async () => {
@@ -658,7 +659,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
       } else if (reportId === "compliance_status") {
         const [entries, allClients] = await Promise.all([getComplianceCalendar(), getClients()]);
         const clientNameById = new Map(allClients.map((c) => [c.id, c.client_name]));
-        const today = new Date().toISOString().split("T")[0];
+        const today = todayLocalISO();
 
         // Group by client
         const map = new Map<string, { name: string; entries: ComplianceEntry[] }>();

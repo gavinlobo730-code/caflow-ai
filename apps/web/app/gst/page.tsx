@@ -28,8 +28,9 @@ import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, computeOverdueStatus } from "@/lib/dateMath";
+import { MONTH_NAMES, buildMonthOptions, parsePeriodOption, periodBounds } from "@/lib/gst/filingPeriod";
 import { useToast } from "@/components/ui/use-toast";
-import { api } from "@/lib/api";
+import { api, type GstDueDates } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,52 +55,28 @@ interface GSTFiling {
 
 const RETURN_TYPES: ReturnType[] = ["GSTR-1", "GSTR-3B", "GSTR-9"];
 
-const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
-/**
- * Build month options for last 12 months (current + 11 prior) in MMM YYYY format.
- * Financial year runs April–March (CGST Act).
- */
-function buildMonthOptions(): { value: string; label: string }[] {
-  const today = new Date(todayLocalISO() + "T00:00:00");
-  const options: { value: string; label: string }[] = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-    options.push({ value: label, label });
-  }
-  return options;
-}
-
 const MONTH_OPTIONS = buildMonthOptions();
 
-/** Auto-fill due date based on return type and period — CGST Act Sections 37, 39, 44 */
-function getDueDate(returnType: ReturnType, period: string): string {
-  if (returnType === "GSTR-9") {
-    // CGST Act Section 44 — GSTR-9 due 31st December of the following FY
-    const parts = period.split(" ");
-    const year = parseInt(parts[1] ?? "0");
-    return `${year + 1}-12-31`;
-  }
-  // Parse "MMM YYYY" into a date
-  const parts = period.split(" ");
-  if (parts.length < 2) return "";
-  const monthIdx = MONTH_NAMES.indexOf(parts[0]);
-  const year = parseInt(parts[1]);
-  if (monthIdx === -1 || isNaN(year)) return "";
-
-  // Advance to following month
-  const nextMonth = monthIdx === 11 ? 0 : monthIdx + 1;
-  const nextYear = monthIdx === 11 ? year + 1 : year;
-
-  // GSTR-1: 11th of following month — CGST Act Section 37
-  // GSTR-3B: 20th of following month — CGST Act Section 39
-  const dueDay = returnType === "GSTR-1" ? 11 : 20;
-  return `${nextYear}-${String(nextMonth + 1).padStart(2, "0")}-${String(dueDay).padStart(2, "0")}`;
-}
+/**
+ * THE DUE DATE COMES FROM THE ENGINE, and this file no longer computes one.
+ *
+ * CLAUDE.md: "services/compliance_engine.py is the single source for every due
+ * date" and "Zero business logic in the frontend." There was a second copy
+ * here, and it was wrong: GSTR-9 read the CALENDAR year off the period and
+ * added one, but a financial year runs April to March — so February 2026 (FY
+ * 2025-26, due 31-12-2026) showed 31-12-2027. April to December agreed with
+ * the engine, which is how it survived.
+ *
+ * GET /api/compliance/due-dates/calculate has existed all along, and
+ * api.compliance.calculateDueDates has been in lib/api since it was written,
+ * with no caller. This is the same shape as the browser TDS table Phase 3
+ * deleted: the engine was right, and nothing on the screen was asking it.
+ */
+const DUE_DATE_FIELD: Record<ReturnType, keyof GstDueDates> = {
+  "GSTR-1": "gstr1_due_date",
+  "GSTR-3B": "gstr3b_due_date",
+  "GSTR-9": "gstr9_due_date",
+};
 
 /** Format ISO date to readable string */
 function fmtDate(iso: string): string {
@@ -160,14 +137,40 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [returnType, setReturnType] = useState<ReturnType>("GSTR-1");
   const [period, setPeriod] = useState(MONTH_OPTIONS[MONTH_OPTIONS.length - 1]?.value ?? "");
-  const [dueDate, setDueDate] = useState(() => getDueDate("GSTR-1", MONTH_OPTIONS[MONTH_OPTIONS.length - 1]?.value ?? ""));
+  // Empty until the engine answers. It is an editable field, so an empty box
+  // with a message is honest; a browser-computed placeholder would be a second
+  // statutory rule again, and a wrong one is indistinguishable from a right one
+  // on screen.
+  const [dueDate, setDueDate] = useState("");
+  const [dueDateErr, setDueDateErr] = useState<string | null>(null);
   const [status, setStatus] = useState<FilingStatus>("Pending");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Auto-fill due date when return type or period changes
+  // Auto-fill the due date from the compliance engine when the return type or
+  // the period changes. `cancelled` guards the response of a request the CA has
+  // already superseded by changing the selection again.
   useEffect(() => {
-    setDueDate(getDueDate(returnType, period));
+    const p = parsePeriodOption(period);
+    if (!p) { setDueDate(""); setDueDateErr(null); return; }
+    let cancelled = false;
+    setDueDateErr(null);
+    api.compliance.calculateDueDates(p.year, p.month)
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.success || !res.data) {
+          setDueDate("");
+          setDueDateErr(res.error ?? "Could not fetch the due date — enter it.");
+          return;
+        }
+        setDueDate(res.data[DUE_DATE_FIELD[returnType]] ?? "");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDueDate("");
+        setDueDateErr("Could not fetch the due date — enter it.");
+      });
+    return () => { cancelled = true; };
   }, [returnType, period]);
 
   async function handleSave() {
@@ -185,9 +188,9 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       // Map ReturnType to compliance_calendar compliance_type values
       const complianceTypeMap: Record<string, string> = { "GSTR-1": "GSTR1", "GSTR-3B": "GSTR3B", "GSTR-9": "GSTR9" };
-      const [pYear, pMonth] = period.split("-").map(Number);
-      const periodStart = `${pYear}-${String(pMonth).padStart(2, "0")}-01`;
-      const periodEnd = new Date(pYear, pMonth, 0).toISOString().slice(0, 10);
+      const bounds = periodBounds(period);
+      if (!bounds) throw new Error("Pick a filing period.");
+      const { start: periodStart, end: periodEnd } = bounds;
       const { data, error } = await sb
         .from("compliance_calendar")
         .insert({
@@ -308,11 +311,15 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
             onChange={(e) => setDueDate(e.target.value)}
             className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <p className="text-[10px] text-[#94A3B8] mt-1">
-            {returnType === "GSTR-1" && "CGST Act Section 37 — 11th of following month"}
-            {returnType === "GSTR-3B" && "CGST Act Section 39 — 20th of following month"}
-            {returnType === "GSTR-9" && "CGST Act Section 44 — 31st December"}
-          </p>
+          {dueDateErr ? (
+            <p className="text-[10px] text-[#B45309] mt-1">{dueDateErr}</p>
+          ) : (
+            <p className="text-[10px] text-[#94A3B8] mt-1">
+              {returnType === "GSTR-1" && "CGST Act Section 37 — 11th of following month"}
+              {returnType === "GSTR-3B" && "CGST Act Section 39 — 20th of following month"}
+              {returnType === "GSTR-9" && "CGST Act Section 44 — 31st December following the end of the financial year"}
+            </p>
+          )}
         </div>
 
         {/* Status */}

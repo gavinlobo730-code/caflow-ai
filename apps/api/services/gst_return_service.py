@@ -29,6 +29,10 @@ from domain.gst.gstr3b_computer import (
 )
 from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
 from domain.gst.classifier import classify_transaction, TransactionForClassification
+from domain.gst.validator import GSTValidator, InvoiceToValidate
+
+# One instance; GSTValidator holds no state.
+_validator = GSTValidator()
 
 # Posted (on-books) document statuses. Drafts are off-books; cancelled documents
 # have an equal-and-opposite reversal in the GL, so excluding them here keeps books
@@ -886,10 +890,32 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
     output_matched = books_output == gl["output_paise"]
     itc_matched = books_itc == gl["itc_paise"]
 
+    # THE SAME GAP GSTR-1 HAD, and the same fix. validate_gstr3b ran only from
+    # POST /gst/gstr3b/compute — the endpoint that takes invoices FROM the
+    # caller — and lib/data/gst.ts posts to /gstr3b/from-books, so its one
+    # substantive rule never saw a real return. That rule is narrow (ITC more
+    # than three times the output tax is a warning, not an error, because a
+    # capital-goods month or an exporter under an LUT legitimately looks like
+    # that), which is why the figures are the NET ones the return claims rather
+    # than the gross: Table 4(C), not 4(A).
+    gstr3b_validation = _validator.validate_gstr3b(
+        gstin=gstin, period=period,
+        output_igst=result.outward_taxable_igst,
+        output_cgst=result.outward_taxable_cgst,
+        output_sgst=result.outward_taxable_sgst,
+        itc_igst=result.itc_net_igst,
+        itc_cgst=result.itc_net_cgst,
+        itc_sgst=result.itc_net_sgst,
+    )
+
     return {
         "period": period,
         "gstin": gstin,
         "source": "posted_general_ledger",
+        "validation_errors": [e.as_dict() for e in gstr3b_validation
+                              if e.severity == "error"],
+        "validation_warnings": [e.as_dict() for e in gstr3b_validation
+                                if e.severity == "warning"],
         # Paise-precise header totals for gst-workspace SaveGSTR3BRequest — kept
         # server-side (CLAUDE.md: zero business logic in the frontend) so the
         # caller never has to derive these from the rupee-rounded payload/summary.
@@ -1115,6 +1141,12 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                                  + int(r.get("cess_paise") or 0)
                                  + int(r.get("round_off_paise") or 0)),
             transaction_date=r.get(_DATE_FIELD[doc_type]) or "",
+            # IGST Act s.16(3): a zero-rated supply either bears IGST (limb b,
+            # refunded afterwards) or does not (limb a, under an LUT or bond).
+            # The classifier could not tell, so every export was declared
+            # WOPAY — asking for a refund of accumulated credit rather than of
+            # the tax actually paid.
+            igst_paise=int(r.get("igst_paise") or 0),
         )
         return InvoiceForGSTR1(
             id=r.get("id", ""),
@@ -1148,11 +1180,58 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             # single "OTH" row — for notes too, which _build_hsn_summary now
             # nets rather than skipping.
             lines=lines_by_doc.get(doc_type, {}).get(r.get("id") or "", []),
+            # Table 6A's shipping bill — migration 349. Only a sales invoice
+            # carries one; a credit note against an export has no shipping bill
+            # of its own, and .get on a row that has no such column returns
+            # None anyway, which is the "not recorded" state.
+            shipping_bill_no=(r.get("shipping_bill_no") or None),
+            shipping_bill_date=(str(r.get("shipping_bill_date"))[:10]
+                                if r.get("shipping_bill_date") else None),
+            port_code=(r.get("port_code") or None),
         )
 
     invoices = ([_to_gstr1(r, "sales_invoice") for r in invoices_raw]
                 + [_to_gstr1(r, "credit_note") for r in cns_raw]
                 + [_to_gstr1(r, "debit_note") for r in sdns_raw])
+
+    # THE VALIDATOR RUNS HERE, on the path a CA actually uses.
+    #
+    # domain/gst/validator.validate_gstr1 checks the things that get a return
+    # REJECTED at the portal or filed wrong — a duplicate invoice number, a
+    # place of supply that is not a state, CGST != SGST on an intra-state
+    # supply, IGST on an intra-state supply, tax that does not follow from the
+    # taxable value, an invoice dated outside the period being filed. It was
+    # reachable only from POST /gst/gstr1/build and POST /gst/validate/gstr1,
+    # and NEITHER SCREEN CALLS EITHER: the GST workspace posts to
+    # /gstr1/from-books, which validated the FILER's own GSTIN and the period
+    # string and nothing else. So the one path in use was the one path with no
+    # checks.
+    #
+    # In the service, not in the router, because /gstr1/with-amendments spreads
+    # this function's result and would otherwise need its own copy — and two
+    # copies of a validation are how one of them stops being run (CLAUDE.md:
+    # when a rule has to exist twice, MOVE it).
+    #
+    # REPORTED, NOT RAISED. A 422 would hide every other table from the CA over
+    # one bad invoice, and the CA is the one who decides what to do about it —
+    # the same reason /gstr1/build returns them in the body. Nothing here files
+    # anything.
+    validation = _validator.validate_gstr1(gstin, period, [
+        InvoiceToValidate(
+            reference_no=inv.reference_no,
+            transaction_date=inv.transaction_date,
+            party_gstin=inv.party_gstin,
+            place_of_supply=inv.place_of_supply,
+            taxable_amount_paise=inv.taxable_amount_paise,
+            cgst_paise=inv.cgst_paise,
+            sgst_paise=inv.sgst_paise,
+            igst_paise=inv.igst_paise,
+            is_interstate=inv.is_interstate,
+            gst_rate=None,
+        )
+        for inv in invoices
+    ])
+
     payload = build_gstr1(invoices, gstin, period, aggregate_turnover_paise)
 
     # Tables 11A and 11B — advances. Merged here rather than inside
@@ -1171,6 +1250,10 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     for key in ("at", "txpd"):
         if table_11.get(key):
             payload.payload[key] = table_11[key]
+    # An advance the client's own settings make taxable, that this return does
+    # not declare because nobody recorded its rate or its place of supply. Same
+    # list as the builder's own gaps: a document the return does not carry.
+    payload.gaps.extend(table_11.get("gaps") or [])
 
     # Reconcile output tax to the GL. GSTR-1 tax total is gross (before credit
     # notes, before debit notes); compare against sales-only GST in the GL
@@ -1201,6 +1284,15 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         "invoice_count": payload.invoice_count,
         "taxable_total_paise": payload.taxable_total_paise,
         "tax_total_paise": payload.tax_total_paise,
+        # Same two keys, same shape, as POST /gst/gstr1/build — so a screen
+        # reads one contract whichever way the payload was produced.
+        "validation_errors": [e.as_dict() for e in validation if e.severity == "error"],
+        "validation_warnings": [e.as_dict() for e in validation if e.severity == "warning"],
+        # DOCUMENTS THE PAYLOAD DOES NOT CARRY. Distinct from validation: a
+        # validation error is a document that IS in the return and is wrong; a
+        # gap is a document that is NOT in the return at all. Filing short is
+        # the failure a CA finds out about from the recipient.
+        "payload_gaps": payload.gaps,
         "reconciliation": {
             "net_output_gst": {
                 "books_paise": net_books_output,

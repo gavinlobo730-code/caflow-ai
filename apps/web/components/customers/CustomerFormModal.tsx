@@ -20,7 +20,7 @@ import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import {
-  apiCall, getAuthToken, INDIAN_STATES, type Customer,
+  apiCall, getAuthToken, type Customer,
 } from "@/lib/invoices/shared";
 import { clearReports } from "@/lib/accounting/reportCache";
 import {
@@ -194,7 +194,7 @@ export function CustomerFormModal({
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">State Code</label>
-          <StateLookup states={INDIAN_STATES} value={stateCode} onChange={setStateCode} placeholder="— Select —" ariaLabel="State code" />
+          <StateLookup value={stateCode} onChange={setStateCode} placeholder="— Select —" ariaLabel="State code" />
         </div>
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">PAN</label>

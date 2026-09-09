@@ -18,9 +18,42 @@ class GSTInvoiceCategory(str, Enum):
     B2CL = "B2CL"         # unregistered, inter-state above the limit (see below)
     CDNR = "CDNR"         # credit/debit note to registered person
     CDNA = "CDNA"         # credit/debit note to unregistered person
-    EXP_WP = "EXP_WP"    # export with payment of IGST
-    EXP_WOP = "EXP_WOP"  # export without payment of IGST (LUT/bond)
+    EXP_WP = "EXP_WP"    # export with payment of IGST — Table 6A
+    EXP_WOP = "EXP_WOP"  # export without payment of IGST (LUT/bond) — Table 6A
+    # SEZ supplies (Table 6B) and deemed exports (Table 6C) are zero-rated, and
+    # they are NOT Table 6A. Their recipient is a registered person with a
+    # GSTIN, and the GSTN payload carries them inside the `b2b` section with an
+    # inv_typ that says which they are — because the recipient's own return has
+    # to match them, and Table 6A has no ctin field at all.
+    #
+    # Routing them to 6A dropped the recipient GSTIN on the floor. An SEZ unit
+    # claiming a refund of the tax under CGST s.16(3), or a deemed-export
+    # recipient claiming one under Notification 48/2017-Central Tax, had nothing
+    # to match against.
+    SEZ_WP = "SEZ_WP"              # SEZ supply with payment of IGST — Table 6B
+    SEZ_WOP = "SEZ_WOP"            # SEZ supply under LUT/bond — Table 6B
+    DEEMED_EXPORT = "DEEMED_EXPORT"  # Table 6C
     NIL_EXEMPT = "NIL_EXEMPT"  # nil-rated or exempt supplies
+
+
+# The categories that are filed inside the GSTN `b2b` section. Kept as a set
+# rather than tested one at a time, so a new member is added in one place.
+B2B_SECTION_CATEGORIES = frozenset({
+    GSTInvoiceCategory.B2B,
+    GSTInvoiceCategory.SEZ_WP,
+    GSTInvoiceCategory.SEZ_WOP,
+    GSTInvoiceCategory.DEEMED_EXPORT,
+})
+
+# Zero-rated under IGST Act s.16(1): an export, an SEZ supply, and (by
+# Notification 48/2017-Central Tax read with s.147) a deemed export.
+ZERO_RATED_CATEGORIES = frozenset({
+    GSTInvoiceCategory.EXP_WP,
+    GSTInvoiceCategory.EXP_WOP,
+    GSTInvoiceCategory.SEZ_WP,
+    GSTInvoiceCategory.SEZ_WOP,
+    GSTInvoiceCategory.DEEMED_EXPORT,
+})
 
 
 # CGST Rule 59(4) — invoice-wise reporting of inter-state supplies to
@@ -77,6 +110,20 @@ class TransactionForClassification:
     # The threshold changed on 01-08-2024, so classification depends on when
     # the supply was made. YYYY-MM-DD.
     transaction_date: str | None
+    # WHETHER A ZERO-RATED SUPPLY WAS MADE ON PAYMENT OF TAX. IGST Act s.16(3)
+    # gives two routes: (a) under a letter of undertaking or bond, with no tax
+    # charged and the input credit refunded, or (b) on payment of IGST, which
+    # is then refunded. Table 6A declares which with exp_typ WPAY or WOPAY.
+    #
+    # This dataclass carried no tax field at all, so the classifier could not
+    # tell them apart and its own comment said "assume no IGST payment (LUT)".
+    # An exporter who paid IGST was filed as WOPAY, which asks for a refund of
+    # accumulated credit instead of the tax actually paid — the wrong refund,
+    # under the wrong rule.
+    #
+    # Defaulted to 0 so existing callers are unchanged: a caller that does not
+    # pass it gets the old behaviour, which is WOPAY.
+    igst_paise: int = 0
 
 
 def classify_transaction(txn: TransactionForClassification) -> GSTInvoiceCategory:
@@ -97,22 +144,46 @@ def classify_transaction(txn: TransactionForClassification) -> GSTInvoiceCategor
             return GSTInvoiceCategory.CDNR
         return GSTInvoiceCategory.CDNA
 
-    # Export supplies — CGST Act Section 16(1)(a) — zero-rated supplies
-    is_export = (
-        txn.supply_type == "zero_rated"
-        or txn.invoice_type in ("SEZ_with_payment", "SEZ_without_payment", "Deemed_export")
-        or txn.place_of_supply == EXPORT_PLACE_OF_SUPPLY
-    )
+    # ── Zero-rated supplies — IGST Act s.16 ─────────────────────────────────
+    #
+    # THREE DESTINATIONS, NOT ONE. All of these are zero-rated and every one of
+    # them used to be filed as a physical export in Table 6A:
+    #
+    #   Table 6A  a real export out of India                 exp_typ WPAY/WOPAY
+    #   Table 6B  a supply to an SEZ unit or developer       inside b2b, w/ ctin
+    #   Table 6C  a deemed export (Notification 48/2017-CT)  inside b2b, w/ ctin
+    #
+    # 6B and 6C go to a REGISTERED recipient, and the whole point of declaring
+    # them is that the recipient's own return matches them — an SEZ unit's
+    # s.16(3) refund, or a deemed-export recipient's refund under Notification
+    # 48/2017-Central Tax read with s.147. Table 6A has no ctin field, so
+    # sending them there dropped the recipient GSTIN entirely.
+    #
+    # invoice_type is the authority for 6B and 6C because it is an explicit
+    # statement about the supply. supply_type "zero_rated" and place of supply
+    # "96" describe a physical export.
+    if txn.invoice_type == "SEZ_with_payment":
+        return GSTInvoiceCategory.SEZ_WP
+    if txn.invoice_type == "SEZ_without_payment":
+        return GSTInvoiceCategory.SEZ_WOP
+    if txn.invoice_type == "Deemed_export":
+        # Deemed exports are ALWAYS on payment of tax — Notification
+        # 48/2017-Central Tax works by treating the supply as made on payment
+        # and refunding it afterwards, to either the supplier or the recipient.
+        # There is no LUT route, so there is nothing to detect here.
+        return GSTInvoiceCategory.DEEMED_EXPORT
+
+    is_export = (txn.supply_type == "zero_rated"
+                 or txn.place_of_supply == EXPORT_PLACE_OF_SUPPLY)
     if is_export:
-        # With payment of IGST vs without (LUT/Bond) — CGST Act Section 16(3)
-        # SEZ_without_payment takes precedence — invoice_type is explicit; supply_type alone
-        # (zero_rated) is insufficient to infer payment, so default to WOPAY (conservative).
-        if txn.invoice_type == "SEZ_without_payment":
-            return GSTInvoiceCategory.EXP_WOP
-        if txn.invoice_type == "SEZ_with_payment":
-            return GSTInvoiceCategory.EXP_WP
-        # Regular exports: zero_rated + place_of_supply=="96"; assume no IGST payment (LUT)
-        return GSTInvoiceCategory.EXP_WOP
+        # s.16(3): (a) under an LUT or bond, no tax charged; (b) on payment of
+        # IGST, refunded afterwards. The invoice says which — it either carries
+        # IGST or it does not. This used to be assumed to be (a) always,
+        # because the dataclass had no tax field: an exporter who paid IGST was
+        # filed as WOPAY, claiming a refund of accumulated credit instead of
+        # the tax they actually paid.
+        return (GSTInvoiceCategory.EXP_WP if txn.igst_paise > 0
+                else GSTInvoiceCategory.EXP_WOP)
 
     # B2B: supply to any GST-registered person — CGST Act Section 37, Table 4A
     if txn.party_gstin:

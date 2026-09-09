@@ -13,7 +13,7 @@ import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
-import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
+import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { Skeleton, TableSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
 import type { Column, FilterDef } from "@/lib/table/types";
@@ -58,6 +58,8 @@ import { partyCreditsApi, type PartyCreditDetail } from "@/lib/api/partyCredits"
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 
+import { todayLocalISO } from "@/lib/dateMath";
+import { StateLookup } from "@/components/lookups/StateLookup";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements";
@@ -146,7 +148,7 @@ function isOverdueForUi(inv: SalesInvoice): boolean {
   const outstanding = inv.total_paise - (inv.paid_paise ?? 0);
   if (outstanding <= 0) return false;
   if (inv.is_overdue) return true;
-  if (inv.due_date) return inv.due_date < new Date().toISOString().slice(0, 10);
+  if (inv.due_date) return inv.due_date < todayLocalISO();
   return false;
 }
 
@@ -598,7 +600,7 @@ function RecurringEditor({
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [frequency, setFrequency] = useState(existing?.frequency ?? "monthly");
-  const [startDate, setStartDate] = useState(existing?.start_date ?? new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(existing?.start_date ?? todayLocalISO());
   const [endDate, setEndDate] = useState(existing?.end_date ?? "");
   const [isInterState, setIsInterState] = useState(existing?.is_inter_state ?? false);
   // Reuses the invoice form's vocabulary and its unknown-value fallback rather
@@ -3202,7 +3204,7 @@ function Receipts({
     try {
       const token = await getAuthToken();
       const result = await apiCall(`/api/receipts/${r.id}/reverse`, "POST",
-        { reversal_date: new Date().toISOString().slice(0, 10) }, token);
+        { reversal_date: todayLocalISO() }, token);
       if (!result.success) throw new Error(result.error ?? "Failed to reverse receipt");
       showToast(`${r.receipt_no} reversed — journal and allocations rolled back`, "success");
       load();
@@ -3340,7 +3342,7 @@ function ReceiptForm({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [customerId, setCustomerId] = useState("");
   const [receiptDate, setReceiptDate] = useState(today);
   const [amount, setAmount] = useState("");
@@ -3351,17 +3353,41 @@ function ReceiptForm({
   // which of the client's accounts actually took the money.
   const [bankAccountId, setBankAccountId] = useState("");
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
+  // GSTR-1 TABLE 11A (migration 286). CGST s.13(2) charges tax on an advance
+  // for SERVICES when it is received; Notification 66/2017-Central Tax removed
+  // the charge for goods. So these fields are asked for only where the client
+  // is marked as one whose advances bear tax — otherwise they would be three
+  // more boxes on every receipt of every goods client, which is how a field
+  // that matters stops being filled in.
+  //
+  // The columns have existed since migration 286 and gst_advance_service has
+  // read them since; nothing ever wrote them, so Table 11 was empty for every
+  // client on the platform.
+  const [advanceTaxApplicable, setAdvanceTaxApplicable] = useState(false);
+  const [clientStateCode, setClientStateCode] = useState("");
+  const [advanceRate, setAdvanceRate] = useState("");
+  const [advancePos, setAdvancePos] = useState("");
 
   useEffect(() => {
     if (!clientId) return;
     (async () => {
-      const { data } = await getSupabaseClient()
-        .from("bank_accounts")
-        .select("id, bank_name, account_no")
-        .eq("client_id", clientId)
-        .eq("is_active", true)
-        .order("bank_name");
+      const sb = getSupabaseClient();
+      const [{ data }, { data: cli }] = await Promise.all([
+        sb.from("bank_accounts")
+          .select("id, bank_name, account_no")
+          .eq("client_id", clientId)
+          .eq("is_active", true)
+          .order("bank_name"),
+        sb.from("clients")
+          .select("gst_advance_tax_applicable, state_code")
+          .eq("id", clientId)
+          .maybeSingle(),
+      ]);
       setBankAccounts((data as { id: string; bank_name: string; account_no: string }[]) ?? []);
+      const c = cli as { gst_advance_tax_applicable?: boolean | null; state_code?: string | null } | null;
+      setAdvanceTaxApplicable(Boolean(c?.gst_advance_tax_applicable));
+      setClientStateCode(c?.state_code ?? "");
+      setAdvancePos((prev) => prev || (c?.state_code ?? ""));
     })();
   }, [clientId]);
   const [referenceNo, setReferenceNo] = useState("");
@@ -3498,6 +3524,17 @@ function ReceiptForm({
           allocations: allocationsList.length > 0 ? allocationsList : undefined,
           currency: isForeign ? currency : undefined,
           exchange_rate: isForeign ? exchangeRate : undefined,
+          // Table 11A. Sent only for a client whose advances bear tax; the
+          // inter/intra split is DERIVED from the place of supply against the
+          // client's own state rather than asked as a third question, because
+          // it is not an independent fact (IGST Act ss.7, 8).
+          ...(advanceTaxApplicable && advanceRate !== "" && advancePos
+            ? {
+                gst_rate_bps: bpsFromPercentInput(advanceRate),
+                place_of_supply: advancePos,
+                is_interstate: advancePos !== clientStateCode,
+              }
+            : {}),
         },
         token
       );
@@ -3594,6 +3631,58 @@ function ReceiptForm({
           />
         </div>
       </div>
+
+      {/* GSTR-1 Table 11A — only for a client whose advances bear tax. CGST
+          s.13(2) charges an advance for SERVICES when it is received;
+          Notification 66/2017-Central Tax removed the charge for goods, so on
+          most clients these three boxes would be noise on every receipt.
+
+          The inter/intra split is DERIVED from the place of supply against the
+          client's own state (IGST Act ss.7, 8) rather than asked — it is not an
+          independent fact, and a third box a CA can contradict is a third box
+          that gets it wrong. */}
+      {advanceTaxApplicable && (
+        <div className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5">
+          <p className="text-[11px] font-medium text-[#92400E] mb-2">
+            Advance — GSTR-1 Table 11A
+            <span className="ml-1 font-normal">
+              Fill these in for any part of this receipt that is NOT settling an
+              invoice. Without them the advance is recorded but cannot be
+              declared: the rate and the place of supply are what the row is
+              declared at, and neither can be guessed without guessing the tax.
+            </span>
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">GST rate on the advance</label>
+              <input
+                value={advanceRate}
+                onChange={(e) => setAdvanceRate(e.target.value)}
+                inputMode="decimal"
+                placeholder="18"
+                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="mt-1 text-[10px] text-[#94A3B8]">Per cent, e.g. 18.</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Place of supply</label>
+              <StateLookup
+                value={advancePos}
+                onChange={setAdvancePos}
+                placeholder="— Select —"
+                ariaLabel="Place of supply for the advance"
+              />
+              <p className="mt-1 text-[10px] text-[#94A3B8]">
+                {advancePos && clientStateCode
+                  ? (advancePos === clientStateCode
+                      ? "Intra-state — CGST + SGST."
+                      : "Inter-state — IGST.")
+                  : "Decides CGST+SGST against IGST."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Multi-Currency (Phase 3 backend, UI added here). A receipt settles
           against invoices in ONE currency only — the backend rejects mixing

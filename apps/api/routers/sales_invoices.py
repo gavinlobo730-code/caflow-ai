@@ -844,6 +844,13 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "supply_type":           data.get("supply_type") or "taxable",
             "invoice_type":          data.get("invoice_type") or "Regular",
             "is_reverse_charge":     bool(data.get("is_reverse_charge") or False),
+        # Table 6A's shipping bill (migration 349). Written for every invoice,
+        # not only an export: reclassifying a domestic sale to an export later
+        # must not have to remember to bring these with it, and NULL is the
+        # accurate value on a sale that has none.
+        "shipping_bill_no":      data.get("shipping_bill_no") or None,
+        "shipping_bill_date":    data.get("shipping_bill_date") or None,
+        "port_code":             data.get("port_code") or None,
             "reference_no":          data.get("reference_no"),
             "taxable_amount_paise":  total_taxable_paise,
             "cgst_paise":            total_cgst_paise,
@@ -884,6 +891,13 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         "supply_type":           data.get("supply_type") or "taxable",
         "invoice_type":          data.get("invoice_type") or "Regular",
         "is_reverse_charge":     bool(data.get("is_reverse_charge") or False),
+        # Table 6A's shipping bill (migration 349). Written for every invoice,
+        # not only an export: reclassifying a domestic sale to an export later
+        # must not have to remember to bring these with it, and NULL is the
+        # accurate value on a sale that has none.
+        "shipping_bill_no":      data.get("shipping_bill_no") or None,
+        "shipping_bill_date":    data.get("shipping_bill_date") or None,
+        "port_code":             data.get("port_code") or None,
         "reference_no":          data.get("reference_no"),
         "taxable_amount_paise":  total_taxable_paise,
         "cgst_paise":            total_cgst_paise,
@@ -1156,7 +1170,18 @@ def get_invoice(
 # them affect amount or tax, so a correction doesn't need a Credit Note.
 # (line_units is handled separately below; it's popped out of `data` before
 # this set is checked, since it's always allowed regardless of status.)
-_SOFT_UPDATE_FIELDS = {"reference_no", "notes", "due_date", "credit_days"}
+# Editable after issue. The first four are commercial, not statutory.
+#
+# The shipping-bill three are here for a reason worth stating: CUSTOMS ISSUES
+# THE SHIPPING BILL AFTER THE INVOICE, often days later when the goods actually
+# ship. Locked with the rest of the Rule 46 content, there would be no moment
+# at which a CA could ever record them and GSTR-1 Table 6A would carry three
+# empty strings for a new reason. None of the three is a Rule 46 particular of
+# the tax invoice — they are customs's reference for the consignment — so
+# recording one changes nothing about what was supplied, to whom, or the tax on
+# it, and CGST s.34 is untouched.
+_SOFT_UPDATE_FIELDS = {"reference_no", "notes", "due_date", "credit_days",
+                       "shipping_bill_no", "shipping_bill_date", "port_code"}
 
 
 def _reject_locked_invoice_fields(data: dict) -> None:

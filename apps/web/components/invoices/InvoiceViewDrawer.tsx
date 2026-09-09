@@ -33,6 +33,7 @@ import {
   type TimelineItem,
 } from "@/lib/invoices/hub";
 import { CompliancePanel } from "@/components/invoices/CompliancePanel";
+import { todayLocalISO } from "@/lib/dateMath";
 import {
   complianceTimelineItems, type EInvoiceRecord, type EWayRecord,
 } from "@/lib/invoices/compliance";
@@ -447,7 +448,7 @@ function RecordPaymentModal({ invoice, clientId, outstanding, onClose, onDone, o
   invoice: InvoiceDetail; clientId: string; outstanding: number;
   onClose: () => void; onDone: () => void; onError: (m: string) => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [amount, setAmount] = useState(String(outstanding / 100));
   const [date, setDate] = useState(today);
   const [mode, setMode] = useState("bank");
@@ -505,7 +506,7 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
   invoice: InvoiceDetail; clientId: string;
   onClose: () => void; onDone: (cnNo: string) => void; onError: (m: string) => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -568,7 +569,7 @@ function CreateSalesDebitNoteModal({ invoice, clientId, onClose, onDone, onError
   invoice: InvoiceDetail; clientId: string;
   onClose: () => void; onDone: (dnNo: string) => void; onError: (m: string) => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);

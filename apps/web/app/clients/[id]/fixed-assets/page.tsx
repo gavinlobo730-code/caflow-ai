@@ -10,6 +10,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
+import { todayLocalISO } from "@/lib/dateMath";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -388,7 +389,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     schedule_ii_class:     0,
     asset_code:            "",
     location:              "",
-    purchase_date:         new Date().toISOString().slice(0, 10),
+    purchase_date:         todayLocalISO(),
     purchase_cost_paise:   "",
     salvage_value_paise:   "0",
     depreciation_method:   "WDV" as "WDV" | "SL",
@@ -809,7 +810,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
   // One parse, shared by the gain/loss shown on screen and the payload sent —
   // so the figure the CA reads before confirming is the one that is posted.
   const proceedsPaise = paiseFromRupeeInput(proceeds || "0");
-  const [disposalDate, setDisposalDate] = useState(new Date().toISOString().slice(0, 10));
+  const [disposalDate, setDisposalDate] = useState(todayLocalISO());
   const [disposing, setDisposing] = useState(false);
   const [error, setError] = useState("");
 

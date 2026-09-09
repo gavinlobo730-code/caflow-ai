@@ -226,6 +226,12 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         "amount_paise": cash_base, "tds_paise": 0, "unallocated_paise": unalloc_base,
         "payment_mode": data.get("payment_mode", ""), "reference_no": data.get("reference_no", ""),
         "notes": data.get("notes", ""), "journal_entry_id": entry_id,
+        # GSTR-1 Table 11A — see the note on the other receipt payload. A
+        # foreign-currency advance can bear tax under s.13(2) exactly as a
+        # rupee one can, so this path carries them too.
+        "gst_rate_bps": data.get("gst_rate_bps"),
+        "place_of_supply": data.get("place_of_supply"),
+        "is_interstate": data.get("is_interstate"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "txn_currency": ccy, "exchange_rate": str(R1), "txn_amount": total_foreign,
         "rate_source": r1_source, "rate_type": "booking", "rate_date": str(data["receipt_date"])[:10],
@@ -669,6 +675,14 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         "bank_account_id":   data.get("bank_account_id"),
         "reference_no":      data.get("reference_no", ""),
         "notes":             data.get("notes", ""),
+        # GSTR-1 Table 11A (migration 286). Accepted by ReceiptIn and dropped
+        # here until now — the columns existed, gst_advance_service read them,
+        # and nothing wrote them, so Table 11 could never be anything but
+        # empty. Same shape as bank_account_id above. NULL where the CA has not
+        # supplied them, which is the state the advances report already names.
+        "gst_rate_bps":      data.get("gst_rate_bps"),
+        "place_of_supply":   data.get("place_of_supply"),
+        "is_interstate":     data.get("is_interstate"),
         "created_at":        datetime.now(timezone.utc).isoformat(),
         **_ccy_cols,
     }

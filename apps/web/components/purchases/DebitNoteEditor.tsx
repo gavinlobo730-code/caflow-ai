@@ -29,6 +29,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { apiCall, getAuthToken, fmt, GST_RATES } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { todayLocalISO } from "@/lib/dateMath";
 import {
   isValidDebitNoteLine, previewDebitNoteTotals, validateDebitNoteEditor,
   type DebitNoteEditorLine,
@@ -40,7 +41,7 @@ const EMPTY_LINE: DebitNoteEditorLine = { description: "", hsn_sac: "", qty: "1"
 type EditorLine = DebitNoteEditorLine & { _k: number; product?: ServiceCatalogueItem | null };
 
 function todayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return todayLocalISO();
 }
 
 /** Purchase-side product/service prefill — uses purchase_price_paise, NOT

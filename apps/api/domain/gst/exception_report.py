@@ -141,6 +141,15 @@ def index_documents(payload: Optional[dict]) -> dict:
                     "doc_no": str(doc.get(num_key) or "").strip(),
                     "doc_date": doc.get("idt") or doc.get("nt_dt") or "",
                     "section": section,
+                    # WHICH TABLE INSIDE THE SECTION. Tables 4A, 6B and 6C all
+                    # ride in `b2b` and are told apart by inv_typ — R, SEWP,
+                    # SEWOP, DE. So the section alone stopped being enough to
+                    # say what table a document is in the moment SEZ supplies
+                    # and deemed exports were routed there correctly: a
+                    # Regular invoice corrected to SEZ_without_payment moves
+                    # between statutory tables without moving section, and the
+                    # reclassification report went blind to it.
+                    "inv_typ": (doc.get("inv_typ") or "") if section == "b2b" else "",
                     "counterparty": counterparty,
                     **_item_totals(doc.get("itms")),
                 }
@@ -246,10 +255,16 @@ def compare_payloads(filed: Optional[dict], books: Optional[dict]) -> dict:
             missing_from_books.append({**was, "declare_in": _amendment_table(was["kind"])})
             continue
 
-        if now["section"] != was["section"]:
+        # Section AND inv_typ — see index_documents. A supply moved from
+        # Table 4A to Table 6B is as much a reclassification as one moved from
+        # b2b to exp, and it has the same consequence: amending the value alone
+        # leaves it declared in the wrong table.
+        if (now["section"], now.get("inv_typ", "")) != (was["section"], was.get("inv_typ", "")):
             reclassified.append({
                 "doc_no": was["doc_no"], "kind": was["kind"],
                 "filed_section": was["section"], "books_section": now["section"],
+                "filed_inv_typ": was.get("inv_typ", ""),
+                "books_inv_typ": now.get("inv_typ", ""),
                 "delta": _delta(now, was),
                 "declare_in": _amendment_table(was["kind"]),
             })

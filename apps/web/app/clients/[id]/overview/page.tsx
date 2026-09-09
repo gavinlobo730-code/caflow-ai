@@ -18,6 +18,7 @@ import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNav
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { Skeleton, SkeletonText, MetricCardSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
+import { todayLocalISO } from "@/lib/dateMath";
 export default function OverviewPage() {
   const { clientId } = useClientNav();
   // The activity feed is the only thing on this page scoped to a year, so
@@ -109,7 +110,7 @@ export default function OverviewPage() {
   );
   if (!client) return <div className="p-6 text-[#94A3B8] text-sm">Client not found.</div>;
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayLocalISO();
   const openTasks = tasks.filter((t) => t.status !== "completed");
   const overdueFiling = compliance.filter(
     (c) => c.due_date < today && c.filing_status !== "filed"

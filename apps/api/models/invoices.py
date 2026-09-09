@@ -150,11 +150,45 @@ class SalesInvoiceIn(BaseModel):
     # to have the sub-rupee remainder pushed to the 'Round Off' ledger. Ignored
     # for foreign-currency invoices, which are never rupee-rounded.
     round_off_enabled: bool = False
+    # THE SHIPPING BILL AN EXPORT IS REFUNDED AGAINST (migration 349) — GSTR-1
+    # Table 6A's sbnum / sbdt / sbpcode. The builder used to emit three empty
+    # strings because there was nowhere to record them. CGST Rule 96(1) makes
+    # the shipping bill the application for refund of the IGST paid on an
+    # export, matched against ICEGATE, so on an export WITH PAYMENT these are
+    # what the refund turns on.
+    #
+    # Optional, and no format CHECK on the port code: the ICEGATE list is
+    # theirs and grows, and a pattern written from memory would refuse a real
+    # port with no way round it. Shape is guarded where a human types it.
+    shipping_bill_no: Optional[str] = None
+    shipping_bill_date: Optional[str] = None   # YYYY-MM-DD
+    port_code: Optional[str] = None
 
     @field_validator("invoice_no")
     @classmethod
     def _invoice_no_shape(cls, v: str) -> str:
         return _validate_invoice_no_shape(v)
+
+    @field_validator("port_code")
+    @classmethod
+    def _port_code_shape(cls, v: Optional[str]) -> Optional[str]:
+        """Upper-cased and length-checked, not membership-checked.
+
+        An ICEGATE port code is six characters ("INMAA1"). Refusing anything
+        else would refuse a port this file has never heard of; refusing nothing
+        at all lets a typo reach a statutory payload. Six characters is the one
+        property the whole list shares.
+        """
+        if v is None:
+            return None
+        v = v.strip().upper()
+        if not v:
+            return None
+        if len(v) != 6:
+            raise ValueError(
+                "An ICEGATE port code is 6 characters, e.g. INMAA1 "
+                "(GSTR-1 Table 6A sbpcode).")
+        return v
 
     @field_validator("lines")
     @classmethod
@@ -191,6 +225,21 @@ class SalesInvoiceUpdateIn(BaseModel):
     supply_type: Optional[str] = None       # taxable|zero_rated|nil_rated|exempt|non_gst
     invoice_type: Optional[str] = None      # Regular|SEZ_with_payment|SEZ_without_payment|Deemed_export
     is_reverse_charge: Optional[bool] = None
+    # THE SHIPPING BILL, AND IT IS EDITABLE AFTER ISSUE (migration 349).
+    #
+    # Customs issues the shipping bill AFTER the export invoice is raised —
+    # often days later, once the goods are actually shipped. If these were
+    # locked with the rest of the Rule 46 content at issue, there would be no
+    # moment at which a CA could ever record them, and Table 6A would go on
+    # carrying three empty strings for a different reason.
+    #
+    # Adding them to _SOFT_UPDATE_FIELDS does not weaken s.34: none of the
+    # three is a particular of the tax invoice under Rule 46. They are
+    # customs's own reference for the consignment, and correcting one does not
+    # change what was supplied, to whom, or the tax on it.
+    shipping_bill_no: Optional[str] = None
+    shipping_bill_date: Optional[str] = None
+    port_code: Optional[str] = None
     reference_no: Optional[str] = None
     notes: Optional[str] = None
     is_inter_state: Optional[bool] = None
@@ -405,6 +454,64 @@ class ReceiptIn(BaseModel):
     # are in that currency's minor units. Settlement uses the invoice's frozen rate.
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
+    # ── GSTR-1 Table 11A: tax on an advance received (migration 286) ─────────
+    #
+    # CGST Act s.13(2) makes an advance for SERVICES taxable when it is
+    # received; Notification 66/2017-Central Tax removed the charge for GOODS,
+    # where the liability arises at the invoice instead (s.12(2) proviso). So
+    # these matter only for a client marked gst_advance_tax_applicable, and are
+    # optional for everyone else.
+    #
+    # gst_advance_service.table_11_sections has read these three columns since
+    # migration 286 and skips any receipt missing a rate or a place of supply.
+    # NOTHING HAS EVER WRITTEN THEM: they were absent from this model, from
+    # both receipt payloads and from the frontend, so the only place they were
+    # ever set was a test fixture seeding the database directly — green in CI
+    # and dead in production. The same shape as bank_account_id (SALES-08),
+    # which was accepted by this model and dropped by the service.
+    #
+    # An advance without them is still RECORDED and still appears in
+    # advances_report; what it cannot do is be declared, because a guessed rate
+    # is a guessed liability on a filed return.
+    gst_rate_bps: Optional[int] = None
+    place_of_supply: Optional[str] = None   # 2-digit state code
+    is_interstate: Optional[bool] = None
+
+    @field_validator("gst_rate_bps")
+    @classmethod
+    def _rate_in_range(cls, v: Optional[int]) -> Optional[int]:
+        """Bounded, not enumerated.
+
+        CLAUDE.md is explicit that GST rate slabs are per-line on the document
+        and deliberately NOT a central table in this codebase — so a list of
+        allowed rates here would be the very thing that file says not to build,
+        and would refuse a rate a notification adds. 0 to 100% is the range a
+        basis-point rate can occupy at all; anything outside it is a typo or a
+        unit mix-up (1800 is 18%, 18 is 0.18%).
+        """
+        if v is None:
+            return None
+        if not 0 <= v <= 10000:
+            raise ValueError(
+                "gst_rate_bps is BASIS POINTS: 1800 is 18%. It must be between "
+                "0 and 10000.")
+        return v
+
+    @field_validator("place_of_supply")
+    @classmethod
+    def _pos_is_a_state(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        from domain.gst.validator import VALID_STATE_CODES
+        if v not in VALID_STATE_CODES:
+            raise ValueError(
+                f"'{v}' is not a GST state code. Table 11A is declared per "
+                "place of supply, so an advance with the wrong one is declared "
+                "against the wrong state.")
+        return v
 
     @field_validator("amount_paise")
     @classmethod

@@ -39,6 +39,7 @@ import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/da
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
+import { todayLocalISO } from "@/lib/dateMath";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -159,7 +160,7 @@ function fyRange(fy: string): { start: string; end: string } {
 }
 
 function toDate(): string {
-  return new Date().toISOString().split("T")[0];
+  return todayLocalISO();
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────

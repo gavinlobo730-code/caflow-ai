@@ -26,6 +26,7 @@ import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { apiCall, apiGet, getAuthToken, fmt, GST_RATES, type CurrencyOption } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { todayLocalISO } from "@/lib/dateMath";
 import {
   isValidBillLine, previewBillTotals, validateBillEditor, findBlockedCreditHits,
   type PurchaseBillLine,
@@ -92,7 +93,7 @@ function purchaseServiceToLine(item: ServiceCatalogueItem): Partial<PurchaseBill
 }
 
 function todayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return todayLocalISO();
 }
 
 interface ExtractedInvoice {

@@ -21,8 +21,7 @@ import { getClients } from "@/lib/data/clients";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import { todayLocalISO } from "@/lib/dateMath";
-
+import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ComplianceEntry {
@@ -225,7 +224,7 @@ export default function RisksPage() {
       const sb = getSupabaseClient();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString().slice(0, 10);
+      const todayStr = toLocalISO(today);
 
       // Compliance calendar
       const { data: complianceData, error: compErr } = await sb
@@ -272,7 +271,7 @@ export default function RisksPage() {
       // Inactive clients (no entries in last 90 days)
       const ninetyAgo = new Date(today);
       ninetyAgo.setDate(ninetyAgo.getDate() - 90);
-      const { data: recentData, error: recentErr } = await sb.from("compliance_calendar").select("client_id").eq("firm_id", firmId).gte("due_date", ninetyAgo.toISOString().slice(0, 10));
+      const { data: recentData, error: recentErr } = await sb.from("compliance_calendar").select("client_id").eq("firm_id", firmId).gte("due_date", toLocalISO(ninetyAgo));
       if (recentErr) throw recentErr;
       const activeIds = new Set((recentData ?? []).map((r: { client_id: string }) => r.client_id));
       setInactiveClients(clients.filter((c) => !activeIds.has(c.id)).map((c) => ({ clientId: c.id, clientName: c.client_name, daysInactive: 90 })));
@@ -328,7 +327,7 @@ export default function RisksPage() {
       // DSC Expiry — within 60 days (IT Act Rule 12 — digital signature for e-filing)
       const sixtyAhead = new Date(today);
       sixtyAhead.setDate(sixtyAhead.getDate() + 60);
-      const sixtyAheadStr = sixtyAhead.toISOString().slice(0, 10);
+      const sixtyAheadStr = toLocalISO(sixtyAhead);
       // dsc_records, not "dsc_tracker" — the latter has never existed, and this
       // query threw partway through load(), so every risk section below it was
       // left empty too.
@@ -380,7 +379,7 @@ export default function RisksPage() {
         .select("client_id, bank_name, maturity_date, maturity_amount_paise")
         .eq("firm_id", firmId)
         .eq("status", "active")
-        .lte("maturity_date", thirtyAhead.toISOString().slice(0, 10))
+        .lte("maturity_date", toLocalISO(thirtyAhead))
         .gte("maturity_date", todayStr);
       if (fdErr) throw fdErr;
       setFdMaturityRisks(

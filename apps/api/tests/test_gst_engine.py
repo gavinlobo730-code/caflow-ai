@@ -83,6 +83,7 @@ def make_txn_for_classify(
     place_of_supply="27",
     invoice_value_paise=None,
     transaction_date="2026-04-10",
+    igst_paise=0,
 ) -> TransactionForClassification:
     return TransactionForClassification(
         id="test-id",
@@ -99,6 +100,10 @@ def make_txn_for_classify(
         invoice_value_paise=(taxable_paise if invoice_value_paise is None
                              else invoice_value_paise),
         transaction_date=transaction_date,
+        # IGST Act s.16(3): whether a zero-rated supply was made on payment of
+        # tax. Zero keeps every existing test on the LUT/bond limb, which is
+        # what they all asserted.
+        igst_paise=igst_paise,
     )
 
 
@@ -193,16 +198,38 @@ class TestInvoiceClassifier:
         assert classify_transaction(txn) == GSTInvoiceCategory.NIL_EXEMPT
 
     def test_export_sez_with_payment(self):
-        """SEZ_with_payment invoice_type → EXP_WP regardless of supply_type."""
+        """An SEZ supply is Table 6B, NOT the Table 6A export table.
+
+        This asserted EXP_WP. Table 6A has no ctin field, so filing an SEZ
+        supply there drops the recipient's GSTIN — and matching against that
+        GSTIN is how the SEZ unit claims its refund under IGST Act s.16(3).
+        """
         txn = make_txn_for_classify(invoice_type="SEZ_with_payment", is_interstate=True)
-        assert classify_transaction(txn) == GSTInvoiceCategory.EXP_WP
+        assert classify_transaction(txn) == GSTInvoiceCategory.SEZ_WP
 
     def test_export_sez_without_payment(self):
-        """SEZ_without_payment takes precedence over zero_rated → EXP_WOP."""
+        """The LUT/bond limb of the same table."""
         txn = make_txn_for_classify(
             supply_type="zero_rated", invoice_type="SEZ_without_payment", is_interstate=True
         )
-        assert classify_transaction(txn) == GSTInvoiceCategory.EXP_WOP
+        assert classify_transaction(txn) == GSTInvoiceCategory.SEZ_WOP
+
+    def test_a_deemed_export_is_table_6c(self):
+        """Notification 48/2017-Central Tax read with CGST s.147. Also filed
+        against the recipient's GSTIN, because the refund can be claimed by
+        either party."""
+        txn = make_txn_for_classify(invoice_type="Deemed_export", is_interstate=False)
+        assert classify_transaction(txn) == GSTInvoiceCategory.DEEMED_EXPORT
+
+    def test_a_real_export_carrying_igst_is_declared_with_payment(self):
+        """IGST Act s.16(3)(b). The classifier could not see the tax at all —
+        its own comment said "assume no IGST payment (LUT)" — so an exporter
+        who PAID IGST was filed as WOPAY, which asks for a refund of
+        accumulated credit rather than of the tax actually paid.
+        """
+        txn = make_txn_for_classify(supply_type="zero_rated", is_interstate=True,
+                                    place_of_supply="96", igst_paise=18_000_00)
+        assert classify_transaction(txn) == GSTInvoiceCategory.EXP_WP
 
     def test_export_zero_rated_regular_defaults_to_wopay(self):
         """Regular export (zero_rated, no explicit invoice_type) → EXP_WOP (conservative).

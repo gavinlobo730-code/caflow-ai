@@ -25,6 +25,7 @@ import { getClients } from "@/lib/data/clients";
 import * as XLSX from "xlsx";
 import type { Client } from "@/lib/types";
 
+import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MSMEPayment {
@@ -52,12 +53,17 @@ interface PaymentRow extends MSMEPayment {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
+  // Parsed AND formatted on local calendar components. `new Date("2026-05-01")`
+  // is UTC midnight while setDate/getDate work on LOCAL ones, so the old form
+  // mixed the two frames: it round-tripped correctly in IST (where UTC midnight
+  // is 05:30 the same day) and shifted a day in any zone west of Greenwich.
+  // Both halves move together or the mix is just relocated.
+  const d = new Date(dateStr + "T00:00:00");
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return toLocalISO(d);
 }
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = todayLocalISO();
 
 function computeStatus(row: MSMEPayment): Pick<PaymentRow, "due_date" | "due_days" | "status" | "disallowed_paise"> {
   // IT Act Section 43B(h): 45 days if written agreement, 15 days if oral/no agreement

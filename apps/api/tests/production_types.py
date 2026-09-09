@@ -74,6 +74,9 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("year_end_engagements", "reopened_by"): "migration 344",
     ("year_end_engagements", "reopen_reason"): "migration 344",
     ("vendors", "non_resident_payee_class"): "migration 348",
+    ("client_sales_invoices", "shipping_bill_no"): "migration 349",
+    ("client_sales_invoices", "shipping_bill_date"): "migration 349",
+    ("client_sales_invoices", "port_code"): "migration 349",
 }
 
 

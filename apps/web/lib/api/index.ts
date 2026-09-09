@@ -25,6 +25,16 @@ export type MarkFiledResult = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** GET /api/compliance/due-dates/calculate — the fields this app reads. The
+ *  endpoint returns more (ITR, advance tax, and the gaps that go with them);
+ *  those belong to the income-tax screens, not the GST filing tracker. */
+export type GstDueDates = {
+  period: string;              // "YYYY-MM"
+  gstr1_due_date: string;      // CGST Act s.37 — 11th of the following month
+  gstr3b_due_date: string;     // CGST Act s.39 — 20th of the following month
+  gstr9_due_date: string;      // CGST Act s.44 — 31 December after the FY ends
+};
+
 /** One employee's §192 declaration, as the payroll API returns it.
  *  Every amount is integer paise. */
 export type StatutoryRow = {
@@ -735,8 +745,15 @@ export const api = {
       return request(`/api/compliance/tasks${q ? `?${q}` : ""}`);
     },
     calendar: () => request("/api/compliance/calendar"),
+    /** Every GST due date for one period, from services/compliance_engine.py —
+     *  the single source CLAUDE.md names for every date in this product. The
+     *  method existed and nothing called it, while app/gst/page.tsx computed
+     *  its own; that copy had GSTR-9 a year late for January, February and
+     *  March, because it read the calendar year off the period and a financial
+     *  year is April to March. */
     calculateDueDates: (year: number, month: number) =>
-      request(`/api/compliance/due-dates/calculate?year=${year}&month=${month}`),
+      request<ApiResp<GstDueDates>>(
+        `/api/compliance/due-dates/calculate?year=${year}&month=${month}`),
   },
   documents: {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),

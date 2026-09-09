@@ -24,6 +24,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 
+import { todayLocalISO } from "@/lib/dateMath";
 const MIN_PASSWORD_LENGTH = 10;
 
 interface Factor {
@@ -256,7 +257,7 @@ function MfaCard() {
       }
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
-        friendlyName: `Authenticator ${new Date().toISOString().slice(0, 10)}`,
+        friendlyName: `Authenticator ${todayLocalISO()}`,
       });
       if (error) throw error;
       const d = data as { id: string; totp: { qr_code: string; secret: string } };

@@ -181,3 +181,63 @@ def test_only_the_payload_argument_is_read():
 
 def test_first_argument_is_not_confused_by_a_comma_inside_the_payload():
     assert first_argument('{ a: 1, b: 2 }, { onConflict: "x" }') == '{ a: 1, b: 2 }'
+
+
+# ── An apostrophe in a comment used to hide a whole write ───────────────────
+
+def test_an_apostrophe_in_a_comment_does_not_swallow_the_call():
+    """THE regression this file exists for, in its most expensive form.
+
+    _skip_args is quote-aware and was not comment-aware, so the `'` in a word
+    like "screen's" opened a string that never closed. lib/data/gst.ts had one
+    inside the gstr3b_returns upsert payload, and the effect was that the whole
+    write WAS NOT SCANNED — silently. That is the dangerous direction: an
+    unscanned write is a column error the checker reports as clean.
+
+    It can also fail the other way. Once some later apostrophe happens to close
+    the string, the walk carries on into unrelated code and attributes its keys
+    to this table; that is how it was noticed, as
+    `gstr3b_returns.onConflict` and `gstr3b_returns.aggregate_turnover_paise`
+    on a payload containing neither.
+    """
+    from _frontend_select_parser import blank_comments, scan_writes
+
+    src = (
+        'await sb.from("t").upsert({\n'
+        '  a: 1,\n'
+        "  // that is the reconciliation screen's job\n"
+        '  b: 2,\n'
+        '}, { onConflict: "id" });\n'
+        'await sb.from("other").insert({ c: 3 });\n'
+    )
+    blanked = blank_comments(src)
+    assert len(blanked) == len(src), "offsets must survive, or every match moves"
+
+    import tempfile, pathlib as _p
+    with tempfile.TemporaryDirectory() as d:
+        root = _p.Path(d)
+        (root / "x.ts").write_text(src)
+        rows = scan_writes(root)
+    by_table: dict[str, list[str]] = {}
+    for _f, table, col in rows:
+        by_table.setdefault(table, []).append(col)
+    assert by_table.get("t") == ["a", "b"], by_table
+    assert by_table.get("other") == ["c"], by_table
+
+
+def test_blanking_leaves_a_comment_marker_inside_a_string_alone():
+    from _frontend_select_parser import blank_comments
+    src = 'const u = "https://x/y"; // gone'
+    out = blank_comments(src)
+    assert 'https://x/y' in out
+    assert "gone" not in out
+
+
+def test_blanking_handles_a_block_comment_and_keeps_the_newlines():
+    from _frontend_select_parser import blank_comments
+    src = "a\n/* one\n   two */\nb"
+    out = blank_comments(src)
+    assert len(out) == len(src)
+    assert out.count("\n") == src.count("\n"), (
+        "a lost newline moves every line number the failure message prints")
+    assert "one" not in out and "two" not in out
