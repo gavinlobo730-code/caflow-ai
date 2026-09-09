@@ -408,7 +408,7 @@ out wider than written.
 calendar date cut out of a UTC instant, one state master, the due date comes
 from the engine, a return with errors is not "validated".
 
-### Phase 6 — You can correct a mistake · 5 findings · ≤17 days
+### Phase 6 — You can correct a mistake · 5 findings · ≤17 days · **DONE**
 `SALES-04 FA-10 ACC-09 PAY-12 BANK-06`
 
 Deleting a middle draft credit note wedges that client's numbering permanently;
@@ -418,6 +418,25 @@ mis-imported statement.
 
 *Shape:* an append-only correction path, the pattern migrations 266/275/276
 already established for journals.
+
+**Shipped as 6a–6d. Rescored first, and three of the five were wider than
+written.**
+
+| | Findings | What it was |
+|---|---|---|
+| **6a** | PAY-12 | `EmployeeUpdateIn` had no `joining_date`, and Pydantic ignores unknown keys, so the edit form's value was dropped in silence and a wrong joining date could never be corrected — it decides gratuity's five years (Payment of Gratuity Act s.4(1)), the EPS eligibility test and a leaver's pay. It was **one of eleven** create/update pairs, so the guard is a SCAN: every create-model field is on the update model or named in `IMMUTABLE_ON_UPDATE` with a reason. It found two more real drops — Form 15CA/15CB on a purchase bill, and `is_reverse_charge` editable on a sales invoice but not a purchase bill |
+| **6b** | SALES-04 | **seven** copies of `count("exact") + 1`, not the three the audit recorded, plus six more in the mock branches. COUNT+1 is deterministic, so a deleted middle draft returns a taken number on every one of the retry's six attempts, for the rest of the FY. And a **second** bug found while scoping it: migration 210 created `sales_debit_notes` and `purchase_credit_notes` with a per-FIRM unique key while their routers number per CLIENT — exactly what 151 fixed for invoices and 159 for debit notes — so the firm's **second client could not raise either document at all**. Migration 350 |
+| **6c** | FA-10, BANK-06 | an asset was final the moment it was saved (no PATCH, no DELETE, no way to unwind a month, and migration 245 revokes UPDATE/DELETE from `authenticated` so PostgREST could not help). Three tiers now: a rename writes, a corrected cost reverses and re-posts through the kernel at a revision reference, a revised life or rate is prospective. Plus a reverse-the-last-month endpoint, which is what makes the tier-B refusal actionable, and a soft delete. Migration 351. BANK-06's statement delete is HARD and takes the lines with it, because the import dedupes on `(client_id, import_hash)` and rows left behind would silently skip every line of the re-import |
+| **6d** | ACC-09 | `parent_group`/`sub_group` have existed since migration 057 and only the CSV import ever wrote them, so Account Groups rendered one "Ungrouped → General" block for any normally-seeded firm. `createAccount`/`updateAccount` existed in `lib/api` with no caller anywhere. Both now write the groups; `parent_id` becomes editable and its "this is a gap, not a decision" entry in `IMMUTABLE_ON_UPDATE` is deleted |
+
+**What Phase 6 confirmed about the method.** The rescore paid for itself for the
+third phase running: 5 findings were 5 findings, but three of them had a second
+defect inside that nobody had written down, and the numbering one was a launch
+blocker on two document types. And the guard lesson repeated in a new place —
+`test_accounts_endpoint_is_the_tenants_own.py` pinned the literal sentence
+"name, code and is_active", so growing the update model broke a test that was
+asserting a SPELLING. It now asserts the PROPERTY: the refusal lists whatever
+`AccountUpdateIn` actually carries.
 
 ### Phase 7 — Screens for engines that already work · 12 findings · ≤78 days
 `IT-13 IT-16 IT-17 IT-05 IT-10 IT-18 PAY-11 PAY-29 GST-13 PUR-05 SALES-13 SALES-14`
