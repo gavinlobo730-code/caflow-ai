@@ -45,10 +45,19 @@ from .narration import parse_narration, party_matches
 # plus bank charges, without pulling in unrelated documents.
 NEAR_MATCH_BAND_BPS = 2500
 
-# Common TDS rates in basis points, withheld by the PAYER under Chapter XVII-B of
-# the Income-tax Act, 1961: 0.1% (s.194Q, s.194-O), 1% and 2% (s.194C), 2%
-# (s.194J — technical services), 5% (s.194H, s.194-I(a)), 10% (s.194J,
-# s.194-I(b)), 20% (s.206AA — deductee has furnished no PAN).
+# Common TDS rates in basis points, withheld by the PAYER under Chapter XVII-B
+# of the Income-tax Act, 1961.
+#
+# THE SECTIONS ARE NOT NAMED HERE ANY MORE, and that is the fix. This comment
+# said 5% was "s.194H, s.194-I(a)" — s.194H has been 2% since the Finance
+# (No. 2) Act 2024 (domain/tds/section_rates.py has it at 200 bps), and
+# s.194-I(a)'s rate is not held anywhere as a verified figure, with two places
+# in this repository stating it differently. A comment that names a section
+# beside a percentage is a rate table, and there is one rate table:
+# domain/tds/section_rates.py.
+#
+# What this list is FOR is unchanged and does not need the sections: it
+# recognises the SHAPE of a shortfall so it can be labelled.
 #
 # This list RECOGNISES the shape of a shortfall so it can be labelled. It never
 # computes a liability and never decides a rate — the actual TDS figure is

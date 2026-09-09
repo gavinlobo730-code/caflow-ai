@@ -74,12 +74,20 @@ def prior_manual_aggregate(
     if not (firm_id and client_id and section and pan):
         return 0, 0
     start, end = fy_bounds(on)
+    # BY PARENT SECTION, for the same reason routers/purchase_bills.py is:
+    # s.194I and s.194J have limbs with their own rate, and the FY aggregate
+    # the statute's proviso speaks of is the SECTION's. Filtered in Python
+    # because a prefix match would also catch s.194IA, which is a different
+    # section entirely.
+    from domain.tds.section_rates import parent_of
+    parent = parent_of(section)
     rows = (db.table("tds_deductions")
-            .select("id, payment_amount_paise, tds_paise, purchase_bill_id")
+            .select("id, payment_amount_paise, tds_paise, purchase_bill_id, section")
             .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("section", section).eq("deductee_pan", pan)
+            .eq("deductee_pan", pan)
             .gte("transaction_date", start).lte("transaction_date", end)
             .execute().data) or []
+    rows = [r for r in rows if parent_of(r.get("section") or "") == parent]
     earlier = [r for r in rows
                if r.get("purchase_bill_id") is None and r.get("id") != exclude_id]
     return (sum(int(r.get("payment_amount_paise") or 0) for r in earlier),

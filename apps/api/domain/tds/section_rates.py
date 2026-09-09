@@ -141,6 +141,30 @@ class TDSSectionRule:
     # sum once its threshold is crossed. Held as a property of the rule so the
     # engine never has to special-case a section by name.
     charge_on_excess_only: bool = False
+    # THE SECTION THIS LIMB BELONGS TO, for a key like "194I(a)" that is a
+    # CLAUSE of a section rather than a section. None on an ordinary key.
+    #
+    # s.194I charges rent at one rate for plant and machinery and another for
+    # land, building and furniture; s.194J charges technical services at one
+    # rate and professional fees at another. Those are clauses of one section,
+    # and two things follow that the engine must NOT decide by testing a name:
+    # the FY aggregate is the SECTION's, and a challan the CA typed will say
+    # "194I" whatever limb the bill was under. Both ask parent_of() instead.
+    #
+    # Same shape as charge_on_excess_only above: a property of the rule, never
+    # a special case in the engine.
+    parent_section: str | None = None
+    # WHY THIS LIMB'S OWN RATE IS NOT HELD, or None. A limb whose concessional
+    # rate cannot be confirmed still gets a key — so a CA can RECORD which limb
+    # a payment falls in, which the 26Q deductee row needs — and withholds at
+    # the parent's unmarked rate, which OVER-deducts. The gap says so; it is not
+    # a silent approximation.
+    #
+    # Over-deducting is the safe direction here and under-deducting is not: an
+    # under-deduction disallows the whole expenditure under s.40(a)(ia), while
+    # an excess is the payee's to reclaim. So the parent rate is the honest
+    # placeholder and a guessed concessional rate is not.
+    rate_gap: str | None = None
 
 
 @dataclass(frozen=True)
@@ -204,12 +228,57 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     "194H":  TDSSectionRule(20_000_00, 200, 200, aggregate_threshold_paise=20_000_00),
     # Rent — ₹2,40,000/yr → ₹50,000 per month or part (FA 2025); 10%. Modelled
     # per-payment (see module docstring).
-    "194I":  TDSSectionRule(50_000_00, 1000, 1000),
-    # Professional fees — ₹30,000 → ₹50,000 (FA 2025); 10% professional rate.
-    # The s. 194J proviso: "if such sum or, as the case may be, the aggregate of
-    # the sums credited or paid ... during the financial year does not exceed
-    # fifty thousand rupees" — one amount, both limbs.
-    "194J":  TDSSectionRule(50_000_00, 1000, 1000, aggregate_threshold_paise=50_000_00),
+    # ── s.194I AND s.194J EACH HAVE TWO LIMBS, AND THIS HOLDS ONE RATE ──────
+    #
+    # s.194I charges rent of PLANT, MACHINERY OR EQUIPMENT at a lower rate than
+    # rent of land, building, furniture or fittings. s.194J charges fees for
+    # TECHNICAL services at a lower rate than professional fees. Both are held
+    # here at the higher rate only, so every plant rental and every technical
+    # engagement OVER-deducts by the difference.
+    #
+    # TWO REFUSALS, and each is deliberate:
+    #
+    # 1. NO CONCESSIONAL RATE. This repository CONTRADICTS ITSELF on s.194-I(a)
+    #    — routers/assistant.py says 2%, domain/banking/matcher.py says 5%, and
+    #    matcher's neighbouring s.194H figure of 5% is provably a Finance Act
+    #    behind (200 bps below). s.194J's technical rate is stated consistently
+    #    but only as PROSE, never as a registry number carrying the `verified`
+    #    flag FYTDSRates requires. A rate nobody has checked against the
+    #    Finance Act is not a rate this file will state.
+    #
+    # 2. NO SPLIT KEY. A separate key would land on the 26Q deductee row as a
+    #    section code the FVU reads, and the clause labels cannot be confirmed
+    #    here either. An invented code on a statutory return is worse than the
+    #    over-deduction it would fix.
+    #
+    # SO THE GAP IS NAMED ON THE SECTION ITSELF and the withholding stays at
+    # the higher rate. Over-deducting is the recoverable direction — the excess
+    # is the payee's to reclaim — while under-deducting disallows the whole
+    # expenditure under s.40(a)(ia). When the rate AND the clause code are read
+    # off the Act, add the limb with parent_section= and the machinery in
+    # parent_of() already keeps the FY aggregate and the challan match whole.
+    "194I":  TDSSectionRule(
+        50_000_00, 1000, 1000,
+        rate_gap="Section 194I charges rent of PLANT, MACHINERY OR EQUIPMENT "
+                 "at a lower rate than rent of land, buildings or furniture, "
+                 "and this software holds only the higher one. If this payment "
+                 "is plant or equipment hire it has OVER-deducted. The excess "
+                 "is the payee's to reclaim, so nothing is blocked — but if it "
+                 "matters, establish the rate for that limb and deduct outside "
+                 "this bill."),
+    # Professional fees — Rs 30,000 -> Rs 50,000 (FA 2025); 10% professional
+    # rate. The s. 194J proviso: "if such sum or, as the case may be, the
+    # aggregate of the sums credited or paid ... during the financial year does
+    # not exceed fifty thousand rupees" — one amount, both limbs.
+    "194J":  TDSSectionRule(
+        50_000_00, 1000, 1000, aggregate_threshold_paise=50_000_00,
+        rate_gap="Section 194J charges fees for TECHNICAL services at a lower "
+                 "rate than professional fees, and this software holds only "
+                 "the professional one. If this payment is for technical "
+                 "services it has OVER-deducted. The excess is the payee's to "
+                 "reclaim, so nothing is blocked — but if it matters, "
+                 "establish the rate for that limb and deduct outside this "
+                 "bill."),
     # Mutual-fund income — ₹5,000 → ₹10,000 (FA 2025). Proviso: "where the
     # amount of such income or, as the case may be, the AGGREGATE OF THE
     # AMOUNTS of such income ... during the financial year does not exceed ten
@@ -258,6 +327,42 @@ TDS_RATES_BY_FY: dict[str, FYTDSRates] = {
 }
 
 LATEST_VERIFIED_TDS_FY = "2025-26"
+
+
+def parent_of(section: str, fy: str | None = None) -> str:
+    """The SECTION a key belongs to — "194I(a)" -> "194I", "194C" -> "194C".
+
+    Two things key on this and neither may test a name:
+
+      * THE FY AGGREGATE. s.194J's proviso reads "if such sum or, as the case
+        may be, the aggregate of the sums credited or paid ... during the
+        financial year", and that aggregate is the SECTION's. A vendor moved
+        from "194J" to "194J(a)" mid-year must not lose the year's running
+        total, or the threshold is re-crossed and the s.200 credit for what
+        earlier bills already withheld is stranded.
+      * CHALLAN MATCHING. A challan records what somebody typed, and a CA types
+        "194J". CLAUDE.md already states this rule for the 2025-Act fork —
+        "challan matching accepts BOTH labels in every period" — and a clause
+        key is the same problem in miniature.
+
+    UNVERIFIED ASSUMPTION, NAMED: that s.194J's Rs 50,000 is ONE limit for the
+    section rather than one per clause. If it is per clause, aggregating on the
+    parent crosses the threshold EARLIER and therefore OVER-deducts — the safe
+    direction, and the recoverable one. Aggregating per clause when the truth
+    is one limit would UNDER-deduct and disallow the expenditure under
+    s.40(a)(ia). So the parent is the conservative choice until somebody reads
+    the proviso's clause structure.
+    """
+    rule = tds_rates_for(fy).sections.get((section or "").upper().strip())
+    if rule is None:
+        return (section or "").upper().strip()
+    return rule.parent_section or (section or "").upper().strip()
+
+
+def rate_gap_for(section: str, fy: str | None = None) -> str | None:
+    """The sentence saying this limb's own rate is not held, or None."""
+    rule = tds_rates_for(fy).sections.get((section or "").upper().strip())
+    return rule.rate_gap if rule is not None else None
 
 
 def tds_rates_for(fy: str | None = None) -> FYTDSRates:

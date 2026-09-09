@@ -197,12 +197,20 @@ def tds_26q_from_books(
     # so the sum of deductee-level tds_deposited_paise always equals the real
     # total deposited, capped at what was actually deducted (never assume more
     # was deposited than was withheld).
+    # GROUPED BY PARENT SECTION. A challan records what a CA typed, and a CA
+    # types "194J" whichever limb the bill was under — the same rule CLAUDE.md
+    # already states for the 2025-Act fork ("challan matching accepts BOTH
+    # labels in every period"), applied to a clause key. Matching on the exact
+    # string would leave every s.194J(A) bill with no challan and a blank CIN
+    # on its deductee row, invisible until FVU validation.
+    from domain.tds.section_rates import parent_of
     by_section: dict[str, list[dict]] = {}
     for b in bills:
-        by_section.setdefault(b.get("tds_section") or "", []).append(b)
+        by_section.setdefault(parent_of(b.get("tds_section") or ""), []).append(b)
     deposited_by_bill_id: dict[str, int] = {}
     for section, section_bills in by_section.items():
-        deposited_total = sum(int(c.get("tds_paise") or 0) for c in challans if (c.get("section") or "") == section)
+        deposited_total = sum(int(c.get("tds_paise") or 0) for c in challans
+                              if parent_of(c.get("section") or "") == section)
         weights = [int(b.get("tds_paise") or 0) for b in section_bills]
         shares = apportion(min(deposited_total, sum(weights)), weights)
         for b, share in zip(section_bills, shares):
@@ -212,7 +220,9 @@ def tds_26q_from_books(
     for b in bills:
         vendor = vendors.get(b.get("vendor_id"), {})
         section = b.get("tds_section") or ""
-        matching_challan = next((c for c in challans if (c.get("section") or "") == section), None)
+        matching_challan = next(
+            (c for c in challans
+             if parent_of(c.get("section") or "") == parent_of(section)), None)
         deductees.append(TDSDeducteeRecord(
             deductee_name=vendor.get("name") or "Unknown Vendor",
             deductee_pan=(vendor.get("pan") or "PANNOTAVBL").strip().upper() or "PANNOTAVBL",

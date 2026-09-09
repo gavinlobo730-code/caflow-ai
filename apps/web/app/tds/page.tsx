@@ -5,12 +5,18 @@
  * IT Act Chapter XVII-B: Deduction and Collection of Tax at Source
  * Section 192: TDS on Salary
  * Section 194A: TDS on Interest (threshold ₹40,000 bank, ₹5,000 others)
- * Section 194C: TDS on Contractor Payments (1% individual, 2% company)
- * Section 194D: TDS on Insurance Commission (5%)
- * Section 194H: TDS on Commission/Brokerage (5%)
- * Section 194I: TDS on Rent (10%)
- * Section 194J: TDS on Professional/Technical Fees (10%)
- * Section 194Q: TDS on Purchase of Goods (0.1%)
+ * Section 194C: TDS on Contractor Payments
+ * Section 194D: TDS on Insurance Commission
+ * Section 194H: TDS on Commission/Brokerage
+ * Section 194I: TDS on Rent
+ * Section 194J: TDS on Professional/Technical Fees
+ * Section 194Q: TDS on Purchase of Goods
+ *
+ * NO RATES IN THIS LIST. Two of the ones it carried were a Finance Act behind
+ * — §194D and §194H both read "(5%)" when the registry has both at 2% — and a
+ * rate cannot honestly sit beside a section anyway: §194C is 1% or 2% by payee
+ * type, every rate is floored at 20% by §206AA with no PAN, and below the
+ * threshold it is nil. domain/tds/section_rates.py is the one rate table.
  * Section 200: TDS deposit and return filing obligations
  * Section 203: Issuance of TDS certificates
  */

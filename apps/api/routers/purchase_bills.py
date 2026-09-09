@@ -390,6 +390,7 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
         )
     from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
     from domain.tds.residency import deduction_section_refusal
+    from domain.tds.section_rates import parent_of, rate_gap_for
     # FY-aggregate of this vendor's prior taxable under the same section, so the
     # §194C ₹1L aggregate threshold is honoured across multiple bills.
     fy_prior = 0
@@ -402,13 +403,24 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
         # on later bills. Drafts themselves stay counted deliberately: the
         # threshold is "credited or paid or LIKELY to be credited" (IT Act
         # §194C(5)) and a live draft is expected to be received.
+        # THE AGGREGATE IS THE SECTION'S, NOT THE CLAUSE'S. s.194I and s.194J
+        # each have limbs with their own rate — "194I(A)", "194J(A)" — and a
+        # vendor moved between limbs mid-year must not lose the year's running
+        # total, or the threshold is re-crossed and the s.200 credit for what
+        # earlier bills already withheld is stranded. So the query is by
+        # PARENT and the clause keys are filtered in Python: PostgREST has no
+        # "starts with this section" that would not also match s.194IA.
+        _parent = parent_of(tds_section, _bill_fy_label(bill_date))
         prior = (db.table("purchase_bills")
-                 .select("id, taxable_amount_paise, tds_paise")
+                 .select("id, taxable_amount_paise, tds_paise, tds_section")
                  .eq("firm_id", firm_id).eq("vendor_id", vendor.get("id"))
-                 .eq("tds_section", tds_section).neq("status", "cancelled")
+                 .neq("status", "cancelled")
                  .is_("deleted_at", "null")
                  .gte("bill_date", fy_start).lte("bill_date", fy_end)
                  .execute().data) or []
+        prior = [b for b in prior
+                 if parent_of(b.get("tds_section") or "",
+                              _bill_fy_label(bill_date)) == _parent]
         _earlier = [b for b in prior if b.get("id") != exclude_bill_id]
         fy_prior = sum(int(b.get("taxable_amount_paise") or 0) for b in _earlier)
         # ...and what those bills ALREADY withheld. The charge is on the FY
@@ -489,6 +501,14 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
         why = f"§{tds_section} at {_tds.rate_pct:g}% on ₹{total_taxable // 100:,}."
     if _tds.applies and not has_pan(vendor.get("pan")):
         why += " Floored at 20% — no PAN on file (§206AA)."
+    # THE LIMB THIS SOFTWARE CANNOT PRICE, said on the bill it affects rather
+    # than left in a module comment. s.194I and s.194J each charge one limb at
+    # a lower rate than the other and only the higher is held, so a plant
+    # rental or a technical engagement over-deducts — recoverable, but only if
+    # somebody knows.
+    _gap = rate_gap_for(tds_section, bill_fy)
+    if _tds.applies and _gap:
+        why += " " + _gap
     return _tds.tds_paise, (_tds.rate_bps if _tds.applies else 0), why
 
 
