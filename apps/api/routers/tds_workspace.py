@@ -108,6 +108,50 @@ class CreateChallanRequest(BaseModel):
     quarter: str = Field(..., description="Q1, Q2, Q3, Q4")
 
 
+class CreateDeductionRequest(BaseModel):
+    """A deduction a CA types in, rather than one a purchase bill produced.
+
+    NOTE WHAT IS ABSENT: there is no rate and no tax amount. Both are the
+    ENGINE's answers. The /tds screen used to send its own, computed in the
+    browser from a hardcoded table that had s.194D and s.194H at 5% where the
+    statute says 2%, s.194C flat at the company rate, s.194Q charged on the
+    whole sum instead of the excess, and no threshold on anything (TDS-05).
+    Accepting a caller's rate here would keep that defect alive behind an
+    endpoint that looks authoritative.
+    """
+    client_id: str
+    deductee_name: str = Field(..., min_length=1)
+    # The payee's PAN. Optional because a deduction genuinely can be made
+    # without one — and when it is, IT Act s.206AA floors the rate at 20%,
+    # which resolve_tds applies from this very field.
+    deductee_pan: Optional[str] = None
+    section: str = Field(..., description="e.g. 194C, 194J — must be one the engine holds")
+    # The TAXABLE amount, excluding GST (CBDT Circular 23/2017) — the same
+    # meaning services/tds_register_service.py gives the column it lands in.
+    payment_amount_paise: int = Field(..., ge=0)
+    transaction_date: str = Field(..., description="YYYY-MM-DD")
+    nature_of_payment: Optional[str] = None
+    challan_no: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class UpdateDeductionRequest(BaseModel):
+    """Every field optional; whatever is supplied is re-run through the engine.
+
+    A hand-entered row has to be correctable — without this the only way to fix
+    a typo would be a direct PostgREST write, which is the hole migration 345
+    closed.
+    """
+    deductee_name: Optional[str] = None
+    deductee_pan: Optional[str] = None
+    section: Optional[str] = None
+    payment_amount_paise: Optional[int] = Field(default=None, ge=0)
+    transaction_date: Optional[str] = None
+    nature_of_payment: Optional[str] = None
+    challan_no: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class CreateReturnRequest(BaseModel):
     client_id: str
     return_type: str = Field(..., description="24Q or 26Q")
@@ -221,6 +265,257 @@ def list_deductions(
         return api_response(True, rows)
     except Exception as e:
         return api_response(False, None, str(e))
+
+
+# ── Deductions a CA types in ─────────────────────────────────────────────────
+#
+# TDS-05. Until these existed there was NO endpoint anywhere in apps/api that
+# created a tds_deductions row — the only writer was sync_for_bill, off the
+# purchase-bill path. So the /tds screen did the only thing left to it: it
+# computed the tax in the browser from a hardcoded table and inserted straight
+# over PostgREST, where rbac() does not run and the engine is never consulted.
+#
+# The engine decides everything here. The request carries facts (who, how much,
+# which section, what date); the rate, the threshold test, the s.206AA floor and
+# the FY aggregate are all resolve_tds's answers.
+
+
+def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
+                              exclude_id: Optional[str] = None) -> dict:
+    """Run one hand-entered deduction through the engine and return the row to
+    store, plus what the CA needs told about it.
+
+    Raises HTTPException(422) with the engine's own words when the section is
+    one it does not hold — s.194IA is the live example, offered by the old
+    screen's dropdown and absent from domain/tds/section_rates.py, so every
+    such row was a number no backend path could reproduce.
+    """
+    from datetime import date as _date
+    from domain.tds import manual_register
+    from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
+    from services.tds_register_service import fy_quarter
+
+    section = (body.get("section") or "").upper().strip()
+    pan = (body.get("deductee_pan") or "").upper().strip() or None
+    try:
+        when = _date.fromisoformat(str(body.get("transaction_date"))[:10])
+    except ValueError:
+        raise HTTPException(status_code=422,
+                            detail="transaction_date must be YYYY-MM-DD")
+    taxable = int(body.get("payment_amount_paise") or 0)
+
+    prior_taxable, prior_tds = (0, 0)
+    if not _USE_MOCK and db is not None:
+        prior_taxable, prior_tds = manual_register.prior_manual_aggregate(
+            db, firm_id=firm_id, client_id=client_id, section=section,
+            deductee_pan=pan, on=when, exclude_id=exclude_id)
+
+    try:
+        res = TDSComputer().resolve_tds(
+            section=section,
+            taxable_paise=taxable,
+            # BOTH limbs or neither. CLAUDE.md: a caller passing the first
+            # without the second re-charges the growing aggregate on every
+            # later entry.
+            fy_prior_taxable_paise=prior_taxable,
+            fy_prior_tds_paise=prior_tds,
+            # Individual or company is read off the PAN's 4th character, not
+            # asked. s.194C is 1% for an individual and 2% for a company, and
+            # the old screen charged everyone 2%.
+            is_company=is_company_pan(pan),
+            # The FY the PAYMENT falls in, not today's — a deduction entered
+            # late for a prior year must use that year's law.
+            fy=manual_register.fy_label(when),
+            # IT Act s.206AA — no PAN floors the rate at 20%.
+            has_pan=has_pan(pan),
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+
+    # Named on EVERY row, not only where it currently bites. The CA cannot tell
+    # from the number whether the register this aggregate does not see would
+    # have changed it, and a gap that appears only sometimes reads as a fault
+    # in the data rather than a known limit of the calculation.
+    gaps = [manual_register.GAP_REGISTERS_NOT_UNIFIED]
+
+    row = {
+        "firm_id": firm_id,
+        "client_id": client_id,
+        "deductee_name": (body.get("deductee_name") or "").strip(),
+        "deductee_pan": pan,
+        "section": section,
+        "nature_of_payment": body.get("nature_of_payment") or None,
+        "transaction_date": when.isoformat(),
+        # The TAXABLE amount, excluding GST (CBDT Circular 23/2017) — the same
+        # meaning tds_register_service gives this column on the bill path.
+        "payment_amount_paise": taxable,
+        # The rate ACTUALLY applied: 0 when below the threshold, so a s.203
+        # certificate cannot later claim a rate was used when nothing was
+        # deducted. Same rule as routers/purchase_bills.py.
+        "tds_rate_pct": (res.rate_bps / 100) if res.applies else 0,
+        "tds_paise": res.tds_paise,
+        # A resident section deducts at the bare rate and carries neither.
+        # s.195 is not reachable here: it needs chargeability, a treaty and a
+        # nature of income, which is the purchase-bill path's job.
+        "surcharge_paise": 0,
+        "cess_paise": 0,
+        # ONE quarter vocabulary. services/tds_register_service.fy_quarter is
+        # what the bill path already writes ("Q3 2025-26", the format migration
+        # 014's own column comment gives), so it is imported rather than spelt
+        # again here. The /tds screen used to write "Q1 (Apr-Jun)" — a third
+        # spelling on a column that has no CHECK, which nothing downstream
+        # matches.
+        "quarter": fy_quarter(when),
+        "financial_year": manual_register.fy_label(when),
+        "challan_no": body.get("challan_no") or None,
+        "notes": body.get("notes") or None,
+    }
+    explain = {
+        "applies": res.applies,
+        "reason": getattr(res, "reason", None),
+        "rate_pct": res.rate_bps / 100,
+        "tds_paise": res.tds_paise,
+        "fy_prior_taxable_paise": prior_taxable,
+        "fy_prior_tds_paise": prior_tds,
+        "gaps": gaps,
+        "gap_messages": [manual_register.GAP_MESSAGES[g] for g in gaps
+                         if g in manual_register.GAP_MESSAGES],
+    }
+    return {"row": row, "explain": explain}
+
+
+@router.post("/deductions")
+def create_deduction(
+    body: CreateDeductionRequest,
+    current_user: dict = Depends(rbac("tds", "compute")),
+):
+    """Record a deduction, with the ENGINE deciding the tax.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here reaches TRACES or
+    # any portal; this is the firm's own register.
+    """
+    assert_client_access(current_user, body.client_id)
+    firm_id = current_user["firm_id"]
+    payload = body.model_dump()
+    try:
+        if _USE_MOCK:
+            resolved = _resolve_manual_deduction(None, firm_id, body.client_id, payload)
+            rec = {"id": str(uuid.uuid4()), **resolved["row"]}
+            _MOCK_DEDUCTIONS[rec["id"]] = rec
+            return api_response(True, {**rec, "explain": resolved["explain"]})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        resolved = _resolve_manual_deduction(db, firm_id, body.client_id, payload)
+        ins = db.table("tds_deductions").insert(resolved["row"]).execute().data or []
+        rec = ins[0] if ins else resolved["row"]
+        log_event(firm_id, "tds_deduction", rec.get("id", ""), "create",
+                  actor_id=current_user.get("auth_user_id"),
+                  actor_email=current_user.get("email"),
+                  new_data={"section": resolved["row"]["section"],
+                            "tds_paise": resolved["row"]["tds_paise"]})
+        return api_response(True, {**rec, "explain": resolved["explain"]})
+    except HTTPException:
+        raise
+    except Exception as e:                                        # noqa: BLE001
+        _logger.error("create_deduction failed: %s", e)
+        return api_response(False, None, "Could not record the deduction.")
+
+
+@router.patch("/deductions/{deduction_id}")
+def update_deduction(
+    deduction_id: str,
+    body: UpdateDeductionRequest,
+    current_user: dict = Depends(rbac("tds", "compute")),
+):
+    """Correct a hand-entered deduction. Re-resolved through the engine.
+
+    A row that came from a purchase bill is REFUSED: it is owned by
+    sync_for_bill and would be overwritten on the next receive, so editing it
+    here would look like it worked and silently revert.
+    """
+    firm_id = current_user["firm_id"]
+    try:
+        if _USE_MOCK:
+            rec = _visible_or_none(current_user, _MOCK_DEDUCTIONS.get(deduction_id))
+            if rec is None:
+                return api_response(False, None, "Not found")
+            merged = {**rec, **{k: v for k, v in body.model_dump().items() if v is not None}}
+            resolved = _resolve_manual_deduction(None, firm_id, rec["client_id"], merged,
+                                                 exclude_id=deduction_id)
+            rec.update(resolved["row"])
+            return api_response(True, {**rec, "explain": resolved["explain"]})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        got = (db.table("tds_deductions").select("*")
+               .eq("id", deduction_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+        rec = _visible_or_none(current_user, got[0] if got else None)
+        if rec is None:
+            return api_response(False, None, "Not found")
+        if rec.get("purchase_bill_id"):
+            return api_response(False, None,
+                                "This deduction came from a purchase bill. Edit the bill "
+                                "instead — the register is rebuilt from it on every receive.")
+        merged = {**rec, **{k: v for k, v in body.model_dump().items() if v is not None}}
+        resolved = _resolve_manual_deduction(db, firm_id, rec["client_id"], merged,
+                                             exclude_id=deduction_id)
+        upd = (db.table("tds_deductions").update(resolved["row"])
+               .eq("id", deduction_id).eq("firm_id", firm_id).execute().data) or []
+        log_event(firm_id, "tds_deduction", deduction_id, "update",
+                  actor_id=current_user.get("auth_user_id"),
+                  actor_email=current_user.get("email"),
+                  new_data={"tds_paise": resolved["row"]["tds_paise"]})
+        return api_response(True, {**(upd[0] if upd else resolved["row"]),
+                                   "explain": resolved["explain"]})
+    except HTTPException:
+        raise
+    except Exception as e:                                        # noqa: BLE001
+        _logger.error("update_deduction failed: %s", e)
+        return api_response(False, None, "Could not update the deduction.")
+
+
+@router.delete("/deductions/{deduction_id}")
+def delete_deduction(
+    deduction_id: str,
+    current_user: dict = Depends(rbac("tds", "write")),
+):
+    """Remove a hand-entered deduction.
+
+    tds:write (Manager+), NOT tds:compute — the same tier migration 345 gives
+    DELETE on this table, because removing a statutory register row is not data
+    entry. A bill-sourced row is refused for the same reason as the edit.
+    """
+    firm_id = current_user["firm_id"]
+    try:
+        if _USE_MOCK:
+            rec = _visible_or_none(current_user, _MOCK_DEDUCTIONS.get(deduction_id))
+            if rec is None:
+                return api_response(False, None, "Not found")
+            _MOCK_DEDUCTIONS.pop(deduction_id, None)
+            return api_response(True, {"deleted": deduction_id})
+
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        got = (db.table("tds_deductions").select("*")
+               .eq("id", deduction_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+        rec = _visible_or_none(current_user, got[0] if got else None)
+        if rec is None:
+            return api_response(False, None, "Not found")
+        if rec.get("purchase_bill_id"):
+            return api_response(False, None,
+                                "This deduction came from a purchase bill. Cancel or edit "
+                                "the bill instead.")
+        db.table("tds_deductions").delete().eq("id", deduction_id).eq("firm_id", firm_id).execute()
+        log_event(firm_id, "tds_deduction", deduction_id, "delete",
+                  actor_id=current_user.get("auth_user_id"),
+                  actor_email=current_user.get("email"), new_data=dict(rec))
+        return api_response(True, {"deleted": deduction_id})
+    except HTTPException:
+        raise
+    except Exception as e:                                        # noqa: BLE001
+        _logger.error("delete_deduction failed: %s", e)
+        return api_response(False, None, "Could not delete the deduction.")
 
 
 @router.get("/challans")

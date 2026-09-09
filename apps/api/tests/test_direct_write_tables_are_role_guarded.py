@@ -301,10 +301,23 @@ def test_the_tds_tier_matches_the_endpoints_it_mirrors():
     write_routes = re.findall(r'@router\.(post|patch|put|delete)\([^)]*\)\s*\ndef \w+\('
                               r'(?:[^)]|\n)*?rbac\("tds",\s*"(\w+)"\)', ws)
     assert write_routes, "no TDS write routes found — has the router moved?"
-    assert {action for _verb, action in write_routes} == {"compute"}, (
-        "a TDS write route now uses a different rbac action than the "
-        "Executive-tier policies in migration 345 mirror")
 
+    # PER VERB, because the two tiers are different on purpose and asserting
+    # one tier for everything hides that. INSERT and UPDATE are tds:compute
+    # (Executive); DELETE is tds:write (Manager), because removing a statutory
+    # register row is not data entry — the same split migration 345 encodes.
+    expected = {"post": "compute", "patch": "compute",
+                "put": "compute", "delete": "write"}
+    for verb, action in write_routes:
+        assert action == expected[verb], (
+            f"@router.{verb} is guarded rbac(\"tds\", \"{action}\") but "
+            f"migration 345's policy for that command mirrors tds:{expected[verb]}. "
+            "One of the two has moved; they have to agree or the app-layer check "
+            "and the RLS check disagree about who may write.")
+
+    # ...and the tiers those actions resolve to are the ones in the migration.
+    from core.permissions import PERMISSIONS
+    assert PERMISSIONS["tds"]["compute"] is not None
     mig = (_MIG_DIR / "345_the_tds_register_is_role_guarded.sql").read_text()
     for table in ("tds_deductions", "tds_returns", "tds_challans", "tds_certificates"):
         assert re.search(rf"\['{table}',\s*'Executive',\s*'Manager'\]", mig), table
