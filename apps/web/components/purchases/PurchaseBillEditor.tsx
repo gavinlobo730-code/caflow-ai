@@ -19,7 +19,8 @@ import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
-import { estimateBaseMinor, estimateForeignTds, convertBaseToForeignMinor } from "@/lib/services/currencyPreview";
+import { estimateBaseMinor } from "@/lib/services/currencyPreview";
+import { useServerTdsPreview, type TdsPreviewLine } from "@/lib/purchases/serverTdsPreview";
 import { formatMoney } from "@/lib/services/formatting";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -31,6 +32,29 @@ import {
 } from "@/lib/purchases/billEditor";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/** The lines exactly as the API receives them.
+ *
+ *  ONE builder, used by the save AND by the TDS preview. The preview exists to
+ *  show the CA the figure the save will produce, so it has to send the same
+ *  lines; building them twice is how the two start disagreeing on the taxable
+ *  base as well as on the rate. */
+function buildLinePayload(lines: EditorLine[]): TdsPreviewLine[] {
+  return lines.filter(isValidBillLine).map((l) => ({
+    description: l.description,
+    hsn_sac: l.hsn_sac || undefined,
+    quantity: parseLineAmounts(l.qty, l.rate)!.quantity,
+    unit: l.unit || undefined,
+    // Non-null by construction: the filter above is isValidBillLine,
+    // which is now parseLineAmounts itself. The old form here was
+    // Math.round((parseFloat(l.rate) || 0) * 100) — exact for a plain
+    // decimal and silently 100 paise for "1,25,000".
+    rate_paise: parseLineAmounts(l.qty, l.rate)!.ratePaise,
+    gst_rate_percent: l.gst_rate,
+    expense_account_id: l.expense_account_id || undefined,
+    service_catalogue_id: l.service_catalogue_id || undefined,
+  }));
+}
 
 export interface PurchaseVendor extends VendorLike {
   tds_applicable?: boolean;
@@ -328,16 +352,31 @@ export function PurchaseBillEditor({
   // _compute_bill_lines_and_totals; the server remains authoritative.
   const vendorTotalPaise = isReverseCharge ? totals.taxable_paise : totals.grand_total_paise;
   const validation = validateBillEditor({ vendorId, billDate, lines, isForeign, exchangeRate });
-  const estBaseTaxable = isForeign && rateNum > 0 ? estimateBaseMinor(totals.taxable_paise, rateNum) : totals.taxable_paise;
   const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(vendorTotalPaise, rateNum) : vendorTotalPaise;
-  // TDS is a purely domestic, INR-only concept (IT Act §194) computed off the
-  // INR-equivalent taxable value — never the raw foreign figure.
-  const tdsPaise = selectedVendor?.tds_applicable && (selectedVendor.tds_rate_bps ?? 0) > 0
-    ? estimateForeignTds(estBaseTaxable, selectedVendor.tds_rate_bps ?? 0)
-    : 0;
-  const netPayable = isForeign
-    ? vendorTotalPaise - convertBaseToForeignMinor(tdsPaise, rateNum)
-    : vendorTotalPaise - tdsPaise;
+
+  // TDS COMES FROM THE SERVER, because only the server can compute it. This was
+  // `estimateForeignTds(estBaseTaxable, vendor.tds_rate_bps)` — a bare rate x
+  // base — while the save branches on RESIDENCY first: a non-resident goes
+  // through s.195 (rate by nature of income, plus surcharge and cess, and a
+  // refusal where chargeability or the treaty position is unknown), a resident
+  // through resolve_tds with the section threshold, the YEAR'S AGGREGATE and
+  // the s.206AA no-PAN floor. None of those inputs is in the browser, so a
+  // sub-threshold s.194J bill previewed tax and saved zero, and a non-resident
+  // bill previewed a resident rate (TDS-14). POST /api/purchase-bills/
+  // tds-preview runs the identical code path the save runs.
+  const tds = useServerTdsPreview({
+    clientId, vendorId, billDate, lines: buildLinePayload(lines), isReverseCharge,
+    currency: isForeign ? currency : undefined,
+    exchangeRate: isForeign ? exchangeRate : undefined,
+    excludeBillId: isEdit ? existing?.id : undefined,
+    enabled: !!selectedVendor?.tds_applicable,
+  });
+  const tdsPaise = tds.data?.tds_paise ?? null;
+  // In the bill's own currency when there is one — the server froze the rate,
+  // so converting an INR deduction back here would be a second conversion.
+  const netPayable = tds.data
+    ? (isForeign ? tds.data.txn_net_payable : tds.data.net_payable_paise)
+    : null;
 
   const accountNameById = new Map(accounts.map((a) => [a.id ?? "", a.account_name ?? a.name ?? ""]));
   const blockedCreditHits = findBlockedCreditHits(lines, accountNameById);
@@ -473,20 +512,7 @@ export function PurchaseBillEditor({
     setError(null);
     try {
       const token = await getAuthToken();
-      const linePayload = lines.filter(isValidBillLine).map((l) => ({
-        description: l.description,
-        hsn_sac: l.hsn_sac || undefined,
-        quantity: parseLineAmounts(l.qty, l.rate)!.quantity,
-        unit: l.unit || undefined,
-        // Non-null by construction: the filter above is isValidBillLine,
-        // which is now parseLineAmounts itself. The old form here was
-        // Math.round((parseFloat(l.rate) || 0) * 100) — exact for a plain
-        // decimal and silently 100 paise for "1,25,000".
-        rate_paise: parseLineAmounts(l.qty, l.rate)!.ratePaise,
-        gst_rate_percent: l.gst_rate,
-        expense_account_id: l.expense_account_id || undefined,
-        service_catalogue_id: l.service_catalogue_id || undefined,
-      }));
+      const linePayload = buildLinePayload(lines);
 
       if (isEdit && existing) {
         // Once received, the backend only accepts our_reference/notes/due_date/
@@ -589,13 +615,49 @@ export function PurchaseBillEditor({
       {isForeign && rateNum > 0 && <Row label="≈ INR total" value={fmt(estBaseTotal)} muted />}
       {selectedVendor?.tds_applicable && (
         <div className="border-t border-[#F1F5F9] pt-2 mt-1 space-y-1.5">
-          <Row label={`TDS §${selectedVendor.tds_section} @ ${((selectedVendor.tds_rate_bps ?? 0) / 100).toFixed(1)}%`} value={fmt(tdsPaise)} />
-          <Row label="Net payable" value={fmtAmt(netPayable)} />
-          {isForeign && <p className="text-[10px] text-[#94A3B8]">TDS is always deducted in ₹ per IT Act §194.</p>}
+          {/* The SECTION and the RATE come back with the figure. Neither is the
+              vendor's stored tds_rate_bps: the rate actually applied depends on
+              the payee's PAN (s.206AA), on residency (s.195 carries surcharge
+              and cess), and on whether the year's aggregate has been crossed —
+              the same vendor and the same amount deduct differently on the bill
+              that crosses it. */}
+          {tds.loading && <Row label="TDS" value="…" muted />}
+          {!tds.loading && tds.error && (
+            <p className="text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">{tds.error}</p>
+          )}
+          {!tds.loading && !tds.error && tds.data && tdsPaise !== null && netPayable !== null && (
+            <>
+              <Row
+                label={tds.data.tds_section
+                  ? `TDS §${tds.data.tds_section} @ ${(tds.data.tds_rate_bps / 100).toFixed(2)}%`
+                  : "TDS"}
+                value={fmt(tdsPaise)} />
+              <Row label="Net payable" value={fmtAmt(netPayable)} />
+              {/* WHY that figure. A number with no reason is a number a CA
+                  cannot check, and this one moves with the year's running
+                  total. */}
+              {tds.data.tds_basis && (
+                <p className="text-[10px] text-[#94A3B8]">{tds.data.tds_basis}</p>
+              )}
+              {/* s.201(1A) runs at 1% a month on an under-deduction. The
+                  shortfall is not lost — the next bill to the same payee
+                  re-charges it — but a net payable of nil is not where a CA
+                  should have to infer that from. */}
+              {tds.data.tds_shortfall_paise > 0 && (
+                <p className="text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">
+                  The year&apos;s aggregate demands {fmt(tds.data.tds_shortfall_paise)} more than this
+                  bill can carry. It is recovered on the next bill to this payee; §201(1A) interest
+                  runs at 1% a month until it is deducted.
+                </p>
+              )}
+              {isForeign && <p className="text-[10px] text-[#94A3B8]">TDS is always deducted in ₹ per IT Act §194.</p>}
+            </>
+          )}
         </div>
       )}
       <p className="text-[10px] text-[#94A3B8] pt-1">
-        Preview — GST and TDS are confirmed by the server on save.
+        GST above is a preview and is confirmed by the server on save. The TDS figure
+        is computed by the server now, by the same code that will withhold it.
       </p>
       {attempted && !validation.ok && (
         <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">

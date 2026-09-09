@@ -51,13 +51,6 @@ function code(file: string): string {
 
 // Files still allowed to hold a TDS rate, each with the reason. May only shrink.
 const RATE_HOLDERS: Record<string, string> = {
-  "lib/services/currencyPreview.ts":
-    "estimateForeignTds — the purchase-bill editor's preview (TDS-14), not yet " +
-    "fixed. It applies vendors.tds_rate_bps with no threshold, no §206AA and no " +
-    "§195 surcharge, and the finding is the next part of this phase.",
-  "components/purchases/PurchaseBillEditor.tsx":
-    "Calls estimateForeignTds. Same finding (TDS-14); removing the call and the " +
-    "helper together is that fix, not this one.",
   "app/accounting/suppliers/page.tsx":
     "One manual-rate line, reachable ONLY when tds_section === \"other\" — a " +
     "section the engine declines to answer for, so it cannot contradict the " +
@@ -210,4 +203,42 @@ test("a TDS period is a financial year AND a quarter, never one of them", () => 
   assert.match(page, /QUARTERS(?::\s*TDSQuarter\[\])?\s*=\s*\["Q1",\s*"Q2",\s*"Q3",\s*"Q4"\]/,
     "the quarter sent to the API must be Q1..Q4 — the label belongs in " +
     "QUARTER_LABELS, which is what it is for");
+});
+
+test("the purchase-bill editor asks the server what this bill withholds", () => {
+  // TDS-14. The editor showed `estimateForeignTds(base, vendor.tds_rate_bps)` —
+  // a bare rate × base — and subtracted it as "Net payable", while the save
+  // branches on RESIDENCY first and then applies a section threshold, the
+  // year's aggregate and the §206AA floor, or §195 with surcharge and cess.
+  // A sub-threshold §194J bill previewed tax and saved zero.
+  const editor = code(path.join(WEB, "components/purchases/PurchaseBillEditor.tsx"));
+  assert.match(editor, /useServerTdsPreview/,
+    "the editor must get its TDS figure from the server");
+  assert.doesNotMatch(editor, /estimateForeignTds/,
+    "the browser-side estimate is back");
+
+  const hook = code(path.join(WEB, "lib/purchases/serverTdsPreview.ts"));
+  assert.match(hook, /\/api\/purchase-bills\/tds-preview/,
+    "the preview must call the endpoint that runs the save's own code path");
+
+  // And the helper itself is gone, not merely uncalled: a rate × base helper
+  // left in the tree is one import away from being the preview again.
+  const helpers = code(path.join(WEB, "lib/services/currencyPreview.ts"));
+  assert.doesNotMatch(helpers, /estimateForeignTds|convertBaseToForeignMinor/,
+    "delete the helper, do not just stop calling it");
+});
+
+test("the preview never shows a TDS figure it did not get from the server", () => {
+  // The failure mode a preview like this invites: keep the last answer on
+  // screen while the amount changes underneath it, or fall back to a local
+  // estimate when the request fails. Either puts a number in front of a CA
+  // that the save will not produce, which is the whole of TDS-14.
+  const editor = code(path.join(WEB, "components/purchases/PurchaseBillEditor.tsx"));
+  assert.match(editor, /tds\.data\?\.tds_paise \?\? null/,
+    "tdsPaise must be null when there is no server answer, not 0 and not stale");
+  assert.match(editor, /tds\.loading &&/,
+    "the in-flight state must be rendered, or a stale figure reads as current");
+  assert.match(editor, /tds\.error/,
+    "a refusal is the useful answer — §195 refuses where chargeability or the " +
+    "treaty position is unknown, and the save will refuse identically");
 });

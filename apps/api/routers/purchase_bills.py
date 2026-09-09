@@ -237,6 +237,97 @@ def create_purchase_bill(
                             document_failure_detail(e, action="create the purchase bill"))
 
 
+@router.post("/tds-preview")
+def preview_purchase_bill_tds(
+    data: PurchaseBillIn,
+    # A QUERY parameter rather than a body field: the body is the create
+    # model, and the preview must take exactly what the save takes or the two
+    # can drift on shape as well as on arithmetic. On an EDIT the bill already
+    # exists carrying its own taxable amount, so it has to be excluded from its
+    # own FY-prior aggregate — the same reason update_purchase_bill excludes it.
+    exclude_bill_id: Optional[str] = Query(default=None),
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """What this bill will withhold, computed by the code that will withhold it.
+
+    THE POINT IS THAT IT IS THE SAME CODE. The bill editor used to compute its
+    own preview in the browser — `estimateForeignTds(base, vendor.tds_rate_bps)`,
+    a bare rate x base with no threshold, no s.206AA floor, no FY aggregate and
+    no s.195 branch — and then subtract it to show "Net payable". The server
+    decides on RESIDENCY first: a non-resident goes through s.195 (rate by
+    nature of income, plus surcharge and cess, and a REFUSAL where chargeability
+    or a treaty position is unknown), a resident through resolve_tds with the
+    section threshold, the year's aggregate and the s.206AA floor. None of those
+    inputs exists in the browser (TDS-14).
+
+    So a sub-threshold s.194J bill previewed tax and saved zero, and a
+    non-resident bill previewed a resident rate and saved base + surcharge +
+    cess, or 422'd. The CA approved one number and the ledger recorded another.
+
+    Computes nothing of its own: same _resolve_vendor_and_interstate, same
+    _compute_bill_lines_and_totals, same inputs as _create_purchase_bill_core.
+    Writes nothing, and the 422 a refusal raises is the SAME refusal the save
+    would raise — which is the useful half, because it arrives while the CA can
+    still act on it.
+    """
+    assert_client_access(current_user, data.client_id)
+    try:
+        body = data.model_dump()
+        firm_id = current_user.get("firm_id") or ""
+        vendor, is_interstate, db = _resolve_vendor_and_interstate(
+            firm_id, body["client_id"], body["vendor_id"])
+        dc = _resolve_bill_currency(db, firm_id, body, current_user)
+        computed = _compute_bill_lines_and_totals(
+            body.get("lines") or [], is_interstate, vendor, body["bill_date"],
+            firm_id, dc, db=db,
+            # The bill being edited must not count itself in its own FY
+            # aggregate — the same reason update_purchase_bill passes it.
+            exclude_bill_id=exclude_bill_id,
+            is_reverse_charge=bool(body.get("is_reverse_charge", False)),
+        )
+        return api_response(True, {
+            "taxable_amount_paise": computed["taxable_amount_paise"],
+            "total_paise":          computed["total_paise"],
+            "total_gst_paise":      computed["total_gst_paise"],
+            "tds_paise":            computed["tds_paise"],
+            "tds_rate_bps":         computed["tds_rate_bps"],
+            "tds_section":          computed["tds_section"],
+            "tds_surcharge_paise":  computed["tds_surcharge_paise"],
+            "tds_cess_paise":       computed["tds_cess_paise"],
+            "tds_nature_of_income": computed["tds_nature_of_income"],
+            # WHY that figure, in the engine's own words. A number with no
+            # reason is a number a CA cannot check, and this one moves with the
+            # year's running total: the same vendor and the same amount deduct
+            # differently on the bill that crosses the threshold.
+            # WHY that figure. On a s.195 bill it is the basis the engine
+            # resolved on (not_chargeable / treaty / act / 206aa_floor); on a
+            # resident bill it is the aggregate the charge fell on and what
+            # earlier bills already withheld. Whichever exists.
+            "tds_basis":            computed.get("_tds_resident_reason") or computed["tds_basis"],
+            "tds_citation":         computed.get("_tds_citation"),
+            # What the year's aggregate demanded and this bill was too small to
+            # withhold. It is not lost — the next bill to the same payee
+            # re-charges it — but the CA is told rather than left to infer it
+            # from a net payable of nil. s.201(1A) runs at 1% a month until it
+            # is deducted.
+            "tds_shortfall_paise":  computed.get("_tds_shortfall_paise", 0),
+            "net_payable_paise":    computed["net_payable_paise"],
+            # The same figures in the bill's own currency, so a foreign bill's
+            # "net payable" is not reconstructed in the browser from an INR
+            # deduction and a rate — which is a second conversion, at a rate the
+            # server has already frozen.
+            "txn_currency":         dc.currency,
+            "txn_total":            computed["txn_total"],
+            "txn_net_payable":      computed["txn_net_payable"],
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("preview_purchase_bill_tds: %s", e)
+        return api_response(False, None,
+                            document_failure_detail(e, action="preview the TDS on this bill"))
+
+
 def _duplicate_bill_id(db, client_id: str, vendor_id: str,
                        bill_no: Optional[str]) -> Optional[str]:
     """The id of a live bill already carrying this vendor's invoice number.
@@ -371,7 +462,27 @@ def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
         raise HTTPException(status_code=422, detail=str(ve))
     # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
     # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
-    return _tds.tds_paise, (_tds.rate_bps if _tds.applies else 0)
+    #
+    # The third value is NOT persisted and is for the preview: a sentence
+    # saying WHY this figure. A number with no reason is a number a CA cannot
+    # check, and this one moves with the year's running total — the same vendor
+    # and the same amount deduct differently on the bill that crosses the
+    # aggregate. Composed here, from what the engine returned, rather than in
+    # the browser: which facts matter is a statutory judgement, and the
+    # frontend holds none of them.
+    if not _tds.applies:
+        why = (f"Nothing withheld: §{tds_section} does not charge this bill. "
+               f"The year's payments to this payee under this section so far "
+               f"are ₹{(fy_prior + total_taxable) // 100:,}.")
+    elif fy_prior > 0:
+        why = (f"§{tds_section} at {_tds.rate_pct:g}% on the year's aggregate of "
+               f"₹{(fy_prior + total_taxable) // 100:,}, less ₹{fy_prior_tds // 100:,} "
+               f"already withheld on earlier bills (§200).")
+    else:
+        why = f"§{tds_section} at {_tds.rate_pct:g}% on ₹{total_taxable // 100:,}."
+    if _tds.applies and not has_pan(vendor.get("pan")):
+        why += " Floored at 20% — no PAN on file (§206AA)."
+    return _tds.tds_paise, (_tds.rate_bps if _tds.applies else 0), why
 
 
 def _resolve_bill_section_195(vendor: dict, total_taxable: int, bill_date: str,
@@ -554,6 +665,9 @@ def _compute_bill_lines_and_totals(
     tds_nature = None
     tds_basis = None
     tds_citation = ""
+    # Why the resident figure is what it is. Not persisted; the preview shows
+    # it. None on a s.195 bill, where tds_basis carries the reason instead.
+    tds_resident_why = None
     tds_section = (vendor.get("tds_section") or "").upper().strip() or None
     if vendor.get("tds_applicable"):
         from domain.tds.residency import is_non_resident
@@ -582,7 +696,7 @@ def _compute_bill_lines_and_totals(
             tds_citation = _s195.citation
             tds_section = "195"
         else:
-            tds_paise, tds_rate_bps = _resolve_bill_resident_tds(
+            tds_paise, tds_rate_bps, tds_resident_why = _resolve_bill_resident_tds(
                 vendor, tds_section, total_taxable, bill_date, firm_id, db,
                 exclude_bill_id)
     # ── The deduction is bounded by the payment ────────────────────────────
@@ -642,6 +756,10 @@ def _compute_bill_lines_and_totals(
         # Not persisted — the sentence the engine resolved on, carried through
         # the computed dict so the register can record it against a nil.
         "_tds_citation":        tds_citation,
+        # Also not persisted: WHY the resident figure is what it is. tds_basis
+        # above is the §195 basis and stays that — it is a stored column and
+        # widening what it means would change what every existing row says.
+        "_tds_resident_reason": tds_resident_why,
         "net_payable_paise":    net_payable_paise,
         # What the FY aggregate demanded that this bill was too small to
         # withhold. Not persisted and not a column: it is a fact about this
@@ -658,35 +776,39 @@ def _compute_bill_lines_and_totals(
     }
 
 
-def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optional[dict] = None) -> dict:
-    """Shared purchase-bill-creation logic used by both create_purchase_bill
-    and the bulk import endpoint below — extracted verbatim (no behavior
-    change for a single create: bulk_cache is always None there) so the CSV
-    importer can create many bills in ONE request instead of firing one POST
-    per bill. Raises HTTPException on failure; returns the created bill dict
-    (with lines) on success.
+def _resolve_bill_currency(db, firm_id: str, data: dict, current_user: dict):
+    """The bill's frozen currency and rate. INR / feature-off → identity.
 
-    bulk_cache (bulk import only — see bulk_create_purchase_bills, which
-    pre-fetches it once per request instead of once per bill):
-      "vendor": this bill's vendor row (already resolved by the caller)
-      "client_gstin": the buying client's GSTIN (for the interstate check)
-        — shared across the whole batch per client_id.
-    Skips the per-bill audit/timeline writes in bulk mode — both are
-    documented non-fatal, best-effort UX/audit metadata (never read by
-    GST/TDS/journal code); bulk_create_purchase_bills writes one summary
-    audit + timeline entry for the whole batch afterward instead."""
-    required = ["client_id", "vendor_id", "bill_date", "lines"]
-    for field in required:
-        if not data.get(field):
-            raise HTTPException(status_code=422, detail=f"{field} is required")
-
-    firm_id   = current_user.get("firm_id")
+    Extracted from _create_purchase_bill_core for the TDS preview, which has to
+    compute on the same base: on a foreign-currency bill the withholding is on
+    the INR value at the frozen rate, so a preview using a different rate shows
+    a different tax.
+    """
+    from domain.currency.document_currency import resolve_document_currency, identity_currency
     client_id = data["client_id"]
-    vendor_id = data["vendor_id"]
-    lines_data = data.get("lines", [])
-    if not lines_data:
-        raise HTTPException(status_code=422, detail="At least one line item is required")
+    req_ccy = (data.get("currency") or "INR").strip().upper()
+    if _USE_MOCK or req_ccy == "INR":
+        return identity_currency(data["bill_date"])
+    _firm_row = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
+    _client_mc = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
+    return resolve_document_currency(
+        db, _firm_row, _client_mc, currency=req_ccy,
+        exchange_rate=data.get("exchange_rate"), rate_date=data["bill_date"],
+        rate_selected_by=current_user.get("id"))
 
+
+def _resolve_vendor_and_interstate(
+    firm_id: str, client_id: str, vendor_id: str, bulk_cache: Optional[dict] = None,
+) -> tuple[dict, bool, object]:
+    """The vendor row, whether the supply is interstate, and the db handle.
+
+    Extracted VERBATIM from _create_purchase_bill_core so the TDS preview
+    endpoint resolves the vendor exactly as the save does. The preview exists
+    to show the CA the figure the save will produce; resolving the vendor a
+    second way is how the two start disagreeing again, which is the whole of
+    TDS-14.
+    """
+    db = None
     if _USE_MOCK:
         # Look up vendor from in-memory store; fall back to safe defaults
         from routers.vendors import MOCK_VENDORS
@@ -727,6 +849,40 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             if client_resp.data:
                 client_state = _get_state_code_from_gstin(client_resp.data[0].get("gstin")) or ""
         is_interstate = bool(vendor_state and client_state and vendor_state != client_state)
+    return vendor, is_interstate, db
+
+
+def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optional[dict] = None) -> dict:
+    """Shared purchase-bill-creation logic used by both create_purchase_bill
+    and the bulk import endpoint below — extracted verbatim (no behavior
+    change for a single create: bulk_cache is always None there) so the CSV
+    importer can create many bills in ONE request instead of firing one POST
+    per bill. Raises HTTPException on failure; returns the created bill dict
+    (with lines) on success.
+
+    bulk_cache (bulk import only — see bulk_create_purchase_bills, which
+    pre-fetches it once per request instead of once per bill):
+      "vendor": this bill's vendor row (already resolved by the caller)
+      "client_gstin": the buying client's GSTIN (for the interstate check)
+        — shared across the whole batch per client_id.
+    Skips the per-bill audit/timeline writes in bulk mode — both are
+    documented non-fatal, best-effort UX/audit metadata (never read by
+    GST/TDS/journal code); bulk_create_purchase_bills writes one summary
+    audit + timeline entry for the whole batch afterward instead."""
+    required = ["client_id", "vendor_id", "bill_date", "lines"]
+    for field in required:
+        if not data.get(field):
+            raise HTTPException(status_code=422, detail=f"{field} is required")
+
+    firm_id   = current_user.get("firm_id")
+    client_id = data["client_id"]
+    vendor_id = data["vendor_id"]
+    lines_data = data.get("lines", [])
+    if not lines_data:
+        raise HTTPException(status_code=422, detail="At least one line item is required")
+
+    vendor, is_interstate, db = _resolve_vendor_and_interstate(
+        firm_id or "", client_id, vendor_id, bulk_cache)
 
     # Snapshot credit terms onto the bill. The vendor's credit_days is the
     # DEFAULT; an explicit due_date or credit_days on the request overrides
@@ -736,19 +892,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         vendor.get("credit_days"),
     )
 
-    # ── Multi-Currency (Phase 3): resolve + freeze the bill currency ──────────
-    # INR / feature-off → identity.
-    from domain.currency.document_currency import resolve_document_currency, identity_currency
-    req_ccy = (data.get("currency") or "INR").strip().upper()
-    if _USE_MOCK or req_ccy == "INR":
-        dc = identity_currency(data["bill_date"])
-    else:
-        _firm_row = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
-        _client_mc = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
-        dc = resolve_document_currency(
-            db, _firm_row, _client_mc, currency=req_ccy,
-            exchange_rate=data.get("exchange_rate"), rate_date=data["bill_date"],
-            rate_selected_by=current_user.get("id"))
+    dc = _resolve_bill_currency(db, firm_id or "", data, current_user)
 
     is_reverse_charge = bool(data.get("is_reverse_charge", False))
     computed = _compute_bill_lines_and_totals(

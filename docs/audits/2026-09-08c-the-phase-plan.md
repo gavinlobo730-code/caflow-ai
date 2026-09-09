@@ -169,7 +169,7 @@ snapshot was 12 migrations stale and `ADDED_AFTER_THE_SNAPSHOT` had grown to 41
 entries — one over its own cap. Refreshed and proved equal to production
 (md5 `dff5c56d…`, 3,999 columns in 270 tables); the list is back to 3.
 
-### Phase 3 — One TDS engine, and the browser copy deleted · 8 findings · ≤19 days
+### Phase 3 — One TDS engine, and the browser copy deleted · 8 findings · ≤19 days · **DONE**
 `TDS-05 TDS-11 TDS-03 TDS-15 TDS-04 TDS-14 PUR-06 PUR-14`
 
 `/tds` computes TDS in TypeScript from a stale hardcoded table and writes
@@ -182,8 +182,8 @@ This is exactly the filing-demo lesson in CLAUDE.md: two implementations of one
 thing drift, and one of them is silently exempt from the guard.
 *Guard:* the zero-business-logic-in-the-frontend rule, made testable for TDS.
 
-**Progress: TDS-11, TDS-05, PUR-06, TDS-03, TDS-15, TDS-04 done. Two findings
-left** (TDS-14, PUR-14).
+**All eight done: TDS-11, TDS-05, PUR-06, TDS-03, TDS-15, TDS-04, TDS-14,
+PUR-14.**
 
 **The browser's table was wrong in EIGHT ways, not the two TDS-05 named.**
 Checked row by row against `section_rates.py` and each is now a test:
@@ -269,6 +269,28 @@ the CHECK cannot store (`"Pending"|"Filed"|"Overdue"` on `tds_returns`, so three
 counters read 0/0/0 for ever). The /tds Challans tab additionally had no writer
 and no reader at all — the modal pushed a row into React state and
 `POST /api/tds-workspace/challans` had no caller.
+
+**TDS-14 — the bill editor's TDS is now the server's answer, not the browser's.**
+The editor showed `estimateForeignTds(base, vendor.tds_rate_bps)` and subtracted
+it as "Net payable", while the save branches on RESIDENCY first and then applies
+the section threshold, the year's AGGREGATE and the §206AA floor — or §195 by
+nature of income with surcharge and cess, or a refusal. So a sub-threshold §194J
+bill previewed tax and saved zero, and a §194C individual previewed the company
+rate. `POST /api/purchase-bills/tds-preview` runs the save's own code path
+(`_compute_bill_lines_and_totals`, reached through the same vendor and currency
+resolvers, which were extracted for it), and the editor renders its figure, its
+reason, and its refusal. `estimateForeignTds` and `convertBaseToForeignMinor`
+are DELETED with their tests, not merely uncalled — a rate × base helper left in
+the tree is one import away from being the preview again.
+
+**PUR-14 — five gap codes computed on every foreign-supplier bill since the
+register was written, and none of them had ever reached a screen.** The receive
+response has always carried `tds_register.gap_details`; the purchases page read
+`result.success` and nothing else. Both receive paths now capture them, and a
+bulk receive deduplicates by vendor and sentence. A failed register sync is the
+loudest case: `_sync_tds_register` deliberately never raises, so a bill can be
+in the books and missing from 26Q — which is exactly why it has to be said on
+the screen instead.
 
 ⚠️ **The status-vocabulary check found ELEVEN more files, and they are not
 Phase 3's.** `tests/test_frontend_status_values_match_the_check_pg.py` carries

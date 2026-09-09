@@ -6,6 +6,7 @@ import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loade
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
+import { registerNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
 import { DebitNoteViewDrawer } from "@/components/purchases/DebitNoteViewDrawer";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
 import { writeDebitNoteDuplicateSeed } from "@/lib/purchases/debitNoteDuplicateSeed";
@@ -349,6 +350,11 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
   const [loadFailed, setLoadFailed] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  // What the TDS register could not establish on the bills just received
+  // (PUR-14). Separate state from `msg` because it is not a failure and is
+  // answered differently: the bill posted, and a fact only the CA holds is
+  // missing. Same shape as payroll's runGaps.
+  const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const router = useRouter();
 
@@ -467,6 +473,15 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
       const result = await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token);
       if (!result.success) throw new Error(result.error ?? "Failed to receive purchase bill");
       setMsg({ type: "ok", text: "Purchase bill received" });
+      // PUR-14. Receiving a bill writes its TDS deduction into the register,
+      // and the register REPORTS what it could not establish — an unclassified
+      // residency, missing 27Q identifiers, an unverified §195 rate, an undated
+      // no-PE declaration, a Form 15CA not recorded, a deduction that is a
+      // catch-up on the year's aggregate. Five gap codes have been computed on
+      // every foreign-supplier bill since the register was written and NONE of
+      // them has ever reached a screen: the response carried them and nothing
+      // read it. A gap that only exists in a log is not a gap anybody acts on.
+      setRegisterNotes(registerNotesFrom(result.data));
       load();
     } catch (err) {
       setMsg({ type: "err", text: err instanceof Error ? err.message : "Failed to receive purchase bill" });
@@ -566,12 +581,12 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
     const draftRows = rows.filter((b) => b.status === "draft");
     const skipped = rows.length - draftRows.length;
 
-    type ReceiveResult = { ok: true } | { ok: false; reason: string };
+    type ReceiveResult = { ok: true; notes: RegisterNote[] } | { ok: false; reason: string };
     const results: ReceiveResult[] = await mapWithConcurrency(draftRows, 8, async (b): Promise<ReceiveResult> => {
       try {
         // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token);
-        if (result.success) return { ok: true };
+        if (result.success) return { ok: true, notes: registerNotesFrom(result.data) };
         return { ok: false, reason: result.error ?? "Failed to receive bill" };
       } catch (e) {
         return { ok: false, reason: e instanceof Error ? e.message : "Failed to receive bill" };
@@ -579,6 +594,12 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
     });
 
     const received = results.filter((r) => r.ok).length;
+    // Every bill's register notes, deduplicated by vendor + sentence: a batch
+    // of twenty bills to one unclassified supplier raises the same gap twenty
+    // times, and twenty copies of one sentence is how a real warning gets
+    // scrolled past.
+    setRegisterNotes(dedupeRegisterNotes(
+      results.flatMap((r) => (r.ok ? r.notes : []))));
     const failures = results.filter((r): r is { ok: false; reason: string } => !r.ok);
     const failed = failures.length;
 
@@ -898,6 +919,48 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
         </div>
       )}
+
+      {/* PUR-14 — what the TDS register could not establish about the bills
+          just received. NOT an error and deliberately not styled as one: the
+          bill received, its journal posted and the register row was written.
+          What is missing is a fact only the CA holds — a supplier's residency,
+          a country and TIN for the 27Q deductee row, a date on a no-PE
+          declaration, a Form 15CA. Left unfixed each one is a 26Q or 27Q that
+          cannot be assembled at the quarter end, by which time the bill is
+          months old.
+
+          The last case is different and is why the wording comes from the
+          backend rather than being written here: a deduction that is a CATCH-UP
+          on the year's aggregate is CORRECT and looks wrong — tds_paise is not
+          taxable x rate, because s.200 credits what earlier bills withheld and
+          this one carries the balance. */}
+      {registerNotes.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">
+                Received. {registerNotes.length} thing{registerNotes.length === 1 ? "" : "s"} the
+                TDS register could not establish:
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {registerNotes.map((n, i) => (
+                  <li key={i} className="text-xs text-amber-800">
+                    {n.vendor ? <span className="font-medium">{n.vendor}: </span> : null}{n.text}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-amber-700 mt-1.5">
+                Nothing is blocked — the bill and its journal are posted. These decide which
+                statement the deduction lands in and what its deductee row must carry, so they
+                are cheaper to settle now than at the quarter end.
+              </p>
+            </div>
+            <button onClick={() => setRegisterNotes([])} className="text-amber-700"><X size={13} /></button>
+          </div>
+        </div>
+      )}
+
 
       {/* Summary strip */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
