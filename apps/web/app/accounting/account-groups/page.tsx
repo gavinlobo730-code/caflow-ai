@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, Layers } from "lucide-react";
+import { ChevronLeft, Layers, Plus, AlertCircle } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { api } from "@/lib/api";
 
 interface CoaRow {
   id: string;
@@ -26,10 +27,139 @@ async function getFirmId(): Promise<string> {
   return data.firm_id as string;
 }
 
+const ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Income", "Expense"] as const;
+
+/** ACC-09. chart_of_accounts has carried parent_group and sub_group since
+ *  migration 057 and nothing but the CSV import ever wrote them, so this screen
+ *  rendered one "Ungrouped → General" block for any normally-seeded firm — it
+ *  was not broken, it was being told nothing. And there was no way to add a
+ *  ledger or to move one: createAccount and updateAccount existed in lib/api
+ *  and were called from nowhere.
+ *
+ *  Every rule stays on the server. account_type is absent from the edit form
+ *  because it decides which side of the trial balance the account falls on and
+ *  changing it after a posting silently restates every report — the backend
+ *  refuses it, and this form does not offer what the backend will not take. */
+function LedgerDialog({ account, onClose, onSaved }:
+  { account: CoaRow | null; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    name:         account?.account_name ?? "",
+    code:         account?.account_code ?? "",
+    account_type: account?.account_type ?? "Asset",
+    parent_group: account?.parent_group ?? "",
+    sub_group:    account?.sub_group ?? "",
+    is_active:    account?.is_active ?? true,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    setError("");
+    if (!form.name.trim()) { setError("A ledger needs a name."); return; }
+    if (!form.code.trim()) {
+      setError("A ledger needs a code — it is what the chart is ordered and matched by.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const body = {
+        name: form.name.trim(),
+        code: form.code.trim(),
+        parent_group: form.parent_group.trim(),
+        sub_group: form.sub_group.trim(),
+        is_active: form.is_active,
+        ...(account ? {} : { account_type: form.account_type }),
+      };
+      const res = (account
+        ? await api.accounting.updateAccount(account.id, body)
+        : await api.accounting.createAccount(body)) as { success: boolean; error?: string | null; detail?: string };
+      // Checked, not assumed: this router answers a refusal as HTTP 200 with
+      // success:false, so an unchecked call would report "saved" for a request
+      // the server declined.
+      if (!res.success) throw new Error(res.detail ?? res.error ?? "Could not save the ledger.");
+      onSaved(); onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the ledger.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold text-[#0F172A]">
+          {account ? `Edit ${account.account_name}` : "Add a ledger"}
+        </h3>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Ledger name</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+                   value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Code</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs font-mono"
+                   value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Type</label>
+            {account ? (
+              // Fixed once anything can have been posted — it decides which side
+              // of the trial balance this account falls on.
+              <p className="text-xs text-[#64748B] py-2">{account.account_type}</p>
+            ) : (
+              <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+                      value={form.account_type}
+                      onChange={e => setForm(f => ({ ...f, account_type: e.target.value }))}>
+                {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Parent group</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+                   placeholder="Current Assets"
+                   value={form.parent_group}
+                   onChange={e => setForm(f => ({ ...f, parent_group: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-[#64748B] mb-1">Sub group</label>
+            <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+                   placeholder="Sundry Debtors"
+                   value={form.sub_group}
+                   onChange={e => setForm(f => ({ ...f, sub_group: e.target.value }))} />
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+            <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-red-700">{error}</p>
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 text-xs border border-[#E2E8F0] rounded-lg py-2 text-[#334155] hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={save} disabled={saving}
+                  className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 disabled:opacity-50">
+            {saving ? "Saving…" : account ? "Save changes" : "Add ledger"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function AccountGroupsPage() {
   const [accounts, setAccounts] = useState<CoaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<CoaRow | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -51,7 +181,7 @@ export default function AccountGroupsPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [reloadKey]);
 
   if (loading) return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
@@ -87,6 +217,10 @@ export default function AccountGroupsPage() {
             {parentGroups.length} parent groups · {accounts.length} active accounts
           </p>
         </div>
+        <button onClick={() => setAdding(true)}
+                className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+          <Plus size={12} /> Add ledger
+        </button>
       </div>
 
       <div className="space-y-5">
@@ -112,7 +246,10 @@ export default function AccountGroupsPage() {
                           <td className="px-5 py-2 font-mono text-[10px] text-[#94A3B8] w-16">{acc.account_code}</td>
                           <td className="px-3 py-2 font-medium text-[#0F172A]">{acc.account_name}</td>
                           <td className="px-3 py-2 text-[#64748B]">{acc.account_type}</td>
-                          <td className="px-5 py-2 text-[#94A3B8]">{acc.account_subtype ?? "—"}</td>
+                          <td className="px-3 py-2 text-[#94A3B8]">{acc.account_subtype ?? "—"}</td>
+                          <td className="px-5 py-2 text-right">
+                            <button onClick={() => setEditing(acc)} className="text-[11px] text-blue-600 hover:underline">Edit</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -123,6 +260,14 @@ export default function AccountGroupsPage() {
           );
         })}
       </div>
+
+      {(adding || editing) && (
+        <LedgerDialog
+          account={editing}
+          onClose={() => { setAdding(false); setEditing(null); }}
+          onSaved={() => setReloadKey(k => k + 1)}
+        />
+      )}
     </div>
   );
 }

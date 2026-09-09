@@ -28,6 +28,105 @@ def draft_placeholder_invoice_no() -> str:
     return f"DRAFT-{uuid.uuid4().hex[:10].upper()}"
 
 
+#: Every auto-numbered document series in the product: table -> (number column,
+#: the columns its UNIQUE constraint covers besides the number itself).
+#:
+#: The scope is not decoration. A sequence computed over a NARROWER scope than
+#: the constraint hands the same number to two rows the database will not accept
+#: — which is exactly the launch blocker migration 151 fixed for
+#: client_sales_invoices and credit_notes, and migration 159 for debit_notes and
+#: receipts: the firm's SECOND client computed 0001 (its own tally was 0), the
+#: per-firm UNIQUE rejected it, and the retry below recomputed the same 0001 on
+#: every attempt. Migration 210 then created sales_debit_notes and
+#: purchase_credit_notes with the old per-firm key and per-client numbering, so
+#: the same blocker was live again on those two until migration 350 widened them.
+#:
+#: next_sequence refuses a scope that is not exactly this one, so the mismatch
+#: cannot be reintroduced silently a third time.
+NUMBER_SERIES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "credit_notes":          ("credit_note_no", ("firm_id", "client_id")),
+    "debit_notes":           ("debit_note_no",  ("firm_id", "client_id")),
+    "sales_debit_notes":     ("debit_note_no",  ("firm_id", "client_id")),
+    "purchase_credit_notes": ("credit_note_no", ("firm_id", "client_id")),
+    "receipts":              ("receipt_no",     ("firm_id", "client_id")),
+    "purchase_payments":     ("payment_no",     ("firm_id",)),
+    # Not a document number, but the same rule and a worse consequence: the
+    # asset code is what FA-ACQ-/FA-CAP-/FA-DEPN-/FA-DISP- references are built
+    # from, and the posting kernel dedupes on (client_id, reference_no,
+    # entry_date). A reused code makes a new asset's acquisition journal land on
+    # the old asset's entry. Migration 351 is the UNIQUE index behind it.
+    "fixed_assets":          ("asset_code",     ("firm_id", "client_id")),
+}
+
+#: How many numbers to read back before taking the numeric maximum. One row
+#: would be enough while every number in a series is zero-padded to the same
+#: width (lexicographic order is then numeric order), which is true of every
+#: series above — all are formatted "{prefix}{n:04d}". Reading a window instead
+#: costs the same single round trip and survives a series that has picked up an
+#: unpadded or wider number from an import or a hand-typed correction, where
+#: "…-9" would otherwise sort above "…-0042" and win.
+_SEQUENCE_WINDOW = 50
+
+
+def sequence_after(existing, prefix: str) -> int:
+    """The next number in a `{prefix}{n:04d}` series: one past the HIGHEST
+    number already used, never one past the COUNT of them.
+
+    Count+1 is what the five document routers and the two payment services did,
+    and it is deterministic — so once a middle document is deleted it returns a
+    number that is already taken, on every attempt, for the rest of the
+    financial year. insert_with_number's retry cannot save that: it recomputes
+    the SAME value six times. Max+1 both ends the wedge and is what makes the
+    retry converge, because re-reading after a concurrent insert returns a
+    number that has moved.
+
+    A deletion in the MIDDLE of a series leaves a permanent gap: the maximum has
+    not moved, so 0002 is never handed out a second time. That is the correct
+    outcome and not a defect to close — the audit_log holds a create and a
+    delete event for it. Deleting the HIGHEST document does free its number
+    again, and that is also correct: every delete path in the product is
+    draft-only, and a draft was never issued to anybody.
+    """
+    highest = 0
+    for value in existing:
+        text = str(value or "").strip()
+        if not text.startswith(prefix):
+            continue
+        tail = text[len(prefix):]
+        if tail.isdigit():
+            highest = max(highest, int(tail))
+    return highest + 1
+
+
+def next_sequence(db, table: str, prefix: str, **scope) -> int:
+    """Read back the highest number in `table`'s series and return the next one.
+
+    `scope` must name exactly the columns NUMBER_SERIES records for the table —
+    the ones its UNIQUE constraint covers. Passing fewer produces numbers the
+    database will reject; passing more silently narrows the series.
+
+    A read that fails RAISES. The previous `except Exception: return 1` turned a
+    transient PostgREST failure into the number 1, which is either a collision
+    with the live first document or, on a table without the constraint, a second
+    document carrying a number that is already in the books.
+    """
+    number_field, expected = NUMBER_SERIES[table]
+    if tuple(sorted(scope)) != tuple(sorted(expected)):
+        raise ValueError(
+            f"{table} is numbered per {expected}; got {tuple(sorted(scope))}. "
+            "The sequence scope must match the UNIQUE constraint exactly.")
+    query = db.table(table).select(number_field)
+    for column, value in scope.items():
+        query = query.eq(column, value)
+    rows = (
+        query.like(number_field, f"{prefix}%")
+        .order(number_field, desc=True)
+        .limit(_SEQUENCE_WINDOW)
+        .execute()
+    ).data or []
+    return sequence_after((r.get(number_field) for r in rows), prefix)
+
+
 def is_unique_violation(err: Exception) -> bool:
     """True when `err` is a Postgres unique-constraint violation (23505) —
     shared with routers that translate a raw DB collision into a friendly,

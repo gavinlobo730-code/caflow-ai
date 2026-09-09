@@ -19,6 +19,7 @@ from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
+from services.numbering import sequence_after
 
 
 class CreditNoteIn(BaseModel):
@@ -112,18 +113,9 @@ def _current_fy() -> str:
 
 
 def _next_cn_seq(db, firm_id: str, client_id: str, fy: str) -> int:
-    try:
-        resp = (
-            db.table("credit_notes")
-            .select("id", count="exact")
-            .eq("firm_id", firm_id)
-            .eq("client_id", client_id)
-            .like("credit_note_no", f"CN-{fy}-%")
-            .execute()
-        )
-        return (resp.count or 0) + 1
-    except Exception:
-        return 1
+    from services.numbering import next_sequence
+    return next_sequence(db, "credit_notes", f"CN-{fy}-",
+                         firm_id=firm_id, client_id=client_id)
 
 
 def _compute_line_gst(
@@ -287,7 +279,9 @@ def create_credit_note(
         fy = _current_fy()
 
         if _USE_MOCK:
-            seq = len([cn for cn in MOCK_CREDIT_NOTES if cn["client_id"] == client_id]) + 1
+            seq = sequence_after(
+                (cn.get("credit_note_no") for cn in MOCK_CREDIT_NOTES
+                 if cn["client_id"] == client_id), f"CN-{fy}-")
             cn_no = f"CN-{fy}-{seq:04d}"
             cn_id = str(uuid.uuid4())
             cn = {

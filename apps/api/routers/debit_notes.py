@@ -26,6 +26,7 @@ from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
+from services.numbering import sequence_after
 
 # Same private Storage bucket routers/documents.py and document_intelligence_v1.py
 # use — plain attachment (a scanned goods-return note, vendor acknowledgment),
@@ -128,13 +129,9 @@ def _assert_dn_scope(current_user: dict, dn_id: str) -> Optional[str]:
 
 
 def _next_dn_seq(db, firm_id: str, client_id: str, fy: str) -> int:
-    try:
-        resp = (db.table("debit_notes").select("id", count="exact")
-                .eq("firm_id", firm_id).eq("client_id", client_id)
-                .like("debit_note_no", f"DN-{fy}-%").execute())
-        return (resp.count or 0) + 1
-    except Exception:
-        return 1
+    from services.numbering import next_sequence
+    return next_sequence(db, "debit_notes", f"DN-{fy}-",
+                         firm_id=firm_id, client_id=client_id)
 
 
 def _compute_lines(lines_data: list, is_interstate: bool):
@@ -228,7 +225,10 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
         if _USE_MOCK:
             import uuid
             payload["id"] = str(uuid.uuid4())
-            payload["debit_note_no"] = f"DN-{fy}-{len([d for d in MOCK_DEBIT_NOTES if d['client_id']==client_id])+1:04d}"
+            seq = sequence_after(
+                (d.get("debit_note_no") for d in MOCK_DEBIT_NOTES
+                 if d["client_id"] == client_id), f"DN-{fy}-")
+            payload["debit_note_no"] = f"DN-{fy}-{seq:04d}"
             MOCK_DEBIT_NOTES.append(payload)
             return api_response(True, {**payload, "lines": computed})
 

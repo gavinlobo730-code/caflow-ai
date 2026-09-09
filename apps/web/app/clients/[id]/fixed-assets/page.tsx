@@ -1,6 +1,7 @@
 "use client";
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { changedFields, formFor, type CorrectionForm } from "@/lib/fixedAssets/correction";
 import { request } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
@@ -213,6 +214,8 @@ function RegisterTab({ clientId }: { clientId: string }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [correcting, setCorrecting] = useState<Asset | null>(null);
+  const [deleting, setDeleting] = useState<Asset | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
@@ -294,7 +297,7 @@ function RegisterTab({ clientId }: { clientId: string }) {
       </div>
 
       {loading ? (
-        <TableSkeleton cols={10} rows={4} />
+        <TableSkeleton cols={11} rows={4} />
       ) : loadFailed ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
           <p className="text-sm text-red-600 font-medium">Couldn&apos;t load the asset register — the request failed or timed out.</p>
@@ -321,6 +324,7 @@ function RegisterTab({ clientId }: { clientId: string }) {
                 <th className="px-3 py-3 text-right font-semibold">WDV</th>
                 <th className="px-3 py-3 text-left font-semibold">Method</th>
                 <th className="px-3 py-3 text-left font-semibold">Status</th>
+                <th className="px-3 py-3 text-right font-semibold">Correct</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F8FAFC]">
@@ -353,10 +357,31 @@ function RegisterTab({ clientId }: { clientId: string }) {
                         {a.status.replace("_", " ")}
                       </span>
                     </td>
+                    {/* FA-10. Until this the register was final the moment it
+                        was saved: a mistyped cost or a wrong category could
+                        only be escaped by disposing at nil proceeds (which
+                        books a fabricated loss) or by a database console. What
+                        may actually be changed, and what has to be reversed
+                        first, is decided by the SERVER — the refusal is shown
+                        verbatim because it names the way out. */}
+                    <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => setCorrecting(a)}
+                        className="text-[11px] text-blue-600 hover:underline"
+                      >
+                        Correct
+                      </button>
+                      <button
+                        onClick={() => setDeleting(a)}
+                        className="text-[11px] text-red-600 hover:underline ml-3"
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                   {expanded === a.id && (
                     <tr key={`${a.id}-exp`} className="bg-[#F8FAFC]">
-                      <td colSpan={10} className="px-8 py-3">
+                      <td colSpan={11} className="px-8 py-3">
                         <div className="grid grid-cols-4 gap-4 text-xs">
                           <div><span className="text-[#94A3B8]">Location:</span> <span className="text-[#1E293B]">{a.location ?? "—"}</span></div>
                           <div><span className="text-[#94A3B8]">Salvage Value:</span> <span className="text-[#1E293B] font-mono">{fmt(a.salvage_value_paise)}</span></div>
@@ -373,6 +398,167 @@ function RegisterTab({ clientId }: { clientId: string }) {
       )}
 
       {showAdd && <AddAssetDrawer clientId={clientId} onClose={() => setShowAdd(false)} onSaved={load} />}
+      {correcting && (
+        <CorrectAssetDrawer asset={correcting} onClose={() => setCorrecting(null)} onSaved={load} />
+      )}
+      {deleting && (
+        <DeleteAssetDialog asset={deleting} onClose={() => setDeleting(null)} onSaved={load} />
+      )}
+    </div>
+  );
+}
+
+// ── Correct an asset (FA-10) ────────────────────────────────────────────────
+//
+// The register was final the moment it was saved. A CA who typed ₹15,00,000 for
+// ₹1,50,000, or picked the wrong category, had three ways out and all three
+// were wrong: dispose at nil proceeds (a fabricated loss, and it first demands
+// every unposted month be depreciated), reverse the journal through the generic
+// accounting screen (the register then claims a cost the ledger no longer
+// carries), or a database console.
+//
+// WHAT THIS SCREEN DOES NOT DECIDE
+// Which fields may change, whether the acquisition journal has to be reversed
+// and re-posted, whether the period is open, and whether a revised rate is
+// prospective — every one of those is the server's. This form sends what was
+// touched and shows the refusal verbatim, because the refusal names the way
+// out ("reverse it a month at a time", "the year already carries…"). Nothing
+// here recomputes a rate: the Schedule II table is served, never mirrored.
+
+function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState<CorrectionForm>(() => formFor(asset));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const set = (k: keyof CorrectionForm, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  async function save() {
+    setError("");
+    // Only what the CA actually CHANGED is sent, so the server can tell a
+    // rename from a cost correction. Sending the whole form back would put
+    // purchase_cost_paise in every request and reverse and re-post a real
+    // acquisition journal for a typo in a name field. lib/fixedAssets/
+    // correction.ts is that diff and the tests that hold it.
+    const diff = changedFields(asset, form);
+    if (!diff.ok) { setError(diff.error); return; }
+    const body = diff.body;
+
+    setSaving(true);
+    try {
+      const j = await request<ApiEnvelope>(`/api/fixed-assets/${asset.id}`, {
+        method: "PATCH", body: JSON.stringify(body),
+      });
+      // The GST workspace answers refusals as HTTP 200 with success:false, and
+      // so does this router — an unchecked call would show "saved" for a
+      // request the server declined.
+      if (!j.success) throw new Error(refusalMessage(j, "Could not correct the asset."));
+      onSaved(); onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not correct the asset.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex justify-end" onClick={onClose}>
+      <div className="bg-white w-full max-w-md h-full overflow-y-auto p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div>
+          <h3 className="text-sm font-semibold text-[#1E293B]">Correct {asset.asset_code ?? asset.asset_name}</h3>
+          <p className="text-[11px] text-[#94A3B8] mt-1">
+            A change to the cost reverses the acquisition journal and re-posts it. A
+            revised rate or life applies from the next financial year, never to a
+            month already posted.
+          </p>
+        </div>
+
+        {[
+          { k: "asset_name" as const,        label: "Asset name" },
+          { k: "location" as const,          label: "Location" },
+          { k: "purchase_cost_rs" as const,  label: "Purchase cost (₹)" },
+          { k: "salvage_value_rs" as const,  label: "Salvage value (₹)" },
+          { k: "wdv_rate_percent" as const,  label: "WDV rate (%)" },
+          { k: "useful_life_years" as const, label: "Useful life (years)" },
+          { k: "notes" as const,             label: "Notes" },
+          { k: "reason" as const,            label: "Why (recorded on the audit trail)" },
+        ].map(f => (
+          <div key={f.k}>
+            <label className="block text-[11px] font-medium text-[#64748B] mb-1">{f.label}</label>
+            <input
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs text-[#1E293B] focus:outline-none focus:ring-2 focus:ring-blue-200"
+              value={form[f.k]}
+              onChange={e => set(f.k, e.target.value)}
+            />
+          </div>
+        ))}
+
+        {error && (
+          <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+            <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-red-700">{error}</p>
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          <button onClick={onClose} className="flex-1 text-xs border border-[#E2E8F0] rounded-lg py-2 text-[#334155] hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={save} disabled={saving} className="flex-1 text-xs bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 disabled:opacity-50">
+            {saving ? "Saving…" : "Save correction"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Delete an asset created by mistake (FA-10) ──────────────────────────────
+
+function DeleteAssetDialog({ asset, onClose, onSaved }: { asset: Asset; onClose: () => void; onSaved: () => void }) {
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+
+  async function remove() {
+    setError(""); setWorking(true);
+    try {
+      const j = await request<ApiEnvelope>(`/api/fixed-assets/${asset.id}`, { method: "DELETE" });
+      if (!j.success) throw new Error(refusalMessage(j, "Could not delete the asset."));
+      onSaved(); onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not delete the asset.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-white rounded-xl max-w-sm w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex gap-2">
+          <Trash2 size={15} className="text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-semibold text-[#1E293B]">Delete {asset.asset_code ?? asset.asset_name}?</h3>
+            <p className="text-[11px] text-[#64748B] mt-1">
+              For an asset created by mistake. Its acquisition journal is reversed and the
+              asset leaves the register — its code is kept so no later asset can take it.
+              An asset with depreciation posted against it cannot be deleted; reverse the
+              months first.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+            <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-red-700">{error}</p>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 text-xs border border-[#E2E8F0] rounded-lg py-2 text-[#334155] hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={remove} disabled={working} className="flex-1 text-xs bg-red-600 text-white rounded-lg py-2 hover:bg-red-700 disabled:opacity-50">
+            {working ? "Deleting…" : "Delete asset"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -666,6 +852,24 @@ function DepreciationTab({ clientId }: { clientId: string }) {
     }
   }
 
+  async function reverseLastMonth(assetId: string, month: string) {
+    // FA-10. The last month only, and the server enforces that — months come
+    // off in the order they went on, because post_depreciation refuses any
+    // month at or below the posted-through mark and a hole would be permanent.
+    setPosting(assetId);
+    setErrors(e => Object.fromEntries(Object.entries(e).filter(([id]) => id !== assetId)));
+    try {
+      const j = await request<ApiEnvelope>(
+        `/api/fixed-assets/${assetId}/depreciation/${month}/reverse`, { method: "POST" });
+      if (!j.success) throw new Error(refusalMessage(j, "Failed to reverse depreciation."));
+      await load();
+    } catch (e: unknown) {
+      setErrors(prev => ({ ...prev, [assetId]: e instanceof Error ? e.message : "Failed to reverse depreciation." }));
+    } finally {
+      setPosting(null);
+    }
+  }
+
   async function postAllDepreciation() {
     // Skip assets whose annual charge is already zero, same condition the
     // per-row Post button below uses. One request at a time, deliberately:
@@ -777,6 +981,19 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                       </>
                     ) : (
                       <span className="text-[10px] text-[#94A3B8]">Fully depreciated</span>
+                    )}
+                    {r.depreciation_posted_through && (
+                      // FA-10: a month posted on a wrong cost or a wrong rate
+                      // had no way back. The refusal that names it — "reverse
+                      // it a month at a time" — is only actionable because of
+                      // this control.
+                      <button
+                        onClick={() => reverseLastMonth(r.asset_id, r.depreciation_posted_through!)}
+                        disabled={posting === r.asset_id}
+                        className="block text-[10px] text-red-600 hover:underline disabled:opacity-50 mt-1"
+                      >
+                        Reverse {r.depreciation_posted_through}
+                      </button>
                     )}
                   </td>
                 </tr>

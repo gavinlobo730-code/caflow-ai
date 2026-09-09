@@ -42,6 +42,7 @@ from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
+from services.numbering import sequence_after
 
 # Same private Storage bucket routers/documents.py and debit_notes.py use —
 # plain attachment, no AI extraction (a credit note is CA-authored, not
@@ -128,13 +129,9 @@ def _assert_pcn_scope(current_user: dict, pcn_id: str) -> Optional[str]:
 
 
 def _next_pcn_seq(db, firm_id: str, client_id: str, fy: str) -> int:
-    try:
-        resp = (db.table("purchase_credit_notes").select("id", count="exact")
-                .eq("firm_id", firm_id).eq("client_id", client_id)
-                .like("credit_note_no", f"PCN-{fy}-%").execute())
-        return (resp.count or 0) + 1
-    except Exception:
-        return 1
+    from services.numbering import next_sequence
+    return next_sequence(db, "purchase_credit_notes", f"PCN-{fy}-",
+                         firm_id=firm_id, client_id=client_id)
 
 
 def _compute_line_gst(taxable: int, gst_rate_bps: int, is_interstate: bool) -> tuple[int, int, int]:
@@ -234,7 +231,10 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
         }
         if _USE_MOCK:
             payload["id"] = str(uuid.uuid4())
-            payload["credit_note_no"] = f"PCN-{fy}-{len([d for d in MOCK_PURCHASE_CREDIT_NOTES if d['client_id']==client_id])+1:04d}"
+            seq = sequence_after(
+                (d.get("credit_note_no") for d in MOCK_PURCHASE_CREDIT_NOTES
+                 if d["client_id"] == client_id), f"PCN-{fy}-")
+            payload["credit_note_no"] = f"PCN-{fy}-{seq:04d}"
             MOCK_PURCHASE_CREDIT_NOTES.append(payload)
             return api_response(True, {**payload, "lines": computed})
 

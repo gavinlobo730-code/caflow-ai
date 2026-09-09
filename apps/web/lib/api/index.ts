@@ -1020,6 +1020,16 @@ export const api = {
     accountBalance: (accountId: string, params: Record<string, string>) => request(`/api/banking/accounts/${accountId}/balance?${new URLSearchParams(params)}`),
     listStatements: (params?: Record<string, string>) => request(`/api/banking/statements${params ? "?" + new URLSearchParams(params) : ""}`),
     importStatement: (data: unknown) => request("/api/banking/statements/import", { method: "POST", body: JSON.stringify(data) }),
+    /** Remove a statement imported by mistake (BANK-06) — the wrong file, the
+     *  wrong client, the wrong month. HARD, and the lines go with it, because
+     *  the import dedupes on a unique (client_id, import_hash) and rows left
+     *  behind would silently skip every line of the re-import.
+     *
+     *  Refused with a sentence where anything has been posted, matched,
+     *  ignored or reconciled off it: a statement lines were posted off is the
+     *  voucher for those entries, which Companies Act s. 128(5) reaches
+     *  expressly (the same statute services/bank_erasure.py names). */
+    deleteStatement: (id: string) => request(`/api/banking/statements/${id}`, { method: "DELETE" }),
     /** Upload a CSV/XLSX statement — parsed, normalized & deduped SERVER-SIDE (B.1). */
     uploadStatement: async (form: FormData) => {
       const { data: { session } } = await supabase.auth.getSession();

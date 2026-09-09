@@ -115,6 +115,35 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
   } finally { setRowBusy(false); }
   }
 
+  async function deleteStatement(st: BankStatement) {
+    // BANK-06. The wrong file, the wrong client, the wrong month. There was no
+    // way back: the statement stayed in the register for ever and its lines
+    // kept surfacing in the match queue — and it could not be imported over,
+    // because the import dedupes on a unique (client_id, import_hash).
+    //
+    // Whether it MAY go is the server's decision, not this dialog's: a
+    // statement lines have been posted off is the voucher for those entries
+    // (Companies Act s. 128(5)) and is refused with that sentence, shown here
+    // verbatim.
+    if (!confirm(`Remove the ${st.bank_name} statement for ${st.statement_from} → ${st.statement_to}?\n\n`
+      + `Its ${st.row_count} imported lines go with it, so the right file can be `
+      + `imported in its place. A statement with lines already posted, matched or `
+      + `reconciled cannot be removed — the server will say so.`)) return;
+    setRowBusy(true);
+    try {
+      const res = await api.banking.deleteStatement(st.id) as { success: boolean; error: string | null; detail?: string };
+      if (!res.success) {
+        setMsg({ type: "err", text: res.detail ?? res.error ?? "Could not remove the statement." });
+        return;
+      }
+      setMsg({ type: "ok", text: `Statement removed — ${st.row_count} lines withdrawn.` });
+      setSelectedStmt(null);
+      loadStatements(); onChanged?.();
+    } catch (e) {
+      setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not remove the statement." });
+    } finally { setRowBusy(false); }
+  }
+
   const activeAccounts = accounts.filter((a) => a.is_active);
 
   async function openStatement(id: string) {
@@ -245,6 +274,14 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                   <td className="px-4 py-2.5">
                     <button onClick={() => selectedStmt === s.id ? setSelectedStmt(null) : openStatement(s.id)} className="text-xs text-blue-600 hover:underline">
                       {selectedStmt === s.id ? "Hide" : "View"} ({s.row_count} txns)
+                    </button>
+                    <button
+                      onClick={() => deleteStatement(s)}
+                      disabled={rowBusy}
+                      title="Remove a statement imported by mistake"
+                      className="text-xs text-red-600 hover:underline ml-3 disabled:opacity-50"
+                    >
+                      Remove
                     </button>
                   </td>
                 </tr>

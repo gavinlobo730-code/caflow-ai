@@ -43,17 +43,8 @@ def _current_fy_long() -> str:
 
 
 def _next_payment_seq(db, firm_id: str, fy: str) -> int:
-    try:
-        resp = (
-            db.table("purchase_payments")
-            .select("id", count="exact")
-            .eq("firm_id", firm_id)
-            .like("payment_no", f"VPMT-{fy}-%")
-            .execute()
-        )
-        return (resp.count or 0) + 1
-    except Exception:
-        return 1
+    from services.numbering import next_sequence
+    return next_sequence(db, "purchase_payments", f"VPMT-{fy}-", firm_id=firm_id)
 
 
 def _is_unique_violation(err: Exception) -> bool:

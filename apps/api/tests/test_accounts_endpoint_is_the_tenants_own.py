@@ -152,7 +152,13 @@ def test_a_field_with_no_column_is_refused_rather_than_dropped(db):
     with pytest.raises(HTTPException) as e:
         ac.update_account("a1", AccountUpdateIn(description="notes"), current_user=USER)
     assert e.value.status_code == 422
-    assert "name, code and is_active" in e.value.detail
+    # The PROPERTY, not the sentence: the refusal lists what the endpoint can
+    # actually change, so it stays true as the update model grows. Pinning the
+    # words meant the message had to be re-agreed every time a field was added.
+    changeable = {f for f in AccountUpdateIn.model_fields if f != "description"}
+    assert changeable
+    assert all(f in e.value.detail for f in changeable), (changeable, e.value.detail)
+    assert "description" not in e.value.detail
 
 
 def test_an_account_of_another_firm_is_not_found(monkeypatch):

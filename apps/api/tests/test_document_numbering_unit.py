@@ -46,13 +46,26 @@ class _FakeQuery:
         self._like_prefix = pattern.rstrip("%")
         return self
 
+    # The sequence now reads back the highest number rather than counting rows
+    # (SALES-04), so it orders and bounds the read. Ordering the whole store
+    # descending is what Postgres would return; the numeric maximum is taken by
+    # services.numbering.sequence_after from whatever this hands back.
+    def order(self, col: str, desc: bool = False, **_k):
+        self._store = sorted(
+            self._store, key=lambda r: str(r.get(col) or ""), reverse=desc)
+        return self
+
+    def limit(self, n: int):
+        self._limit = n
+        return self
+
     def execute(self):
         rows = [
             r for r in self._store
             if all(r.get(k) == v for k, v in self._eq.items())
             and (self._like_prefix is None or str(r.get(self._number_field, "")).startswith(self._like_prefix))
         ]
-        return SimpleNamespace(count=len(rows), data=rows)
+        return SimpleNamespace(count=len(rows), data=rows[: getattr(self, "_limit", None)])
 
 
 class _FakeDB:

@@ -108,6 +108,24 @@ class _Q:
         self.f.append((k, v))
         return self
 
+    # migration 351 gave fixed_assets a deleted_at, so every read now excludes a
+    # soft-deleted asset. Modelled faithfully rather than as a no-op: a fake
+    # that ignored the filter would pass while a deleted asset still counted in
+    # the register.
+    def is_(self, col, _null="null"):
+        self.f.append((col, None))
+        return self
+
+    def limit(self, _n):
+        return self
+
+    # The asset code is read back as the highest in the series rather than a
+    # count of the rows (SALES-04's shape; a reused code would put a new
+    # asset's acquisition journal on the old asset's entry).
+    def like(self, col, pattern):
+        self._like = (col, pattern.rstrip("%"))
+        return self
+
     def order(self, *a, **k):
         return self
 
@@ -116,7 +134,11 @@ class _Q:
         return self
 
     def _match(self):
-        return [r for r in self.s.setdefault(self.t, []) if all(r.get(k) == v for k, v in self.f)]
+        rows = [r for r in self.s.setdefault(self.t, []) if all(r.get(k) == v for k, v in self.f)]
+        col, prefix = getattr(self, "_like", (None, None))
+        if col:
+            rows = [r for r in rows if str(r.get(col) or "").startswith(prefix)]
+        return rows
 
     def execute(self):
         if self.op == "insert":

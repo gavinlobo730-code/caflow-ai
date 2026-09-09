@@ -77,6 +77,10 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("client_sales_invoices", "shipping_bill_no"): "migration 349",
     ("client_sales_invoices", "shipping_bill_date"): "migration 349",
     ("client_sales_invoices", "port_code"): "migration 349",
+    ("fixed_assets", "deleted_at"): "migration 351",
+    ("fixed_assets", "deleted_by"): "migration 351",
+    ("fixed_assets", "updated_at"): "migration 351",
+    ("fixed_assets", "corrections_count"): "migration 351",
 }
 
 

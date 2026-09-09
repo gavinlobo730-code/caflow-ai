@@ -147,6 +147,14 @@ class _Table:
     def limit(self, *_a, **_k):
         return self
 
+    # _next_receipt_seq now reads the highest receipt_no back rather than
+    # counting rows (SALES-04), so it filters and orders as well.
+    def like(self, *_a, **_k):
+        return self
+
+    def order(self, *_a, **_k):
+        return self
+
     def execute(self):
         return self._on_execute(self.name, self._verb, dict(self._filters), self._payload)
 
@@ -193,6 +201,10 @@ def test_create_foreign_receipt_cas_retries_instead_of_failing_immediately(monke
                 return SimpleNamespace(data=[] if state["cas_attempts"] == 1 else [{"id": INV_ID}])
             return SimpleNamespace(data=[live_invoice])
         if name == "receipts":
+            # The sequence read (_next_receipt_seq) is a SELECT with no payload:
+            # an empty series, so the receipt is numbered 0001.
+            if verb != "insert":
+                return SimpleNamespace(data=[])
             return SimpleNamespace(data=[dict(payload)])
         return SimpleNamespace(data=[])
 
@@ -250,6 +262,10 @@ def test_create_foreign_receipt_cas_gives_up_after_max_attempts(monkeypatch):
                 return SimpleNamespace(data=[])   # every attempt loses the race
             return SimpleNamespace(data=[live_invoice])
         if name == "receipts":
+            # The sequence read (_next_receipt_seq) is a SELECT with no payload:
+            # an empty series, so the receipt is numbered 0001.
+            if verb != "insert":
+                return SimpleNamespace(data=[])
             return SimpleNamespace(data=[dict(payload)])
         return SimpleNamespace(data=[])
 

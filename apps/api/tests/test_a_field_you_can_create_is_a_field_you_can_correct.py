@@ -58,6 +58,9 @@ IMMUTABLE_ON_UPDATE: dict[tuple[str, str], str] = {
     ("SalesInvoiceUpdateIn", "client_id"): "an invoice belongs to one set of books",
     ("CustomerUpdateIn", "client_id"): "a customer belongs to one client",
     ("VendorUpdateIn", "client_id"): "a vendor belongs to one client",
+    ("FixedAssetUpdateIn", "client_id"): (
+        "an asset belongs to one register — and its acquisition journal, its "
+        "depreciation journals and its asset_code are all client-scoped"),
     ("EmployeeUpdateIn", "client_id"): "an employee belongs to one client",
     ("ServiceCatalogueUpdateIn", "client_id"): "a catalogue entry belongs to one client",
     ("FirmHsnLibraryUpdateIn", "client_id"): "a library entry belongs to one client",
@@ -108,14 +111,11 @@ IMMUTABLE_ON_UPDATE: dict[tuple[str, str], str] = {
     # Attachments are added through their own endpoint.
     ("JournalEntryUpdateIn", "attachments"): "attachments have their own route",
 
-    # The COA hierarchy. Not editable TODAY and that is a gap rather than a
-    # decision — ACC-09: nothing writes parent_id, nothing reads it, and there
-    # is no screen to set it. Named here so it is a known hole with an owner
-    # instead of an omission, and so removing it from this map is what the fix
-    # will do.
-    ("AccountUpdateIn", "parent_id"): (
-        "ACC-09 — the chart of accounts is flat: nothing writes parent_id and "
-        "no screen sets it. A gap, not a decision"),
+    # The COA hierarchy used to be listed here as a GAP rather than a decision
+    # (ACC-09: nothing wrote parent_id, nothing wrote parent_group or sub_group,
+    # and no screen set any of them). It is closed — AccountUpdateIn carries all
+    # three and routers/accounting writes them — so the entry is gone rather
+    # than reworded, which is what closing a gap named here looks like.
 }
 
 

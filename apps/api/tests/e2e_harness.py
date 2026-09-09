@@ -27,6 +27,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
+from services.numbering import NUMBER_SERIES as _NUMBER_SERIES
+
 
 # --------------------------------------------------------------------------- #
 #  Result envelope (mimics supabase-py's APIResponse: .data, .count)
@@ -70,8 +72,18 @@ _GENERATED = {
 # Enforced on insert() only, NOT on seed(). Fixtures seed the same standard chart
 # for several clients of one firm, which real Postgres would reject; correcting
 # that is a much larger job than this, and seeding is not the path under test.
+#
+# The document-number keys are DERIVED from services.numbering.NUMBER_SERIES —
+# the same declaration next_sequence checks a caller's scope against — so the
+# harness enforces exactly the scope the sequence is computed over. Getting the
+# two out of step is the bug migration 151 fixed for invoices and credit notes,
+# 159 for debit notes and receipts, and 350 for sales debit notes and purchase
+# credit notes: the number is per client, the constraint was per firm, and the
+# firm's second client could never insert.
 _UNIQUE: dict[str, list[tuple[str, ...]]] = {
     "chart_of_accounts": [("firm_id", "account_code"), ("firm_id", "account_name")],
+    **{table: [tuple(scope) + (field,)]
+       for table, (field, scope) in _NUMBER_SERIES.items()},
 }
 
 
@@ -88,6 +100,12 @@ _DEFAULTS: dict[str, dict] = {
     # in the same view here as it would in Postgres.
     "bank_transactions": {"match_status": "unmatched", "needs_review": False},
     "chart_of_accounts": {"is_active": True},
+    # NOT NULL DEFAULT false / 0 in the real schema (migrations 025, 351).
+    # create_asset omits them, and post_depreciation reads asset["is_disposed"]
+    # by subscript — a row inserted without it KeyErrors here where Postgres
+    # would have supplied false.
+    "fixed_assets": {"is_disposed": False, "accumulated_depreciation_paise": 0,
+                     "corrections_count": 0},
 }
 
 
@@ -586,7 +604,11 @@ class _Rpc:
         fk_column = self.params["p_lines_fk_column"]
 
         header.setdefault("id", str(uuid.uuid4()))
-        self.db._tables.setdefault(header_table, []).append(header)
+        store = self.db._tables.setdefault(header_table, [])
+        # The real RPC inserts into a real table, so the unique index applies —
+        # this is how a numbering collision reaches services/numbering.py's retry.
+        _enforce_unique(header_table, store, header)
+        store.append(header)
 
         line_store = self.db._tables.setdefault(lines_table, [])
         for l in lines:

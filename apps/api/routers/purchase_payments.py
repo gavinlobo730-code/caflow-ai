@@ -21,6 +21,7 @@ from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from services import reversal_service
 from services import purchase_payment_service
+from services.numbering import sequence_after
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payments")
@@ -217,17 +218,8 @@ def _rollback_bill_claim(
 
 
 def _next_payment_seq(db, firm_id: str, fy: str) -> int:
-    try:
-        resp = (
-            db.table("purchase_payments")
-            .select("id", count="exact")
-            .eq("firm_id", firm_id)
-            .like("payment_no", f"VPMT-{fy}-%")
-            .execute()
-        )
-        return (resp.count or 0) + 1
-    except Exception:
-        return 1
+    from services.numbering import next_sequence
+    return next_sequence(db, "purchase_payments", f"VPMT-{fy}-", firm_id=firm_id)
 
 
 def _assert_payment_scope(current_user: dict, payment_id: str) -> dict:
@@ -385,7 +377,8 @@ def create_purchase_payment(
             "client_id": client_id,
             "vendor_id": vendor_id,
             "purchase_bill_id": purchase_bill_id,
-            "payment_no": f"VPMT-{fy}-{len(MOCK_PURCHASE_PAYMENTS) + 1:04d}",
+            "payment_no": "VPMT-{}-{:04d}".format(fy, sequence_after(
+                (p.get("payment_no") for p in MOCK_PURCHASE_PAYMENTS), f"VPMT-{fy}-")),
             "payment_date": payment_date,
             "amount_paise": amount_paise,
             "payment_mode": payment_mode,

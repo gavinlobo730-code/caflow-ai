@@ -1182,12 +1182,21 @@ class Phase2JournalService:
             raise
 
     def journal_for_asset_acquisition(
-        self, asset: dict, firm_id: str, client_id: str
+        self, asset: dict, firm_id: str, client_id: str, reference_suffix: str = ""
     ) -> Optional[str]:
         """
         Asset acquisition journal.
         Dr  Fixed Asset Account (cost_paise)
           Cr  Bank / Creditor (cost_paise)
+
+        `reference_suffix` is appended to the reference (FA-ACQ-{code}{suffix}).
+        A correction reverses the original and re-posts, and the re-post MUST
+        carry a different reference: migration 213 excludes is_reversed rows
+        from the unique index and _create_journal's fast path filters the same
+        way, so a same-reference re-post can land — but post_journal_atomic's
+        own unique-violation handler (migration 274) picks the winner WITHOUT
+        that filter, ORDER BY created_at LIMIT 1. One concurrent click and the
+        asset would be pointed at the dead entry.
         """
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_asset_acquisition: %s", asset.get("asset_name"))
@@ -1246,7 +1255,7 @@ class Phase2JournalService:
                 return self._create_journal(
                     db=db, firm_id=firm_id, client_id=client_id,
                     entry_date=asset["purchase_date"],
-                    reference_no=f"FA-CAP-{asset.get('asset_code', asset['id'][:8])}",
+                    reference_no=f"FA-CAP-{asset.get('asset_code', asset['id'][:8])}{reference_suffix}",
                     narration=(f"Capitalised from purchase bill: {asset['asset_name']}"),
                     entry_type="Journal",
                     lines=[
@@ -1286,7 +1295,7 @@ class Phase2JournalService:
             return self._create_journal(
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=asset["purchase_date"],
-                reference_no=f"FA-ACQ-{asset.get('asset_code', asset['id'][:8])}",
+                reference_no=f"FA-ACQ-{asset.get('asset_code', asset['id'][:8])}{reference_suffix}",
                 narration=f"Asset acquisition: {asset['asset_name']}",
                 entry_type="Journal",
                 lines=lines,

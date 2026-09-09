@@ -20,6 +20,7 @@ from typing import Optional
 
 from models.common import api_response
 from services import bank_erasure
+from services.audit_service import log_event
 from core.authz import assert_client_access, filter_by_client
 
 _logger = logging.getLogger("caflow.banking")
@@ -134,6 +135,10 @@ def _assert_row_scope(db, current_user: dict, table: str, row_id: str, label: st
 
 def _assert_txn_scope(db, current_user: dict, txn_id: str) -> str:
     return _assert_row_scope(db, current_user, "bank_transactions", txn_id, "Bank transaction")
+
+
+def _assert_statement_scope(db, current_user: dict, statement_id: str) -> str:
+    return _assert_row_scope(db, current_user, "bank_statements", statement_id, "Statement")
 
 
 def _assert_recon_scope(db, current_user: dict, recon_id: str) -> str:
@@ -1125,6 +1130,93 @@ def list_statements(
         return api_response(True, [])
     rows = banking_service.list_statements(db, current_user["firm_id"], client_id)
     return api_response(True, _scope_rows(current_user, client_id, rows))
+
+
+@router.delete("/statements/{statement_id}")
+def delete_statement(
+    statement_id: str = Path(...),
+    current_user: dict = Depends(rbac("banking", "write")),
+):
+    """Undo a mis-imported statement (BANK-06).
+
+    The wrong file, the wrong client, the wrong month. Until this there was no
+    way back: the only DELETE in this router was for a saved column mapping, so
+    a statement imported by mistake stayed in the register for ever, and its
+    lines kept surfacing in the match queue.
+
+    WHY THIS IS A HARD DELETE AND NOT A SOFT ONE
+        The whole point is to import the RIGHT file afterwards, and the import
+        dedupes on a unique (client_id, import_hash) — see
+        banking_service._existing_hashes. Rows left behind under a deleted_at
+        would silently skip every line of the re-import, which is the failure
+        this endpoint exists to end. So the statement and its lines go, and the
+        audit_log keeps the whole of both.
+
+    WHY ONLY AN UNTOUCHED STATEMENT
+        A statement is the VOUCHER for every receipt and payment posted off it
+        — Companies Act s. 128(5) reaches it expressly, which is why
+        services/bank_erasure.py refuses to delete a bank account that has one.
+        A statement nothing has been posted, matched, ignored or reconciled
+        from is not yet the voucher for any entry: it is an import. That is the
+        line, and it is drawn on the LINES rather than on the file.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"statement_id": statement_id, "deleted": True})
+
+    # Row-addressed with no client_id in the request, so the mount guard never
+    # fires — the same helper every other row-addressed endpoint here uses.
+    _assert_statement_scope(db, current_user, statement_id)
+    statement = (db.table("bank_statements").select("*")
+                 .eq("firm_id", current_user["firm_id"]).eq("id", statement_id)
+                 .limit(1).execute().data)[0]
+
+    txns = (db.table("bank_transactions").select("*")
+            .eq("firm_id", current_user["firm_id"])
+            .eq("statement_id", statement_id).execute().data) or []
+
+    posted = [t for t in txns if t.get("match_status") == "posted" or t.get("posted_journal_id")]
+    decided = [t for t in txns if t.get("match_status") in ("matched", "ignored")]
+    reconciled = [t for t in txns if t.get("reconciliation_id")]
+
+    if posted or decided or reconciled:
+        parts = []
+        if posted:
+            parts.append(f"{len(posted)} already posted to the ledger")
+        if reconciled:
+            parts.append(f"{len(reconciled)} in a completed reconciliation")
+        if decided:
+            parts.append(f"{len(decided)} matched or ignored")
+        raise HTTPException(
+            status_code=422,
+            detail=("This statement can no longer be removed as a mis-import: "
+                    + ", ".join(parts) + ". A statement lines have been posted "
+                    "off is the voucher for those entries (Companies Act "
+                    "s. 128(5)) — reverse the journals and unmatch the lines "
+                    "first, or leave it and import the right file alongside it."))
+
+    # The WHOLE statement and every line, before either goes — the log is what
+    # is immutable, not the row (migrations 275/276's rule for a journal).
+    log_event(
+        current_user["firm_id"], "bank_statement", statement_id, "delete",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data=dict(statement),
+        metadata={"transactions": txns, "transaction_count": len(txns)},
+    )
+
+    # bank_transactions FK to bank_statements ON DELETE CASCADE (migration 006),
+    # so the lines go with the header; deleted explicitly first so a database
+    # without the cascade cannot leave them orphaned and still matchable.
+    db.table("bank_transactions").delete().eq(
+        "firm_id", current_user["firm_id"]).eq("statement_id", statement_id).execute()
+    db.table("bank_statements").delete().eq(
+        "firm_id", current_user["firm_id"]).eq("id", statement_id).execute()
+
+    return api_response(True, {
+        "statement_id": statement_id,
+        "deleted": True,
+        "transactions_removed": len(txns),
+    })
 
 
 # ─── Transactions ─────────────────────────────────────────────────────────────
