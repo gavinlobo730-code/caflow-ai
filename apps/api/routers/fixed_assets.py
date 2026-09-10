@@ -254,7 +254,12 @@ def _db():
 #:      carrying amount over the remaining life, PROSPECTIVELY. Rewriting
 #:      months already posted at the old basis would restate periods a return
 #:      may already cover.
-_TIER_A_FIELDS = frozenset({"asset_name", "location", "notes"})
+#: Tier A also carries the two IT Act §32 facts. They change no Companies Act
+#: figure and post nothing — §32 is a different system, per BLOCK rather than
+#: per asset, and it reads them itself (domain/income_tax/section_32.py). A
+#: correction to either is a correction to a classification, not to an estimate.
+_TIER_A_FIELDS = frozenset({"asset_name", "location", "notes",
+                            "it_block_key", "put_to_use_date"})
 _TIER_B_FIELDS = frozenset({
     "purchase_cost_paise", "asset_category", "purchase_date",
     "acquisition_mode", "vendor_id", "purchase_bill_id", "bank_account_id",
@@ -627,6 +632,12 @@ def create_asset(
         "accumulated_depreciation_paise": 0,
         "location":                    data.location,
         "notes":                       data.notes,
+        # IT Act §32 (migration 357). Neither affects the Companies Act charge
+        # above; both are read by domain/income_tax/section_32.py, and each is
+        # reported as a named gap when absent rather than defaulted — a
+        # put-to-use date in particular is never taken from the purchase date.
+        "it_block_key":                data.it_block_key,
+        "put_to_use_date":             data.put_to_use_date,
     }).execute()
 
     asset = (row.data or [{}])[0]

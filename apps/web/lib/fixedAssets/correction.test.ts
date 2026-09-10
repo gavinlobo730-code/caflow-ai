@@ -78,3 +78,51 @@ test("the reason rides along only when one was given", () => {
   assert.equal(without.ok, true);
   if (without.ok) assert.ok(!("reason" in without.body));
 });
+
+// ── IT Act §32, which is a different system from Schedule II ────────────────
+//
+// `it_block_key` and `put_to_use_date` change no Companies Act figure and post
+// nothing: §32 works per BLOCK, at the block's rate, on the block's written-down
+// value, and it reads these itself. Both are Tier A on the server — a
+// classification and a fact — so a correction to either must never look like a
+// cost correction, which reverses and re-posts a real acquisition journal.
+
+test("setting the §32 block sends only that, and reposts nothing", () => {
+  const res = changedFields(ASSET, { ...formFor(ASSET), it_block_key: "Plant & Machinery 15%" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.deepEqual(res.body, { it_block_key: "Plant & Machinery 15%" });
+  for (const f of REPOSTS_THE_ACQUISITION) assert.ok(!(f in res.body), f);
+});
+
+test("a put-to-use date is its own field and never the purchase date", () => {
+  // The second proviso to §32(1) turns on put-to-use. An asset bought in
+  // February and put to use in June belongs to the NEXT previous year entirely,
+  // so substituting one for the other would allow a full year on it.
+  const res = changedFields(ASSET, { ...formFor(ASSET), put_to_use_date: "2025-06-01" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.deepEqual(res.body, { put_to_use_date: "2025-06-01" });
+  assert.ok(!("purchase_date" in res.body));
+});
+
+test("clearing either is sent as null, so the §32 gap comes back", () => {
+  const withBlock = { ...ASSET, it_block_key: "P&M 15%", put_to_use_date: "2025-06-01" };
+  const res = changedFields(withBlock, {
+    ...formFor(withBlock), it_block_key: "  ", put_to_use_date: "",
+  });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  assert.deepEqual(res.body, { it_block_key: null, put_to_use_date: null });
+});
+
+test("an asset that already carries them shows them, rather than a blank", () => {
+  // A blank reads as "not set", and a CA who sees one sets it again — which is
+  // harmless for a name and wrong for a block, because the value they type may
+  // not be the one already recorded.
+  const withBlock = { ...ASSET, it_block_key: "Computers 40%", put_to_use_date: "2025-04-05" };
+  const form = formFor(withBlock);
+  assert.equal(form.it_block_key, "Computers 40%");
+  assert.equal(form.put_to_use_date, "2025-04-05");
+  assert.equal(changedFields(withBlock, form).ok, false, "unchanged means unchanged");
+});

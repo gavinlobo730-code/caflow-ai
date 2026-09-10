@@ -47,6 +47,11 @@ interface Asset {
   current_wdv_paise?: number;
   status: "active" | "disposed" | "fully_depreciated";
   notes?: string;
+  /** IT Act §32, not Schedule II — a different system, per BLOCK. Read here so
+   *  the correction drawer shows what is already recorded rather than a blank
+   *  that reads as "not set". */
+  it_block_key?: string | null;
+  put_to_use_date?: string | null;
 }
 
 // fixed_assets has no status column (migration 025/054) — routers/
@@ -255,7 +260,7 @@ function RegisterTab({ clientId }: { clientId: string }) {
       const supabase = getSupabaseClient();
       const { data, error } = await selectAll(() => supabase
         .from("fixed_assets")
-        .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, is_disposed, notes")
+        .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, is_disposed, notes, it_block_key, put_to_use_date")
         .eq("client_id", clientId)
         .eq("is_disposed", false)
         .order("purchase_date", { ascending: false })
@@ -505,6 +510,12 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
           { k: "wdv_rate_percent" as const,  label: "WDV rate (%)" },
           { k: "useful_life_years" as const, label: "Useful life (years)" },
           { k: "notes" as const,             label: "Notes" },
+          // IT Act §32, not Schedule II. Neither changes the Companies Act
+          // charge above — §32 is a different system entirely, per BLOCK, and
+          // reads these itself (domain/income_tax/section_32.py). Both are
+          // Tier A: a classification and a fact, with no GL consequence.
+          { k: "it_block_key" as const,      label: "§32 block (income tax)" },
+          { k: "put_to_use_date" as const,   label: "Put to use on (§32, not the purchase date)" },
           { k: "reason" as const,            label: "Why (recorded on the audit trail)" },
         ].map(f => (
           <div key={f.k}>
