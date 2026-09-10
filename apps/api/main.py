@@ -88,6 +88,7 @@ from routers import timeline
 from routers import engagement_letters
 # Phase 14 routers that existed but were never mounted (production-readiness fix)
 from routers import einvoice, eway_bill, tally_migration, xbrl_engine, itr_workspace, form_26as, gst_portal
+from routers import ais
 # Phase 6 — Year End
 from routers import year_end, year_end_checklist, year_end_adjustments
 from routers import year_end_statements, year_end_notes, year_end_reviews
@@ -294,6 +295,9 @@ app.include_router(identity.router, dependencies=_MFA_GUARD)  # M6: identity adm
 app.include_router(itr_workspace.router, dependencies=_CLIENT_GUARD)
 app.include_router(xbrl_engine.router, dependencies=_CLIENT_GUARD)
 app.include_router(form_26as.router, dependencies=_CLIENT_GUARD)
+# AIS (IT Act s.285BB). Row-addressed routes carry no client_id, so the mount
+# guard cannot fire on them and each scopes explicitly; see routers/ais.py.
+app.include_router(ais.router, dependencies=_CLIENT_GUARD)
 app.include_router(einvoice.router, dependencies=_CLIENT_GUARD)
 app.include_router(eway_bill.router, dependencies=_CLIENT_GUARD)
 app.include_router(tally_migration.router, dependencies=_CLIENT_GUARD)

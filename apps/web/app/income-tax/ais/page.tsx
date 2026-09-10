@@ -1,453 +1,371 @@
 "use client";
 
 /**
- * AIS (Annual Information Statement) Ingestion Tool
- * IT Act Section 285BB — Annual Information Statement
- * CAs must review AIS before filing ITR to identify unreported income.
+ * AIS review — IT Act §285BB, the Annual Information Statement.
+ *
+ * The department's statement of what OTHERS reported about the taxpayer. A CA
+ * reviews it before filing an ITR because it is what a §143(1)(a) adjustment
+ * is raised from and what a §143(3) scrutiny starts with.
+ *
+ * WHAT THIS PAGE USED TO BE
+ *   805 lines holding a JSON parser, a books-comparison grid and the whole
+ *   reconciliation in React state, with no call to anything. It was gone on
+ *   refresh — and its own footer said the working was "stored locally in your
+ *   browser only", which was not true either: it was stored nowhere.
+ *
+ *   It also asserted two things nothing knew. A BLANK books box meant "Not in
+ *   Books", which fed an "Est. Undeclared Amount" and lit a red discrepancy
+ *   banner — so an uploaded, unreviewed statement reported every line as
+ *   undeclared income. And it showed "Est. Tax Impact (30%)" in rupees, with
+ *   no knowledge of the client's regime, entity type or slab.
+ *
+ * WHAT IT IS NOW
+ *   A view over /api/ais. The file's TEXT is posted; the server parses it
+ *   (domain/income_tax/ais.py), keeps it (migration 352) and derives every
+ *   status from the two figures. There is no parser in this file, and there
+ *   is no tax figure anywhere on the screen.
  *
  * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
- * This tool only assists in reviewing AIS data. No submission to Income Tax Portal.
+ * # Nothing here reaches the income-tax portal. AIS is downloaded by hand from
+ * # incometax.gov.in, and feedback on a wrong line is submitted there.
  */
 
-import { useState, useRef, useCallback } from "react";
-import * as XLSX from "xlsx";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { todayLocalISO } from "@/lib/dateMath";
+import * as XLSX from "xlsx";
+import { api, type AISLine, type AISStatement } from "@/lib/api";
+import { useClientPicker } from "@/lib/workspace/useClientPicker";
+import { assessmentYearChoices, financialYearForAy } from "@/lib/income-tax/assessmentYear";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { todayLocalISO } from "@/lib/dateMath";
 import {
-  Upload,
-  ArrowLeft,
-  Plus,
-  Download,
-  AlertTriangle,
-  CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  Download,
   FileText,
+  HelpCircle,
+  Plus,
   Trash2,
+  Upload,
 } from "lucide-react";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type TransactionType =
-  | "Salary"
-  | "Interest"
-  | "Dividend"
-  | "Stock Sale"
-  | "Property Sale"
-  | "Foreign Remittance"
-  | "Rent Received"
-  | "Other";
-
-const TRANSACTION_TYPES: TransactionType[] = [
-  "Salary",
-  "Interest",
-  "Dividend",
-  "Stock Sale",
-  "Property Sale",
-  "Foreign Remittance",
-  "Rent Received",
-  "Other",
-];
-
-interface AISTransaction {
-  id: string;
-  type: TransactionType;
-  /** Amount in paise — integer arithmetic only, never floating point */
-  amountPaise: number;
-  payer: string;
-  tdsDeductedPaise: number;
-  source: "json" | "manual";
-}
-
-interface ComparisonRow extends AISTransaction {
-  /** Amount in books in paise — entered by CA */
-  booksAmountPaise: number;
-  status: "matched" | "not_in_books" | "amount_mismatch";
-}
-
-// ---------------------------------------------------------------------------
-// AIS JSON parser
-// IT Act Section 285BB — AIS format from Income Tax portal
-// ---------------------------------------------------------------------------
-
-interface AISSubCategory {
-  informationDescription?: { label?: string; value?: string }[];
-  informationValue?: string;
-  informationSource?: string;
-  amount?: number | string;
-  tdsAmount?: number | string;
-  [key: string]: unknown;
-}
-
-interface AISRoot {
-  AnnualInformationStatement?: {
-    taxpayerInfo?: { pan?: string; name?: string };
-    aisInformation?: {
-      aisSubInformationCategory?: AISSubCategory[];
-    };
-  };
-}
-
-/**
- * Rupees → integer paise, or null when the value is not an amount.
- *
- * Two sources reach this: a number out of the portal's AIS JSON, and text a CA
- * types into the manual-entry and "amount in books" boxes. It used to be
- * `Math.round(parseFloat(val) * 100)` with `isNaN → 0` for both, so a typed
- * "1,25,000" became ₹1 and an unreadable AIS field became ₹0 — and a ₹0 here
- * is not a missing figure, it is a claim the payer reported nothing, which is
- * exactly the reconciliation this screen exists to do.
- *
- * The JSON branch keeps a number's own rounding at the paise (toFixed(2)); the
- * text branch goes through the one parser, which refuses rather than guessing.
- */
-function rupeesToPaise(val: number | string | undefined): number | null {
-  if (val === undefined || val === null || val === "") return 0;
-  if (typeof val === "number") {
-    return Number.isFinite(val) ? paiseFromRupeeInput(val.toFixed(2)) : null;
-  }
-  return paiseFromRupeeInput(val.replace(/[,\s₹]/g, ""));
-}
 
 function formatRupees(paise: number): string {
   const rupees = Math.floor(Math.abs(paise) / 100);
-  const paiseRemainder = Math.abs(paise) % 100;
+  const rest = Math.abs(paise) % 100;
   const sign = paise < 0 ? "-" : "";
-  const formatted = rupees.toLocaleString("en-IN");
-  return `${sign}₹${formatted}.${String(paiseRemainder).padStart(2, "0")}`;
+  return `${sign}₹${rupees.toLocaleString("en-IN")}.${String(rest).padStart(2, "0")}`;
 }
 
-function guessTransactionType(label: string): TransactionType {
-  const l = label.toLowerCase();
-  if (l.includes("salary") || l.includes("tds on salary")) return "Salary";
-  if (l.includes("interest")) return "Interest";
-  if (l.includes("dividend")) return "Dividend";
-  if (l.includes("securities") || l.includes("stock") || l.includes("shares") || l.includes("mutual fund"))
-    return "Stock Sale";
-  if (l.includes("property") || l.includes("immovable")) return "Property Sale";
-  if (l.includes("foreign") || l.includes("remittance")) return "Foreign Remittance";
-  if (l.includes("rent")) return "Rent Received";
-  return "Other";
+/** Blank means the CA has not answered. It is NOT nil, and the two go to the
+ *  server as different requests — null and 0. */
+function booksInputToPaise(text: string): number | null | "invalid" {
+  if (text.trim() === "") return null;
+  const paise = paiseFromRupeeInput(text);
+  return paise === null ? "invalid" : paise;
 }
 
-function parseAISJSON(raw: string): AISTransaction[] {
-  const root: AISRoot = JSON.parse(raw);
-  const categories =
-    root?.AnnualInformationStatement?.aisInformation?.aisSubInformationCategory ?? [];
-
-  const results: AISTransaction[] = [];
-  let idx = 0;
-
-  for (const cat of categories) {
-    const descArr = cat.informationDescription ?? [];
-    const labelEntry = descArr.find((d) => d.label?.toLowerCase().includes("nature") || d.label?.toLowerCase().includes("type"));
-    const label = labelEntry?.value ?? cat.informationSource ?? "Other";
-    const type = guessTransactionType(label);
-    // An AIS row whose amount cannot be read is not a zero — a zero here reads
-    // as "the payer reported nothing", which is the opposite conclusion.
-    const amountPaise = rupeesToPaise(cat.amount ?? cat.informationValue);
-    const tdsDeductedPaise = rupeesToPaise(cat.tdsAmount);
-    if (amountPaise === null || tdsDeductedPaise === null) {
-      throw new Error(
-        `Row ${idx + 1} (${cat.informationSource ?? "unknown source"}) carries an amount this file cannot read.`,
-      );
-    }
-    const payer =
-      descArr.find((d) => d.label?.toLowerCase().includes("deductor") || d.label?.toLowerCase().includes("payer") || d.label?.toLowerCase().includes("source"))
-        ?.value ?? cat.informationSource ?? "Unknown";
-
-    results.push({
-      id: `ais-${idx++}`,
-      type,
-      amountPaise,
-      payer,
-      tdsDeductedPaise,
-      source: "json",
-    });
-  }
-
-  return results;
-}
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
-const BLANK_MANUAL = {
-  type: "Salary" as TransactionType,
-  amount: "",
-  payer: "",
-  tds: "",
+const STATUS_LABEL: Record<AISLine["status"], string> = {
+  not_reviewed: "Not reviewed",
+  matched: "Agreed",
+  amount_mismatch: "Differs",
+  not_in_books: "Not in books",
+  explained: "Explained",
 };
 
+function StatusBadge({ status }: { status: AISLine["status"] }) {
+  const base = "inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium";
+  if (status === "matched")
+    return <span className={`${base} bg-green-100 text-green-700`}><CheckCircle2 className="w-3 h-3" /> Agreed</span>;
+  if (status === "explained")
+    return <span className={`${base} bg-blue-100 text-blue-700`}><CheckCircle2 className="w-3 h-3" /> Explained</span>;
+  if (status === "not_in_books")
+    return <span className={`${base} bg-red-100 text-red-700`}><AlertCircle className="w-3 h-3" /> Not in books</span>;
+  if (status === "amount_mismatch")
+    return <span className={`${base} bg-amber-100 text-amber-700`}><AlertTriangle className="w-3 h-3" /> Differs</span>;
+  // Not a finding. It is the absence of one, and it reads that way.
+  return <span className={`${base} bg-[#F1F5F9] text-[#64748B]`}><HelpCircle className="w-3 h-3" /> Not reviewed</span>;
+}
+
+const BLANK_MANUAL = { transaction_type: "Salary", payer: "", amount: "", tds: "" };
+
 export default function AISPage() {
-  const [clientName, setClientName] = useState("");
-  const [transactions, setTransactions] = useState<AISTransaction[]>([]);
-  const [parseError, setParseError] = useState<string | null>(null);
+  const { clients, clientId, setClientId } = useClientPicker();
+  const years = useMemo(() => assessmentYearChoices(), []);
+  const [assessmentYear, setAssessmentYear] = useState(years[1] ?? years[0] ?? "");
+
+  const [statement, setStatement] = useState<AISStatement | null>(null);
+  const [types, setTypes] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [books, setBooks] = useState<Record<string, string>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [showManual, setShowManual] = useState(false);
-  const [manualForm, setManualForm] = useState(BLANK_MANUAL);
-
-  // Comparison table — booksAmountPaise entered by CA
-  const [booksAmounts, setBooksAmounts] = useState<Record<string, string>>({});
-
+  const [manual, setManual] = useState(BLANK_MANUAL);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // ---------------------------------------------------------------------------
-  // File upload
-  // ---------------------------------------------------------------------------
+  const client = clients.find((c) => c.id === clientId);
 
-  const handleFileUpload = useCallback((file: File) => {
-    setParseError(null);
+  useEffect(() => {
+    api.ais.meta()
+      .then((r) => setTypes(r.data?.transaction_types ?? []))
+      .catch(() => setTypes([]));
+  }, []);
+
+  /** Load the whole statement — lines, workings and summary in one call, so
+   *  the table and the totals can never describe different data. */
+  const load = useCallback(async () => {
+    if (!clientId || !assessmentYear) { setStatement(null); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.ais.statement(clientId, assessmentYear);
+      setStatement(res.data);
+      const nextBooks: Record<string, string> = {};
+      const nextNotes: Record<string, string> = {};
+      for (const line of res.data?.records ?? []) {
+        nextBooks[line.id] = line.books_amount_paise === null
+          ? "" : (line.books_amount_paise / 100).toFixed(2);
+        nextNotes[line.id] = line.note ?? "";
+      }
+      setBooks(nextBooks);
+      setNotes(nextNotes);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load the statement.");
+      setStatement(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId, assessmentYear]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  // ── Upload ───────────────────────────────────────────────────────────────
+
+  const handleFile = useCallback((file: File) => {
+    if (!clientId) { setError("Pick the client this statement belongs to first."); return; }
+    setError(null);
+    setMessage(null);
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
+    reader.onload = async (e) => {
+      const raw = String(e.target?.result ?? "");
+      setBusy(true);
       try {
-        const parsed = parseAISJSON(text);
-        if (parsed.length === 0) {
-          setParseError(
-            "No transactions found in the AIS JSON. Please verify the file format or use manual entry below."
-          );
-          setShowManual(true);
-        } else {
-          setTransactions((prev) => [...prev, ...parsed]);
-        }
-      } catch {
-        setParseError(
-          "Could not parse AIS JSON. The file may be in an unexpected format. Please use manual entry below."
-        );
-        setShowManual(true);
+        // The browser sends the TEXT. It does not parse it — there is one
+        // parser, in domain/income_tax/ais.py, and it is the tested one.
+        const res = await api.ais.upload({
+          client_id: clientId, assessment_year: assessmentYear,
+          raw, file_name: file.name,
+        });
+        setStatement(res.data);
+        setMessage(`${res.data?.records?.length ?? 0} lines read from ${file.name}.`);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not read that file.");
+      } finally {
+        setBusy(false);
       }
     };
     reader.readAsText(file);
-  }, []);
+  }, [clientId, assessmentYear, load]);
 
-  // ---------------------------------------------------------------------------
-  // Manual entry
-  // ---------------------------------------------------------------------------
+  // ── One line's working ───────────────────────────────────────────────────
 
-  function handleAddManual() {
-    if (!manualForm.payer.trim() || !manualForm.amount.trim()) return;
-    const amountPaise = rupeesToPaise(manualForm.amount);
-    const tdsDeductedPaise = rupeesToPaise(manualForm.tds || "0");
-    if (amountPaise === null || tdsDeductedPaise === null) {
-      setParseError("Amount and TDS must be rupee amounts, like 125000 or 125000.50.");
+  async function saveWorking(line: AISLine, status?: string | null) {
+    const parsed = booksInputToPaise(books[line.id] ?? "");
+    if (parsed === "invalid") {
+      setError("That is not a rupee amount. Type it like 125000 or 125000.50.");
       return;
     }
-    setParseError(null);
-    setTransactions((prev) => [
-      ...prev,
-      {
-        id: `manual-${Date.now()}`,
-        type: manualForm.type,
-        amountPaise,
-        payer: manualForm.payer.trim(),
-        tdsDeductedPaise,
-        source: "manual",
-      },
-    ]);
-    setManualForm(BLANK_MANUAL);
-  }
-
-  function handleDeleteTransaction(id: string) {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
-    setBooksAmounts((prev) => {
-      const copy = { ...prev };
-      delete copy[id];
-      return copy;
-    });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Comparison table
-  // ---------------------------------------------------------------------------
-
-  const comparisonRows: ComparisonRow[] = transactions.map((t) => {
-    const booksStr = booksAmounts[t.id] ?? "";
-    // null (unreadable) is kept distinct from blank: blank means the CA has not
-    // said what the books hold, and -1 already carries that. Text that is not
-    // an amount must not become a match or a mismatch — it is neither.
-    const booksParsed = booksStr.trim() === "" ? -1 : rupeesToPaise(booksStr);
-    const booksAmountPaise = booksParsed === null ? -1 : booksParsed;
-    let status: ComparisonRow["status"];
-    if (booksAmountPaise < 0) {
-      status = "not_in_books";
-    } else if (booksAmountPaise === t.amountPaise) {
-      status = "matched";
-    } else {
-      status = "amount_mismatch";
+    setError(null);
+    setBusy(true);
+    try {
+      await api.ais.saveWorking(line.id, {
+        client_id: clientId,
+        books_amount_paise: parsed,
+        status: status ?? null,
+        note: (notes[line.id] ?? "").trim() || null,
+      });
+      await load();
+    } catch (e) {
+      // The server's refusals name what to do next, so they are shown as
+      // written rather than replaced with a generic message.
+      setError(e instanceof Error ? e.message : "Could not save that.");
+    } finally {
+      setBusy(false);
     }
-    return { ...t, booksAmountPaise: Math.max(0, booksAmountPaise), status };
-  });
+  }
 
-  // ---------------------------------------------------------------------------
-  // Discrepancy summary
-  // Integer paise arithmetic — IT Act Section 139 — declaring all income
-  // ---------------------------------------------------------------------------
+  async function addManual() {
+    if (!statement?.upload) return;
+    const amount = paiseFromRupeeInput(manual.amount);
+    const tds = manual.tds.trim() === "" ? 0 : paiseFromRupeeInput(manual.tds);
+    if (amount === null || tds === null) {
+      setError("Amount and TDS must be rupee amounts, like 125000 or 125000.50.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.ais.addRecord({
+        client_id: clientId,
+        upload_id: statement.upload.id,
+        transaction_type: manual.transaction_type,
+        payer: manual.payer.trim(),
+        amount_paise: amount,
+        tds_deducted_paise: tds,
+      });
+      setManual(BLANK_MANUAL);
+      setError(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not add that line.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  const totalAISPaise = transactions.reduce((s, t) => s + t.amountPaise, 0);
-  const notInBooks = comparisonRows.filter((r) => r.status === "not_in_books");
-  const mismatched = comparisonRows.filter((r) => r.status === "amount_mismatch");
+  async function removeLine(line: AISLine) {
+    setBusy(true);
+    try {
+      await api.ais.deleteRecord(line.id);
+      setError(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not remove that line.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  // Estimated undeclared = AIS amounts not in books + positive differences for mismatches
-  const undeclaredPaise = [
-    ...notInBooks.map((r) => r.amountPaise),
-    ...mismatched.map((r) => Math.max(0, r.amountPaise - r.booksAmountPaise)),
-  ].reduce((s, v) => s + v, 0);
+  // ── Export ───────────────────────────────────────────────────────────────
 
-  // Rough estimated tax at 30% slab (conservative high estimate) — integer paise
-  const estimatedTaxPaise = Math.round(undeclaredPaise * 30) / 100;
-
-  // ---------------------------------------------------------------------------
-  // CSV export
-  // ---------------------------------------------------------------------------
+  const exportRows = useMemo(() => (statement?.records ?? []).map((r) => ({
+    Client: client?.client_name ?? "",
+    "Assessment Year": assessmentYear,
+    "Information category": r.information_label ?? "",
+    Type: r.transaction_type,
+    "Payer / Deductor": r.payer ?? "",
+    Source: r.source === "json" ? "AIS (published)" : "Added by the firm",
+    "AIS Amount (₹)": (r.amount_paise / 100).toFixed(2),
+    "TDS Deducted (₹)": (r.tds_deducted_paise / 100).toFixed(2),
+    // "Not reviewed" is written out as words, never as a zero: a zero in this
+    // column is a claim about the books.
+    "Amount in Books (₹)": r.books_amount_paise === null
+      ? "Not reviewed" : (r.books_amount_paise / 100).toFixed(2),
+    "Difference (₹)": r.books_amount_paise === null
+      ? "" : ((r.amount_paise - r.books_amount_paise) / 100).toFixed(2),
+    Status: STATUS_LABEL[r.status],
+    Note: r.note ?? "",
+  })), [statement, client, assessmentYear]);
 
   function exportCSV() {
-    const header = [
-      "Client",
-      "Transaction Type",
-      "Payer/Deductor",
-      "AIS Amount (₹)",
-      "TDS Deducted (₹)",
-      "Amount in Books (₹)",
-      "Difference (₹)",
-      "Status",
-    ].join(",");
-
-    const rows = comparisonRows.map((r) => {
-      const diff =
-        r.status === "not_in_books"
-          ? r.amountPaise
-          : r.amountPaise - r.booksAmountPaise;
-      return [
-        `"${clientName}"`,
-        `"${r.type}"`,
-        `"${r.payer}"`,
-        (r.amountPaise / 100).toFixed(2),
-        (r.tdsDeductedPaise / 100).toFixed(2),
-        r.status === "not_in_books" ? "Not entered" : (r.booksAmountPaise / 100).toFixed(2),
-        (diff / 100).toFixed(2),
-        `"${r.status === "matched" ? "Matched" : r.status === "not_in_books" ? "Not in Books" : "Amount Mismatch"}"`,
-      ].join(",");
-    });
-
-    const csv = [header, ...rows].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv" });
+    if (!exportRows.length) return;
+    const header = Object.keys(exportRows[0]);
+    const csv = [
+      header.join(","),
+      ...exportRows.map((row) => header
+        .map((h) => `"${String((row as Record<string, string>)[h]).replace(/"/g, '""')}"`)
+        .join(",")),
+    ].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `AIS_Discrepancy_${clientName || "Client"}_${todayLocalISO()}.csv`;
+    a.download = `AIS_${client?.client_name ?? "Client"}_AY${assessmentYear}_${todayLocalISO()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
   function exportXLSX() {
-    const rows = comparisonRows.map((r) => {
-      const diff = r.status === "not_in_books" ? r.amountPaise : r.amountPaise - r.booksAmountPaise;
-      return {
-        Client: clientName,
-        "Transaction Type": r.type,
-        "Payer/Deductor": r.payer,
-        "AIS Amount (₹)": (r.amountPaise / 100).toFixed(2),
-        "TDS Deducted (₹)": (r.tdsDeductedPaise / 100).toFixed(2),
-        "Books Amount (₹)": r.status === "not_in_books" ? "Not entered" : (r.booksAmountPaise / 100).toFixed(2),
-        "Difference (₹)": (diff / 100).toFixed(2),
-        Status: r.status === "matched" ? "Matched" : r.status === "not_in_books" ? "Not in Books" : "Amount Mismatch",
-      };
-    });
-    const ws = XLSX.utils.json_to_sheet(rows);
+    if (!exportRows.length) return;
+    const ws = XLSX.utils.json_to_sheet(exportRows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "AIS Discrepancy");
-    XLSX.writeFile(wb, `AIS_Discrepancy_${clientName || "Client"}_${todayLocalISO()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "AIS review");
+    XLSX.writeFile(wb, `AIS_${client?.client_name ?? "Client"}_AY${assessmentYear}_${todayLocalISO()}.xlsx`);
   }
 
-
-  const statusBadge = (status: ComparisonRow["status"]) => {
-    if (status === "matched")
-      return (
-        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
-          <CheckCircle2 className="w-3 h-3" /> Matched
-        </span>
-      );
-    if (status === "not_in_books")
-      return (
-        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
-          <AlertCircle className="w-3 h-3" /> Not in Books
-        </span>
-      );
-    return (
-      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
-        <AlertTriangle className="w-3 h-3" /> Amount Mismatch
-      </span>
-    );
-  };
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  const summary = statement?.summary;
+  const lines = statement?.records ?? [];
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <Link
-            href="/income-tax"
-            className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] mb-2 transition-colors"
-          >
+          <Link href="/income-tax" className="inline-flex items-center gap-1 text-xs text-[#94A3B8] hover:text-[#475569] mb-2 transition-colors">
             <ArrowLeft className="w-3.5 h-3.5" /> Income Tax
           </Link>
-          <h1 className="text-xl font-semibold text-[#0F172A]">
-            AIS Ingestion Tool
-          </h1>
+          <h1 className="text-xl font-semibold text-[#0F172A]">AIS review</h1>
           <p className="text-sm text-[#64748B] mt-0.5">
-            Annual Information Statement — IT Act Section 285BB
+            Annual Information Statement — IT Act §285BB
           </p>
         </div>
-        {transactions.length > 0 && (
-          <>
-            <button
-              onClick={exportCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Export CSV
+        {lines.length > 0 && (
+          <div className="flex gap-2">
+            <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E2E8F0] text-[#334155] text-sm font-medium rounded-lg hover:bg-[#F8FAFC] transition-colors">
+              <Download className="w-4 h-4" /> CSV
             </button>
-            <button
-              onClick={exportXLSX}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Export Excel
+            <button onClick={exportXLSX} className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E2E8F0] text-[#334155] text-sm font-medium rounded-lg hover:bg-[#F8FAFC] transition-colors">
+              <Download className="w-4 h-4" /> Excel
             </button>
-          </>
+          </div>
         )}
       </div>
 
-      {/* Client selector */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4">
-        <label className="block text-xs font-medium text-[#334155] mb-1.5">
-          Client Name
-        </label>
-        <input
-          type="text"
-          placeholder="Enter client name for this AIS review…"
-          value={clientName}
-          onChange={(e) => setClientName(e.target.value)}
-          className="w-full max-w-sm border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+      {/* Client and assessment year */}
+      <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-medium text-[#334155] mb-1.5">Client</label>
+          <select
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select a client…</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-[#334155] mb-1.5">
+            Assessment year
+          </label>
+          <select
+            value={assessmentYear}
+            onChange={(e) => setAssessmentYear(e.target.value)}
+            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {years.map((y) => <option key={y} value={y}>AY {y}</option>)}
+          </select>
+          {/* The two labels look identical, so the one being reviewed is
+              spelled out rather than left to be inferred. */}
+          <p className="text-xs text-[#94A3B8] mt-1">
+            Income of FY {financialYearForAy(assessmentYear) || "—"}
+          </p>
+        </div>
       </div>
 
-      {/* Upload AIS JSON */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700">{error}</p>
+        </div>
+      )}
+      {message && !error && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-start gap-2">
+          <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-green-700">{message}</p>
+        </div>
+      )}
+
+      {/* Upload */}
       <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-[#0F172A]">
-            Step 1 — Upload AIS JSON
-          </h2>
+          <h2 className="text-sm font-semibold text-[#0F172A]">Step 1 — Upload the AIS JSON</h2>
           <p className="text-xs text-[#94A3B8] mt-0.5">
-            Download from{" "}
-            <span className="font-mono">incometax.gov.in</span> → AIS → Download JSON
+            Download from <span className="font-mono">incometax.gov.in</span> → AIS → Download JSON
           </p>
         </div>
         <div className="px-5 py-6">
@@ -458,346 +376,335 @@ export default function AISPage() {
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) handleFileUpload(file);
+              if (file) handleFile(file);
               e.target.value = "";
             }}
           />
           <div
-            onClick={() => fileRef.current?.click()}
+            onClick={() => { if (clientId) fileRef.current?.click(); }}
             onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              const file = e.dataTransfer.files[0];
-              if (file) handleFileUpload(file);
-            }}
-            className="border-2 border-dashed border-[#E2E8F0] rounded-xl p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
+            onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+              clientId ? "border-[#E2E8F0] cursor-pointer hover:border-blue-300 hover:bg-blue-50/30"
+                       : "border-[#F1F5F9] cursor-not-allowed"}`}
           >
             <Upload className="w-8 h-8 text-[#CBD5E1] mx-auto mb-3" />
             <p className="text-sm font-medium text-[#475569]">
-              Click to upload or drag & drop AIS JSON
+              {clientId ? "Click to upload or drag & drop the AIS JSON"
+                        : "Pick a client first"}
             </p>
             <p className="text-xs text-[#94A3B8] mt-1">
-              Supports the AnnualInformationStatement JSON format from the IT portal
+              The file is read on the server and kept against this client and year.
             </p>
           </div>
-
-          {parseError && (
-            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700">{parseError}</p>
-            </div>
-          )}
-
-          <button
-            onClick={() => setShowManual((v) => !v)}
-            className="mt-4 inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            {showManual ? "Hide" : "Show"} manual entry form
-          </button>
         </div>
       </div>
 
-      {/* Manual entry form */}
-      {showManual && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-[#0F172A]">
-              Manual Transaction Entry
-            </h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">
-              Add transactions manually when JSON is unavailable or incomplete
-            </p>
-          </div>
-          <div className="px-5 py-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
-                  Transaction Type
-                </label>
-                <select
-                  value={manualForm.type}
-                  onChange={(e) =>
-                    setManualForm((p) => ({ ...p, type: e.target.value as TransactionType }))
-                  }
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {TRANSACTION_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
-                  Payer / Deductor Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. ABC Pvt Ltd"
-                  value={manualForm.payer}
-                  onChange={(e) =>
-                    setManualForm((p) => ({ ...p, payer: e.target.value }))
-                  }
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
-                  Amount (₹)
-                </label>
-                <input
-                  type="number"
-                  placeholder="e.g. 500000"
-                  min="0"
-                  value={manualForm.amount}
-                  onChange={(e) =>
-                    setManualForm((p) => ({ ...p, amount: e.target.value }))
-                  }
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-[#334155] mb-1.5">
-                  TDS Deducted (₹)
-                </label>
-                <input
-                  type="number"
-                  placeholder="e.g. 50000"
-                  min="0"
-                  value={manualForm.tds}
-                  onChange={(e) =>
-                    setManualForm((p) => ({ ...p, tds: e.target.value }))
-                  }
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+      {/* What the statement itself says */}
+      {statement?.upload && (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4 space-y-3">
+          <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
+            <div>
+              <span className="text-[#94A3B8]">PAN on the statement</span>
+              <p className="font-mono text-sm text-[#0F172A]">
+                {statement.upload.pan ?? "—"}
+              </p>
             </div>
-            <button
-              onClick={handleAddManual}
-              disabled={!manualForm.payer.trim() || !manualForm.amount.trim()}
-              className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Add Transaction
-            </button>
+            <div>
+              <span className="text-[#94A3B8]">Name on the statement</span>
+              <p className="text-sm text-[#0F172A]">{statement.upload.taxpayer_name ?? "—"}</p>
+            </div>
+            <div>
+              <span className="text-[#94A3B8]">File</span>
+              <p className="text-sm text-[#0F172A]">{statement.upload.file_name ?? "—"}</p>
+            </div>
+            <div>
+              <span className="text-[#94A3B8]">Lines</span>
+              <p className="text-sm text-[#0F172A]">{statement.upload.record_count}</p>
+            </div>
           </div>
+          {statement.upload.problems?.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+              <p className="text-xs font-semibold text-amber-800 mb-1">
+                This file did not read completely
+              </p>
+              <ul className="text-xs text-amber-700 list-disc pl-4 space-y-0.5">
+                {statement.upload.problems.map((p, i) => <li key={i}>{p}</li>)}
+              </ul>
+            </div>
+          )}
+          {statement.uploads.length > 1 && (
+            <p className="text-xs text-[#64748B]">
+              {statement.uploads.length} statements have been uploaded for AY {assessmentYear}.
+              The most recent is shown; a line identical to one already worked on keeps its working.
+            </p>
+          )}
         </div>
       )}
 
-      {/* Transactions loaded */}
-      {transactions.length > 0 && (
-        <>
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-[#0F172A]">
-                  Step 2 — Comparison Table
-                </h2>
-                <p className="text-xs text-[#94A3B8] mt-0.5">
-                  Enter &ldquo;Amount in Books&rdquo; for each AIS transaction to identify discrepancies
-                </p>
-              </div>
-              <span className="text-xs text-[#64748B] font-medium">
-                {transactions.length} transaction{transactions.length !== 1 ? "s" : ""} · Total AIS: {formatRupees(totalAISPaise)}
-              </span>
+      {/* The lines */}
+      {lines.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Step 2 — What the books carry</h2>
+              <p className="text-xs text-[#94A3B8] mt-0.5">
+                Leave a line blank until it has been looked at. A blank is not a nil.
+              </p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-[#F8FAFC] text-xs text-[#64748B] font-medium uppercase tracking-wider">
-                    <th className="px-5 py-2.5 text-left">Transaction Type</th>
-                    <th className="px-4 py-2.5 text-left">Payer / Deductor</th>
-                    <th className="px-4 py-2.5 text-left">Source</th>
-                    <th className="px-4 py-2.5 text-right">AIS Amount</th>
-                    <th className="px-4 py-2.5 text-right">TDS Deducted</th>
-                    <th className="px-4 py-2.5 text-right">Amount in Books</th>
-                    <th className="px-4 py-2.5 text-right">Difference</th>
-                    <th className="px-4 py-2.5 text-left">Status</th>
-                    <th className="px-4 py-2.5 text-left"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {comparisonRows.map((row) => {
-                    const diff =
-                      row.status === "not_in_books"
-                        ? row.amountPaise
-                        : row.amountPaise - row.booksAmountPaise;
-                    return (
-                      <tr key={row.id} className="hover:bg-[#F8FAFC]/50 transition-colors">
-                        <td className="px-5 py-3 font-medium text-[#0F172A]">
-                          {row.type}
-                        </td>
-                        <td className="px-4 py-3 text-[#475569] text-xs max-w-xs truncate">
-                          {row.payer}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                              row.source === "json"
-                                ? "bg-purple-50 text-purple-700"
-                                : "bg-[#F1F5F9] text-[#475569]"
-                            }`}
-                          >
-                            {row.source === "json" ? "AIS JSON" : "Manual"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right text-[#0F172A] font-medium text-xs">
-                          {formatRupees(row.amountPaise)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-[#475569] text-xs">
-                          {row.tdsDeductedPaise > 0
-                            ? formatRupees(row.tdsDeductedPaise)
-                            : <span className="text-[#CBD5E1]">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <input
-                            type="number"
-                            placeholder="Enter amount"
-                            min="0"
-                            value={booksAmounts[row.id] ?? ""}
-                            onChange={(e) =>
-                              setBooksAmounts((prev) => ({
-                                ...prev,
-                                [row.id]: e.target.value,
-                              }))
-                            }
-                            className="w-32 border border-[#E2E8F0] rounded-lg px-2 py-1 text-xs text-[#0F172A] text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-4 py-3 text-right text-xs font-medium">
-                          {row.status === "not_in_books" ? (
-                            <span className="text-red-600">
-                              {formatRupees(diff)}
-                            </span>
-                          ) : diff === 0 ? (
-                            <span className="text-green-600">₹0.00</span>
-                          ) : (
-                            <span className="text-amber-600">
-                              {formatRupees(diff)}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">{statusBadge(row.status)}</td>
-                        <td className="px-4 py-3">
+            <span className="text-xs text-[#64748B] font-medium">
+              {lines.length} lines · AIS total {formatRupees(summary?.total_amount_paise ?? 0)}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#F8FAFC] text-xs text-[#64748B] font-medium uppercase tracking-wider">
+                  <th className="px-5 py-2.5 text-left">Information category</th>
+                  <th className="px-4 py-2.5 text-left">Payer / Deductor</th>
+                  <th className="px-4 py-2.5 text-right">AIS amount</th>
+                  <th className="px-4 py-2.5 text-right">TDS</th>
+                  <th className="px-4 py-2.5 text-right">In the books</th>
+                  <th className="px-4 py-2.5 text-right">Difference</th>
+                  <th className="px-4 py-2.5 text-left">Status</th>
+                  <th className="px-4 py-2.5 text-left">Note</th>
+                  <th className="px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F8FAFC]">
+                {lines.map((line) => {
+                  const diff = line.books_amount_paise === null
+                    ? null : line.amount_paise - line.books_amount_paise;
+                  return (
+                    <tr key={line.id} className="hover:bg-[#F8FAFC]/50 transition-colors align-top">
+                      <td className="px-5 py-3">
+                        <p className="font-medium text-[#0F172A] text-xs">{line.transaction_type}</p>
+                        <p className="text-[11px] text-[#94A3B8] max-w-xs truncate">
+                          {line.information_label}
+                        </p>
+                        <span className={`mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          line.source === "json" ? "bg-purple-50 text-purple-700"
+                                                 : "bg-[#F1F5F9] text-[#475569]"}`}>
+                          {line.source === "json" ? "AIS (published)" : "Added by the firm"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-[#475569] text-xs max-w-xs truncate">{line.payer}</td>
+                      <td className="px-4 py-3 text-right text-[#0F172A] font-medium text-xs">
+                        {formatRupees(line.amount_paise)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-[#475569] text-xs">
+                        {line.tds_deducted_paise > 0
+                          ? formatRupees(line.tds_deducted_paise)
+                          : <span className="text-[#CBD5E1]">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Not reviewed"
+                          value={books[line.id] ?? ""}
+                          onChange={(e) => setBooks((p) => ({ ...p, [line.id]: e.target.value }))}
+                          onBlur={() => { void saveWorking(line); }}
+                          className="w-32 border border-[#E2E8F0] rounded-lg px-2 py-1 text-xs text-[#0F172A] text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs font-medium">
+                        {diff === null ? <span className="text-[#CBD5E1]">—</span>
+                          : diff === 0 ? <span className="text-green-600">₹0.00</span>
+                          : <span className="text-amber-600">{formatRupees(diff)}</span>}
+                      </td>
+                      <td className="px-4 py-3 space-y-1">
+                        <StatusBadge status={line.status} />
+                        <div>
                           <button
-                            onClick={() => handleDeleteTransaction(row.id)}
-                            className="text-[#CBD5E1] hover:text-red-500 transition-colors"
+                            onClick={() => { setBooks((p) => ({ ...p, [line.id]: "" })); void saveWorking(line, "not_in_books"); }}
+                            disabled={busy}
+                            className="text-[10px] text-red-600 hover:underline disabled:opacity-40"
+                          >
+                            Mark not in books
+                          </button>
+                          {line.status === "amount_mismatch" && (
+                            <button
+                              onClick={() => { void saveWorking(line, "explained"); }}
+                              disabled={busy}
+                              className="ml-2 text-[10px] text-blue-600 hover:underline disabled:opacity-40"
+                            >
+                              Explained
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="text"
+                          placeholder="Why the difference is acceptable"
+                          value={notes[line.id] ?? ""}
+                          onChange={(e) => setNotes((p) => ({ ...p, [line.id]: e.target.value }))}
+                          onBlur={() => { void saveWorking(line); }}
+                          className="w-44 border border-[#E2E8F0] rounded-lg px-2 py-1 text-xs text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        {line.source === "manual" && (
+                          <button
+                            onClick={() => { void removeLine(line); }}
+                            disabled={busy}
+                            className="text-[#CBD5E1] hover:text-red-500 transition-colors disabled:opacity-40"
+                            aria-label="Remove this line"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
-          {/* Discrepancy Summary */}
-          <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
-              <h2 className="text-sm font-semibold text-[#0F172A]">
-                Step 3 — Discrepancy Summary
-              </h2>
-              <p className="text-xs text-[#94A3B8] mt-0.5">
-                Estimated tax impact at 30% slab rate — conservative estimate
-              </p>
-            </div>
-            <div className="px-5 py-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-[#F8FAFC] rounded-xl p-4">
-                <p className="text-xs text-[#64748B] font-medium uppercase tracking-wide mb-1">
-                  Total AIS Income
-                </p>
-                <p className="text-lg font-semibold text-[#0F172A]">
-                  {formatRupees(totalAISPaise)}
-                </p>
-              </div>
-              <div className="bg-red-50 rounded-xl p-4">
-                <p className="text-xs text-red-600 font-medium uppercase tracking-wide mb-1">
-                  Not in Books
-                </p>
-                <p className="text-lg font-semibold text-red-700">
-                  {notInBooks.length} transaction{notInBooks.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <div className="bg-amber-50 rounded-xl p-4">
-                <p className="text-xs text-amber-600 font-medium uppercase tracking-wide mb-1">
-                  Est. Undeclared Amount
-                </p>
-                <p className="text-lg font-semibold text-amber-700">
-                  {formatRupees(undeclaredPaise)}
-                </p>
-              </div>
-              <div className="bg-orange-50 rounded-xl p-4">
-                <p className="text-xs text-orange-600 font-medium uppercase tracking-wide mb-1">
-                  Est. Tax Impact (30%)
-                </p>
-                <p className="text-lg font-semibold text-orange-700">
-                  {formatRupees(estimatedTaxPaise)}
-                </p>
-              </div>
-            </div>
-
-            {(notInBooks.length > 0 || mismatched.length > 0) && (
-              <div className="px-5 pb-5">
-                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-3">
-                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold text-red-800">
-                      Discrepancies Found — CA Review Required
-                    </p>
-                    <p className="text-xs text-red-700 mt-1">
-                      {notInBooks.length > 0 && (
-                        <span>
-                          {notInBooks.length} transaction{notInBooks.length !== 1 ? "s" : ""} not found in client&apos;s books.{" "}
-                        </span>
-                      )}
-                      {mismatched.length > 0 && (
-                        <span>
-                          {mismatched.length} transaction{mismatched.length !== 1 ? "s" : ""} with amount mismatch.{" "}
-                        </span>
-                      )}
-                      These must be reconciled before filing the ITR. Do not file ITR without resolving discrepancies.
-                    </p>
-                  </div>
+          {/* A line the file does not carry */}
+          <div className="px-5 py-4 border-t border-gray-50">
+            <button
+              onClick={() => setShowManual((v) => !v)}
+              className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> {showManual ? "Hide" : "Add a line the statement does not carry"}
+            </button>
+            {showManual && (
+              <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-[#334155] mb-1.5">Type</label>
+                  <select
+                    value={manual.transaction_type}
+                    onChange={(e) => setManual((p) => ({ ...p, transaction_type: e.target.value }))}
+                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                  >
+                    {types.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
                 </div>
-              </div>
-            )}
-
-            {notInBooks.length === 0 && mismatched.length === 0 && transactions.length > 0 && (
-              <div className="px-5 pb-5">
-                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
-                  <p className="text-xs text-green-700 font-medium">
-                    All AIS transactions matched with books. Safe to proceed with ITR filing.
-                  </p>
+                <div>
+                  <label className="block text-xs font-medium text-[#334155] mb-1.5">Payer / Deductor</label>
+                  <input
+                    type="text"
+                    value={manual.payer}
+                    onChange={(e) => setManual((p) => ({ ...p, payer: e.target.value }))}
+                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                  />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#334155] mb-1.5">Amount (₹)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={manual.amount}
+                    onChange={(e) => setManual((p) => ({ ...p, amount: e.target.value }))}
+                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#334155] mb-1.5">TDS (₹)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={manual.tds}
+                    onChange={(e) => setManual((p) => ({ ...p, tds: e.target.value }))}
+                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  onClick={() => { void addManual(); }}
+                  disabled={busy || !manual.payer.trim() || !manual.amount.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
+                >
+                  Add
+                </button>
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
 
-      {/* Empty state */}
-      {transactions.length === 0 && !parseError && (
+      {/* What is open */}
+      {summary && lines.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50">
+            <h2 className="text-sm font-semibold text-[#0F172A]">Step 3 — What is still open</h2>
+          </div>
+          <div className="px-5 py-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-[#F8FAFC] rounded-xl p-4">
+              <p className="text-xs text-[#64748B] font-medium uppercase tracking-wide mb-1">Total on the AIS</p>
+              <p className="text-lg font-semibold text-[#0F172A]">{formatRupees(summary.total_amount_paise)}</p>
+              <p className="text-[11px] text-[#94A3B8] mt-1">TDS {formatRupees(summary.total_tds_paise)}</p>
+            </div>
+            <div className="bg-[#F8FAFC] rounded-xl p-4">
+              <p className="text-xs text-[#64748B] font-medium uppercase tracking-wide mb-1">Not yet reviewed</p>
+              <p className="text-lg font-semibold text-[#334155]">
+                {summary.not_reviewed_count} of {summary.line_count}
+              </p>
+              <p className="text-[11px] text-[#94A3B8] mt-1">No conclusion is drawn about these.</p>
+            </div>
+            <div className="bg-red-50 rounded-xl p-4">
+              <p className="text-xs text-red-600 font-medium uppercase tracking-wide mb-1">Not in the books</p>
+              <p className="text-lg font-semibold text-red-700">{formatRupees(summary.not_in_books_paise)}</p>
+            </div>
+            <div className="bg-amber-50 rounded-xl p-4">
+              <p className="text-xs text-amber-600 font-medium uppercase tracking-wide mb-1">Books short by</p>
+              <p className="text-lg font-semibold text-amber-700">{formatRupees(summary.shortfall_paise)}</p>
+            </div>
+          </div>
+
+          {/* The refusal, printed. It is the server's sentence, not this
+              screen's — the same words wherever the figure is asked for. */}
+          <div className="px-5 pb-5">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-start gap-2">
+              <HelpCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-700">{summary.tax_impact_refused}</p>
+            </div>
+          </div>
+
+          {summary.not_reviewed_count > 0 && (
+            <div className="px-5 pb-5">
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3 text-xs text-[#475569]">
+                {summary.not_reviewed_count} line{summary.not_reviewed_count === 1 ? "" : "s"} still
+                to look at. The two figures above cover only the lines already reviewed.
+              </div>
+            </div>
+          )}
+          {summary.not_reviewed_count === 0 && summary.open_paise === 0 && (
+            <div className="px-5 pb-5">
+              <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-green-700">
+                  Every line on this statement has been reviewed and agrees with the books
+                  or is explained. AIS is not the only source of income — this says nothing
+                  about receipts no one reported.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && lines.length === 0 && (
         <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-14 text-center space-y-3">
           <FileText className="w-10 h-10 text-gray-200 mx-auto" />
           <p className="text-sm font-medium text-[#475569]">
-            No AIS data loaded yet
+            {clientId ? `No AIS uploaded for AY ${assessmentYear}` : "Pick a client to begin"}
           </p>
           <p className="text-xs text-[#94A3B8] max-w-sm mx-auto">
-            Upload the AIS JSON downloaded from the Income Tax portal, or use manual entry to add transactions.
+            Upload the AIS JSON downloaded from the income-tax portal. Everything read
+            from it is kept against this client and year.
           </p>
         </div>
       )}
 
-      {/* Footer note */}
       <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-3">
         <p className="text-xs text-blue-700">
-          <span className="font-semibold">Note:</span> AIS data is governed by IT Act Section 285BB. Data entered here is stored locally in your browser only. PracticeSync does not transmit AIS data to any external server or government portal.
+          <span className="font-semibold">Note:</span> the statement and this review are kept
+          on your firm&apos;s own database and can be re-opened later. Nothing is transmitted
+          to the income-tax portal from here — where an AIS line itself is wrong, submit
+          feedback on it at <span className="font-mono">incometax.gov.in</span>.
         </p>
       </div>
     </div>

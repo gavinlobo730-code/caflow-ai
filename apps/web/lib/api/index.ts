@@ -2875,6 +2875,111 @@ export const api = {
       request<ApiResp<{ role: string | null; permissions: Record<string, string[]> }>>(
         "/api/identity/permissions"),
   },
+  /** The Annual Information Statement — IT Act §285BB.
+   *
+   *  Everything here is server-side on purpose. The screen used to parse the
+   *  portal's JSON in the browser and hold the whole reconciliation in React
+   *  state, so it was gone on refresh; migration 352 and
+   *  services/ais_service.py keep it. The browser sends the file's TEXT and
+   *  renders what comes back — there is no second parser.
+   */
+  ais: {
+    meta: () => request<ApiResp<{ transaction_types: string[]; statuses: string[] }>>(
+      "/api/ais/meta"),
+    // assessment_year, not financial year: AIS is published per AY.
+    statement: (clientId: string, assessmentYear: string, uploadId?: string) =>
+      request<ApiResp<AISStatement>>(
+        `/api/ais/statement?client_id=${encodeURIComponent(clientId)}` +
+        `&assessment_year=${encodeURIComponent(assessmentYear)}` +
+        (uploadId ? `&upload_id=${encodeURIComponent(uploadId)}` : "")),
+    upload: (body: { client_id: string; assessment_year: string; raw: string;
+                     file_name?: string }) =>
+      request<ApiResp<AISStatement>>(
+        "/api/ais/uploads", { method: "POST", body: JSON.stringify(body) }),
+    // books_amount_paise NULL is "nobody has looked" and is NOT 0. The server
+    // derives matched/amount_mismatch from the two figures and refuses a
+    // status that contradicts them.
+    saveWorking: (recordId: string, body: {
+      client_id: string; books_amount_paise: number | null;
+      status?: string | null; note?: string | null;
+    }) => request<ApiResp<AISWorking>>(
+      `/api/ais/records/${recordId}/working`,
+      { method: "PUT", body: JSON.stringify(body) }),
+    addRecord: (body: {
+      client_id: string; upload_id: string; transaction_type: string;
+      payer: string; amount_paise: number; tds_deducted_paise?: number;
+      information_label?: string | null;
+    }) => request<ApiResp<AISLine>>(
+      "/api/ais/records", { method: "POST", body: JSON.stringify(body) }),
+    deleteRecord: (recordId: string) =>
+      request<ApiResp<{ deleted: string }>>(
+        `/api/ais/records/${recordId}`, { method: "DELETE" }),
+  },
+};
+
+/** One line of the statement, with the CA's working against it. */
+export type AISLine = {
+  id: string;
+  information_source: string | null;
+  information_label: string | null;
+  transaction_type: string;
+  payer: string | null;
+  amount_paise: number;
+  tds_deducted_paise: number;
+  source: "json" | "manual";
+  /** NULL means nobody has looked. It is not nil. */
+  books_amount_paise: number | null;
+  status: "not_reviewed" | "matched" | "amount_mismatch" | "not_in_books" | "explained";
+  note: string | null;
+  reviewed_at: string | null;
+};
+
+export type AISWorking = {
+  record_id: string;
+  books_amount_paise: number | null;
+  status: string;
+  note: string | null;
+  reviewed_at: string | null;
+};
+
+export type AISUpload = {
+  id: string;
+  assessment_year: string;
+  pan: string | null;
+  taxpayer_name: string | null;
+  file_name: string | null;
+  record_count: number;
+  total_amount_paise: number;
+  total_tds_paise: number;
+  /** Sentences about what the parser could not read. A file that parsed with
+   *  problems is not a file that parsed. */
+  problems: string[];
+  created_at: string | null;
+};
+
+/** NOTE THE ABSENCE. There is no tax figure on this type and there is not
+ *  meant to be: the screen this replaced showed "Est. Tax Impact (30%)" in
+ *  rupees, and nothing here knows the client's regime, entity type or slab.
+ *  `tax_impact_refused` is the sentence the screen prints instead. */
+export type AISSummary = {
+  line_count: number;
+  total_amount_paise: number;
+  total_tds_paise: number;
+  by_status: Record<string, number>;
+  not_reviewed_count: number;
+  not_in_books_paise: number;
+  shortfall_paise: number;
+  open_paise: number;
+  tax_impact_refused: string;
+  by_type: Array<{ transaction_type: string; line_count: number;
+                   amount_paise: number; tds_paise: number }>;
+};
+
+export type AISStatement = {
+  upload: AISUpload | null;
+  records: AISLine[];
+  summary: AISSummary;
+  uploads: AISUpload[];
 };
 
 export type AuditEntry = {
