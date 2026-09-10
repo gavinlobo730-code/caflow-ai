@@ -157,7 +157,7 @@ def test_chatting_about_another_clients_book_is_refused(monkeypatch):
     # "refused" would otherwise be indistinguishable from "still working".
     for cid in (THEIRS, MINE):
         with pytest.raises(HTTPException) as e:
-            asyncio.run(cp.client_copilot_chat(
-                cp.CopilotRequest(message="hi"), current_user=USER))
+            cp.client_copilot_chat(
+                cp.CopilotRequest(message="hi"), current_user=USER)
         assert e.value.status_code == 410, cid
     assert not built   # no client context assembled for anyone

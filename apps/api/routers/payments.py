@@ -13,6 +13,7 @@ import os
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from models.common import api_response
@@ -89,11 +90,21 @@ def payment_history(invoice_id: str = Query(...), current_user: dict = Depends(r
 async def payment_webhook(provider: str, request: Request):
     """Gateway webhook. Signature-verified, replay-protected and idempotent inside
     payment_service. A bad signature is recorded and rejected with 400; a verified
-    capture settles via the existing receipt engine exactly once."""
+    capture settles via the existing receipt engine exactly once.
+
+    THE ONE ROUTE THAT MUST STAY `async def`. A sync route cannot reach the raw
+    request body, and the signature is computed over the exact bytes the gateway
+    sent — re-serialising a parsed payload changes them and every signature
+    fails. So the body is awaited here and the BLOCKING half is handed to the
+    threadpool instead: process_webhook verifies, reads and writes, all
+    synchronously, and running it on the event loop stalls every other request
+    on this worker while a gateway is being talked to.
+    """
     db = _require_db()
     raw = await request.body()
     headers = {k.lower(): v for k, v in request.headers.items()}
-    result = payment_service.process_webhook(db, provider, headers, raw)
+    result = await run_in_threadpool(
+        payment_service.process_webhook, db, provider, headers, raw)
     if not result.get("ok"):
         # Invalid signature (or unprocessable) — do not leak detail.
         raise HTTPException(status_code=400, detail="Webhook rejected.")

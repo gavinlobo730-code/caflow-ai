@@ -60,7 +60,7 @@ def list_documents(
 
 
 @router.post("/upload")
-async def upload_document(
+def upload_document(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     client_id: str = Form(...),
@@ -76,7 +76,7 @@ async def upload_document(
     safe_name = file.filename or "upload"
     storage_path = f"{firm_id}/{client_id}/{document_type}/{file_id}_{safe_name}"
 
-    content = await file.read()
+    content = file.file.read()
 
     if _USE_MOCK:
         # In mock mode just store metadata — no real upload
@@ -204,7 +204,7 @@ def delete_document(
 
 
 @router.post("/parse")
-async def parse_document(
+def parse_document(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     client_id: str = Form(None),

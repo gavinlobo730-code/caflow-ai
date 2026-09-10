@@ -93,7 +93,7 @@ def test_client_level_copilot_is_withdrawn():
         conversation_history = []
 
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(cp.client_copilot_chat(Body(), current_user=USER))
+        cp.client_copilot_chat(Body(), current_user=USER)
 
     assert exc.value.status_code == 410
     assert "GSTIN" in exc.value.detail or "identifier" in exc.value.detail.lower()

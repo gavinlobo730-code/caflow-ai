@@ -240,10 +240,17 @@ def _setup(monkeypatch):
 
 
 class _Upload:
-    """The slice of UploadFile the endpoint uses."""
+    """The slice of UploadFile a SYNC route uses.
+
+    The route is plain `def` (see tests/test_a_blocking_route_is_not_async.py),
+    so Starlette runs it in a threadpool and it reads the upload through
+    `.file` — the SpooledTemporaryFile — rather than awaiting `.read()`. That
+    is what a real UploadFile offers, so the double offers it too.
+    """
     def __init__(self, filename: str, content: bytes):
         self.filename = filename
         self._content = content
+        self.file = io.BytesIO(content)
 
     async def read(self):
         return self._content
@@ -261,14 +268,13 @@ def _upload(db, monkeypatch, **kw):
     # test left behind. These passed alone and failed in the full suite until
     # this changed, which is the whole tell.
     import asyncio
-    return asyncio.run(
-        banking.upload_statement(
+    return banking.upload_statement(
             file=_Upload(kw.pop("filename", "stmt.csv"), kw.pop("content", _csv_bytes())),
             client_id=CLIENT, bank_name="HDFC Bank", account_number=None,
             bank_account_id=None, column_mapping=None, save_mapping=False,
             opening_balance_paise=kw.pop("opening", None),
             closing_balance_paise=kw.pop("closing", None),
-            current_user=CALLER))
+            current_user=CALLER)
 
 
 def test_the_endpoint_refuses_a_statement_that_does_not_add_up(monkeypatch):

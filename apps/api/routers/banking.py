@@ -785,7 +785,7 @@ def import_statement(
 
 
 @router.post("/statements/upload")
-async def upload_statement(
+def upload_statement(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     bank_name: str = Form("Bank"),
@@ -832,7 +832,7 @@ async def upload_statement(
         the model.
     """
     assert_client_access(current_user, client_id)
-    content = await file.read()
+    content = file.file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     if len(content) > _MAX_UPLOAD_BYTES:
@@ -979,7 +979,7 @@ async def upload_statement(
 # ─── Statement column mapping (audit Tier 3.2) ───────────────────────────────
 
 @router.post("/statements/inspect")
-async def inspect_statement_file(
+def inspect_statement_file(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     bank_account_id: Optional[str] = Form(None),
@@ -997,7 +997,7 @@ async def inspect_statement_file(
     being asked the same question twice.
     """
     assert_client_access(current_user, client_id)
-    content = await file.read()
+    content = file.file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     if len(content) > _MAX_UPLOAD_BYTES:
@@ -1017,7 +1017,7 @@ async def inspect_statement_file(
 
 
 @router.post("/statements/preview")
-async def preview_statement_with_mapping(
+def preview_statement_with_mapping(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     column_mapping: str = Form(...),
@@ -1034,7 +1034,7 @@ async def preview_statement_with_mapping(
     would catch that, and the balance arithmetic catches it on the first row.
     """
     assert_client_access(current_user, client_id)
-    content = await file.read()
+    content = file.file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     if len(content) > _MAX_UPLOAD_BYTES:

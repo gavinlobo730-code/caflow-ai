@@ -216,7 +216,7 @@ def test_uploading_a_debit_note_document_for_a_hidden_client_is_refused(deny):
     import io
     upload = UploadFile(filename="scan.pdf", file=io.BytesIO(b"pdf-bytes"))
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(dn.upload_debit_note_document(file=upload, client_id=THEIRS, current_user=MANAGER_USER))
+        dn.upload_debit_note_document(file=upload, client_id=THEIRS, current_user=MANAGER_USER)
     assert exc.value.status_code == 404
 
 
@@ -323,7 +323,7 @@ def test_uploading_a_purchase_credit_note_document_for_a_hidden_client_is_refuse
     import io
     upload = UploadFile(filename="scan.pdf", file=io.BytesIO(b"pdf-bytes"))
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(pcn.upload_purchase_credit_note_document(file=upload, client_id=THEIRS, current_user=MANAGER_USER))
+        pcn.upload_purchase_credit_note_document(file=upload, client_id=THEIRS, current_user=MANAGER_USER)
     assert exc.value.status_code == 404
 
 

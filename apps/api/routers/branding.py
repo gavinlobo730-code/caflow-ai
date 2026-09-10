@@ -141,7 +141,7 @@ def upsert_branding(body: BrandingUpdate, current_user: dict = Depends(rbac("bra
 
 
 @router.post("/branding/logo")
-async def upload_logo(
+def upload_logo(
     file: UploadFile = File(...),
     current_user: dict = Depends(rbac("branding", "write")),
 ):
@@ -158,7 +158,7 @@ async def upload_logo(
     if _USE_MOCK:
         return api_response(True, {"logo_url": f"https://example.com/logos/{firm_id}/logo.{ext}"})
 
-    content = await file.read()
+    content = file.file.read()
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Logo file must be smaller than 5 MB.")
 

@@ -12,6 +12,7 @@ into each router's module namespace), then we assert on the (entity_type, action
 positional pair via call_args_list so the assertions stay tolerant of the optional
 kwargs (actor_id, actor_email, old_data, new_data).
 """
+import io
 import asyncio
 from unittest.mock import patch, MagicMock
 
@@ -147,6 +148,9 @@ class _FakeUpload:
     def __init__(self, filename="pan_card.pdf", content_type="application/pdf"):
         self.filename = filename
         self.content_type = content_type
+        # The route is sync now, so it reads through .file — see
+        # tests/test_a_blocking_route_is_not_async.py.
+        self.file = io.BytesIO(b"%PDF-1.4 fake bytes")
 
     async def read(self):
         return b"%PDF-1.4 fake bytes"
@@ -166,11 +170,11 @@ class TestDocumentAuditCoverage:
              patch("routers.documents.assert_partner_for_internal_id"), \
              patch("routers.documents.assert_client_access"), \
              patch("routers.documents.document_repo", fake_doc_repo):
-            asyncio.run(upload_document(
+            upload_document(
                 file=_FakeUpload(),
                 document_type="PAN",
                 client_id="client-1",
                 current_user=USER_MANAGER,
-            ))
+            )
 
         assert ("document", "upload") in _entity_action_pairs(mock_log)

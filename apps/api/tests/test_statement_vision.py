@@ -239,8 +239,16 @@ def _setup(monkeypatch, *, model=None, available=True):
 
 
 class _Upload:
+    """The slice of UploadFile a SYNC route uses.
+
+    The route is plain `def` (see tests/test_a_blocking_route_is_not_async.py),
+    so Starlette runs it in a threadpool and it reads the upload through
+    `.file` — the SpooledTemporaryFile — rather than awaiting `.read()`. That
+    is what a real UploadFile offers, so the double offers it too.
+    """
     def __init__(self, filename, content):
         self.filename, self._content = filename, content
+        self.file = io.BytesIO(content)
 
     async def read(self):
         return self._content
@@ -248,14 +256,14 @@ class _Upload:
 
 def _upload(**kw):
     import asyncio
-    return asyncio.run(banking.upload_statement(
+    return banking.upload_statement(
         file=_Upload(kw.pop("filename"), kw.pop("content")),
         client_id=CLIENT, bank_name="HDFC Bank", account_number=None,
         bank_account_id=None, column_mapping=None, save_mapping=False,
         opening_balance_paise=kw.pop("opening", None),
         closing_balance_paise=kw.pop("closing", None),
         allow_vision=kw.pop("allow_vision", False),
-        current_user=CALLER))
+        current_user=CALLER)
 
 
 SCAN = property(lambda self: None)

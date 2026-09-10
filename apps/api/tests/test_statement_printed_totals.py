@@ -34,6 +34,8 @@ WHY IT IS A THIRD CHECK AND NOT A REPLACEMENT FOR EITHER
 """
 from __future__ import annotations
 
+import io
+
 import pytest
 from fastapi import HTTPException
 
@@ -248,9 +250,17 @@ def _setup(monkeypatch):
 
 
 class _Upload:
+    """The slice of UploadFile a SYNC route uses.
+
+    The route is plain `def` (see tests/test_a_blocking_route_is_not_async.py),
+    so Starlette runs it in a threadpool and it reads the upload through
+    `.file` — the SpooledTemporaryFile — rather than awaiting `.read()`. That
+    is what a real UploadFile offers, so the double offers it too.
+    """
     def __init__(self, filename: str, content: bytes):
         self.filename = filename
         self._content = content
+        self.file = io.BytesIO(content)
 
     async def read(self):
         return self._content
@@ -259,14 +269,13 @@ class _Upload:
 def _upload(**kw):
     # asyncio.run, not get_event_loop() — see test_statement_pdf_and_tie_out.
     import asyncio
-    return asyncio.run(
-        banking.upload_statement(
+    return banking.upload_statement(
             file=_Upload(kw.pop("filename", "stmt.csv"), kw.pop("content", _csv())),
             client_id=CLIENT, bank_name="Cosmos Co-op Bank", account_number=None,
             bank_account_id=None, column_mapping=None, save_mapping=False,
             opening_balance_paise=kw.pop("opening", None),
             closing_balance_paise=kw.pop("closing", None),
-            current_user=CALLER))
+            current_user=CALLER)
 
 
 def test_the_endpoint_verifies_an_upload_with_nothing_typed_in(monkeypatch):
@@ -308,9 +317,9 @@ def test_the_preview_screen_shows_the_totals_check_too(monkeypatch):
     import json
     _setup(monkeypatch)
     mapping = {"date": 0, "desc": 1, "ref": 2, "debit": 3, "credit": 4, "balance": 5}
-    res = asyncio.run(banking.preview_statement_with_mapping(
+    res = banking.preview_statement_with_mapping(
         file=_Upload("stmt.csv", _csv()), client_id=CLIENT,
-        column_mapping=json.dumps(mapping), current_user=CALLER))
+        column_mapping=json.dumps(mapping), current_user=CALLER)
     assert res["data"]["totals_check"]["agrees"] is True
 
 
