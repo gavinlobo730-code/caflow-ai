@@ -202,19 +202,48 @@ function downloadCSV(content: string, filename: string) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const FETCH_LIMIT = 200;
+/** What the backend writes. services/audit_service.log_event names the first
+ *  five; migration 266's triggers add the journal pair. Seeding the dropdowns
+ *  with these keeps the choices stable as a CA narrows the window — a list
+ *  derived from one page shrinks the more precisely you filter, which is the
+ *  opposite of useful. */
+const KNOWN_ENTITY_TYPES = [
+  "journal_entry", "journal_line", "invoice", "compliance_record",
+  "user_role", "client",
+];
+const KNOWN_ACTIONS = [
+  "create", "update", "delete", "status_change", "approve",
+];
+
+/** One page. The log is a whole firm's history — it is asked, not downloaded. */
+const PAGE_SIZE = 50;
 
 function AuditLogContent() {
   const [rows, setRows] = useState<DisplayRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters
+  // Filters. Every one of these now goes to the SERVER. They used to narrow a
+  // fixed 200-row fetch in the browser, so "show me April" showed whatever
+  // fell inside the most recent 200 events.
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterAction, setFilterAction] = useState("");
   const [filterEntity, setFilterEntity] = useState("");
+  // The one filter that stays in the browser, and it is honest about it: the
+  // endpoint matches actor_id exactly and this box is a substring search over
+  // an email. It says so beside the field.
   const [filterUser, setFilterUser] = useState("");
+
+  const query = useCallback(() => ({
+    date_from: filterDateFrom || undefined,
+    date_to: filterDateTo || undefined,
+    action: filterAction || undefined,
+    entity_type: filterEntity || undefined,
+    limit: PAGE_SIZE,
+  }), [filterDateFrom, filterDateTo, filterAction, filterEntity]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -222,42 +251,56 @@ function AuditLogContent() {
     try {
       // Reads the authoritative audit_log via the Partner-gated backend endpoint
       // (RBAC: accounting:approve == Partner-only, matching this page's RoleGuard).
-      const res = await api.audit.list({ limit: FETCH_LIMIT });
+      const res = await api.audit.list(query());
       if (!res.success) throw new Error(res.error || "Failed to load audit log");
-      const entries = (res.data?.entries ?? []).map(toDisplay);
-      // Defensive: the backend already orders by created_at desc; keep it stable.
-      entries.sort((a, b) => (b.created_at < a.created_at ? -1 : b.created_at > a.created_at ? 1 : 0));
-      setRows(entries);
+      setRows((res.data?.entries ?? []).map(toDisplay));
+      setCursor(res.data?.next_cursor ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load audit log");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [query]);
+
+  const loadMore = useCallback(async () => {
+    if (!cursor) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.audit.list({ ...query(), cursor });
+      if (!res.success) throw new Error(res.error || "Failed to load audit log");
+      setRows((prev) => [...prev, ...(res.data?.entries ?? []).map(toDisplay)]);
+      setCursor(res.data?.next_cursor ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load audit log");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [cursor, query]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Filter option lists are derived from the data so they always match the real
-  // backend vocabulary (no stale hardcoded enums).
+  // Derived from what is on screen, and that is now a PAGE rather than the
+  // whole recent log — so the lists are seeded with the vocabulary the backend
+  // actually writes (services/audit_service.log_event's docstring, plus the
+  // trigger types of migrations 111 and 266). Deriving them from one page
+  // alone would offer a CA fewer choices the more precisely they filtered.
   const entityOptions = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.entity_type))).sort(),
+    () => Array.from(new Set([...KNOWN_ENTITY_TYPES, ...rows.map((r) => r.entity_type)])).sort(),
     [rows],
   );
   const actionOptions = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.action))).sort(),
+    () => Array.from(new Set([...KNOWN_ACTIONS, ...rows.map((r) => r.action)])).sort(),
     [rows],
   );
 
-  // Apply filters (client-side over the most recent FETCH_LIMIT events).
-  const filtered = rows.filter((r) => {
-    const ts = r.created_at.slice(0, 10); // YYYY-MM-DD
-    if (filterDateFrom && ts < filterDateFrom) return false;
-    if (filterDateTo && ts > filterDateTo) return false;
-    if (filterAction && r.action !== filterAction) return false;
-    if (filterEntity && r.entity_type !== filterEntity) return false;
-    if (filterUser && !r.actor.toLowerCase().includes(filterUser.toLowerCase())) return false;
-    return true;
-  });
+  // The date range, the action and the entity type are already applied BY THE
+  // DATABASE — re-applying them here would be a second implementation of the
+  // same rule, and the IST-vs-UTC boundary is exactly where the two would
+  // disagree (see services/audit_query_service.py). Only the email substring
+  // is the browser's, over the page in hand.
+  const filtered = filterUser
+    ? rows.filter((r) => r.actor.toLowerCase().includes(filterUser.toLowerCase()))
+    : rows;
 
   function handleExport() {
     const csv = toCSV(filtered);
@@ -330,9 +373,14 @@ function AuditLogContent() {
           </select>
         </div>
         <div>
-          <label className="text-xs text-[#64748B]">User (email)</label>
+          <label className="text-xs text-[#64748B]">
+            User (email)
+            <span className="ml-1 text-[#CBD5E1]" title="Searches the events already loaded, not the whole log — the server matches a user by id, not by an email fragment.">
+              · loaded only
+            </span>
+          </label>
           <input value={filterUser} onChange={(e) => setFilterUser(e.target.value)}
-            placeholder="Search…"
+            placeholder="Search loaded events…"
             className="block w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
       </div>
@@ -406,18 +454,34 @@ function AuditLogContent() {
         </div>
 
         {!loading && !error && filtered.length > 0 && (
-          <div className="px-5 py-3 border-t border-gray-50 text-xs text-[#94A3B8]">
-            Showing {filtered.length} event{filtered.length !== 1 ? "s" : ""}
-            {filtered.length !== rows.length ? ` (filtered from ${rows.length})` : ""}
-            {rows.length >= FETCH_LIMIT ? ` — most recent ${FETCH_LIMIT}` : ""}
+          <div className="px-5 py-3 border-t border-gray-50 flex items-center justify-between gap-3">
+            <span className="text-xs text-[#94A3B8]">
+              Showing {filtered.length} event{filtered.length !== 1 ? "s" : ""}
+              {filterUser && filtered.length !== rows.length
+                ? ` of ${rows.length} loaded` : ""}
+              {/* NOT "of N total". Counting the whole log to render a page is
+                  the cost this screen stopped paying. */}
+            </span>
+            {cursor && (
+              <button
+                onClick={() => { void loadMore(); }}
+                disabled={loadingMore}
+                className="text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-md hover:bg-[#F8FAFC] disabled:opacity-40"
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            )}
           </div>
         )}
       </div>
 
       <p className="text-xs text-[#94A3B8]">
-        Note: This is the authoritative, append-only audit trail — every sensitive change (invoices, journals,
+        Note: this is the authoritative, append-only audit trail — every sensitive change (invoices, journals,
         compliance records, clients, user/role changes and platform actions) is recorded server-side with the
-        acting user. Automated/background actions appear as “System”. Shows the most recent {FETCH_LIMIT} events.
+        acting user, as the proviso to Rule 3(1) of the Companies (Accounts) Rules 2014 requires.
+        Automated and background actions appear as “System”. Dates are IST.
+        The filters above are applied in the database, so a date range searches the
+        whole log rather than the events already on screen.
       </p>
     </div>
   );

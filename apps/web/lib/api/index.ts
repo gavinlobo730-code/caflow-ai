@@ -2599,16 +2599,43 @@ export const api = {
   // Backed by the audit_log table, written server-side by audit_service.log_event
   // across every sensitive mutation (journals, invoices, compliance, clients,
   // users/roles, year-end, GST/TDS, platform actions, …).
+  /** The Rule 3(1) edit log, queried.
+   *
+   *  Every filter is applied server-side and the log is paged with a cursor.
+   *  What this replaced returned the most recent 200 rows firm-wide with no
+   *  date range and no paging, and the screen filtered those 200 in the
+   *  browser — so "show me April" showed whatever fell inside the last 200
+   *  events. Dates are IST dates; the server converts the bounds.
+   */
   audit: {
-    list: (params?: { entity_type?: string; entity_id?: string; actor_id?: string; limit?: number }) => {
+    list: (params?: {
+      entity_type?: string; entity_id?: string; actor_id?: string;
+      action?: string; date_from?: string; date_to?: string;
+      cursor?: string; limit?: number;
+    }) => {
       const q = new URLSearchParams(
         Object.entries(params ?? {})
           .filter(([, v]) => v != null && v !== "")
           .map(([k, v]) => [k, String(v)]),
       ).toString();
-      return request(`/api/audit${q ? `?${q}` : ""}`) as Promise<
-        ApiResp<{ entries: AuditEntry[]; total: number }>
-      >;
+      return request(`/api/audit${q ? `?${q}` : ""}`) as Promise<ApiResp<AuditPage>>;
+    },
+    /** Everything that ever happened to ONE row.
+     *
+     *  For a journal entry pass "journal_entry,journal_line": migration 266
+     *  keys a LINE's audit row to its parent entry id, and an entry's history
+     *  that omits its lines omits the amounts. */
+    entityHistory: (entityType: string, entityId: string,
+                    params?: { cursor?: string; limit?: number }) => {
+      const q = new URLSearchParams(
+        Object.entries(params ?? {})
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return request(
+        `/api/audit/entity/${encodeURIComponent(entityType)}/` +
+        `${encodeURIComponent(entityId)}${q ? `?${q}` : ""}`,
+      ) as Promise<ApiResp<AuditPage>>;
     },
   },
   // "Verify Books" (task #244) — on-demand books-integrity check, mirroring
@@ -2980,6 +3007,18 @@ export type AISStatement = {
   records: AISLine[];
   summary: AISSummary;
   uploads: AISUpload[];
+};
+
+/** One page of the log. NO total, deliberately: a COUNT over the whole log to
+ *  render one page is the cost the server-side query exists to remove, and
+ *  `has_more` is what a "Load more" control needs. */
+export type AuditPage = {
+  entries: AuditEntry[];
+  next_cursor: string | null;
+  has_more: boolean;
+  limit: number;
+  /** The UTC instants the IST dates were converted to, for display. */
+  window: { from: string | null; to: string | null };
 };
 
 export type AuditEntry = {
