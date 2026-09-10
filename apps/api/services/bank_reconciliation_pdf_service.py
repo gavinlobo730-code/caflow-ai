@@ -117,6 +117,74 @@ def build_reconciliation_pdf(report: dict, firm: dict) -> bytes:
         "<b>This statement does not tie out.</b>", small))
     elems.append(Spacer(1, 12))
 
+    # ── The Bank Reconciliation Statement itself (BANK-04) ──────────────────
+    # Until this existed, everything above was the whole document: the tie-out
+    # and three buckets of STATEMENT lines, under a title that promises the
+    # accountant's two-sided statement. A cheque issued and entered in the books
+    # but not yet presented at the bank had no row anywhere in it, and neither
+    # did a deposit banked but not yet credited — which are the two items a BRS
+    # is FOR. The tie-out stays above as the internal check; this is the working
+    # paper.
+    brs = report.get("brs")
+    if brs:
+        elems.append(Paragraph("Bank Reconciliation Statement", ParagraphStyle(
+            "sec", parent=styles["Heading3"], fontSize=10, spaceAfter=4)))
+        brs_rows = [["Balance as per Cash Book (books)",
+                     _paise_to_rupee_str(brs["book_balance_paise"])]]
+
+        def _bucket_rows(key: str, label: str, sign: str) -> None:
+            b = brs.get(key) or {}
+            if not b.get("count"):
+                return
+            brs_rows.append([f"{sign} {label} ({b['count']})",
+                             _paise_to_rupee_str(b["total_paise"])])
+            for it in (b.get("items") or []):
+                ref = f" [{it['reference_no']}]" if it.get("reference_no") else ""
+                brs_rows.append([
+                    f"      {it['date']}  {(it.get('particulars') or '')[:58]}{ref}",
+                    _paise_to_rupee_str(it["amount_paise"])])
+            if b["listed"] < b["count"]:
+                # Never a silent cap. A truncated list that read as complete
+                # would be worse than a long one.
+                brs_rows.append([f"      … and {b['count'] - b['listed']} more, "
+                                 f"included in the total above", ""])
+
+        _bucket_rows("unpresented_cheques", "Cheques issued but not yet presented", "Add:")
+        _bucket_rows("deposits_in_transit", "Deposits banked but not yet credited", "Less:")
+        _bucket_rows("bank_credits_not_in_books", "Credited by the bank, not in the books", "Add:")
+        _bucket_rows("bank_debits_not_in_books", "Debited by the bank, not in the books", "Less:")
+        brs_rows.append(["Balance as per Pass Book (bank)",
+                         _paise_to_rupee_str(brs["computed_bank_balance_paise"])])
+        if brs.get("statement_balance_paise") is not None:
+            brs_rows.append(["Balance per the statement",
+                             _paise_to_rupee_str(brs["statement_balance_paise"])])
+            brs_rows.append(["Difference", _paise_to_rupee_str(brs["difference_paise"])])
+        brs_table = Table(brs_rows, colWidths=[130 * mm, 48 * mm], repeatRows=1)
+        brs_style = [
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("LINEABOVE", (0, len(brs_rows) - (3 if brs.get("statement_balance_paise") is not None else 1)),
+             (-1, len(brs_rows) - (3 if brs.get("statement_balance_paise") is not None else 1)),
+             0.5, colors.HexColor("#94A3B8")),
+            ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]
+        if brs.get("statement_balance_paise") is not None:
+            brs_style.append(("FONTNAME", (0, len(brs_rows) - 3), (-1, len(brs_rows) - 1),
+                              "Helvetica-Bold"))
+            brs_style.append((
+                "BACKGROUND", (0, len(brs_rows) - 1), (-1, len(brs_rows) - 1),
+                colors.HexColor("#DCFCE7") if brs.get("agrees") else colors.HexColor("#FEE2E2")))
+        else:
+            brs_style.append(("FONTNAME", (0, len(brs_rows) - 1), (-1, len(brs_rows) - 1),
+                              "Helvetica-Bold"))
+        brs_table.setStyle(TableStyle(brs_style))
+        elems.append(brs_table)
+        if brs.get("gap"):
+            elems.append(Spacer(1, 4))
+            elems.append(Paragraph(f"<b>{brs['gap']}</b>", sub))
+        elems.append(Spacer(1, 12))
+
     # ── Line sections ───────────────────────────────────────────────────────
     def section(title: str, lines: list[dict]) -> None:
         elems.append(Paragraph(f"{title} ({len(lines)})", ParagraphStyle(
@@ -167,6 +235,18 @@ def get_reconciliation_pdf(db, firm_id: str, recon_id: str) -> tuple[bytes, str]
     one that was signed off."""
     from services.bank_reconciliation_service import bank_reconciliation_service
     report = bank_reconciliation_service.report(db, firm_id, recon_id)
+    if not report.get("brs"):
+        # A completed session frozen before migration 356 has no statement in its
+        # snapshot, and a mutable one never does. Computing it here keeps the
+        # document whole; failing to compute it must not withhold the PDF, which
+        # is the same document it has always been plus a section.
+        try:
+            report = {**report,
+                      "brs": bank_reconciliation_service.brs(db, firm_id, recon_id)}
+        except Exception as e:                                    # noqa: BLE001
+            from core.observability import capture_soft_failure
+            capture_soft_failure(e, operation="bank_reconciliation_pdf_brs",
+                                 reconciliation_id=recon_id, firm_id=firm_id)
     firm = _load_firm(firm_id)
     session = report["reconciliation"]
     account = (session.get("account_no") or "account").replace(" ", "-")

@@ -522,6 +522,33 @@ CA; two genuinely identical transactions are silently merged; the "Bank
 Reconciliation Statement" has no unpresented cheques or deposits in transit; and
 "Adjustments" is an unexplained plug that can force a tie-out into a signed PDF.
 
+**DONE — 10 September 2026, in four commits (9a–9d).**
+
+| # | What it was | What it is |
+|---|---|---|
+| 9a BANK-09 | two identical transactions hashed the same and one was silently dropped, reported as `duplicates_skipped` — which means "already imported", a different statement about a different row | every row is kept. Re-import idempotency comes from an OCCURRENCE COUNT rather than an ordinal, so it survives an overlapping re-import; no migration needed, because migration 224's unique index only collides when both rows keep the same hash |
+| 9b BANK-01 | `printed_totals` took the FIRST totals row, which on a multi-page statement is a page subtotal — and the import was then refused with a message blaming the CA's column mapping | the FILE has to say which row totals the statement: one row, or several with exactly one "Grand Total". Several with none is reported AMBIGUOUS and falls back to the typed balances. A genuine mismatch is now a stop rather than a wall — a written reason imports it, recorded beside the differences it excused (migration 354), never counted as verified |
+| 9c BANK-05 | `adjustments_paise` was a bare integer on the generic PATCH: no reason, no audit row, nothing on the document, written by any Executive, and it satisfied the gate that freezes a certified PDF | one write path, Manager+ (`banking.approve`, which no router had ever referenced), a mandatory reason printed beside the figure, an audit row and a timeline warning, with migration 355's CHECKs holding the pairing in both directions |
+| 9d BANK-04 | every row the reconciliation knew about was a STATEMENT line; nothing in the module read `journal_entries` or `journal_lines`, so an unpresented cheque had no row anywhere in the product | the two-sided statement, computed by `public.bank_reconciling_items` (migration 356) with `domain/banking/brs.py` as the mock-mode twin and 11 parity scenarios holding them identical. Frozen into the snapshot at completion, so the certified document does not move when next month is imported |
+
+Three things worth carrying forward.
+
+**The obvious fix for 9b was the wrong one.** The finding suggests picking
+whichever candidate agrees with the parsed sums. That makes the check prove
+itself — a misread statement would select the row that agreed with the
+misreading — and the whole value of the printed totals is that they come from
+outside the reading being checked. There is a guard test named after it.
+
+**9b's rule already existed in prose on the other path.** `vision.TOTALS_PROMPT`
+tells the model in as many words that "a page subtotal … is NOT it". The
+deterministic parser had the same rule written nowhere and enforced nowhere.
+
+**9c stopped short of the accounting answer on purpose.** Making an adjustment a
+posted journal is what the finding calls "better still", and it is wrong until
+9d exists: most of what is plugged there is a TIMING item, which belongs on the
+book side of the BRS, not in the ledger. Now that 9d is built, what is left in
+that field is genuinely journal-shaped — which is the condition for retiring it.
+
 ### Phase 10 — Depreciation, both books · 7 findings (6 distinct) · ≤62 days
 `FA-02 FA-04 FA-05 IT-09≡FA-06 IT-06 IT-12`
 

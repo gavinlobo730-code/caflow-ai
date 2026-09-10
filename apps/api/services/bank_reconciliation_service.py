@@ -21,6 +21,7 @@ from fastapi import HTTPException
 from core.db_paging import fetch_all
 
 from domain.banking import reconciliation as recon
+from domain.banking import brs as brs_domain
 from services.timeline_service import timeline_service
 
 _logger = logging.getLogger("caflow.bank_reconciliation")
@@ -417,6 +418,148 @@ class BankReconciliationService:
                                  reconciliation_id=recon_id, firm_id=firm_id)
         return self.get_session(db, firm_id, recon_id)
 
+    # ── the Bank Reconciliation Statement itself (BANK-04) ─────────────────────
+    def _brs_sql(self, db, **params) -> Optional[dict]:
+        """One call for the whole statement, or None when there is nothing to ask.
+
+        None means FALL BACK to the Python twin, and it is returned for exactly
+        two reasons: the client has no `.rpc` (mock mode, local dev, a test
+        double), or the call failed. A failure is LOGGED at error rather than
+        swallowed — the fallback is correct but reads every book line and every
+        statement line across the wire, and a fallback nobody can see is how a
+        performance fix quietly stops applying.
+        """
+        if not hasattr(db, "rpc"):
+            return None
+        try:
+            res = db.rpc("bank_reconciling_items", params).execute()
+            out = getattr(res, "data", None)
+            if isinstance(out, dict) and "unpresented_cheques" in out:
+                return out
+            raise ValueError(
+                f"bank_reconciling_items returned {type(out).__name__}, "
+                f"not a reconciliation statement")
+        except Exception as e:                                    # noqa: BLE001
+            _logger.error("bank_reconciling_items failed (%s) — falling back to "
+                          "the Python twin: %s", params.get("p_bank_account"), e)
+            return None
+
+    def _brs_rows(self, db, firm_id, client_id, bank_account_id, gl_account, as_of):
+        """The two row sets the twin needs, scoped exactly as the SQL is.
+
+        Only reached in mock mode and local dev. It reads every book line on the
+        account and every statement line up to the date, which is the cost the
+        SQL function exists to avoid — see the module docstring in
+        domain/banking/brs.py and CLAUDE.md's reporting rule.
+        """
+        stmt_ids = self._account_statement_ids(db, firm_id, bank_account_id)
+        bank: list[dict] = []
+        if stmt_ids:
+            rows = fetch_all(
+                lambda: (db.table("bank_transactions").select("*")
+                         .eq("firm_id", firm_id).in_("statement_id", stmt_ids)),
+                label="brs._brs_rows.bank")
+            bank = [{
+                "id": t["id"],
+                "transaction_date": _d(t["transaction_date"]),
+                "description": t.get("description") or "",
+                "reference_no": t.get("reference_no"),
+                "debit_paise": int(t.get("debit_paise") or 0),
+                "credit_paise": int(t.get("credit_paise") or 0),
+                "posted_journal_id": t.get("posted_journal_id"),
+            } for t in rows if _d(t["transaction_date"]) <= as_of]
+
+        entries = fetch_all(
+            lambda: (db.table("journal_entries")
+                     .select("id,entry_date,reference_no,narration,is_posted,deleted_at")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)),
+            label="brs._brs_rows.entries")
+        by_id = {e["id"]: e for e in entries
+                 if e.get("is_posted") and not e.get("deleted_at")
+                 and _d(e["entry_date"]) <= as_of}
+        book: list[dict] = []
+        if by_id:
+            lines = fetch_all(
+                lambda: (db.table("journal_lines")
+                         .select("id,journal_entry_id,account_id,debit_paise,credit_paise,narration")
+                         .eq("account_id", gl_account)),
+                label="brs._brs_rows.lines")
+            for ln in lines:
+                e = by_id.get(ln.get("journal_entry_id"))
+                if not e:
+                    continue
+                book.append({
+                    "line_id": ln["id"],
+                    "entry_id": ln["journal_entry_id"],
+                    "entry_date": _d(e["entry_date"]),
+                    # The line's own narration where it has one, else the
+                    # entry's — the same COALESCE the SQL does. A report showing
+                    # one on one path and the other on the other would pass every
+                    # total test and still read differently.
+                    "narration": (ln.get("narration") or "") or (e.get("narration") or ""),
+                    "reference_no": e.get("reference_no"),
+                    "debit_paise": int(ln.get("debit_paise") or 0),
+                    "credit_paise": int(ln.get("credit_paise") or 0),
+                })
+        return book, bank
+
+    def brs(self, db, firm_id, recon_id) -> dict:
+        """The two-sided Bank Reconciliation Statement for one session.
+
+        WHAT THIS IS AND WHAT `report` IS
+
+            `report` is the tie-out: statement lines bucketed into reconciled,
+            unreconciled and exceptions, and the arithmetic that says the period
+            balances. Every row in it is a STATEMENT line, and that is the right
+            shape for the work of reconciling.
+
+            This is the DOCUMENT — the one an accountant means by "BRS", and the
+            one an auditor asks for as a working paper. It reads the BOOK side
+            too, which nothing in this module did before (BANK-04), so a cheque
+            issued and entered but not yet presented finally has a row.
+
+        It is scoped to a session rather than to any date, deliberately: the
+        session is what carries a closing balance somebody has read off the
+        statement, and without that the statement reconciles the books to a
+        figure nothing confirms.
+        """
+        session = self._get_session(db, firm_id, recon_id)
+        frozen = (self._frozen_snapshot(session) or {}).get("brs")
+        if frozen:
+            return {**frozen, "frozen": True}
+
+        client_id = session.get("client_id")
+        account = self._validate_bank_account(
+            db, firm_id, client_id, session["bank_account_id"])
+        gl_account = account.get("coa_account_id")
+        if not gl_account:
+            # Refused, not guessed. Without the GL account there is no book side,
+            # and a "BRS" with only the bank side is the document this replaces.
+            raise HTTPException(
+                status_code=422,
+                detail=("This bank account is not linked to a ledger account, so "
+                        "the book side of the reconciliation cannot be read. Link "
+                        "it in Bank Accounts and try again."))
+
+        as_of = _d(session["period_end"])
+        stated = session.get("closing_balance_paise")
+        stated = None if stated is None else int(stated)
+
+        out = self._brs_sql(
+            db, p_firm=firm_id, p_client=client_id,
+            p_bank_account=session["bank_account_id"], p_gl_account=gl_account,
+            p_as_of=as_of, p_statement_balance=stated, p_list_cap=brs_domain.LIST_CAP)
+        if out is None:
+            book, bank = self._brs_rows(
+                db, firm_id, client_id, session["bank_account_id"], gl_account, as_of)
+            out = brs_domain.reconciling_items(
+                book, bank, as_of=as_of, statement_balance_paise=stated)
+        # `frozen` says whether this is the certified document or a live
+        # computation. A period completed BEFORE migration 356 has no frozen
+        # statement, so it gets a live one — which is the best available answer
+        # and must not be presented as the thing that was signed.
+        return {"reconciliation": self._session_view(session), **out, "frozen": False}
+
     # ── B.4.2 manual reconcile / unreconcile (human confirmation only) ──────────
     def _index_account_txns(self, db, firm_id, session) -> dict:
         return {t["id"]: t for t in self._posted_account_txns(db, firm_id, session["bank_account_id"])}
@@ -523,6 +666,19 @@ class BankReconciliationService:
         # never silently change if transactions are later modified / reversed / removed.
         now = _now()
         snapshot = self._compute_report(session, txns)
+        # The DOCUMENT is frozen with the tie-out, for the same reason the
+        # tie-out is: a certified reconciliation that recomputed live would be a
+        # different document from the one that was signed off, and this half —
+        # the unpresented cheques and the deposits in transit — moves the moment
+        # the next month's statement is imported. Failing to build it must not
+        # fail the completion, so a failure freezes nothing and `brs()` falls
+        # back to computing live and says it is doing so.
+        try:
+            snapshot["brs"] = self.brs(db, firm_id, recon_id)
+        except Exception as e:                                    # noqa: BLE001
+            from core.observability import capture_soft_failure
+            capture_soft_failure(e, operation="bank_reconciliation_brs_snapshot",
+                                 reconciliation_id=recon_id, firm_id=firm_id)
         snapshot["reconciliation"].update({"status": "completed", "completed_at": now, "completed_by": actor_id})
         db.table("bank_reconciliations").update({
             "status": "completed", "completed_at": now, "completed_by": actor_id,

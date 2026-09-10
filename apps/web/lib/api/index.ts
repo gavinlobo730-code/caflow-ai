@@ -1636,6 +1636,11 @@ export const api = {
         request(`/api/banking/reconciliations/${id}/adjustment`,
                 { method: "PUT", body: JSON.stringify({ adjustments_paise, reason }) }),
       report: (id: string) => request(`/api/banking/reconciliations/${id}/report`),
+      /** The two-sided Bank Reconciliation Statement (BANK-04) — the document,
+       *  as against `report`, which is the tie-out. Cash Book balance, cheques
+       *  issued not presented, deposits not credited, the bank's own entries not
+       *  yet in the books, and the Pass Book balance they reach. */
+      brs: (id: string) => request(`/api/banking/reconciliations/${id}/brs`),
       reconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/reconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       unreconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/unreconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       complete: (id: string) => request(`/api/banking/reconciliations/${id}/complete`, { method: "POST" }),
