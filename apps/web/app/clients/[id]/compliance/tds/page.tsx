@@ -1000,24 +1000,46 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    vendor_id: "", section: "194C", certificate_no: "",
+    vendor_id: "", section: "", certificate_no: "",
     rate_percent: "", valid_from: "", valid_to: "", ceiling_rupees: "",
   });
+  // WHICH SECTIONS THIS SCREEN MAY OFFER IS A SERVER QUESTION, and it was a
+  // hardcoded list here until the backend guard caught it. Two facts decide it
+  // — §197(1)'s own list of provisions, and whether the RATE ENGINE holds the
+  // section at all — and both live in apps/api. Offering §194M because §197
+  // reaches it would let a CA record a certificate against a section no bill
+  // can ever be computed for, which is exactly what
+  // tests/test_a_section_the_engine_cannot_answer_for_is_refused.py exists to
+  // stop on the vendor master.
+  const [sections, setSections] = useState<string[]>([]);
+  const [notPriced, setNotPriced] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     const sb = getSupabaseClient();
     try {
-      const [certs, vends] = await Promise.all([
+      const [certs, vends, secs] = await Promise.all([
         selectAll(() => sb.from("tds_lower_deduction_certificates")
           .select("id, vendor_id, section, certificate_no, rate_bps, valid_from, valid_to, ceiling_paise, notes")
           .eq("client_id", clientId).order("valid_from", { ascending: false }).order("id")),
         selectAll(() => sb.from("vendors").select("id, name")
           .eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
+        apiFetch("/api/tds/sections"),
       ]);
       if (certs.error) throw certs.error;
       setRows((certs.data as LowerDeductionRow[]) ?? []);
       setVendors((vends.data as { id: string; name: string }[]) ?? []);
+      const payload = secs?.success
+        ? (secs.data as {
+            sections?: { section: string; section_197_eligible?: boolean }[];
+            section_197_not_priced?: string[];
+          })
+        : null;
+      const eligible = (payload?.sections ?? [])
+        .filter((s) => s.section_197_eligible).map((s) => s.section);
+      setSections(eligible);
+      setNotPriced(payload?.section_197_not_priced ?? []);
+      setForm((f) => (f.section || eligible.length === 0 ? f : { ...f, section: eligible[0] }));
       setLoadError(null);
     } catch {
       setRows([]);
@@ -1037,6 +1059,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
     const rateBps = bpsFromPercentInput(form.rate_percent);
     const ceiling = paiseFromRupeeInput(form.ceiling_rupees);
     if (!form.vendor_id) { setSaveError("Choose the vendor the certificate is for."); return; }
+    if (!form.section) { setSaveError("Choose the section the certificate was issued under."); return; }
     if (!form.certificate_no.trim()) { setSaveError("The certificate number is what Form 26Q reports — it is required."); return; }
     if (rateBps === null || rateBps < 0) { setSaveError("Enter the certified rate as a percentage, e.g. 0.5 — a nil certificate is 0."); return; }
     if (ceiling === null || ceiling <= 0) {
@@ -1099,6 +1122,21 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
 
       {loadError && <p className="text-sm text-red-600">{loadError}</p>}
 
+      {/* NAMED RATHER THAN SILENTLY ABSENT. §197(1) reaches these too, and this
+          product cannot price a bill under them — so a certificate recorded
+          against one could never be applied. Saying so is the difference
+          between a gap and a mystery. §195 is on the list for a second reason
+          as well: even where a certificate is on file, the engine deliberately
+          does not combine a certified rate with the §115A / Part II / DTAA
+          comparison §195 already requires, and says so on the document. */}
+      {notPriced.length > 0 && (
+        <p className="text-xs text-[#64748B] bg-[#F8FAFC] border rounded px-3 py-2">
+          §197 also reaches {notPriced.map((s) => `§${s}`).join(", ")}, which this
+          product does not price — a certificate recorded against one could not be
+          applied to a bill, so it is not offered here.
+        </p>
+      )}
+
       {showNew && (
         <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
           {saveError && <p className="text-sm text-red-600">{saveError}</p>}
@@ -1110,12 +1148,8 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
             </select>
             <select value={form.section} onChange={(e) => setForm((f) => ({ ...f, section: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
-              {/* §197(1)'s own list. §194Q and §194B are not on it, and the
-                  engine refuses a certificate against a section §197 does not
-                  reach — so they are not offered here either. */}
-              {["193", "194", "194A", "194C", "194D", "194DA", "194G", "194H",
-                "194I", "194J", "194K", "194LA", "194LBB", "194LBC", "194M",
-                "194O", "195"].map((s) => <option key={s} value={s}>§{s}</option>)}
+              {sections.length === 0 && <option value="">Section…</option>}
+              {sections.map((s) => <option key={s} value={s}>§{s}</option>)}
             </select>
             <input placeholder="Certificate no." value={form.certificate_no}
               onChange={(e) => setForm((f) => ({ ...f, certificate_no: e.target.value }))}

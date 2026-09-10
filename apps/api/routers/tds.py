@@ -401,6 +401,7 @@ def compute_tds_amount(req: TDSAmountRequest, user: dict = Depends(rbac("tds", "
 def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds", "read"))):
     """List all TDS sections with thresholds and rates for the given FY
     (defaults to the current FY)."""
+    from domain.tds.lower_deduction import SECTIONS_197
     rates = tds_rates_for(fy)
     sections = [
         {
@@ -409,12 +410,30 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
             "aggregate_threshold_paise": rule.aggregate_threshold_paise,
             "rate_individual_pct": rule.individual_rate_bps / 100,
             "rate_company_pct": rule.company_rate_bps / 100,
+            # IT Act §197(1) names the provisions a lower-deduction certificate
+            # can be issued under. A screen offering one against a section the
+            # RATE ENGINE cannot answer for would let a CA record a certificate
+            # that can never be applied to a bill — the same failure
+            # tests/test_a_section_the_engine_cannot_answer_for_is_refused.py
+            # names for the vendor master. Both facts are decided here, where
+            # the registry and the statute both live.
+            "section_197_eligible": sec in SECTIONS_197,
         }
         for sec, rule in rates.sections.items()
     ]
     return {
         "success": True,
-        "data": {"fy": rates.fy, "rates_verified": rates.verified, "sections": sections},
+        "data": {
+            "fy": rates.fy, "rates_verified": rates.verified, "sections": sections,
+            # WHAT §197 REACHES AND THIS ENGINE CANNOT PRICE, named rather than
+            # silently absent from the list above. §195 is here for a second
+            # reason as well as the first: even where a certificate is recorded
+            # against it, resolve_withholding deliberately does not apply one —
+            # the §195 figure is a §115A / Part II / DTAA comparison the statute
+            # already defines, and a certified rate on top of it is a fourth
+            # rate in that comparison.
+            "section_197_not_priced": sorted(SECTIONS_197 - set(rates.sections)),
+        },
         "error": None,
     }
 

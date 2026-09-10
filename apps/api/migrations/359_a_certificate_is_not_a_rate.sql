@@ -124,18 +124,26 @@ BEGIN
           'USING (firm_id = public.get_my_firm_id()) '
           'WITH CHECK (firm_id = public.get_my_firm_id())';
 
+  -- "ON public.<table> AS RESTRICTIVE" is kept contiguous in ONE string literal
+  -- rather than split across two, because tests/test_direct_write_tables_are_
+  -- role_guarded.py reads the migration FILE to check that a table claimed as
+  -- guarded really is. A policy split across adjacent literals is valid SQL
+  -- and invisible to that scan, which would leave the claim unproved.
   EXECUTE 'DROP POLICY IF EXISTS tds_ldc_role_insert ON public.tds_lower_deduction_certificates';
-  EXECUTE 'CREATE POLICY tds_ldc_role_insert ON public.tds_lower_deduction_certificates '
-          'AS RESTRICTIVE FOR INSERT WITH CHECK (public.my_role_at_least(''Executive''))';
+  EXECUTE 'CREATE POLICY tds_ldc_role_insert '
+          'ON public.tds_lower_deduction_certificates AS RESTRICTIVE '
+          'FOR INSERT WITH CHECK (public.my_role_at_least(''Executive''))';
 
   EXECUTE 'DROP POLICY IF EXISTS tds_ldc_role_update ON public.tds_lower_deduction_certificates';
-  EXECUTE 'CREATE POLICY tds_ldc_role_update ON public.tds_lower_deduction_certificates '
-          'AS RESTRICTIVE FOR UPDATE USING (public.my_role_at_least(''Executive'')) '
+  EXECUTE 'CREATE POLICY tds_ldc_role_update '
+          'ON public.tds_lower_deduction_certificates AS RESTRICTIVE '
+          'FOR UPDATE USING (public.my_role_at_least(''Executive'')) '
           'WITH CHECK (public.my_role_at_least(''Executive''))';
 
   EXECUTE 'DROP POLICY IF EXISTS tds_ldc_role_delete ON public.tds_lower_deduction_certificates';
-  EXECUTE 'CREATE POLICY tds_ldc_role_delete ON public.tds_lower_deduction_certificates '
-          'AS RESTRICTIVE FOR DELETE USING (public.my_role_at_least(''Manager''))';
+  EXECUTE 'CREATE POLICY tds_ldc_role_delete '
+          'ON public.tds_lower_deduction_certificates AS RESTRICTIVE '
+          'FOR DELETE USING (public.my_role_at_least(''Manager''))';
 
   EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON public.tds_lower_deduction_certificates TO authenticated';
 END $$;

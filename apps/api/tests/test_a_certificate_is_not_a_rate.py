@@ -288,3 +288,32 @@ def test_an_exhausted_certificate_reaches_nothing(monkeypatch):
         cert, consumed_paise=60_00_000_00, charge_base_paise=10_00_000_00) == 0
     assert lower_deduction.certified_base(
         cert, consumed_paise=45_00_000_00, charge_base_paise=10_00_000_00) == 5_00_000_00
+
+
+def test_the_sections_endpoint_says_which_ones_a_certificate_can_be_recorded_against(monkeypatch):
+    """The list is TWO facts, and both live here rather than in a screen.
+
+    §197(1) names the provisions a certificate can be issued under, and the
+    rate registry decides which of those this product can compute a bill for.
+    A dropdown offering §194M because §197 reaches it would let a CA record a
+    certificate against a section no bill can ever be computed for — the same
+    failure tests/test_a_section_the_engine_cannot_answer_for_is_refused.py
+    exists to stop on the vendor master, and the failure a hardcoded list on
+    the §197 screen actually produced before this endpoint carried the answer.
+    """
+    from domain.tds.section_rates import tds_rates_for
+    from routers.tds import list_tds_sections
+
+    out = list_tds_sections(fy="2025-26", user={"firm_id": FIRM, "role": "Partner"})
+    assert out["success"] is True
+    data = out["data"]
+    held = set(tds_rates_for("2025-26").sections)
+    eligible = {s["section"] for s in data["sections"] if s["section_197_eligible"]}
+
+    assert eligible == (held & lower_deduction.SECTIONS_197)
+    # And what is left out is NAMED, not silently absent.
+    assert set(data["section_197_not_priced"]) == (lower_deduction.SECTIONS_197 - held)
+    assert "195" in data["section_197_not_priced"]
+    # §194Q and §194B are held by the engine and NOT reachable by §197, so they
+    # must not be offered either — the intersection is doing both jobs.
+    assert "194Q" not in eligible and "194B" not in eligible
