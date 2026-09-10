@@ -196,6 +196,77 @@ export type GSTR1WithAmendments = {
   [key: string]: unknown;
 };
 
+// ── The ITC register and Table 11 advances (GST-13) ──────────────────────────
+
+/** The four heads a reversal or reclaim is declared under. NO taxable value:
+ *  Table 4 is about CREDIT, not about the supply it came from. */
+export type ITCHeads = {
+  igst_paise: number; cgst_paise: number; sgst_paise: number; cess_paise: number;
+};
+
+export type ITCRegisterRow = {
+  id: string;
+  kind: "reversal" | "reclaim";
+  period: string;
+  journal_entry_id: string;
+  /** rule_37 | rule_37a | section_16_2b | section_16_2c | other — the
+   *  RECLAIMABLE reasons only. Rules 38/42/43 and §17(5) are permanent and
+   *  belong in Table 4(B)(1), derived from the documents; registering one here
+   *  would double-count it. */
+  reason_code?: string;
+  reverses_id?: string | null;
+  purchase_bill_id?: string | null;
+  notes?: string | null;
+  created_at?: string;
+} & Partial<ITCHeads>;
+
+export type ITCRegisterPeriod = {
+  period: string;
+  /** -> GSTR-3B Table 4(B)(2) */
+  reversals: ITCRegisterRow[];
+  /** -> GSTR-3B Table 4(D)(1) */
+  reclaims: ITCRegisterRow[];
+  reversal_totals: Partial<ITCHeads>;
+  reclaim_totals: Partial<ITCHeads>;
+  ca_review_required?: boolean;
+};
+
+export type ITCReversalInput = {
+  client_id: string;
+  journal_entry_id: string;
+  period: string;
+  reason_code: string;
+  purchase_bill_id?: string;
+  notes?: string;
+} & Partial<ITCHeads>;
+
+export type ITCReclaimInput = {
+  client_id: string;
+  journal_entry_id: string;
+  period: string;
+  /** The reversal this brings back. */
+  reverses_id: string;
+  notes?: string;
+} & Partial<ITCHeads>;
+
+export type GSTR1Advances = {
+  period: string;
+  unadjusted_advances: Array<{
+    receipt_id: string; receipt_no?: string; receipt_date?: string;
+    customer_name?: string; customer_gstin?: string | null;
+    amount_paise: number; unadjusted_paise: number;
+  }>;
+  count: number;
+  total_unadjusted_paise: number;
+  /** ALWAYS false, and stated in the payload rather than only in a docstring:
+   *  a CA reading an empty Table 11 needs to know whether it is empty because
+   *  there were no advances or because nothing computes it. */
+  table_11_computed: boolean;
+  why?: string;
+  rule?: string;
+  ca_review_required?: boolean;
+};
+
 // ── The employee drawer's shapes (PAY-11) ────────────────────────────────────
 //
 // Mirrors of the router's Pydantic models. Every amount is integer paise and
@@ -2708,6 +2779,44 @@ export const api = {
     gstr1Amendments: (clientId: string, period: string) =>
       request<ApiResp<GSTR1AmendmentsReport>>(
         `/api/gst-workspace/gstr1/amendments?client_id=${encodeURIComponent(clientId)}`
+        + `&period=${encodeURIComponent(period)}`),
+
+    // ── The reclaimable half of Table 4 (GST-13) ──────────────────────────
+    //
+    // Table 4(B)(2) reversals and their 4(D)(1) reclaims. The register does
+    // NOT post anything: giving credit back is a real movement and it goes
+    // through the one posting kernel like every other entry. What was missing
+    // was never a way to POST the reversal — it was a way to say WHAT IT WAS,
+    // because a journal crediting GST Input could be a Rule 37 reversal, a
+    // cancelled bill or a plain correction, and the return has to tell them
+    // apart.
+
+    itcRegister: (clientId: string, period: string) =>
+      request<ApiResp<ITCRegisterPeriod>>(
+        `/api/gst-workspace/itc/register?client_id=${encodeURIComponent(clientId)}`
+        + `&period=${encodeURIComponent(period)}`),
+
+    /** Classify an ALREADY-POSTED journal as a Table 4(B)(2) reversal.
+     *  Refused if it claims more than that journal actually moved — a return
+     *  figure the ledger cannot support is the failure this prevents. */
+    itcRegisterReversal: (body: ITCReversalInput) =>
+      request<ApiResp<Record<string, unknown>>>(
+        "/api/gst-workspace/itc/register/reversal",
+        { method: "POST", body: JSON.stringify(body) }),
+
+    /** Classify an already-posted journal as a Table 4(D)(1) reclaim.
+     *  Refused if it would reclaim more than the reversal it names still has
+     *  outstanding — credit can only come back once. */
+    itcRegisterReclaim: (body: ITCReclaimInput) =>
+      request<ApiResp<Record<string, unknown>>>(
+        "/api/gst-workspace/itc/register/reclaim",
+        { method: "POST", body: JSON.stringify(body) }),
+
+    /** Advances received against no invoice — GSTR-1 Table 11.
+     *  NAMES them and computes no tax; see `why` on the response. */
+    gstr1Advances: (clientId: string, period: string) =>
+      request<ApiResp<GSTR1Advances>>(
+        `/api/gst-workspace/gstr1/advances?client_id=${encodeURIComponent(clientId)}`
         + `&period=${encodeURIComponent(period)}`),
   },
 

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import AmendmentsTab from "@/components/gst/AmendmentsTab";
+import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -34,7 +35,7 @@ function rupees(paise: number) {
   return `₹${(paise / 100).toLocaleString("en-IN")}`;
 }
 
-type GSTTab = "dashboard" | "gstr1" | "amendments" | "gstr3b" | "gstr2b" | "history" | "gstr9";
+type GSTTab = "dashboard" | "gstr1" | "amendments" | "gstr3b" | "itc" | "gstr2b" | "history" | "gstr9";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-[#F1F5F9] text-[#334155]",
@@ -1769,6 +1770,10 @@ const TABS: { id: GSTTab; label: string }[] = [
   // which is the one thing CGST Act §37 does not allow.
   { id: "amendments", label: "Amendments" },
   { id: "gstr3b", label: "GSTR-3B" },
+  // Beside GSTR-3B, because 4(B)(2) and 4(D)(1) are its tables — and separate
+  // from it, because the register CLASSIFIES journals the CA already posted
+  // rather than being part of computing the return.
+  { id: "itc", label: "ITC Register" },
   { id: "gstr9", label: "GSTR-9" },
   { id: "gstr2b", label: "GSTR-2B Recon" },
   { id: "history", label: "Filing History" },
@@ -1808,6 +1813,7 @@ export default function GSTWorkspacePage() {
         {tab === "dashboard" && <GSTDashboard clientId={clientId} />}
         {tab === "gstr1" && <GSTR1Tab clientId={clientId} />}
         {tab === "amendments" && <AmendmentsTab clientId={clientId} />}
+        {tab === "itc" && <ItcRegisterTab clientId={clientId} />}
         {tab === "gstr3b" && <GSTR3BTab clientId={clientId} />}
         {tab === "gstr2b" && <GSTR2BTab clientId={clientId} />}
         {tab === "history" && <FilingHistoryTab clientId={clientId} />}
