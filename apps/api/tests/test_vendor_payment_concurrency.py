@@ -62,6 +62,15 @@ class _Q:
         self.f.append((k, v))
         return self
 
+    def neq(self, k, v):
+        # A real filter, not a no-op: create_purchase_payment reads the vendor's
+        # OPEN payable before deciding what part of a payment is an advance
+        # (§194 charges at credit or payment, whichever is earlier), and it
+        # excludes cancelled bills. A double that ignored the exclusion would
+        # let a cancelled bill make an advance look settled.
+        self.f.append(("!=" + k, v))
+        return self
+
     def like(self, k, pattern):
         # only used by _next_payment_seq; no real matching needed for these tests
         return self
@@ -83,7 +92,15 @@ class _Q:
 
     def _match(self):
         rows = self.s.setdefault(self.t, [])
-        return [r for r in rows if all(r.get(k) == v for k, v in self.f)]
+        def keep(r):
+            for k, v in self.f:
+                if k.startswith("!="):
+                    if r.get(k[2:]) == v:
+                        return False
+                elif r.get(k) != v:
+                    return False
+            return True
+        return [r for r in rows if keep(r)]
 
     # A single lock stands in for Postgres's per-row write lock: it makes the
     # match-then-mutate step of an "update" atomic, so a .eq("paid_paise", X)

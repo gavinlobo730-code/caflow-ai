@@ -23,6 +23,11 @@ from domain.accounting.payment_account import resolve_payment_account
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+from services import tds_register_service
+from services import vendor_tds
+from domain.tds.residency import (
+    GAP_FOREIGN_ADVANCE_NOT_WITHHELD, describe_gaps,
+)
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payment_service")
@@ -135,13 +140,20 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     # firm+client (vendors.client_id is NOT NULL — every vendor belongs to
     # exactly one client) and rejects when the vendor can't be found in THIS
     # client's books at all, not just when found-but-inactive.
+    vendor: dict = {}
     if db is not None:
-        _v = (db.table("vendors").select("is_active")
+        # select("*") rather than is_active alone: the unallocated remainder of
+        # a payment is an ADVANCE, and §194/§195 charge at credit or payment
+        # whichever is earlier — so the section, the PAN, the residency and the
+        # §195 paperwork all decide what this payment withholds. The bill path
+        # resolves its vendor the same way.
+        _v = (db.table("vendors").select("*")
               .eq("id", data["vendor_id"]).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
         if not _v:
             raise HTTPException(status_code=422, detail="This vendor is not part of this client's books.")
         if _v[0].get("is_active") is False:
             raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
+        vendor = _v[0]
 
     if db is not None and (data.get("currency") or "INR").strip().upper() != "INR":
         return create_foreign_payment_core(firm_id, data, actor, db)
@@ -222,6 +234,22 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
             raise HTTPException(status_code=422,
                 detail=f"Bill {_bill_id}: allocation would exceed bill outstanding")
 
+    # ── §194 / §195: the unallocated remainder is an advance, and an advance
+    # is the EARLIER of "credit or payment", so it withholds here. The
+    # allocated part does not: it settles bills that were charged when they
+    # were booked, and charging it again would deduct the same sum twice.
+    # The allocations have not been applied to the bills yet, so the open
+    # payable still includes what this payment is about to settle — subtract it,
+    # or the payment appears to discharge nothing and the whole remainder reads
+    # as a fresh advance.
+    tds_cols = vendor_tds.columns_for_advance(
+        vendor, unallocated_paise, data["payment_date"], firm_id, db,
+        payment_total_paise=amount_paise,
+        open_payable_paise=max(0, vendor_tds.open_payable_paise(
+            db, firm_id=firm_id, client_id=client_id,
+            vendor_id=data["vendor_id"]) - total_allocated))
+    tds_paise = int(tds_cols.get("tds_paise") or 0)
+
     seq = _next_payment_seq(db, firm_id, fy)
     payment_no = f"VPMT-{fy}-{seq:04d}"
     payment_id = str(uuid.uuid4())  # pre-generated so the journal, payment row and allocations share one id
@@ -242,13 +270,20 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         "notes":             data.get("notes"),
         "created_at":        datetime.now(timezone.utc).isoformat(),
         "updated_at":        datetime.now(timezone.utc).isoformat(),
+        **vendor_tds.strip_non_columns(tds_cols),
     }
 
     # Post the GL journal FIRST — a posting failure aborts here rather than
     # leaving settled AP with no GL entry (mirrors receipt_service's F7).
     from services.phase2_journal_service import phase2_journal_service
     journal_id = phase2_journal_service.journal_for_purchase_payment(
-        {"payment_no": payment_no, "payment_date": data["payment_date"], "amount_paise": amount_paise},
+        {"payment_no": payment_no, "payment_date": data["payment_date"],
+         "amount_paise": amount_paise,
+         # The bank leg is amount_paise − tds_paise; the difference credits TDS
+         # Payable. amount_paise keeps its meaning — the sum credited or paid.
+         "tds_paise": tds_paise, "tds_section": tds_cols.get("tds_section"),
+         "bank_account_id": data.get("bank_account_id"),
+         "payment_mode": data.get("payment_mode", "bank")},
         firm_id or "", client_id,
     )
     if journal_id:
@@ -332,6 +367,16 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         severity="success", entity_type="purchase_payment", entity_id=payment_id,
         amount_paise=amount_paise, actor_id=(actor or {}).get("auth_user_id"), actor_name=(actor or {}).get("email"),
     )
+
+    # THE REGISTER, OR THE DEDUCTION IS INVISIBLE TO COMPLIANCE — no challan by
+    # the 7th (Rule 30), no deductee line for 26Q/27Q (Rule 31A). Never raises.
+    register = tds_register_service.sync_for_payment(
+        db, firm_id or "", client_id, {**payment, **tds_cols}, vendor)
+    if register.get("statutory_gaps"):
+        payment["statutory_gaps"] = register["statutory_gaps"]
+        payment["gap_details"] = register.get("gap_details")
+    if tds_cols.get("_tds_why"):
+        payment["tds_why"] = tds_cols["_tds_why"]
 
     payment["journal_entry_id"] = journal_id
     payment["allocations"]      = alloc_payloads
@@ -553,7 +598,23 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
 
     log_event(firm_id, "purchase_payment", payment_id, "create", actor_id=(actor or {}).get("auth_user_id"),
               actor_email=(actor or {}).get("email"), new_data={"amount_paise": cash_base, "currency": ccy})
-    return {**payment, "allocations": alloc_rows, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
+    out = {**payment, "allocations": alloc_rows, "journal_entry_id": entry_id,
+           "realized_fx_paise": fx_diff}
+    # THE ONE PAYMENT PATH THAT DOES NOT WITHHOLD, SAID OUT LOUD. §194 and §195
+    # charge at credit or payment whichever is earlier, so this unallocated
+    # remainder is a deduction event exactly as an INR advance is (migration
+    # 358). It is not computed here because the vendor is credited in a foreign
+    # currency while the tax is remitted in rupees: the cash leg is not
+    # "amount − tax", and guessing the split would misstate what the vendor was
+    # actually paid. A zero here and a zero on a non-TDS vendor used to be the
+    # same number meaning opposite things.
+    _v = (db.table("vendors").select("tds_applicable")
+          .eq("id", data["vendor_id"]).eq("firm_id", firm_id)
+          .limit(1).execute().data or [{}])[0]
+    if unalloc_base > 0 and _v.get("tds_applicable"):
+        out["statutory_gaps"] = [GAP_FOREIGN_ADVANCE_NOT_WITHHELD]
+        out["gap_details"] = describe_gaps([GAP_FOREIGN_ADVANCE_NOT_WITHHELD])
+    return out
 
 
 def _adjust_bill_paid(db, firm_id: str, client_id: str, bill_id: str, delta_paise: int,

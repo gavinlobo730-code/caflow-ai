@@ -87,19 +87,19 @@ def test_the_gap_names_no_rate_for_the_limb_it_cannot_price():
 def test_the_gap_reaches_the_bill_that_it_is_about():
     """A gap that only exists in the registry is a comment. It has to arrive on
     the explanation the CA reads beside the figure."""
-    from routers.purchase_bills import _resolve_bill_resident_tds
+    from services.vendor_tds import resolve_resident_tds
     vendor = {"id": "v1", "pan": "AAACD1234E", "tds_applicable": True}
-    _paise, _bps, why = _resolve_bill_resident_tds(
-        vendor, "194J", 1_00_000_00, "2025-06-10", "f1", None, None)
+    why = resolve_resident_tds(
+        vendor, "194J", 1_00_000_00, "2025-06-10", "f1", None, None).why
     assert "TECHNICAL services" in why
     assert "OVER-deducted" in why
 
 
 def test_a_single_limb_section_says_nothing_extra():
-    from routers.purchase_bills import _resolve_bill_resident_tds
+    from services.vendor_tds import resolve_resident_tds
     vendor = {"id": "v1", "pan": "AAACD1234E", "tds_applicable": True}
-    _paise, _bps, why = _resolve_bill_resident_tds(
-        vendor, "194C", 5_00_000_00, "2025-06-10", "f1", None, None)
+    why = resolve_resident_tds(
+        vendor, "194C", 5_00_000_00, "2025-06-10", "f1", None, None).why
     assert "OVER-deducted" not in why
 
 

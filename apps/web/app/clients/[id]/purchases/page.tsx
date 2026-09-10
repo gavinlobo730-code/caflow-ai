@@ -6,7 +6,7 @@ import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loade
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
-import { registerNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
+import { registerNotesFrom, paymentNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
 import { DebitNoteViewDrawer } from "@/components/purchases/DebitNoteViewDrawer";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
 import { writeDebitNoteDuplicateSeed } from "@/lib/purchases/debitNoteDuplicateSeed";
@@ -2137,6 +2137,13 @@ interface PaymentRow {
   payment_mode: string;
   reference_no: string | null;
   is_reversed?: boolean;
+  // Migration 358. §194/§195 charge at credit or payment, whichever is EARLIER,
+  // so the unallocated (advance) part of a payment withholds. tds_base_paise is
+  // what it was charged on, and it can be non-zero with tds_paise 0 — a sum that
+  // counts toward the year's §194C aggregate without yet crossing it.
+  tds_paise?: number | null;
+  tds_base_paise?: number | null;
+  tds_section?: string | null;
 }
 
 function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
@@ -2297,7 +2304,23 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
       );
       if (!result.success) throw new Error(result.error ?? "Failed to record payment");
 
-      setMsg({ type: "ok", text: "Payment recorded." });
+      // SAY WHAT WAS WITHHELD, IN THE ENGINE'S OWN WORDS. The server decides
+      // whether any part of this payment is an advance (§194/§195 charge at
+      // credit or payment, whichever is earlier) and how much it carries; the
+      // browser holds none of the facts that decide it — not the section, not
+      // the year's running aggregate, not the §206AA floor. So the sentence is
+      // relayed, never composed here. Same rule as the bill editor's preview.
+      const paid = result.data as { tds_paise?: number; tds_why?: string } | null;
+      const withheld = Number(paid?.tds_paise ?? 0);
+      // The SAME renderer the bill path uses (lib/purchases/registerNotes), so a
+      // gap cannot be worded one way on a bill and another on an advance.
+      const gapText = paymentNotesFrom(result.data).map((n) => n.text).join(" ");
+      setMsg({
+        type: "ok",
+        text: withheld > 0
+          ? `Payment recorded. ${fmt(withheld)} withheld — ${paid?.tds_why ?? ""}${gapText ? " " + gapText : ""}`.trim()
+          : `Payment recorded.${gapText ? " " + gapText : ""}`,
+      });
       setShowForm(false);
       setVendorId(""); setBillId(""); setAmount(""); setRefNo(""); setMode("bank");
       setCurrency(""); setExchangeRate("");
@@ -2346,6 +2369,15 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
       render: (p) => <span className="font-medium text-[#1E293B]">{p.vendors?.name ?? "—"}</span> },
     { key: "amount", header: "Amount", accessor: (p) => p.amount_paise, sortable: true, align: "right",
       render: (p) => <span className="font-mono font-semibold text-[#1E293B]">{fmt(p.amount_paise)}</span> },
+    // The amount column is the sum CREDITED to the vendor; this is what was
+    // held back out of it, and the two differ exactly on an advance. Shown
+    // beside it rather than folded into it, because 26Q reports both.
+    { key: "tds", header: "TDS Withheld", accessor: (p) => Number(p.tds_paise ?? 0), sortable: true, align: "right",
+      render: (p) => Number(p.tds_paise ?? 0) > 0 ? (
+        <span className="font-mono text-[#B45309]" title={`Section ${p.tds_section ?? ""} — deducted on the advance, IT Act §194/§195 (credit or payment, whichever is earlier)`}>
+          {fmt(Number(p.tds_paise))}
+        </span>
+      ) : <span className="text-[#CBD5E1]">—</span> },
     { key: "payment_mode", header: "Mode", accessor: (p) => p.payment_mode, searchable: true,
       render: (p) => <span className="text-[#64748B] capitalize">{p.payment_mode}</span> },
     { key: "reference_no", header: "Reference", accessor: (p) => p.reference_no ?? "", searchable: true,

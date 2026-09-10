@@ -196,6 +196,7 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
       those allocation rows. Mirrors reverse_receipt's receipt_allocations
       handling exactly."""
     from services.phase2_journal_service import phase2_journal_service
+    from services import tds_register_service
 
     rows = (db.table("purchase_payments").select("*")
             .eq("id", payment_id).eq("firm_id", firm_id)
@@ -253,6 +254,15 @@ def reverse_payment(db, firm_id: str, payment_id: str, reversal_date: str,
     )
 
     db.table("purchase_payments").update({"is_reversed": True, "updated_at": _now()}).eq("id", payment_id).execute()
+
+    # AND THE REGISTER, because the deduction is undone. An advance withholds
+    # under §194/§195 at the moment it is paid (migration 358), so reversing it
+    # reverses the TDS credit in the journal above — and a deductee row left
+    # behind would be filed on 26Q/27Q for tax that is no longer in the books,
+    # which is the mirror of the missing row PUR-10 was about. Never raises: the
+    # reversal itself is already committed by this point.
+    tds_register_service.sync_for_payment(
+        db, firm_id, client_id, {**payment, "is_reversed": True}, None)
 
     _logger.info("Reversed payment %s (firm=%s client=%s), bills=%s adjusted",
                 payment_id, firm_id, client_id, bills_adjusted)

@@ -1,6 +1,10 @@
 """Purchase payments — vendor payment recording with auto journal.
 Outstanding tracking against purchase bills.
-IT Act Section 194C/194I/194J: TDS already deducted at bill stage; payment is net amount.
+IT Act Section 194C/194I/194J/195: the charge falls at the time of CREDIT to the
+payee's account or of PAYMENT, WHICHEVER IS EARLIER. A payment against a bill was
+already charged when the bill was booked, so it is net. An ADVANCE — this table's
+purchase_bill_id is nullable precisely to support one (migration 050) — is the
+earlier event, and withholds here. services/vendor_tds.py decides how much.
 """
 import os
 import uuid
@@ -19,6 +23,8 @@ from domain.accounting.payment_account import resolve_payment_account
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+from services import tds_register_service
+from services import vendor_tds
 from services import reversal_service
 from services import purchase_payment_service
 from services.numbering import sequence_after
@@ -399,12 +405,17 @@ def create_purchase_payment(
         # THIS client's books at all, instead of silently proceeding — the old
         # firm-only lookup let a vendor_id from a DIFFERENT client of the same
         # firm, or a nonexistent id, pass straight through to a real payment.
-        _v = (db.table("vendors").select("is_active")
+        # select("*") rather than is_active alone: an advance withholds, and the
+        # section, the PAN, the residency and the §195 paperwork all decide how
+        # much (services/vendor_tds.VENDOR_FIELDS_THAT_DECIDE_WITHHOLDING). The
+        # bill path resolves its vendor the same way.
+        _v = (db.table("vendors").select("*")
               .eq("id", vendor_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
         if not _v:
             raise HTTPException(status_code=422, detail="This vendor is not part of this client's books.")
         if _v[0].get("is_active") is False:
             raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
+        vendor = _v[0]
         # ── Multi-Currency (Phase 4): a foreign payment runs a dedicated realized-FX
         # path — the bill is relieved at ITS booked rate, cash at the payment's rate,
         # and the difference posts to Realized FX Gain/Loss. INR path below unchanged.
@@ -436,6 +447,23 @@ def create_purchase_payment(
             # read-then-check-then-insert let concurrent payments overpay the same bill.
             _claim_bill_outstanding(db, firm_id, client_id, purchase_bill_id, amount_paise, net_payable_paise)
 
+        # ── §194 / §195: an advance is the EARLIER event ────────────────────
+        # This path allocates the whole payment to the linked bill when there is
+        # one (_claim_bill_outstanding reserves amount_paise of its outstanding),
+        # so the advance is the whole payment when there is not. A bill-linked
+        # payment withholds nothing here: it was charged when the bill was
+        # booked, and charging it again would deduct the same sum twice.
+        unallocated_paise = 0 if purchase_bill_id else amount_paise
+        # Measured AFTER _claim_bill_outstanding above, which has already
+        # reserved this payment's amount against the linked bill — so what is
+        # left is what this payment does NOT discharge.
+        tds_cols = vendor_tds.columns_for_advance(
+            vendor, unallocated_paise, payment_date, firm_id, db,
+            payment_total_paise=amount_paise,
+            open_payable_paise=vendor_tds.open_payable_paise(
+                db, firm_id=firm_id, client_id=client_id, vendor_id=vendor_id))
+        tds_paise = int(tds_cols.get("tds_paise") or 0)
+
         fy = _current_fy()
         seq = _next_payment_seq(db, firm_id, fy)
         payment_no = f"VPMT-{fy}-{seq:04d}"
@@ -452,6 +480,13 @@ def create_purchase_payment(
                 "payment_no": payment_no,
                 "payment_date": payment_date,
                 "amount_paise": amount_paise,
+                # The bank leg is amount_paise − tds_paise and the difference
+                # is credited to TDS Payable. amount_paise keeps its meaning:
+                # the sum credited or paid to the vendor.
+                "tds_paise": tds_paise,
+                "tds_section": tds_cols.get("tds_section"),
+                "bank_account_id": data.get("bank_account_id"),
+                "payment_mode": payment_mode,
             }
             journal_entry_id = phase2_journal_service.journal_for_purchase_payment(
                 payment_dict, firm_id, client_id
@@ -472,6 +507,7 @@ def create_purchase_payment(
                 "journal_entry_id": journal_entry_id,
                 "created_at": _now_iso(),
                 "updated_at": _now_iso(),
+                **vendor_tds.strip_non_columns(tds_cols),
             }
             payment = _insert_payment_or_compensate(
                 db, firm_id, payload, journal_entry_id, current_user.get("id"),
@@ -484,6 +520,19 @@ def create_purchase_payment(
         # Reconcile paid_paise/status from the ledger of actual payment rows if linked
         if purchase_bill_id:
             _update_bill_payment_status(db, firm_id, client_id, purchase_bill_id, amount_paise)
+
+        # THE REGISTER, OR THE DEDUCTION IS INVISIBLE TO COMPLIANCE. A tds row
+        # that exists only in the GL has no challan to pay by the 7th (Rule 30)
+        # and no deductee line to assemble 26Q/27Q from (Rule 31A). Never raises
+        # — a payment that posted correctly must not be rolled back because its
+        # register row could not be written.
+        register = tds_register_service.sync_for_payment(
+            db, firm_id, client_id, {**payment, **tds_cols}, vendor)
+        if register.get("statutory_gaps"):
+            payment = {**payment, "statutory_gaps": register["statutory_gaps"],
+                       "gap_details": register.get("gap_details")}
+        if tds_cols.get("_tds_why"):
+            payment = {**payment, "tds_why": tds_cols["_tds_why"]}
 
         log_event(
             firm_id, "purchase_payment", payment["id"], "create",

@@ -307,3 +307,134 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             "missing from the challan and from 26Q until this is repaired.",
             bill_id, firm_id, client_id, deducted, bill.get("tds_section"), e)
         return {"synced": False, "reason": str(e)}
+
+
+def sync_for_payment(db, firm_id: str, client_id: str, payment: dict,
+                     vendor: Optional[dict] = None) -> dict:
+    """Make the register agree with one vendor PAYMENT. Returns what it did.
+
+    WHY A SECOND FUNCTION AND NOT A BRANCH IN sync_for_bill
+
+    The two record different events, and almost every field differs in what it
+    means. A bill has a status vocabulary and a draft state; a payment has
+    neither — money either left the account or it did not. A bill's base is its
+    taxable value; a payment's is `tds_base_paise`, the UNALLOCATED part alone,
+    because the allocated part settles a bill that was already charged at
+    credit. A bill's row is keyed on purchase_bill_id, a payment's on
+    purchase_payment_id (migration 358), and the same CHECK forbids a row from
+    carrying both.
+
+    What is deliberately shared is everything statutory: the same Rule 31A(4)
+    routing, the same 27Q identifier checks, the same §195 gaps, the same
+    quarter and financial-year vocabulary. Those are called, not re-stated.
+
+    WHEN A ROW EXISTS
+
+    A payment is in the books the moment it is recorded, so — unlike a bill —
+    there is no draft to exclude. A REVERSED payment loses its row, the same
+    way a cancelled bill does: the credit is undone and there is nothing to
+    report on 26Q. A payment that withheld nothing under a resident section
+    gets no row (26Q reports deductions), and a §195 remittance that withheld
+    nothing does, with a reason (27Q reports the remittance).
+
+    Never raises into the caller's path: a payment that posted correctly must
+    not be rolled back because its register row could not be written.
+    """
+    payment_id = payment.get("id")
+    if db is None or not payment_id:
+        return {"synced": False, "reason": "no database"}
+
+    deducted = int(payment.get("tds_paise") or 0)
+    charged_base = int(payment.get("tds_base_paise") or 0)
+    is_195 = (payment.get("tds_section") or "").strip() == "195"
+    live = (not payment.get("is_reversed")) and charged_base > 0 and (
+        deducted > 0 or is_195)
+
+    try:
+        if not live:
+            db.table("tds_deductions").delete().eq(
+                "purchase_payment_id", payment_id).eq("firm_id", firm_id).execute()
+            return {"synced": True, "action": "removed",
+                    "reason": "reversed" if payment.get("is_reversed") else "no tds"}
+
+        when = _as_date(payment.get("payment_date")) or date.today()
+        # bps -> percent for a NUMERIC(5,2) column: 2000 bps is 20.00%.
+        rate_pct = round(int(payment.get("tds_rate_bps") or 0) / 100, 2)
+        v = vendor or {}
+        residency = v.get("residential_status")
+        return_type = return_type_for(residency)       # Rule 31A(4)
+        is_27q = return_type == FORM_27Q
+        non_deduction_reason = None
+        if deducted == 0 and is_195:
+            non_deduction_reason = (
+                payment.get("_tds_citation")
+                or f"Nil withheld under section 195 — basis "
+                   f"'{payment.get('tds_basis') or 'not recorded'}'.")
+        gaps: list[str] = []
+        if not is_classified(residency):
+            gaps.append(GAP_RESIDENCY_NOT_CLASSIFIED)
+        elif is_27q:
+            if missing_27q_identifiers(v):
+                gaps.append(GAP_27Q_IDENTIFIERS_MISSING)
+        if is_195 and not rates_are_verified(fy_label(when)):
+            gaps.append(GAP_195_RATES_UNVERIFIED)
+        if (is_195 and v.get("no_pe_declaration_on_file")
+                and not (v.get("no_pe_declaration_on")
+                         and v.get("no_pe_declaration_by"))):
+            gaps.append(GAP_NO_PE_DECLARATION_UNDATED)
+        # Rule 37BB with §195(6) wants Form 15CA BEFORE the remittance, and an
+        # advance is the remittance — so this reaches the payment path for the
+        # same reason it reaches the bill path, at the moment the money left.
+        if is_195 and not (payment.get("form_15ca_ack_no") or "").strip():
+            gaps.append(GAP_FORM_15CA_NOT_RECORDED)
+        # The three money columns do not multiply out on a catch-up advance
+        # either — the payment that crosses §194C's ₹1,00,000 aggregate carries
+        # the year's tax on its own base. Same reasoning as the bill path: 26Q
+        # asks for the amount paid on this date, the rate deducted at, and the
+        # tax deducted, and restating any of the three to make the arithmetic
+        # close would put a figure in the return that is not what happened.
+        if deducted != charged_base * int(payment.get("tds_rate_bps") or 0) // 10000:
+            gaps.append(GAP_TDS_IS_A_FY_CATCH_UP)
+        # Payload written INLINE with literal keys — tests/test_backend_columns_
+        # exist_pg.py can only read a query whose table name and payload keys
+        # are both string constants.
+        db.table("tds_deductions").upsert({
+            "firm_id": firm_id,
+            "client_id": client_id,
+            "purchase_payment_id": payment_id,
+            "deductee_name": (v.get("name") or "(vendor not found)"),
+            "deductee_pan": (v.get("pan") or None),
+            "section": (payment.get("tds_section") or ""),
+            "nature_of_payment": (payment.get("tds_nature_of_income") or None),
+            "transaction_date": when.isoformat(),
+            # The ADVANCE, not the whole payment: the allocated part settles
+            # bills that were already charged when they were credited.
+            "payment_amount_paise": charged_base,
+            "tds_rate_pct": rate_pct,
+            "tds_paise": deducted,
+            "surcharge_paise": int(payment.get("tds_surcharge_paise") or 0),
+            "cess_paise": int(payment.get("tds_cess_paise") or 0),
+            "financial_year": fy_label(when),
+            "quarter": fy_quarter(when),
+            "return_type": return_type,
+            "country_of_residence": (v.get("country_of_residence") or None) if is_27q else None,
+            "deductee_tin": (v.get("tax_identification_number") or None) if is_27q else None,
+            "non_deduction_reason": non_deduction_reason,
+        }, on_conflict="purchase_payment_id").execute()
+        out = {"synced": True, "action": "recorded", "tds_paise": deducted,
+               "financial_year": fy_label(when),
+               "quarter": fy_quarter(when), "return_type": return_type,
+               "return_form": _display_form(return_type, when)}
+        if gaps:
+            out["statutory_gaps"] = gaps
+            out["gap_details"] = describe_gaps(gaps)
+            out["vendor_id"] = v.get("id")
+            out["vendor_name"] = v.get("name")
+        return out
+    except Exception as e:                                      # noqa: BLE001
+        _logger.error(
+            "TDS register out of step with payment %s (firm=%s client=%s, %s paise "
+            "deducted under %s): %s — the deduction is in the books but will be "
+            "missing from the challan and from 26Q until this is repaired.",
+            payment_id, firm_id, client_id, deducted, payment.get("tds_section"), e)
+        return {"synced": False, "reason": str(e)}
