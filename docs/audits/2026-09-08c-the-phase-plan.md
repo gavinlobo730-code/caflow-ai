@@ -492,6 +492,28 @@ show one entry's history.
 cash-flow and the ageing schedules. Cheapest phase per finding in the plan.
 *Guard:* make the existing rule testable.
 
+**DONE — 10 September 2026, in four commits (8a–8d).**
+
+| # | What it was | Measured |
+|---|---|---|
+| 8a BANK-07 | the Bank Book paged every transaction on the account and computed the register, the summary and the divergence in Python — with one QUADRATIC step | `min(filtered, key=all_lines.index)` **22.8s** of CPU on 12,836 rows (the audit measured 29.2s in production) against 0.069s to build the whole register. Migration 353's `public.bank_register` answers in **0.106s**, one call |
+| 8b BANK-08 | three `async def` routes doing blocking work on the event loop | **eleven**, not three. Ten are now plain `def`; the webhook keeps the raw body it needs and hands its blocking half to the threadpool |
+| 8c PAY-16 | both payroll screens loaded every payslip the firm ever produced | four tabs now fetch their own slice, one aggregates server-side, and `/api/payroll/slips` REFUSES a request that names no run, month or employee |
+| 8d ACC-07 | the Rule 3(1) edit log capped at 200 rows firm-wide, filtered in the browser, with no per-entry history | every filter in the database, cursor paging, and a History panel on the journal entry |
+
+Two things worth carrying forward. **The quadratic step was also unnecessary** —
+`filtered` is a comprehension over `all_lines`, so `filtered[0]` is the same
+row; the SQL move was the structural fix and the one-line fix was free beside
+it. And **the column checker earned its keep**: 8c's first draft filtered
+`payroll_runs` on a `financial_year` column that does not exist, and
+`test_backend_columns_exist_pg.py` failed against the real schema before CI
+ever saw it.
+
+Two guards state a rule rather than a spelling: an `async def` route may not
+await only the request body (`ALLOWED_ASYNC` is EMPTY, and that is the answer),
+and a payslip read must name what it is about.
+
+
 ### Phase 9 — Banking import and a real BRS · 4 findings · ≤14 days
 `BANK-01 BANK-09 BANK-04 BANK-05`
 
