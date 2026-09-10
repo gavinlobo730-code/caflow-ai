@@ -72,6 +72,163 @@ export type StatutorySummary = {
   gaps: string[];
 };
 
+export type ApplyStructureResult = {
+  structure_id: string;
+  structure_name?: string;
+  effective_from?: string;
+  preview: boolean;
+  applied: number;
+  employees: { employee_id: string; name?: string; monthly_gross_paise: number;
+               [component: string]: string | number | undefined }[];
+  /** Sentences the server composed — a two-decimal percentage that cannot
+   *  express the structure's HRA exactly, or months already released and paid
+   *  at the old figures, whose difference is arrears. */
+  notes: string[];
+};
+
+// ── The employee drawer's shapes (PAY-11) ────────────────────────────────────
+//
+// Mirrors of the router's Pydantic models. Every amount is integer paise and
+// every computation is the server's — these types exist so the forms send what
+// the endpoints read, not so anything can be worked out here.
+
+/** What only a human knows about a departure: why they left, what the contract
+ *  says about notice, and what they still owe. Everything else — length of
+ *  service, wages, the gratuity and leave formulae — comes off the master. */
+export type SettlementInput = {
+  client_id: string;
+  leaving_date: string;
+  on_death_or_disablement?: boolean;
+  /** Decides §10(10AA) entirely. */
+  on_retirement?: boolean;
+  is_government_employee?: boolean;
+  salary_to_last_day_paise?: number;
+  leave_days_encashed?: number;
+  leave_encashment_paise?: number;
+  bonus_accounting_year?: string | null;
+  bonus_rate_bps?: number;
+  bonus_months_worked?: number;
+  bonus_working_days?: number;
+  /** §12 of the Bonus Act computes on ₹7,000 OR the minimum wage, whichever is
+   *  HIGHER. There is no table of minimum wages — supplying it is a human
+   *  step, and treating ₹7,000 as a ceiling underpays by half in most states. */
+  minimum_wage_monthly_paise?: number | null;
+  notice_pay_recovered_paise?: number;
+  loans_outstanding_paise?: number;
+  other_recoveries_paise?: number;
+  /** §10(10) and §10(10AA) are LIFETIME limits across employers. Absent, the
+   *  full limit is assumed and the response says so. */
+  gratuity_exemption_already_used_paise?: number | null;
+  leave_exemption_already_used_paise?: number | null;
+  gratuity_amount_actually_paid_paise?: number | null;
+  average_last_ten_months_paise?: number | null;
+};
+
+export type SettlementComponent = {
+  label: string; gross_paise: number; exempt_paise: number;
+  taxable_paise: number; statute: string;
+  tax_head: string; exempt_section: string | null;
+};
+
+export type SettlementResult = {
+  employee_id: string;
+  employee_name?: string;
+  leaving_date?: string;
+  components: SettlementComponent[];
+  deductions: { label: string; gross_paise: number; statute: string }[];
+  totals: {
+    gross_paise?: number; exempt_paise?: number;
+    /** A recovery reduces what the employer PAYS and never reduces §17(1) —
+     *  taking notice pay back does not un-earn the salary. */
+    taxable_paise?: number; deductions_paise?: number;
+    net_payable_paise?: number;
+    gross_17_1_paise?: number; gross_17_3_paise?: number;
+  };
+  exempt_by_section?: Record<string, number>;
+  gratuity_detail?: {
+    eligible: boolean; completed_years: number; years_counted: number;
+    payable_paise: number; exempt_paise: number;
+  };
+  gaps: string[];
+  problems: string[];
+};
+
+export type SalaryRevisionInput = {
+  client_id: string;
+  effective_from: string;
+  basic_paise?: number;
+  hra_percent?: number;
+  da_percent?: number;
+  lta_paise?: number;
+  medical_paise?: number;
+  special_allowance_paise?: number;
+  other_allowances_paise?: number;
+  reason?: string;
+};
+
+export type SalaryRevisionRow = SalaryRevisionInput & {
+  id: string; employee_id: string; created_at?: string;
+};
+
+export type EmployeeLoanInput = {
+  client_id: string;
+  principal_paise: number;
+  monthly_instalment_paise: number;
+  /** Rule 3(7)(i): below the SBI rate for the same kind of loan the shortfall
+   *  is a PERQUISITE. Zero means interest-free — and an employer who records
+   *  only the recovery has an unvalued perquisite in the Form 16. */
+  interest_rate_bps?: number;
+  purpose?: string;
+  started_on?: string | null;
+};
+
+export type EmployeeLoanRow = EmployeeLoanInput & {
+  id: string; employee_id: string;
+  outstanding_paise?: number; status?: string;
+};
+
+export type PerquisiteResult = {
+  employee_id?: string;
+  fy?: string;
+  items?: { label: string; value_paise: number; rule: string; note?: string }[];
+  total_paise?: number;
+  /** What Rule 3 needs and payroll cannot supply — the SBI rate for a
+   *  concessional loan, the actual running expenditure for a wholly private
+   *  car. A gap, never a guessed number. */
+  gaps?: string[];
+  disclaimer?: string;
+};
+
+export type ArrearsReliefInput = {
+  client_id: string;
+  receipt_fy: string;
+  total_income_receipt_year_paise: number;
+  arrears: { fy: string; amount_paise: number;
+             total_income_that_year_paise?: number | null }[];
+  use_new_regime?: boolean;
+  /** The proviso to §89 read with Rule 21AA: no Form 10E, no relief. */
+  form_10e_acknowledgement?: string | null;
+};
+
+export type ArrearsReliefResult = {
+  employee_id?: string;
+  receipt_fy?: string;
+  relief_paise?: number;
+  /** False with a reason rather than a zero: no Form 10E (the proviso to §89
+   *  with Rule 21AA), or a year the statutory rate registry does not hold —
+   *  §89 compares years AT THEIR OWN RATES, so a substituted year makes the
+   *  whole relief a fiction that looks entirely reasonable. */
+  available?: boolean;
+  blocked_reason?: string | null;
+  tax_with_arrears_paise?: number;
+  tax_without_arrears_paise?: number;
+  difference_a_paise?: number;
+  difference_b_paise?: number;
+  per_year?: Record<string, unknown>[];
+  gaps?: string[];
+  disclaimer?: string;
+};
+
 /** One employee's row of 24Q Annexure II — the annual salary detail TRACES
  *  turns into Form 16 Part B (CBDT Notification 09/2019). Every figure is
  *  integer paise and every one of them is computed on the server: §16(iii)
@@ -1556,6 +1713,97 @@ export const api = {
      *  counted, and a month run elsewhere will still block the upload. */
     ecrSequence: (clientId: string) =>
       request(`/api/payroll/clients/${clientId}/ecr-sequence`),
+
+    /** APPLY A NAMED STRUCTURE to a set of employees, from a date (PAY-11).
+     *
+     *  public.salary_structures has existed since migration 054 and nothing
+     *  ever read it: a CA could create "Junior — 40/20", see it listed, and
+     *  still key every employee's basic, HRA and DA in one at a time.
+     *
+     *  It writes a REVISION, not a link — so a structure applied from 1 October
+     *  starts in October and does not restate September, which is posted to the
+     *  ledger. `preview: true` computes and reports everything and writes
+     *  nothing; the server refuses the whole request if it does not fit one
+     *  employee, because half a roster on each scale is worse than neither.
+     */
+    applySalaryStructure: (structureId: string, body: {
+      client_id: string; effective_from: string; reason?: string; preview?: boolean;
+      assignments: { employee_id: string; monthly_gross_paise: number }[];
+    }) =>
+      request<{ success: boolean; data: ApplyStructureResult; error: string | null }>(
+        `/api/payroll/salary-structures/${structureId}/apply`,
+        { method: "POST", body: JSON.stringify(body) }),
+
+    // ── The employee drawer (PAY-11) ──────────────────────────────────────
+    //
+    // Six finished capabilities that no screen reached. Each is a real
+    // statutory computation living in apps/api; nothing below computes
+    // anything, and the shapes are the router's own.
+
+    /** What a leaver is owed. READ-ONLY — recording is a separate call,
+     *  because settling ends employment, releases money, posts to the GL and
+     *  fixes the employee's §17(1) for the year. */
+    previewSettlement: (employeeId: string, body: SettlementInput) =>
+      request<{ success: boolean; data: SettlementResult; error: string | null }>(
+        `/api/payroll/employees/${employeeId}/settlement`,
+        { method: "POST", body: JSON.stringify(body) }),
+
+    /** Record it: store, withhold under §192, post to the ledger, close the
+     *  employee. `payroll:finalize`, not `write`. */
+    recordSettlement: (employeeId: string,
+                       body: SettlementInput & { new_status?: string; payment_date?: string }) =>
+      request<{ success: boolean; data: SettlementResult & { settlement_id?: string };
+                error: string | null }>(
+        `/api/payroll/employees/${employeeId}/settlement/record`,
+        { method: "POST", body: JSON.stringify(body) }),
+
+    listSalaryRevisions: (employeeId: string, clientId: string) =>
+      request<{ success: boolean; data: { revisions: SalaryRevisionRow[] };
+                error: string | null }>(
+        `/api/payroll/employees/${employeeId}/salary-revisions`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+
+    /** THE WHOLE COMPONENT SET as at a date, never a delta — deltas compose,
+     *  and composing them across a backdated revision gives a different answer
+     *  depending on the order they were entered. */
+    addSalaryRevision: (employeeId: string, body: SalaryRevisionInput) =>
+      request(`/api/payroll/employees/${employeeId}/salary-revisions`,
+              { method: "POST", body: JSON.stringify(body) }),
+
+    listEmployeeLoans: (employeeId: string, clientId: string) =>
+      request<{ success: boolean; data: { loans: EmployeeLoanRow[] };
+                error: string | null }>(
+        `/api/payroll/employees/${employeeId}/loans`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+
+    addEmployeeLoan: (employeeId: string, body: EmployeeLoanInput) =>
+      request<{ success: boolean; data: { loan?: EmployeeLoanRow; notes?: string[] };
+                error: string | null }>(
+        `/api/payroll/employees/${employeeId}/loans`,
+        { method: "POST", body: JSON.stringify(body) }),
+
+    /** Rule 3 valuation. Computes only — recording it is the call below,
+     *  because what Rule 3 says a benefit is worth and whether the firm
+     *  accepts that valuation for the year are two decisions. */
+    valuePerquisites: (employeeId: string, body: Record<string, unknown>) =>
+      request<{ success: boolean; data: PerquisiteResult; error: string | null }>(
+        `/api/payroll/employees/${employeeId}/perquisites/value`,
+        { method: "POST", body: JSON.stringify(body) }),
+
+    /** Replaces the YEAR'S SET wholesale rather than merging — a car returned
+     *  in June must not stay valued for the full year. */
+    recordPerquisites: (employeeId: string,
+                        body: { client_id: string; fy: string; items: unknown[] }) =>
+      request(`/api/payroll/employees/${employeeId}/perquisites`,
+              { method: "PUT", body: JSON.stringify(body) }),
+
+    /** §89(1) relief under Rule 21A(2). Refuses rather than guessing where the
+     *  rate registry does not hold a year, or where no Form 10E was filed
+     *  (the proviso to §89 with Rule 21AA). */
+    arrearsRelief: (employeeId: string, body: ArrearsReliefInput) =>
+      request<{ success: boolean; data: ArrearsReliefResult; error: string | null }>(
+        `/api/payroll/employees/${employeeId}/arrears-relief`,
+        { method: "POST", body: JSON.stringify(body) }),
 
     /** 24Q ANNEXURE II — THE YEAR-END DELIVERABLE, AND THE THING THAT MAKES
      *  FORM 16.

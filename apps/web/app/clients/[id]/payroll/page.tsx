@@ -19,6 +19,9 @@ import { api } from "@/lib/api";
 import type { AnnexureIIResponse } from "@/lib/api";
 import { financialYearOfMonth, financialYearChoicesAround } from "@/lib/dates/periods";
 import { DisburseModal } from "@/components/payroll/DisburseModal";
+import EmployeeDrawer from "@/components/payroll/EmployeeDrawer";
+import ApplyStructureModal from "@/components/payroll/ApplyStructureModal";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
@@ -275,6 +278,11 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [saving, setSaving] = useState(false);
   // M17: distinguish a failed roster fetch from a client with no employees.
   const [loadFailed, setLoadFailed] = useState(false);
+  // PAY-11. The roster used to render seven read-only cells and no row action,
+  // so an employee could be created and paid and nothing else — six finished
+  // backend capabilities, including the leaver's settlement, had no way in.
+  const [openEmployee, setOpenEmployee] = useState<Employee | null>(null);
+  const { can } = usePermissions();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -479,14 +487,14 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC]">
-              {["Name", "Designation", "Department", "Basic", "PF", "ESI", "Status"].map(h => (
+              {["Name", "Designation", "Department", "Basic", "PF", "ESI", "Status", ""].map(h => (
                 <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-[#F1F5F9]">
             {employees.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No employees yet</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No employees yet</td></tr>
             ) : employees.map(e => (
               <tr key={e.id} className="hover:bg-[#F8FAFC] transition-colors">
                 <td className="px-4 py-3 font-medium text-[#1E293B]">{e.name}</td>
@@ -496,11 +504,31 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
                 <td className="px-4 py-3">{e.pf_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-[#94A3B8]">No</span>}</td>
                 <td className="px-4 py-3">{e.esi_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-[#94A3B8]">No</span>}</td>
                 <td className="px-4 py-3"><span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", e.status === "active" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600")}>{e.status}</span></td>
+                <td className="px-4 py-3 text-right">
+                  <button onClick={() => setOpenEmployee(e)}
+                    className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F1F5F9]">
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {openEmployee && (
+        <EmployeeDrawer
+          employee={openEmployee}
+          clientId={clientId}
+          // Recording a settlement posts an immutable journal and closes the
+          // employee, so it needs payroll:finalize — the same tier that
+          // finalises a run. The button is ABSENT rather than disabled for
+          // anyone else; a disabled control invites the question.
+          canFinalize={can("payroll", "finalize")}
+          onClose={() => setOpenEmployee(null)}
+          onChanged={load}
+        />
+      )}
     </div>
   );
 }
@@ -1955,6 +1983,12 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   const [saveError, setSaveError] = useState<string | null>(null);
   // M17: distinguish a failed fetch from a client with no salary structures.
   const [loadFailed, setLoadFailed] = useState(false);
+  // PAY-11. salary_structures has existed since migration 054 and nothing ever
+  // read it — the template was a card a CA could look at while still keying
+  // every employee's basic, HRA and DA in one at a time.
+  const [applying, setApplying] = useState<SalaryStructure | null>(null);
+  const [roster, setRoster] = useState<Employee[]>([]);
+  const [applied, setApplied] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1971,6 +2005,18 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // The roster is loaded once beside the structures rather than per modal
+  // open: it is one query either way and the modal is opened repeatedly while
+  // a CA works down a list of grades.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`);
+        setRoster(res?.data ?? []);
+      } catch { setRoster([]); }
+    })();
+  }, [clientId]);
 
   async function addStructure() {
     // A structure's percentages are applied to every employee it is put on, so
@@ -2054,9 +2100,28 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
               <p>Basic {s.basic_percent}% · HRA {s.hra_percent}%</p>
               <p>{s.pf_applicable ? "PF ✓" : "PF ✗"} · {s.esi_applicable ? "ESI ✓" : "ESI ✗"}</p>
             </div>
+            <button onClick={() => { setApplying(s); setApplied(null); }}
+              className="mt-3 px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+              Apply to employees
+            </button>
           </div>
         ))}
       </div>
+
+      {applied && (
+        <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">{applied}</p>
+      )}
+
+      {applying && (
+        <ApplyStructureModal
+          structureId={applying.id}
+          structureName={applying.name}
+          clientId={clientId}
+          employees={roster}
+          onClose={() => setApplying(null)}
+          onApplied={(text) => { setApplied(text); setApplying(null); }}
+        />
+      )}
     </div>
   );
 }
