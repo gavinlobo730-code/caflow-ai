@@ -237,3 +237,29 @@ def test_an_invented_form_is_refused():
 def test_every_real_form_is_accepted():
     for form in ("ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6", "ITR-7"):
         assert _placements(form=form)["success"] is True
+
+
+# ───────── IT-16, the other half: the compute endpoint's own field ─────────
+
+def test_the_compute_endpoint_can_be_told_a_presumptive_figure():
+    """`ITRComputeRequest.presumptive_income_paise` is new here.
+
+    ITREngine has honoured `presumptive_income_paise` since IT-01 — it REPLACES
+    business income rather than adding to it, because §44AD(2) deems §30–§38 to
+    have been allowed already. But the request model carried no such field, so
+    the branch was unreachable from POST /api/income-tax/compute: a CA could
+    compute the presumptive figure on the endpoint above and had no way to feed
+    it into the return it belongs in.
+    """
+    presumptive = it.compute_itr(it.ComputeITRRequest(
+        fy="2025-26", business_income_paise=30_00_000_00,
+        presumptive_income_paise=8_00_000_00), CALLER)["data"]
+    assert presumptive["income"]["gross_total_paise"] == 8_00_000_00, (
+        "§44AD(2) — the deemed figure replaces book profit, it is not added to it")
+
+
+def test_without_the_field_the_book_figure_stands():
+    """The negative control for the test above: absent the field, nothing moves."""
+    book = it.compute_itr(it.ComputeITRRequest(
+        fy="2025-26", business_income_paise=30_00_000_00), CALLER)["data"]
+    assert book["income"]["gross_total_paise"] == 30_00_000_00

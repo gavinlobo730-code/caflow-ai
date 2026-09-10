@@ -22,6 +22,9 @@ from domain.income_tax.statutory_rates import (
     cess_paise, rates_for, resolve_surcharge_bracket, slab_tax_paise,
 )
 from domain.income_tax.entity_rates import compute_entity_tax
+from domain.income_tax.loss_set_off import (
+    apply_brought_forward_losses, BroughtForwardLoss,
+)
 from domain.income_tax.minimum_tax import apply_minimum_tax, compute_amt, compute_mat
 
 
@@ -287,6 +290,20 @@ class HRADetails:
         return min(self.hra_received_paise, min(half_basic, rent_minus_ten))
 
 
+def _assessment_year_for(fy: str | None) -> str | None:
+    """The assessment year an FY is assessed in — FY 2025-26 -> AY 2026-27.
+
+    Used only to test whether a brought-forward loss has run out of years; a
+    label this cannot parse gives None, and loss_set_off then falls back to the
+    row's own is_expired flag rather than guessing the loss is still alive.
+    """
+    text = str(fy or "").strip()
+    if len(text) < 4 or not text[:4].isdigit():
+        return None
+    start = int(text[:4]) + 1
+    return f"{start}-{str(start + 1)[2:]}"
+
+
 @dataclass
 class ITRComputeRequest:
     """Full income + deduction inputs for ITR computation."""
@@ -309,6 +326,14 @@ class ITRComputeRequest:
     # §30 to §38 already allowed. Adding book profit on top would tax the same
     # business twice.
     presumptive_income_paise: Optional[int] = None
+    # IT-10. Brought-forward losses from earlier years, as
+    # brought_forward_losses holds them. Each is set off ONLY against the head
+    # its own section reaches — §72 business, §73 speculation, §71B house
+    # property, §74 capital — by domain.income_tax.loss_set_off, which is where
+    # the rules and their reasons live. Before this field existed the workspace
+    # recorded them, the screen displayed them, and the computed tax moved by
+    # exactly nothing.
+    brought_forward_losses: list = field(default_factory=list)
     capital_gains_stcg_paise: int = 0
     capital_gains_ltcg_paise: int = 0      # equity, 12.5% (Section 112A)
     capital_gains_ltcg_other_paise: int = 0  # property, debt MF etc, 12.5%/20%
@@ -377,6 +402,11 @@ class ITRComputeRequest:
 class ITRComputeResult:
     """Computed ITR result — all amounts in paise."""
     # Income summary
+    #: What the brought-forward losses actually relieved, and the per-loss
+    #: working behind it — which section reached which head, and what is
+    #: carried forward still.
+    brought_forward_set_off_paise: int = 0
+    brought_forward_set_off: list = field(default_factory=list)
     gross_total_income_paise: int = 0
     total_deductions_paise: int = 0
     taxable_income_paise: int = 0
@@ -545,6 +575,46 @@ class ITREngine:
         stcg = max(0, req.capital_gains_stcg_paise)
         ltcg = max(0, req.capital_gains_ltcg_paise)
         ltcg_other = max(0, req.capital_gains_ltcg_other_paise)
+        # Brought-forward losses (IT-10), set off head by head. This happens
+        # AFTER each capital head is floored at zero above: §71(3) denies a
+        # current-year capital loss any relief against other income, and a
+        # negative head reaching this point would let a brought-forward loss
+        # appear to create one.
+        #
+        # house_property is passed through max(0, …) for the same reason and
+        # for one more: where the head is already a LOSS this year, there is no
+        # income under it for §71B to reach, and the brought-forward loss stays
+        # carried forward rather than deepening a loss.
+        if req.brought_forward_losses:
+            set_off = apply_brought_forward_losses(
+                losses=[l if isinstance(l, BroughtForwardLoss) else BroughtForwardLoss(**l)
+                        for l in req.brought_forward_losses],
+                business_income_paise=max(0, business_income),
+                house_property_income_paise=max(0, house_property),
+                stcg_paise=stcg, ltcg_paise=ltcg, ltcg_other_paise=ltcg_other,
+                assessment_year=_assessment_year_for(req.fy),
+            )
+            # Only the POSITIVE part of each head is offered to the set-off, so
+            # a head that was negative keeps its own figure.
+            business_income = (set_off.business_income_paise if business_income > 0
+                               else business_income)
+            house_property = (set_off.house_property_income_paise if house_property > 0
+                              else house_property)
+            stcg, ltcg, ltcg_other = (set_off.stcg_paise, set_off.ltcg_paise,
+                                      set_off.ltcg_other_paise)
+            result.brought_forward_set_off_paise = set_off.total_set_off_paise
+            result.brought_forward_set_off = [
+                {
+                    "loss_type": ln.loss_type, "section": ln.section,
+                    "offered_paise": ln.offered_paise,
+                    "set_off_paise": ln.set_off_paise,
+                    "carried_forward_paise": ln.carried_forward_paise,
+                    "against": list(ln.against), "reasons": list(ln.reasons),
+                }
+                for ln in set_off.lines
+            ]
+            result.warnings.extend(set_off.warnings)
+
         ordinary_income = (
             salary_after_std_ded
             + req.other_income_paise

@@ -26,6 +26,7 @@ from domain.income_tax.advance_tax_interest_engine import (
     installment_schedule, InstallmentPayment, INSTALLMENT_RULES,
 )
 from domain.income_tax.itr_json import build_itr_payload, itr_field_placements
+from domain.income_tax.loss_set_off import BroughtForwardLoss, KNOWN_LOSS_TYPES
 from domain.income_tax.presumptive import (
     compute_44ad, compute_44ada, compute_44ae, GoodsCarriage,
 )
@@ -82,6 +83,31 @@ class HRAInput(BaseModel):
     hra_received_paise: int = 0
     rent_paid_paise: int = 0
     is_metro: bool = False
+
+
+class BroughtForwardLossInput(BaseModel):
+    """One row of brought_forward_losses, as the screen holds it.
+
+    `amount_paise` is what REMAINS of the loss (remaining_amount_paise), not
+    what it originally was — a loss already partly utilised in an earlier year
+    can only relieve what is left of it.
+    """
+    loss_type: str
+    amount_paise: int = Field(ge=0)
+    assessment_year: Optional[str] = None
+    expiry_assessment_year: Optional[str] = None
+    is_expired: bool = False
+    source_itr_ack: Optional[str] = None
+
+    @field_validator("loss_type")
+    @classmethod
+    def a_type_with_a_rule(cls, v: str) -> str:
+        t = str(v or "").strip().lower()
+        if t not in KNOWN_LOSS_TYPES:
+            raise ValueError(
+                f"loss_type must be one of {', '.join(sorted(KNOWN_LOSS_TYPES))} "
+                f"— the head decides which section reaches the loss.")
+        return t
 
 
 class ComputeITRRequest(BaseModel):
@@ -166,6 +192,17 @@ class ComputeITRRequest(BaseModel):
     tds_deducted_paise: int = 0
     advance_tax_paid_paise: int = 0
 
+    # IT-10. Losses carried forward from earlier years, as brought_forward_losses
+    # holds them. Passed straight through to the engine, which sets each off only
+    # against the head its own section reaches (§72 business, §73 speculation,
+    # §71B house property, §74 capital) — see domain/income_tax/loss_set_off.py.
+    #
+    # The presumptive figure is here for the same reason: the engine has honoured
+    # it since IT-01, and no request model carried it, so the §44AD/§44ADA/§44AE
+    # branch was unreachable from this endpoint (IT-16).
+    brought_forward_losses: list[BroughtForwardLossInput] = Field(default_factory=list)
+    presumptive_income_paise: Optional[int] = Field(default=None, ge=0)
+
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -206,6 +243,18 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         house_property_income_paise=req.house_property_income_paise,
         business_income_paise=req.business_income_paise,
         disallowances_paise=req.disallowances_paise,
+        presumptive_income_paise=req.presumptive_income_paise,
+        brought_forward_losses=[
+            BroughtForwardLoss(
+                loss_type=l.loss_type,
+                amount_paise=l.amount_paise,
+                assessment_year=l.assessment_year,
+                expiry_assessment_year=l.expiry_assessment_year,
+                is_expired=l.is_expired,
+                source_itr_ack=l.source_itr_ack,
+            )
+            for l in req.brought_forward_losses
+        ],
         capital_gains_stcg_paise=req.capital_gains_stcg_paise,
         capital_gains_ltcg_paise=req.capital_gains_ltcg_paise,
         capital_gains_ltcg_other_paise=req.capital_gains_ltcg_other_paise,
@@ -313,6 +362,15 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             "tds_and_advance_paise": result.tds_and_advance_paise,
             "net_payable_paise": result.net_payable_paise,
             "is_refund": result.net_payable_paise < 0,
+        },
+        # What the brought-forward losses actually relieved, and the working
+        # behind it: which section reached which head, and what is carried
+        # forward still. A total with no breakdown is not checkable, and a
+        # loss the statute would not let through has to be visibly NOT set off
+        # rather than quietly absent.
+        "brought_forward": {
+            "set_off_paise": result.brought_forward_set_off_paise,
+            "lines": result.brought_forward_set_off,
         },
         "warnings": result.warnings,
         "validation_errors": result.validation_errors,

@@ -83,6 +83,24 @@ interface ComputeResult {
   payable: { net_payable_paise: number; is_refund: boolean };
   warnings: string[];
   validation_errors?: string[];
+  /** IT-10. What the brought-forward losses actually relieved, and the working
+   *  behind it. A total with no breakdown is not checkable, and a loss the
+   *  statute would not let through has to be visibly NOT set off rather than
+   *  quietly absent — §71(3) and §74 deny a capital loss any relief against
+   *  salary, business or other income, and a CA has to be able to see that
+   *  the engine agreed. */
+  brought_forward?: {
+    set_off_paise: number;
+    lines: {
+      loss_type: string;
+      section: string;
+      offered_paise: number;
+      set_off_paise: number;
+      carried_forward_paise: number;
+      against: string[];
+      reasons: string[];
+    }[];
+  };
   /** WHO was assessed, and on what basis. A firm, an LLP and a company are
    *  each taxed differently from an individual and from each other; until
    *  IT-01 this screen ran individual slabs for every client, so a Private
@@ -170,6 +188,30 @@ export default function TaxComputationPage() {
   const [otherIncome, setOtherIncome] = useState("");
   const [tds, setTds] = useState("");
   const [advanceTax, setAdvanceTax] = useState("");
+
+  // IT-05. The endpoint has accepted every one of these since IT-01; this
+  // screen sent six figures and nothing else, so an OLD-REGIME individual was
+  // computed with zero Chapter VI-A relief — no 80C, no 80D, no house
+  // property, no capital gains — and the number looked entirely reasonable.
+  //
+  // Held as TEXT and parsed with the one money parser at submit, never as
+  // numbers: parseFloat("1,25,000") is 1, and this is exactly where an Indian
+  // amount is typed with Indian grouping.
+  const [housePropertyIncome, setHousePropertyIncome] = useState("");
+  const [stcg, setStcg] = useState("");
+  const [ltcgEquity, setLtcgEquity] = useState("");
+  const [ltcgOther, setLtcgOther] = useState("");
+  const [exemptIncome, setExemptIncome] = useState("");
+  const [s80cTotal, setS80cTotal] = useState("");
+  const [s80dSelf, setS80dSelf] = useState("");
+  const [s80dSelfSenior, setS80dSelfSenior] = useState(false);
+  const [s80dParents, setS80dParents] = useState("");
+  const [s80dParentsSenior, setS80dParentsSenior] = useState(false);
+  const [savingsInterest80tta, setSavingsInterest80tta] = useState("");
+  const [homeLoanInterest24b, setHomeLoanInterest24b] = useState("");
+  const [otherDeductions, setOtherDeductions] = useState("");
+  const [isSenior, setIsSenior] = useState(false);
+  const [isVerySenior, setIsVerySenior] = useState(false);
   const [computing, setComputing] = useState(false);
   const [computeResult, setComputeResult] = useState<ComputeResult | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
@@ -287,10 +329,27 @@ export default function TaxComputationPage() {
     // inputs to a tax computation: a gross salary read as ₹1 because it was
     // typed "12,00,000" would produce a return that is internally consistent
     // and completely wrong.
+    // EVERY amount field, not the original five. toP() below casts the parser's
+    // result `as number`, so an unvalidated field that the parser refuses
+    // becomes NaN and reaches the server as null — the money-parser failure
+    // this codebase has already fixed twice. House property is in the list
+    // like the rest: the parser accepts a leading minus, which is what a loss
+    // under that head is.
     const fields: [string, string][] = [
       ["Gross salary", salary], ["Business income", businessIncome],
       ["Other income", otherIncome], ["TDS deducted", tds],
       ["Advance tax paid", advanceTax],
+      ["House property income", housePropertyIncome],
+      ["Short-term capital gains", stcg],
+      ["Long-term capital gains (equity)", ltcgEquity],
+      ["Long-term capital gains (other)", ltcgOther],
+      ["Exempt income", exemptIncome],
+      ["Section 80C", s80cTotal],
+      ["Section 80D — self and family", s80dSelf],
+      ["Section 80D — parents", s80dParents],
+      ["Savings interest (80TTA)", savingsInterest80tta],
+      ["Home loan interest (24b)", homeLoanInterest24b],
+      ["Other deductions", otherDeductions],
     ];
     const bad = fields.find(([, v]) => paiseFromRupeeInput(v || "0") === null);
     if (bad) {
@@ -321,6 +380,44 @@ export default function TaxComputationPage() {
           tds_deducted_paise: toP(tds),
           advance_tax_paid_paise: toP(advanceTax),
           use_new_regime: regime === "new",
+
+          // IT-05 — the heads and deductions the endpoint has always accepted.
+          house_property_income_paise: toP(housePropertyIncome),
+          capital_gains_stcg_paise: toP(stcg),
+          capital_gains_ltcg_paise: toP(ltcgEquity),
+          capital_gains_ltcg_other_paise: toP(ltcgOther),
+          exempt_income_paise: toP(exemptIncome),
+          is_senior_citizen: isSenior,
+          is_very_senior_citizen: isVerySenior,
+          // 80C is collected as one figure rather than nine: the sub-limits
+          // are all inside the same ₹1,50,000 ceiling, and asking a CA to
+          // split a total they already know adds keystrokes without changing
+          // the answer. The engine's per-instrument fields stay available to
+          // any caller that has the split.
+          s80c: { ppf_paise: toP(s80cTotal) },
+          s80d: {
+            self_family_premium_paise: toP(s80dSelf),
+            self_family_is_senior: s80dSelfSenior,
+            parents_premium_paise: toP(s80dParents),
+            parents_is_senior: s80dParentsSenior,
+          },
+          savings_interest_80tta_paise: toP(savingsInterest80tta),
+          home_loan_interest_24b_paise: toP(homeLoanInterest24b),
+          other_deductions_paise: toP(otherDeductions),
+
+          // IT-10 — the losses this screen has always LOADED and never sent.
+          // remaining_amount_paise, not the original: a loss already partly
+          // utilised can only relieve what is left of it. Which head each one
+          // may reach is the server's decision (§72/§73/§71B/§74), and its
+          // working comes back in `brought_forward`.
+          brought_forward_losses: bfLosses
+            .filter(l => (l.remaining_amount_paise ?? 0) > 0)
+            .map(l => ({
+              loss_type: l.loss_type,
+              amount_paise: l.remaining_amount_paise,
+              assessment_year: l.assessment_year,
+              expiry_assessment_year: l.expiry_assessment_year,
+            })),
           // The raw client entity type. The endpoint maps it, refuses a trust
           // or a co-operative society by name, and computes the flat entity
           // rate where one applies.
@@ -561,19 +658,82 @@ export default function TaxComputationPage() {
                 { label: "Other Income (₹)", value: otherIncome, set: setOtherIncome },
                 { label: "TDS Deducted (₹)", value: tds, set: setTds },
                 { label: "Advance Tax Paid (₹)", value: advanceTax, set: setAdvanceTax },
-              ].map(({ label, value, set }) => (
+                // IT-05 — the heads the endpoint has always accepted and this
+                // screen never sent. A house-property LOSS is entered with a
+                // leading minus; §71(3A) caps the set-off at ₹2,00,000 under
+                // the old regime and §115BAC(2) allows none at all under the
+                // new one, and the server decides which.
+                { label: "House Property Income (₹)", value: housePropertyIncome,
+                  set: setHousePropertyIncome, hint: "Negative for a loss" },
+                { label: "Short-Term Capital Gains (₹)", value: stcg, set: setStcg },
+                { label: "LTCG — listed equity, §112A (₹)", value: ltcgEquity, set: setLtcgEquity },
+                { label: "LTCG — property, debt etc (₹)", value: ltcgOther, set: setLtcgOther },
+                { label: "Exempt Income (₹)", value: exemptIncome, set: setExemptIncome },
+              ].map(({ label, value, set, hint }) => (
                 <div key={label}>
                   <label className="text-[10px] text-[#64748B] mb-1 block">{label}</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={value}
                     onChange={e => set(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="0"
                   />
+                  {hint && <p className="text-[10px] text-[#94A3B8] mt-0.5">{hint}</p>}
                 </div>
               ))}
             </div>
+
+            {/* Chapter VI-A and §24(b). Shown only for an individual on the
+                OLD regime, because that is the only assessee they reach:
+                §115BAC(2) allows §80CCD(2) and §80JJAA and nothing else, and
+                a firm or company is on the flat entity rate. Offering boxes
+                that cannot change the answer is worse than not offering
+                them — it reads as relief that was claimed and refused. */}
+            {!isEntity && regime === "old" && (
+              <div className="space-y-3 border-t border-[#F1F5F9] pt-3">
+                <p className="text-[11px] font-semibold text-[#334155]">
+                  Chapter VI-A deductions
+                  <span className="font-normal text-[#94A3B8]"> — old regime only</span>
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: "Section 80C (₹)", value: s80cTotal, set: setS80cTotal,
+                      hint: "PPF, ELSS, LIC, principal, tuition — ceiling ₹1,50,000" },
+                    { label: "80D — self and family (₹)", value: s80dSelf, set: setS80dSelf },
+                    { label: "80D — parents (₹)", value: s80dParents, set: setS80dParents },
+                    { label: "80TTA — savings interest (₹)", value: savingsInterest80tta,
+                      set: setSavingsInterest80tta },
+                    { label: "§24(b) — home loan interest (₹)", value: homeLoanInterest24b,
+                      set: setHomeLoanInterest24b },
+                    { label: "Other deductions (₹)", value: otherDeductions, set: setOtherDeductions },
+                  ].map(({ label, value, set, hint }) => (
+                    <div key={label}>
+                      <label className="text-[10px] text-[#64748B] mb-1 block">{label}</label>
+                      <input type="text" inputMode="decimal" value={value}
+                        onChange={e => set(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0" />
+                      {hint && <p className="text-[10px] text-[#94A3B8] mt-0.5">{hint}</p>}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  {[
+                    { label: "80D: self/family is a senior citizen", v: s80dSelfSenior, set: setS80dSelfSenior },
+                    { label: "80D: parents are senior citizens", v: s80dParentsSenior, set: setS80dParentsSenior },
+                    { label: "Assessee is a senior citizen (60+)", v: isSenior, set: setIsSenior },
+                    { label: "Assessee is very senior (80+)", v: isVerySenior, set: setIsVerySenior },
+                  ].map(({ label, v, set }) => (
+                    <label key={label} className="flex items-center gap-1.5 text-[11px] text-[#334155]">
+                      <input type="checkbox" checked={v} onChange={e => set(e.target.checked)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {isEntity && (
               <div className="grid grid-cols-2 gap-3">
@@ -723,6 +883,32 @@ export default function TaxComputationPage() {
                   <div className="mt-2 space-y-0.5">
                     {computeResult.assessee.workings.map((w: string, i: number) => (
                       <p key={i} className="text-[10px] text-[#64748B]">{w}</p>
+                    ))}
+                  </div>
+                ) : null}
+                {/* IT-10. Which section reached which head, per loss — and a
+                    loss that found no home shown as such, with the reason. A
+                    zero beside "set off" and a loss simply missing from the
+                    list are opposite statements, and the CA needs the first. */}
+                {computeResult.brought_forward?.lines?.length ? (
+                  <div className="mt-3 border-t border-[#F1F5F9] pt-2 space-y-1.5">
+                    <p className="text-[10px] font-semibold text-[#334155]">
+                      Brought-forward losses — {paise(computeResult.brought_forward.set_off_paise)} set off
+                    </p>
+                    {computeResult.brought_forward.lines.map((ln, i) => (
+                      <div key={i} className="text-[10px]">
+                        <p className={ln.set_off_paise > 0 ? "text-[#1E293B]" : "text-[#94A3B8]"}>
+                          <span className="font-mono">{ln.section}</span>{" "}
+                          {ln.loss_type.replace(/_/g, " ")} — {paise(ln.set_off_paise)} set off
+                          {ln.against.length ? ` against ${ln.against.join(", ").replace(/_/g, " ")}` : ""}
+                          {ln.carried_forward_paise > 0
+                            ? `, ${paise(ln.carried_forward_paise)} carried forward`
+                            : ""}
+                        </p>
+                        {ln.reasons.map((r, j) => (
+                          <p key={j} className="text-[10px] text-[#94A3B8] pl-3">{r}</p>
+                        ))}
+                      </div>
                     ))}
                   </div>
                 ) : null}
