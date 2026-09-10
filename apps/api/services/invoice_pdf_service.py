@@ -82,53 +82,15 @@ def _paise_to_rupee_str(paise: int) -> str:
     return f"{rupees:,}.{fraction:02d}"
 
 
-_ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
-         "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
-         "Seventeen", "Eighteen", "Nineteen"]
-_TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
-
-
-def _two_digits(n: int) -> str:
-    if n < 20:
-        return _ONES[n]
-    return (_TENS[n // 10] + (" " + _ONES[n % 10] if n % 10 else "")).strip()
-
-
-def _three_digits(n: int) -> str:
-    s = ""
-    if n >= 100:
-        s = _ONES[n // 100] + " Hundred"
-        if n % 100:
-            s += " " + _two_digits(n % 100)
-        return s
-    return _two_digits(n)
-
-
-def amount_in_words(paise: int) -> str:
-    """Indian-system amount in words (Crore/Lakh/Thousand), required on tax invoices."""
-    rupees = paise // 100
-    p = paise % 100
-    if rupees == 0:
-        words = "Zero"
-    else:
-        crore = rupees // 10_000_000
-        lakh = (rupees // 100_000) % 100
-        thousand = (rupees // 1000) % 100
-        rest = rupees % 1000
-        parts = []
-        if crore:
-            parts.append(_three_digits(crore) + " Crore")
-        if lakh:
-            parts.append(_two_digits(lakh) + " Lakh")
-        if thousand:
-            parts.append(_two_digits(thousand) + " Thousand")
-        if rest:
-            parts.append(_three_digits(rest))
-        words = " ".join(parts)
-    result = f"Rupees {words}"
-    if p:
-        result += f" and {_two_digits(p)} Paise"
-    return result + " Only"
+# The amount in words MOVED to domain/reporting/amount_words.py when the
+# payslip came to need the same sentence — one implementation, imported here,
+# rather than two that drift. Re-exported under this name because the invoice
+# tests and this module's own callers import it from here.
+#
+# The move also fixed the crore group: it was read by a three-digit renderer,
+# so an invoice over ₹999 crore read "Ten Hundred Crore" and one over ₹20,000
+# crore raised IndexError out of the PDF builder.
+from domain.reporting.amount_words import amount_in_words  # noqa: E402,F401
 
 
 def _state_code(gstin: Optional[str]) -> Optional[str]:
