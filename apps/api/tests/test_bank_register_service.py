@@ -387,3 +387,112 @@ def test_the_endpoints_query_patterns_match_the_service_vocabulary():
     assert set(STATUS_FILTERS) == {"all", "uncleared", "pending", "reconciled",
                                    "unposted", "needs_review"}
     assert "bank_account_id" in params
+
+
+# ── The database's answer is preferred, and the fallback is not silent ───────
+
+class _RpcDB(FakeDB):
+    """A client that HAS .rpc — production's shape, and mock mode's is not."""
+
+    def __init__(self, answer, *, raises=False):
+        super().__init__()
+        self.answer, self.raises = answer, raises
+        self.calls = []
+
+    def rpc(self, name, params):
+        self.calls.append((name, dict(params)))
+        outer = self
+
+        class _Exec:
+            def execute(self):
+                if outer.raises:
+                    raise RuntimeError("function bank_register does not exist")
+                return _Resp(outer.answer)
+        return _Exec()
+
+
+_SQL_ANSWER = {
+    "lines": [{"transaction_id": "t1", "balance_paise": 150000}],
+    "summary": {"opening_balance_paise": 100000, "line_count": 1},
+    "divergence": None,
+    "view_opening_balance_paise": 100000,
+    "filtered_count": 1,
+    "total_count": 1,
+}
+
+
+def _rpc_db(answer=_SQL_ANSWER, *, raises=False):
+    db = _RpcDB(answer, raises=raises)
+    db.store["bank_accounts"] = [{
+        "id": "acct-1", "firm_id": FIRM, "client_id": CLIENT,
+        "bank_name": "HDFC", "account_no": "000111", "account_type": "Current",
+        "currency": "INR", "coa_account_id": None,
+        "opening_balance_paise": 100000, "opening_balance_date": "2026-04-01",
+    }]
+    db.store["bank_statements"] = []
+    db.store["bank_transactions"] = []
+    return db
+
+
+def test_the_register_asks_the_database_rather_than_paging_the_ledger():
+    """CLAUDE.md: what crosses the wire is the size of the ANSWER.
+
+    The old path fetched every transaction on the account — thirteen
+    cross-region round trips on a 12,836-line account to produce one page.
+    """
+    db = _rpc_db()
+    out = bank_register_service.register(
+        db, FIRM, "acct-1", client_id=CLIENT, status="uncleared",
+        q="neft", sort="amount", desc=True, limit=50, offset=10)
+
+    assert [c[0] for c in db.calls] == ["bank_register"]
+    params = db.calls[0][1]
+    # Every filter, the sort, the direction and the page reach the database —
+    # a parameter left behind here is one the SQL cannot honour, and the page
+    # would be the right size and the wrong rows.
+    assert params["p_firm"] == FIRM
+    assert params["p_account"] == "acct-1"
+    assert params["p_status"] == "uncleared"
+    assert params["p_q"] == "neft"
+    assert params["p_sort"] == "amount"
+    assert params["p_desc"] is True
+    assert params["p_limit"] == 50
+    assert params["p_offset"] == 10
+
+    assert out["lines"] == _SQL_ANSWER["lines"]
+    assert out["total_count"] == 1
+    # The account block is still the service's, because it carries the
+    # 404-vs-422 distinction the function cannot return.
+    assert out["account"]["bank_name"] == "HDFC"
+    assert out["account"]["opening_balance_paise"] == 100000
+    assert out["sort"] == "amount" and out["desc"] is True
+
+
+def test_a_client_that_does_not_own_the_account_is_refused_before_the_call():
+    """The tenant check is not delegated: the message differs from 'not found'
+    and a SQL function cannot return an HTTP status."""
+    db = _rpc_db()
+    with pytest.raises(HTTPException) as e:
+        bank_register_service.register(db, FIRM, "acct-1", client_id=OTHER)
+    assert e.value.status_code == 422
+    assert db.calls == []
+
+
+def test_a_failed_call_falls_back_to_python_and_says_so(caplog):
+    """The fallback is correct but slow. A fallback nobody can see is how a
+    performance fix quietly stops applying."""
+    db = _rpc_db(raises=True)
+    with caplog.at_level("ERROR"):
+        out = bank_register_service.register(db, FIRM, "acct-1", client_id=CLIENT)
+    assert out["lines"] == []          # the Python path, over no transactions
+    assert out["summary"]["opening_balance_paise"] == 100000
+    assert any("bank_register failed" in r.getMessage() for r in caplog.records)
+
+
+def test_an_answer_of_the_wrong_shape_is_not_returned_as_one():
+    """A function that answered NULL, or a scalar, must not reach the screen
+    as an empty register — that reads as 'this account has no transactions'."""
+    db = _rpc_db(answer=None)
+    out = bank_register_service.register(db, FIRM, "acct-1", client_id=CLIENT)
+    assert "summary" in out and out["summary"]["line_count"] == 0
+    assert out["lines"] == []
