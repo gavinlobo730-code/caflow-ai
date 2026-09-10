@@ -68,6 +68,27 @@ change. The code is the authority; keep this file in step with it.
   non-disableable — still lets a voucher be deleted. The log is what is immutable, not
   the entry. Every deletion writes the whole entry, its lines and their account names to
   `audit_log` in the same transaction, unswallowed.
+- **"Closed" is TWO different things, and which one applies decides who asks.**
+  `domain`-side there is one definition, in SQL (migration 361), split by kind:
+  `period_closure_reason` is the CA's own deliberate acts — the firm locked the
+  financial year, or this client's year-end was finalised — and `period_lock_reason`
+  is those two plus *a return covering the date has been filed*, calling the first
+  rather than restating it. **The posting kernel asks only the closures**, so nothing
+  reaches the GL inside a year somebody closed. The filed-return branch is asked where
+  a document that FEEDS a return is written — sales invoices, purchase bills, credit
+  and debit notes, and the manual journal, which can move any account including the tax
+  ledgers — and by the edit and delete paths (266/275/276). It is deliberately NOT in
+  the kernel: GSTR-1 for June is filed on the 11th of July and GSTR-3B on the 20th,
+  while June's bank reconciliation happens after both, so a kernel refusal would stop
+  every June receipt, payment, bank entry, depreciation charge and payroll accrual from
+  the 11th onwards. `services/period_lock_service.py` holds the Python twins, pinned to
+  the SQL by `tests/test_period_lock_reason_parity_pg.py`.
+- **A journal line's account belongs to the entry's own firm and client**, enforced by a
+  statement-level trigger on `journal_lines` (migration 360) rather than inside each
+  posting function — `account_id` carries only a global FK to `chart_of_accounts(id)`,
+  so before it every account id in the database satisfied it. A `chart_of_accounts`
+  row with `client_id IS NULL` is a firm-level account and is allowed on any of that
+  firm's entries.
 - `created_by` / `posted_by` FK to `public.users.id` (the internal user id), **not** the
   Supabase auth id.
 - Money crosses the API as raw integer `*_paise`. The frontend formats to ₹. Rupee

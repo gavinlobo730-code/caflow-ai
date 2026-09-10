@@ -3,9 +3,40 @@ Pydantic request models for accounting endpoints.
 Double-entry: debit_paise == credit_paise enforced at validation level.
 CGST Act §2(59): all money values stored as integer paise (never float).
 """
+from datetime import date as _date
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from enum import Enum
+
+
+def _posting_date(v: Optional[str]) -> Optional[str]:
+    """A posting date is an ISO date, and nothing else (ACC-27).
+
+    `entry_date` was a bare `str` with no validator, unlike the FYLabel
+    discipline CLAUDE.md mandates one field over — and the consequence was not
+    a bad-looking record. Two layers parse this string DIFFERENTLY:
+    period_validation_service uses `strptime("%Y-%m-%d")`, which accepts
+    "2025-4-1", and phase2_journal_service uses `date.fromisoformat`, which
+    (before Python 3.11 relaxed it, and by intent here) does not. So a
+    single-digit month passed the firm-level lock, failed the client-level
+    parse, and the kernel treated the failure as "no year lock" — posting into
+    a client year that year-end finalisation had closed. Postgres then stored
+    it happily, because it is a valid DATE.
+
+    Refused at the boundary AND in the kernel. Two checks for one rule is
+    usually the thing to avoid; here the kernel is reached by paths that never
+    construct a Pydantic model at all, so neither is redundant.
+    """
+    if v is None:
+        return v
+    s = str(v).strip()
+    try:
+        _date.fromisoformat(s)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"entry_date must be an ISO date, YYYY-MM-DD — got '{v}'."
+        )
+    return s
 
 
 class AccountType(str, Enum):
@@ -101,6 +132,8 @@ class JournalEntryUpdateIn(BaseModel):
     entry_type: Optional[str] = None
     lines: Optional[list[JournalLineIn]] = None
 
+    _check_entry_date = field_validator("entry_date")(_posting_date)
+
     @field_validator("entry_type")
     @classmethod
     def entry_type_allowed(cls, v: Optional[str]) -> Optional[str]:
@@ -113,13 +146,15 @@ class JournalEntryUpdateIn(BaseModel):
 
 class JournalEntryIn(BaseModel):
     client_id: str
-    entry_date: str  # YYYY-MM-DD
+    entry_date: str  # YYYY-MM-DD, validated — see _posting_date
     reference_no: Optional[str] = None
     narration: Optional[str] = None
     entry_type: str = "Journal"
     status: str = "draft"            # "draft" (off-books) | "posted" (to the ledger)
     attachments: list[dict] = []     # supporting documents: [{"name","url"}, ...]
     lines: list[JournalLineIn]
+
+    _check_entry_date = field_validator("entry_date")(_posting_date)
 
     @field_validator("entry_type")
     @classmethod

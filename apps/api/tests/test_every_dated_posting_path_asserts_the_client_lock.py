@@ -10,12 +10,27 @@ THE RULE THIS STATES
 
       period_lock_service.assert_open(db, firm_id, client_id, date)
           — the period a RETURN has closed, or a client year-end has
-            (migrations 266/267/289). Client-scoped, answered in SQL by the
+            (migrations 266/267/289/361). Client-scoped, answered in SQL by the
             same function the journal edit path enforces with.
 
     They are different questions with different answers, and only the second
     one knows that this client's GSTR-3B for June went to the portal on 20
     July. Checking the first alone reads as a guard and is not one.
+
+WHAT THIS LIST IS NOT, SINCE MIGRATION 361
+    It is not a list of paths that can post into a closed period. The posting
+    KERNEL now asks `period_closure_reason` for every entry it writes, so the
+    firm's locked year and the client's finalised year-end reach every one of
+    these paths whether they ask or not.
+
+    What is still missing on each is the FILED-RETURN branch, which the kernel
+    deliberately does not carry: a filed GSTR-1 freezes the supplies it
+    reported, not the whole ledger, and refusing every June posting from 11
+    July would stop routine bookkeeping for every client in the practice.
+    Migration 361's header carries the argument. So an entry here means "this
+    path can write a dated fact inside a period whose return has gone to the
+    portal", and whether that matters depends on whether the fact could change
+    what the return said.
 
 WHY A LIST OF DEBT RATHER THAN A CLEAN ASSERTION
     Thirty-four functions ask the first question and not the second. Some of
@@ -117,13 +132,13 @@ NOT_YET: dict[str, str] = {
         "GST return, so the lock's current filing types do not cover it.",
     "routers/tds_workspace.py:create_return":
         "A TDS return is not a GST period; see create_challan.",
-    "services/manual_journal_service.py:create":
-        "Migration 266 guards the EDIT of a manual journal in SQL. CREATE is "
-        "not guarded anywhere, which is the gap — a manual journal is the "
-        "easiest way to move a filed month's books.",
     "services/manual_journal_service.py:update":
         "The SQL guard covers the posted-row rewrite; this Python path checks "
-        "only the FY, so the two disagree about what closed means.",
+        "only the FY, so the two disagree about what closed means. `create` "
+        "was the other half and is done (ACC-12): it now asserts the whole "
+        "rule when the entry is posted, because a manual journal can credit "
+        "GST Output Payable directly and is the free-form path a filed return "
+        "has to stop.",
     "services/banking_service.py:post_transaction":
         "Posts at the bank transaction's own date, which can be months back.",
     "services/bank_posting_service.py:post":

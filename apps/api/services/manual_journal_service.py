@@ -29,6 +29,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from services.phase2_journal_service import phase2_journal_service
+from services import period_lock_service
 from services.period_validation_service import period_validation_service
 
 _logger = logging.getLogger("caflow.manual_journal")
@@ -108,6 +109,19 @@ class ManualJournalService:
         # is validated later, when it is approved/posted (journal_posting_service).
         if is_posted:
             period_validation_service.validate_posting_date(firm_id, entry_date)
+            # ...and the FILED-RETURN lock, which is the asymmetry ACC-12 leads
+            # with: editing a June journal after June's GSTR-3B was filed is
+            # refused by migration 266, and creating one was not. A manual
+            # journal is the free-form path — it can credit GST Output Payable
+            # or debit an ITC ledger directly — so it is exactly the posting a
+            # filed return has to stop, and the one the kernel's closure check
+            # deliberately does not cover (a receipt or a bank entry cannot
+            # change what a GSTR-1 reported; a manual journal can).
+            #
+            # `assert_open` also asks the two closures, so this is not a second
+            # question: it is the same one, asked with the branch this path
+            # needs and the kernel's does not.
+            period_lock_service.assert_open(db, firm_id, client_id, entry_date)
 
         # A stable, unique reference keeps the kernel's dedup (ref+date+client) from
         # ever collapsing two distinct manual journals that share a blank reference.
