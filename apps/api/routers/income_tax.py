@@ -1173,3 +1173,166 @@ def save_advance_tax(
          .eq("firm_id", current_user["firm_id"]).eq("client_id", req.client_id)
          .eq("financial_year", req.fy).in_("installment_number", stale).execute())
     return api_response(True, result.data or rows)
+
+
+# ── IT Act §32 and the book-to-tax bridge (IT-09 ≡ FA-06) ────────────────────
+#
+# Two engines that existed and could not be reached. `book_to_tax_bridge` was
+# imported by no router at all — its own docstring said the §32 line was the
+# largest single adjustment in the bridge and that nothing in this codebase
+# computed it, and both halves of that were true. `domain/income_tax/section_32`
+# is the missing half; these two endpoints are what let a CA see either.
+
+class Section32BlockIn(BaseModel):
+    """One block's opening position, as only a CA can state it.
+
+    Everything else about a block — its additions, its deletions — is derived
+    from the fixed-asset register. These four are not derivable: see
+    migration 357, which says why for each.
+    """
+    client_id: str
+    financial_year: FYLabel
+    block_key: str = Field(min_length=1, max_length=120)
+    #: A block IS a rate under §2(11). Appendix I is a statutory table this
+    #: product does not hold, so the rate comes in with the block.
+    rate_percent: int = Field(ge=0, le=100)
+    #: Off last year's return. No default: a zero is a claim that the block is
+    #: empty, and it would allow no depreciation at all.
+    opening_wdv_paise: int = Field(ge=0)
+    #: §50's second limb. None = nobody has said, and the computation says so.
+    assets_remain: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+@router.get("/section-32")
+def section_32_depreciation(
+    client_id: str,
+    fy: Annotated[FYLabel, Query(description="YYYY-YY, e.g. 2025-26")],
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Depreciation allowable under IT Act §32 for one client and one year.
+
+    Per BLOCK, at the block's rate, on the block's written-down value — not per
+    asset over a useful life, which is Schedule II and is what the accounts
+    carry. See domain/income_tax/section_32.py for what the engine refuses to
+    decide and why each refusal is a human step.
+
+    `is_complete` is the field to read before using the figure: false means an
+    asset is unassigned, a block has no opening written-down value, or an
+    addition has no put-to-use date — each named in `statutory_gaps`.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"financial_year": fy, "blocks": [],
+                                   "depreciation_paise": 0,
+                                   "additional_depreciation_paise": 0,
+                                   "allowance_paise": 0,
+                                   "short_term_capital_gain_paise": 0,
+                                   "unclassified_assets": [],
+                                   "blocks_without_opening_wdv": [],
+                                   "statutory_gaps": [], "is_complete": True})
+    from services.section_32_service import section_32_service
+    return api_response(True, section_32_service.assemble(
+        db, current_user["firm_id"], client_id, fy))
+
+
+@router.put("/section-32/blocks")
+def upsert_section_32_block(
+    req: Section32BlockIn,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Record a block's opening written-down value and rate for a year.
+
+    One row per (client, year, block): the computation reads exactly one, and a
+    second would silently double the opening figure — which is why the unique
+    key is on the table and this is an upsert rather than an insert.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    assert_client_access(current_user, req.client_id)
+    db = _db()
+    row = {
+        "firm_id": current_user["firm_id"], "client_id": req.client_id,
+        "financial_year": req.financial_year, "block_key": req.block_key.strip(),
+        "rate_percent": req.rate_percent,
+        "opening_wdv_paise": req.opening_wdv_paise,
+        "assets_remain": req.assets_remain, "notes": req.notes,
+        # public.users.id — the INTERNAL user id, not the Supabase auth id
+        # (CLAUDE.md).
+        "created_by": current_user.get("id"),
+    }
+    if not db:
+        return api_response(True, row)
+    out = (db.table("income_tax_asset_blocks")
+           .upsert(row, on_conflict="firm_id,client_id,financial_year,block_key")
+           .execute())
+    return api_response(True, (out.data or [row])[0])
+
+
+class BookToTaxBridgeRequest(BaseModel):
+    """The bridge's inputs. §32 is fetched, not supplied."""
+    client_id: str
+    fy: FYLabel
+    book_profit_paise: int
+    disallowances_paise: int = 0
+    depreciation_per_books_paise: int = 0
+    brought_forward_loss_set_off_paise: int = 0
+
+
+@router.post("/book-to-tax-bridge")
+def book_to_tax_bridge(
+    req: BookToTaxBridgeRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Profit per the accounts, down to taxable income, one named adjustment at
+    a time.
+
+    The §32 figure is READ from the block register rather than taken from the
+    caller — that was the whole reason the bridge sat unreachable. Where the
+    block register is incomplete the figure is withheld and the bridge marks
+    ITSELF incomplete, which is exactly what it was built to do: assuming the
+    two depreciation figures equal would make the bridge foot perfectly while
+    understating the difference to nil, and a bridge that reconciles and lies is
+    worse than one that refuses to reconcile.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    assert_client_access(current_user, req.client_id)
+    from domain.income_tax.book_to_tax_bridge import build_bridge
+
+    section_32 = None
+    db = _db()
+    if db:
+        from services.section_32_service import section_32_service
+        section_32 = section_32_service.assemble(
+            db, current_user["firm_id"], req.client_id, req.fy)
+
+    bridge = build_bridge(
+        book_profit_paise=req.book_profit_paise,
+        disallowances_paise=req.disallowances_paise,
+        depreciation_per_books_paise=req.depreciation_per_books_paise,
+        depreciation_under_section_32_paise=(
+            section_32["allowance_paise"]
+            if section_32 and section_32["is_complete"] else None),
+        brought_forward_loss_set_off_paise=req.brought_forward_loss_set_off_paise,
+    )
+    return api_response(True, {
+        "book_profit_paise": bridge.book_profit_paise,
+        "lines": [
+            {"label": l.label, "amount_paise": l.amount_paise,
+             "direction": l.direction, "reference": l.reference,
+             "derived": l.derived, "note": l.note}
+            for l in bridge.lines
+        ],
+        "taxable_income_paise": bridge.taxable_income_paise,
+        "is_complete": bridge.is_complete,
+        "missing": list(bridge.missing),
+        "reasons": list(bridge.reasons),
+        "foots": bridge.foots(),
+        # The §32 answer beside the bridge, so a CA who sees "incomplete" can
+        # see WHY without a second request.
+        "section_32": section_32,
+    })
