@@ -2004,9 +2004,21 @@
    "detail": "c",
    "expr_md5": "2dccd76e3020f01c345c5b1b558568fb"
   },
+  "fixed_assets.fixed_assets_acquisition_mode_check": {
+   "detail": "c",
+   "expr_md5": "592f55820fe83767c07ed20a3bfed94d"
+  },
+  "fixed_assets.fixed_assets_bank_account_id_fkey": {
+   "detail": "f",
+   "expr_md5": "8a31c75ef71b0764b8e10868af28da18"
+  },
   "fixed_assets.fixed_assets_client_id_fkey": {
    "detail": "f",
    "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "fixed_assets.fixed_assets_deleted_by_fkey": {
+   "detail": "f",
+   "expr_md5": "cb6ab866576fd02b47fd17419d284236"
   },
   "fixed_assets.fixed_assets_depreciation_method_check": {
    "detail": "c",
@@ -2023,6 +2035,14 @@
   "fixed_assets.fixed_assets_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "fixed_assets.fixed_assets_purchase_bill_id_fkey": {
+   "detail": "f",
+   "expr_md5": "45326f96ff7d4bdca1a2591ca7949f66"
+  },
+  "fixed_assets.fixed_assets_vendor_id_fkey": {
+   "detail": "f",
+   "expr_md5": "d9e0922947999545421481aecb274c43"
   },
   "fixed_deposits.fixed_deposits_client_id_fkey": {
    "detail": "f",
@@ -3580,9 +3600,9 @@
    "detail": "f",
    "expr_md5": "31b94b5a3625e0541829e365e9082440"
   },
-  "purchase_credit_notes.purchase_credit_notes_firm_id_credit_note_no_key": {
+  "purchase_credit_notes.purchase_credit_notes_firm_client_credit_note_no_key": {
    "detail": "u",
-   "expr_md5": "31f2b4d9e7d80e6680537f06a58d9bca"
+   "expr_md5": "2d7359a64485f87116648575cbe0fd04"
   },
   "purchase_credit_notes.purchase_credit_notes_firm_id_fkey": {
    "detail": "f",
@@ -3615,6 +3635,10 @@
   "purchase_payment_allocations.purchase_payment_allocations_purchase_payment_id_purchase_b_key": {
    "detail": "u",
    "expr_md5": "d505ef4a90554afa5733fe43e3ecb855"
+  },
+  "purchase_payments.purchase_payments_bank_account_id_fkey": {
+   "detail": "f",
+   "expr_md5": "8a31c75ef71b0764b8e10868af28da18"
   },
   "purchase_payments.purchase_payments_client_id_fkey": {
    "detail": "f",
@@ -3671,6 +3695,10 @@
   "receipt_allocations.receipt_allocations_sales_invoice_id_fkey": {
    "detail": "f",
    "expr_md5": "56f084d91c5d7fd55a0802efc9df0ff4"
+  },
+  "receipts.receipts_bank_account_id_fkey": {
+   "detail": "f",
+   "expr_md5": "8a31c75ef71b0764b8e10868af28da18"
   },
   "receipts.receipts_client_id_fkey": {
    "detail": "f",
@@ -3940,9 +3968,9 @@
    "detail": "f",
    "expr_md5": "e4ee868f8610b4ab5e459e3bbb465f49"
   },
-  "sales_debit_notes.sales_debit_notes_firm_id_debit_note_no_key": {
+  "sales_debit_notes.sales_debit_notes_firm_client_debit_note_no_key": {
    "detail": "u",
-   "expr_md5": "e60e16636e0c81489d1f989dfe7c847f"
+   "expr_md5": "72140d65deaca163de2ce915bbf94dae"
   },
   "sales_debit_notes.sales_debit_notes_firm_id_fkey": {
    "detail": "f",
@@ -4512,6 +4540,10 @@
    "detail": "f",
    "expr_md5": "699271836b8417a00f9ccf41e2595d71"
   },
+  "tds_deductions.tds_deductions_quarter_check": {
+   "detail": "c",
+   "expr_md5": "a9388bf35a985d2fb8e28fcc4cad6661"
+  },
   "tds_deductions.tds_deductions_return_type_check": {
    "detail": "c",
    "expr_md5": "84a388ed99eeb151948e2e5107ade68b"
@@ -4663,6 +4695,10 @@
   "vendors.vendors_no_pe_declaration_by_fkey": {
    "detail": "f",
    "expr_md5": "5c4e935089c8eb8f066cd56cfbffbe34"
+  },
+  "vendors.vendors_non_resident_payee_class_check": {
+   "detail": "c",
+   "expr_md5": "01278038cf9ea0e0b7ab8ba2ada35c50"
   },
   "vendors.vendors_pan_format": {
    "detail": "c",
@@ -4872,6 +4908,10 @@
    "detail": "f",
    "expr_md5": "e85039f8f6288f9f7abe3e8cc67687c0"
   },
+  "year_end_engagements.year_end_engagements_reopened_by_fkey": {
+   "detail": "f",
+   "expr_md5": "4f2798d41d3fe2779c6deacef0c91d45"
+  },
   "year_end_engagements.year_end_engagements_reviewed_by_fkey": {
    "detail": "f",
    "expr_md5": "7e20ed90d769f4164974d84991969c4f"
@@ -4930,7 +4970,7 @@
   },
   "year_end_review_events.year_end_review_events_event_type_check": {
    "detail": "c",
-   "expr_md5": "4aa1c96d510c32285625d67fb230c469"
+   "expr_md5": "42d7ac4d0b362f13e86450d1b7fbc977"
   },
   "year_end_review_events.year_end_review_events_pkey": {
    "detail": "p",
@@ -5970,6 +6010,18 @@
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
    "expr_md5": "b5ef261b6445dac864c30640e19d831e"
   },
+  "fixed_deposits.fixed_deposits_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "e6ae2498e25c47e5668bce386607d9f2"
+  },
+  "fixed_deposits.fixed_deposits_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "fixed_deposits.fixed_deposits_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
   "form_26as_reconciliations.firm_isolation": {
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
@@ -6353,6 +6405,18 @@
   "loans.loans_internal_partner_only": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
    "expr_md5": "b5ef261b6445dac864c30640e19d831e"
+  },
+  "loans.loans_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "e6ae2498e25c47e5668bce386607d9f2"
+  },
+  "loans.loans_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "loans.loans_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
   },
   "login_events.login_events_partner_read": {
    "detail": "permissive cmd=r roles=authenticated",
@@ -7166,6 +7230,18 @@
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
    "expr_md5": "b5ef261b6445dac864c30640e19d831e"
   },
+  "tds_certificates.tds_certificates_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "tds_certificates.tds_certificates_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "tds_certificates.tds_certificates_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
   "tds_challans.firm_staff_tds_challans": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
@@ -7177,6 +7253,18 @@
   "tds_challans.tds_challans_internal_partner_only": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
    "expr_md5": "b5ef261b6445dac864c30640e19d831e"
+  },
+  "tds_challans.tds_challans_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "tds_challans.tds_challans_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "tds_challans.tds_challans_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
   },
   "tds_deductions.tds_deductions_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
@@ -7190,6 +7278,18 @@
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
+  "tds_deductions.tds_deductions_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "tds_deductions.tds_deductions_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "tds_deductions.tds_deductions_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
   "tds_returns.firm_staff_tds_returns": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
@@ -7201,6 +7301,18 @@
   "tds_returns.tds_returns_internal_partner_only": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
    "expr_md5": "b5ef261b6445dac864c30640e19d831e"
+  },
+  "tds_returns.tds_returns_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "tds_returns.tds_returns_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "tds_returns.tds_returns_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
   },
   "tds_section_limits.public_read_tds_limits": {
    "detail": "permissive cmd=r roles=authenticated",
