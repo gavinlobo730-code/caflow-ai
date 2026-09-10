@@ -205,7 +205,7 @@ def _build_client_context(firm_id: str, client_id: str) -> str:
     return ""
 
 @router.post("/client/{client_id}/chat")
-async def client_copilot_chat(
+def client_copilot_chat(
     body: CopilotRequest,
     current_user: dict = Depends(rbac("ai", "copilot")),
 ):

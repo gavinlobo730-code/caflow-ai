@@ -334,15 +334,105 @@ def _txns_from_csv(csv):
     return parse_csv(csv)
 
 
-def test_import_dedups_duplicate_rows_within_file():
+def test_two_identical_rows_in_one_file_are_two_transactions():
+    """THIS TEST ASSERTED THE DEFECT, and that is worth saying plainly.
+
+    It used to require `imported == 1` for a file containing the same row
+    twice — the behaviour finding BANK-09 reports. Two ₹5,000 ATM withdrawals
+    on one day, or two identical UPI payments to the same payee, are ordinary
+    banking and they are not a duplicate; dropping one understates the client's
+    withdrawals by exactly that amount and reports it as
+    `duplicates_skipped`, which means "already imported" — a different
+    statement about a different row.
+
+    It also made the import disagree with its own verification: the router
+    checks the arithmetic over the PARSED rows before anything is written, so
+    the file added up over two rows and one was stored.
+
+    Idempotent re-import is unaffected and is proved by the test below.
+    """
     db = FakeDB()
     csv = ("Date,Description,Debit,Credit,Balance\n"
            "01/04/2026,DUP,500.00,,500.00\n"
            "01/04/2026,DUP,500.00,,500.00\n")   # identical row twice
     res = banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(csv))
+    assert res["imported"] == 2
+    assert res["duplicates_skipped"] == 0
+    assert len(db.store["bank_transactions"]) == 2
+    # Reported rather than silent: both rows are kept, and the CA is told the
+    # file said the same thing twice — because the other explanation is that
+    # the file itself is doubled.
+    assert res["repeated_in_file"] == 1
+
+
+def test_a_statement_with_no_balance_column_still_keeps_both_rows():
+    """The case the balance was supposed to separate, and could not.
+
+    `transaction_hash` included balance_paise so two identical same-day debits
+    with different running balances stayed apart. A statement with NO balance
+    column gives every row a balance of 0, so that defence was absent exactly
+    where it was needed.
+    """
+    db = FakeDB()
+    # Balance is NOT a required field of a column mapping (validate_mapping
+    # requires date, desc and the amounts), and a scanned statement read by the
+    # vision path often has none either — so this layout is reachable, and it
+    # is where the balance-based defence was absent.
+    csv = ("Date,Description,Debit,Credit\n"
+           "01/04/2026,ATM WDL,5000.00,\n"
+           "01/04/2026,ATM WDL,5000.00,\n")
+    mapping = {"date": 0, "desc": 1, "debit": 2, "credit": 3}
+    txns = parse_statement("stmt.csv", csv.encode(), mapping)
+    assert all(t.balance_paise == 0 for t in txns), "the premise: no balance column"
+    res = banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", txns)
+    assert res["imported"] == 2
+    assert res["repeated_in_file"] == 1
+    assert sum(r["debit_paise"] for r in db.store["bank_transactions"]) == 1000000
+
+
+def test_an_overlapping_file_still_skips_the_rows_already_stored():
+    """Why the fix is an OCCURRENCE COUNT and not the row's position in the file.
+
+    A CA uploads 1-15 April, then 1-30 April. Hashing the row's ordinal
+    position — the obvious fix — would give every overlapping row a new hash
+    and re-import the lot. A row that is unique within each file is occurrence
+    0 in both, so it hashes the same and is skipped.
+    """
+    db = FakeDB()
+    first = ("Date,Description,Debit,Credit,Balance\n"
+             "01/04/2026,A,500.00,,500.00\n"
+             "05/04/2026,B,,700.00,1200.00\n")
+    second = (first +
+              "20/04/2026,C,100.00,,1100.00\n")
+    banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(first))
+    res = banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", _txns_from_csv(second))
+    assert res["imported"] == 1              # only the new row
+    assert res["duplicates_skipped"] == 2
+    assert len(db.store["bank_transactions"]) == 3
+
+
+def test_a_repeated_row_in_an_overlapping_file_is_still_matched():
+    """The harder half of the same question.
+
+    A file whose 1-15 April half contains an identical pair, re-uploaded as
+    1-30 April, must still recognise BOTH of them: the pair is occurrence 0 and
+    1 in each file, so both hashes match and neither is stored again.
+    """
+    db = FakeDB()
+    mapping = {"date": 0, "desc": 1, "debit": 2, "credit": 3}
+    first = ("Date,Description,Debit,Credit\n"
+             "01/04/2026,ATM WDL,5000.00,\n"
+             "01/04/2026,ATM WDL,5000.00,\n")
+    second = first + "20/04/2026,C,100.00,\n"
+
+    def _rows(csv):
+        return parse_statement("s.csv", csv.encode(), mapping)
+
+    banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", _rows(first))
+    res = banking_service.import_normalized(db, FIRM, CLIENT, "HDFC", "123", _rows(second))
     assert res["imported"] == 1
-    assert res["duplicates_skipped"] == 1
-    assert len(db.store["bank_transactions"]) == 1
+    assert res["duplicates_skipped"] == 2
+    assert len(db.store["bank_transactions"]) == 3
 
 
 def test_reimport_same_file_is_idempotent():

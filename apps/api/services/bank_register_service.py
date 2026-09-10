@@ -9,6 +9,23 @@ READ-ONLY BY DESIGN. Nothing here writes. Posted journals are immutable in this
 system, so an editable register would be offering something the ledger refuses —
 corrections are reversals, made where reversals are made.
 
+WHERE THE WORK HAPPENS, AND WHY IT MOVED
+    `public.bank_register` (migration 353) computes the whole answer in the
+    database and this module calls it. What it replaced fetched EVERY
+    transaction on the account across the wire — apps/api is in Singapore and
+    Postgres in Mumbai, so on a 12,836-line account that was thirteen
+    cross-region round trips to produce a 200-row page — and then built the
+    register, the summary and the divergence in Python. CLAUDE.md's reporting
+    rule forbids exactly that: what crosses the wire must be proportional to
+    the size of the ANSWER, not the size of the ledger.
+
+    The Python path below STAYS, because mock mode and local dev have no
+    DATABASE_URL and no SQL functions. It is a fallback, not a second
+    implementation to be kept in step by hand:
+    tests/test_bank_register_sql_parity_pg.py runs every scenario through both
+    and asserts they are identical, the way
+    tests/test_cash_flow_sql_parity_pg.py does for migration 277.
+
 ONE THING WORTH UNDERSTANDING ABOUT FILTERING
     The running balance is computed over the WHOLE account, always, before any
     filter is applied. Filtering to April and recomputing from zero would show a
@@ -21,6 +38,7 @@ ONE THING WORTH UNDERSTANDING ABOUT FILTERING
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import HTTPException
@@ -39,6 +57,22 @@ _DEFAULT_SORT = "date"
 
 # Status filters, named for what a bookkeeper is actually looking for.
 STATUS_FILTERS = ("all", "uncleared", "pending", "reconciled", "unposted", "needs_review")
+
+_logger = logging.getLogger("caflow.banking.register")
+
+
+def _index_of(lines: list[RegisterLine], line: RegisterLine) -> int:
+    """Where `line` sits in register order — by IDENTITY, not equality.
+
+    Two rows of a register can legitimately carry the same date, description
+    and amount, and `list.index` compares with == and would return the first of
+    them. That is a different row, and therefore a different opening balance
+    for the view.
+    """
+    for i, candidate in enumerate(lines):
+        if candidate is line:
+            return i
+    return 0
 
 
 class BankRegisterService:
@@ -163,6 +197,56 @@ class BankRegisterService:
             "precedes_opening": line.precedes_opening,
         }
 
+    @staticmethod
+    def _account_out(account: dict, opening: int) -> dict:
+        return {
+            "id": account["id"],
+            "bank_name": account.get("bank_name"),
+            "account_no": account.get("account_no"),
+            "account_type": account.get("account_type"),
+            "currency": account.get("currency") or "INR",
+            "coa_account_id": account.get("coa_account_id"),
+            "opening_balance_paise": opening,
+            "opening_balance_date": (str(account["opening_balance_date"])[:10]
+                                     if account.get("opening_balance_date") else None),
+        }
+
+    # ── the database's answer ────────────────────────────────────────────────
+    @staticmethod
+    def _sql_register(db, firm_id: str, bank_account_id: str, **kw) -> Optional[dict]:
+        """One call for the whole register, or None when there is nothing to ask.
+
+        None means FALL BACK, and it is returned for exactly two reasons: the
+        client has no `.rpc` (mock mode, local dev, a test double), or the call
+        failed. A failure is LOGGED at error rather than swallowed — the
+        fallback is correct but slow, and a fallback nobody can see is how a
+        performance fix quietly stops applying.
+        """
+        if not hasattr(db, "rpc"):
+            return None
+        try:
+            res = db.rpc("bank_register", {
+                "p_firm": firm_id,
+                "p_account": bank_account_id,
+                "p_date_from": kw.get("date_from"),
+                "p_date_to": kw.get("date_to"),
+                "p_status": kw.get("status") or "all",
+                "p_q": kw.get("q"),
+                "p_sort": kw.get("sort") or _DEFAULT_SORT,
+                "p_desc": bool(kw.get("desc")),
+                "p_limit": kw.get("limit"),
+                "p_offset": kw.get("offset"),
+            }).execute()
+            out = getattr(res, "data", None)
+            if isinstance(out, dict) and "lines" in out and "summary" in out:
+                return out
+            raise ValueError(
+                f"bank_register returned {type(out).__name__}, not a register")
+        except Exception as e:                                  # noqa: BLE001
+            _logger.error("bank_register failed (%s %s) — falling back to the "
+                          "Python register: %s", firm_id, bank_account_id, e)
+            return None
+
     # ── the register ─────────────────────────────────────────────────────────
     def register(self, db, firm_id: str, bank_account_id: str, *,
                  client_id: Optional[str] = None,
@@ -185,10 +269,31 @@ class BankRegisterService:
         limit = 200 if limit is None else max(1, min(int(limit), 1000))
         offset = 0 if offset is None else max(0, int(offset))
 
+        # The account row first, and in PYTHON: it carries the 404-vs-422
+        # distinction ("not found for this firm" against "does not belong to
+        # this client"), which is an HTTP status a SQL function cannot return,
+        # and it is one indexed row rather than a scan.
         account = self._account(db, firm_id, client_id, bank_account_id)
+        opening = int(account.get("opening_balance_paise") or 0)
+
+        sql = self._sql_register(
+            db, firm_id, bank_account_id, date_from=date_from, date_to=date_to,
+            status=status, q=q, sort=sort, desc=desc, limit=limit, offset=offset)
+        if sql is not None:
+            return {
+                "account": self._account_out(account, opening),
+                "lines": sql["lines"],
+                "summary": sql["summary"],
+                "divergence": sql["divergence"],
+                "view_opening_balance_paise": sql["view_opening_balance_paise"],
+                "filtered_count": sql["filtered_count"],
+                "total_count": sql["total_count"],
+                "limit": limit, "offset": offset,
+                "sort": sort, "desc": bool(desc),
+            }
+
         txns = self._txns(db, firm_id, bank_account_id)
         statuses = self._reconciliation_statuses(db, firm_id, txns)
-        opening = int(account.get("opening_balance_paise") or 0)
 
         # Over the WHOLE account, before any filter — see the module docstring.
         all_lines = build_register(
@@ -209,22 +314,17 @@ class BankRegisterService:
         # visible balance would look like it came from nowhere.
         view_opening = opening
         if filtered:
-            earliest = min(filtered, key=lambda l: all_lines.index(l))
-            idx = all_lines.index(earliest)
+            # `filtered` is a comprehension over `all_lines`, so it is ALREADY
+            # in register order and filtered[0] is the earliest row. What stood
+            # here — min(filtered, key=all_lines.index) — called list.index
+            # once per candidate, each a linear scan: 22.8 seconds of CPU on
+            # 12,836 rows in this repository's own harness, against 0.069s to
+            # build the entire register. It computed the same row.
+            idx = _index_of(all_lines, filtered[0])
             view_opening = all_lines[idx - 1].balance_paise if idx > 0 else opening
 
         return {
-            "account": {
-                "id": account["id"],
-                "bank_name": account.get("bank_name"),
-                "account_no": account.get("account_no"),
-                "account_type": account.get("account_type"),
-                "currency": account.get("currency") or "INR",
-                "coa_account_id": account.get("coa_account_id"),
-                "opening_balance_paise": opening,
-                "opening_balance_date": (str(account["opening_balance_date"])[:10]
-                                         if account.get("opening_balance_date") else None),
-            },
+            "account": self._account_out(account, opening),
             "lines": [self._line_out(l) for l in page],
             "summary": summarise(all_lines, opening_balance_paise=opening),
             # The self-check against the bank's own balance column. None when

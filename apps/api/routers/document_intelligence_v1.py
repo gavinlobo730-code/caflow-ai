@@ -78,7 +78,7 @@ Document text:
 
 
 @router.post("/extract-invoice")
-async def extract_invoice(
+def extract_invoice(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     current_user: dict = Depends(rbac("document", "write")),
@@ -99,7 +99,7 @@ async def extract_invoice(
     assert_client_access(current_user, client_id)
     # File size guard (10 MB)
     MAX_BYTES = 10 * 1024 * 1024
-    content = await file.read()
+    content = file.file.read()
     if len(content) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
 

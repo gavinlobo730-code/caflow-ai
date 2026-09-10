@@ -123,6 +123,13 @@ class BankReconciliationService:
             "opening_balance_paise": int(session.get("opening_balance_paise") or 0),
             "closing_balance_paise": int(session.get("closing_balance_paise") or 0),
             "adjustments_paise": int(session.get("adjustments_paise") or 0),
+            # WHAT the adjustment is (migration 355). It travels with the
+            # session rather than living only in the audit log, for the same
+            # reason the reopen reason does: the report and the PDF are built
+            # from this view, and a figure printed on a certified document
+            # without its explanation is the whole of BANK-05.
+            "adjustments_reason": session.get("adjustments_reason"),
+            "adjustments_set_at": session.get("adjustments_set_at"),
             "status": session.get("status"),
             "completed_at": session.get("completed_at"),
             "completed_by": session.get("completed_by"),
@@ -292,15 +299,122 @@ class BankReconciliationService:
         return view
 
     def update_session(self, db, firm_id, recon_id, fields: dict, actor_id=None) -> dict:
+        """Change the two balances a period is reconciled between.
+
+        `adjustments_paise` is deliberately NOT here any more. It went in on this
+        path as a bare integer with no validation, no reason and no audit call,
+        under rbac("banking", "write") — an Executive tier — and it satisfies the
+        completion gate. `set_adjustment` is now the only way to write it, and
+        the one place all of that is enforced. Two write paths to a figure that
+        can force a certification is exactly the shape CLAUDE.md refuses for the
+        posting kernel.
+        """
         session = self._get_session(db, firm_id, recon_id)
         self._require_mutable(session)
         update = {k: int(v) for k, v in fields.items()
-                  if k in ("opening_balance_paise", "closing_balance_paise", "adjustments_paise")
+                  if k in ("opening_balance_paise", "closing_balance_paise")
                   and v is not None}
         if not update:
             return self.get_session(db, firm_id, recon_id)
         update["updated_at"] = _now()
         db.table("bank_reconciliations").update(update).eq("id", recon_id).eq("firm_id", firm_id).execute()
+        return self.get_session(db, firm_id, recon_id)
+
+    #: The same floor a reopen reason has to clear (migration 253). "ok" in an
+    #: audit trail is barely better than no audit trail.
+    _MIN_ADJUSTMENT_REASON = 10
+
+    def set_adjustment(self, db, firm_id, recon_id, paise: int, reason: Optional[str],
+                       actor_id=None, actor_internal_id=None) -> dict:
+        """Set — or clear — the documented adjustment on an open session.
+
+        WHAT AN ADJUSTMENT IS FOR, AND WHY IT NEEDED FENCING
+
+            The tie-out is `opening + deposits − withdrawals ± adjustments ==
+            statement closing`, and the adjustment is the term that absorbs a
+            difference the reconciled lines do not explain. That makes it the one
+            figure in the module that can force a period to tie out — and
+            completing a period freezes a snapshot which is rendered as a
+            certified "Bank Reconciliation Statement" PDF.
+
+            It used to be a bare integer on the generic PATCH: no reason, no
+            audit row, no narration on the document, written by anyone with
+            banking.write. An Executive who could not find a ₹47,300 difference
+            could type it in and the tie-out went green. Nobody reading the PDF
+            afterwards could tell what the ₹47,300 was.
+
+        WHAT IS ENFORCED HERE
+
+            A reason of at least ten characters for any non-zero figure; the
+            reason cleared when the figure is; who set it and when; an
+            audit_log row carrying the old and new values; and a WARNING on the
+            client timeline, because forcing a tie-out is not an ordinary edit.
+            The Manager+ gate is on the ROUTE (rbac("banking", "approve") — the
+            tier core/permissions.py has defined for signing off a reconciliation
+            and which, until this, no router referenced at all).
+
+            Migration 355 backs the pairing with a CHECK, so no other write
+            path — a script, PostgREST — can leave a plug unexplained.
+        """
+        session = self._get_session(db, firm_id, recon_id)
+        self._require_mutable(session)
+
+        amount = int(paise)
+        clean = (reason or "").strip()
+        if amount and len(clean) < self._MIN_ADJUSTMENT_REASON:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"Say what this adjustment is, in at least "
+                        f"{self._MIN_ADJUSTMENT_REASON} characters. It is printed on the "
+                        f"reconciliation and it is the only thing that explains the "
+                        f"difference it closes."))
+        if not amount and clean:
+            # Not pedantry: the CHECK refuses it, and a reason kept beside a
+            # zero would describe money that is no longer in the tie-out.
+            raise HTTPException(
+                status_code=422,
+                detail="An adjustment of zero has nothing to explain. Clear the "
+                       "reason with it.")
+
+        before = int(session.get("adjustments_paise") or 0)
+        before_reason = session.get("adjustments_reason")
+        now = _now()
+        db.table("bank_reconciliations").update({
+            "adjustments_paise": amount,
+            "adjustments_reason": clean or None,
+            # public.users.id — the INTERNAL id, because the column FKs
+            # users(id) (CLAUDE.md). actor_id here is the Supabase auth id, as
+            # everywhere else in this service.
+            "adjustments_set_by": actor_internal_id if amount else None,
+            "adjustments_set_at": now if amount else None,
+            "updated_at": now,
+        }).eq("id", recon_id).eq("firm_id", firm_id).execute()
+
+        if amount or before:
+            self._log(
+                session, actor_id,
+                "Reconciliation adjustment cleared" if not amount
+                else "Reconciliation adjustment recorded",
+                (f"₹{amount / 100:.2f} — {clean}" if amount
+                 else f"₹{before / 100:.2f} removed"),
+                severity="warning")
+        try:
+            from services.audit_service import log_event
+            log_event(firm_id, "bank_reconciliation", recon_id, "update", actor_id=actor_id,
+                      old_data={"adjustments_paise": before,
+                                "adjustments_reason": before_reason},
+                      new_data={"adjustments_paise": amount,
+                                "adjustments_reason": clean or None},
+                      metadata={"source": "bank_reconciliation_adjustment"})
+        except Exception as e:  # noqa: BLE001
+            # Reported, not swallowed. This figure can force a certification, so
+            # the one thing worse than a failed audit write is a failed audit
+            # write nobody hears about. The write itself has already landed and
+            # the row carries the reason, so failing the request here would cost
+            # more truth than it saved.
+            from core.observability import capture_soft_failure
+            capture_soft_failure(e, operation="bank_reconciliation_adjustment_audit",
+                                 reconciliation_id=recon_id, firm_id=firm_id)
         return self.get_session(db, firm_id, recon_id)
 
     # ── B.4.2 manual reconcile / unreconcile (human confirmation only) ──────────
@@ -402,7 +516,9 @@ class BankReconciliationService:
                 status_code=422,
                 detail=(f"Cannot complete — statement does not tie out. Difference "
                         f"₹{summary['difference_paise'] / 100:.2f}. Reconcile the remaining "
-                        f"items or record an adjustment."))
+                        f"items. If the difference is a real, documented item, a Manager "
+                        f"can record it as an adjustment and say what it is — it is "
+                        f"printed on the reconciliation."))
         # F2: freeze the report at completion so the historical reconciliation can
         # never silently change if transactions are later modified / reversed / removed.
         now = _now()
@@ -652,7 +768,8 @@ class BankReconciliationService:
         w.writerow(["Opening balance", rupees(s["opening_balance_paise"])])
         w.writerow(["Add: Deposits (reconciled)", rupees(s["deposits_paise"])])
         w.writerow(["Less: Withdrawals (reconciled)", rupees(s["withdrawals_paise"])])
-        w.writerow(["Adjustments", rupees(s["adjustments_paise"])])
+        w.writerow(["Adjustments", rupees(s["adjustments_paise"]),
+                    v.get("adjustments_reason") or ""])
         w.writerow(["= Reconciled book balance", rupees(s["reconciled_book_balance_paise"])])
         w.writerow(["Statement closing balance", rupees(s["statement_closing_balance_paise"])])
         w.writerow(["Difference", rupees(s["difference_paise"])])

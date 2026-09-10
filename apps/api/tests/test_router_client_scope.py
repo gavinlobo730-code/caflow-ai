@@ -1498,6 +1498,14 @@ EXEMPT: dict[str, str] = {
     "/api/audit":
         "the firm's own audit log (audit_log has firm_id and actor user_id, "
         "no client_id) — who did what in this firm's admin surface.",
+    "/api/audit/entity/{entity_type}/{entity_id}":
+        "the same log, asked about ONE row: 'what ever happened to this "
+        "journal entry'. audit_log carries no client_id to scope on, the query "
+        "is firm_id-scoped in audit_query_service, and the route is "
+        "rbac('accounting', 'approve') — Partner only, and a Partner's "
+        "assignment scope is the whole firm. Rule 3(1) of the Companies "
+        "(Accounts) Rules 2014 requires the edit log to be readable; a "
+        "per-entry history is the question it exists to answer.",
     "/api/scheduler/run":
         "fires the firm's scheduled-job runner. Takes no client_id and returns "
         "job outcomes, not client data.",
@@ -1620,7 +1628,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/customer-statements": 4, "/api/party-credits": 3,
               "/api/timeline": 1, "/api/search": 1,
               "/api/firm-hsn-rate-history": 4, "/api/assistant": 1,
-              "/api/audit": 1, "/api/scheduler": 2, "/api/automation": 5,
+              "/api/audit": 2, "/api/scheduler": 2, "/api/automation": 5,
               "/api/onboarding": 4, "/api/practice": 3,
               "/api/document-intelligence-v1": 1,
               "/api/portal/self": 8, "/api/portal/me": 1,

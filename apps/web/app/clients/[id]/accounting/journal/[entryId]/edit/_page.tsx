@@ -28,6 +28,7 @@ import { api, type ApiResp, type JournalEntryDetail, type JournalLineIO } from "
 import { JournalEditor, type EditorAccount, type JournalSaveMode } from "@/components/journal/JournalEditor";
 import { ErrorState } from "@/components/ui/states";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import EntryHistory from "@/components/accounting/EntryHistory";
 
 function getEntryIdFromLocation(): string {
   if (typeof window === "undefined") return "";
@@ -191,7 +192,7 @@ export default function JournalEntryPageClient() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-4">
       <JournalEditor
         accounts={accounts ?? []}
         existing={isNew ? null : entry}
@@ -200,6 +201,10 @@ export default function JournalEntryPageClient() {
         onSave={handleSave}
         onCancel={() => router.push(journalListHref(clientId))}
       />
+      {/* Only for an entry that EXISTS: in create mode there is no row for the
+          log to have anything about, and an empty History panel there would
+          read as "nothing has been recorded" rather than "nothing yet is". */}
+      {!isNew && entryId && <EntryHistory entryId={entryId} />}
     </div>
   );
 }

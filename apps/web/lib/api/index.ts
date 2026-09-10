@@ -913,6 +913,40 @@ export async function errorMessage(res: Response): Promise<string> {
   return body.trim() ? `API error ${res.status}: ${body}` : `API error ${res.status}`;
 }
 
+/** A refusal the server sent as `{message, code}`, carrying its code.
+ *
+ *  `errorMessage` flattens a structured detail for DISPLAY, which is what most
+ *  screens need. A screen that can offer the way past a refusal needs to know
+ *  WHICH refusal it was, and matching on the wording of a sentence written for
+ *  a human is how a message becomes unfixable — change the sentence and the
+ *  behaviour silently changes with it. So the code travels beside the text. */
+export class ApiRefusal extends Error {
+  readonly code: string | null;
+  constructor(message: string, code: string | null) {
+    super(message);
+    this.name = "ApiRefusal";
+    this.code = code;
+  }
+}
+
+/** Read a failed Response ONCE and produce the refusal it describes. */
+export async function refusalFrom(res: Response): Promise<ApiRefusal> {
+  const body = await res.text().catch(() => "");
+  let message = body.trim() ? `API error ${res.status}: ${body}` : `API error ${res.status}`;
+  let code: string | null = null;
+  try {
+    const detail = JSON.parse(body)?.detail;
+    if (typeof detail === "string" && detail.trim()) message = detail.trim();
+    else if (detail && typeof detail === "object") {
+      if (typeof detail.message === "string") message = detail.message;
+      if (typeof detail.code === "string") code = detail.code;
+    }
+  } catch {
+    /* not JSON — the raw body is the best we have */
+  }
+  return new ApiRefusal(message, code);
+}
+
 /** Fetch a binary endpoint with auth and trigger a browser blob download. */
 async function downloadFile(path: string, fallbackFilename: string, extraHeaders?: Record<string, string>): Promise<Headers> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -1422,7 +1456,12 @@ export const api = {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
       });
-      if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+      // A 422 here is an answer written for the CA — the statement does not add
+      // up, the format is unmappable — and it used to reach the screen as the
+      // raw JSON body inside "API error 422: {...}". It now arrives as its
+      // sentence, with the server's code where there is one, so the import
+      // dialog can offer the acknowledgement rather than leaving a dead end.
+      if (!res.ok) throw await refusalFrom(res);
       return res.json();
     },
     /** Tier 3.2 — a multipart POST that returns JSON, same shape as uploadStatement. */
@@ -1587,7 +1626,15 @@ export const api = {
       openingSuggestion: (params: { client_id: string; bank_account_id: string }) =>
         request(`/api/banking/reconciliations/opening-suggestion?${new URLSearchParams(params)}`),
       get: (id: string) => request(`/api/banking/reconciliations/${id}`),
-      update: (id: string, data: { opening_balance_paise?: number; closing_balance_paise?: number; adjustments_paise?: number }) => request(`/api/banking/reconciliations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      update: (id: string, data: { opening_balance_paise?: number; closing_balance_paise?: number }) => request(`/api/banking/reconciliations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      /** The documented difference the reconciled lines do not explain.
+       *  MANAGER+ , and a reason is mandatory for any non-zero figure: this is
+       *  the one number that can force a period to tie out, and it is printed
+       *  on the certified reconciliation (BANK-05). Send 0 with no reason to
+       *  clear it. */
+      setAdjustment: (id: string, adjustments_paise: number, reason: string | null) =>
+        request(`/api/banking/reconciliations/${id}/adjustment`,
+                { method: "PUT", body: JSON.stringify({ adjustments_paise, reason }) }),
       report: (id: string) => request(`/api/banking/reconciliations/${id}/report`),
       reconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/reconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       unreconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/unreconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
@@ -1711,6 +1758,54 @@ export const api = {
     createRun: (body: { client_id: string; month: string }) =>
       request("/api/payroll/runs", { method: "POST", body: JSON.stringify(body) }),
     getRunSlips: (runId: string) => request(`/api/payroll/runs/${runId}/slips`),
+    /** The statutory table's five figures PER RUN, in one call.
+     *
+     *  What this replaced was one getRunSlips per run, issued concurrently on
+     *  mount for a tab that is not the default, each returning every column of
+     *  every payslip — to render a count, a gross, a TDS and two member
+     *  counts. CLAUDE.md: what crosses the wire is the size of the ANSWER. */
+    runSummaries: (params?: { client_id?: string; financial_year?: string }) => {
+      const q = new URLSearchParams(
+        Object.entries(params ?? {})
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return request<ApiResp<{ runs: PayrollRunSummary[] }>>(
+        `/api/payroll/runs/summary${q ? `?${q}` : ""}`);
+    },
+    /** One row per EMPLOYEE for a financial year, aggregated by the server,
+     *  plus the years the firm has payroll for.
+     *
+     *  The year-end tab used to build this in the browser from every payslip
+     *  the firm had ever produced. It is the one report tab whose ANSWER is
+     *  smaller than its rows: a hundred employees over twelve months is 1,200
+     *  payslips to render a hundred lines. */
+    yearEndSummary: (params: { financial_year: string; client_id?: string }) => {
+      const q = new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return request<ApiResp<{ rows: EmployeeYearTotalsRow[]; financial_years: string[] }>>(
+        `/api/payroll/reports/year-end?${q}`);
+    },
+    /** Payslips for ONE run, ONE month or ONE employee.
+     *
+     *  Naming none of them is REFUSED with a 422 — see
+     *  services/payroll_report_service.assert_narrowed. Both firm-level
+     *  screens used to ask for every payslip the firm had ever produced. */
+    slips: (params: {
+      run_id?: string; month?: string; employee_id?: string;
+      financial_year?: string; client_id?: string;
+    }) => {
+      const q = new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return request<ApiResp<{ slips: unknown[]; runs?: unknown[] }>>(
+        `/api/payroll/slips?${q}`);
+    },
 
     // Attendance goes through the API, not straight to PostgREST. The direct
     // write this replaced saved the page's WHOLE editor — which seeded a
@@ -2599,16 +2694,43 @@ export const api = {
   // Backed by the audit_log table, written server-side by audit_service.log_event
   // across every sensitive mutation (journals, invoices, compliance, clients,
   // users/roles, year-end, GST/TDS, platform actions, …).
+  /** The Rule 3(1) edit log, queried.
+   *
+   *  Every filter is applied server-side and the log is paged with a cursor.
+   *  What this replaced returned the most recent 200 rows firm-wide with no
+   *  date range and no paging, and the screen filtered those 200 in the
+   *  browser — so "show me April" showed whatever fell inside the last 200
+   *  events. Dates are IST dates; the server converts the bounds.
+   */
   audit: {
-    list: (params?: { entity_type?: string; entity_id?: string; actor_id?: string; limit?: number }) => {
+    list: (params?: {
+      entity_type?: string; entity_id?: string; actor_id?: string;
+      action?: string; date_from?: string; date_to?: string;
+      cursor?: string; limit?: number;
+    }) => {
       const q = new URLSearchParams(
         Object.entries(params ?? {})
           .filter(([, v]) => v != null && v !== "")
           .map(([k, v]) => [k, String(v)]),
       ).toString();
-      return request(`/api/audit${q ? `?${q}` : ""}`) as Promise<
-        ApiResp<{ entries: AuditEntry[]; total: number }>
-      >;
+      return request(`/api/audit${q ? `?${q}` : ""}`) as Promise<ApiResp<AuditPage>>;
+    },
+    /** Everything that ever happened to ONE row.
+     *
+     *  For a journal entry pass "journal_entry,journal_line": migration 266
+     *  keys a LINE's audit row to its parent entry id, and an entry's history
+     *  that omits its lines omits the amounts. */
+    entityHistory: (entityType: string, entityId: string,
+                    params?: { cursor?: string; limit?: number }) => {
+      const q = new URLSearchParams(
+        Object.entries(params ?? {})
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return request(
+        `/api/audit/entity/${encodeURIComponent(entityType)}/` +
+        `${encodeURIComponent(entityId)}${q ? `?${q}` : ""}`,
+      ) as Promise<ApiResp<AuditPage>>;
     },
   },
   // "Verify Books" (task #244) — on-demand books-integrity check, mirroring
@@ -2980,6 +3102,56 @@ export type AISStatement = {
   records: AISLine[];
   summary: AISSummary;
   uploads: AISUpload[];
+};
+
+/** One page of the log. NO total, deliberately: a COUNT over the whole log to
+ *  render one page is the cost the server-side query exists to remove, and
+ *  `has_more` is what a "Load more" control needs. */
+/** One run's aggregate — the shape the statutory table renders.
+ *  `pf_count` and `esi_count` are slips that CARRIED the contribution, never a
+ *  re-derived ceiling test: ESI Rule 50 keeps a member in past the ceiling
+ *  until the contribution period ends, and re-applying the rule afterwards
+ *  read "no ESI-applicable employees" for people the firm had deducted from. */
+export type PayrollRunSummary = {
+  id: string;
+  client_id: string;
+  month: string;
+  status: string;
+  financial_year: string | null;
+  slip_count: number;
+  gross_paise: number;
+  net_paise: number;
+  tds_paise: number;
+  pf_count: number;
+  esi_count: number;
+  pf_employee_paise: number;
+  pf_employer_paise: number;
+  esi_employee_paise: number;
+  esi_employer_paise: number;
+};
+
+/** One employee's whole financial year, summed server-side. Mirrors
+ *  lib/payroll/types.EmployeeYearTotals — declared here because this module is
+ *  where the wire shapes live. */
+export type EmployeeYearTotalsRow = {
+  employee_id: string;
+  employee: { name: string; pan: string; designation: string } | null;
+  months: number;
+  gross_paise: number;
+  net_paise: number;
+  tds_paise: number;
+  pt_paise: number;
+  pf_employee_paise: number;
+  esi_employee_paise: number;
+};
+
+export type AuditPage = {
+  entries: AuditEntry[];
+  next_cursor: string | null;
+  has_more: boolean;
+  limit: number;
+  /** The UTC instants the IST dates were converted to, for display. */
+  window: { from: string | null; to: string | null };
 };
 
 export type AuditEntry = {

@@ -84,7 +84,14 @@ def build_reconciliation_pdf(report: dict, firm: dict) -> bytes:
         ["Opening balance", _paise_to_rupee_str(summary["opening_balance_paise"])],
         ["Add: Deposits reconciled", _paise_to_rupee_str(summary["deposits_paise"])],
         ["Less: Withdrawals reconciled", _paise_to_rupee_str(summary["withdrawals_paise"])],
-        ["Adjustments", _paise_to_rupee_str(summary["adjustments_paise"])],
+        # WHAT the adjustment is, on the same line as the figure (BANK-05).
+        # This document is what a CA hands to a client or an auditor, and an
+        # "Adjustments ₹47,300.00" on it that explains nothing is the defect.
+        # A reason is mandatory for any non-zero figure (migration 355), so the
+        # bare label only ever appears beside a zero.
+        [("Adjustments" if not summary["adjustments_paise"]
+          else f"Adjustments — {session.get('adjustments_reason') or 'reason not recorded'}"),
+         _paise_to_rupee_str(summary["adjustments_paise"])],
         ["Reconciled book balance", _paise_to_rupee_str(summary["reconciled_book_balance_paise"])],
         ["Statement closing balance", _paise_to_rupee_str(summary["statement_closing_balance_paise"])],
         ["Difference", _paise_to_rupee_str(summary["difference_paise"])],

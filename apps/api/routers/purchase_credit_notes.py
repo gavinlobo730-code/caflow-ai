@@ -373,7 +373,7 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
 
 
 @router.post("/upload")
-async def upload_purchase_credit_note_document(
+def upload_purchase_credit_note_document(
     file: UploadFile = File(...),
     client_id: str = Form(...),
     current_user: dict = Depends(rbac("accounting", "write")),
@@ -382,7 +382,7 @@ async def upload_purchase_credit_note_document(
     upload_debit_note_document."""
     assert_client_access(current_user, client_id)
     try:
-        content = await file.read()
+        content = file.file.read()
         firm_id = current_user.get("firm_id")
         if _USE_MOCK:
             return api_response(True, {"document_url": f"mock/{firm_id}/{client_id}/purchase_credit_note/{uuid.uuid4()}"})

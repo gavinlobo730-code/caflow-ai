@@ -16,7 +16,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
-import { api } from "@/lib/api";
+import { api, ApiRefusal } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { getBankStatements, getBankTransactions, BankStatement, BankTransaction } from "@/lib/data/bankStatements";
@@ -537,6 +537,10 @@ interface TotalsCheck {
   label?: string;
   gap?: string;
   reason?: string;
+  /** The statement prints SEVERAL totals rows and none is a grand total, so
+   *  which of them totals the whole statement cannot be told from the file.
+   *  Not the same as printing none, and the CA is told which it is. */
+  ambiguous?: boolean;
 }
 
 interface ImportResult {
@@ -548,6 +552,9 @@ interface ImportResult {
   verified?: boolean;
   verification_gap?: string | null;
   totals_check?: TotalsCheck;
+  /** This statement went in although its own printed totals disagreed with the
+   *  lines read from it, on a written reason now stored against it. */
+  totals_mismatch_acknowledged?: boolean;
 }
 
 interface StatementPreview {
@@ -624,6 +631,16 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
   const [checking, setChecking] = useState(false);
   const [remember, setRemember] = useState(true);
   const [overrideBalance, setOverrideBalance] = useState(false);
+  // BANK-01. The statement's own totals row disagreeing with the lines read
+  // from it used to be the end of the road: the refusal came back, and the only
+  // way past it was to edit the bank's file by hand. A CA who has compared the
+  // two figures themselves can now say why and import — the reason is stored on
+  // the statement (migration 354) and the import is NOT reported as verified.
+  // This is revealed by the server's refusal, never offered up front: a box
+  // that is always there is a box people tick without reading.
+  const [totalsRefusal, setTotalsRefusal] = useState<string | null>(null);
+  const [ackReason, setAckReason] = useState("");
+  const ackReady = ackReason.trim().length >= 10;
 
   // ── The tie-out, and reading a scan ──────────────────────────────────────
   // The two balances PRINTED on the statement. The server checks
@@ -659,7 +676,11 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) { setFile(f); setError(null); setResult(null); resetMapping(); setAllowVision(false); }
+    if (f) {
+      setFile(f); setError(null); setResult(null); resetMapping(); setAllowVision(false);
+      // A reason written about one statement must not follow a different file.
+      setTotalsRefusal(null); setAckReason("");
+    }
   }
 
   function baseForm(): FormData {
@@ -737,6 +758,10 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
         form.append("closing_balance_paise", String(closingPaise));
       }
       if (allowVision) form.append("allow_vision", "true");
+      // Only ever sent for the refusal the CA is looking at, and only once it
+      // is substantive — the server refuses a shorter one, and refuses it
+      // outright when there is nothing to acknowledge.
+      if (totalsRefusal && ackReady) form.append("acknowledge_totals_mismatch", ackReason.trim());
       const res = (await api.banking.uploadStatement(form)) as {
         success: boolean; data: ImportResult; error?: string;
       };
@@ -745,6 +770,10 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
     } catch (err) {
       const message = err instanceof Error ? err.message : "Import failed";
       setError(message);
+      // The refusal's CODE, not its wording — see lib/api ApiRefusal. This one
+      // has a way past, so show it rather than leaving the CA to edit the
+      // bank's file.
+      if (err instanceof ApiRefusal && err.code === "totals_mismatch") setTotalsRefusal(message);
       // The format errors are the ones the mapper exists for, so go straight
       // there rather than leaving the CA at a dead end with an explanation.
       if (!mapping && looksLikeAFormatProblem(message)) void startMapping();
@@ -802,6 +831,15 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 {result.totals_check?.agrees
                   ? <>Checked against the statement&apos;s own &ldquo;{result.totals_check.label}&rdquo; row — every line was read.</>
                   : <>Checked against the opening and closing balances — every line was read.</>}
+              </p>
+            ) : result.totals_mismatch_acknowledged ? (
+              // Its own branch, because it is not the same thing as "nothing
+              // checked it". Something DID check it and disagreed, and somebody
+              // decided to import anyway — that is a stronger statement than a
+              // gap and it is now on the statement row and the client timeline.
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Imported over the statement&apos;s own totals, on the reason you gave.
+                It is recorded against this statement. {result.verification_gap}
               </p>
             ) : (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
@@ -974,6 +1012,15 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         {preview.totals_check.reason}
                       </p>
                     )}
+                    {/* Printing several totals rows with no grand total is not
+                        the same as printing none, and saying "no totals" in
+                        front of a statement that visibly has them sends the CA
+                        looking for a parsing bug. */}
+                    {preview.totals_check?.ambiguous && (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+                        {preview.totals_check.gap}
+                      </p>
+                    )}
 
                     <p className="text-[11px] text-[#475569]">
                       {preview.parsed_count} of {preview.total_rows} rows read
@@ -1008,7 +1055,32 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               </div>
             )}
 
-            {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+            {error && !totalsRefusal && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+
+            {/* The one refusal in this import with a way past it (BANK-01). It
+                is shown only after the server has refused, so the reason is
+                written about a mismatch the CA can see, with both figures in
+                front of them. */}
+            {totalsRefusal && (
+              <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 space-y-2">
+                <p>{totalsRefusal}</p>
+                <label className="block font-medium">
+                  Why is this file right?
+                  <textarea
+                    value={ackReason}
+                    onChange={(e) => setAckReason(e.target.value)}
+                    rows={2}
+                    placeholder="e.g. the export is filtered to one page; the printed total covers the whole month"
+                    className="mt-1 w-full px-2 py-1.5 font-normal border border-amber-200 rounded focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </label>
+                <p className="text-[11px] text-amber-700">
+                  {ackReady
+                    ? "This is stored against the statement, beside the difference it explains, and the import will not be reported as checked."
+                    : "At least 10 characters — this goes on the record."}
+                </p>
+              </div>
+            )}
             <div className="flex gap-3 justify-end">
               {/* Closing mid-import would unmount the dialog with the upload still
                   in flight: the write continues server-side and the CA never
@@ -1033,10 +1105,13 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   // give up the guard and gain nothing.
                   || (!!inspected && !preview)
                   || (!!preview && preview.balance_check.agrees === false && !overrideBalance)
+                  // Refused on the statement's own totals: the button is now
+                  // "Import anyway", and it needs the reason first.
+                  || (!!totalsRefusal && !ackReady)
                 }
                 className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
               >
-                {importing ? "Importing…" : "Import"}
+                {importing ? "Importing…" : totalsRefusal ? "Import anyway" : "Import"}
               </button>
             </div>
           </>

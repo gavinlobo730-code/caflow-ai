@@ -27,6 +27,7 @@ from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Pay
 from core.authz import assert_client_access, filter_by_client
 from core.ist_clock import ist_today, month_end_date, ist_fy_label
 from core.permissions import rbac
+from services import payroll_report_service
 from services.timeline_service import timeline_service
 from services import employee_portal_service
 from services.internal_client_service import assert_not_internal_for_payroll
@@ -2105,6 +2106,132 @@ def get_run_slips(
         raise HTTPException(status_code=404, detail=f"Payroll run {run_id} not found")
     slips = db.table("payroll_slips").select("*, payroll_employees(name, pan, designation, department)").eq("run_id", run_id).execute()
     return api_response(True, slips.data or [])
+
+
+@router.get("/runs/summary")
+def get_run_summaries(
+    client_id: Optional[str] = Query(None),
+    financial_year: OptionalFYLabel = None,
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """The statutory table's five figures per RUN, in one call.
+
+    What this replaced was one `GET /runs/{id}/slips` PER RUN, issued
+    concurrently on mount for a tab that is not the default, each returning
+    every column of every payslip in the run — to render a count, a gross, a
+    TDS and two member counts. CLAUDE.md's reporting rule: what crosses the
+    wire is the size of the ANSWER, and the answer is one row per month.
+    """
+    if client_id:
+        assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"runs": []})
+
+    q = (db.table("payroll_runs")
+         .select("id, client_id, month, status")
+         .eq("firm_id", current_user["firm_id"]))
+    if client_id:
+        q = q.eq("client_id", client_id)
+    if financial_year:
+        # payroll_runs has NO financial_year column — it carries `month`, and
+        # the year is derived from it. April to March, so January to March
+        # belong to the year that started the previous April.
+        q = q.in_("month", payroll_report_service.months_of_fy(financial_year))
+    runs = q.order("month", desc=True).execute().data or []
+    if not client_id:
+        runs = filter_by_client(current_user, runs)
+
+    summaries = payroll_report_service.run_summaries(
+        db, current_user["firm_id"], [str(r["id"]) for r in runs])
+    return api_response(True, {"runs": [
+        {**r,
+         "financial_year": payroll_report_service.fy_of_month(str(r.get("month") or "")),
+         **summaries.get(str(r["id"]), {})}
+        for r in runs]})
+
+
+@router.get("/slips")
+def get_slips(
+    run_id: Optional[str] = Query(None),
+    month: Optional[str] = Query(None, description="YYYY-MM"),
+    employee_id: Optional[str] = Query(None),
+    financial_year: OptionalFYLabel = None,
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """Payslips for ONE run, ONE month, or ONE employee — never a whole firm.
+
+    The refusal is the point. Every screen that shows payslips shows a slice,
+    and both firm-level screens asked for the entire history because nothing
+    stopped them; an endpoint that will hand over the whole table is one the
+    next screen will ask. See services/payroll_report_service.assert_narrowed.
+    """
+    if client_id:
+        assert_client_access(current_user, client_id)
+    try:
+        payroll_report_service.assert_narrowed(run_id, month, employee_id)
+    except payroll_report_service.PayrollReportRefused as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    db = _db()
+    if not db:
+        return api_response(True, {"slips": []})
+
+    # The runs this request may see, resolved FIRST: payroll_slips has no
+    # firm_id (migrations 014/093 — it is tenant-scoped transitively through
+    # run_id), so filtering it directly on the firm names a column that does
+    # not exist and PostgREST rejects it outright.
+    rq = (db.table("payroll_runs").select("id, client_id, month")
+          .eq("firm_id", current_user["firm_id"]))
+    if run_id:
+        rq = rq.eq("id", run_id)
+    if month:
+        rq = rq.eq("month", month)
+    if financial_year:
+        # Derived from `month` — see get_run_summaries above.
+        rq = rq.in_("month", payroll_report_service.months_of_fy(financial_year))
+    if client_id:
+        rq = rq.eq("client_id", client_id)
+    runs = rq.execute().data or []
+    if not client_id:
+        runs = filter_by_client(current_user, runs)
+    if not runs:
+        return api_response(True, {"slips": [], "runs": []})
+
+    sq = (db.table("payroll_slips")
+          .select("*, payroll_employees(name, pan, designation, department)")
+          .in_("run_id", [str(r["id"]) for r in runs]))
+    if employee_id:
+        sq = sq.eq("employee_id", employee_id)
+    return api_response(True, {"slips": sq.execute().data or [], "runs": runs})
+
+
+@router.get("/reports/year-end")
+def get_year_end_summary(
+    financial_year: Annotated[FYLabel, Query()],
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """One row per EMPLOYEE for a financial year, plus the years on file.
+
+    An aggregate rather than a narrowed slip read, and the distinction is the
+    point: a run's payslips or a month's are a row set the same size as the
+    table they render, so fetching the rows IS fetching the answer. A firm's
+    whole financial year is not — a hundred employees over twelve months is
+    1,200 payslips to render a hundred rows.
+    """
+    if client_id:
+        assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"rows": [], "financial_years": []})
+    return api_response(True, {
+        "rows": payroll_report_service.employee_year_totals(
+            db, current_user["firm_id"], financial_year, client_id),
+        "financial_years": payroll_report_service.financial_years(
+            db, current_user["firm_id"]),
+    })
 
 
 @router.get("/salary-slips/{slip_id}/pdf")

@@ -239,8 +239,16 @@ def _setup(monkeypatch, *, model=None, available=True):
 
 
 class _Upload:
+    """The slice of UploadFile a SYNC route uses.
+
+    The route is plain `def` (see tests/test_a_blocking_route_is_not_async.py),
+    so Starlette runs it in a threadpool and it reads the upload through
+    `.file` — the SpooledTemporaryFile — rather than awaiting `.read()`. That
+    is what a real UploadFile offers, so the double offers it too.
+    """
     def __init__(self, filename, content):
         self.filename, self._content = filename, content
+        self.file = io.BytesIO(content)
 
     async def read(self):
         return self._content
@@ -248,14 +256,15 @@ class _Upload:
 
 def _upload(**kw):
     import asyncio
-    return asyncio.run(banking.upload_statement(
+    return banking.upload_statement(
         file=_Upload(kw.pop("filename"), kw.pop("content")),
         client_id=CLIENT, bank_name="HDFC Bank", account_number=None,
         bank_account_id=None, column_mapping=None, save_mapping=False,
         opening_balance_paise=kw.pop("opening", None),
         closing_balance_paise=kw.pop("closing", None),
         allow_vision=kw.pop("allow_vision", False),
-        current_user=CALLER))
+        acknowledge_totals_mismatch=kw.pop("acknowledge", None),
+        current_user=CALLER)
 
 
 SCAN = property(lambda self: None)
@@ -470,6 +479,24 @@ def test_a_scan_whose_reading_misses_its_own_totals_imports_NOTHING(monkeypatch)
     assert e.value.status_code == 422
     assert "Grand Total" in str(e.value.detail)
     assert not db.rows("bank_transactions"), "a refused scan wrote transactions"
+    assert not db.rows("bank_statements")
+
+
+def test_a_scan_cannot_be_imported_over_its_own_totals(monkeypatch):
+    """BANK-01 added a way past a printed-totals mismatch — a written reason,
+    recorded on the statement row. It stops at the door of this path, and the
+    reason is not caution, it is that there is nothing left to appeal to: on a
+    deterministic parse the CA can open the CSV and see the rows the parser saw,
+    while here the ONLY reading of the file is the one whose arithmetic failed.
+    Accepting it would be taking a model's word against the statement's own."""
+    wrong = ('{"label": "Grand Total", "total_withdrawals": "35,000.00", '
+             '"total_deposits": "50,000.00"}')
+    db, model = _setup(monkeypatch, model=_Model(totals=wrong))
+    with pytest.raises(HTTPException) as e:
+        _upload(filename="scan.pdf", content=_scan_pdf(), allow_vision=True,
+                acknowledge="the statement's own total includes the brought-forward line")
+    assert e.value.status_code == 422
+    assert "scanned statement cannot be imported over a totals mismatch" in str(e.value.detail)
     assert not db.rows("bank_statements")
 
 

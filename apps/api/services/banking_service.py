@@ -31,7 +31,7 @@ from fastapi import HTTPException
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
-from domain.banking.dedup import transaction_hash
+from domain.banking.dedup import hash_rows, transaction_hash
 from domain.banking.account_category import category_for_account
 from domain.banking.entry import kind_for
 from domain.banking.posting_map import AUTO_COUNTER
@@ -127,15 +127,25 @@ class BankingService:
         self, db, firm_id: str, client_id: str, bank_name: str,
         account_number: Optional[str], txns: list, bank_account_id: Optional[str] = None,
         actor_id: Optional[str] = None, file_meta: Optional[dict] = None,
+        totals_acknowledgement: Optional[dict] = None,
     ) -> dict:
-        """Store NormalizedTxn rows produced by the server-side normalizer (B.1)."""
+        """Store NormalizedTxn rows produced by the server-side normalizer (B.1).
+
+        `totals_acknowledgement`, when given, is why this statement was imported
+        although its own printed totals disagreed with the lines read from it —
+        `{reason, debit_difference_paise, credit_difference_paise, by}`, where
+        `by` is the INTERNAL public.users.id. It is stored on the statement row
+        (migration 354), never inferred: the router only builds it when the
+        check actually failed and the CA actually wrote something.
+        """
         norm = [{
             "transaction_date": t.transaction_date, "description": t.description,
             "reference_no": t.reference_no, "debit_paise": t.debit_paise,
             "credit_paise": t.credit_paise, "balance_paise": t.balance_paise,
         } for t in txns]
         return self._import_core(db, firm_id, client_id, bank_name, account_number,
-                                 norm, bank_account_id, actor_id, file_meta=file_meta)
+                                 norm, bank_account_id, actor_id, file_meta=file_meta,
+                                 totals_acknowledgement=totals_acknowledgement)
 
     def _existing_hashes(self, db, firm_id: str, client_id: str, hashes: list[str]) -> set:
         """Hashes already stored for this client (chunked IN lookup)."""
@@ -150,7 +160,8 @@ class BankingService:
         return found
 
     def _import_core(self, db, firm_id, client_id, bank_name, account_number,
-                     norm: list[dict], bank_account_id, actor_id, file_meta) -> dict:
+                     norm: list[dict], bank_account_id, actor_id, file_meta,
+                     totals_acknowledgement: Optional[dict] = None) -> dict:
         if not norm:
             raise HTTPException(status_code=400, detail="No transactions provided.")
 
@@ -168,27 +179,38 @@ class BankingService:
             if not _owned:
                 raise HTTPException(status_code=422, detail="Bank account is not part of this client's books.")
 
-        # 1) fingerprint every row; drop within-file duplicates (keep first).
-        seen, deduped = set(), []
-        for r in norm:
-            h = transaction_hash(
-                client_id, bank_account_id, r["transaction_date"],
-                r["debit_paise"], r["credit_paise"], r["balance_paise"],
-                r["description"], r["reference_no"],
-            )
-            if h not in seen:
-                seen.add(h)
-                deduped.append({**r, "import_hash": h})
+        # 1) fingerprint every row. EVERY row is kept — see domain/banking/dedup.
+        #
+        #    This used to drop within-file repeats and keep the first, which
+        #    silently merged two genuinely identical transactions: with no
+        #    balance column every row's balance is 0, so two ₹5,000 ATM
+        #    withdrawals on one day hashed the same and one of them vanished.
+        #    Nothing said so — the CA saw it in `duplicates_skipped`, which
+        #    means "already imported", a different statement about a different
+        #    row.
+        #
+        #    It also made the import DISAGREE WITH ITS OWN VERIFICATION: the
+        #    router runs statement_check over the parsed rows before anything is
+        #    written (routers/banking.py), so the arithmetic that decides
+        #    whether the file adds up ran on twenty rows and nineteen were
+        #    stored. Keeping them both is what makes the checked set and the
+        #    stored set the same rows.
+        hashes, repeated_in_file = hash_rows(client_id, bank_account_id, norm)
+        deduped = [{**r, "import_hash": h} for r, h in zip(norm, hashes)]
 
         total_rows = len(norm)
         # 2) drop rows already stored for this client (idempotent re-import).
+        #    THIS is what the hash is for, and it is unaffected: the same file
+        #    uploaded twice produces the same fields in the same order, so the
+        #    same occurrence counts and the same hashes.
         existing = self._existing_hashes(db, firm_id, client_id, [r["import_hash"] for r in deduped])
         new_rows = [r for r in deduped if r["import_hash"] not in existing]
         duplicates = total_rows - len(new_rows)
 
         if not new_rows:
             return {"statement_id": None, "imported": 0,
-                    "duplicates_skipped": duplicates, "total_rows": total_rows}
+                    "duplicates_skipped": duplicates, "total_rows": total_rows,
+                    "repeated_in_file": repeated_in_file}
 
         # 3) statement header (summary over the rows actually stored).
         dates = sorted(r["transaction_date"] for r in new_rows)
@@ -210,6 +232,17 @@ class BankingService:
             for k in ("file_name", "file_size_bytes", "source_format", "file_hash"):
                 if file_meta.get(k) is not None:
                     stmt_payload[k] = file_meta[k]
+        if totals_acknowledgement:
+            # Migration 354. The reason and the two differences it excused go in
+            # together — a DB CHECK enforces that pairing, so a partial write
+            # fails the import rather than storing a reason nobody can judge.
+            stmt_payload["totals_mismatch_reason"] = totals_acknowledgement["reason"]
+            stmt_payload["totals_mismatch_debit_difference_paise"] = \
+                totals_acknowledgement["debit_difference_paise"]
+            stmt_payload["totals_mismatch_credit_difference_paise"] = \
+                totals_acknowledgement["credit_difference_paise"]
+            stmt_payload["totals_mismatch_acknowledged_by"] = totals_acknowledgement.get("by")
+            stmt_payload["totals_mismatch_acknowledged_at"] = _now()
 
         stmt = db.table("bank_statements").insert(stmt_payload).execute().data
         if not stmt:
@@ -239,16 +272,39 @@ class BankingService:
             "info", firm_id=firm_id, entity_type="bank_statement",
             entity_id=statement_id, actor_id=actor_id,
         )
+        if totals_acknowledgement:
+            # Its own timeline entry, at "warning", because it is a different
+            # event from an import: somebody overrode the check that decides
+            # whether the file was read completely. A partner scanning the
+            # client's timeline should not have to open the statement row to
+            # find that out.
+            timeline_service.log(
+                client_id, "accounting", "Statement totals overridden",
+                f"The statement's own totals did not agree with the lines read "
+                f"from it, and it was imported anyway: "
+                f"{totals_acknowledgement['reason']}",
+                "warning", firm_id=firm_id, entity_type="bank_statement",
+                entity_id=statement_id, actor_id=actor_id,
+            )
         try:
             from services.audit_service import log_event
             log_event(firm_id, "bank_statement", statement_id, "create", actor_id=actor_id,
-                      new_data={"imported": len(new_rows), "duplicates_skipped": duplicates},
+                      new_data={"imported": len(new_rows), "duplicates_skipped": duplicates,
+                                "repeated_in_file": repeated_in_file,
+                                "totals_mismatch_acknowledged": bool(totals_acknowledgement)},
                       metadata={"source": "bank_feed_import",
-                                "file_name": (file_meta or {}).get("file_name")})
+                                "file_name": (file_meta or {}).get("file_name"),
+                                "totals_acknowledgement": totals_acknowledgement})
         except Exception:  # pragma: no cover - audit must never block import
             pass
         return {"statement_id": statement_id, "imported": len(new_rows),
-                "duplicates_skipped": duplicates, "total_rows": total_rows}
+                "duplicates_skipped": duplicates, "total_rows": total_rows,
+                # How many rows in THIS file repeated an earlier row of the same
+                # file exactly. All of them are stored — two identical
+                # transactions are ordinary — but a CA is entitled to know the
+                # statement said the same thing twice, because the other
+                # explanation is that the file itself is doubled.
+                "repeated_in_file": repeated_in_file}
 
     # ── Account mapping ───────────────────────────────────────────────────────
     def _scoped_account(self, db, firm_id: str, client_id: str, account_id: str) -> dict:
