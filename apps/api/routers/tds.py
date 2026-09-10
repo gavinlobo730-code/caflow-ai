@@ -309,6 +309,35 @@ def compute_26q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds
     return {"success": True, "data": data, "error": None}
 
 
+@router.post("/27q/from-books")
+def compute_27q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds", "compute"))):
+    """
+    Build Form 27Q (payments to NON-RESIDENTS, Rule 31A(4)(b)) ENTIRELY from
+    posted purchase bills and vendor advances, and reconcile the total to the
+    GL "TDS Payable" control account — the same account 26Q reconciles to,
+    because §195 credits one liability and one challan series (ITNS 281).
+
+    26Q excludes these by name and always has (`excluded_non_resident`); until
+    now nothing built the statement they belong on, so a CA rebuilt it by hand
+    from the deduction list (TDS-09).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to TRACES or any government portal.
+    """
+    from core.supabase_client import get_supabase
+    from services.tds_return_service import tds_27q_from_books
+    assert_client_access(user, req.client_id)
+    db = get_supabase()
+    firm_id = user["firm_id"]
+    try:
+        data = tds_27q_from_books(
+            db, firm_id, req.client_id, req.financial_year, req.quarter,
+            req.tan, req.deductor_name, req.deductor_pan, req.deductor_address,
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    return {"success": True, "data": data, "error": None}
+
+
 @router.post("/24q/from-books")
 def compute_24q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds", "compute"))):
     """

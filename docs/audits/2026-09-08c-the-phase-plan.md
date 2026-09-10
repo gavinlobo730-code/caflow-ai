@@ -659,6 +659,41 @@ typed `gap_details` as `string[]` while `describe_gaps` has always returned
 to stop the silence crashed instead. Fixed, and pinned by a payload test rather
 than another source scan.
 
+#### 11b · TDS-06 + TDS-09 — DONE. The statement a deduction goes on, and the challan it sits under
+`domain/tds/challan_mapping.py`, `tds_27q_from_books`, and no migration at all.
+
+**TDS-06 was two wrong answers on one row.** The CIN came from
+`next(c for c in challans if section matches)` — the FIRST challan for the
+section, in an `.order("id")` order arbitrary with respect to time — and Rule
+30(2) gives a quarter THREE monthly deposits all carrying the same section, so
+every June deductee was stamped with April's BSR code. The FVU cross-checks a
+deductee row against the challan it sits under, so the statement is rejected —
+or accepted, and every one of those deductees' 26AS entries reads 'U'. The
+salary mirror was blunter: `challans[0]`. Separately, the deposited column
+apportioned the section's whole quarterly deposit by weight, so a bill fully
+deposited on 7 May read as partly deposited whenever the QUARTER was short.
+
+The fix is FIFO by date within a parent section, and it needs no new column.
+**A first draft gave every challan a deduction MONTH** — Rule 30(2) makes one —
+and it was wrong about the artefact: the RPU's challan row has no
+deduction-month field, and one challan may legitimately carry a catch-up
+covering two months. Forcing a month on it read a single 7 June challan paying
+April and May as leaving April unpaid, which is a wrong return. The existing
+apportionment test caught it.
+
+**TDS-09 had everything except somewhere to file it.** §195 deductions were
+computed, registered with country and TIN and surcharge and cess, excluded from
+26Q by name, and given a calendar deadline — with no builder. `tds_27q_from_books`
+reads the same posted books 26Q reads, split on RESIDENCY rather than on section
+(§194E, §194LB/§194LC and §196D all charge non-residents too), and a NIL
+remittance is a row with a reason rather than an absence.
+
+**And it closed a hole 11a had just opened.** An advance withholds, posts to TDS
+Payable and reaches the register — and `tds_26q_from_books` read only
+`purchase_bills`, so the deduction was in the ledger, in the register, and off
+the statement, with the reconciliation failing because the GL movement included
+it. Both vendor returns now read both kinds of posted document.
+
 Form 3CD, §54 reinvestment exemptions, GSTR-9, QRMP, multi-GSTIN, the MSME
 §43B(h) tracker, recurring journals out of `localStorage`, Schedule III mapping
 that changes something, invoice discounts, closing stock as at a date.

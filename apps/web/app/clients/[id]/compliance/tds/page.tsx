@@ -34,6 +34,17 @@ function rupees(paise: number) {
 
 type TDSTab = "dashboard" | "deductions" | "challans" | "returns" | "form26as" | "certificates";
 
+/** One thing the challan mapping could not settle — domain/tds/challan_mapping.py.
+ *  `message` is the server's own wording and is rendered as it arrives; the
+ *  two amounts are alternatives, one per gap code. */
+interface ChallanGap {
+  code: string;
+  message: string;
+  section?: string;
+  shortfall_paise?: number;
+  surplus_paise?: number;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-[#F1F5F9] text-[#334155]",
   deposited: "bg-blue-100 text-blue-700",
@@ -379,7 +390,13 @@ function ReturnsTab({ clientId }: { clientId: string }) {
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);
-    const path = computeForm.return_type === "24Q" ? "/api/tds/24q/from-books" : "/api/tds/26q/from-books";
+    // One endpoint per statement, chosen by what the CA picked — never by the
+    // browser inspecting the books. Rule 31A(4) routes a deduction by the
+    // PAYEE's residency, and the server decides that from the vendor master.
+    const path = {
+      "24Q": "/api/tds/24q/from-books",
+      "27Q": "/api/tds/27q/from-books",
+    }[computeForm.return_type] ?? "/api/tds/26q/from-books";
     const r = await apiFetch(path, {
       method: "POST",
       body: JSON.stringify({
@@ -442,13 +459,16 @@ function ReturnsTab({ clientId }: { clientId: string }) {
         <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
           <p className="text-sm font-medium">Compute TDS Return from Books</p>
           <p className="text-xs text-[#64748B]">
-            26Q derives from posted purchase bills; 24Q derives from finalized payroll runs.
-            Both reconcile the total TDS deducted to the General Ledger.
+            26Q derives from posted purchase bills and vendor advances; 27Q from the
+            same books, for payments to non-residents (Rule 31A(4)(b)); 24Q from
+            finalized payroll runs. All three reconcile the total TDS deducted to the
+            General Ledger.
           </p>
           <div className="grid grid-cols-2 gap-3">
             <select value={computeForm.return_type} onChange={(e) => setComputeForm((f) => ({ ...f, return_type: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
-              <option value="26Q">26Q — Vendor / Non-Salary</option>
+              <option value="26Q">26Q — Vendor / Non-Salary (residents)</option>
+              <option value="27Q">27Q — Payments to Non-Residents</option>
               <option value="24Q">24Q — Salary</option>
             </select>
             <select value={computeForm.quarter} onChange={(e) => setComputeForm((f) => ({ ...f, quarter: e.target.value }))}
@@ -505,10 +525,66 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                   <div><p className="text-xs text-[#64748B]">TDS Deducted</p><p className="font-medium">{rupees(computeResult.total_tds_deducted_paise as number)}</p></div>
                   <div><p className="text-xs text-[#64748B]">TDS Deposited</p><p className="font-medium">{rupees(computeResult.total_tds_deposited_paise as number)}</p></div>
                 </div>
+                {/* 27Q reports tax, SURCHARGE and CESS in three columns, because
+                    §195 charges at the rates in force under Part II of the First
+                    Schedule with §115A and those carry a surcharge ladder and a
+                    4% cess the resident series does not. Shown only where they
+                    exist — 26Q and 24Q have no such columns. */}
+                {computeForm.return_type === "27Q" && (
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div><p className="text-xs text-[#64748B]">Surcharge</p><p className="font-medium">{rupees((computeResult.total_surcharge_paise as number) ?? 0)}</p></div>
+                    <div><p className="text-xs text-[#64748B]">Cess</p><p className="font-medium">{rupees((computeResult.total_cess_paise as number) ?? 0)}</p></div>
+                    <div>
+                      <p className="text-xs text-[#64748B]">Nil remittances</p>
+                      <p className="font-medium">{(computeResult.nil_deduction_count as number) ?? 0}</p>
+                    </div>
+                  </div>
+                )}
                 {((computeResult.validation_errors as string[]) ?? []).length > 0 && (
                   <div className="space-y-1">
                     {(computeResult.validation_errors as string[]).map((e, i) => (
                       <p key={i} className="text-xs text-red-600">⚠ {e}</p>
+                    ))}
+                  </div>
+                )}
+                {/* WHAT THE CHALLAN MAPPING COULD NOT SETTLE (TDS-06). Not a
+                    validation error — the return is assembled and the figures
+                    are right — but a deductee left without a challan is a 26AS
+                    entry that will read 'U' (unmatched) and a §201(1A) exposure,
+                    and it has to be seen BEFORE filing rather than after a
+                    notice. The sentences are the server's
+                    (domain/tds/challan_mapping.py); a screen that reworded them
+                    would be a second place describing one gap. */}
+                {(() => {
+                  // WHAT 26Q LEFT OUT, AND WHERE IT WENT. The server has always
+                  // reported this and no screen read it: a total that quietly
+                  // drops between one quarter and the next is what nobody
+                  // notices until a notice arrives. It now names a return that
+                  // exists (TDS-09).
+                  const ex = computeResult.excluded_non_resident as
+                    { bill_count?: number; tds_paise?: number; reason?: string } | undefined;
+                  if (!ex?.bill_count) return null;
+                  return (
+                    <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                      {ex.bill_count} payment{ex.bill_count === 1 ? "" : "s"} to a
+                      non-resident, withholding {rupees(ex.tds_paise ?? 0)}, {" "}
+                      {ex.bill_count === 1 ? "is" : "are"} not on this return. {ex.reason}
+                    </p>
+                  );
+                })()}
+                {((computeResult.challan_gaps as ChallanGap[]) ?? []).length > 0 && (
+                  <div className="space-y-1 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    {(computeResult.challan_gaps as ChallanGap[]).map((g, i) => (
+                      <p key={i} className="text-xs text-amber-800">
+                        ⚠ <span className="font-medium">
+                          {g.section ? `§${g.section}: ` : ""}
+                        </span>
+                        {g.message}
+                        {typeof g.shortfall_paise === "number" && g.shortfall_paise > 0
+                          ? ` Not covered: ${rupees(g.shortfall_paise)}.` : ""}
+                        {typeof g.surplus_paise === "number" && g.surplus_paise > 0
+                          ? ` Unaccounted on the challans: ${rupees(g.surplus_paise)}.` : ""}
+                      </p>
                     ))}
                   </div>
                 )}
