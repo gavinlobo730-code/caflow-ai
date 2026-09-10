@@ -9,7 +9,6 @@
  * matches the backend's own _compute_line_gst exactly); the backend remains
  * authoritative and recomputes everything on save.
  */
-import { parseLineAmounts } from "@/lib/money/lineInput";
 import { useState, useRef, useEffect } from "react";
 import { Trash2, Plus, Loader2, AlertCircle, AlertTriangle, Upload } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
@@ -20,7 +19,7 @@ import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePic
 import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
 import { estimateBaseMinor } from "@/lib/services/currencyPreview";
-import { useServerTdsPreview, type TdsPreviewLine } from "@/lib/purchases/serverTdsPreview";
+import { useServerTdsPreview } from "@/lib/purchases/serverTdsPreview";
 import { formatMoney } from "@/lib/services/formatting";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -29,33 +28,12 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
 import {
   isValidBillLine, previewBillTotals, validateBillEditor, findBlockedCreditHits,
+  BLOCKED_CREDIT_REASONS, ineligibleGstPaise, buildLinePayload,
+  lineIsItcEligible, reasonForHintLabel,
   type PurchaseBillLine,
 } from "@/lib/purchases/billEditor";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-/** The lines exactly as the API receives them.
- *
- *  ONE builder, used by the save AND by the TDS preview. The preview exists to
- *  show the CA the figure the save will produce, so it has to send the same
- *  lines; building them twice is how the two start disagreeing on the taxable
- *  base as well as on the rate. */
-function buildLinePayload(lines: EditorLine[]): TdsPreviewLine[] {
-  return lines.filter(isValidBillLine).map((l) => ({
-    description: l.description,
-    hsn_sac: l.hsn_sac || undefined,
-    quantity: parseLineAmounts(l.qty, l.rate)!.quantity,
-    unit: l.unit || undefined,
-    // Non-null by construction: the filter above is isValidBillLine,
-    // which is now parseLineAmounts itself. The old form here was
-    // Math.round((parseFloat(l.rate) || 0) * 100) — exact for a plain
-    // decimal and silently 100 paise for "1,25,000".
-    rate_paise: parseLineAmounts(l.qty, l.rate)!.ratePaise,
-    gst_rate_percent: l.gst_rate,
-    expense_account_id: l.expense_account_id || undefined,
-    service_catalogue_id: l.service_catalogue_id || undefined,
-  }));
-}
 
 export interface PurchaseVendor extends VendorLike {
   tds_applicable?: boolean;
@@ -120,6 +98,10 @@ export interface PurchaseBillLineDetail {
   line_total_paise?: number;
   expense_account_id?: string | null;
   service_catalogue_id?: string | null;
+  /** CGST Act §17(5), migration 240. Absent on a row written before the column
+   *  existed — read as eligible, which is the column's own default. */
+  itc_eligible?: boolean | null;
+  blocked_credit_reason?: string | null;
 }
 
 /** Full purchase-bill detail (Edit route). vendor_id is NOT editable via
@@ -178,6 +160,8 @@ function detailLinesToEditorLines(lines: PurchaseBillDetail["lines"]): EditorLin
     unit: l.unit ?? "NOS",
     expense_account_id: l.expense_account_id ?? "",
     service_catalogue_id: l.service_catalogue_id ?? "",
+    itc_eligible: l.itc_eligible ?? true,
+    blocked_credit_reason: l.blocked_credit_reason ?? "",
     _k: i,
   }));
 }
@@ -381,6 +365,15 @@ export function PurchaseBillEditor({
 
   const accountNameById = new Map(accounts.map((a) => [a.id ?? "", a.account_name ?? a.name ?? ""]));
   const blockedCreditHits = findBlockedCreditHits(lines, accountNameById);
+  // PUR-05. `itc_eligible` and `blocked_credit_reason` have been on the API,
+  // the columns and the GSTR-3B computation since migration 240, and NO SCREEN
+  // COULD SET THEM — so every purchase bill in the product claimed full credit,
+  // §17(5) or not, and the reversal the return is supposed to make in Table
+  // 4(B)(1) was always nil.
+  // validateBillEditor carries the §17(5) refusal itself, so the save and the
+  // message under the table cannot disagree; only the preview total is derived
+  // here.
+  const blockedGstPaise = ineligibleGstPaise(lines, isInterstate);
 
   function onVendorChange(id: string) {
     // Vendor is locked once a draft exists — PurchaseBillUpdateIn has no
@@ -609,6 +602,20 @@ export function PurchaseBillEditor({
           Reverse charge — the GST above is self-assessed by you (GSTR-3B 3.1(d)), not payable to the vendor.
         </p>
       )}
+      {/* WHAT THE RETURN WILL REVERSE, shown before the bill is saved. Blocked
+          credit stays in Table 4(A) — it is auto-populated from GSTR-2B and
+          netting it there breaks the tie-up — and comes out in 4(B)(1) as a
+          reversal "absolute in nature and not reclaimable" (Notification
+          14/2022 with Circular 170/02/2022-GST). It is NOT in 4(D). */}
+      {blockedGstPaise > 0 && (
+        <div className="border-t border-[#F1F5F9] pt-2 mt-1">
+          <Row label="ITC blocked (§17(5))" value={fmtAmt(blockedGstPaise)} />
+          <p className="text-[10px] text-[#94A3B8]">
+            Claimed in GSTR-3B Table 4(A) and reversed in 4(B)(1). It does not
+            change what you pay the vendor.
+          </p>
+        </div>
+      )}
       <div className="flex justify-between font-semibold text-[#0F172A] border-t border-[#E2E8F0] pt-1.5 mt-1">
         <span>{isReverseCharge ? "Payable to Vendor" : "Grand Total"}{isForeign ? ` (${currency})` : ""}</span>
         <span className="font-mono">{fmtAmt(vendorTotalPaise)}</span>
@@ -794,7 +801,22 @@ export function PurchaseBillEditor({
             <div className="space-y-1">
               <p className="font-medium">Possible blocked ITC — review before saving (CGST Act §17(5))</p>
               {blockedCreditHits.map((h, i) => (
-                <p key={i}>Line {h.lineIndex + 1} ({h.label}): {h.note}</p>
+                <p key={i} className="flex items-start gap-2 flex-wrap">
+                  <span>Line {h.lineIndex + 1} ({h.label}): {h.note}</span>
+                  {/* The prompt and the control it points at now agree: marking
+                      it from here preselects the clause the hint matched, so a
+                      CA is not asked to find it again in a list of fourteen. */}
+                  {lineIsItcEligible(lines[h.lineIndex]) && (
+                    <button type="button" disabled={isLocked}
+                      onClick={() => setLine(h.lineIndex, {
+                        itc_eligible: false,
+                        blocked_credit_reason: reasonForHintLabel(h.label) ?? "other",
+                      })}
+                      className="text-[10px] px-1.5 py-0.5 rounded-full bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-40">
+                      Mark line {h.lineIndex + 1} blocked
+                    </button>
+                  )}
+                </p>
               ))}
               <p className="text-[10px] text-amber-700">This is a heuristic prompt, not a legal determination — confirm eligibility before claiming ITC.</p>
             </div>
@@ -862,6 +884,42 @@ export function PurchaseBillEditor({
                       <td className="py-1.5 pr-2">
                         <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs" />
+                        {/* CGST ACT §17(5), UNDER THE DESCRIPTION AND NOT IN A
+                            COLUMN OF ITS OWN. Eligible is the ordinary case, so
+                            it is one checkbox; the fifteen-clause select appears
+                            only once a line is marked, where a column would have
+                            crowded out the figures on every row of every bill. */}
+                        <label className="mt-1 flex items-center gap-1.5 text-[10px] text-[#64748B]">
+                          <input type="checkbox" checked={!lineIsItcEligible(line)}
+                            aria-label={`Line ${idx + 1} ITC blocked under section 17(5)`}
+                            onChange={(e) => setLine(idx, e.target.checked
+                              ? { itc_eligible: false, blocked_credit_reason: line.blocked_credit_reason || "" }
+                              // Unmarking clears the clause too. A stale reason
+                              // on an eligible line is a sentence that
+                              // contradicts the flag beside it.
+                              : { itc_eligible: true, blocked_credit_reason: "" })} />
+                          ITC blocked (§17(5))
+                        </label>
+                        {!lineIsItcEligible(line) && (
+                          <>
+                            <select value={line.blocked_credit_reason ?? ""}
+                              aria-label={`Line ${idx + 1} section 17(5) clause`}
+                              onChange={(e) => setLine(idx, { blocked_credit_reason: e.target.value })}
+                              className={`mt-1 w-full px-1 py-1 border rounded focus:outline-none text-[10px] ${
+                                (line.blocked_credit_reason ?? "").trim() === ""
+                                  ? "border-red-300" : "border-[#E2E8F0]"}`}>
+                              <option value="">— which clause? —</option>
+                              {BLOCKED_CREDIT_REASONS.map((r) => (
+                                <option key={r.code} value={r.code}>{r.clause} · {r.label}</option>
+                              ))}
+                            </select>
+                            {BLOCKED_CREDIT_REASONS.find((r) => r.code === line.blocked_credit_reason)?.note && (
+                              <p className="mt-0.5 text-[9px] text-[#94A3B8]">
+                                {BLOCKED_CREDIT_REASONS.find((r) => r.code === line.blocked_credit_reason)!.note}
+                              </p>
+                            )}
+                          </>
+                        )}
                       </td>
                       <td className="py-1.5 px-1">
                         <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}
@@ -910,6 +968,7 @@ export function PurchaseBillEditor({
           </button>
           </fieldset>
           {fieldErr(validation.errors.lines)}
+          {fieldErr(validation.errors.itc)}
         </section>
 
         {error && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
