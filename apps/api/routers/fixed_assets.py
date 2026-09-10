@@ -24,7 +24,7 @@ import re
 
 from models.common import api_response
 from models.accounting import (FixedAssetIn, FixedAssetUpdateIn, DepreciationIn,
-                               DisposalIn)
+                               DepreciationRunIn, DisposalIn)
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from services.timeline_service import timeline_service
@@ -254,7 +254,12 @@ def _db():
 #:      carrying amount over the remaining life, PROSPECTIVELY. Rewriting
 #:      months already posted at the old basis would restate periods a return
 #:      may already cover.
-_TIER_A_FIELDS = frozenset({"asset_name", "location", "notes"})
+#: Tier A also carries the two IT Act §32 facts. They change no Companies Act
+#: figure and post nothing — §32 is a different system, per BLOCK rather than
+#: per asset, and it reads them itself (domain/income_tax/section_32.py). A
+#: correction to either is a correction to a classification, not to an estimate.
+_TIER_A_FIELDS = frozenset({"asset_name", "location", "notes",
+                            "it_block_key", "put_to_use_date"})
 _TIER_B_FIELDS = frozenset({
     "purchase_cost_paise", "asset_category", "purchase_date",
     "acquisition_mode", "vendor_id", "purchase_bill_id", "bank_account_id",
@@ -392,6 +397,24 @@ def _month_label(value) -> Optional[str]:
     if not value:
         return None
     return str(value)[:7]
+
+
+def _months_in_range(from_period: str, to_period: str) -> list[str]:
+    """Every 'YYYY-MM' from one month to another, inclusive, in order.
+
+    Order is the whole point: depreciation is charged month by month, each one
+    reading the accumulated balance the previous left, and a month in a new
+    financial year re-bases the annual charge. A set or a reversed list would
+    produce different figures, not just a different sequence.
+    """
+    y, m = int(from_period[:4]), int(from_period[5:7])
+    out = []
+    while f"{y:04d}-{m:02d}" <= to_period:
+        out.append(f"{y:04d}-{m:02d}")
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return out
 
 
 def _months_missing_before(posted_through_month: str, period: str) -> list[str]:
@@ -609,6 +632,12 @@ def create_asset(
         "accumulated_depreciation_paise": 0,
         "location":                    data.location,
         "notes":                       data.notes,
+        # IT Act §32 (migration 357). Neither affects the Companies Act charge
+        # above; both are read by domain/income_tax/section_32.py, and each is
+        # reported as a named gap when absent rather than defaulted — a
+        # put-to-use date in particular is never taken from the purchase date.
+        "it_block_key":                data.it_block_key,
+        "put_to_use_date":             data.put_to_use_date,
     }).execute()
 
     asset = (row.data or [{}])[0]
@@ -623,6 +652,147 @@ def create_asset(
         f"{asset_code}: {data.asset_name} added — ₹{capitalised_cost//100:,}", "info")
 
     return api_response(True, asset)
+
+
+def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
+    """Post ONE month's depreciation for one asset, or refuse and say why.
+
+    Extracted from `post_depreciation` so the range runner below charges months
+    through exactly the same rules rather than a second copy of them. CLAUDE.md's
+    reason for the SQL/Python parity tests is the same reason here: two
+    implementations of one rule drift, and this one writes to the ledger.
+
+    Raises HTTPException for every refusal — a locked period, a gap, a period
+    before the asset existed, no statutory basis. The single-asset endpoint lets
+    those reach the caller; the range runner catches them per asset and reports
+    them, because one asset with no rate must not stop the other ninety-nine.
+
+    Returns the same body the endpoint returns, PLUS the asset fields that
+    changed, so a caller looping over months can carry the row forward without a
+    round trip per month — apps/api runs in Singapore and Postgres is in Mumbai.
+    """
+    if asset["is_disposed"]:
+        raise HTTPException(status_code=422, detail="Cannot depreciate a disposed asset")
+
+    posted_month = _month_label(asset.get("depreciation_posted_through"))
+    if posted_month and posted_month >= period:
+        raise HTTPException(status_code=409, detail=f"Depreciation already posted through {posted_month}")
+
+    # A month may not be SKIPPED. Posting Apr–Aug and then Oct used to charge
+    # one month for October and move posted-through with it; September was then
+    # permanently unreachable, because the check above only ever compares
+    # against the furthest month reached. The year was short one month's
+    # depreciation and nothing said so.
+    #
+    # REFUSE rather than post the gap: each month is its own journal needing
+    # its own CA review (and the purchase month is pro-rated, and a month in a
+    # new FY re-bases the annual charge), so quietly posting three entries
+    # behind one click is exactly the unprompted acting this codebase does not
+    # do. Naming the months makes the fix one click each, in order.
+    #
+    # The range runner does not get round this. It walks months IN ORDER from
+    # the earliest unposted one, so it never presents this function with a gap —
+    # the CA asked for a RANGE, by name, and every month in it is posted and
+    # reported. That is a different act from silently filling a hole behind a
+    # click that asked for one month.
+    if posted_month:
+        missing = _months_missing_before(posted_month, period)
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Depreciation for {', '.join(missing)} has not been posted — post "
+                    f"{missing[0]} first. Skipping a month would leave it unpostable: "
+                    f"this asset is posted through {posted_month} and that only moves forward."
+                ),
+            )
+
+    # task #232 audit finding: nothing stopped a CA from posting depreciation
+    # for a period before the asset was even purchased.
+    purchase_month = asset["purchase_date"][:7]
+    if period < purchase_month:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot post depreciation for {period} — asset was purchased in {purchase_month}.",
+        )
+
+    # task #232 audit finding: fixed_assets.py never checked the FY lock.
+    entry_date = _period_end_date(period)
+    period_validation_service.validate_posting_date(firm_id, entry_date)
+    # And the CLIENT's own lock — a filed GSTR-3B or a finalised year covers
+    # exactly the period-end date a depreciation entry carries. This was on the
+    # acknowledged debt list; the range runner below is what makes it worth
+    # paying now, because it posts twelve months in one call rather than one
+    # behind a click a CA has just looked at. The refusal names the action that
+    # would work, and the runner reports it per asset rather than swallowing it.
+    period_lock_service.assert_open(db, firm_id, asset.get("client_id"), entry_date)
+
+    # Fixed annual figure for THIS financial year (see
+    # _annual_depreciation_for_period's docstring for why it must be fixed
+    # per-FY, not recomputed every month) — monthly = annual / 12.
+    try:
+        annual, fy, fy_start_accum = _annual_depreciation_for_period(asset, period)
+    except ValueError as e:
+        # No Schedule II basis and none recorded on the row — refuse with the
+        # reason rather than charging a made-up rate to the ledger.
+        raise HTTPException(status_code=422, detail=str(e))
+    if annual <= 0:
+        return {"message": "Asset fully depreciated", "depreciation_paise": 0,
+                "asset_id": asset["id"], "period": period, "posted": False}
+
+    monthly = math.floor(Decimal(annual) / Decimal(12))
+
+    # Schedule II Note 3 / IT Act §32 180-day rule: pro-rate the asset's
+    # purchase month by days actually held.
+    if period == purchase_month:
+        monthly = _prorate_purchase_month(monthly, asset["purchase_date"])
+
+    if monthly <= 0:
+        return {"message": "No depreciation to post for this period.",
+                "depreciation_paise": 0, "asset_id": asset["id"], "period": period,
+                "posted": False}
+
+    # Post journal — CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    journal_id = _journal_svc.journal_for_depreciation(
+        asset, monthly, period, firm_id, asset["client_id"]
+    )
+
+    # Update accumulated depreciation
+    new_accum = asset.get("accumulated_depreciation_paise", 0) + monthly
+    changed = {
+        "accumulated_depreciation_paise": new_accum,
+        "current_wdv_paise":             asset["purchase_cost_paise"] - new_accum,
+        # fixed_assets.depreciation_posted_through is a DATE (migration 054),
+        # not a month label. Writing the 'YYYY-MM' period into it is what
+        # Postgres rejects as 22007 invalid_input_syntax — and it rejected the
+        # WHOLE update, so the journal above landed on the ledger and the
+        # register never moved: accumulated depreciation stayed at 0 and the
+        # WDV stayed at cost for ever, while the posting kernel's dedupe on
+        # (client_id, reference_no, entry_date) made every retry look like a
+        # duplicate. The month END is the right date, and the same one the
+        # entry itself carries: "posted through 30-04-2026" is exactly what
+        # the column claims, and _month_label reads the month back out of it.
+        "depreciation_posted_through":   entry_date,
+        "depreciation_fy":               fy,
+        "depreciation_fy_start_accum_paise": fy_start_accum,
+    }
+    db.table("fixed_assets").update(changed).eq("id", asset["id"]).eq("firm_id", firm_id).execute()
+    # The caller's copy moves with the row, so a month-by-month loop reads the
+    # opening accumulated depreciation each iteration without re-fetching.
+    asset.update(changed)
+
+    timeline_service.log(asset["client_id"], "accounting", "Depreciation Posted",
+        f"{asset.get('asset_code')}: ₹{monthly//100:,} depreciation for {period}", "info")
+
+    return {
+        "asset_id":           asset["id"],
+        "period":             period,
+        "depreciation_paise": monthly,
+        "journal_entry_id":   journal_id,
+        "new_accumulated":    new_accum,
+        "new_wdv":            asset["purchase_cost_paise"] - new_accum,
+        "posted":             True,
+    }
 
 
 @router.post("/{asset_id}/depreciate")
@@ -655,107 +825,123 @@ def post_depreciation(
     # is not an existence oracle.
     if not can_access_client(current_user, asset.get("client_id")):
         raise HTTPException(status_code=404, detail="Asset not found")
-    if asset["is_disposed"]:
-        raise HTTPException(status_code=422, detail="Cannot depreciate a disposed asset")
 
-    # Check already posted
-    posted_month = _month_label(asset.get("depreciation_posted_through"))
-    if posted_month and posted_month >= period:
-        raise HTTPException(status_code=409, detail=f"Depreciation already posted through {posted_month}")
+    out = _post_one_month(db, asset, period, current_user["firm_id"])
+    out.pop("posted", None)
+    return api_response(True, out)
 
-    # A month may not be SKIPPED. Posting Apr–Aug and then Oct used to charge
-    # one month for October and move posted-through with it; September was then
-    # permanently unreachable, because the check above only ever compares
-    # against the furthest month reached. The year was short one month's
-    # depreciation and nothing said so.
-    #
-    # REFUSE rather than post the gap: each month is its own journal needing
-    # its own CA review (and the purchase month is pro-rated, and a month in a
-    # new FY re-bases the annual charge), so quietly posting three entries
-    # behind one click is exactly the unprompted acting this codebase does not
-    # do. Naming the months makes the fix one click each, in order.
-    if posted_month:
-        missing = _months_missing_before(posted_month, period)
-        if missing:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"Depreciation for {', '.join(missing)} has not been posted — post "
-                    f"{missing[0]} first. Skipping a month would leave it unpostable: "
-                    f"this asset is posted through {posted_month} and that only moves forward."
-                ),
-            )
 
-    # task #232 audit finding: nothing stopped a CA from posting depreciation
-    # for a period before the asset was even purchased.
-    purchase_month = asset["purchase_date"][:7]
-    if period < purchase_month:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Cannot post depreciation for {period} — asset was purchased in {purchase_month}.",
-        )
+#: How many months this endpoint will post in one call. A year of twelve months
+#: across a 500-asset register is 6,000 journals, and `lib/api` aborts a request
+#: at 45 seconds and deliberately never retries it. So the run is CHUNKED and
+#: resumable: it stops at the cap, says how many months are left, and the screen
+#: calls again — the same shape as the bank module's REDRAFT_CHUNK.
+DEPRECIATION_RUN_CHUNK = 200
 
-    # task #232 audit finding: fixed_assets.py never checked the FY lock.
-    entry_date = _period_end_date(period)
-    period_validation_service.validate_posting_date(current_user["firm_id"], entry_date)
 
-    # Fixed annual figure for THIS financial year (see
-    # _annual_depreciation_for_period's docstring for why it must be fixed
-    # per-FY, not recomputed every month) — monthly = annual / 12.
-    try:
-        annual, fy, fy_start_accum = _annual_depreciation_for_period(asset, period)
-    except ValueError as e:
-        # No Schedule II basis and none recorded on the row — refuse with the
-        # reason rather than charging a made-up rate to the ledger.
-        raise HTTPException(status_code=422, detail=str(e))
-    if annual <= 0:
-        return api_response(True, {"message": "Asset fully depreciated", "depreciation_paise": 0})
+@router.post("/run-depreciation")
+def run_depreciation(
+    data: DepreciationRunIn,
+    current_user: dict = Depends(rbac("accounting", "write"))
+):
+    """Post every unposted month in a range, for every live asset of a client.
 
-    monthly = math.floor(Decimal(annual) / Decimal(12))
+    WHY THIS EXISTS (FA-04)
 
-    # Schedule II Note 3 / IT Act §32 180-day rule: pro-rate the asset's
-    # purchase month by days actually held.
-    if period == purchase_month:
-        monthly = _prorate_purchase_month(monthly, asset["purchase_date"])
+        `POST /{asset_id}/depreciate` charges exactly ONE month for ONE asset,
+        and the only bulk path was a loop in the browser: one HTTP request per
+        asset per month, with every error swallowed. A CA closing a year on a
+        200-asset register made 2,400 requests and could not tell which of them
+        had failed. There was no annual mode, no range, and no job.
 
-    if monthly <= 0:
-        return api_response(True, {"message": "No depreciation to post for this period.", "depreciation_paise": 0})
+    WHY IT IS NOT THE THING THE SINGLE ENDPOINT REFUSES
 
-    # Post journal — CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    journal_id = _journal_svc.journal_for_depreciation(
-        asset, monthly, period, current_user["firm_id"], asset["client_id"]
-    )
+        That endpoint refuses to fill a GAP — post April to August, then ask for
+        October, and September would be silently skipped and then unpostable.
+        The refusal is right, and this does not get round it: the run walks
+        months IN ORDER from each asset's earliest unposted one, so it never
+        creates a gap, and it reports every month it posted. A CA who names a
+        range is asking for those months; a CA who clicks "October" is not
+        asking for September.
 
-    # Update accumulated depreciation
-    new_accum = asset.get("accumulated_depreciation_paise", 0) + monthly
-    db.table("fixed_assets").update({
-        "accumulated_depreciation_paise": new_accum,
-        "current_wdv_paise":             asset["purchase_cost_paise"] - new_accum,
-        # fixed_assets.depreciation_posted_through is a DATE (migration 054),
-        # not a month label. Writing the 'YYYY-MM' period into it is what
-        # Postgres rejects as 22007 invalid_input_syntax — and it rejected the
-        # WHOLE update, so the journal above landed on the ledger and the
-        # register never moved: accumulated depreciation stayed at 0 and the
-        # WDV stayed at cost for ever, while the posting kernel's dedupe on
-        # (client_id, reference_no, entry_date) made every retry look like a
-        # duplicate. The month END is the right date, and the same one the
-        # entry itself carries: "posted through 30-04-2026" is exactly what
-        # the column claims, and _month_label reads the month back out of it.
-        "depreciation_posted_through":   entry_date,
-        "depreciation_fy":               fy,
-        "depreciation_fy_start_accum_paise": fy_start_accum,
-    }).eq("id", asset_id).eq("firm_id", current_user["firm_id"]).execute()
+    WHAT IT REPORTS
 
-    timeline_service.log(asset["client_id"], "accounting", "Depreciation Posted",
-        f"{asset.get('asset_code')}: ₹{monthly//100:,} depreciation for {period}", "info")
+        Per asset: the months posted, and — if it stopped — the month it stopped
+        at and the reason in the words the single endpoint would have used. One
+        asset with no statutory rate, or one locked period, must not stop the
+        other ninety-nine, and must not vanish either. `remaining_months` is what
+        a "Run again" control needs.
+    """
+    for label, value in (("from_period", data.from_period), ("to_period", data.to_period)):
+        if not _PERIOD_RE.match(value):
+            raise HTTPException(status_code=422, detail=f"{label} must be in YYYY-MM format.")
+    if data.to_period < data.from_period:
+        raise HTTPException(status_code=422,
+                            detail="to_period must not be before from_period.")
+
+    assert_client_access(current_user, data.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {"client_id": data.client_id, "assets": [],
+                                   "months_posted": 0, "depreciation_paise": 0,
+                                   "remaining_months": 0})
+
+    assets = (db.table("fixed_assets").select("*")
+              .eq("firm_id", current_user["firm_id"]).eq("client_id", data.client_id)
+              .eq("is_disposed", False).is_("deleted_at", "null")
+              .order("asset_code").execute().data or [])
+
+    results, months_posted, total_paise, remaining = [], 0, 0, 0
+    for asset in assets:
+        posted_here, stopped_at, reason = [], None, None
+        for period in _months_in_range(data.from_period, data.to_period):
+            if months_posted >= DEPRECIATION_RUN_CHUNK:
+                remaining += 1
+                continue
+            posted_month = _month_label(asset.get("depreciation_posted_through"))
+            if posted_month and posted_month >= period:
+                continue                      # already charged; not a failure
+            if period < asset["purchase_date"][:7]:
+                continue                      # before the asset existed
+            try:
+                out = _post_one_month(db, asset, period, current_user["firm_id"])
+            except HTTPException as e:
+                # Stop THIS asset at the first refusal and keep its reason. Going
+                # on would either skip a month (which the next call then refuses
+                # for ever) or repeat the same refusal eleven times.
+                stopped_at, reason = period, str(e.detail)
+                break
+            if out.get("posted"):
+                posted_here.append({"period": period,
+                                    "depreciation_paise": out["depreciation_paise"],
+                                    "journal_entry_id": out.get("journal_entry_id")})
+                months_posted += 1
+                total_paise += out["depreciation_paise"]
+            elif out.get("message"):
+                # Fully depreciated, or a pro-rated purchase month that rounds to
+                # nothing. Not an error, and not silence either.
+                stopped_at, reason = period, out["message"]
+                break
+        results.append({
+            "asset_id": asset["id"], "asset_code": asset.get("asset_code"),
+            "asset_name": asset.get("asset_name"),
+            "months_posted": len(posted_here), "months": posted_here,
+            "depreciation_paise": sum(m["depreciation_paise"] for m in posted_here),
+            "stopped_at": stopped_at, "reason": reason,
+        })
 
     return api_response(True, {
-        "asset_id":           asset_id,
-        "period":             period,
-        "depreciation_paise": monthly,
-        "journal_entry_id":   journal_id,
-        "new_accumulated":    new_accum,
-        "new_wdv":            asset["purchase_cost_paise"] - new_accum,
+        "client_id": data.client_id,
+        "from_period": data.from_period, "to_period": data.to_period,
+        "assets": results,
+        "assets_considered": len(assets),
+        "months_posted": months_posted,
+        "depreciation_paise": total_paise,
+        # Non-zero only when the chunk cap was hit. The run is resumable: call
+        # again with the same range and it picks up where it stopped, because
+        # every asset's own posted-through says where that is.
+        "remaining_months": remaining,
+        "chunk_limit": DEPRECIATION_RUN_CHUNK,
     })
 
 

@@ -89,6 +89,8 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("bank_reconciliations", "adjustments_reason"): "migration 355",
     ("bank_reconciliations", "adjustments_set_by"): "migration 355",
     ("bank_reconciliations", "adjustments_set_at"): "migration 355",
+    ("fixed_assets", "it_block_key"): "migration 357",
+    ("fixed_assets", "put_to_use_date"): "migration 357",
 }
 
 

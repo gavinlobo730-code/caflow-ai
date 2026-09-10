@@ -28,6 +28,11 @@ export interface CorrectableAsset {
   salvage_value_paise: number;
   wdv_rate_percent?: number | null;
   useful_life_years?: number | null;
+  // IT Act §32. Neither touches the Companies Act charge — §32 is a different
+  // system, per BLOCK rather than per asset, and reads them itself. Both are
+  // Tier A on the server: a classification and a fact, with no GL consequence.
+  it_block_key?: string | null;
+  put_to_use_date?: string | null;
 }
 
 export interface CorrectionForm {
@@ -38,6 +43,8 @@ export interface CorrectionForm {
   salvage_value_rs: string;
   wdv_rate_percent: string;
   useful_life_years: string;
+  it_block_key: string;
+  put_to_use_date: string;
   reason: string;
 }
 
@@ -52,6 +59,8 @@ export function formFor(asset: CorrectableAsset): CorrectionForm {
     salvage_value_rs:  (asset.salvage_value_paise / 100).toString(),
     wdv_rate_percent:  asset.wdv_rate_percent != null ? String(asset.wdv_rate_percent) : "",
     useful_life_years: asset.useful_life_years != null ? String(asset.useful_life_years) : "",
+    it_block_key:      asset.it_block_key ?? "",
+    put_to_use_date:   asset.put_to_use_date ?? "",
     reason:            "",
   };
 }
@@ -89,6 +98,17 @@ export function changedFields(asset: CorrectableAsset, form: CorrectionForm): Co
   }
   if (form.useful_life_years !== base.useful_life_years) {
     body.useful_life_years = form.useful_life_years === "" ? null : Number(form.useful_life_years);
+  }
+
+  if (form.it_block_key !== base.it_block_key) {
+    body.it_block_key = form.it_block_key.trim() || null;
+  }
+  if (form.put_to_use_date !== base.put_to_use_date) {
+    // NEVER defaulted to the purchase date. The second proviso to §32(1) turns
+    // on put-to-use, and an asset bought in February and put to use in June
+    // belongs to the next previous year entirely — substituting one for the
+    // other would allow a full year's depreciation on it.
+    body.put_to_use_date = form.put_to_use_date.trim() || null;
   }
 
   if (Object.keys(body).length === 0) return { ok: false, error: "Nothing has been changed." };

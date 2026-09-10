@@ -522,6 +522,33 @@ CA; two genuinely identical transactions are silently merged; the "Bank
 Reconciliation Statement" has no unpresented cheques or deposits in transit; and
 "Adjustments" is an unexplained plug that can force a tie-out into a signed PDF.
 
+**DONE — 10 September 2026, in four commits (9a–9d).**
+
+| # | What it was | What it is |
+|---|---|---|
+| 9a BANK-09 | two identical transactions hashed the same and one was silently dropped, reported as `duplicates_skipped` — which means "already imported", a different statement about a different row | every row is kept. Re-import idempotency comes from an OCCURRENCE COUNT rather than an ordinal, so it survives an overlapping re-import; no migration needed, because migration 224's unique index only collides when both rows keep the same hash |
+| 9b BANK-01 | `printed_totals` took the FIRST totals row, which on a multi-page statement is a page subtotal — and the import was then refused with a message blaming the CA's column mapping | the FILE has to say which row totals the statement: one row, or several with exactly one "Grand Total". Several with none is reported AMBIGUOUS and falls back to the typed balances. A genuine mismatch is now a stop rather than a wall — a written reason imports it, recorded beside the differences it excused (migration 354), never counted as verified |
+| 9c BANK-05 | `adjustments_paise` was a bare integer on the generic PATCH: no reason, no audit row, nothing on the document, written by any Executive, and it satisfied the gate that freezes a certified PDF | one write path, Manager+ (`banking.approve`, which no router had ever referenced), a mandatory reason printed beside the figure, an audit row and a timeline warning, with migration 355's CHECKs holding the pairing in both directions |
+| 9d BANK-04 | every row the reconciliation knew about was a STATEMENT line; nothing in the module read `journal_entries` or `journal_lines`, so an unpresented cheque had no row anywhere in the product | the two-sided statement, computed by `public.bank_reconciling_items` (migration 356) with `domain/banking/brs.py` as the mock-mode twin and 11 parity scenarios holding them identical. Frozen into the snapshot at completion, so the certified document does not move when next month is imported |
+
+Three things worth carrying forward.
+
+**The obvious fix for 9b was the wrong one.** The finding suggests picking
+whichever candidate agrees with the parsed sums. That makes the check prove
+itself — a misread statement would select the row that agreed with the
+misreading — and the whole value of the printed totals is that they come from
+outside the reading being checked. There is a guard test named after it.
+
+**9b's rule already existed in prose on the other path.** `vision.TOTALS_PROMPT`
+tells the model in as many words that "a page subtotal … is NOT it". The
+deterministic parser had the same rule written nowhere and enforced nowhere.
+
+**9c stopped short of the accounting answer on purpose.** Making an adjustment a
+posted journal is what the finding calls "better still", and it is wrong until
+9d exists: most of what is plugged there is a TIMING item, which belongs on the
+book side of the BRS, not in the ledger. Now that 9d is built, what is left in
+that field is genuinely journal-shaped — which is the condition for retiring it.
+
 ### Phase 10 — Depreciation, both books · 7 findings (6 distinct) · ≤62 days
 `FA-02 FA-04 FA-05 IT-09≡FA-06 IT-06 IT-12`
 
@@ -533,6 +560,59 @@ migrated in it becomes a data migration as well as a code fix.
 Then §32 block-of-assets (the IT-09/FA-06 duplicate), the missed-month catch-up,
 the note that reports a theoretical charge, §234C for a presumptive assessee,
 and the §44AB report due date.
+
+**DONE — 10 September 2026, in seven commits (10a–10g).**
+
+**FA-02, the critical, was already closed and is recorded here rather than
+re-fixed.** Verified against the code: `_DEFAULT_WDV_RATES` is DERIVED from
+Schedule II Part C's useful lives and every value matches the finding's own
+corrected figures (Computers 63.16%, Office equipment 45.07%, Furniture 25.89%,
+P&M 18.10%, Vehicles 31.23%, Buildings 4.87%); `Intangibles` and `Other` return
+`None`, so `_compute_annual_depreciation` RAISES rather than charging a
+made-up rate; the frontend's duplicate table is gone and the page reads the
+classes off the backend; and a tier-C correction applies a revised rate
+PROSPECTIVELY, which is what AS 10 / Ind AS 16 §51 requires of a change in
+estimate. Production holds zero fixed assets, so 08b's "no backfill" is moot.
+
+| # | What it was | What it is |
+|---|---|---|
+| 10a IT-12 | the Tax Audit Tracker headed itself `Due: 30 November` as a hardcoded string — wrong by two months against the REPORT and by one against the return | Explanation (ii) to §44AB makes the specified date one month before the §139(1) date: 30 September and 31 October. A stateless endpoint answers both, and the screen asks |
+| 10b IT-06 | the §208 four-instalment schedule applied to every caller, so a §44AD/§44ADA assessee paying in full on 15 March — exactly as §211(1)'s proviso requires — was charged ₹4,050 of §234C interest | one flag, supplied and never inferred, selecting §234C(1)(b): one instalment, no tolerance. The SAVE path goes with it, because four stored instalments beside a one-instalment interest figure disagree on the same screen |
+| 10c FA-04 | closing a year on a 200-asset register was 2,400 browser requests, one per asset per month | one server-side run over a range, through the SAME `_post_one_month` the single endpoint calls, chunked at 200 months because `lib/api` aborts at 45s, reporting per asset what it posted and where it stopped |
+| 10d FA-05 | the fixed-assets note reported the THEORETICAL annual charge for every asset regardless of what was posted, dropped a sold asset out of gross block entirely, and had no additions or deductions columns | a Schedule III movement per class, with the charge read off the ledger via `account_period_balances` and any disagreement with the register STATED rather than absorbed |
+| 10e IT-09≡FA-06 | §32 existed nowhere; `book_to_tax_bridge` said so in its own docstring and marked itself incomplete for every client | `domain/income_tax/section_32.py` — the block, the second proviso's 180 days on PUT TO USE with a derived cutoff, §43(6)(c)'s deduction order, and §50's two limbs |
+| 10f | and the bridge was imported by no router at all | migration 357's block register, a service that derives additions and deletions from the fixed-asset register, and three endpoints. The bridge fetches its own §32 figure and still withholds the line while anything is outstanding |
+| 10g | a CA could not enter an opening written-down value | `/income-tax/section-32`, leading with whether the figure is safe to use rather than with the total |
+
+Four things worth carrying forward.
+
+**A guard written for one screen found a defect on another.**
+`a-statutory-due-date-is-never-a-literal.test.ts` states the rule — no screen
+asserts a statutory due date of its own — and swept the whole of `apps/web`.
+`app/calendar/page.tsx` builds FOURTEEN deadlines from browser literals, and two
+have already drifted from `compliance_engine`: **AOC-4 shows 29 Oct against the
+engine's 30 Oct, and MGT-7 shows 28 Nov against 29 Nov** (§137 is AGM + 30 days,
+§92 is AGM + 60). Both one day early — the safe direction, and still wrong. It
+also assumes a 30 September AGM for every company. **NOT FIXED**, and
+allow-listed with that reason: routing all fourteen through the backend and
+stating the AGM assumption where it is made is its own change, not a rider on a
+commit about §44AB.
+
+**A test caught a real bug in the §32 engine.** The first draft left a collapsed
+block's balance in the closing written-down value, which would relieve the same
+money twice — once as a §50 capital loss, then again as depreciation in every
+year that followed.
+
+**Refusing to hold a statutory table is sometimes the answer, not a gap.**
+Appendix I has a dozen plant-and-machinery classes. But a block IS a rate under
+§2(11), so the CA who decides which block an asset falls in has already decided
+it — and a test asserts the engine holds no table at all, so there is nothing
+there to be silently wrong.
+
+**Paying a debt at the moment it starts to matter.** `post_depreciation` was on
+the acknowledged list of paths that check the FY lock but not the CLIENT's. One
+month behind a click a CA has just looked at is one thing; twelve months in one
+call is another, so 10c paid it.
 
 ### Phase 11 — The remaining big builds · 15 + 4 findings · ≤168 days
 `IT-11 IT-19 GST-10 GST-11 GST-20 PUR-15 ACC-06 ACC-10 SALES-11 INV-01 INV-06 PUR-09 SALES-05 PAY-09 PAY-14`

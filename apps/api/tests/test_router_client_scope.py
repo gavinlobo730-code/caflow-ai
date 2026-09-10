@@ -1393,6 +1393,13 @@ EXEMPT: dict[str, str] = {
     "/api/compliance/due-dates/calculate":
         "plain year/month query params — GST/ITR due-date math (CGST Act "
         "§§37/39), no client_id, nothing stored or read.",
+    "/api/compliance/tax-audit-due-dates":
+        "a financial-year label and nothing else — IT Act §44AB Explanation "
+        "(ii) arithmetic (the specified date is one month before the §139(1) "
+        "date). It names no assessee, reads no row and states its own premise "
+        "that §44AB applies; whether it does is a turnover question this app "
+        "does not hold, and /api/compliance/itr-due-date is the client-scoped "
+        "endpoint that answers per assessee.",
     # ai_insights.py — the one route with no real client-scoped data.
     "/api/ai-insights/cross-client":
         "get_cross_client_patterns (domain/ai_insight_service.py) is a "

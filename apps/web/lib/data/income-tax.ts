@@ -383,6 +383,11 @@ export interface ComputeAdvanceTaxRequest {
   fy: string;
   estimated_tax_paise: number;
   installments: AdvanceTaxInstallmentInput[];
+  /** §211(1) proviso — a §44AD/§44ADA assessee pays the whole advance tax by
+   *  15 March, so there is ONE instalment and §234C(1)(b) is the charging limb.
+   *  Sent, never inferred: whether the presumptive scheme is opted into is the
+   *  CA's determination, not something a tax figure reveals (IT-06). */
+  is_presumptive_44ad_44ada?: boolean;
 }
 
 export interface AdvanceTaxInstallmentResult {
@@ -402,7 +407,12 @@ export interface AdvanceTaxComputeResult {
   fy: string;
   estimated_tax_paise: number;
   total_interest_paise: number;
+  /** "Section 234C(1)(a)" or "Section 234C(1)(b)" — the LIMB, because they are
+   *  different sentences with different schedules. */
   section_ref: string;
+  is_presumptive_44ad_44ada: boolean;
+  /** The statute the answer rests on, in one sentence, for the CA to check. */
+  basis: string;
   installments: AdvanceTaxInstallmentResult[];
 }
 

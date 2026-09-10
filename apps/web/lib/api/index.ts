@@ -25,6 +25,17 @@ export type MarkFiledResult = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** GET /api/compliance/tax-audit-due-dates — both §44AB dates for one FY.
+ *  `basis` names the section and the premise, and is shown rather than
+ *  paraphrased: a date on a compliance screen is only as good as what a CA can
+ *  check it against. */
+export interface TaxAuditDueDates {
+  financial_year: string;
+  report_due_date: string;
+  return_due_date: string;
+  basis: string;
+}
+
 /** GET /api/compliance/due-dates/calculate — the fields this app reads. The
  *  endpoint returns more (ITR, advance tax, and the gaps that go with them);
  *  those belong to the income-tax screens, not the GST filing tracker. */
@@ -1170,6 +1181,16 @@ export const api = {
     calculateDueDates: (year: number, month: number) =>
       request<ApiResp<GstDueDates>>(
         `/api/compliance/due-dates/calculate?year=${year}&month=${month}`),
+    /** When the §44AB audit report and the return that follows it are due.
+     *
+     *  TWO DATES, A MONTH APART: Explanation (ii) to §44AB makes the report's
+     *  "specified date" one month BEFORE the §139(1) date — 30 September and
+     *  31 October. The Tax Audit Tracker used to state "Due: 30 November" as a
+     *  hardcoded string, wrong against both, and unfixable by any backend
+     *  change because no backend was involved (IT-12). */
+    taxAuditDueDates: (financialYear: string) =>
+      request<ApiResp<TaxAuditDueDates>>(
+        `/api/compliance/tax-audit-due-dates?financial_year=${encodeURIComponent(financialYear)}`),
   },
   documents: {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),
@@ -1636,6 +1657,11 @@ export const api = {
         request(`/api/banking/reconciliations/${id}/adjustment`,
                 { method: "PUT", body: JSON.stringify({ adjustments_paise, reason }) }),
       report: (id: string) => request(`/api/banking/reconciliations/${id}/report`),
+      /** The two-sided Bank Reconciliation Statement (BANK-04) — the document,
+       *  as against `report`, which is the tie-out. Cash Book balance, cheques
+       *  issued not presented, deposits not credited, the bank's own entries not
+       *  yet in the books, and the Pass Book balance they reach. */
+      brs: (id: string) => request(`/api/banking/reconciliations/${id}/brs`),
       reconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/reconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       unreconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/unreconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       complete: (id: string) => request(`/api/banking/reconciliations/${id}/complete`, { method: "POST" }),

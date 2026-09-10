@@ -80,6 +80,12 @@ from services import bank_column_mapping_service as column_mappings
 # Defensive upload cap (bank statements are small; protects the parser/DB).
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
+#: An empty BRS bucket, for the mock-mode reply. Spelled out rather than left
+#: out: a missing key is not the same answer as an empty one, and the frontend
+#: would read `undefined` in demo mode only — the kind of gap a customer finds
+#: rather than a test.
+_EMPTY_BRS_BUCKET = {"items": [], "total_paise": 0, "count": 0, "listed": 0}
+
 router = APIRouter(prefix="/api/banking", tags=["banking"])
 
 
@@ -2041,6 +2047,46 @@ def update_reconciliation(
     return api_response(True, bank_reconciliation_service.update_session(
         db, current_user["firm_id"], recon_id, data.model_dump(exclude_none=True),
         actor_id=current_user.get("auth_user_id")))
+
+
+@router.get("/reconciliations/{recon_id}/brs")
+def reconciliation_statement(
+    recon_id: str,
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """The two-sided Bank Reconciliation Statement (BANK-04).
+
+        Balance as per Cash Book
+          add  cheques issued but not yet presented
+          less cheques/deposits banked but not yet credited
+          add  amounts credited by the bank, not yet in the books
+          less amounts debited by the bank, not yet in the books
+          = Balance as per Pass Book
+
+    Distinct from /report, which is the tie-out: every row THERE is a statement
+    line, and that is the right shape for the WORK of reconciling. This is the
+    DOCUMENT, and it reads the book side too — which nothing in this module did
+    before, so a cheque issued and entered but not presented had no row anywhere
+    in the product.
+
+    Computed by public.bank_reconciling_items (migration 356) where there is a
+    database, and by domain/banking/brs.py in mock mode, held identical by
+    tests/test_brs_sql_parity_pg.py.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"reconciliation": {"id": recon_id},
+                                   "book_balance_paise": 0,
+                                   "unpresented_cheques": _EMPTY_BRS_BUCKET,
+                                   "deposits_in_transit": _EMPTY_BRS_BUCKET,
+                                   "bank_credits_not_in_books": _EMPTY_BRS_BUCKET,
+                                   "bank_debits_not_in_books": _EMPTY_BRS_BUCKET,
+                                   "computed_bank_balance_paise": 0,
+                                   "statement_balance_paise": 0,
+                                   "difference_paise": 0, "agrees": True, "gap": None})
+    _assert_recon_scope(db, current_user, recon_id)
+    return api_response(True, bank_reconciliation_service.brs(
+        db, current_user["firm_id"], recon_id))
 
 
 @router.put("/reconciliations/{recon_id}/adjustment")

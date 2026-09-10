@@ -81,6 +81,37 @@ interface ReconHistory {
     reason: string | null; summary: ReconSummary | null; ties_out: boolean;
   }[];
 }
+/** One reconciling item — a book entry the bank has not seen, or a bank line
+ *  the books have not. */
+interface BrsItem {
+  id: string; date: string; reference_no: string | null;
+  particulars: string; amount_paise: number; source: "book" | "bank";
+}
+/** Totals are exact over every row; `items` is capped at `listed` of `count`,
+ *  because on an account nobody has ever reconciled every book entry is a
+ *  reconciling item. */
+interface BrsBucket {
+  items: BrsItem[]; total_paise: number; count: number; listed: number;
+}
+/** The two-sided Bank Reconciliation Statement (BANK-04) — the DOCUMENT, as
+ *  against `ReconReport`, which is the tie-out. Computed server-side by
+ *  public.bank_reconciling_items; nothing here recomputes it. */
+interface Brs {
+  reconciliation: ReconSession;
+  book_balance_paise: number;
+  unpresented_cheques: BrsBucket;
+  deposits_in_transit: BrsBucket;
+  bank_credits_not_in_books: BrsBucket;
+  bank_debits_not_in_books: BrsBucket;
+  computed_bank_balance_paise: number;
+  statement_balance_paise: number | null;
+  difference_paise: number | null;
+  agrees: boolean | null;
+  gap: string | null;
+  /** Whether this is the certified document frozen at completion, or a live
+   *  computation. A period completed before this existed gets a live one. */
+  frozen: boolean;
+}
 interface ReconLine {
   id: string; transaction_date: string; description: string; reference_no: string | null;
   debit_paise: number; credit_paise: number; posted_journal_id: string | null;
@@ -141,6 +172,8 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
   const [history, setHistory] = useState<ReconHistory | null>(null);
   const [adj, setAdj] = useState("");
   const [adjReason, setAdjReason] = useState("");
+  const [brs, setBrs] = useState<Brs | null>(null);
+  const [showBrs, setShowBrs] = useState(false);
 
   const loadSessions = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -175,6 +208,14 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
       setReport(res.data);
       setAdj(((res.data.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
       setAdjReason(res.data.reconciliation.adjustments_reason || "");
+      // Its own request, and a failure here never blocks the tie-out: the
+      // statement needs a ledger account linked to the bank account and says so
+      // when there is none, which must not take the reconciling screen down
+      // with it.
+      try {
+        const b = (await api.banking.reconciliations.brs(id)) as { success: boolean; data: Brs };
+        setBrs(b.success ? b.data : null);
+      } catch { setBrs(null); }
     } catch (e) {
       setReport(null);
       setError(e instanceof Error ? e.message : "Couldn't load the reconciliation report.");
@@ -431,6 +472,56 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
                 {report.ties_out ? <><CheckCircle size={14} /> Statement ties out to the book balance</> : <>Difference {fmt(Math.abs(report.summary.difference_paise))} — does not tie out</>}
               </span>
             </div>
+
+            {/* THE DOCUMENT (BANK-04). Everything above is the tie-out — every
+                row of it a STATEMENT line, which is the right shape for the WORK
+                of reconciling. This is what an accountant means by a BRS, and
+                what an auditor asks for: it reads the BOOK side too, so a cheque
+                issued and entered but not yet presented finally has a row.
+                Collapsed by default because the tie-out is what the CA works
+                against day to day. */}
+            {brs && (
+              <div className="border border-[#E2E8F0] rounded-lg">
+                <button
+                  onClick={() => setShowBrs((v) => !v)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-[#334155] hover:bg-[#F8FAFC]"
+                >
+                  <span>Bank Reconciliation Statement{brs.frozen ? " (as certified)" : ""}</span>
+                  <span className="text-[#64748B]">{showBrs ? "Hide" : "Show"}</span>
+                </button>
+                {showBrs && (
+                  <div className="px-3 pb-3 space-y-1 text-xs font-mono">
+                    <Row label="Balance as per Cash Book (books)" paise={brs.book_balance_paise} strong />
+                    <BrsBucketRows label="Add: cheques issued but not yet presented"
+                                   bucket={brs.unpresented_cheques} />
+                    <BrsBucketRows label="Less: deposits banked but not yet credited"
+                                   bucket={brs.deposits_in_transit} />
+                    <BrsBucketRows label="Add: credited by the bank, not in the books"
+                                   bucket={brs.bank_credits_not_in_books} />
+                    <BrsBucketRows label="Less: debited by the bank, not in the books"
+                                   bucket={brs.bank_debits_not_in_books} />
+                    <Row label="= Balance as per Pass Book (bank)"
+                         paise={brs.computed_bank_balance_paise} strong />
+                    {brs.statement_balance_paise !== null && (
+                      <>
+                        <Row label="Balance per the statement" paise={brs.statement_balance_paise} />
+                        <div className={`mt-1 rounded px-2 py-1.5 font-sans text-[11px] ${brs.agrees ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                          {brs.agrees
+                            ? "The books reconcile to the statement."
+                            : `Unexplained difference ${fmt(Math.abs(brs.difference_paise ?? 0))} — something is neither in the books nor accounted for above.`}
+                        </div>
+                      </>
+                    )}
+                    {brs.gap && (
+                      <p className="font-sans text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
+                        {brs.gap}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {!completed && (
               /* An adjustment is the one figure here that can force a period to
                  tie out, and completing freezes a certified PDF. So it asks what
@@ -681,6 +772,35 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** One side of the Bank Reconciliation Statement: its total, then the items
+ *  that make it up. An empty bucket renders nothing — "Add: cheques issued but
+ *  not yet presented ₹0.00" is noise on a statement where there are none.
+ *
+ *  The cap is stated rather than hidden: a truncated list that read as complete
+ *  would be worse than a long one, and the TOTAL is exact either way. */
+function BrsBucketRows({ label, bucket }: { label: string; bucket: BrsBucket }) {
+  if (!bucket?.count) return null;
+  return (
+    <>
+      <Row label={`${label} (${bucket.count})`} paise={bucket.total_paise} />
+      {bucket.items.map((it) => (
+        <div key={it.id} className="flex items-center justify-between text-[#94A3B8] pl-4">
+          <span className="font-sans text-[10px] truncate pr-2" title={it.particulars}>
+            {it.date} · {it.particulars}
+            {it.reference_no ? ` · ${it.reference_no}` : ""}
+          </span>
+          <span className="text-[10px]">{fmt(it.amount_paise)}</span>
+        </div>
+      ))}
+      {bucket.listed < bucket.count && (
+        <p className="font-sans text-[10px] text-[#94A3B8] pl-4">
+          … and {bucket.count - bucket.listed} more, included in the total above.
+        </p>
+      )}
+    </>
   );
 }
 

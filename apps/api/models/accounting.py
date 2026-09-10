@@ -178,6 +178,17 @@ class FixedAssetIn(BaseModel):
     location: Optional[str] = None
     notes: Optional[str] = None
 
+    # ── IT Act §32, which is a different system from Schedule II above ──────
+    # Neither of these touches the Companies Act charge. `it_block_key` says
+    # which §32 BLOCK the asset falls in — a CA determination, because §2(11)
+    # groups by nature AND rate and the Schedule II category does not decide
+    # it. `put_to_use_date` is what the second proviso to §32(1) turns on, and
+    # it is NOT the purchase date: an asset bought in February and put to use
+    # in June belongs to the next previous year entirely. Both default to None,
+    # which the §32 computation reports as a named gap (migration 357).
+    it_block_key: Optional[str] = None
+    put_to_use_date: Optional[str] = None    # YYYY-MM-DD
+
     # ── FA-07: how it was acquired, and from whom ───────────────────────────
     # 'paid' | 'credit' | 'from_bill'. Decides the CREDIT leg — see
     # phase2_journal_service.journal_for_asset_acquisition and migration 343.
@@ -253,6 +264,19 @@ class DepreciationIn(BaseModel):
     period: Optional[str] = None  # YYYY-MM; defaults to current month
 
 
+class DepreciationRunIn(BaseModel):
+    """Post every unposted month in a range, for every live asset of a client.
+
+    A RANGE, named by the CA, is a different act from the single endpoint's one
+    month: it is a request for those months, so the run posts them in order and
+    reports each one. It cannot create a gap, because it starts at each asset's
+    earliest unposted month — see routers/fixed_assets.run_depreciation (FA-04).
+    """
+    client_id: str
+    from_period: str    # YYYY-MM, inclusive
+    to_period: str      # YYYY-MM, inclusive
+
+
 class FixedAssetUpdateIn(BaseModel):
     """A correction to an asset already in the register (FA-10).
 
@@ -264,7 +288,10 @@ class FixedAssetUpdateIn(BaseModel):
     The three tiers are NOT a presentation choice, they are three different
     mechanisms:
 
-      A — asset_name, location, notes: no GL, no statutory consequence.
+      A — asset_name, location, notes, and the two IT Act §32 facts
+          (it_block_key, put_to_use_date): no GL, no statutory consequence
+          under the Companies Act. §32 is a different system entirely and
+          reads them itself — see domain/income_tax/section_32.py.
       B — purchase_cost_paise, asset_category, purchase_date and the
           acquisition facts: the acquisition JOURNAL is wrong too, so the
           correction is a reversal and a re-post through the one kernel.
@@ -283,6 +310,8 @@ class FixedAssetUpdateIn(BaseModel):
     asset_name: Optional[str] = None
     location: Optional[str] = None
     notes: Optional[str] = None
+    it_block_key: Optional[str] = None
+    put_to_use_date: Optional[str] = None
 
     purchase_cost_paise: Optional[int] = None
     asset_category: Optional[str] = None

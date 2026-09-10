@@ -809,6 +809,12 @@ export default function IncomeTaxPage() {
             <a href="/income-tax/tax-audit" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
               Tax Audit
             </a>
+            {/* IT Act §32 — per BLOCK, which is a different system from the
+                Schedule II charge in the fixed-asset register, and usually the
+                largest single line in the book-to-tax bridge. */}
+            <a href="/income-tax/section-32" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
+              Depreciation §32
+            </a>
           </div>
         </div>
         <button

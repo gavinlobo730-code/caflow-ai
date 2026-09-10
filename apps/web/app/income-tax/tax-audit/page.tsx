@@ -25,6 +25,7 @@ import {
   THRESHOLD_BUSINESS_PAISE as THRESHOLD_BUSINESS,
   THRESHOLD_PROFESSION_PAISE as THRESHOLD_PROFESSION,
 } from "@/lib/income-tax/taxAuditThresholds";
+import { api, type TaxAuditDueDates } from "@/lib/api";
 import type { Client } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -50,6 +51,14 @@ interface TaxAudit {
 
 const STATUS_OPTIONS: AuditStatus[] = ["not_started", "in_progress", "completed", "filed"];
 const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
+
+/** An ISO date as an Indian compliance screen prints it: 30 Sep 2026. */
+function fmtDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
 
 function statusBadge(status: AuditStatus) {
   switch (status) {
@@ -265,6 +274,12 @@ export default function TaxAuditPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editAudit, setEditAudit] = useState<TaxAudit | null>(null);
+  // IT-12. The header used to read "Due: 30 November" as a hardcoded string —
+  // wrong by two months against the report and by one against the return, and
+  // unfixable by any backend change because no backend was involved. Both
+  // dates are §44AB Explanation (ii) arithmetic and belong in apps/api
+  // (CLAUDE.md), so the page asks.
+  const [dueDates, setDueDates] = useState<TaxAuditDueDates | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -290,6 +305,17 @@ export default function TaxAuditPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  useEffect(() => {
+    let live = true;
+    // A failure leaves the dates absent rather than showing a guess: a wrong
+    // statutory date on a compliance screen is worse than no date, because the
+    // CA acts on it. §271B is 0.5% of turnover, capped at ₹1,50,000.
+    api.compliance.taxAuditDueDates(fyFilter)
+      .then((r) => { if (live) setDueDates(r.success ? r.data : null); })
+      .catch(() => { if (live) setDueDates(null); });
+    return () => { live = false; };
+  }, [fyFilter]);
+
   const clientName = (id: string) => clients.find(c => c.id === id)?.client_name ?? id;
 
   return (
@@ -298,7 +324,12 @@ export default function TaxAuditPage() {
         <Link href="/income-tax" className="text-[#94A3B8] hover:text-[#475569]"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
           <h1 className="text-xl font-semibold text-[#0F172A]">Tax Audit Tracker</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">IT Act Section 44AB — Form 3CA/3CB/3CD | Due: 30 November</p>
+          <p className="text-sm text-[#64748B] mt-0.5" title={dueDates?.basis ?? undefined}>
+            IT Act Section 44AB — Form 3CA/3CB/3CD
+            {dueDates
+              ? <> | Report due {fmtDate(dueDates.report_due_date)} · return due {fmtDate(dueDates.return_due_date)}</>
+              : <> | due dates unavailable</>}
+          </p>
         </div>
         <select value={fyFilter} onChange={e => setFyFilter(e.target.value)}
           className="border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">

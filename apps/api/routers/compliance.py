@@ -322,6 +322,55 @@ def itr_due_date_for_one_client(
                                "entity_type": entity_type})
 
 
+@router.get("/tax-audit-due-dates")
+def tax_audit_due_dates(
+    financial_year: Annotated[FYLabel, Query(
+        description="YYYY-YY or YYYY-YYYY, e.g. 2025-26")],
+    current_user: dict = Depends(rbac("compliance_record", "read")),
+):
+    """When the §44AB audit report and the return that follows it are due.
+
+    TWO DATES, AND THEY ARE A MONTH APART. Explanation (ii) to §44AB, as
+    substituted by the Finance Act 2020 w.e.f. AY 2020-21, defines the
+    "specified date" as the date ONE MONTH PRIOR to the §139(1) due date. So
+    the report is due 30 September and the return 31 October, and dating the
+    report at the return's date shows every audit client a deadline a month
+    late — on the obligation whose lateness carries §271B, 0.5% of turnover
+    capped at ₹1,50,000. It is also the wrong sequence: §139(1)'s own date
+    assumes the report is already on record.
+
+    THIS EXISTS SO THE BROWSER DOES NOT STATE IT. The Tax Audit Tracker's
+    header read "Due: 30 November" as a hardcoded string — wrong by two months
+    against the report and by a month against the return, and unfixable by any
+    backend change because no backend was involved. CLAUDE.md: statutory rules
+    live in apps/api.
+
+    THE PREMISE IS AUDIT. Both dates are computed with is_audit=True, which is
+    what puts a client on that page at all — this endpoint answers "for an
+    assessee to whom §44AB applies", not "for anyone". Whether it applies is a
+    turnover question the app does not hold; GET /api/compliance/itr-due-date
+    resolves the return's date for a NAMED client, and says when it cannot.
+
+    Stateless: it names no assessee and reads nothing.
+    """
+    fy_end = int(financial_year[:4]) + 1
+    # Imported here, not at module level, and the comment at the top of this
+    # file says why: `itr_due_date` answers "which date is 31 July and which is
+    # 31 October", not "which one does THIS assessee have", and calling it with
+    # is_audit defaulting to False is what gave every company client 31 July.
+    # This caller passes is_audit=True EXPLICITLY and says so in its docstring
+    # and in `basis`, which is the one shape that is not that bug.
+    from services.compliance_engine import itr_due_date, tax_audit_report_due_date
+    return api_response(True, {
+        "financial_year": financial_year,
+        "report_due_date": tax_audit_report_due_date(fy_end).isoformat(),
+        "return_due_date": itr_due_date(fy_end, is_audit=True).isoformat(),
+        "basis": ("IT Act §44AB Explanation (ii) — the specified date is one "
+                  "month prior to the §139(1) due date. Assumes §44AB applies; "
+                  "a §92E transfer-pricing case is not modelled."),
+    })
+
+
 @router.get("/due-dates/calculate")
 def calculate_due_dates(year: int, month: int,
                         frequency: str = MONTHLY,

@@ -47,6 +47,11 @@ interface Asset {
   current_wdv_paise?: number;
   status: "active" | "disposed" | "fully_depreciated";
   notes?: string;
+  /** IT Act §32, not Schedule II — a different system, per BLOCK. Read here so
+   *  the correction drawer shows what is already recorded rather than a blank
+   *  that reads as "not set". */
+  it_block_key?: string | null;
+  put_to_use_date?: string | null;
 }
 
 // fixed_assets has no status column (migration 025/054) — routers/
@@ -82,6 +87,31 @@ interface AssetCategory {
   depreciable: boolean;
   residual_value_cap_percent: number;
   classes: ScheduleIIClass[];
+}
+
+/** What one asset's range run did, as routers/fixed_assets.run_depreciation
+ *  reports it. `reason` is the sentence the single-month endpoint would have
+ *  raised — a locked period, an asset with no statutory rate, a fully
+ *  depreciated one. A batch that says only "done" cannot be acted on. */
+interface RunAssetResult {
+  asset_id: string;
+  asset_code: string | null;
+  asset_name: string | null;
+  months_posted: number;
+  depreciation_paise: number;
+  stopped_at: string | null;
+  reason: string | null;
+}
+
+/** One call of the chunked run. `remaining_months` is non-zero only when the
+ *  server's cap was hit, and the same request resumes from where it stopped. */
+interface DepreciationRun {
+  months_posted: number;
+  depreciation_paise: number;
+  assets_considered: number;
+  assets: RunAssetResult[];
+  remaining_months: number;
+  chunk_limit: number;
 }
 
 /** A schedule row as routers/fixed_assets.py computes it — the charge, and the
@@ -230,7 +260,7 @@ function RegisterTab({ clientId }: { clientId: string }) {
       const supabase = getSupabaseClient();
       const { data, error } = await selectAll(() => supabase
         .from("fixed_assets")
-        .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, is_disposed, notes")
+        .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, is_disposed, notes, it_block_key, put_to_use_date")
         .eq("client_id", clientId)
         .eq("is_disposed", false)
         .order("purchase_date", { ascending: false })
@@ -480,6 +510,12 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
           { k: "wdv_rate_percent" as const,  label: "WDV rate (%)" },
           { k: "useful_life_years" as const, label: "Useful life (years)" },
           { k: "notes" as const,             label: "Notes" },
+          // IT Act §32, not Schedule II. Neither changes the Companies Act
+          // charge above — §32 is a different system entirely, per BLOCK, and
+          // reads these itself (domain/income_tax/section_32.py). Both are
+          // Tier A: a classification and a fact, with no GL consequence.
+          { k: "it_block_key" as const,      label: "§32 block (income tax)" },
+          { k: "put_to_use_date" as const,   label: "Put to use on (§32, not the purchase date)" },
           { k: "reason" as const,            label: "Why (recorded on the audit trail)" },
         ].map(f => (
           <div key={f.k}>
@@ -804,6 +840,12 @@ function DepreciationTab({ clientId }: { clientId: string }) {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
+  // The range's other end. Defaults to the same month, so the familiar
+  // "post this month for everything" is one click and one request.
+  const [toPeriod, setToPeriod] = useState(period);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [runResult, setRunResult] = useState<{ months_posted: number; assets: RunAssetResult[] } | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
@@ -870,13 +912,46 @@ function DepreciationTab({ clientId }: { clientId: string }) {
     }
   }
 
-  async function postAllDepreciation() {
-    // Skip assets whose annual charge is already zero, same condition the
-    // per-row Post button below uses. One request at a time, deliberately:
-    // each is a journal entry, and a refusal on one asset must not be lost in
-    // a batch — it lands beside that row.
-    for (const r of rows.filter(r => r.annual_depreciation_paise > 0)) {
-      await postDepreciation(r.asset_id);
+  async function runDepreciation() {
+    // FA-04. This used to be a loop in the browser: one request per asset for
+    // ONE month, so closing a year on a 200-asset register was 2,400 requests
+    // from a tab. It is now one server-side run over a RANGE, which walks each
+    // asset's unposted months in order and reports what it did — a whole year
+    // in one call rather than a click per asset per month.
+    //
+    // Chunked and resumed here rather than sent as one enormous request:
+    // `lib/api` aborts at 45 seconds and never retries, so the server stops at
+    // its cap and says how many months are left.
+    if (toPeriod < period) { setRunError("The last month cannot come before the first."); return; }
+    setRunning(true); setRunError(null); setRunResult(null); setErrors({});
+    const posted: RunAssetResult[] = [];
+    let months = 0;
+    try {
+      for (let call = 0; call < 40; call++) {
+        const j = await request<ApiEnvelope<DepreciationRun>>("/api/fixed-assets/run-depreciation", {
+          method: "POST",
+          body: JSON.stringify({ client_id: clientId, from_period: period, to_period: toPeriod }),
+        });
+        if (!j.success || !j.data) throw new Error(refusalMessage(j, "Could not run depreciation."));
+        months += j.data.months_posted;
+        for (const a of j.data.assets) {
+          const seen = posted.find(p => p.asset_id === a.asset_id);
+          if (seen) {
+            seen.months_posted += a.months_posted;
+            seen.depreciation_paise += a.depreciation_paise;
+            seen.stopped_at = a.stopped_at; seen.reason = a.reason;
+          } else { posted.push({ ...a }); }
+        }
+        // Nothing left, or nothing moving — stop either way. A run that posts
+        // zero months and still reports work remaining would loop for ever.
+        if (j.data.remaining_months === 0 || j.data.months_posted === 0) break;
+      }
+      setRunResult({ months_posted: months, assets: posted });
+      await load();
+    } catch (e: unknown) {
+      setRunError(e instanceof Error ? e.message : "Could not run depreciation.");
+    } finally {
+      setRunning(false);
     }
   }
 
@@ -901,14 +976,48 @@ function DepreciationTab({ clientId }: { clientId: string }) {
             value={period}
             onChange={e => setPeriod(e.target.value)}
           />
+          <span className="text-[11px] text-[#94A3B8]">to</span>
+          <input
+            type="month"
+            className="border border-[#E2E8F0] rounded-lg px-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:ring-2 focus:ring-blue-200"
+            value={toPeriod}
+            onChange={e => setToPeriod(e.target.value)}
+          />
           <button
-            onClick={postAllDepreciation}
-            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+            onClick={runDepreciation}
+            disabled={running}
+            className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            <TrendingDown size={12} /> Post All for Period
+            <TrendingDown size={12} /> {running ? "Running…" : "Run depreciation"}
           </button>
         </div>
       </div>
+
+      {runError && (
+        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-2.5 text-[11px] text-red-700">{runError}</div>
+      )}
+      {runResult && (
+        /* What the run DID, per asset. The browser loop reported nothing at
+           all; a batch that says only "done" is the same defect with a nicer
+           face, because the CA cannot tell which asset stopped and why. */
+        <div className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4 space-y-2">
+          <p className="text-xs font-semibold text-[#1E293B]">
+            {runResult.months_posted === 0
+              ? "Nothing left to post in that range."
+              : `${runResult.months_posted} month${runResult.months_posted === 1 ? "" : "s"} posted.`}
+          </p>
+          {runResult.assets.filter(a => a.reason).length > 0 && (
+            <ul className="space-y-1">
+              {runResult.assets.filter(a => a.reason).map(a => (
+                <li key={a.asset_id} className="text-[11px] text-amber-800">
+                  <span className="font-medium">{a.asset_code ?? a.asset_name}</span>
+                  {a.months_posted > 0 && <> — {a.months_posted} posted, then</>} stopped at {a.stopped_at}: {a.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4">

@@ -130,7 +130,16 @@ def test_compute_fixed_assets_note_data_uses_real_register():
     assert result["gross_block_paise"] == 10_00_000_00
     assert result["accumulated_dep_paise"] == 2_00_000_00
     assert result["net_block_paise"] == 8_00_000_00
-    assert result["depreciation_charge_paise"] > 0
+    # NOT a theoretical charge any more (FA-05). This asset has Rs 2,00,000 of
+    # accumulated depreciation and NOTHING posted in FY 2025-26 — no
+    # depreciation_fy on the row, nothing in the ledger — so the year's charge
+    # is nil, and the note says so and names the gap. What it used to report was
+    # one full year's SL charge that need not match anything in the P&L: a
+    # disclosure of the books that was not read off them.
+    assert result["depreciation_charge_paise"] == 0
+    assert result["requires_ca_review"] is True
+    assert any("could not be read from the ledger" in g
+               for g in result["statutory_gaps"]), result["statutory_gaps"]
     # Not the old hardcoded literal.
     assert result["gross_block_paise"] != 80_000_00
 

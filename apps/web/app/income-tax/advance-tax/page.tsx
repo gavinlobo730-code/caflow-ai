@@ -64,6 +64,12 @@ export default function AdvanceTaxPage() {
 
   const [result, setResult] = useState<AdvanceTaxComputeResult | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
+  // IT-06. §211(1)'s proviso gives a §44AD/§44ADA assessee ONE instalment —
+  // the whole amount by 15 March — so §234C had been charging such a client
+  // for deferring three instalments that were never due. It is a fact about
+  // the assessee, not a figure, so the CA says so and the backend decides
+  // everything that follows from it.
+  const [presumptive, setPresumptive] = useState(false);
 
   useEffect(() => {
     getClients().then(c => { setClients(c); if (c.length > 0) setClientId(c[0].id); }).catch(() => {});
@@ -129,13 +135,16 @@ export default function AdvanceTaxPage() {
         paid_date: editPaidDate[n] || null,
         challan_number: editChallan[n] || null,
       }));
-      computeAdvanceTaxInterest({ fy, estimated_tax_paise: estimatedTaxPaise, installments })
+      computeAdvanceTaxInterest({
+        fy, estimated_tax_paise: estimatedTaxPaise, installments,
+        is_presumptive_44ad_44ada: presumptive,
+      })
         .then(r => { setResult(r); setComputeError(null); })
         .catch(e => { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); });
     }, 400);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fy, estimatedTaxPaise, editPaidRs, editPaidDate, editChallan]);
+  }, [fy, estimatedTaxPaise, editPaidRs, editPaidDate, editChallan, presumptive]);
 
   async function handleSave() {
     if (!clientId || estimatedTaxPaise <= 0) {
@@ -151,7 +160,10 @@ export default function AdvanceTaxPage() {
         paid_date: editPaidDate[n] || null,
         challan_number: editChallan[n] || null,
       }));
-      await saveAdvanceTaxPayments({ client_id: clientId, fy, estimated_tax_paise: estimatedTaxPaise, installments });
+      await saveAdvanceTaxPayments({
+        client_id: clientId, fy, estimated_tax_paise: estimatedTaxPaise, installments,
+        is_presumptive_44ad_44ada: presumptive,
+      });
       setSaveMsg("Saved");
       setTimeout(() => setSaveMsg(null), 3000);
       await loadData();
@@ -171,7 +183,11 @@ export default function AdvanceTaxPage() {
         <Link href="/income-tax" className="text-[#94A3B8] hover:text-[#475569]"><ChevronLeft size={18} /></Link>
         <div className="flex-1">
           <h1 className="text-xl font-semibold text-[#0F172A]">Advance Tax Tracker</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">IT Act Section 207/208 — 4 installments per FY</p>
+          <p className="text-sm text-[#64748B] mt-0.5" title={result?.basis ?? undefined}>
+            {presumptive
+              ? "IT Act Section 211(1) proviso — one instalment, the whole amount by 15 March"
+              : "IT Act Section 207/208 — 4 installments per FY"}
+          </p>
         </div>
       </div>
 
@@ -203,6 +219,12 @@ export default function AdvanceTaxPage() {
             className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-48"
             placeholder="Enter tax amount" />
         </div>
+        <label className="flex items-center gap-1.5 text-xs text-[#475569] pb-2"
+               title="IT Act §211(1) proviso — the whole advance tax by 15 March, and §234C(1)(b) charges only on that.">
+          <input type="checkbox" checked={presumptive}
+                 onChange={e => setPresumptive(e.target.checked)} />
+          Presumptive (§44AD / §44ADA)
+        </label>
         <Button onClick={handleSave} disabled={saving || !clientId}>
           <Save size={14} className="mr-1" /> {saving ? "Saving…" : "Save"}
         </Button>
@@ -249,10 +271,15 @@ export default function AdvanceTaxPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
-                {[1, 2, 3, 4].map(n => {
+                {(presumptive ? [4] : [1, 2, 3, 4]).map(n => {
                   const inst = result?.installments.find(i => i.installment_number === n);
                   const dueDate = inst?.due_date ?? "";
-                  const requiredPercent = inst?.cumulative_required_percent ?? [15, 45, 75, 100][n - 1];
+                  // No local fallback. [15, 45, 75, 100] was §208's schedule
+                  // written into the browser, and it is wrong for a §44AD/§44ADA
+                  // assessee, whose one instalment is 100% by 15 March — the
+                  // same second-copy defect as the rest of IT-06, just smaller.
+                  // Until the server answers there is no percentage to state.
+                  const requiredPercent = inst?.cumulative_required_percent ?? null;
                   const requiredPaise = inst?.required_cumulative_paise ?? 0;
                   const interest = inst?.interest_paise ?? 0;
                   const paidPaise = paidPaiseOf(n) ?? 0;
@@ -268,7 +295,9 @@ export default function AdvanceTaxPage() {
                     <tr key={n} className="hover:bg-[#F8FAFC]">
                       <td className="px-5 py-3 text-sm font-medium">{INSTALLMENT_LABELS[n]}</td>
                       <td className="px-3 py-3 text-xs text-[#475569]">{dueDate || "—"}</td>
-                      <td className="px-3 py-3 text-sm text-right tabular-nums">{requiredPercent}%</td>
+                      <td className="px-3 py-3 text-sm text-right tabular-nums">
+                        {requiredPercent === null ? "—" : `${requiredPercent}%`}
+                      </td>
                       <td className="px-3 py-3 text-sm text-right tabular-nums font-medium">{formatPaise(requiredPaise)}</td>
                       <td className="px-3 py-3">
                         <input type="number" min="0" step="0.01"

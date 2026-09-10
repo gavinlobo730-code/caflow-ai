@@ -123,9 +123,30 @@ class _Q:
 class FakeDB:
     def __init__(self):
         self.store = {}
+        #: What `public.period_lock_reason` would answer. None = open.
+        self.lock_reason = None
 
     def table(self, name):
         return _Q(self.store, name)
+
+    def rpc(self, fn, params=None):
+        """Depreciation posting now asks the CLIENT's period lock as well as the
+        FY's, and `period_lock_service.lock_reason` FAILS CLOSED when it cannot
+        reach the database. A double with no `rpc` therefore refuses every
+        posting — the right behaviour, and the wrong test: it would prove the
+        double's shape rather than the router's."""
+        class _Rpc:
+            def __init__(self, value):
+                self._value = value
+
+            def execute(self):
+                class _R:
+                    pass
+                r = _R()
+                r.data = self._value
+                return r
+
+        return _Rpc(self.lock_reason if fn == "period_lock_reason" else None)
 
 
 def _seed_asset(db, **overrides):
