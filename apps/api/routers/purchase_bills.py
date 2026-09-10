@@ -485,6 +485,7 @@ def _compute_bill_lines_and_totals(
     # it. None on a s.195 bill, where tds_basis carries the reason instead.
     tds_resident_why = None
     tds_advance_adjusted_paise = 0
+    tds_certificate_no = None
     tds_section = (vendor.get("tds_section") or "").upper().strip() or None
     if vendor.get("tds_applicable"):
         # WHICH SECTION CHARGES IS DECIDED IN services/vendor_tds.py, and so is
@@ -495,6 +496,9 @@ def _compute_bill_lines_and_totals(
         _w = vendor_tds.resolve_withholding(
             vendor, total_taxable, bill_date, firm_id, db,
             exclude_bill_id=exclude_bill_id,
+            # Scopes the §197 certificate lookup — the service-role key
+            # bypasses RLS, so the app-layer filter is the isolation control.
+            client_id=vendor.get("client_id"),
             # Only a bill absorbs an earlier advance: the advance was charged
             # when it was paid, and booking the bill credits the same sum.
             adjust_against_advances=True,
@@ -508,6 +512,7 @@ def _compute_bill_lines_and_totals(
         tds_citation = _w.citation
         tds_resident_why = _w.why
         tds_advance_adjusted_paise = _w.advance_adjusted_paise
+        tds_certificate_no = _w.certificate_no
         tds_section = _w.section
     # ── The deduction is bounded by the payment ────────────────────────────
     # TDS is withheld FROM a sum paid or credited, so it cannot exceed that
@@ -564,6 +569,7 @@ def _compute_bill_lines_and_totals(
         # is earlier). Stored because the next bill has to know the pool was
         # consumed; see services/vendor_tds.aggregate_so_far.
         "tds_advance_adjusted_paise": tds_advance_adjusted_paise,
+        "tds_certificate_no": tds_certificate_no,
         "tds_surcharge_paise":  tds_surcharge_paise,
         "tds_cess_paise":       tds_cess_paise,
         "tds_nature_of_income": tds_nature,
@@ -735,6 +741,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     tds_nature_of_income = computed["tds_nature_of_income"]
     tds_basis            = computed["tds_basis"]
     tds_advance_adjusted_paise = computed["tds_advance_adjusted_paise"]
+    tds_certificate_no = computed["tds_certificate_no"]
     net_payable_paise = computed["net_payable_paise"]
 
     # Currency columns (INR identity leaves them inert). Foreign net payable is
@@ -803,6 +810,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "tds_nature_of_income":  tds_nature_of_income,
             "tds_basis":             tds_basis,
             "tds_advance_adjusted_paise": tds_advance_adjusted_paise,
+            "tds_certificate_no": tds_certificate_no,
             "is_reverse_charge":     is_reverse_charge,
             "net_payable_paise":     net_payable_paise,
             "status":                "draft",
@@ -850,6 +858,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "tds_nature_of_income":  tds_nature_of_income,
         "tds_basis":             tds_basis,
         "tds_advance_adjusted_paise": tds_advance_adjusted_paise,
+        "tds_certificate_no": tds_certificate_no,
         "is_reverse_charge":     is_reverse_charge,
         "net_payable_paise":     net_payable_paise,
         "status":                "draft",
@@ -1350,6 +1359,7 @@ def update_purchase_bill(
                             "tds_nature_of_income":  computed["tds_nature_of_income"],
                             "tds_basis":             computed["tds_basis"],
                             "tds_advance_adjusted_paise": computed["tds_advance_adjusted_paise"],
+                            "tds_certificate_no": computed["tds_certificate_no"],
                             "net_payable_paise":     computed["net_payable_paise"],
                             "txn_taxable":           computed["txn_taxable"],
                             "txn_total_gst":         computed["txn_total_gst"],
@@ -1471,6 +1481,7 @@ def update_purchase_bill(
                 "tds_nature_of_income":  computed["tds_nature_of_income"],
                 "tds_basis":             computed["tds_basis"],
                 "tds_advance_adjusted_paise": computed["tds_advance_adjusted_paise"],
+                "tds_certificate_no": computed["tds_certificate_no"],
                 "net_payable_paise":     computed["net_payable_paise"],
                 "txn_taxable":           computed["txn_taxable"],
                 "txn_total_gst":         computed["txn_total_gst"],

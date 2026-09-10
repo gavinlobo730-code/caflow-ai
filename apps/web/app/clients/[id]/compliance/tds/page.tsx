@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -32,11 +32,26 @@ function rupees(paise: number) {
   return `₹${(paise / 100).toLocaleString("en-IN")}`;
 }
 
-type TDSTab = "dashboard" | "deductions" | "challans" | "returns" | "form26as" | "certificates";
+type TDSTab = "dashboard" | "deductions" | "challans" | "returns" | "form26as" | "certificates" | "lower_deduction";
 
 /** One thing the challan mapping could not settle — domain/tds/challan_mapping.py.
  *  `message` is the server's own wording and is rendered as it arrives; the
  *  two amounts are alternatives, one per gap code. */
+/** One row of `tds_lower_deduction_certificates` (migration 359). */
+interface LowerDeductionRow {
+  id: string;
+  vendor_id: string;
+  section: string;
+  certificate_no: string;
+  /** Basis points — 0.5% is 50, and a NIL certificate is 0. */
+  rate_bps: number | string;
+  valid_from: string;
+  valid_to: string;
+  /** Rule 28AA(4)'s amount: a ceiling on the sum credited or paid, not on the tax. */
+  ceiling_paise: number | string;
+  notes: string | null;
+}
+
 interface ChallanGap {
   code: string;
   message: string;
@@ -910,6 +925,11 @@ const TABS: { id: TDSTab; label: string }[] = [
   { id: "returns", label: "Returns" },
   { id: "form26as", label: "26AS Recon" },
   { id: "certificates", label: "Certificates" },
+  // The two are opposite directions and the labels say so. "Certificates"
+  // holds Form 16/16A — what the CLIENT issues to the people it deducted
+  // from. This one holds §197 certificates the client RECEIVES from its
+  // vendors, which lower what the client withholds.
+  { id: "lower_deduction", label: "§197 Certificates" },
 ];
 
 export default function TDSWorkspacePage() {
@@ -949,7 +969,211 @@ export default function TDSWorkspacePage() {
         {tab === "returns" && <ReturnsTab clientId={clientId} />}
         {tab === "form26as" && <Form26ASTab clientId={clientId} />}
         {tab === "certificates" && <CertificatesTab clientId={clientId} />}
+        {tab === "lower_deduction" && <LowerDeductionTab clientId={clientId} />}
       </div>
+    </div>
+  );
+}
+
+
+/** IT Act §197 lower-deduction certificates, per vendor per section.
+ *
+ *  WHY A SCREEN AND NOT A FIELD ON THE VENDOR
+ *      §197(1) lets the Assessing Officer certify a lower rate "or no
+ *      deduction of tax", and Rule 28AA(4) makes the certificate an AMOUNT and
+ *      a PERIOD as well as a rate. A bare percentage on the vendor master
+ *      carries none of that, which is why PUR-06 deleted `vendors.tds_rate_bps`
+ *      from the vendor form rather than honouring it: a CA typed 1%, saw "1.0%"
+ *      in the list, and every bill deducted 2%.
+ *
+ *  NOTHING IS COMPUTED HERE. The engine decides which certificate is in force,
+ *  how much of its ceiling is left and what that means for a bill
+ *  (services/vendor_tds.py with domain/tds/lower_deduction.py). This records
+ *  the four facts and shows them back.
+ */
+function LowerDeductionTab({ clientId }: { clientId: string }) {
+  const [rows, setRows] = useState<LowerDeductionRow[]>([]);
+  const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [showNew, setShowNew] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    vendor_id: "", section: "194C", certificate_no: "",
+    rate_percent: "", valid_from: "", valid_to: "", ceiling_rupees: "",
+  });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const sb = getSupabaseClient();
+    try {
+      const [certs, vends] = await Promise.all([
+        selectAll(() => sb.from("tds_lower_deduction_certificates")
+          .select("id, vendor_id, section, certificate_no, rate_bps, valid_from, valid_to, ceiling_paise, notes")
+          .eq("client_id", clientId).order("valid_from", { ascending: false }).order("id")),
+        selectAll(() => sb.from("vendors").select("id, name")
+          .eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
+      ]);
+      if (certs.error) throw certs.error;
+      setRows((certs.data as LowerDeductionRow[]) ?? []);
+      setVendors((vends.data as { id: string; name: string }[]) ?? []);
+      setLoadError(null);
+    } catch {
+      setRows([]);
+      setLoadError("Couldn't load §197 certificates. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function saveNew() {
+    setSaveError(null);
+    // bpsFromPercentInput is the ONE parser for a typed percentage, the same
+    // rule lib/money/rupeeInput.ts states for amounts: 0.5 must become 50 bps
+    // and "0.5%" or "half" must become nothing at all.
+    const rateBps = bpsFromPercentInput(form.rate_percent);
+    const ceiling = paiseFromRupeeInput(form.ceiling_rupees);
+    if (!form.vendor_id) { setSaveError("Choose the vendor the certificate is for."); return; }
+    if (!form.certificate_no.trim()) { setSaveError("The certificate number is what Form 26Q reports — it is required."); return; }
+    if (rateBps === null || rateBps < 0) { setSaveError("Enter the certified rate as a percentage, e.g. 0.5 — a nil certificate is 0."); return; }
+    if (ceiling === null || ceiling <= 0) {
+      setSaveError("Rule 28AA(4) issues a certificate for a specified AMOUNT. Enter the amount it applies up to.");
+      return;
+    }
+    if (!form.valid_from || !form.valid_to || form.valid_to < form.valid_from) {
+      setSaveError("Enter the validity period. Rule 28AA(4) caps it at the financial year.");
+      return;
+    }
+    setSaving(true);
+    let failure: string | null = null;
+    try {
+      // The role-guarded write policies of migration 359 are the only check on
+      // this path: PostgREST reaches the table directly and rbac() never runs.
+      const { error } = await getSupabaseClient()
+        .from("tds_lower_deduction_certificates").insert({
+          client_id: clientId, vendor_id: form.vendor_id,
+          section: form.section, certificate_no: form.certificate_no.trim(),
+          rate_bps: rateBps, valid_from: form.valid_from, valid_to: form.valid_to,
+          ceiling_paise: ceiling,
+        });
+      if (error) {
+        failure = error.message.includes("uq_tds_ldc")
+          ? "That certificate number is already recorded for this vendor and section."
+          : `Couldn't save the certificate: ${error.message}`;
+      }
+    } catch (e) {
+      failure = e instanceof Error ? e.message : "Couldn't save the certificate.";
+    } finally {
+      setSaving(false);
+    }
+    if (failure) { setSaveError(failure); return; }
+    setShowNew(false);
+    setForm({ vendor_id: "", section: "194C", certificate_no: "", rate_percent: "",
+              valid_from: "", valid_to: "", ceiling_rupees: "" });
+    load();
+  }
+
+  const vendorName = (id: string) => vendors.find((v) => v.id === id)?.name ?? "—";
+
+  if (loading) return <TableSkeleton />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="font-medium">§197 Lower-Deduction Certificates</h3>
+          <p className="text-xs text-[#64748B] mt-0.5">
+            What a vendor&apos;s Assessing Officer certified: the rate, the certificate
+            number, the period, and the amount it applies up to (Rule 28AA(4)). Bills and
+            advances to that vendor withhold at the certified rate until the amount is used up.
+          </p>
+        </div>
+        <button onClick={() => setShowNew((s) => !s)}
+          className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 whitespace-nowrap">
+          + Record Certificate
+        </button>
+      </div>
+
+      {loadError && <p className="text-sm text-red-600">{loadError}</p>}
+
+      {showNew && (
+        <div className="border rounded p-4 bg-[#F8FAFC] space-y-3">
+          {saveError && <p className="text-sm text-red-600">{saveError}</p>}
+          <div className="grid grid-cols-3 gap-3">
+            <select value={form.vendor_id} onChange={(e) => setForm((f) => ({ ...f, vendor_id: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm">
+              <option value="">Vendor…</option>
+              {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select>
+            <select value={form.section} onChange={(e) => setForm((f) => ({ ...f, section: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm">
+              {/* §197(1)'s own list. §194Q and §194B are not on it, and the
+                  engine refuses a certificate against a section §197 does not
+                  reach — so they are not offered here either. */}
+              {["193", "194", "194A", "194C", "194D", "194DA", "194G", "194H",
+                "194I", "194J", "194K", "194LA", "194LBB", "194LBC", "194M",
+                "194O", "195"].map((s) => <option key={s} value={s}>§{s}</option>)}
+            </select>
+            <input placeholder="Certificate no." value={form.certificate_no}
+              onChange={(e) => setForm((f) => ({ ...f, certificate_no: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm" />
+            <input placeholder="Certified rate % (0 for nil)" value={form.rate_percent}
+              onChange={(e) => setForm((f) => ({ ...f, rate_percent: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm" />
+            <input type="date" value={form.valid_from}
+              onChange={(e) => setForm((f) => ({ ...f, valid_from: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm" />
+            <input type="date" value={form.valid_to}
+              onChange={(e) => setForm((f) => ({ ...f, valid_to: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm" />
+            <input placeholder="Amount it applies up to (₹)" value={form.ceiling_rupees}
+              onChange={(e) => setForm((f) => ({ ...f, ceiling_rupees: e.target.value }))}
+              className="border rounded px-3 py-1.5 text-sm col-span-2" />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setShowNew(false)}
+              className="text-sm px-3 py-1 border rounded">Cancel</button>
+            <button onClick={saveNew} disabled={saving}
+              className="text-sm px-3 py-1 bg-green-600 text-white rounded disabled:opacity-50">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {rows.length === 0 && !loadError ? (
+        <p className="text-sm text-[#64748B]">
+          No §197 certificates recorded. Without one, every bill withholds at the full
+          section rate — which is right unless a vendor has produced a certificate.
+        </p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-[#64748B] border-b">
+              <th className="py-2">Vendor</th><th>Section</th><th>Certificate</th>
+              <th className="text-right">Rate</th><th>Valid</th>
+              <th className="text-right">Up to</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => (
+              <tr key={c.id} className="border-b last:border-0">
+                <td className="py-2">{vendorName(c.vendor_id)}</td>
+                <td>§{c.section}</td>
+                <td className="font-mono text-[11px]">{c.certificate_no}</td>
+                <td className="text-right tabular-nums">
+                  {Number(c.rate_bps) === 0 ? "Nil" : `${Number(c.rate_bps) / 100}%`}
+                </td>
+                <td className="text-xs">{c.valid_from} → {c.valid_to}</td>
+                <td className="text-right tabular-nums">{rupees(Number(c.ceiling_paise ?? 0))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

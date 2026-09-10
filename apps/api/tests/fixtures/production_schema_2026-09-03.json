@@ -1154,6 +1154,207 @@
    "type": "timestamp with time zone"
   }
  },
+ "ais_reconciliations": {
+  "assessment_year": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "books_amount_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "note": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "record_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "reviewed_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "reviewed_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "status": {
+   "default": "'not_reviewed'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  }
+ },
+ "ais_records": {
+  "amount_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "assessment_year": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "information_label": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "information_source": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "payer": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "source": {
+   "default": "'json'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "tds_deducted_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "transaction_type": {
+   "default": "'Other'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "upload_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  }
+ },
+ "ais_uploads": {
+  "assessment_year": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "file_hash": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "file_name": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "pan": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "problems": {
+   "default": "'[]'::jsonb",
+   "nullable": "NO",
+   "type": "jsonb"
+  },
+  "record_count": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "taxpayer_name": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "total_amount_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "total_tds_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "uploaded_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  }
+ },
  "approval_requests": {
   "created_at": {
    "default": "now()",
@@ -1775,6 +1976,21 @@
    "nullable": "NO",
    "type": "bigint"
   },
+  "adjustments_reason": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "adjustments_set_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "adjustments_set_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
   "bank_account_id": {
    "default": "",
    "nullable": "YES",
@@ -2038,6 +2254,31 @@
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
+  },
+  "totals_mismatch_acknowledged_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "totals_mismatch_acknowledged_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "totals_mismatch_credit_difference_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "totals_mismatch_debit_difference_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
+  },
+  "totals_mismatch_reason": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
   },
   "updated_at": {
    "default": "now()",
@@ -3674,6 +3915,11 @@
    "nullable": "NO",
    "type": "bigint"
   },
+  "port_code": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
   "rate_date": {
    "default": "",
    "nullable": "YES",
@@ -3733,6 +3979,16 @@
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
+  },
+  "shipping_bill_date": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "shipping_bill_no": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
   },
   "source": {
    "default": "",
@@ -8338,6 +8594,11 @@
    "nullable": "NO",
    "type": "uuid"
   },
+  "corrections_count": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "integer"
+  },
   "created_at": {
    "default": "now()",
    "nullable": "YES",
@@ -8347,6 +8608,16 @@
    "default": "",
    "nullable": "YES",
    "type": "bigint"
+  },
+  "deleted_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "deleted_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
   },
   "depreciation_fy": {
    "default": "",
@@ -8398,6 +8669,11 @@
    "nullable": "YES",
    "type": "boolean"
   },
+  "it_block_key": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
   "itc_blocked_reason": {
    "default": "",
    "nullable": "YES",
@@ -8443,6 +8719,11 @@
    "nullable": "NO",
    "type": "date"
   },
+  "put_to_use_date": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
   "salvage_value_paise": {
    "default": "0",
    "nullable": "NO",
@@ -8452,6 +8733,11 @@
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
+  },
+  "updated_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
   },
   "useful_life_years": {
    "default": "",
@@ -10483,6 +10769,68 @@
    "default": "1",
    "nullable": "NO",
    "type": "integer"
+  }
+ },
+ "income_tax_asset_blocks": {
+  "assets_remain": {
+   "default": "",
+   "nullable": "YES",
+   "type": "boolean"
+  },
+  "block_key": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "created_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "financial_year": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "notes": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "opening_wdv_paise": {
+   "default": "",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "rate_percent": {
+   "default": "",
+   "nullable": "NO",
+   "type": "smallint"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
   }
  },
  "inventory_stock_ledger": {
@@ -14701,6 +15049,11 @@
    "nullable": "NO",
    "type": "bigint"
   },
+  "tds_advance_adjusted_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
   "tds_basis": {
    "default": "",
    "nullable": "YES",
@@ -15150,6 +15503,46 @@
    "default": "",
    "nullable": "YES",
    "type": "text"
+  },
+  "tds_base_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "tds_basis": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "tds_cess_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "tds_nature_of_income": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "tds_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "tds_rate_bps": {
+   "default": "",
+   "nullable": "YES",
+   "type": "integer"
+  },
+  "tds_section": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "tds_surcharge_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
   },
   "txn_amount": {
    "default": "",
@@ -18392,6 +18785,11 @@
    "nullable": "YES",
    "type": "uuid"
   },
+  "purchase_payment_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
   "quarter": {
    "default": "",
    "nullable": "YES",
@@ -18979,6 +19377,11 @@
    "type": "boolean"
   },
   "no_pe_declaration_ref": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "non_resident_payee_class": {
    "default": "",
    "nullable": "YES",
    "type": "text"
@@ -20236,6 +20639,21 @@
    "type": "timestamp with time zone"
   },
   "prepared_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "reopen_reason": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "reopened_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "reopened_by": {
    "default": "",
    "nullable": "YES",
    "type": "uuid"

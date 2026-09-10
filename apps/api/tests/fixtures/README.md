@@ -307,3 +307,39 @@ TDS, loan and fixed-deposit tables. Nothing else moved.
 
 `applied_through_migration` moves 341 -> 351 in the guards meta. 352 is the
 migration in flight in the PR that carries this refresh.
+
+## Refreshed 10 September 2026, after migration 358
+
+Fifteen migrations had landed since the 343 snapshot and `production_types.
+ADDED_AFTER_THE_SNAPSHOT` had grown to NINE — one past its own cap, which is the
+cap doing exactly what it is for. The alternative on offer was raising the cap,
+which is the thing that check exists to prevent.
+
+Same route as the 293 and 294 refreshes, and the same proof, because this
+session still has no libpq DSN to production — only the Supabase MCP console.
+Rather than editing by hand, the thirteen tables that migrations 344-358 touch
+were RE-CAPTURED whole with `INTROSPECT_SQL` restricted to those tables, and
+their entries replaced wholesale. Four of the thirteen were tables the snapshot
+had never seen at all: `ais_records`, `ais_reconciliations`, `ais_uploads` and
+`income_tax_asset_blocks`.
+
+The proof is the same global checksum, over EVERY column and not only the ones
+touched — so a change made in production out-of-band, or a table the
+migration-file scan missed, would have shown as a mismatch:
+
+    -- in production
+    SELECT md5(string_agg(
+             table_name||'|'||column_name||'|'||data_type||'|'||is_nullable
+             ||'|'||COALESCE(column_default,''),
+             E'\n' ORDER BY table_name, column_name))
+    FROM information_schema.columns WHERE table_schema = 'public';
+
+Both sides: `032ab2c4faf8496eefc6ff2fae0148a1`, over 4,081 columns in 274
+tables. The rule was validated first by rebuilding the OLD fixture's string the
+same way and reproducing its recorded `dff5c56db004d43f0cd6c4dc3d193124` — so
+the checksum is comparing the two databases and not two spellings of one.
+
+The FILENAME still says 2026-09-03. `production_types.py` picks the newest
+`production_schema_*.json` by glob, and renaming this one would silently orphan
+`production_guards_2026-09-03.json`, which is a separate capture on its own
+cycle. The capture date is in the `.meta.json`.

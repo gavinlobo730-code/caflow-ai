@@ -189,6 +189,13 @@ class TDSResolution:
     rate_bps: int            # persisted on the bill for 26Q reconciliation (IT Act §203)
     is_company_rate: bool
     reason: str              # 'applied' | 'below_threshold'
+    #: IT Act §197 — the certified rate, where a live certificate reached part
+    #: or all of the charge base, and how much of it that rate reached. The
+    #: CALLER decides what to persist as "the rate deducted at", because where
+    #: the ceiling is crossed mid-year two rates apply to one document and Form
+    #: 26Q's annexure has one rate column. See domain/tds/lower_deduction.py.
+    certificate_rate_bps: Optional[int] = None
+    certified_base_paise: int = 0
 
 
 def has_pan(pan: Optional[str]) -> bool:
@@ -336,6 +343,8 @@ class TDSComputer:
         is_company: bool = False,
         fy: Optional[str] = None,
         has_pan: bool = True,
+        certified_base_paise: int = 0,
+        certificate_rate_bps: Optional[int] = None,
     ) -> "TDSResolution":
         """Resolve TDS for a single purchase bill — the single source of TDS rules.
 
@@ -385,6 +394,18 @@ class TDSComputer:
                                   at Section 206AA's threshold. Defaults to True so
                                   callers that don't yet track PAN availability keep
                                   their prior (pre-R3.10) behaviour unchanged.
+          certified_base_paise:   IT Act §197 — how much of the CHARGE BASE a live
+                                  lower-deduction certificate reaches. Rule 28AA(4)
+                                  makes a certificate an AMOUNT as well as a rate, so
+                                  a year that runs past the ceiling is charged at two
+                                  rates: the certified slice at the certificate's, the
+                                  rest at the section's. The caller computes the slice
+                                  because only it knows which documents fell inside the
+                                  validity period — see domain/tds/lower_deduction.py
+                                  and services/vendor_tds.py.
+          certificate_rate_bps:   the certified rate in basis points. 0 is real and
+                                  common: §197(1) allows "no deduction of tax". None
+                                  means no certificate, which is not the same as 0.
         """
         section = (section or "").upper().strip()
         rates = tds_rates_for(fy)
@@ -426,14 +447,33 @@ class TDSComputer:
         # CAN exceed this one bill's value on the bill that crosses a large
         # aggregate; that is the statute — the year's tax falls due on the payment
         # that crosses — and not the 100%-of-base case audit L1 was about.
-        cumulative_tds = charge_base * rate_bps // 10000
+        # IT Act §197 with Rule 28AA(4): a certificate lowers the rate up to a
+        # certified AMOUNT, and the excess resumes at the section rate. Split
+        # rather than substituted, because a certificate for ₹50,00,000 on a
+        # vendor billed ₹60,00,000 does not certify the last ₹10,00,000 — and
+        # substituting would under-deduct exactly where the AO stopped
+        # certifying. §206AA's floor is untouched: it applies to `rate_bps`
+        # above and never to the certified slice, because §206AA(4) bars a §197
+        # certificate without a PAN in the first place, so the two cannot both
+        # be live (lower_deduction.position_for refuses that combination).
+        certified = max(0, min(int(certified_base_paise), charge_base))
+        if certificate_rate_bps is not None and certified > 0:
+            cumulative_tds = (certified * int(certificate_rate_bps) // 10000
+                              + (charge_base - certified) * rate_bps // 10000)
+        else:
+            certified = 0
+            cumulative_tds = charge_base * rate_bps // 10000
         # IT Act §200: what earlier bills already deducted and paid to the credit
         # of the Central Government is not deducted a second time. Floored at zero
         # because a credit note or a mid-year rate change can leave more withheld
         # than the fresh aggregate needs, and there is no such thing as a negative
         # withholding on a 26Q line.
         tds = max(0, cumulative_tds - fy_prior_tds_paise)
-        return TDSResolution(True, section, tds, rate, rate_bps, is_company, "applied")
+        return TDSResolution(
+            True, section, tds, rate, rate_bps, is_company, "applied",
+            certificate_rate_bps=(certificate_rate_bps if certified > 0 else None),
+            certified_base_paise=certified,
+        )
 
     @staticmethod
     def _quarter_end(financial_year: str, quarter: str) -> str:

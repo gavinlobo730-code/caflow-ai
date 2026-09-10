@@ -169,7 +169,14 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
     # not one. The asymmetry is the statute's, not an inconsistency.
     is_195 = (bill.get("tds_section") or "").strip() == "195"
     on_books = status in IN_THE_BOOKS and not bill.get("deleted_at")
-    live = on_books and (deducted > 0 or is_195)
+    # A §197 NIL IS A ROW TOO, for the same reason a §195 nil is. §197(1) lets
+    # the Assessing Officer certify "no deduction of tax", and Form 26Q's
+    # deductee annexure reports exactly that — with the certificate number and
+    # a lower-deduction flag the FVU requires whenever a below-normal rate is
+    # used. A payment below §194C's threshold still gets no row: that is a sum
+    # the section never charged, not a deduction the AO relieved.
+    certified = bool(bill.get("tds_certificate_no"))
+    live = on_books and (deducted > 0 or is_195 or certified)
 
     try:
         if not live:
@@ -195,7 +202,11 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
         # guessing one would put a wrong code in a filed return, so mapping
         # this to a code is a human step (migration 312).
         non_deduction_reason = None
-        if deducted == 0 and is_195:
+        if deducted == 0 and certified:
+            non_deduction_reason = (
+                f"Nil withheld under a section 197 certificate "
+                f"({bill.get('tds_certificate_no')}).")
+        elif deducted == 0 and is_195:
             non_deduction_reason = (
                 bill.get("_tds_citation")
                 or f"Nil withheld under section 195 — basis "
@@ -283,6 +294,14 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
             "country_of_residence": (v.get("country_of_residence") or None) if is_27q else None,
             "deductee_tin": (v.get("tax_identification_number") or None) if is_27q else None,
             "non_deduction_reason": non_deduction_reason,
+            # IT Act §197. Both columns have existed since migration 037 and
+            # NOTHING had ever written to them, so Form 26Q's own
+            # lower-deduction fields were permanently blank — and the FVU
+            # requires the certificate number wherever a below-normal rate is
+            # used. `is_lower_deduction` is exactly "a number is present", so
+            # the document stores one fact and this derives the other.
+            "lower_deduction_cert": (bill.get("tds_certificate_no") or None),
+            "is_lower_deduction": bool(bill.get("tds_certificate_no")),
         }, on_conflict="purchase_bill_id").execute()
         out = {"synced": True, "action": "recorded", "tds_paise": deducted,
                "financial_year": fy_label(when),
@@ -347,8 +366,9 @@ def sync_for_payment(db, firm_id: str, client_id: str, payment: dict,
     deducted = int(payment.get("tds_paise") or 0)
     charged_base = int(payment.get("tds_base_paise") or 0)
     is_195 = (payment.get("tds_section") or "").strip() == "195"
+    certified = bool(payment.get("tds_certificate_no"))
     live = (not payment.get("is_reversed")) and charged_base > 0 and (
-        deducted > 0 or is_195)
+        deducted > 0 or is_195 or certified)
 
     try:
         if not live:
@@ -420,6 +440,10 @@ def sync_for_payment(db, firm_id: str, client_id: str, payment: dict,
             "country_of_residence": (v.get("country_of_residence") or None) if is_27q else None,
             "deductee_tin": (v.get("tax_identification_number") or None) if is_27q else None,
             "non_deduction_reason": non_deduction_reason,
+            # As on the bill path — §194 and §195 charge at credit or payment
+            # whichever is earlier, so an advance can be certified too.
+            "lower_deduction_cert": (payment.get("tds_certificate_no") or None),
+            "is_lower_deduction": bool(payment.get("tds_certificate_no")),
         }, on_conflict="purchase_payment_id").execute()
         out = {"synced": True, "action": "recorded", "tds_paise": deducted,
                "financial_year": fy_label(when),

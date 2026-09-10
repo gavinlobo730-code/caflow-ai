@@ -694,6 +694,51 @@ Payable and reaches the register — and `tds_26q_from_books` read only
 the statement, with the reconciliation failing because the GL movement included
 it. Both vendor returns now read both kinds of posted document.
 
+#### 11c · PUR-07 ≡ TDS-13 — DONE. A certificate is a rate, a number, a period AND an amount
+Migration 359, `domain/tds/lower_deduction.py`, and a screen.
+
+A transport contractor produces a §197 certificate at 0.5% instead of 2% and
+there was nowhere to record it: `vendors` had no certificate column of any kind
+and `resolve_tds` took no certificate parameter, so a holder was always withheld
+at the full rate. The CA's only options were to turn TDS off on the vendor —
+losing the register row, the 26Q deductee line and the challan — or to accept
+the over-deduction. `tds_deductions.is_lower_deduction` and
+`.lower_deduction_cert` had existed since migration 037 with nothing ever
+writing to them, so the FVU fields the certificate number is required in were
+permanently blank.
+
+**Half of TDS-13's evidence was already stale.** "captured, displayed and then
+ignored" describes `vendors.tds_rate_bps`, which PUR-06 had already deleted from
+the vendor form and the importer — precisely because §197(1) plus Rule 28AA(4)
+make a certificate four facts and a bare percentage carries none of them.
+
+**Three refusals.** §197(1) reaches a listed set of sections and §194Q is not
+among them. §206AA(4) bars a certificate where the application has no PAN, so a
+no-PAN vendor keeps the 20% floor. Two certificates in force in one year is
+refused rather than resolved to the lower one.
+
+**The ceiling is a ceiling.** Rule 28AA(4) issues a certificate for a specified
+AMOUNT, so the year is charged at two rates — the certified slice at the
+certificate's and the excess at the section's. Substituting the rate outright,
+which is the obvious implementation, under-deducts by ₹15,000 on a ₹60,00,000
+year against a ₹50,00,000 certificate, exactly where the AO stopped certifying.
+
+**One over-deduction the tests caught while being written.** The certificate was
+first selected by THIS DOCUMENT's date. Because §194 charges on the year's
+AGGREGATE, a bill dated after the certificate expired recomputed the whole year
+at the section rate and re-charged the earlier certified slice: ₹40,000 withheld
+across a year where ₹25,000 was due, which the §200 credit cannot undo because
+the cumulative it is subtracted from was already wrong. The certificate is now
+selected by OVERLAP with the financial year, and `covers()` answers the separate
+question of whether a given document sits inside it.
+
+**The snapshot fixture was refreshed as part of this.**
+`production_types.ADDED_AFTER_THE_SNAPSHOT` had reached nine migrations against
+its own cap of eight — the cap doing exactly what it exists for. Refreshed
+against production rather than widened: thirteen tables re-captured whole, and
+the whole-schema md5 checked against the live database
+(`032ab2c4faf8496eefc6ff2fae0148a1`, 4,081 columns in 274 tables).
+
 Form 3CD, §54 reinvestment exemptions, GSTR-9, QRMP, multi-GSTIN, the MSME
 §43B(h) tracker, recurring journals out of `localStorage`, Schedule III mapping
 that changes something, invoice discounts, closing stock as at a date.
