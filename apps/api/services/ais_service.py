@@ -496,11 +496,32 @@ def _by_type(lines: list[dict]) -> list[dict]:
 # ── I/O, both backends ─────────────────────────────────────────────────────
 
 def _insert_upload(row: dict) -> str:
+    """The payload is written INLINE, and that is not verbosity.
+
+    tests/test_backend_columns_exist_pg.py and
+    tests/test_backend_inserts_supply_every_required_column_pg.py read a write
+    by parsing the dict AT THE CALL SITE. A payload held in a variable is
+    invisible to both, which is how a column the schema does not have reaches
+    production. Same convention as ageing_schedule_service._write.
+    """
     if _USE_MOCK:
         row = {"id": str(uuid4()), "created_at": _now(), **row}
         _MOCK_UPLOADS[row["id"]] = row
         return row["id"]
-    res = _supabase().table("ais_uploads").insert(row).execute()
+    res = _supabase().table("ais_uploads").insert({
+        "firm_id": row["firm_id"],
+        "client_id": row["client_id"],
+        "assessment_year": row["assessment_year"],
+        "pan": row["pan"],
+        "taxpayer_name": row["taxpayer_name"],
+        "file_name": row["file_name"],
+        "file_hash": row["file_hash"],
+        "record_count": row["record_count"],
+        "total_amount_paise": row["total_amount_paise"],
+        "total_tds_paise": row["total_tds_paise"],
+        "problems": row["problems"],
+        "uploaded_by": row["uploaded_by"],
+    }).execute()
     return (res.data or [{}])[0].get("id")
 
 
@@ -550,7 +571,19 @@ def _insert_records(rows: list[dict]) -> list[dict]:
             _MOCK_RECORDS[r["id"]] = r
             saved.append(r)
         return saved
-    return _supabase().table("ais_records").insert(rows).execute().data or []
+    return _supabase().table("ais_records").insert([{
+        "firm_id": r["firm_id"],
+        "client_id": r["client_id"],
+        "upload_id": r["upload_id"],
+        "assessment_year": r["assessment_year"],
+        "information_source": r["information_source"],
+        "information_label": r["information_label"],
+        "transaction_type": r["transaction_type"],
+        "payer": r["payer"],
+        "amount_paise": r["amount_paise"],
+        "tds_deducted_paise": r["tds_deducted_paise"],
+        "source": r["source"],
+    } for r in rows]).execute().data or []
 
 
 def _records_for_upload(firm_id: str, upload_id: str) -> list[dict]:
@@ -610,7 +643,17 @@ def _insert_recons(rows: list[dict]) -> None:
             r = {"id": str(uuid4()), "created_at": _now(), "updated_at": _now(), **r}
             _MOCK_RECONS[r["record_id"]] = r
         return
-    _supabase().table("ais_reconciliations").insert(rows).execute()
+    _supabase().table("ais_reconciliations").insert([{
+        "firm_id": r["firm_id"],
+        "client_id": r["client_id"],
+        "record_id": r["record_id"],
+        "assessment_year": r["assessment_year"],
+        "books_amount_paise": r["books_amount_paise"],
+        "status": r["status"],
+        "note": r["note"],
+        "reviewed_by": r["reviewed_by"],
+        "reviewed_at": r["reviewed_at"],
+    } for r in rows]).execute()
 
 
 def _upsert_recon(row: dict) -> dict:
@@ -622,7 +665,18 @@ def _upsert_recon(row: dict) -> dict:
         _MOCK_RECONS[row["record_id"]] = saved
         return saved
     res = (_supabase().table("ais_reconciliations")
-           .upsert({**row, "updated_at": _now()}, on_conflict="record_id")
+           .upsert({
+               "firm_id": row["firm_id"],
+               "client_id": row["client_id"],
+               "record_id": row["record_id"],
+               "assessment_year": row["assessment_year"],
+               "books_amount_paise": row["books_amount_paise"],
+               "status": row["status"],
+               "note": row["note"],
+               "reviewed_by": row["reviewed_by"],
+               "reviewed_at": row["reviewed_at"],
+               "updated_at": _now(),
+           }, on_conflict="record_id")
            .execute())
     return (res.data or [row])[0]
 
@@ -644,8 +698,11 @@ def _restate_totals(firm_id: str, upload_id: str) -> None:
         if upload_id in _MOCK_UPLOADS:
             _MOCK_UPLOADS[upload_id].update(patch)
         return
-    (_supabase().table("ais_uploads").update(patch)
-     .eq("id", upload_id).eq("firm_id", firm_id).execute())
+    (_supabase().table("ais_uploads").update({
+        "record_count": patch["record_count"],
+        "total_amount_paise": patch["total_amount_paise"],
+        "total_tds_paise": patch["total_tds_paise"],
+     }).eq("id", upload_id).eq("firm_id", firm_id).execute())
 
 
 def _reset_mock_state() -> None:

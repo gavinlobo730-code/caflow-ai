@@ -227,9 +227,18 @@ def scan_file(path: Path) -> tuple[list[tuple[str, str, str]], int]:
             if not node.args:
                 continue
             payload = node.args[0]
+            # A bulk insert's payload is almost always a COMPREHENSION over
+            # the rows, and its element is the dict literal that names the
+            # columns:  .insert([{...} for r in rows]).  Reading only List and
+            # Tuple made every one of those a blind spot, which is the shape
+            # most likely to carry a column the schema does not have — one
+            # wrong key there rejects the whole batch.
             dicts = [payload] if isinstance(payload, ast.Dict) else (
                 [e for e in payload.elts if isinstance(e, ast.Dict)]
-                if isinstance(payload, (ast.List, ast.Tuple)) else []
+                if isinstance(payload, (ast.List, ast.Tuple)) else
+                [payload.elt]
+                if isinstance(payload, (ast.ListComp, ast.GeneratorExp))
+                   and isinstance(payload.elt, ast.Dict) else []
             )
             if not dicts:
                 unreadable += 1
