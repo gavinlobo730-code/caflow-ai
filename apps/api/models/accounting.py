@@ -253,6 +253,19 @@ class DepreciationIn(BaseModel):
     period: Optional[str] = None  # YYYY-MM; defaults to current month
 
 
+class DepreciationRunIn(BaseModel):
+    """Post every unposted month in a range, for every live asset of a client.
+
+    A RANGE, named by the CA, is a different act from the single endpoint's one
+    month: it is a request for those months, so the run posts them in order and
+    reports each one. It cannot create a gap, because it starts at each asset's
+    earliest unposted month — see routers/fixed_assets.run_depreciation (FA-04).
+    """
+    client_id: str
+    from_period: str    # YYYY-MM, inclusive
+    to_period: str      # YYYY-MM, inclusive
+
+
 class FixedAssetUpdateIn(BaseModel):
     """A correction to an asset already in the register (FA-10).
 

@@ -168,9 +168,34 @@ class _Q:
 class TypeCheckedFakeDB:
     def __init__(self):
         self.store = {}
+        #: The lock reason `public.period_lock_reason` would return, or None for
+        #: an open period. Set it to exercise a locked one.
+        self.lock_reason = None
 
     def table(self, name):
         return _Q(self.store, name)
+
+    def rpc(self, fn, params=None):
+        """`period_lock_service.lock_reason` asks the database, and FAILS CLOSED
+        when it cannot — "Could not confirm this period is open" rather than a
+        silent pass. A double with no `rpc` therefore refuses every posting,
+        which is the right behaviour and the wrong test: it would prove the
+        double's shape, not the router's. So the double answers, and a test that
+        wants a locked period sets `lock_reason`."""
+        class _Rpc:
+            def __init__(self, value):
+                self._value = value
+
+            def execute(self):
+                class _R:
+                    pass
+                r = _R()
+                r.data = self._value
+                return r
+
+        if fn == "period_lock_reason":
+            return _Rpc(self.lock_reason)
+        return _Rpc(None)
 
 
 def _seed_asset(db, **overrides):
