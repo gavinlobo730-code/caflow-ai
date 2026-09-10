@@ -216,6 +216,23 @@ class _Rpc:
 
     def execute(self):
         import uuid
+        if self.name == "period_closure_reason":
+            from services.period_lock_service import _closure_from_tables
+            return _Resp(_closure_from_tables(
+                self.db, self.params.get("p_firm"), self.params.get("p_client"),
+                self.params.get("p_date")))
+        if self.name in ("period_lock_reason", "journal_period_lock_reason"):
+            # Delegated to the one Python answer rather than stubbed. The
+            # posting kernel consults this on every entry (ACC-12), and a stub
+            # returning "open" would make every lock assertion here vacuous
+            # while a raise fails closed and stops the postings this file is
+            # actually about. services/period_lock_service.reason_from_tables
+            # reads the same three tables the SQL function reads, and the two
+            # are pinned by tests/test_period_lock_reason_parity_pg.py.
+            from services.period_lock_service import reason_from_tables
+            return _Resp(reason_from_tables(
+                self.db, self.params.get("p_firm"), self.params.get("p_client"),
+                self.params.get("p_date")))
         if self.name == "post_journal_atomic":
             entry = dict(self.params["p_entry"])
             entry.setdefault("id", str(uuid.uuid4()))

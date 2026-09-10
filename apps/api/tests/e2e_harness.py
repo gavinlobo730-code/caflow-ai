@@ -509,43 +509,38 @@ class _Rpc:
         return _Result(handler())
 
     def _fn_period_lock_reason(self):
-        """Mirror migration 267's period_lock_reason.
+        """DELEGATES to services.period_lock_service.reason_from_tables.
 
-        Faithful rather than stubbed, because it is now consulted on every
-        sales-invoice and purchase-bill write: a stub returning "open" would
-        make every lock test vacuous, and one returning "closed" would fail
-        every test that is not about locking. With no locked years and no
-        filings seeded — the state most tests are in — it returns None, which
-        is what a real database with those tables empty returns.
+        This used to be a third hand-written copy of migration 267's logic, and
+        migration 361 proved why that is untenable: it added a branch — the
+        client's own finalised year — and this copy silently did not have it, so
+        every test using the harness reported an open period where the database
+        reports a closed one.
+
+        There are now TWO implementations of "is this period closed", which is
+        the number CLAUDE.md allows: the SQL function, and the Python twin that
+        exists because mock mode and the in-memory sources have no SQL
+        functions at all. They are pinned to each other by
+        tests/test_period_lock_reason_parity_pg.py. A double that answers the
+        question its own third way is a double that will eventually disagree
+        with both.
         """
-        p_firm = self.params.get("p_firm")
-        p_client = self.params.get("p_client")
-        p_date = self.params.get("p_date")
-        if not p_date:
-            return None
+        from services.period_lock_service import reason_from_tables
+        return reason_from_tables(
+            self.db, self.params.get("p_firm"), self.params.get("p_client"),
+            self.params.get("p_date"))
 
-        year, month = int(str(p_date)[:4]), int(str(p_date)[5:7])
-        fy_start = year if month >= 4 else year - 1
-        fy_label = f"{fy_start}-{str(fy_start + 1)[-2:]}"
+    # journal_period_lock_reason is migration 267's delegate to the same
+    # function, kept because edit_posted_journal calls it by that name.
+    _fn_journal_period_lock_reason = _fn_period_lock_reason
 
-        firm = next((f for f in self.db._tables.get("firms", [])
-                     if f.get("id") == p_firm), None)
-        if fy_label in ((firm or {}).get("locked_financial_years") or []):
-            return (f"Financial year {fy_label} is locked. Unlock it, or post a "
-                    "reversal in an open year.")
-
-        covering = [f for f in self.db._tables.get("filings", [])
-                    if f.get("client_id") == p_client
-                    and not f.get("deleted_at")
-                    and f.get("filed_date")
-                    and str(f.get("period_start") or "") <= str(p_date) <= str(f.get("period_end") or "")]
-        if covering:
-            covering.sort(key=lambda f: str(f.get("filed_date")))
-            hit = covering[0]
-            when = datetime.strptime(str(hit["filed_date"])[:10], "%Y-%m-%d").strftime("%d %b %Y")
-            return (f"{hit.get('filing_type')} covering this date was filed on {when}. "
-                    "Correct it with a reversal and an amendment in the next return.")
-        return None
+    def _fn_period_closure_reason(self):
+        """Migration 361's other entry point — the DELIBERATE closures only,
+        which is what the posting kernel asks. Delegates for the same reason."""
+        from services.period_lock_service import _closure_from_tables
+        return _closure_from_tables(
+            self.db, self.params.get("p_firm"), self.params.get("p_client"),
+            self.params.get("p_date"))
 
     def _fn_post_journal_atomic(self):
         """Mirror migrations/152 post_journal_atomic: insert header + lines

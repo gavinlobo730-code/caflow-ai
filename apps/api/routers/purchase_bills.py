@@ -773,12 +773,14 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     # says where that credit actually goes: the CURRENT return, not the closed
     # one. The sales side has refused this on create since SALES-15; the
     # purchase side is the half that matters most, because a bill is a CLAIM.
-    # NOT memoized like the FY check above: that cache is keyed on the FIRM's
-    # year, and a filed return is a fact about one client and one month.
+    # Memoized on its OWN cache, not the FY one above: that key is the FIRM's
+    # year, and a filed return is a fact about one client and one month, so a
+    # year-keyed entry would report March's filed 3B over an open February.
     if not _USE_MOCK:
         from core.supabase_client import get_supabase
         period_lock_service.assert_open(
-            get_supabase(), firm_id or "", client_id, data["bill_date"])
+            get_supabase(), firm_id or "", client_id, data["bill_date"],
+            bulk_cache.get("period_lock_cache") if bulk_cache is not None else None)
 
     if _USE_MOCK:
         bill_id = str(uuid.uuid4())
@@ -1048,6 +1050,9 @@ def bulk_create_purchase_bills(
     # mutated across the whole loop (see validate_posting_date_cached) so a
     # batch spanning 2 financial years costs 2 RPC calls, not one per bill.
     locked_fy_cache: dict = {}
+    # The client lock is the same question at a finer grain — one answer per
+    # (client, date) rather than per FY, since a filed GSTR-3B closes a month.
+    period_lock_cache: dict = {}
 
     for i, bill_no, data in parsed:
         try:
@@ -1057,6 +1062,7 @@ def bulk_create_purchase_bills(
                     "vendor": vendors_by_id.get((data.client_id, data.vendor_id)),
                     "client_gstin": client_gstin_by_id.get(data.client_id),
                     "locked_fy_cache": locked_fy_cache,
+                    "period_lock_cache": period_lock_cache,
                 }
             bill = _create_purchase_bill_core(data.model_dump(), current_user, bulk_cache=bulk_cache)
             created.append(bill)

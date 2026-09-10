@@ -753,6 +753,53 @@ They ride along with their phase: a TDS medium is cheap once Phase 3 has
 deleted the browser copy, a GST medium is cheap once Phase 5 owns the payload.
 **68 of the 158 are "hours"-sized.** Nothing here is a reason to delay a sale.
 
+#### 12a — one definition of "closed", and the two kinds of it · ACC-21, ACC-27, ACC-12 · **DONE**
+
+Three accounting-core findings that turned out to be one subject.
+
+* **ACC-21** — `post_journal_atomic` validated the ENTRY's firm and client and
+  then inserted the LINES with no check at all; `journal_lines.account_id` had
+  one global FK to `chart_of_accounts(id)`, so every account id in the database
+  satisfied it. Migration 360 puts the rule on the TABLE — a statement-level
+  trigger with a transition table, so it costs one anti-join whatever the row
+  count, and a writer that is not one of the two functions the finding named
+  gets the rule anyway. Measured against production first: 33,080 lines, 0 that
+  the rule would refuse.
+* **ACC-27** — an `entry_date` the kernel could not parse made the kernel SKIP
+  the year lock. Reachable, because the firm-level check parses with
+  `strptime("%Y-%m-%d")` and the kernel with `date.fromisoformat`, so
+  `"2025-4-1"` passed one, failed the other, and posted into a closed client
+  year. Now refused at the Pydantic boundary and, unconditionally, in the
+  kernel.
+* **ACC-12** — the headline. Migration 361 folds all three reasons behind one
+  definition, and **splits them by kind rather than by caller**, which is the
+  part the finding's own suggested fix flags and is easy to get wrong:
+
+  | | what it is | who asks |
+  |---|---|---|
+  | `period_closure_reason` | the firm locked the year, or this client's year-end is finalised — deliberate acts, reopenable | the posting **kernel**, so nothing reaches the ledger without it |
+  | `period_lock_reason` | those two, then a return covering the date has been filed | wherever a document that **feeds a return** is written — invoices, bills, credit and debit notes, and now the manual journal |
+
+  Putting the filed-return branch in the kernel is the obvious reading of the
+  finding and would have frozen the practice: GSTR-1 for June is filed on 11
+  July and GSTR-3B on the 20th, while June's bank reconciliation happens after
+  both, every month, for every client. From the 11th no June receipt, payment,
+  bank entry, depreciation charge or payroll accrual could be recorded — and it
+  would have overturned, silently, the argued decision in `receipt_service.py`
+  that a receipt is deliberately not locked by a filed return.
+
+  The second function CALLS the first rather than restating it, in SQL and in
+  the Python twin alike, and
+  `tests/test_period_lock_reason_parity_pg.py` runs every scenario through all
+  four and asserts they agree.
+
+**The guard:** `test_every_dated_posting_path_asserts_the_client_lock.py`
+already existed and its debt list shrank by one (`manual_journal_service.create`).
+Its header now records what the list means since 361 — every path on it gets
+the closures from the kernel, and what it is still missing is the filed-return
+branch, which matters only where the fact written could change what the return
+said.
+
 ---
 
 ## Totals, and how much to believe them

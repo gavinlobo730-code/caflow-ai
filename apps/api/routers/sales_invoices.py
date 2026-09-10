@@ -820,10 +820,14 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     # lock above is the CA's own switch; this is the portal's. A new invoice
     # dated inside a filed GSTR-1 belongs to a return that can no longer accept
     # it (CGST §37 — corrections go in a later period's amendment tables).
+    # Memoized per (client, date) within a bulk batch, which is a DIFFERENT
+    # cache from the FY one above: that key is the firm's year, and a filed
+    # return is a fact about one client and one month.
     if not _USE_MOCK:
         from core.supabase_client import get_supabase
         period_lock_service.assert_open(
-            get_supabase(), firm_id or "", data.get("client_id"), data.get("invoice_date"))
+            get_supabase(), firm_id or "", data.get("client_id"), data.get("invoice_date"),
+            bulk_cache.get("period_lock_cache") if bulk_cache is not None else None)
 
     if _USE_MOCK:
         invoice_id = str(uuid.uuid4())
@@ -1072,6 +1076,11 @@ def bulk_create_invoices(
     # mutated across the whole loop (see validate_posting_date_cached) so a
     # batch spanning 2 financial years costs 2 RPC calls, not one per invoice.
     locked_fy_cache: dict = {}
+    # The client lock is the same question at a finer grain — one answer per
+    # (client, date) rather than per FY, since a filed GSTR-1 closes a month.
+    # An import is usually one client and a handful of dates, so this turns a
+    # round trip per row into a round trip per distinct date.
+    period_lock_cache: dict = {}
 
     for i, invoice_no, data in parsed:
         try:
@@ -1080,6 +1089,7 @@ def bulk_create_invoices(
                 "client_rec": clients_by_id.get(data.client_id, {}),
                 "existing_invoice_nos": existing_invoice_nos_by_client.setdefault(data.client_id, set()),
                 "locked_fy_cache": locked_fy_cache,
+                "period_lock_cache": period_lock_cache,
             }
             invoice = _create_invoice_core(data.model_dump(), current_user, bulk_cache=bulk_cache)
             created.append(invoice)

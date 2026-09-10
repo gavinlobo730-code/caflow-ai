@@ -301,11 +301,21 @@ def _seed_sql(store: dict) -> str:
         out.append(_insert("journal_entries", e, [
             "id", "firm_id", "client_id", "entry_date", "reference_no", "narration",
             "entry_type", "is_posted", "status", "deleted_at"]))
+    # Migration 360 refuses a line whose account does not belong to its entry's
+    # firm and client, and one fixture below — "another client's entry on the
+    # same account" — is exactly that. It is not a fixture to delete: the report
+    # filter it exercises is defence in depth for rows written BEFORE 360, which
+    # the migration deliberately does not touch. So these are seeded as such a
+    # row would have been, with the trigger off for the insert and on again
+    # after; the trigger has its own proof in
+    # tests/test_journal_lines_belong_to_the_client_pg.py.
+    out.append("ALTER TABLE public.journal_lines DISABLE TRIGGER journal_lines_belong_to_the_client_ins;")
     for l in store["journal_lines"]:
         out.append(_insert("journal_lines", l, [
             "id", "journal_entry_id", "account_id", "debit_paise", "credit_paise",
             "txn_currency", "base_currency", "exchange_rate", "rate_type",
             "txn_debit", "txn_credit"]))
+    out.append("ALTER TABLE public.journal_lines ENABLE TRIGGER journal_lines_belong_to_the_client_ins;")
     for b in store["bank_accounts"]:
         out.append(_insert("bank_accounts", b, [
             "id", "firm_id", "client_id", "bank_name", "account_no", "account_type",

@@ -1682,7 +1682,7 @@ class Phase2JournalService:
         if total_debit == 0:
             raise ValueError(f"Refusing to post a zero-value journal entry for ref={reference_no}")
 
-        # ── The client's own financial year must be open ─────────────────────
+        # ── The period must not be CLOSED ────────────────────────────────────
         # Enforced HERE, in the kernel, rather than at the call sites: CLAUDE.md
         # guarantees every accounting event that touches the GL is written by
         # this method, so one check covers every path — sales, purchases,
@@ -1691,23 +1691,72 @@ class Phase2JournalService:
         # validate_posting_date's 67 call sites would have been a far larger
         # change for weaker coverage.
         #
-        # The FIRM-level year lock is unchanged and still checked by those call
-        # sites; this is the client-scoped lock a year-end completion now
-        # writes (migration 289). A posting is refused if either applies.
-        if firm_id and client_id and entry_date:
-            from datetime import date as _date
-            from core.ist_clock import ist_fy_label
-            from services.year_lock_service import is_client_year_locked
-            try:
-                _d = _date.fromisoformat(str(entry_date)[:10])
-            except (TypeError, ValueError):
-                _d = None
-            fy = ist_fy_label(_d) if _d else None
-            if fy and is_client_year_locked(db, firm_id, client_id, fy):
-                raise ValueError(
-                    f"FY {fy} is closed for this client — its year-end has been "
-                    f"finalised. Reopen the year before posting to it."
-                )
+        # Closed means one of TWO things here, both deliberate acts by the CA:
+        # the FIRM locked the financial year (migration 020), or this CLIENT's
+        # year-end was finalised (migration 289). Migration 361 put both behind
+        # `period_closure_reason`, so this is one round trip for both where it
+        # used to be one for the second and none for the first. The firm lock is
+        # still checked at those 67 call sites too; this is the backstop for the
+        # paths that are not one of them.
+        # AN UNREADABLE DATE IS A REFUSAL, NOT A REASON TO SKIP THE LOCK (ACC-27).
+        # The guard below used to read `if firm_id and client_id and entry_date`
+        # and, inside it, set `_d = None` on a parse failure and fall through —
+        # so a date the lock could not read was a date the lock did not apply
+        # to, in TWO spellings: unparseable, and empty. That is the one value
+        # that must never buy its way past a control.
+        #
+        # It is reachable. The firm-level check upstream parses with
+        # `strptime("%Y-%m-%d")`, which accepts "2025-4-1"; this parses with
+        # `date.fromisoformat`, which does not. So a single-digit month passed
+        # the first, failed the second, and posted into a client year that
+        # year-end finalisation had closed — and Postgres stored it happily,
+        # because it is a valid DATE.
+        #
+        # Checked unconditionally rather than inside the firm/client guard:
+        # `journal_entries.entry_date` is DATE NOT NULL (migration 003), so a
+        # caller reaching here without a readable one is not a caller with
+        # nothing to check — it is a caller whose INSERT was going to fail
+        # anyway, later and less legibly. models/accounting.py refuses it at the
+        # request boundary too; neither is redundant, because the kernel is
+        # reached by paths that never construct a Pydantic model.
+        from datetime import date as _date
+        try:
+            _d = _date.fromisoformat(str(entry_date)[:10])
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"'{entry_date}' is not a posting date. Use YYYY-MM-DD — a "
+                f"date this cannot read is a date the year-end lock cannot "
+                f"be checked against."
+            )
+
+        if firm_id and client_id:
+            from services import period_lock_service
+            # ONE CALL, BOTH CLOSURES (ACC-12). This asked only
+            # `is_client_year_locked` — the client's own finalised year — so the
+            # FIRM's locked financial year reached the ledger unopposed on any
+            # path that did not go through a router: a scheduled accrual, a
+            # service-layer posting, a job. Both are DELIBERATE closures set by
+            # the CA, both mean "these books are finished", and migration 361
+            # folded them into one function so this is the SAME single round trip
+            # it was before and covers both — on the hottest path in the product,
+            # with Singapore-to-Mumbai latency on it.
+            #
+            # NOT `lock_reason`, which adds the filed-return branch, and the
+            # calendar is the reason. GSTR-1 for June is filed on 11 July and
+            # GSTR-3B on the 20th, while June's bank reconciliation happens after
+            # both — every month, for every client. Refusing here would stop June
+            # receipts, June payments, June bank entries, June depreciation and
+            # June payroll accruals from 11 July onwards, and would overturn from
+            # underneath the argued decision in receipt_service that a receipt is
+            # NOT locked by a filed return. A filed return freezes what it
+            # REPORTED, so it is asked where a document that feeds a return is
+            # written — invoices, bills, credit and debit notes, and the manual
+            # journal, which can move any account including the tax ledgers.
+            # Migration 361's header carries the whole argument.
+            reason = period_lock_service.closure_reason(
+                db, firm_id, client_id, _d.isoformat())
+            if reason:
+                raise ValueError(reason)
 
         # ── Multi-Currency Phase 2 (foundation): resolve the currency metadata ────
         # Base currency is authoritative and always INR (Capability A). Everything

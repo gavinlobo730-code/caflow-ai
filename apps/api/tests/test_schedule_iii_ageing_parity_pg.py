@@ -549,11 +549,16 @@ def test_another_clients_marked_account_stays_out_of_this_note(db):
 
 
 def test_a_misposted_line_on_this_clients_account_stays_out(db):
-    """journal_lines.account_id has no cross-check against its entry's client,
-    so an entry belonging to another client — or another FIRM — can in principle
-    carry a line on this client's account. Nothing should ever write one; the
-    filter is defence in depth behind the app-layer scope, exactly as CLAUDE.md
-    describes it.
+    """A line whose account belongs to another client — or another FIRM — must
+    not reach this client's schedule.
+
+    MIGRATION 360 NOW REFUSES SUCH A LINE AT THE TABLE (ACC-21), so this shape
+    can no longer be written. It is still worth reporting correctly, because 360
+    deliberately does not touch rows written before it: this filter is defence
+    in depth for history and for the app-layer scope, exactly as CLAUDE.md
+    describes it. The rows below are therefore seeded the way a pre-360 row
+    exists — with the trigger off for the insert — and the trigger's own refusal
+    is proved in tests/test_journal_lines_belong_to_the_client_pg.py.
 
     Written because a negative control found the hole: removing the client scope
     from the SQL broke nothing, since every other scenario keeps the ACCOUNT on
@@ -582,10 +587,12 @@ def test_a_misposted_line_on_this_clients_account_stays_out(db):
            '2026-02-01', 'misposted', 'Journal', true),
           ('e3050000-0000-0000-0000-0000000000dd', '{OTHER_FIRM}', '{CLIENT}',
            '2026-02-01', 'misposted', 'Journal', true);
+        ALTER TABLE public.journal_lines DISABLE TRIGGER journal_lines_belong_to_the_client_ins;
         INSERT INTO journal_lines (journal_entry_id, account_id, debit_paise, credit_paise) VALUES
           ('e3050000-0000-0000-0000-0000000000bb', '{ACCT_AI}', 40_00_000, 0),
           ('e3050000-0000-0000-0000-0000000000cc', '{ACCT_AI}', 70_00_000, 0),
           ('e3050000-0000-0000-0000-0000000000dd', '{ACCT_AI}', 90_00_000, 0);
+        ALTER TABLE public.journal_lines ENABLE TRIGGER journal_lines_belong_to_the_client_ins;
     """)
     assert seed.returncode == 0, f"seed failed: {seed.stderr}"
     doc = _sql_schedule(db)
