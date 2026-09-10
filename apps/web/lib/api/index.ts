@@ -913,6 +913,40 @@ export async function errorMessage(res: Response): Promise<string> {
   return body.trim() ? `API error ${res.status}: ${body}` : `API error ${res.status}`;
 }
 
+/** A refusal the server sent as `{message, code}`, carrying its code.
+ *
+ *  `errorMessage` flattens a structured detail for DISPLAY, which is what most
+ *  screens need. A screen that can offer the way past a refusal needs to know
+ *  WHICH refusal it was, and matching on the wording of a sentence written for
+ *  a human is how a message becomes unfixable — change the sentence and the
+ *  behaviour silently changes with it. So the code travels beside the text. */
+export class ApiRefusal extends Error {
+  readonly code: string | null;
+  constructor(message: string, code: string | null) {
+    super(message);
+    this.name = "ApiRefusal";
+    this.code = code;
+  }
+}
+
+/** Read a failed Response ONCE and produce the refusal it describes. */
+export async function refusalFrom(res: Response): Promise<ApiRefusal> {
+  const body = await res.text().catch(() => "");
+  let message = body.trim() ? `API error ${res.status}: ${body}` : `API error ${res.status}`;
+  let code: string | null = null;
+  try {
+    const detail = JSON.parse(body)?.detail;
+    if (typeof detail === "string" && detail.trim()) message = detail.trim();
+    else if (detail && typeof detail === "object") {
+      if (typeof detail.message === "string") message = detail.message;
+      if (typeof detail.code === "string") code = detail.code;
+    }
+  } catch {
+    /* not JSON — the raw body is the best we have */
+  }
+  return new ApiRefusal(message, code);
+}
+
 /** Fetch a binary endpoint with auth and trigger a browser blob download. */
 async function downloadFile(path: string, fallbackFilename: string, extraHeaders?: Record<string, string>): Promise<Headers> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -1422,7 +1456,12 @@ export const api = {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
       });
-      if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+      // A 422 here is an answer written for the CA — the statement does not add
+      // up, the format is unmappable — and it used to reach the screen as the
+      // raw JSON body inside "API error 422: {...}". It now arrives as its
+      // sentence, with the server's code where there is one, so the import
+      // dialog can offer the acknowledgement rather than leaving a dead end.
+      if (!res.ok) throw await refusalFrom(res);
       return res.json();
     },
     /** Tier 3.2 — a multipart POST that returns JSON, same shape as uploadStatement. */

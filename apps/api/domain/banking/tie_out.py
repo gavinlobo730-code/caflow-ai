@@ -141,6 +141,14 @@ def _r(paise: int) -> str:
 
 # ── The statement's own totals ───────────────────────────────────────────────
 
+#: "Grand Total", specifically. A statement that prints per-page subtotals and
+#: then a grand total has said WHICH row is the whole statement, and that is the
+#: only way this module will choose between several candidates. It must stay a
+#: SUBSET of the normalizer's _TOTAL_LABEL — a row this matches and that one
+#: does not would be a total the parser never skipped — and a test pins that.
+_GRAND_LABEL = re.compile(r"^\s*grand\s+totals?\s*:?\s*$", re.IGNORECASE)
+
+
 def printed_totals(rows: Sequence[Sequence], adapter: dict) -> Optional[dict]:
     """The withdrawal and deposit totals the BANK printed, if it printed them.
 
@@ -175,18 +183,86 @@ def printed_totals(rows: Sequence[Sequence], adapter: dict) -> Optional[dict]:
         Anything else returns None, and the caller falls back to the balances.
         A totals check that is right most of the time is worse than one that
         says it could not find them.
+
+    AND WHY IT NO LONGER TAKES THE FIRST ROW IT FINDS (BANK-01)
+
+        It used to return the FIRST matching row, which on a multi-page
+        statement is a PAGE SUBTOTAL. The parse then disagreed with it — of
+        course it did, the parse covers every page — and `statement_check`
+        refused the import outright, with a message telling the CA to check
+        their column mapping when no mapping was involved and nothing had been
+        misread. Per-page and per-month subtotals labelled "Total" are ordinary
+        in Indian bank exports, so a good statement could not be imported at
+        all without editing the bank's file by hand.
+
+        The rule now is that the FILE has to say which row is the whole
+        statement, and there are exactly two ways it can:
+
+          * it prints one totals row, and that row is the statement's;
+          * it prints several, and exactly one of them is labelled "Grand
+            Total" — the bank itself distinguishing the whole from the parts.
+
+        Anything else is AMBIGUOUS and this says so rather than choosing: the
+        return carries `ambiguous: True` and a sentence, `totals_agreement`
+        reports the check as not made, and the import falls back to the typed
+        balances exactly as it does for a statement that prints no totals. An
+        unchecked import is a worse outcome than a checked one and a better
+        outcome than a wrong refusal.
+
+        WHAT IS DELIBERATELY NOT DONE, because it is the obvious idea: pick
+        whichever candidate agrees with the parsed sums. That makes the check
+        prove itself. The whole value of this evidence is that it comes from
+        outside the reading being checked, and a rule that selects the row our
+        own arithmetic already matches can never fail — it would turn the
+        strongest check in the import into a decoration.
     """
     # The label pattern lives in the normalizer, because the parser has to
     # recognise the same row: it is the row _rows_to_txns skips for having no
     # date, and one definition is what keeps "skipped there" and "read here"
     # describing the same row.
+    candidates = totals_candidates(rows, adapter)
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    grand = [c for c in candidates if _GRAND_LABEL.match(c["label"])]
+    if len(grand) == 1:
+        return grand[0]
+
+    labels = []
+    for c in candidates:                       # distinct, in the file's order
+        if c["label"] not in labels:
+            labels.append(c["label"])
+    quoted = ", ".join(f'"{l}"' for l in labels)
+    return {
+        "ambiguous": True,
+        "candidates": len(candidates),
+        "labels": labels,
+        "gap": (
+            f"This statement prints {len(candidates)} totals rows ({quoted}) and "
+            f"none of them is marked as the grand total, so which one totals the "
+            f"whole statement cannot be told from the file — they may be page or "
+            f"month subtotals. The parse was not checked against any of them. "
+            f"Give the opening and closing balances printed on the statement to "
+            f"have it checked."),
+    }
+
+
+def totals_candidates(rows: Sequence[Sequence], adapter: dict) -> list[dict]:
+    """Every row that could be a totals row, in the order the file prints them.
+
+    Separate from the choosing so that the choice is testable on its own, and
+    so a caller that wants to SHOW the CA what was found can.
+    """
     from .normalizer import _TOTAL_LABEL
 
     debit_col, credit_col = adapter.get("debit"), adapter.get("credit")
     if debit_col is None or credit_col is None:
         # The single-amount + Dr/Cr layout has no two columns to order.
-        return None
+        return []
 
+    out: list[dict] = []
     for row in rows:
         cells = [("" if c is None else str(c)).strip() for c in row]
         if not cells or not _TOTAL_LABEL.match(cells[0]):
@@ -198,12 +274,12 @@ def printed_totals(rows: Sequence[Sequence], adapter: dict) -> Optional[dict]:
         if first is None or second is None:
             continue
         debit_first = debit_col < credit_col
-        return {
+        out.append({
             "label": cells[0],
             "total_debits_paise": abs(first if debit_first else second),
             "total_credits_paise": abs(second if debit_first else first),
-        }
-    return None
+        })
+    return out
 
 
 def _looks_numeric(cell: str) -> bool:
@@ -231,11 +307,16 @@ def totals_agreement(txns: Sequence, printed: Optional[dict]) -> dict:
     other.
     """
     debits, credits = totals(txns)
-    if not printed:
+    if not printed or printed.get("ambiguous"):
+        # AMBIGUOUS IS NOT THE SAME AS ABSENT, and the CA is told which it was.
+        # "This statement does not print its own totals" in front of a statement
+        # that visibly does would send somebody looking for a parsing bug.
         return {
             "checked": False,
-            "gap": ("This statement does not print its own totals, so the "
-                    "opening and closing balances are the only way to check it."),
+            "gap": (printed or {}).get("gap") or (
+                "This statement does not print its own totals, so the "
+                "opening and closing balances are the only way to check it."),
+            "ambiguous": bool(printed and printed.get("ambiguous")),
             "total_debits_paise": debits,
             "total_credits_paise": credits,
         }
@@ -264,8 +345,17 @@ def totals_agreement(txns: Sequence, printed: Optional[dict]) -> dict:
         out["reason"] = (
             f"This statement does not match its own \"{printed['label']}\" row: "
             + " and ".join(parts)
+            # THREE explanations, not two. The old sentence named only the two
+            # that are our fault — lines missed, a column mapped wrong — and a
+            # CA whose file was fine was sent hunting for a mapping error that
+            # did not exist (BANK-01). The bank's own row not being comparable
+            # is a real and common third case: it can include a brought-forward
+            # line, or cover a period the export was filtered out of.
             + ". Either some lines were not read, or a column is mapped to the "
-              "wrong thing. Nothing has been imported.")
+              "wrong thing, or the row does not cover the same lines this file "
+              "does. Nothing has been imported. If you have compared the two "
+              "yourself and the file is right, import it again with a note "
+              "saying why.")
     return out
 
 
@@ -275,6 +365,7 @@ def statement_check(
     opening_paise: Optional[int],
     closing_paise: Optional[int],
     printed: Optional[dict],
+    totals_mismatch_acknowledged: bool = False,
 ) -> dict:
     """The whole verification of one import, as a single answer.
 
@@ -295,6 +386,29 @@ def statement_check(
     typed balances, nothing was misread — the file simply is not the period
     those balances belong to, and telling the CA to go looking for a mapping
     error would send them after a bug that is not there.
+
+    THE ACKNOWLEDGEMENT, AND WHY ONLY ONE OF THE TWO HAS ONE (BANK-01)
+
+    `totals_mismatch_acknowledged` lets a CA who has compared the figures
+    themselves import over a printed-totals mismatch. It exists because that
+    refusal was the only one in the import with NO way past it: the evidence
+    comes out of the file, so a CA who knows the bank's own row is not
+    comparable — it carries a brought-forward line, or the export was filtered —
+    could do nothing but edit the bank's statement by hand, which destroys the
+    evidence and leaves nothing checked at all. A refusal should be a stop, not
+    a wall.
+
+    The tie-out deliberately gets no such door, and the asymmetry is the point:
+    the balances it checks were typed into THIS request, so a CA who does not
+    want that check simply does not type them. There is nothing to acknowledge
+    — only a figure to correct or to omit.
+
+    An acknowledged import is NEVER `verified`, even when the typed balances tie
+    out. Something in the file contradicts the parse; that a second check passed
+    does not unsay it, and a response that read as verified would put an
+    acknowledged import and a clean one in the same box. What it gets instead is
+    a `gap` that states the disagreement — and the caller records the CA's
+    reason beside the two differences it excused.
     """
     tie = tie_out(txns, opening_paise=opening_paise, closing_paise=closing_paise)
     tot = totals_agreement(txns, printed)
@@ -304,11 +418,16 @@ def statement_check(
     tot_bad = tot.get("checked") and not tot.get("agrees")
     tie_bad = tie.get("checked") and not tie.get("agrees")
 
+    acknowledged = bool(tot_bad and totals_mismatch_acknowledged)
+
     refusal = None
-    if tot_bad:
+    refusal_code = None
+    if tot_bad and not acknowledged:
         refusal = tot["reason"]
+        refusal_code = "totals_mismatch"
     elif tie_bad:
         refusal = tie["reason"]
+        refusal_code = "tie_out"
         if tot_ok:
             refusal += (
                 f" The lines DO add up to the statement's own \"{tot['label']}\" "
@@ -316,17 +435,32 @@ def statement_check(
                 f"balances that were typed in, and that this file covers the "
                 f"period they belong to.")
 
-    verified = bool((tot_ok or tie_ok) and not refusal)
+    verified = bool((tot_ok or tie_ok) and not refusal and not acknowledged)
     gap = None
-    if not verified and not refusal:
+    if acknowledged:
         gap = (
-            f"Nothing confirms that every line was read: this statement prints "
-            f"no totals of its own, and the opening and closing balances were "
-            f"not given. {len(txns)} transactions were parsed.")
+            f"The lines do not agree with the statement's own "
+            f"\"{tot['label']}\" row and the import was accepted anyway, on a "
+            f"written note. "
+            + ("The opening and closing balances given do tie out."
+               if tie_ok else
+               "Nothing else confirmed that every line was read."))
+    elif not verified and not refusal:
+        gap = (
+            (tot.get("gap") + " ") if tot.get("gap") and tot.get("ambiguous") else
+            "Nothing confirms that every line was read: this statement prints "
+            "no totals of its own, and the opening and closing balances were "
+            "not given. ") + f"{len(txns)} transactions were parsed."
 
     return {
         "verified": verified,
         "refusal": refusal,
+        # What was refused, for a caller that has something to offer the CA. The
+        # sentence is written for a human and must stay the thing that is shown;
+        # matching a screen's behaviour on its wording is how a message becomes
+        # unfixable.
+        "refusal_code": refusal_code,
+        "acknowledged": acknowledged,
         "gap": gap,
         "tie_out": tie,
         "totals_check": tot,

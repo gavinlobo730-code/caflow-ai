@@ -796,6 +796,7 @@ def upload_statement(
     opening_balance_paise: Optional[int] = Form(None),
     closing_balance_paise: Optional[int] = Form(None),
     allow_vision: bool = Form(False),
+    acknowledge_totals_mismatch: Optional[str] = Form(None),
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     """Upload a CSV/XLSX/PDF bank statement, or a scan of one. Parsing + normalization + dedup happen
@@ -830,6 +831,23 @@ def upload_statement(
         cannot be a sum of the reading being checked (domain/banking/vision.py).
         A deterministic parse is always tried first and a text PDF never reaches
         the model.
+
+    AND ONE WAY PAST THE TOTALS, WHICH IS WRITTEN DOWN
+        `acknowledge_totals_mismatch` is a reason — at least ten characters —
+        for importing although the statement's own totals row disagreed with the
+        lines read from it. It exists because that was the one refusal with no
+        way past: the evidence comes out of the file, so a CA who knows the
+        bank's row is not comparable (it carries a brought-forward line, or the
+        export is a filtered view) could do nothing but edit the statement by
+        hand, which destroys the evidence and leaves nothing checked at all.
+
+        It is narrow on purpose. It clears ONLY the printed-totals refusal,
+        never the tie-out — those balances were typed into this same request, so
+        a CA who does not want that check simply does not type them. The import
+        does not come back `verified`, the reason is stored on the statement row
+        beside the two differences it excused (migration 354), it is written to
+        the audit log and to the client's timeline, and it is refused outright
+        on a scan, where nothing but the model read the file.
     """
     assert_client_access(current_user, client_id)
     content = file.file.read()
@@ -876,10 +894,40 @@ def upload_statement(
     # and is advisory; this one decides whether the import happens at all, so it
     # has to run first — reporting "it does not add up" beside rows that are
     # already in the ledger would be a finding nobody can act on.
+    ack_reason = (acknowledge_totals_mismatch or "").strip()
+    if ack_reason and len(ack_reason) < 10:
+        raise HTTPException(
+            status_code=422,
+            detail="Give a reason of at least 10 characters for importing a "
+                   "statement whose own totals do not agree with it.")
+    if ack_reason and used_vision:
+        # A scan has nothing else that read the file. On the deterministic path
+        # the CA can open the CSV and see the rows the parser saw; on this one
+        # the only reading IS the thing whose arithmetic failed, so overriding
+        # it would be accepting a model's word against the statement's own.
+        raise HTTPException(
+            status_code=422,
+            detail="A scanned statement cannot be imported over a totals "
+                   "mismatch — the only reading of the file is the one that "
+                   "does not add up. Import it as a CSV or XLSX instead.")
     check = statement_check(txns, opening_paise=opening_balance_paise,
-                            closing_paise=closing_balance_paise, printed=printed)
+                            closing_paise=closing_balance_paise, printed=printed,
+                            totals_mismatch_acknowledged=bool(ack_reason))
+    if ack_reason and not check["acknowledged"]:
+        # A reason typed against nothing. Storing it would put an explanation on
+        # the record for a check that passed — and a box that can be ticked when
+        # it does not apply is a box people tick out of habit.
+        raise HTTPException(
+            status_code=422,
+            detail="There is nothing to acknowledge: this statement's own "
+                   "totals were not checked, or they agree with the lines read "
+                   "from it. Import it without a note.")
     if check["refusal"]:
-        raise HTTPException(status_code=422, detail=check["refusal"])
+        # A dict, so a screen can offer the way past without matching on the
+        # wording of a sentence written for a human. lib/api errorMessage()
+        # already flattens {message: ...} for display.
+        raise HTTPException(status_code=422, detail={
+            "message": check["refusal"], "code": check["refusal_code"]})
     if used_vision and not check["verified"]:
         # Belt and braces, and deliberately kept. Between them the two refusals
         # above should already cover this path — _read_statement_file refuses a
@@ -908,15 +956,29 @@ def upload_statement(
                                    "totals_check": check["totals_check"],
                                    "verified": check["verified"],
                                    "verification_gap": check["gap"],
+                                   "totals_mismatch_acknowledged": check["acknowledged"],
                                    "read_with_ai": used_vision})
     file_meta = {
         "file_name": file.filename, "file_size_bytes": len(content),
         "source_format": fmt, "file_hash": file_hash(content),
     }
+    acknowledgement = None
+    if check["acknowledged"]:
+        tot = check["totals_check"]
+        acknowledgement = {
+            "reason": ack_reason,
+            "debit_difference_paise": tot["debit_difference_paise"],
+            "credit_difference_paise": tot["credit_difference_paise"],
+            # public.users.id — the INTERNAL user id, because the column FKs
+            # users(id) (CLAUDE.md). current_user carries both, and this module
+            # already has one scar from passing auth_user_id to a column that
+            # wanted the other: the column-mapping save below.
+            "by": current_user.get("id"),
+        }
     result = banking_service.import_normalized(
         db, current_user["firm_id"], client_id, bank_name, account_number, txns,
         bank_account_id=bank_account_id, actor_id=current_user.get("auth_user_id"),
-        file_meta=file_meta,
+        file_meta=file_meta, totals_acknowledgement=acknowledgement,
     )
 
     # The mapping is saved only AFTER the import succeeded, and only when asked.
@@ -957,6 +1019,7 @@ def upload_statement(
     result["totals_check"] = check["totals_check"]
     result["verified"] = check["verified"]
     result["verification_gap"] = check["gap"]
+    result["totals_mismatch_acknowledged"] = check["acknowledged"]
     # Say when a model read the statement. A CA reviewing these lines later is
     # entitled to know they came off a picture rather than a file, and the
     # source_format on the statement row records the same thing durably.

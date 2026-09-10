@@ -81,6 +81,11 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("fixed_assets", "deleted_by"): "migration 351",
     ("fixed_assets", "updated_at"): "migration 351",
     ("fixed_assets", "corrections_count"): "migration 351",
+    ("bank_statements", "totals_mismatch_reason"): "migration 354",
+    ("bank_statements", "totals_mismatch_debit_difference_paise"): "migration 354",
+    ("bank_statements", "totals_mismatch_credit_difference_paise"): "migration 354",
+    ("bank_statements", "totals_mismatch_acknowledged_by"): "migration 354",
+    ("bank_statements", "totals_mismatch_acknowledged_at"): "migration 354",
 }
 
 

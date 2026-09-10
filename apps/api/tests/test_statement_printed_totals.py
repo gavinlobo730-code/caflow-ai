@@ -275,6 +275,7 @@ def _upload(**kw):
             bank_account_id=None, column_mapping=None, save_mapping=False,
             opening_balance_paise=kw.pop("opening", None),
             closing_balance_paise=kw.pop("closing", None),
+            acknowledge_totals_mismatch=kw.pop("acknowledge", None),
             current_user=CALLER)
 
 
