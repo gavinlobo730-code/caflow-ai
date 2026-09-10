@@ -507,10 +507,12 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # can_access_client check close only the firm-BOUNDARY half, the same
     # convention billing.py's Partner-only record_fee_receipt used. The seven
     # reporting endpoints (ledger/trial-balance/profit-loss/balance-sheet/
-    # schedule-iii/cash-flow/statement-analysis) now check a NAMED client_id;
-    # the client_id=None "firm-wide consolidation" case is recorded, not
-    # fixed — see get_ledger's docstring and the audit doc, the same line
-    # drawn for /api/copilot/intelligence/*.
+    # schedule-iii/cash-flow/statement-analysis) check a NAMED client_id, and
+    # since ACC-17 an OMITTED one narrows to the caller's assigned clients as
+    # well: _reporting_service builds the ledger source from
+    # effective_client_ids, so "all clients" means all clients this caller may
+    # read. Pinned by test_a_report_without_a_client_id_is_still_scoped.py.
+    # /api/copilot/intelligence/* is still the line not yet drawn.
     "/api/accounting": (
         "assert_client_access", "can_access_client", "filter_by_client",
         "_assert_account_scope", "_assert_draft_scope", "_assert_journal_scope",

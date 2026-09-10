@@ -55,6 +55,29 @@ def _is_missing_column_error(err: Exception, column: str) -> bool:
 
 
 class LedgerSource(ABC):
+    """A ledger a report may read.
+
+    THE SOURCE HOLDS THE SCOPE, NOT EACH CALL (ACC-17).
+        `client_id=None` means "every client", and for a Partner that is right —
+        `_FIRMWIDE_ROLES` is `{Role.PARTNER}` (core/authz.py), so a Partner sees
+        the whole practice by definition. For anyone else it was wrong: an
+        Executive or a Manager assigned to three clients who omitted `client_id`
+        got the consolidated trial balance, P&L, balance sheet and cash flow of
+        every client in the firm. Intra-firm only — `firm_id` was always applied
+        — but "All Clients" on the Schedule III screen is a real control a real
+        staff member can press.
+
+        `allowed_client_ids` is that caller's assignment scope, from
+        `core.authz.effective_client_ids`: None means no restriction (a
+        firm-wide role, or mock mode, which has no assignments to enforce), and
+        a set means every read is confined to it.
+
+        It lives on the SOURCE and not on each method because a source is built
+        per request from the caller's own scope, and because a fetch added later
+        gets the rule for free. Threading it through nine methods instead would
+        make forgetting it possible, which is how this became a finding.
+    """
+
     @abstractmethod
     def snapshot(self, firm_id: str, client_id: Optional[str],
                  start_date: Optional[str], end_date: Optional[str]) -> LedgerSnapshot:
@@ -65,7 +88,9 @@ class InMemoryLedgerSource(LedgerSource):
     """Builds a snapshot from in-memory fixtures (tests / mock)."""
 
     def __init__(self, *, accounts, entries, invoices=None, receipts=None,
-                 allocations=None, credit_notes=None, bills=None, payments=None):
+                 allocations=None, credit_notes=None, bills=None, payments=None,
+                 allowed_client_ids: Optional[set] = None):
+        self.allowed_client_ids = allowed_client_ids
         self._accounts = {a.id: a for a in accounts}
         self._entries = list(entries)
         self._invoices = list(invoices or [])
@@ -77,7 +102,14 @@ class InMemoryLedgerSource(LedgerSource):
 
     def snapshot(self, firm_id, client_id, start_date, end_date) -> LedgerSnapshot:
         def scoped(e: JournalEntry) -> bool:
-            return e.firm_id == firm_id and (client_id is None or e.client_id == client_id)
+            if e.firm_id != firm_id:
+                return False
+            if client_id is not None:
+                return e.client_id == client_id
+            # No client named: every client this caller may read. `None` means
+            # no restriction — see LedgerSource's docstring.
+            return (self.allowed_client_ids is None
+                    or e.client_id in self.allowed_client_ids)
 
         scoped_entries = [e for e in self._entries if scoped(e)]
         entries_by_id = {e.id: e for e in scoped_entries}
@@ -127,8 +159,11 @@ class SupabaseLedgerSource(LedgerSource):
     # entry (a bounded handful each), so only the top-level fetch needs paging.
     _PAGE = 1000
 
-    def __init__(self, db):
+    def __init__(self, db, allowed_client_ids: Optional[set] = None):
         self.db = db
+        # The caller's assignment scope for the life of this source. See
+        # LedgerSource's docstring for why it lives here and not on each call.
+        self.allowed_client_ids = allowed_client_ids
         # None = not yet probed; True/False once the table has been read. Makes
         # reports work whether or not migrations 092 / 055 have run — deployment
         # order between those migrations and this code no longer matters.
@@ -141,6 +176,23 @@ class SupabaseLedgerSource(LedgerSource):
         # snapshot() 3× with different date windows; a reports bundle calls it once
         # per report) — never across requests, so there is no staleness risk.
         self._base_cache: dict[tuple[str, Optional[str]], dict] = {}
+
+    def _scope(self, q, client_id):
+        """Apply the CLIENT scope to a query whose firm_id the caller has set.
+
+        A named client wins — `assert_client_access` has already established the
+        caller may read it. With no client named, the read is confined to the
+        caller's assigned set, or unrestricted where there is none.
+
+        `.in_` with an EMPTY set is deliberate rather than guarded away: a
+        caller assigned no clients should see nothing, and turning that into "no
+        filter" would be the exact inversion this fix exists to remove.
+        """
+        if client_id:
+            return q.eq("client_id", client_id)
+        if self.allowed_client_ids is not None:
+            return q.in_("client_id", sorted(self.allowed_client_ids))
+        return q
 
     def _base(self, firm_id, client_id) -> dict:
         """Fetch (once per request) all tenant-scoped rows the reports need. Only the
@@ -244,8 +296,15 @@ class SupabaseLedgerSource(LedgerSource):
     def _accounts(self, firm_id, client_id) -> dict[str, Account]:
         def run(select_cols: str):
             q = self.db.table("chart_of_accounts").select(select_cols).eq("firm_id", firm_id)
+            # `chart_of_accounts.client_id` NULL is a FIRM-LEVEL account, which
+            # every client of that firm may legitimately post to — so it is
+            # included whichever way the scope narrows, and _scope (which does
+            # not know that) is not the helper for this one.
             if client_id:
                 q = q.or_(f"client_id.eq.{client_id},client_id.is.null")
+            elif self.allowed_client_ids is not None:
+                ids = ",".join(sorted(self.allowed_client_ids))
+                q = q.or_(f"client_id.in.({ids}),client_id.is.null") if ids else q.is_("client_id", "null")
             return q.execute().data or []
 
         rows = None
@@ -380,8 +439,7 @@ class SupabaseLedgerSource(LedgerSource):
         def make_q(with_rev: bool, with_ccy: bool):
             q = (self.db.table("journal_entries").select(entry_cols(with_rev, with_ccy))
                  .eq("firm_id", firm_id).eq("is_posted", True).is_("deleted_at", "null"))
-            if client_id:
-                q = q.eq("client_id", client_id)
+            q = self._scope(q, client_id)
             if account_id:
                 q = q.eq("journal_lines.account_id", account_id)   # embedded-resource filter
             if date_from:
@@ -501,8 +559,7 @@ class SupabaseLedgerSource(LedgerSource):
         def make_q():
             q = self.db.table("client_sales_invoices").select(
                 "id, total_paise, journal_entry_id").eq("firm_id", firm_id)
-            if client_id:
-                q = q.eq("client_id", client_id)
+            q = self._scope(q, client_id)
             return q.order("id")
         # Paged (task #221, same audit C6 class as _entries): unpaged, this
         # silently dropped invoices past PostgREST's ~1000-row cap for any
@@ -516,8 +573,7 @@ class SupabaseLedgerSource(LedgerSource):
         def make_q():
             q = self.db.table("receipts").select(
                 "id, amount_paise, tds_paise, journal_entry_id").eq("firm_id", firm_id)
-            if client_id:
-                q = q.eq("client_id", client_id)
+            q = self._scope(q, client_id)
             return q.order("id")
         rows = self._fetch_all(make_q)
         return {r["id"]: Receipt(r["id"], r.get("journal_entry_id"),
@@ -550,8 +606,7 @@ class SupabaseLedgerSource(LedgerSource):
         def make_q():
             q = self.db.table("credit_notes").select(
                 "id, sales_invoice_id, journal_entry_id").eq("firm_id", firm_id)
-            if client_id:
-                q = q.eq("client_id", client_id)
+            q = self._scope(q, client_id)
             return q.order("id")
         rows = self._fetch_all(make_q)
         return [CreditNote(r["id"], r.get("sales_invoice_id"), r.get("journal_entry_id")) for r in rows]
@@ -560,8 +615,7 @@ class SupabaseLedgerSource(LedgerSource):
         def make_q():
             q = self.db.table("purchase_bills").select(
                 "id, total_paise, journal_entry_id").eq("firm_id", firm_id)
-            if client_id:
-                q = q.eq("client_id", client_id)
+            q = self._scope(q, client_id)
             return q.order("id")
         rows = self._fetch_all(make_q)
         return {r["id"]: Bill(r["id"], int(r.get("total_paise", 0) or 0),
@@ -571,8 +625,7 @@ class SupabaseLedgerSource(LedgerSource):
         def make_q():
             q = self.db.table("purchase_payments").select(
                 "id, purchase_bill_id, amount_paise, journal_entry_id").eq("firm_id", firm_id)
-            if client_id:
-                q = q.eq("client_id", client_id)
+            q = self._scope(q, client_id)
             return q.order("id")
         rows = self._fetch_all(make_q)
         return [Payment(r["id"], r.get("purchase_bill_id"), r.get("journal_entry_id"),

@@ -27,17 +27,31 @@ from services import ageing_schedule_service, ratio_analysis_service
 from models.fy import FYLabel, OptionalFYLabel
 
 
-def _reporting_service() -> ReportingService:
+def _reporting_service(current_user: Optional[dict] = None) -> ReportingService:
     """
     Trial Balance / P&L / Balance Sheet engine. Reads the production ledger via
     Supabase when configured (firm- and client-scoped), else the in-memory seed
     for dev/demo. Cash and accrual are computed by one code path over one source
     — IT Act §145; cash basis is management reporting only (GST stays invoice-based).
+
+    THE CALLER'S SCOPE IS BUILT INTO THE SOURCE (ACC-17). Every reporting
+    endpoint below treats `client_id=None` as "all clients", and for a Partner
+    that is right — `_FIRMWIDE_ROLES` is `{Role.PARTNER}`. For an Executive or a
+    Manager it was not: omitting `client_id` returned the consolidated books of
+    every client in the practice, and the Schedule III screen offers exactly
+    that as an "All Clients" option. Passing `effective_client_ids` here makes
+    "all clients" mean "all clients this caller may read", which is what
+    /journals and /ledger-span already do — the inconsistency was inside one
+    router.
+
+    `current_user` is optional only so a non-request caller (a job, a service)
+    can build an unscoped engine deliberately; every route below passes it.
     """
+    allowed = effective_client_ids(current_user) if current_user else None
     if os.environ.get("SUPABASE_URL"):
         from core.supabase_client import get_supabase
-        return ReportingService(SupabaseLedgerSource(get_supabase()))
-    return ReportingService(mock_ledger_source())
+        return ReportingService(SupabaseLedgerSource(get_supabase(), allowed))
+    return ReportingService(mock_ledger_source(allowed))
 
 
 def _current_fy_long() -> str:
@@ -891,19 +905,23 @@ def get_ledger(
     unpaged — which is why the window is computed in SQL over the account's
     whole history and only then sliced.
 
-    client_id is checked when named; when omitted, every reporting endpoint
-    below aggregates across the WHOLE FIRM rather than narrowing to the
-    caller's own assigned clients — "accounting" read is _AT_LEAST_EXECUTIVE,
-    not Partner-only, so this is a live gap for a non-firm-wide caller who
-    simply omits client_id. Recorded, not fixed: correctly narrowing an
-    aggregate report means threading effective_client_ids through
-    domain/reporting.py's ReportingService (ledger/trial_balance/profit_loss/
-    balance_sheet/schedule_iii/cash_flow) and both its Supabase and mock
-    sources — a bigger lift than a guard, the same line drawn for
-    /api/copilot/intelligence/* and /api/copilot/executive-dashboard."""
+    client_id is checked when named, and when OMITTED the report is confined to
+    the clients this caller may read (ACC-17). That used to aggregate across the
+    whole firm: "accounting" read is _AT_LEAST_EXECUTIVE and _FIRMWIDE_ROLES is
+    {Role.PARTNER}, so an Executive or a Manager assigned to three clients who
+    omitted client_id got the consolidated trial balance, P&L, balance sheet and
+    cash flow of every client in the practice — and the Schedule III screen
+    offers "All Clients" as an ordinary control, so it did not even need a
+    hand-made request. Intra-firm only; firm_id was always applied.
+
+    The scope is built into the LEDGER SOURCE by _reporting_service rather than
+    threaded through each report, because a source is created per request from
+    the caller's own scope and a fetch added later then gets the rule for free.
+    /journals and /ledger-span already narrowed this way — the inconsistency was
+    inside this one router."""
     if client_id:
         assert_client_access(current_user, client_id)
-    return api_response(True, _reporting_service().ledger(
+    return api_response(True, _reporting_service(current_user).ledger(
         current_user["firm_id"], client_id, account_id, start_date, end_date,
         limit=limit, offset=offset,
     ))
@@ -951,7 +969,7 @@ def get_cash_book(
 
     out, negatives = [], []
     for a in sorted(cash_accounts, key=lambda x: str(x.get("account_code") or "")):
-        led = _reporting_service().ledger(
+        led = _reporting_service(current_user).ledger(
             firm_id, client_id, a["id"], start_date, end_date, limit=1000, offset=0)
         lines = led.get("lines") or []
         opening = int(led.get("opening_balance_paise") or 0)
@@ -1002,7 +1020,7 @@ def get_trial_balance(
     """
     if client_id:
         assert_client_access(current_user, client_id)
-    tb = _reporting_service().trial_balance(
+    tb = _reporting_service(current_user).trial_balance(
         current_user["firm_id"], client_id, as_of_date, basis=basis
     )
     return api_response(True, tb)
@@ -1046,7 +1064,7 @@ def get_profit_loss(
     """
     if client_id:
         assert_client_access(current_user, client_id)
-    pl = _reporting_service().profit_loss(
+    pl = _reporting_service(current_user).profit_loss(
         current_user["firm_id"], client_id, start_date, end_date, basis=basis
     )
     return api_response(True, pl)
@@ -1065,7 +1083,7 @@ def get_balance_sheet(
     """
     if client_id:
         assert_client_access(current_user, client_id)
-    bs = _reporting_service().balance_sheet(
+    bs = _reporting_service(current_user).balance_sheet(
         current_user["firm_id"], client_id, as_of_date, basis=basis
     )
     return api_response(True, bs)
@@ -1087,7 +1105,7 @@ def get_schedule_iii(
     """
     if client_id:
         assert_client_access(current_user, client_id)
-    data = _reporting_service().schedule_iii(
+    data = _reporting_service(current_user).schedule_iii(
         current_user["firm_id"], client_id, fy_start, fy_end
     )
     return api_response(True, data)
@@ -1249,7 +1267,7 @@ def get_schedule_iii_ratios(
     """
     assert_client_access(current_user, client_id)
     return api_response(True, ratio_analysis_service.ratio_note(
-        _reporting_service(), _prod_db(), current_user["firm_id"], client_id, fy))
+        _reporting_service(current_user), _prod_db(), current_user["firm_id"], client_id, fy))
 
 
 @router.put("/schedule-iii/ratios/explanation")
@@ -1323,7 +1341,7 @@ def get_schedule_iii_trend(
     ratio_analysis_service.fy_bounds(end_fy)        # validates, 422s if it does not
     start_year = int(end_fy.split("-")[0]) - (years - 1)
     fy_labels = [f"{y}-{str(y + 1)[2:]}" for y in range(start_year, start_year + years)]
-    return api_response(True, _reporting_service().multi_year_trend(
+    return api_response(True, _reporting_service(current_user).multi_year_trend(
         current_user["firm_id"], client_id, fy_labels))
 
 
@@ -1343,7 +1361,7 @@ def get_cash_flow(
     """
     if client_id:
         assert_client_access(current_user, client_id)
-    cf = _reporting_service().cash_flow_statement(
+    cf = _reporting_service(current_user).cash_flow_statement(
         current_user["firm_id"], client_id, start_date, end_date, basis=basis
     )
     return api_response(True, cf)
@@ -1380,7 +1398,7 @@ async def get_statement_analysis(
     prev_fy = _shift_fy(financial_year, -1)
     prev_start, prev_end = _fy_range(prev_fy)
 
-    svc = _reporting_service()
+    svc = _reporting_service(current_user)
     firm_id = current_user["firm_id"]
     pl = svc.profit_loss(firm_id, client_id, start, end, basis=basis)
     bs = svc.balance_sheet(firm_id, client_id, end, basis=basis)

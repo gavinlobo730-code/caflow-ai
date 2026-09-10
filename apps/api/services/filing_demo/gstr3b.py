@@ -101,14 +101,40 @@ def _due_date(client_id: str, firm_id: str, period: str) -> str:
         return ""
 
 
-def _correction_window(period: str) -> str:
+def _annual_return_filed(client_id: str, firm_id: str, fy: str):
+    """The date this client's GSTR-9 for `fy` was furnished, or None.
+
+    Reads the same store `services/gst_amendment_service.annual_returns_filed`
+    reads, through that one function, so the demo and the real engine cannot
+    disagree about when a window shut. Returns None on anything missing — this
+    is a walk-through, and a lookup it cannot make costs it the earlier date,
+    never the page.
+    """
+    if not client_id or not firm_id:
+        return None
+    try:
+        from core.supabase_client import get_supabase
+        from services.gst_amendment_service import annual_returns_filed_safely
+        return annual_returns_filed_safely(get_supabase(), firm_id, client_id).get(fy)
+    except Exception:                                             # noqa: BLE001
+        return None
+
+
+def _correction_window(period: str, client_id: str = "", firm_id: str = "") -> str:
     """When this period stops being correctable at all, per
     compliance_engine.correction_window_closes (CGST §37(3)/§39(9)/§16(4)).
 
     Never november_30_cutoff: that is only the statutory outer limit, and on
     its own it tells a CA a correction is available when the client's early
-    GSTR-9 has already shut the window. The prose beside this date carries the
-    "whichever is EARLIER" half, which is the part that bites.
+    GSTR-9 has already shut the window.
+
+    AND THE CLIENT'S OWN GSTR-9 IS NOW LOOKED UP (GST-09). Passing no annual
+    return date meant this always returned the 30 November limit — the very
+    thing the paragraph above says not to show — with the "whichever is
+    EARLIER" half surviving only as prose beside it. A walk-through whose
+    stated purpose is portal fidelity should not need a footnote to be right.
+    The ids are optional so a caller without them still gets the outer limit
+    rather than an error.
     """
     try:
         from services.compliance_engine import correction_window_closes
@@ -116,7 +142,8 @@ def _correction_window(period: str) -> str:
         # Financial year is April to March, so a period in Jan–Mar belongs to
         # the FY that ENDS in its own calendar year.
         fy_end = year + 1 if month >= 4 else year
-        return correction_window_closes(fy_end).isoformat()
+        filed = _annual_return_filed(client_id, firm_id, f"{fy_end - 1}-{str(fy_end)[2:]}")
+        return correction_window_closes(fy_end, filed).isoformat()
     except (ValueError, TypeError, IndexError):
         return ""
 
@@ -175,7 +202,7 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     carried_forward = _p(utilisation, "carried_forward_paise")
 
     due = _due_date(client_id, firm_id, period)
-    window_closes = _correction_window(period)
+    window_closes = _correction_window(period, client_id, firm_id)
 
     # ── Stage 1: the saved return, as the portal shows it ────────────────────
     note = ("On the portal this is the saved return, after Prepare Online and "

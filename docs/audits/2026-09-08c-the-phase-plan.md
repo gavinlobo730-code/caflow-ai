@@ -800,6 +800,33 @@ the closures from the kernel, and what it is still missing is the filed-return
 branch, which matters only where the fact written could change what the return
 said.
 
+#### 12b — a report is scoped, and a window that has shut says so · ACC-17, GST-09 · **DONE**
+
+* **ACC-17** — the seven reporting endpoints treat an omitted `client_id` as
+  "all clients", and `_FIRMWIDE_ROLES` is `{Role.PARTNER}`, so an Executive or
+  a Manager assigned to three clients got the consolidated trial balance, P&L,
+  balance sheet, Schedule III and cash flow of the whole practice. Not a
+  hand-made request either: `/accounting/schedule-iii` offers "All Clients" as
+  an ordinary control. The scope now lives **on the ledger source**, built per
+  request from `effective_client_ids`, rather than threaded through nine report
+  methods — a source cannot be asked an unscoped question, and a fetch added
+  later inherits the rule. The router's own "Recorded, not fixed" comment is
+  gone.
+* **GST-09** — `correction_window_closes` has always implemented "30 November
+  **or the annual return, whichever is earlier**", and no production caller ever
+  supplied the date, so every window reported the outer limit. The GSTR-9 date
+  is now resolved from `gstr1_returns`, and **two things the obvious fix gets
+  wrong** are pinned by tests: it is one date **per financial year** (the source
+  periods of one call straddle years, and a single date shortens the wrong one),
+  and it is an **IST** date (`submitted_at` is UTC on disk; 20:00 UTC on 30
+  November is 1 December in India, and the two readings fall on opposite sides
+  of the cutoff). The filing demo's own copy of the question was wired the same
+  way, through the same function.
+
+**Still open in Phase 12**: the remaining mediums and lows, and
+`/api/copilot/intelligence/*`, which is the one place still aggregating
+firm-wide for an assignment-scoped caller.
+
 ---
 
 ## Totals, and how much to believe them
