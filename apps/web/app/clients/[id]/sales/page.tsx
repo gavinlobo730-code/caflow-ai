@@ -20,6 +20,8 @@ import type { Column, FilterDef } from "@/lib/table/types";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
+import AllocateReceiptModal from "@/components/sales/AllocateReceiptModal";
+import { unallocatedOf } from "@/lib/sales/receiptAllocation";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import {
   classificationFrom, toClassificationPayload, isNonStandard,
@@ -84,6 +86,12 @@ interface Receipt {
   payment_mode: string;
   reference_no: string | null;
   allocated_paise: number;
+  /** Customer-deducted TDS. Part of the SETTLEMENT value: a §194J receipt of
+   *  ₹98,000 cash + ₹2,000 TDS settles ₹1,00,000 of invoices. */
+  tds_paise?: number;
+  /** What the SERVER recorded as still unallocated, not a subtraction done
+   *  here — the two differ by exactly the TDS above. */
+  unallocated_paise?: number;
   is_reversed?: boolean;
 }
 
@@ -3133,6 +3141,11 @@ function Receipts({
   const [loadFailed, setLoadFailed] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  // SALES-14. PATCH /api/receipts/{id}/allocate has existed and been correct
+  // since task H3 and no screen called it — so this table showed an
+  // "Unallocated" column and an "Unallocated only" filter every month, and
+  // offered no way to apply the money to the invoice it was for.
+  const [allocating, setAllocating] = useState<Receipt | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   const load = useCallback(async () => {
@@ -3145,7 +3158,11 @@ function Receipts({
       const [{ data: recData, error: recError }, { data: custData }] = await Promise.all([
         selectAll(() => supabase
           .from("receipts")
-          .select("id, receipt_no, receipt_date, customer_id, amount_paise, payment_mode, reference_no, allocated_paise, is_reversed, customers(name)")
+          // tds_paise and unallocated_paise: the SETTLEMENT value is amount +
+          // customer-deducted TDS (a §194J receipt of ₹98,000 cash + ₹2,000 TDS
+          // settles ₹1,00,000 of invoices), and unallocated_paise is what the
+          // server actually recorded rather than a subtraction done here.
+          .select("id, receipt_no, receipt_date, customer_id, amount_paise, tds_paise, payment_mode, reference_no, allocated_paise, unallocated_paise, is_reversed, customers(name)")
           .eq("client_id", clientId)
           .gte("receipt_date", start)
           .lte("receipt_date", end)
@@ -3245,9 +3262,9 @@ function Receipts({
       ) },
     { key: "allocated_paise", header: "Allocated", accessor: (r) => r.allocated_paise ?? 0, align: "right", exportValue: (r) => formatPaise(r.allocated_paise ?? 0),
       render: (r) => <span className="font-mono text-green-700">{fmt(r.allocated_paise ?? 0)}</span> },
-    { key: "unallocated_paise", header: "Unallocated", accessor: (r) => r.amount_paise - (r.allocated_paise ?? 0), align: "right",
-      exportValue: (r) => formatPaise(r.amount_paise - (r.allocated_paise ?? 0)),
-      render: (r) => <span className="font-mono text-amber-700">{fmt(r.amount_paise - (r.allocated_paise ?? 0))}</span> },
+    { key: "unallocated_paise", header: "Unallocated", accessor: unallocatedOf, align: "right",
+      exportValue: (r) => formatPaise(unallocatedOf(r)),
+      render: (r) => <span className="font-mono text-amber-700">{fmt(unallocatedOf(r))}</span> },
     { key: "is_reversed", header: "Status", accessor: (r) => (r.is_reversed ? "Reversed" : "Active"),
       render: (r) => r.is_reversed ? (
         <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-600">Reversed</span>
@@ -3255,7 +3272,7 @@ function Receipts({
   ], []);
 
   const filters: FilterDef<Receipt>[] = useMemo(() => [
-    { key: "unallocated", label: "Unallocated only", type: "boolean", accessor: (r) => r.amount_paise - (r.allocated_paise ?? 0) > 0,
+    { key: "unallocated", label: "Unallocated only", type: "boolean", accessor: (r) => unallocatedOf(r) > 0,
       trueLabel: "Unallocated", falseLabel: "Fully allocated" },
   ], []);
 
@@ -3319,12 +3336,27 @@ function Receipts({
         error={loadFailed ? "Couldn't load receipts — the request failed or timed out." : null}
         onRetry={load}
         rowActions={(r) => !r.is_reversed && (
-          <button onClick={() => reverseReceipt(r)}
-            className="text-[11px] text-red-600 hover:text-red-800 hover:underline">
-            Reverse
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setAllocating(r)}
+              className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline">
+              Apply
+            </button>
+            <button onClick={() => reverseReceipt(r)}
+              className="text-[11px] text-red-600 hover:text-red-800 hover:underline">
+              Reverse
+            </button>
+          </div>
         )}
       />
+
+      {allocating && (
+        <AllocateReceiptModal
+          receipt={allocating}
+          clientId={clientId}
+          onClose={() => setAllocating(null)}
+          onSaved={(msg) => { setAllocating(null); load(); showToast(msg, "success"); }}
+        />
+      )}
     </div>
   );
 }

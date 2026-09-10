@@ -2334,6 +2334,26 @@ export const api = {
   receipts: {
     create: (body: unknown) =>
       request("/api/receipts/", { method: "POST", body: JSON.stringify(body) }),
+
+    /** APPLY AN ADVANCE TO INVOICES (SALES-14).
+     *
+     *  The endpoint has existed and been correct since task H3 — it reverses
+     *  this receipt's prior allocations, re-validates each new one against the
+     *  invoice's LIVE outstanding, re-applies, and rewrites
+     *  `receipts.unallocated_paise` — and no screen called it. A customer who
+     *  paid in advance had money in the books that could never be applied to
+     *  the invoice it was for, from anywhere in the product.
+     *
+     *  It REPLACES the receipt's whole allocation set; send every line, not
+     *  just the new one.
+     */
+    allocate: (receiptId: string, allocations: {
+      sales_invoice_id: string; allocated_paise: number;
+    }[]) =>
+      request<{ success: boolean; data: { receipt_id: string; unallocated_paise?: number };
+                error: string | null }>(
+        `/api/receipts/${receiptId}/allocate`,
+        { method: "PATCH", body: JSON.stringify({ allocations }) }),
   },
   knowledge: {
     listArticles: (params?: Record<string, string>) =>
