@@ -76,6 +76,11 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/payroll": (
         "assert_client_access", "filter_by_client", "_assert_run_scope",
         "_assert_employee_scope", "_assert_slip_scope",
+        # The Annexure II is assembled once and rendered twice (JSON for the
+        # screen, CSV for the file). The assembler is where the client is
+        # named and where assert_client_access runs; both endpoints reach the
+        # database only through it.
+        "_assemble_annexure_ii",
     ),
     "/api/recurring-invoices": (
         "assert_client_access", "filter_by_client", "effective_client_ids",

@@ -111,6 +111,49 @@ export function financialYearChoices(
 }
 
 /**
+ * The financial year a `YYYY-MM` payroll month belongs to.
+ *
+ * The FY runs April to March, so March 2027 is 2026-27 and April 2027 is
+ * 2027-28 — a one-month step across a year boundary. Offering a CA who
+ * selected March 2027 the label 2027-28 (which is what "today's FY" would
+ * give) points them at a year with no payroll in it.
+ *
+ * Returns the CURRENT financial year for anything this cannot parse, which is
+ * the same answer every other picker in the product starts from.
+ */
+export function financialYearOfMonth(month?: string | null, today: Date = new Date()): string {
+  const text = String(month ?? "").trim();
+  const match = /^(\d{4})-(\d{2})$/.exec(text);
+  if (!match) return currentFinancialYearLabel(today);
+  const year = Number(match[1]);
+  const mon = Number(match[2]);
+  if (!(mon >= 1 && mon <= 12)) return currentFinancialYearLabel(today);
+  const start = mon >= 4 ? year : year - 1;
+  return `${start}-${String(start + 1).slice(-2)}`;
+}
+
+/**
+ * The financial years to offer beside a payroll month: the month's own year
+ * first, then the ones before it.
+ *
+ * The month's own year has to be IN the list, or selecting it is impossible —
+ * `financialYearChoices` ends at today's year, so a client whose last
+ * finalised run is two years old could not be asked for its annexure at all.
+ */
+export function financialYearChoicesAround(
+  month?: string | null,
+  count: number = FY_CHOICE_COUNT,
+  today: Date = new Date(),
+): string[] {
+  const anchor = financialYearOfMonth(month, today);
+  const years = Array.from({ length: count }, (_, i) => shiftFY(anchor, -i));
+  for (const y of financialYearChoices(count, today)) {
+    if (!years.includes(y)) years.push(y);
+  }
+  return years.sort().reverse();
+}
+
+/**
  * A single dropdown value covering both halves of the selection.
  *
  * A financial year is TWO pieces of state — the mode and which year — and a

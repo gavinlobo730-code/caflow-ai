@@ -369,3 +369,107 @@ def build_annexure_ii(
         )
 
     return out
+
+
+# ── The annexure as a file ────────────────────────────────────────────────────
+#
+# Built HERE and not in the browser, for the same reason form24q.to_csv is: the
+# column order and the §16 treatment are statutory, and a second implementation
+# in TypeScript would be a second answer to "what is income under the head
+# Salaries". The screen downloads what this produces.
+#
+# The column order follows Notification 36/2019's substituted Annexure II, which
+# is also the order a CA reads it in: who, then gross under §17, then what §10
+# takes out, then the §16 deductions, then Chapter VI-A, then the tax.
+ANNEXURE_II_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("Employee Name", "name"),
+    ("PAN", "pan"),
+    ("Months Paid", "months_paid"),
+    ("Regime", "_regime"),
+    ("Salary u/s 17(1)", "salary_17_1_paise"),
+    ("Perquisites u/s 17(2)", "perquisites_17_2_paise"),
+    ("Profits in lieu u/s 17(3)", "profits_in_lieu_17_3_paise"),
+    ("Gross Salary", "gross_salary_paise"),
+    ("Exempt u/s 10", "exempt_under_10_paise"),
+    ("Net Salary", "net_salary_paise"),
+    ("Standard Deduction u/s 16(ia)", "standard_deduction_16_ia_paise"),
+    ("Professional Tax u/s 16(iii)", "allowable_professional_tax_paise"),
+    ("Income under the head Salaries", "income_under_salaries_paise"),
+    ("Chapter VI-A", "chapter_vi_a_paise"),
+    ("TDS Deducted", "tds_deducted_paise"),
+)
+
+_MONEY_COLUMNS = frozenset(k for _h, k in ANNEXURE_II_COLUMNS if k.endswith("_paise"))
+
+
+def _rupees(paise) -> str:
+    """Integer paise to a plain rupee string. Never float (project rupee rule);
+    unformatted because a spreadsheet must read the cell as a number."""
+    p = int(paise or 0)
+    sign = "-" if p < 0 else ""
+    p = abs(p)
+    return f"{sign}{p // 100}.{p % 100:02d}"
+
+
+def to_csv(ann: "AnnexureII", *, financial_year: str) -> bytes:
+    """Annexure II as a file a CA can check, keep and key into the FVU utility.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This is the working paper behind
+    # Annexure II, not the return and not a Form 16: Part B is DOWNLOADED FROM
+    # TRACES (CBDT Notification 09/2019) after Q4 is filed. Nothing here issues
+    # a certificate and nothing here transmits anything.
+
+    THE GAPS GO IN THE FILE. They name what the employer's books cannot know
+    and the employee holds — §17(2), the §10 exemptions, Chapter VI-A — and a
+    CSV of names and taxable salary that does not say what is missing gets
+    forwarded, filed and turned into a certificate. A banner on the screen that
+    produced it does not travel with it.
+    """
+    import csv as _csv
+    import io as _io
+
+    buf = _io.StringIO()
+    writer = _csv.writer(buf)
+
+    writer.writerow([f"# Form 24Q Annexure II (annual salary detail) — {financial_year}"])
+    writer.writerow(["# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Not a Form 16: "
+                     "Part B is downloaded from TRACES after Q4 is filed "
+                     "(CBDT Notification 09/2019)."])
+    for problem in ann.problems:
+        writer.writerow([f"# NOT READY: {problem}"])
+    for gap in ann.gaps:
+        writer.writerow([f"# MISSING: {gap}"])
+    writer.writerow([])
+
+    writer.writerow([h for h, _k in ANNEXURE_II_COLUMNS])
+    for row in ann.rows:
+        writer.writerow([_annexure_cell(row, key) for _h, key in ANNEXURE_II_COLUMNS])
+
+    if ann.rows:
+        totals = ann.totals()
+        line = ["" for _ in ANNEXURE_II_COLUMNS]
+        line[0] = "TOTAL"
+        for header, key in (("Gross Salary", "gross_salary_paise"),
+                            ("Income under the head Salaries",
+                             "income_under_salaries_paise"),
+                            ("TDS Deducted", "tds_paise")):
+            index = [h for h, _k in ANNEXURE_II_COLUMNS].index(header)
+            line[index] = _rupees(totals[key])
+        writer.writerow(line)
+
+    # utf-8-sig for the same reason the 24Q working paper carries one: this is
+    # opened in a spreadsheet, not uploaded to a portal, and without the BOM
+    # Excel reads an employee's name in the local code page.
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def _annexure_cell(row: "AnnexureIIRow", key: str) -> str:
+    if key == "_regime":
+        # The annexure carries "Whether opting for taxation u/s 115BAC" as a
+        # field of its own, and every §16 figure above has to be consistent
+        # with it — see allowable_professional_tax_paise.
+        return "115BAC (new)" if row.uses_new_regime else "Old"
+    value = getattr(row, key, "")
+    if key in _MONEY_COLUMNS:
+        return _rupees(value)
+    return "" if value is None else str(value)

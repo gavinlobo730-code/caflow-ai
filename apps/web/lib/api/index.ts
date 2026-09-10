@@ -72,6 +72,50 @@ export type StatutorySummary = {
   gaps: string[];
 };
 
+/** One employee's row of 24Q Annexure II — the annual salary detail TRACES
+ *  turns into Form 16 Part B (CBDT Notification 09/2019). Every figure is
+ *  integer paise and every one of them is computed on the server: §16(iii)
+ *  professional tax in particular is allowed only under the old regime
+ *  (§115BAC(2)(i) permits clause (ia) and nothing else), which is why the
+ *  allowable figure is a field of its own rather than something the screen
+ *  works out. */
+export type AnnexureIIRow = {
+  employee_id: string;
+  name: string;
+  pan: string;
+  months_paid: number;
+  regime: "new" | "old";
+  salary_17_1_paise: number;
+  perquisites_17_2_paise: number;
+  profits_in_lieu_17_3_paise: number;
+  gross_salary_paise: number;
+  exempt_under_10_paise: number;
+  net_salary_paise: number;
+  standard_deduction_16_ia_paise: number;
+  professional_tax_16_iii_paise: number;
+  allowable_professional_tax_paise: number;
+  income_under_salaries_paise: number;
+  chapter_vi_a_paise: number;
+  tds_deducted_paise: number;
+};
+
+export type AnnexureIIResponse = {
+  client_id: string;
+  financial_year: string;
+  rows: AnnexureIIRow[];
+  /** Block filing. */
+  problems: string[];
+  /** Do NOT block — things only the employee holds (§17(2), the §10
+   *  exemptions, Chapter VI-A). An annexure with no Chapter VI-A is correct
+   *  for someone who declared none. */
+  gaps: string[];
+  totals: { employees?: number; gross_salary_paise?: number;
+            income_under_salaries_paise?: number; tds_paise?: number };
+  ready: boolean;
+  form_16_note?: string;
+  disclaimer?: string;
+};
+
 export type DeclarationItemRow = {
   id: string;
   section: string;
@@ -1512,6 +1556,33 @@ export const api = {
      *  counted, and a month run elsewhere will still block the upload. */
     ecrSequence: (clientId: string) =>
       request(`/api/payroll/clients/${clientId}/ecr-sequence`),
+
+    /** 24Q ANNEXURE II — THE YEAR-END DELIVERABLE, AND THE THING THAT MAKES
+     *  FORM 16.
+     *
+     *  Not a Form 16 generator, deliberately: CBDT Notification 09/2019 makes
+     *  Part B a TRACES download, so an employer who prints their own has
+     *  issued nothing. TRACES builds Part B from exactly one input — this
+     *  annexure, filed with Q4 — which is why it is the honest deliverable.
+     *
+     *  The endpoint has existed and finished since the payroll module was
+     *  built and NO SCREEN CALLED IT (PAY-11). A CA closing a year had to do
+     *  the annual salary detail somewhere else.
+     */
+    annexureII: (clientId: string, financialYear: string) =>
+      request<{ success: boolean; data: AnnexureIIResponse; error: string | null }>(
+        `/api/payroll/24q-annexure-ii?client_id=${encodeURIComponent(clientId)}`
+        + `&financial_year=${encodeURIComponent(financialYear)}`),
+
+    /** The same annexure as the file. Built on the SERVER — the column order
+     *  and the §16 treatment are statutory, and a CSV assembled in the browser
+     *  from the JSON above would be a second answer to "what is income under
+     *  the head Salaries". */
+    downloadAnnexureII: (clientId: string, financialYear: string) =>
+      downloadFile(
+        `/api/payroll/24q-annexure-ii.csv?client_id=${encodeURIComponent(clientId)}`
+        + `&financial_year=${encodeURIComponent(financialYear)}`,
+        `24Q-AnnexureII-${financialYear}.csv`),
 
     /** Record that a run's ECR was filed. This transmits NOTHING and files
      *  nothing: there is no EPFO API, so the product cannot observe a filing
