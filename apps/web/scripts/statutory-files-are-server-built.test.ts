@@ -95,7 +95,13 @@ test("the server's refusal reaches the CA instead of a broken file", () => {
     "the members the file cannot carry must be shown; they are fixed before the upload");
   // A run that is not finalised is a 409 from the server, because both returns
   // report contributions actually made. Say so on the button.
-  assert.match(s, /const isFiled = \(run: PayrollRun\) => run\.status === "finalized" \|\| run\.status === "paid"/,
+  // The RULE is the status test, not the parameter's type name. `isFiled` now
+  // takes a narrowed `StatutoryRun` — the statutory actions need only the run's
+  // id, client, month and status, and demanding a whole PayrollRun is what
+  // would push the summary endpoint into returning firm_id and generated_at it
+  // has no reason to send. Pinning the type name here made a legitimate
+  // narrowing look like a regression.
+  assert.match(s, /const isFiled = \(run: \w+\) => run\.status === "finalized" \|\| run\.status === "paid"/,
     "a draft run cannot produce a statutory return");
   assert.match(s, /disabled=\{pfCount === 0 \|\| !isFiled\(run\)/,
     "the ECR button must be gated on the run being finalised");

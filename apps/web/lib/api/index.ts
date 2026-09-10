@@ -1711,6 +1711,54 @@ export const api = {
     createRun: (body: { client_id: string; month: string }) =>
       request("/api/payroll/runs", { method: "POST", body: JSON.stringify(body) }),
     getRunSlips: (runId: string) => request(`/api/payroll/runs/${runId}/slips`),
+    /** The statutory table's five figures PER RUN, in one call.
+     *
+     *  What this replaced was one getRunSlips per run, issued concurrently on
+     *  mount for a tab that is not the default, each returning every column of
+     *  every payslip — to render a count, a gross, a TDS and two member
+     *  counts. CLAUDE.md: what crosses the wire is the size of the ANSWER. */
+    runSummaries: (params?: { client_id?: string; financial_year?: string }) => {
+      const q = new URLSearchParams(
+        Object.entries(params ?? {})
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return request<ApiResp<{ runs: PayrollRunSummary[] }>>(
+        `/api/payroll/runs/summary${q ? `?${q}` : ""}`);
+    },
+    /** One row per EMPLOYEE for a financial year, aggregated by the server,
+     *  plus the years the firm has payroll for.
+     *
+     *  The year-end tab used to build this in the browser from every payslip
+     *  the firm had ever produced. It is the one report tab whose ANSWER is
+     *  smaller than its rows: a hundred employees over twelve months is 1,200
+     *  payslips to render a hundred lines. */
+    yearEndSummary: (params: { financial_year: string; client_id?: string }) => {
+      const q = new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return request<ApiResp<{ rows: EmployeeYearTotalsRow[]; financial_years: string[] }>>(
+        `/api/payroll/reports/year-end?${q}`);
+    },
+    /** Payslips for ONE run, ONE month or ONE employee.
+     *
+     *  Naming none of them is REFUSED with a 422 — see
+     *  services/payroll_report_service.assert_narrowed. Both firm-level
+     *  screens used to ask for every payslip the firm had ever produced. */
+    slips: (params: {
+      run_id?: string; month?: string; employee_id?: string;
+      financial_year?: string; client_id?: string;
+    }) => {
+      const q = new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => [k, String(v)]),
+      ).toString();
+      return request<ApiResp<{ slips: unknown[]; runs?: unknown[] }>>(
+        `/api/payroll/slips?${q}`);
+    },
 
     // Attendance goes through the API, not straight to PostgREST. The direct
     // write this replaced saved the page's WHOLE editor — which seeded a
@@ -3012,6 +3060,44 @@ export type AISStatement = {
 /** One page of the log. NO total, deliberately: a COUNT over the whole log to
  *  render one page is the cost the server-side query exists to remove, and
  *  `has_more` is what a "Load more" control needs. */
+/** One run's aggregate — the shape the statutory table renders.
+ *  `pf_count` and `esi_count` are slips that CARRIED the contribution, never a
+ *  re-derived ceiling test: ESI Rule 50 keeps a member in past the ceiling
+ *  until the contribution period ends, and re-applying the rule afterwards
+ *  read "no ESI-applicable employees" for people the firm had deducted from. */
+export type PayrollRunSummary = {
+  id: string;
+  client_id: string;
+  month: string;
+  status: string;
+  financial_year: string | null;
+  slip_count: number;
+  gross_paise: number;
+  net_paise: number;
+  tds_paise: number;
+  pf_count: number;
+  esi_count: number;
+  pf_employee_paise: number;
+  pf_employer_paise: number;
+  esi_employee_paise: number;
+  esi_employer_paise: number;
+};
+
+/** One employee's whole financial year, summed server-side. Mirrors
+ *  lib/payroll/types.EmployeeYearTotals — declared here because this module is
+ *  where the wire shapes live. */
+export type EmployeeYearTotalsRow = {
+  employee_id: string;
+  employee: { name: string; pan: string; designation: string } | null;
+  months: number;
+  gross_paise: number;
+  net_paise: number;
+  tds_paise: number;
+  pt_paise: number;
+  pf_employee_paise: number;
+  esi_employee_paise: number;
+};
+
 export type AuditPage = {
   entries: AuditEntry[];
   next_cursor: string | null;

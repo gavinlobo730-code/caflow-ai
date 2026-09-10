@@ -28,49 +28,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { useSlips } from "@/lib/payroll/useSlips";
+import type {
+  Employee, EmployeeYearTotals, PayrollRun, PayrollSlip,
+} from "@/lib/payroll/types";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { monthlyTdsPaiseNewRegime } from "@/lib/services/payrollTdsEstimate";
 import { api } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────
-
-type Employee = {
-  id: string;
-  firm_id: string;
-  client_id: string;
-  name: string;
-  pan: string;
-  designation: string;
-  basic_paise: number;
-  hra_percent: number;
-  da_percent: number;
-  other_allowances_paise: number;
-  pf_applicable: boolean;
-  esi_applicable: boolean;
-};
-
-type PayrollRun = {
-  id: string;
-  firm_id: string;
-  client_id: string;
-  month: string; // "YYYY-MM"
-  status: string;
-  generated_at: string;
-};
-
-type PayrollSlip = {
-  id: string;
-  run_id: string;
-  employee_id: string;
-  gross_paise: number;
-  pf_employee_paise: number;
-  esi_employee_paise: number;
-  pt_paise: number;
-  tds_paise: number;
-  net_paise: number;
-  employee?: Employee;
-  run?: PayrollRun;
-};
 
 type DueCategory = "PF" | "ESI" | "PT" | "TDS";
 type DueStatus = "overdue" | "due-soon" | "upcoming";
@@ -300,8 +266,8 @@ function CategoryBadge({ category }: { category: DueCategory }) {
 // ── 1. Payslip Summary ────────────────────────────────────────────────────
 
 function PayslipSummaryTab({
-  slips, runs, clientNames,
-}: { slips: PayrollSlip[]; runs: PayrollRun[]; clientNames: Record<string, string> }) {
+  runs, employees, clientNames,
+}: { runs: PayrollRun[]; employees: Employee[]; clientNames: Record<string, string> }) {
   // THE SELECTOR IS A RUN, NOT A MONTH. It used to be a month, and a firm that
   // runs payroll for two clients in August had both clients' employees in one
   // table under one TOTAL — a number that is nobody's payroll. A run is exactly
@@ -316,7 +282,10 @@ function PayslipSummaryTab({
   const [note, setNote] = useState<{ kind: "ok" | "warn" | "error"; text: string } | null>(null);
 
   const run = runs.find(r => r.id === selectedRunId);
-  const runSlips = slips.filter(s => s.run_id === selectedRunId);
+  // ONE run's payslips, which is exactly the table below. This screen used to
+  // hold every payslip in the firm and filter it here.
+  const { slips: runSlips, loading: slipsLoading, error: slipsError } =
+    useSlips(selectedRunId ? { run_id: selectedRunId } : null, employees, runs);
 
   const totals = runSlips.reduce(
     (acc, s) => ({
@@ -366,6 +335,8 @@ function PayslipSummaryTab({
   }
 
   return (
+    <>
+    <SliceState loading={slipsLoading} error={slipsError} />
     <Card>
       <CardHeader className="pb-3">
         <div className="flex flex-row items-start justify-between flex-wrap gap-3">
@@ -459,20 +430,24 @@ function PayslipSummaryTab({
         )}
       </CardContent>
     </Card>
+    </>
   );
 }
 
 // ── 2. Year-to-Date ───────────────────────────────────────────────────────
 
-function YtdTab({ slips, employees }: { slips: PayrollSlip[]; employees: Employee[] }) {
-  const fyOptions = Array.from(
-    new Set(slips.map(s => s.run?.month).filter((m): m is string => !!m).map(fyForMonth)),
-  ).sort().reverse();
+function YtdTab({ employees, runs, fyOptions }: {
+  employees: Employee[]; runs: PayrollRun[]; fyOptions: string[];
+}) {
   const [selectedFy, setSelectedFy] = useState(fyOptions[0] ?? currentFy());
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id ?? "");
 
   const months = fyMonths(selectedFy);
   const emp = employees.find(e => e.id === selectedEmpId);
+  // ONE employee, ONE year: twelve rows, twelve payslips.
+  const { slips, loading: slipsLoading, error: slipsError } = useSlips(
+    selectedEmpId ? { employee_id: selectedEmpId, financial_year: selectedFy } : null,
+    employees, runs);
 
   type YtdRow = {
     month: string;
@@ -528,6 +503,8 @@ function YtdTab({ slips, employees }: { slips: PayrollSlip[]; employees: Employe
   }
 
   return (
+    <>
+    <SliceState loading={slipsLoading} error={slipsError} />
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
@@ -600,6 +577,7 @@ function YtdTab({ slips, employees }: { slips: PayrollSlip[]; employees: Employe
         )}
       </CardContent>
     </Card>
+    </>
   );
 }
 
@@ -629,11 +607,13 @@ function buildCtcRows(monthSlips: PayrollSlip[]): CtcRow[] {
   });
 }
 
-function CtcTab({ slips, runs }: { slips: PayrollSlip[]; runs: PayrollRun[] }) {
+function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[] }) {
   const availableMonths = Array.from(new Set(runs.map(r => r.month))).sort().reverse();
   const [selectedMonth, setSelectedMonth] = useState(availableMonths[0] ?? "");
 
-  const monthSlips = slips.filter(s => s.run?.month === selectedMonth);
+  // ONE month across the firm — one row per employee, which is the table.
+  const { slips: monthSlips, loading: slipsLoading, error: slipsError } =
+    useSlips(selectedMonth ? { month: selectedMonth } : null, employees, runs);
   const ctcRows = buildCtcRows(monthSlips);
 
   const totals = ctcRows.reduce(
@@ -669,6 +649,8 @@ function CtcTab({ slips, runs }: { slips: PayrollSlip[]; runs: PayrollRun[] }) {
   }
 
   return (
+    <>
+    <SliceState loading={slipsLoading} error={slipsError} />
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
@@ -728,20 +710,24 @@ function CtcTab({ slips, runs }: { slips: PayrollSlip[]; runs: PayrollRun[] }) {
         )}
       </CardContent>
     </Card>
+    </>
   );
 }
 
 // ── 4. TDS Projection ─────────────────────────────────────────────────────
 
-function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employees: Employee[] }) {
-  const fyOptions = Array.from(
-    new Set(slips.map(s => s.run?.month).filter((m): m is string => !!m).map(fyForMonth)),
-  ).sort().reverse();
+function TdsProjectionTab({ employees, runs, fyOptions }: {
+  employees: Employee[]; runs: PayrollRun[]; fyOptions: string[];
+}) {
   const [selectedFy, setSelectedFy] = useState(fyOptions[0] ?? currentFy());
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id ?? "");
 
   const months = fyMonths(selectedFy);
   const emp = employees.find(e => e.id === selectedEmpId);
+  // ONE employee. The projection reads their most recent slip and the months
+  // already paid this year; both are in this employee's own history.
+  const { slips, loading: slipsLoading, error: slipsError } = useSlips(
+    selectedEmpId ? { employee_id: selectedEmpId } : null, employees, runs);
 
   const recentSlip = slips
     .filter(s => s.employee_id === selectedEmpId)
@@ -797,6 +783,8 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
       : 0;
 
   return (
+    <>
+    <SliceState loading={slipsLoading} error={slipsError} />
     <div className="space-y-4">
       <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
         <AlertCircle size={15} className="text-amber-600 mt-0.5 flex-shrink-0" />
@@ -910,6 +898,7 @@ function TdsProjectionTab({ slips, employees }: { slips: PayrollSlip[]; employee
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }
 
@@ -925,35 +914,50 @@ type EmpYearRow = {
   net: number;
 };
 
-function buildYearEndRows(fySlips: PayrollSlip[]): EmpYearRow[] {
-  const empMap = new Map<string, EmpYearRow>();
-  for (const s of fySlips) {
-    const existing = empMap.get(s.employee_id) ?? {
-      emp: s.employee,
-      gross: 0, pf: 0, esi: 0, pt: 0, tds: 0, net: 0,
-    };
-    empMap.set(s.employee_id, {
-      ...existing,
-      gross: existing.gross + s.gross_paise,
-      pf: existing.pf + s.pf_employee_paise,
-      esi: existing.esi + s.esi_employee_paise,
-      pt: existing.pt + s.pt_paise,
-      tds: existing.tds + s.tds_paise,
-      net: existing.net + s.net_paise,
-    });
-  }
-  return Array.from(empMap.values());
-}
+// buildYearEndRows LIVED HERE. The grouping — one row per employee for a
+// financial year — moved to services/payroll_report_service.employee_year_totals,
+// because it was the one report whose ANSWER is smaller than the rows it read:
+// a hundred employees over twelve months is 1,200 payslips to render a hundred
+// lines, and that is proportional to payroll volume rather than to the table.
 
-function YearEndSummaryTab({ slips }: { slips: PayrollSlip[] }) {
-  const fyOptions = Array.from(
-    new Set(slips.map(s => s.run?.month).filter((m): m is string => !!m).map(fyForMonth)),
-  ).sort().reverse();
+function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
   const [selectedFy, setSelectedFy] = useState(fyOptions[0] ?? currentFy());
 
-  const months = fyMonths(selectedFy);
-  const fySlips = slips.filter(s => months.includes(s.run?.month ?? ""));
-  const empRows = buildYearEndRows(fySlips);
+  // THE ONE TAB THAT HAS TO BE A SERVER AGGREGATE, and the distinction is
+  // worth stating because the other four are the opposite case. A run's
+  // payslips, a month's, one employee's twelve — each is a row set the same
+  // size as the table it renders, so fetching the rows IS fetching the answer.
+  // A firm's whole financial year is not: a hundred employees over twelve
+  // months is 1,200 payslips to render a hundred rows.
+  const [rows, setRows] = useState<EmployeeYearTotals[]>([]);
+  const [rowsLoading, setRowsLoading] = useState(false);
+  const [rowsError, setRowsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedFy) { setRows([]); return; }
+    let cancelled = false;
+    setRowsLoading(true);
+    setRowsError(null);
+    api.payroll.yearEndSummary({ financial_year: selectedFy })
+      .then(res => {
+        if (cancelled) return;
+        if (!res.success) throw new Error(res.error || "Could not load the year");
+        setRows(res.data?.rows ?? []);
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setRowsError(e instanceof Error ? e.message : "Could not load the year");
+        setRows([]);
+      })
+      .finally(() => { if (!cancelled) setRowsLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedFy]);
+
+  const empRows: EmpYearRow[] = rows.map(r => ({
+    emp: r.employee ? ({ ...r.employee } as Employee) : undefined,
+    gross: r.gross_paise, pf: r.pf_employee_paise, esi: r.esi_employee_paise,
+    pt: r.pt_paise, tds: r.tds_paise, net: r.net_paise,
+  }));
 
   const grandTotal = empRows.reduce(
     (acc, r) => ({
@@ -993,6 +997,8 @@ function YearEndSummaryTab({ slips }: { slips: PayrollSlip[] }) {
   }
 
   return (
+    <>
+    <SliceState loading={rowsLoading} error={rowsError} />
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
@@ -1086,6 +1092,7 @@ function YearEndSummaryTab({ slips }: { slips: PayrollSlip[] }) {
         )}
       </CardContent>
     </Card>
+    </>
   );
 }
 
@@ -1193,12 +1200,29 @@ function StatutoryDuesCalendarTab() {
   );
 }
 
+/** Whether the slice this tab asked for is still coming, or did not come.
+ *
+ *  Every tab renders one. A fetch that fails silently leaves an EMPTY TABLE
+ *  under a heading naming a real employee and a real month, which reads as
+ *  "this employee had no payroll" — a statement, and a false one. */
+function SliceState({ loading, error }: { loading: boolean; error: string | null }) {
+  if (error) {
+    return (
+      <p className="text-xs text-red-600 px-1 py-2">{error}</p>
+    );
+  }
+  if (loading) {
+    return <p className="text-xs text-[#94A3B8] px-1 py-2">Loading…</p>;
+  }
+  return null;
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────
 
 export default function PayrollReportsPage() {
-  const [slips, setSlips] = useState<PayrollSlip[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [runs, setRuns] = useState<PayrollRun[]>([]);
+  const [fyOptions, setFyOptions] = useState<string[]>([]);
   const [clientNames, setClientNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1226,18 +1250,17 @@ export default function PayrollReportsPage() {
       const runList: PayrollRun[] = runsRes.data ?? [];
       setEmployees(empList);
       setRuns(runList);
+      // The year picker's options come off the RUNS — one row per client-month
+      // — where they used to be derived from every payslip in the firm. Same
+      // answer, and it does not grow with the number of employees.
+      setFyOptions(Array.from(new Set(runList.map(r => fyForMonth(r.month))))
+        .sort().reverse());
 
-      if (runList.length > 0) {
-        const runIds = runList.map(r => r.id);
-        const slipsRes = await sb.from("payroll_slips").select("*").in("run_id", runIds);
-        if (slipsRes.error) throw new Error(slipsRes.error.message);
-        const enriched: PayrollSlip[] = (slipsRes.data ?? []).map(s => ({
-          ...s,
-          employee: empList.find(e => e.id === s.employee_id),
-          run: runList.find(r => r.id === s.run_id),
-        }));
-        setSlips(enriched);
-      }
+      // EVERY PAYSLIP OF EVERY RUN used to be fetched here — every run's UUID
+      // in one PostgREST in.() — before any tab had been chosen. Each tab now
+      // asks for its own slice when it opens (lib/payroll/useSlips), and the
+      // one tab whose answer is smaller than its rows asks the server to
+      // aggregate. CLAUDE.md's reporting rule.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load payroll data");
     } finally {
@@ -1330,19 +1353,19 @@ export default function PayrollReportsPage() {
           </TabsList>
 
           <TabsContent value="payslip-summary">
-            <PayslipSummaryTab slips={slips} runs={runs} clientNames={clientNames} />
+            <PayslipSummaryTab runs={runs} employees={employees} clientNames={clientNames} />
           </TabsContent>
           <TabsContent value="ytd">
-            <YtdTab slips={slips} employees={employees} />
+            <YtdTab employees={employees} runs={runs} fyOptions={fyOptions} />
           </TabsContent>
           <TabsContent value="ctc">
-            <CtcTab slips={slips} runs={runs} />
+            <CtcTab runs={runs} employees={employees} />
           </TabsContent>
           <TabsContent value="tds-projection">
-            <TdsProjectionTab slips={slips} employees={employees} />
+            <TdsProjectionTab employees={employees} runs={runs} fyOptions={fyOptions} />
           </TabsContent>
           <TabsContent value="year-end">
-            <YearEndSummaryTab slips={slips} />
+            <YearEndSummaryTab fyOptions={fyOptions} />
           </TabsContent>
           <TabsContent value="statutory-calendar">
             <StatutoryDuesCalendarTab />

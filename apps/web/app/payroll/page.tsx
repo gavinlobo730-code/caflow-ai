@@ -19,13 +19,13 @@ import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { api, type ApiResp } from "@/lib/api";
+import { api, type ApiResp, type PayrollRunSummary } from "@/lib/api";
 // Moved into a shared module when the roster became its own screen (People).
 // One definition, two pages — copying them is how the salary register and the
 // ECR each ended up implemented twice, with only one of them right.
 import {
   apiErr, fmtRs,
-  type Client, type Employee, type PayrollRun, type PayrollSlip,
+  type Client, type PayrollRun, type PayrollSlip,
 } from "@/components/payroll/shared";
 
 // ── Statutory Returns helpers ─────────────────────────────────────────────
@@ -509,15 +509,14 @@ function StatusBadge({ status }: { status: "overdue" | "due-soon" | "upcoming" |
   );
 }
 
-function StatutoryReturnsTab({
-  runs,
-  slips,
-  clients,
-}: {
-  runs: PayrollRun[];
-  slips: PayrollSlip[];
-  clients: Client[];
-}) {
+/** What the statutory actions actually need off a run: which one, which month,
+ *  and whether it is finalised. Narrowed on purpose — the summary endpoint has
+ *  no reason to return firm_id or generated_at, and demanding a whole
+ *  PayrollRun here is what would push it into doing so. */
+type StatutoryRun = Pick<PayrollRun, "id" | "client_id" | "month" | "status">;
+
+
+function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
   const today = new Date();
   const deadlines = getStatutoryDeadlines(today);
 
@@ -526,11 +525,32 @@ function StatutoryReturnsTab({
   const [statutoryBusy, setStatutoryBusy] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const clientRuns = runs.filter(r => r.client_id === selectedClientId);
+  // ONE call for the whole table, and only for the selected client. The five
+  // figures below — slips, gross, TDS, PF members, ESI members — are all
+  // aggregates, and this screen used to compute them in the browser from every
+  // payslip of every run in the firm.
+  const [summaries, setSummaries] = useState<PayrollRunSummary[]>([]);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [summariesLoading, setSummariesLoading] = useState(false);
 
-  function slipsForRun(runId: string): PayrollSlip[] {
-    return slips.filter(s => s.run_id === runId);
-  }
+  useEffect(() => {
+    if (!selectedClientId) { setSummaries([]); return; }
+    let cancelled = false;
+    setSummariesLoading(true);
+    setSummaryError(null);
+    api.payroll.runSummaries({ client_id: selectedClientId })
+      .then(res => {
+        if (cancelled) return;
+        if (!res.success) throw new Error(res.error || "Could not load the runs");
+        setSummaries(res.data?.runs ?? []);
+      })
+      .catch(e => { if (!cancelled) setSummaryError(
+        e instanceof Error ? e.message : "Could not load the runs"); })
+      .finally(() => { if (!cancelled) setSummariesLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedClientId]);
+
+  const clientRuns = summaries;
 
   /** Ask the SERVER for the statutory file, and let its refusal reach the CA.
    *
@@ -542,7 +562,7 @@ function StatutoryReturnsTab({
    *  reports contributions actually made, and a draft run's figures can still
    *  change. The browser version happily built one from a draft. */
   async function downloadStatutoryFile(
-    run: PayrollRun,
+    run: StatutoryRun,
     what: "ecr" | "esic",
     fetcher: () => Promise<unknown>,
   ) {
@@ -613,12 +633,12 @@ function StatutoryReturnsTab({
   /** The server refuses the ECR and the ESIC return for a run that is not
    *  finalised, because both report contributions actually made. Say that on
    *  the button rather than spending a round trip to be told. */
-  const isFiled = (run: PayrollRun) => run.status === "finalized" || run.status === "paid";
+  const isFiled = (run: StatutoryRun) => run.status === "finalized" || run.status === "paid";
 
-  const handleGeneratePfEcr = (run: PayrollRun) =>
+  const handleGeneratePfEcr = (run: StatutoryRun) =>
     downloadStatutoryFile(run, "ecr", () => api.payroll.runEcr(run.id));
 
-  const handleGenerateEsiStatement = (run: PayrollRun) =>
+  const handleGenerateEsiStatement = (run: StatutoryRun) =>
     downloadStatutoryFile(run, "esic", () => api.payroll.runEsic(run.id));
 
   /** # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
@@ -626,7 +646,7 @@ function StatutoryReturnsTab({
    *  The quarter, not the month: 24Q is a QUARTERLY return, and this button has
    *  always sat on a run row. The month decides which quarter and which FY.
    */
-  async function handleGenerate24Q(run: PayrollRun) {
+  async function handleGenerate24Q(run: StatutoryRun) {
     setStatutoryBusy(`${run.id}:24q`);
     try {
       const { quarter, fy } = tdsQuarterOf(run.month);
@@ -714,7 +734,10 @@ function StatutoryReturnsTab({
 
           {clientRuns.length === 0 ? (
             <p className="text-sm text-[#94A3B8] py-6 text-center">
-              No payroll runs for this client. Run a Monthly Payroll first.
+              {summariesLoading ? "Loading this client's runs…"
+                : summaryError
+                  ? summaryError
+                  : "No payroll runs for this client. Run a Monthly Payroll first."}
             </p>
           ) : (
             <div className="space-y-3">
@@ -741,23 +764,24 @@ function StatutoryReturnsTab({
                   </thead>
                   <tbody>
                     {clientRuns.map(run => {
-                      const runSlips = slipsForRun(run.id);
-                      const totalGross = runSlips.reduce((sum, s) => sum + s.gross_paise, 0);
-                      const totalTds = runSlips.reduce((sum, s) => sum + s.tds_paise, 0);
-                      // Whether a slip actually CARRIED the contribution, not
-                      // whether a re-derived ceiling test says it should have.
-                      // The old ESI test was `gross <= 2100000` for the month,
-                      // which drops a member Rule 50 keeps in past the ceiling
-                      // until the contribution period ends — so the button read
-                      // "no ESI-applicable employees" for people we deducted from.
-                      const pfCount = runSlips.filter(s => (s.pf_employee_paise || 0) > 0).length;
-                      const esiCount = runSlips.filter(
-                        s => (s.esi_employee_paise || 0) > 0 || (s.esi_employer_paise || 0) > 0,
-                      ).length;
+                      // The server's aggregate, not a reduce over every payslip
+                      // in the firm. pf_count and esi_count still count slips
+                      // that CARRIED the contribution rather than re-deriving a
+                      // ceiling test — the old browser test was `gross <=
+                      // 2100000` for the month, which drops a member ESI Rule 50
+                      // keeps in past the ceiling until the contribution period
+                      // ends, so the button read "no ESI-applicable employees"
+                      // for people the firm had deducted from. That reasoning
+                      // now lives in services/payroll_report_service.
+                      const slipCount = run.slip_count;
+                      const totalGross = run.gross_paise;
+                      const totalTds = run.tds_paise;
+                      const pfCount = run.pf_count;
+                      const esiCount = run.esi_count;
                       return (
                         <tr key={run.id} className="border-b hover:bg-[#F8FAFC]">
                           <td className="py-3 px-3 font-medium">{run.month}</td>
-                          <td className="py-3 px-3 text-center text-[#475569]">{runSlips.length}</td>
+                          <td className="py-3 px-3 text-center text-[#475569]">{slipCount}</td>
                           <td className="py-3 px-3 text-right font-mono">{fmtRs(totalGross)}</td>
                           <td className="py-3 px-3 text-right font-mono text-red-600">{fmtRs(totalTds)}</td>
                           <td className="py-3 px-3">
@@ -793,7 +817,7 @@ function StatutoryReturnsTab({
                                 variant="outline"
                                 className="flex items-center gap-1 text-xs"
                                 onClick={() => handleGenerate24Q(run)}
-                                disabled={runSlips.length === 0}
+                                disabled={slipCount === 0}
                                 title="Generate TDS 24Q data — CA review required before filing"
                               >
                                 <Download size={12} />
@@ -841,8 +865,6 @@ function StatutoryReturnsTab({
 export default function PayrollPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
-  const [runs, setRuns] = useState<PayrollRun[]>([]);
-  const [slips, setSlips] = useState<PayrollSlip[]>([]);
   const [loading, setLoading] = useState(true);
 
   // The month the QUEUE is showing. Defaults to the current IST month — the
@@ -856,34 +878,17 @@ export default function PayrollPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [clientsRes, empRes, runsRes] = await Promise.all([
-        api.clients.list() as Promise<ApiResp<{ clients: Client[] }>>,
-        // include_inactive: the Employees roster shows resigned/terminated staff
-        // too (with a status filter). Payroll generation still uses only active
-        // employees — see the runEmployees derivation below.
-        api.payroll.listEmployees(undefined, true) as Promise<ApiResp<Employee[]>>,
-        api.payroll.listRuns() as Promise<ApiResp<PayrollRun[]>>,
-      ]);
-      const clientList = clientsRes.data?.clients ?? [];
-      const empList = empRes.data ?? [];
-      const runList = runsRes.data ?? [];
-      setClients(clientList);
-      setRuns(runList);
-
-      if (runList.length > 0) {
-        const slipLists = await Promise.all(
-          runList.map(r => api.payroll.getRunSlips(r.id) as Promise<ApiResp<PayrollSlip[]>>)
-        );
-        const rawSlips = slipLists.flatMap(res => res.data ?? []);
-        const enriched = rawSlips.map(s => ({
-          ...s,
-          employee: empList.find(e => e.id === s.employee_id),
-          run: runList.find(r => r.id === s.run_id),
-        }));
-        setSlips(enriched);
-      } else {
-        setSlips([]);
-      }
+      // THE CLIENT LIST IS ALL THIS PAGE NEEDS ON MOUNT.
+      //
+      // What stood here fetched the roster, every run in the firm, and then
+      // EVERY PAYSLIP OF EVERY RUN — one request per run, concurrently — to
+      // render a tab that is not even the default. Its five figures per run
+      // are all aggregates, so the Statutory Returns tab now asks the server
+      // for those five (api.payroll.runSummaries), for ONE client, and asks
+      // WHEN IT OPENS: Radix unmounts an inactive TabsContent, so a tab nobody
+      // visits costs nothing at all. CLAUDE.md's reporting rule.
+      const clientsRes = await (api.clients.list() as Promise<ApiResp<{ clients: Client[] }>>);
+      setClients(clientsRes.data?.clients ?? []);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load payroll data.");
     } finally {
@@ -985,7 +990,7 @@ export default function PayrollPage() {
               /payroll/people. Statutory Returns stays below because the
               deadline checklist genuinely spans the firm. */}
           <TabsContent value="statutory-returns">
-            <StatutoryReturnsTab runs={runs} slips={slips} clients={clients} />
+            <StatutoryReturnsTab clients={clients} />
           </TabsContent>
         </Tabs>
       </div>
