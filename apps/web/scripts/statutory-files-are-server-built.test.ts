@@ -176,6 +176,44 @@ test("the statutory card reports the whole EPFO challan, not just the 12%", () =
     "and so must the administrative charge");
 });
 
+test("the CTC report reads the employer's cost rather than re-deriving it", () => {
+  // PAY-09. `buildCtcRows` computed employer PF as `min(basic x 12%, ₹1,800)`
+  // and employer ESI as `gross x 3.25%` when THIS MONTH's gross was under
+  // ₹21,000 — the same four drifts this file's header records being removed
+  // from app/payroll/page.tsx, reappearing one screen over in a CSV the CA
+  // hands to the client. The correct figures were on the same rows, unread.
+  //
+  // Measured: ₹10,000 basic + ₹8,000 special allowance + ₹4,000 HRA is ₹1,800
+  // employer PF plus ₹75 EDLI and ₹75 admin on the stored slip; the screen
+  // showed ₹1,200.
+  const src = fs.readFileSync(path.join(ROOT, "app/payroll/reports/page.tsx"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+
+  assert.doesNotMatch(src, /basic_paise\s*\*\s*12/,
+    "employer PF is not 12% of basic — s.2(88) is the wage base and EPS splits it");
+  assert.doesNotMatch(src, /gross_paise\s*\*\s*325/,
+    "employer ESI is not 3.25% of this month's gross — Rule 50 fixes the "
+    + "ceiling for the contribution period");
+  assert.doesNotMatch(src, /gross_paise\s*<=\s*2100000/,
+    "the ₹21,000 ceiling is tested once per contribution period, not monthly");
+  assert.match(src, /employerCostOf\(/,
+    "the CTC row must read the stored employer figures through one resolver");
+});
+
+test("the CTC report says the admin charge it totals is not the challan", () => {
+  // The floor is a property of the ESTABLISHMENT (routers/payroll.py applies
+  // `payroll_admin_charge` to the RUN), so a sum of member shares under-states
+  // it — silently, by up to the floor. The CTC table legitimately shows each
+  // employee's own share, which is their cost; what it may not do is let that
+  // total read as the remittable figure.
+  const page = fs.readFileSync(path.join(ROOT, "app/payroll/reports/page.tsx"), "utf8");
+  assert.match(page, /per-establishment/,
+    "the ₹500 establishment floor must be named where the admin total is shown");
+  assert.match(page, /Statutory summary/,
+    "and the CA must be pointed at where the remittable figure actually is");
+});
+
 test("no screen sums EDLI or the admin charge out of payslips", () => {
   // The floored charge is a property of the RUN. Summing slips under-states it,
   // silently, by up to the floor. This is the inverted half of the test above:

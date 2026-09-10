@@ -55,7 +55,8 @@ def _all_bills(db, firm_id: str, client_id: Optional[str]) -> list[dict]:
     while True:
         q = (db.table("purchase_bills")
              .select("id, bill_no, bill_date, vendor_id, status, total_paise, "
-                     "paid_paise, tds_paise, cgst_paise, sgst_paise, igst_paise")
+                     "paid_paise, tds_paise, cgst_paise, sgst_paise, igst_paise, "
+                     "debited_paise, credit_note_paise")
              .eq("firm_id", firm_id)
              .in_("status", list(_LIVE_STATUSES)))
         if client_id:
@@ -72,6 +73,85 @@ def _all_bills(db, firm_id: str, client_id: Optional[str]) -> list[dict]:
     return out
 
 
+def _fold_notes(rows: list, sign: int, out: dict) -> None:
+    """Add one note table's rows into the per-bill accumulator.
+
+    `sign` is decided by the CALLER and not by anything on the row: a purchase
+    DEBIT note is a return and reduces the supply, a purchase CREDIT note is the
+    supplier's undercharge and increases it. Getting it backwards is the
+    difference between reversing twice and not reversing at all.
+    """
+    for n in rows:
+        bill = n.get("purchase_bill_id")
+        # A note not linked to a bill adjusts the vendor account rather than
+        # this supply, so Rule 37 has nothing to net it against.
+        if not bill or n.get("deleted_at"):
+            continue
+        if str(n.get("status") or "").lower() == "cancelled":
+            continue
+        acc = out.setdefault(bill, {"total": 0, "cgst": 0, "sgst": 0, "igst": 0})
+        acc["total"] += sign * int(n.get("total_paise") or 0)
+        acc["cgst"] += sign * int(n.get("cgst_paise") or 0)
+        acc["sgst"] += sign * int(n.get("sgst_paise") or 0)
+        acc["igst"] += sign * int(n.get("igst_paise") or 0)
+
+
+def _note_adjustments(db, firm_id: str, client_id: Optional[str]) -> dict:
+    """bill id -> the §34 movement on it, in total and per tax head.
+
+    ONE READ PER NOTE TABLE, not one per bill: the Rule 37 report already walks
+    every live bill, and CLAUDE.md's reporting rule is that what crosses the
+    wire is proportional to the ANSWER. A per-bill lookup would be a round trip
+    each, from Singapore to Mumbai, for a report a CA opens once a month.
+
+    THE TWO TABLE NAMES ARE WRITTEN OUT, not looped over a tuple of them. A
+    `db.table(name)` with a variable is invisible to
+    tests/test_backend_columns_exist_pg.py, which checks every select list
+    against the real schema — the first draft of this cost that guard one more
+    blind spot, and a blind spot on a select feeding a statutory reversal is the
+    wrong place to spend the budget. Two literal blocks, both checked.
+    """
+    out: dict = {}
+
+    cursor = None
+    while True:
+        q = (db.table("debit_notes")
+             .select("id, purchase_bill_id, total_paise, cgst_paise, "
+                     "sgst_paise, igst_paise, status, deleted_at")
+             .eq("firm_id", firm_id))
+        if client_id:
+            q = q.eq("client_id", client_id)
+        if cursor is not None:
+            q = q.gt("id", cursor)
+        page = q.order("id").limit(PAGE).execute().data or []
+        _fold_notes(page, -1, out)
+        if len(page) < PAGE:
+            break
+        cursor = page[-1].get("id")
+        if cursor is None:
+            break
+
+    cursor = None
+    while True:
+        q = (db.table("purchase_credit_notes")
+             .select("id, purchase_bill_id, total_paise, cgst_paise, "
+                     "sgst_paise, igst_paise, status, deleted_at")
+             .eq("firm_id", firm_id))
+        if client_id:
+            q = q.eq("client_id", client_id)
+        if cursor is not None:
+            q = q.gt("id", cursor)
+        page = q.order("id").limit(PAGE).execute().data or []
+        _fold_notes(page, +1, out)
+        if len(page) < PAGE:
+            break
+        cursor = page[-1].get("id")
+        if cursor is None:
+            break
+
+    return out
+
+
 def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
                   as_of: Optional[str] = None) -> dict:
     """Bills past the 180-day mark with credit still to reverse.
@@ -82,6 +162,7 @@ def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
     """
     today = parse_iso(as_of) or ist_today()
     rows = _all_bills(db, firm_id, client_id)
+    notes = _note_adjustments(db, firm_id, client_id)
 
     items: list[dict] = []
     totals = {"cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0, "total_paise": 0}
@@ -90,6 +171,10 @@ def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
         bill_date = parse_iso(r.get("bill_date"))
         if not bill_date or not is_overdue(bill_date, today):
             continue
+        # `debited_paise` / `credit_note_paise` are what the BILL row records
+        # was noted against it; the per-head tax is only on the notes. Both are
+        # read, and they answer different halves of the same proportion.
+        n = notes.get(r.get("id")) or {"cgst": 0, "sgst": 0, "igst": 0}
         reversal = reversal_for_bill(
             total_paise=int(r.get("total_paise") or 0),
             paid_paise=int(r.get("paid_paise") or 0),
@@ -97,6 +182,14 @@ def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
             cgst_paise=int(r.get("cgst_paise") or 0),
             sgst_paise=int(r.get("sgst_paise") or 0),
             igst_paise=int(r.get("igst_paise") or 0),
+            debited_paise=int(r.get("debited_paise") or 0),
+            credit_note_paise=int(r.get("credit_note_paise") or 0),
+            debit_note_cgst_paise=max(0, -n["cgst"]),
+            debit_note_sgst_paise=max(0, -n["sgst"]),
+            debit_note_igst_paise=max(0, -n["igst"]),
+            credit_note_cgst_paise=max(0, n["cgst"]),
+            credit_note_sgst_paise=max(0, n["sgst"]),
+            credit_note_igst_paise=max(0, n["igst"]),
         )
         # Overdue but settled, or overdue with no credit on it, is not a finding.
         # Reporting those would bury the ones that matter.
@@ -112,6 +205,12 @@ def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
             "total_paise": int(r.get("total_paise") or 0),
             "paid_paise": int(r.get("paid_paise") or 0),
             "tds_paise": int(r.get("tds_paise") or 0),
+            "debited_paise": int(r.get("debited_paise") or 0),
+            "credit_note_paise": int(r.get("credit_note_paise") or 0),
+            # The value of the supply AS IT NOW STANDS, which is what the
+            # proportion runs on. Shown because a CA reading "₹59,000 unpaid"
+            # against a ₹1,18,000 bill needs to see why.
+            "supply_value_paise": reversal["supply_value_paise"],
             "unpaid_paise": reversal["unpaid_paise"],
             "days_outstanding": days_outstanding(bill_date, today),
             "payment_due_by": payment_due_by(bill_date).isoformat(),
@@ -119,7 +218,8 @@ def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
             # the one the 180 days expired in, which is not obvious from the
             # dates and is the usual thing to get wrong.
             "reverse_in_period": reversal_period(bill_date),
-            "reversal": {k: v for k, v in reversal.items() if k != "unpaid_paise"},
+            "reversal": {k: v for k, v in reversal.items()
+                         if k not in ("unpaid_paise", "supply_value_paise")},
         })
         for head in totals:
             totals[head] += reversal[head]

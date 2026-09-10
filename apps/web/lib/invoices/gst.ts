@@ -48,6 +48,19 @@ export interface SalesInvoice {
   gst_paise: number;
   total_paise: number;
   paid_paise?: number;
+  /**
+   * What is still recoverable: total + debit notes − paid − credited.
+   *
+   * A GENERATED column (migration 278), so it cannot drift from its parts, and
+   * the only figure any screen should treat as "outstanding". `total_paise −
+   * paid_paise` looks like the same thing and is not: it ignores §34 credit
+   * notes entirely, so a ₹10,00,000 invoice with ₹8,00,000 collected and
+   * ₹50,000 credited reads as ₹2,00,000 owing instead of ₹1,50,000 (SALES-05).
+   *
+   * Optional because older callers select it and some do not; `outstandingOf`
+   * below is the one place that decides what to do when it is absent.
+   */
+  outstanding_paise?: number;
   status: InvoiceStatus;
   supply_state_code: string | null;
   is_interstate: boolean;
@@ -61,6 +74,21 @@ export interface SalesInvoice {
   exchange_rate?: string | null;
   txn_total?: number | null;
   paid_txn?: number | null;
+}
+
+/**
+ * What an invoice still has owing, from the server's own generated column.
+ *
+ * ONE PLACE, because the fallback is the interesting part. When
+ * `outstanding_paise` was not selected we fall back to `total − paid`, which is
+ * the OLD, wrong arithmetic — so the fallback is a bug waiting to be reached,
+ * and having it in one named function means a screen that hits it can be found
+ * by looking here rather than by re-reading five subtractions. Every caller in
+ * the sales screen selects the column.
+ */
+export function outstandingOf(inv: Pick<SalesInvoice, "total_paise" | "paid_paise" | "outstanding_paise">): number {
+  if (typeof inv.outstanding_paise === "number") return inv.outstanding_paise;
+  return inv.total_paise - (inv.paid_paise ?? 0);
 }
 
 export interface InvoiceLine {

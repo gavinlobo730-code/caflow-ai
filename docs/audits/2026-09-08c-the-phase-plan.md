@@ -739,13 +739,46 @@ against production rather than widened: thirteen tables re-captured whole, and
 the whole-schema md5 checked against the live database
 (`032ab2c4faf8496eefc6ff2fae0148a1`, 4,081 columns in 274 tables).
 
+#### 11d · PUR-09 + SALES-05 + PAY-09 — DONE. The number is already right; stop recomputing it
+
+Three findings, one shape: a figure the server already computes correctly,
+re-derived somewhere else and wrong there.
+
+* **PUR-09** — the Rule 37 report read `total − paid − tds` and knew nothing
+  about §34 notes, so a bill half settled by a purchase RETURN showed its gross
+  value as unpaid and reversed the credit on it a SECOND time — the debit note's
+  own journal has already credited GST Input. ₹18,000 reversed where ₹9,000 was
+  due, the CA under-claims for the month, and the Rule 37(4) re-availment never
+  fires because there was no payment to trigger it. **Both sides of the
+  proportion move**: the credit still availed AND the current value of the
+  supply. Netting only the amount is worse than netting neither.
+* **SALES-05** — the Sales screen's Outstanding tile summed GROSS invoice
+  totals. `paid_paise` was fetched and not subtracted; `credited_paise` was not
+  even selected. ₹10,00,000 billed with ₹8,00,000 collected and ₹50,000 credited
+  read as ₹10,00,000 owing. `outstanding_paise` is a generated column (migration
+  278) and one resolver now serves all five call sites. The tile is also
+  period-scoped, so it says **"Outstanding This FY"** like its neighbours rather
+  than implying a receivable balance.
+* **PAY-09** — the CTC report re-derived employer PF as 12% of BASIC and ESI
+  from a current-month ceiling test, in a CSV the CA hands to the client: the
+  four exact drifts `app/payroll/statutory/page.tsx` was rewritten to remove,
+  reappearing one screen over. ₹1,200 shown where the stored slip says ₹1,800 +
+  ₹75 EDLI + ₹75 admin — about ₹9,000 a year per employee, for an employee with
+  no DA at all.
+
+  **And the honest half:** the PF admin charge is floored at ₹500 per
+  ESTABLISHMENT, applied to the RUN, so a sum of member shares under-states it.
+  The table shows each employee's own share — which is their cost — and says so
+  where it totals them, pointing at the Statutory summary for the remittable
+  figure. A guard asserts both halves.
+
+---
+
+Left in Phase 11, all features rather than defects:
+
 Form 3CD, §54 reinvestment exemptions, GSTR-9, QRMP, multi-GSTIN, the MSME
 §43B(h) tracker, recurring journals out of `localStorage`, Schedule III mapping
 that changes something, invoice discounts, closing stock as at a date.
-
-These are **features, not defects** — a different kind of decision, and the
-right place to ask which ones a CA will actually pay for rather than building
-all fifteen.
 
 ### Phase 12 — The 158 mediums and lows · ≤699 days, and that is the loosest number here
 

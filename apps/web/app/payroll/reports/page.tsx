@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useSlips } from "@/lib/payroll/useSlips";
+import { employerCostOf } from "@/lib/payroll/types";
 import type {
   Employee, EmployeeYearTotals, PayrollRun, PayrollSlip,
 } from "@/lib/payroll/types";
@@ -588,22 +589,46 @@ type CtcRow = {
   gross: number;
   employerPf: number;
   employerEsi: number;
+  edli: number;
+  admin: number;
   totalCtc: number;
 };
 
+/**
+ * Cost to company, READ off the slip rather than re-derived (PAY-09).
+ *
+ * This used to compute employer PF as `min(basic x 12%, ₹1,800)` and employer
+ * ESI as `gross x 3.25%` when this month's gross was under ₹21,000 — the four
+ * exact drifts app/payroll/statutory/page.tsx was rewritten to remove, in a CSV
+ * the CA hands to the client:
+ *
+ *   * the base is not the basic. The Code on Social Security s.2(88) wage base
+ *     (migration 334) folds DA and the deemed-wages excess back in;
+ *   * `eps_eligible` splits the employer's 12% between EPF and EPS, and
+ *     GSR 609(E) excludes some employees from EPS altogether;
+ *   * ESI's ceiling is fixed for the CONTRIBUTION PERIOD (Rule 50), not tested
+ *     month by month — an employee who crosses ₹21,000 in October keeps
+ *     contributing to 31 March;
+ *   * EDLI and the admin charge are the employer's cost too (migration 329)
+ *     and were simply absent.
+ *
+ * Measured on the finding: an employee on ₹10,000 basic + ₹8,000 special
+ * allowance + ₹4,000 HRA has ₹1,800 employer PF plus ₹75 EDLI and ₹75 admin on
+ * the stored slip, and this screen showed ₹1,200 — about ₹9,000 a year
+ * understated, for an employee with no DA at all.
+ */
 function buildCtcRows(monthSlips: PayrollSlip[]): CtcRow[] {
   return monthSlips.map(s => {
-    const emp = s.employee;
-    // Employer PF = 12% of basic, capped Rs 1,800/month (EPF Act)
-    const employerPf = emp?.pf_applicable
-      ? Math.min(Math.round((emp.basic_paise * 12) / 100), 180000)
-      : 0;
-    // Employer ESI = 3.25% of gross if gross <= Rs 21,000/month (ESI Act)
-    const employerEsi =
-      emp?.esi_applicable && s.gross_paise <= 2100000
-        ? Math.round((s.gross_paise * 325) / 10000)
-        : 0;
-    return { slip: s, gross: s.gross_paise, employerPf, employerEsi, totalCtc: s.gross_paise + employerPf + employerEsi };
+    const cost = employerCostOf(s);
+    return {
+      slip: s,
+      gross: s.gross_paise,
+      employerPf: cost.pf,
+      employerEsi: cost.esi,
+      edli: cost.edli,
+      admin: cost.admin,
+      totalCtc: s.gross_paise + cost.total,
+    };
   });
 }
 
@@ -621,13 +646,20 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
       gross: acc.gross + r.gross,
       employerPf: acc.employerPf + r.employerPf,
       employerEsi: acc.employerEsi + r.employerEsi,
+      edli: acc.edli + r.edli,
+      admin: acc.admin + r.admin,
       totalCtc: acc.totalCtc + r.totalCtc,
     }),
-    { gross: 0, employerPf: 0, employerEsi: 0, totalCtc: 0 },
+    { gross: 0, employerPf: 0, employerEsi: 0, edli: 0, admin: 0, totalCtc: 0 },
   );
 
   function exportCsv(): void {
-    const header = "Employee,PAN,Gross Salary,Employer PF (12%),Employer ESI (3.25%),Total CTC";
+    // The headers no longer quote a rate. "Employer PF (12%)" was a claim about
+    // how the figure was reached, and it was not reached that way — the EPS
+    // split and the s.2(88) base mean the stored figure is not 12% of anything
+    // on this row. EDLI and the admin charge get their own columns because a
+    // client reading a CTC needs to see what the employer actually bears.
+    const header = "Employee,PAN,Gross Salary,Employer PF,Employer ESI,EDLI,PF Admin Charges,Total CTC";
     const rows = ctcRows.map(r => {
       const emp = r.slip.employee;
       return [
@@ -635,6 +667,8 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
         (r.gross / 100).toFixed(2),
         (r.employerPf / 100).toFixed(2),
         (r.employerEsi / 100).toFixed(2),
+        (r.edli / 100).toFixed(2),
+        (r.admin / 100).toFixed(2),
         (r.totalCtc / 100).toFixed(2),
       ].join(",");
     });
@@ -643,6 +677,8 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
       (totals.gross / 100).toFixed(2),
       (totals.employerPf / 100).toFixed(2),
       (totals.employerEsi / 100).toFixed(2),
+      (totals.edli / 100).toFixed(2),
+      (totals.admin / 100).toFixed(2),
       (totals.totalCtc / 100).toFixed(2),
     ].join(",");
     downloadCsv([header, ...rows, footer].join("\n"), `CTC_${selectedMonth}.csv`);
@@ -655,7 +691,20 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
           <CardTitle className="text-base">Cost to Company (CTC)</CardTitle>
-          <p className="text-xs text-[#64748B] mt-0.5">Gross + Employer PF (12%) + Employer ESI (3.25%) — EPF Act &amp; ESI Act</p>
+          <p className="text-xs text-[#64748B] mt-0.5">Gross + Employer PF + ESI + EDLI + admin charges, as computed on each payslip — EPF Act, ESI Act, Code on Social Security s.2(88)</p>
+          {/* THE ADMIN CHARGE IS FLOORED PER ESTABLISHMENT, NOT PER MEMBER.
+              EPFO charges 0.5% of PF wages with a ₹500 monthly minimum for the
+              whole establishment, and the floor is applied to the RUN
+              (routers/payroll.py, `payroll_admin_charge`) — the slip carries
+              only that member's share. So the column below totals to the sum of
+              the shares, which is a LOWER BOUND on what is remitted: three
+              members at ₹60 each owe ₹500, not ₹180. Said out loud rather than
+              left for a CA to discover against the challan. */}
+          <p className="text-[11px] text-amber-700 mt-1">
+            Per-employee cost. The PF admin charge has a ₹500 per-establishment
+            monthly floor, so the total below is the sum of member shares — the
+            remittable challan figure is on the client&apos;s Statutory summary.
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -683,6 +732,8 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
                   <th className="text-right py-3 px-4">Gross Salary</th>
                   <th className="text-right py-3 px-4">Employer PF</th>
                   <th className="text-right py-3 px-4">Employer ESI</th>
+                  <th className="text-right py-3 px-4">EDLI</th>
+                  <th className="text-right py-3 px-4">PF Admin</th>
                   <th className="text-right py-3 px-4 bg-blue-500/[0.08]">Total CTC</th>
                 </tr>
               </thead>
@@ -694,6 +745,8 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
                     <td className="py-3 px-4 text-right font-mono">{fmtPaise(r.gross)}</td>
                     <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.employerPf)}</td>
                     <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.employerEsi)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.edli)}</td>
+                    <td className="py-3 px-4 text-right font-mono text-blue-600">+ {fmtPaise(r.admin)}</td>
                     <td className="py-3 px-4 text-right font-mono font-bold text-blue-600 bg-blue-500/[0.08]/50">{fmtPaise(r.totalCtc)}</td>
                   </tr>
                 ))}
@@ -702,6 +755,8 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
                   <td className="py-3 px-4 text-right font-mono">{fmtPaise(totals.gross)}</td>
                   <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.employerPf)}</td>
                   <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.employerEsi)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.edli)}</td>
+                  <td className="py-3 px-4 text-right font-mono text-blue-700">+ {fmtPaise(totals.admin)}</td>
                   <td className="py-3 px-4 text-right font-mono text-indigo-800 bg-blue-500/[0.08]">{fmtPaise(totals.totalCtc)}</td>
                 </tr>
               </tbody>

@@ -21,6 +21,23 @@ WHY THIS IS ITS OWN MODULE
     a database or knows what a Supabase row looks like, so the tests are about
     the rule rather than about plumbing.
 
+WHAT A DEBIT NOTE DOES TO THE SUM (PUR-09)
+    A supplier is owed the bill LESS what was returned to them and PLUS any
+    undercharge they later billed: §34 makes both a change in the value of the
+    supply, not a payment. This module read `total - paid - tds` and knew about
+    neither, so a bill half settled by a purchase return showed its GROSS value
+    as unpaid — and reversed the credit on it a SECOND time, because the debit
+    note's own journal has already credited GST Input for the returned goods.
+
+    A ₹1,18,000 bill with ₹59,000 of goods returned and nothing paid reversed
+    ₹18,000 where ₹9,000 was due: the CA under-claims credit for the month, and
+    the compensating re-availment under Rule 37(4) never happens because there
+    was no payment to trigger it.
+
+    So the proportion runs on the CURRENT value of the supply and the credit
+    STILL AVAILED on it, both adjusted by the notes — not on the figures the
+    bill was raised with.
+
 WHAT COUNTS AS PAID — AND THE ASSUMPTION IN IT
     TDS deducted at source under the Income Tax Act is treated here as
     discharged. It is not money withheld from the supplier: it is remitted to
@@ -71,10 +88,45 @@ def discharged_paise(paid_paise: int, tds_paise: int = 0) -> int:
     return max(0, int(paid_paise) + int(tds_paise))
 
 
-def unpaid_paise(total_paise: int, paid_paise: int, tds_paise: int = 0) -> int:
+def supply_value_paise(total_paise: int, tds_paise: int = 0,
+                       debited_paise: int = 0, credit_note_paise: int = 0) -> int:
+    """What the supplier is owed for this supply in total, after §34 notes.
+
+    A purchase DEBIT note is a return: it reduces the value. A purchase CREDIT
+    note is the supplier's undercharge correction: it increases it. TDS is not
+    deducted from the value — it is part of what the supplier is credited with
+    (see the module docstring) — so it does not appear here; `discharged_paise`
+    is where it counts.
+    """
+    return max(0, int(total_paise) - int(debited_paise) + int(credit_note_paise))
+
+
+def unpaid_paise(total_paise: int, paid_paise: int, tds_paise: int = 0,
+                 debited_paise: int = 0, credit_note_paise: int = 0) -> int:
     """The part of the bill still owed to the supplier. Never negative — an
-    overpayment is not a negative liability for this purpose."""
-    return max(0, int(total_paise) - discharged_paise(paid_paise, tds_paise))
+    overpayment is not a negative liability for this purpose.
+
+    This is `purchase_bills.outstanding_paise` (migration 278) computed from its
+    parts: that column is `net_payable + credit_note - paid - debited`, and
+    `net_payable` is `total - tds`, so the two are the same number by different
+    arithmetic. Kept as arithmetic because this module reads no database and the
+    in-memory sources have no generated columns.
+    """
+    value = supply_value_paise(total_paise, tds_paise, debited_paise, credit_note_paise)
+    return max(0, value - discharged_paise(paid_paise, tds_paise))
+
+
+def availed_head_paise(bill_head_paise: int, debit_note_head_paise: int = 0,
+                       credit_note_head_paise: int = 0) -> int:
+    """The credit STILL availed on this bill for one tax head.
+
+    The debit note's journal has already credited GST Input for the tax on the
+    returned goods, and the purchase credit note's has debited it for the
+    undercharge. Reversing the bill's original figure under Rule 37 would
+    reverse the returned portion twice — which is the whole of PUR-09.
+    """
+    return max(0, int(bill_head_paise) - int(debit_note_head_paise)
+               + int(credit_note_head_paise))
 
 
 def _proportionate(itc_paise: int, unpaid: int, total_paise: int) -> int:
@@ -106,19 +158,41 @@ def _proportionate(itc_paise: int, unpaid: int, total_paise: int) -> int:
 def reversal_for_bill(
     *, total_paise: int, paid_paise: int, tds_paise: int = 0,
     cgst_paise: int = 0, sgst_paise: int = 0, igst_paise: int = 0,
+    debited_paise: int = 0, credit_note_paise: int = 0,
+    debit_note_cgst_paise: int = 0, debit_note_sgst_paise: int = 0,
+    debit_note_igst_paise: int = 0,
+    credit_note_cgst_paise: int = 0, credit_note_sgst_paise: int = 0,
+    credit_note_igst_paise: int = 0,
 ) -> dict:
     """How much credit falls to be reversed on this bill, head by head.
 
     Each tax head is reversed proportionately in its own right rather than
     apportioning one combined figure, because GSTR-3B table 4(B) reports IGST,
     CGST and SGST separately and they have to add up per head.
+
+    BOTH SIDES OF THE PROPORTION MOVE WITH THE §34 NOTES, and taking only one of
+    them is worse than taking neither. The credit reversed is
+    `credit still availed x unpaid / current value`: netting the unpaid amount
+    without netting the credit reverses the returned goods' tax twice over a
+    smaller base, and netting the credit without the value under-reverses. The
+    defaults are all zero, so a caller with no notes gets exactly the arithmetic
+    this had before.
     """
-    unpaid = unpaid_paise(total_paise, paid_paise, tds_paise)
-    cgst = _proportionate(cgst_paise, unpaid, total_paise)
-    sgst = _proportionate(sgst_paise, unpaid, total_paise)
-    igst = _proportionate(igst_paise, unpaid, total_paise)
+    value = supply_value_paise(total_paise, tds_paise, debited_paise, credit_note_paise)
+    unpaid = unpaid_paise(total_paise, paid_paise, tds_paise,
+                          debited_paise, credit_note_paise)
+    cgst = _proportionate(
+        availed_head_paise(cgst_paise, debit_note_cgst_paise, credit_note_cgst_paise),
+        unpaid, value)
+    sgst = _proportionate(
+        availed_head_paise(sgst_paise, debit_note_sgst_paise, credit_note_sgst_paise),
+        unpaid, value)
+    igst = _proportionate(
+        availed_head_paise(igst_paise, debit_note_igst_paise, credit_note_igst_paise),
+        unpaid, value)
     return {
         "unpaid_paise": unpaid,
+        "supply_value_paise": value,
         "cgst_paise": cgst,
         "sgst_paise": sgst,
         "igst_paise": igst,
