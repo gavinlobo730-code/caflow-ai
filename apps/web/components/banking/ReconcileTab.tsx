@@ -31,6 +31,11 @@ interface ReconSession {
   id: string; bank_account_id: string; account_no: string | null;
   statement_start_date: string; statement_end_date: string;
   opening_balance_paise: number; closing_balance_paise: number; adjustments_paise: number;
+  /** WHAT the adjustment is. Mandatory whenever the figure is non-zero
+   *  (migration 355) — an unexplained plug on a certified reconciliation is
+   *  worth nothing to the partner reviewing it. */
+  adjustments_reason?: string | null;
+  adjustments_set_at?: string | null;
   status: "open" | "in_progress" | "completed"; completed_at: string | null;
   /** Reopen provenance (Tier 2.5). A reopened period is a fact about the books. */
   reopen_count?: number;
@@ -135,6 +140,7 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<ReconHistory | null>(null);
   const [adj, setAdj] = useState("");
+  const [adjReason, setAdjReason] = useState("");
 
   const loadSessions = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -168,6 +174,7 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
       if (!res.success) throw new Error("Couldn't load the reconciliation report.");
       setReport(res.data);
       setAdj(((res.data.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
+      setAdjReason(res.data.reconciliation.adjustments_reason || "");
     } catch (e) {
       setReport(null);
       setError(e instanceof Error ? e.message : "Couldn't load the reconciliation report.");
@@ -409,6 +416,13 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
               <Row label="+ Deposits (reconciled)" paise={report.summary.deposits_paise} />
               <Row label="− Withdrawals (reconciled)" paise={report.summary.withdrawals_paise} />
               <Row label="± Adjustments" paise={report.summary.adjustments_paise} />
+              {report.summary.adjustments_paise !== 0 && (
+                // The figure alone is what BANK-05 is about. Beside it on the
+                // screen, beside it on the PDF.
+                <p className="col-span-2 -mt-0.5 text-[11px] font-sans text-[#64748B] pl-3">
+                  {report.reconciliation.adjustments_reason || "No reason recorded."}
+                </p>
+              )}
               <Row label="= Reconciled book balance" paise={report.summary.reconciled_book_balance_paise} strong />
               <Row label="Statement closing balance" paise={report.summary.statement_closing_balance_paise} strong />
             </div>
@@ -418,18 +432,41 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
               </span>
             </div>
             {!completed && (
-              <div className="flex items-center gap-2 pt-1">
-                <span className="text-[11px] text-[#64748B]">Adjustment (₹)</span>
-                <input type="number" step="0.01" value={adj} onChange={(e) => setAdj(e.target.value)} className="w-28 px-2 py-1 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                <button
-                  onClick={() => {
-                    const paise = toPaise(adj);
-                    if (paise === null) { setError(NOT_AN_AMOUNT); return; }
-                    act(() => api.banking.reconciliations.update(selectedId, { adjustments_paise: paise }));
-                  }}
-                  disabled={busy}
-                  className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]"
-                >Apply</button>
+              /* An adjustment is the one figure here that can force a period to
+                 tie out, and completing freezes a certified PDF. So it asks what
+                 it IS, refuses a non-zero figure without one (the server and a
+                 DB CHECK refuse it too), and needs a Manager — the server
+                 answers 403 to anyone below, and the message says so. */
+              <div className="pt-1 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[#64748B]">Adjustment (₹)</span>
+                  <input type="number" step="0.01" value={adj} onChange={(e) => setAdj(e.target.value)} className="w-28 px-2 py-1 text-xs border border-[#E2E8F0] rounded text-right focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  <input
+                    type="text" value={adjReason} onChange={(e) => setAdjReason(e.target.value)}
+                    placeholder="What is it? e.g. bank charges debited 31 Mar, not yet in the books"
+                    className="flex-1 min-w-0 px-2 py-1 text-xs border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={() => {
+                      const paise = toPaise(adj);
+                      if (paise === null) { setError(NOT_AN_AMOUNT); return; }
+                      const reason = adjReason.trim();
+                      if (paise !== 0 && reason.length < 10) {
+                        setError("Say what this adjustment is, in at least 10 characters. "
+                                 + "It is printed on the reconciliation.");
+                        return;
+                      }
+                      act(() => api.banking.reconciliations.setAdjustment(
+                        selectedId, paise, paise === 0 ? null : reason));
+                    }}
+                    disabled={busy}
+                    className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]"
+                  >Apply</button>
+                </div>
+                <p className="text-[10px] text-[#94A3B8]">
+                  A Manager or Partner records an adjustment, and the reason is printed on the
+                  reconciliation. Set it to 0 to remove one.
+                </p>
               </div>
             )}
             <div className="flex items-center gap-2 pt-1 border-t border-[#F8FAFC]">

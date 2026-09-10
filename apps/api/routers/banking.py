@@ -51,7 +51,8 @@ from models.banking import (
     TransactionAccountIn, PostBankTxnIn, MatchingRuleIn, MatchingRuleUpdateIn,
     CategorizeIn, MatchIn, BankMatchMultiIn, BankSplitsIn, BankPayeeIn,
     BankTransferPairIn, BankBatchIn, BankAttachmentIn, BankAttachmentRemoveIn,
-    ReconciliationCreateIn, ReconciliationUpdateIn, ReconcileItemsIn,
+    ReconciliationCreateIn, ReconciliationUpdateIn, ReconciliationAdjustmentIn,
+    ReconcileItemsIn,
     ReconciliationReopenIn, EntriesRedraftIn, EntriesPassReadyIn, PassEntryIn,
 )
 from core.permissions import rbac
@@ -2025,7 +2026,14 @@ def update_reconciliation(
     data: ReconciliationUpdateIn,
     current_user: dict = Depends(rbac("banking", "write")),
 ):
-    """Adjust opening/closing balance or adjustments (rejected once completed)."""
+    """Adjust the opening/closing balance (rejected once completed).
+
+    The documented adjustment is NOT settable here — see
+    PUT /reconciliations/{id}/adjustment, which is Manager+ and needs a reason.
+    A body still carrying `adjustments_paise` is rejected by the model rather
+    than ignored: silently dropping it would show the CA a figure that never
+    landed.
+    """
     db = _db()
     if not db:
         return api_response(True, {"id": recon_id, **data.model_dump(exclude_none=True)})
@@ -2033,6 +2041,45 @@ def update_reconciliation(
     return api_response(True, bank_reconciliation_service.update_session(
         db, current_user["firm_id"], recon_id, data.model_dump(exclude_none=True),
         actor_id=current_user.get("auth_user_id")))
+
+
+@router.put("/reconciliations/{recon_id}/adjustment")
+def set_reconciliation_adjustment(
+    recon_id: str,
+    data: ReconciliationAdjustmentIn,
+    current_user: dict = Depends(rbac("banking", "approve")),
+):
+    """Record — or clear — the documented difference the reconciled lines do not
+    explain. MANAGER+ , and a reason is mandatory for any non-zero figure.
+
+    WHY IT HAS ITS OWN ROUTE AND ITS OWN TIER (BANK-05)
+
+    This is the one figure in the module that can force a period to tie out, and
+    completing a period freezes a snapshot that is rendered as a certified "Bank
+    Reconciliation Statement". It used to ride on the generic PATCH under
+    rbac("banking", "write") as a bare integer: no reason, no audit row, nothing
+    printed on the document. An Executive who could not find a ₹47,300
+    difference could type it in and complete the period, and nobody reading the
+    PDF afterwards could tell what the ₹47,300 was.
+
+    rbac("banking", "approve") is the Manager tier core/permissions.py has
+    defined for signing off a reconciliation since it was written, and which no
+    router referenced at all until this one. The reason, the author, the audit
+    row, the timeline warning and the line on the PDF are in
+    bank_reconciliation_service.set_adjustment; migration 355 backs the pairing
+    with a CHECK so no other write path can leave a plug unexplained.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"id": recon_id,
+                                   "adjustments_paise": data.adjustments_paise,
+                                   "adjustments_reason": data.reason})
+    _assert_recon_scope(db, current_user, recon_id)
+    return api_response(True, bank_reconciliation_service.set_adjustment(
+        db, current_user["firm_id"], recon_id, data.adjustments_paise, data.reason,
+        actor_id=current_user.get("auth_user_id"),
+        # public.users.id — the column FKs users(id), not the auth id (CLAUDE.md).
+        actor_internal_id=current_user.get("id")))
 
 
 @router.get("/reconciliations/{recon_id}/items")

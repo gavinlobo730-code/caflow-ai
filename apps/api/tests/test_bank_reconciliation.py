@@ -221,11 +221,26 @@ def test_balance_mismatch_blocks_completion(db):
 
 
 def test_adjustment_makes_it_tie_out(db):
+    """Unchanged in substance; the write moved. `update_session` no longer
+    accepts the adjustment at all — it goes through `set_adjustment`, which is
+    Manager+ on the route and demands a reason (BANK-05)."""
     rid = _open(db, 100000, 165000)                 # 5000 more than txns imply
     svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
-    svc.update_session(db, FIRM, rid, {"adjustments_paise": 5000})
+    svc.set_adjustment(db, FIRM, rid, 5000,
+                       "bank charges debited on 31 March, not yet in the books")
     assert svc.report(db, FIRM, rid)["ties_out"] is True
     assert svc.complete(db, FIRM, rid)["status"] == "completed"
+
+
+def test_update_session_no_longer_writes_the_adjustment(db):
+    """The old path, proven inert. It used to accept a bare integer with no
+    reason, no audit row and no Manager, and that figure could force a
+    certification."""
+    rid = _open(db, 100000, 165000)
+    svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
+    svc.update_session(db, FIRM, rid, {"adjustments_paise": 5000})
+    assert svc.get_session(db, FIRM, rid)["adjustments_paise"] == 0
+    assert svc.report(db, FIRM, rid)["ties_out"] is False
 
 
 # ── Reopen prevention (immutable after completion) ────────────────────────────

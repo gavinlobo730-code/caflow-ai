@@ -1626,7 +1626,15 @@ export const api = {
       openingSuggestion: (params: { client_id: string; bank_account_id: string }) =>
         request(`/api/banking/reconciliations/opening-suggestion?${new URLSearchParams(params)}`),
       get: (id: string) => request(`/api/banking/reconciliations/${id}`),
-      update: (id: string, data: { opening_balance_paise?: number; closing_balance_paise?: number; adjustments_paise?: number }) => request(`/api/banking/reconciliations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      update: (id: string, data: { opening_balance_paise?: number; closing_balance_paise?: number }) => request(`/api/banking/reconciliations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      /** The documented difference the reconciled lines do not explain.
+       *  MANAGER+ , and a reason is mandatory for any non-zero figure: this is
+       *  the one number that can force a period to tie out, and it is printed
+       *  on the certified reconciliation (BANK-05). Send 0 with no reason to
+       *  clear it. */
+      setAdjustment: (id: string, adjustments_paise: number, reason: string | null) =>
+        request(`/api/banking/reconciliations/${id}/adjustment`,
+                { method: "PUT", body: JSON.stringify({ adjustments_paise, reason }) }),
       report: (id: string) => request(`/api/banking/reconciliations/${id}/report`),
       reconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/reconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
       unreconcile: (id: string, transaction_ids: string[]) => request(`/api/banking/reconciliations/${id}/unreconcile`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),

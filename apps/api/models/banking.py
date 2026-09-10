@@ -6,7 +6,7 @@ Phase B.0: models use the canonical bank_transactions field names
 (`transaction_date`, `account_id`) — not the legacy `txn_date`/`bank_account_id`
 that never existed as columns.
 """
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from typing import Optional
 from decimal import Decimal
 
@@ -351,11 +351,43 @@ class ReconciliationCreateIn(BaseModel):
 
 
 class ReconciliationUpdateIn(BaseModel):
-    """Adjust an open/in-progress session's balances or documented adjustments.
-    Rejected once the session is completed (immutable)."""
+    """Adjust an open/in-progress session's balances.
+    Rejected once the session is completed (immutable).
+
+    `adjustments_paise` used to be here and is NOT any more — it is the one
+    figure that can force a period to tie out, and it now has its own endpoint,
+    its own Manager+ gate and a mandatory reason (BANK-05,
+    ReconciliationAdjustmentIn). An extra field is REJECTED rather than ignored:
+    a caller still sending it would otherwise watch its adjustment silently not
+    apply."""
+    model_config = ConfigDict(extra="forbid")
+
     opening_balance_paise: Optional[int] = None
     closing_balance_paise: Optional[int] = None
-    adjustments_paise: Optional[int] = None
+
+
+class ReconciliationAdjustmentIn(BaseModel):
+    """The documented difference the reconciled lines do not explain.
+
+    A reason is mandatory and substantive for any non-zero figure, and must be
+    absent for zero — the same shape as ReconciliationReopenIn, and backed by a
+    DB CHECK (migration 355), because this number is printed on a certified
+    reconciliation and an unexplained plug on that document is worthless.
+    Setting one is Manager+ (rbac("banking", "approve")) on the route."""
+    adjustments_paise: int
+    reason: Optional[str] = None
+
+    @model_validator(mode="after")
+    def explained(self) -> "ReconciliationAdjustmentIn":
+        clean = (self.reason or "").strip()
+        if self.adjustments_paise and len(clean) < 10:
+            raise ValueError(
+                "Say what this adjustment is, in at least 10 characters. It is "
+                "printed on the reconciliation.")
+        if not self.adjustments_paise and clean:
+            raise ValueError("An adjustment of zero has nothing to explain.")
+        self.reason = clean or None
+        return self
 
 
 class ReconcileItemsIn(BaseModel):
