@@ -54,7 +54,13 @@ class TestComputeEndpoint:
         r = _client_for(app, PARTNER_F1).post("/api/income-tax/advance-tax/compute", json=COMPUTE_BODY)
         assert r.status_code == 200
         data = r.json()["data"]
-        assert data["section_ref"] == "Section 234C"
+        # "Section 234C(1)(a)", not "Section 234C": §234C(1)(a) and §234C(1)(b)
+        # are different sentences with different schedules — four instalments
+        # against one — and a response naming only the section leaves the
+        # one-instalment answer looking like a four-instalment one that lost
+        # its rows (IT-06).
+        assert data["section_ref"] == "Section 234C(1)(a)"
+        assert data["is_presumptive_44ad_44ada"] is False
         assert len(data["installments"]) == 4
         assert data["total_interest_paise"] > 0
         inst4 = next(i for i in data["installments"] if i["installment_number"] == 4)

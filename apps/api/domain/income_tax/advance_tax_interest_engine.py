@@ -65,11 +65,10 @@ class InstallmentRule:
     interest_months: int              # fixed period Section 234C charges, regardless of actual payment date
 
 
-# Section 208 instalment schedule — applies uniformly to all assessees
-# other than those under presumptive taxation u/s 44AD/44ADA (out of scope
-# here; they have a single 15 Mar/100% instalment with no interim
-# instalments), since the Finance Act 2016 amendment aligned the
-# corporate and non-corporate schedules onto the same 15/45/75/100 split.
+# Section 208 instalment schedule — applies to every assessee EXCEPT one under
+# presumptive taxation u/s 44AD/44ADA, whose single instalment is below, since
+# the Finance Act 2016 amendment aligned the corporate and non-corporate
+# schedules onto the same 15/45/75/100 split.
 #
 # Section 234C(1)'s trigger tolerance: instalments 1 and 2 only need to
 # clear 12%/36% (not the full 15%/45%) to avoid interest for THAT
@@ -82,12 +81,55 @@ INSTALLMENT_RULES: tuple[InstallmentRule, ...] = (
     InstallmentRule(number=4, cumulative_required_percent=100, trigger_percent=100, interest_months=1),
 )
 
+#: THE PRESUMPTIVE ASSESSEE HAS ONE INSTALMENT, NOT FOUR (IT-06).
+#:
+#: The PROVISO to §211(1) says it plainly: an eligible assessee in respect of an
+#: eligible business under §44AD, or an eligible profession under §44ADA, "shall
+#: pay the whole amount of such advance tax during each financial year on or
+#: before the 15th day of March". There are no 15 June, 15 September or
+#: 15 December instalments to defer, so there is nothing for §234C to charge on
+#: those dates.
+#:
+#: §234C(1)(b) is the matching charging limb, and it is a different sentence
+#: from §234C(1)(a): where the advance tax paid on or before 15 March is less
+#: than the tax due on the returned income, interest runs at one per cent on the
+#: shortfall — one month, no tolerance, one time.
+#:
+#: Applying the four-instalment schedule to such an assessee invents three
+#: defaults. A ₹1,00,000 liability paid in full on 15 March — exactly as the
+#: statute requires — was charged ₹450 + ₹1,350 + ₹2,250 = ₹4,050 of interest on
+#: instalments that were never due.
+PRESUMPTIVE_INSTALLMENT_RULES: tuple[InstallmentRule, ...] = (
+    InstallmentRule(number=4, cumulative_required_percent=100,
+                    trigger_percent=100, interest_months=1),
+)
+
+#: Why the single instalment keeps NUMBER 4 rather than 1: it is the same
+#: 15 March date as the general schedule's fourth, and a stored
+#: advance_tax_payments row is keyed on (client, FY, installment_number). Giving
+#: it number 1 would make a presumptive client's 15 March payment collide with a
+#: general client's 15 June slot in every query that reads the number, and would
+#: silently re-label history if a client's basis ever changed.
+
 _INTEREST_RATE_PERCENT_PER_MONTH = 1
 
 
-def installment_schedule(fy: str) -> list[tuple[int, date]]:
-    """Section 208 due dates for a given FY string e.g. '2025-26'."""
+def installment_rules(*, is_presumptive_44ad_44ada: bool = False) -> tuple[InstallmentRule, ...]:
+    """Which schedule governs — §208's four, or §211(1)'s proviso's one."""
+    return (PRESUMPTIVE_INSTALLMENT_RULES if is_presumptive_44ad_44ada
+            else INSTALLMENT_RULES)
+
+
+def installment_schedule(fy: str, *,
+                         is_presumptive_44ad_44ada: bool = False) -> list[tuple[int, date]]:
+    """Advance-tax due dates for a given FY string e.g. '2025-26'.
+
+    Four under §208; ONE, on 15 March, for a §44AD/§44ADA assessee under the
+    proviso to §211(1).
+    """
     start_year = int(fy.split("-")[0])
+    if is_presumptive_44ad_44ada:
+        return [(4, date(start_year + 1, 3, 15))]
     return [
         (1, date(start_year, 6, 15)),
         (2, date(start_year, 9, 15)),
@@ -123,12 +165,29 @@ class InstallmentInterestResult:
 class AdvanceTaxInterestResult:
     installments: tuple[InstallmentInterestResult, ...]
     total_interest_paise: int
+    #: Which schedule this was computed on. A caller that shows a presumptive
+    #: computation without saying so shows one instalment where the CA expects
+    #: four, and nothing on the screen explains the difference.
+    is_presumptive_44ad_44ada: bool = False
+    basis: str = ""
+
+
+_GENERAL_BASIS = (
+    "IT Act §208 — four instalments (15%/45%/75%/100%), with §234C(1)(a)'s "
+    "12%/36% tolerance on the first two and a fixed 3/3/3/1-month interest "
+    "period.")
+_PRESUMPTIVE_BASIS = (
+    "IT Act §211(1) proviso — a §44AD/§44ADA assessee pays the whole advance "
+    "tax by 15 March, so there is one instalment. §234C(1)(b) charges 1% on the "
+    "shortfall from 100%, for one month, with no tolerance.")
 
 
 def compute_234c_interest(
     fy: str,
     estimated_tax_paise: int,
     payments: list[InstallmentPayment],
+    *,
+    is_presumptive_44ad_44ada: bool = False,
 ) -> AdvanceTaxInterestResult:
     """Section 234C interest for deferment of advance tax.
 
@@ -137,14 +196,25 @@ def compute_234c_interest(
     payment recorded late against instalment N's slot still correctly
     counts toward instalment N+1 (and later)'s cumulative-by-due-date
     total, since by then it has genuinely been paid.
+
+    `is_presumptive_44ad_44ada` selects §211(1)'s proviso instead of §208: one
+    instalment on 15 March, §234C(1)(b), no tolerance. It is a FACT ABOUT THE
+    ASSESSEE that this engine cannot derive — whether §44AD or §44ADA is opted
+    into is the CA's determination and no turnover figure here decides it — so
+    it is supplied, not inferred, and the answer carries `basis` saying which
+    branch was taken.
     """
     if estimated_tax_paise <= 0:
-        return AdvanceTaxInterestResult(installments=tuple(), total_interest_paise=0)
+        return AdvanceTaxInterestResult(
+            installments=tuple(), total_interest_paise=0,
+            is_presumptive_44ad_44ada=is_presumptive_44ad_44ada,
+            basis=_PRESUMPTIVE_BASIS if is_presumptive_44ad_44ada else _GENERAL_BASIS)
 
-    due_dates = dict(installment_schedule(fy))
+    due_dates = dict(installment_schedule(
+        fy, is_presumptive_44ad_44ada=is_presumptive_44ad_44ada))
     results = []
     total = 0
-    for rule in INSTALLMENT_RULES:
+    for rule in installment_rules(is_presumptive_44ad_44ada=is_presumptive_44ad_44ada):
         due_date = due_dates[rule.number]
         actual_cumulative = sum(
             p.paid_amount_paise for p in payments
@@ -169,7 +239,10 @@ def compute_234c_interest(
         ))
         total += interest
 
-    return AdvanceTaxInterestResult(installments=tuple(results), total_interest_paise=total)
+    return AdvanceTaxInterestResult(
+        installments=tuple(results), total_interest_paise=total,
+        is_presumptive_44ad_44ada=is_presumptive_44ad_44ada,
+        basis=_PRESUMPTIVE_BASIS if is_presumptive_44ad_44ada else _GENERAL_BASIS)
 
 
 # ── Sections 234A and 234B ───────────────────────────────────────────────────

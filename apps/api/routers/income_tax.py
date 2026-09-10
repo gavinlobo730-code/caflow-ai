@@ -23,7 +23,7 @@ from domain.income_tax.capital_gains_engine import (
 from domain.income_tax.assessee import assessee_kind_for_entity_type
 from domain.income_tax.advance_tax_interest_engine import (
     compute_234a_interest, compute_234b_interest, compute_234c_interest,
-    installment_schedule, InstallmentPayment, INSTALLMENT_RULES,
+    installment_schedule, installment_rules, InstallmentPayment, INSTALLMENT_RULES,
 )
 from domain.income_tax.itr_json import build_itr_payload, itr_field_placements
 from domain.income_tax.loss_set_off import BroughtForwardLoss, KNOWN_LOSS_TYPES
@@ -690,6 +690,12 @@ class ComputeAdvanceTaxRequest(BaseModel):
     fy: FYLabel
     estimated_tax_paise: int = Field(ge=0)
     installments: list[AdvanceTaxInstallmentInput] = Field(default_factory=list)
+    #: §211(1) proviso — a §44AD/§44ADA assessee pays the whole advance tax by
+    #: 15 March, so there is ONE instalment and §234C(1)(b) is the charging
+    #: limb. Supplied rather than inferred: whether §44AD or §44ADA is opted
+    #: into is the CA's determination, and no figure this endpoint receives
+    #: decides it (IT-06).
+    is_presumptive_44ad_44ada: bool = False
 
     @field_validator("installments")
     @classmethod
@@ -700,16 +706,25 @@ class ComputeAdvanceTaxRequest(BaseModel):
         return v
 
 
-def _at_response(estimated_tax_paise: int, req_installments: list[AdvanceTaxInstallmentInput], fy: str) -> dict:
+def _at_response(estimated_tax_paise: int, req_installments: list[AdvanceTaxInstallmentInput],
+                 fy: str, *, is_presumptive_44ad_44ada: bool = False) -> dict:
     result = compute_234c_interest(
         fy, estimated_tax_paise,
         [InstallmentPayment(i.installment_number, i.paid_amount_paise, i.paid_date) for i in req_installments],
+        is_presumptive_44ad_44ada=is_presumptive_44ad_44ada,
     )
     return {
         "fy": fy,
         "estimated_tax_paise": estimated_tax_paise,
         "total_interest_paise": result.total_interest_paise,
-        "section_ref": "Section 234C",
+        # Which limb, not just which section. §234C(1)(a) and §234C(1)(b) are
+        # different sentences with different schedules, and a response that says
+        # only "Section 234C" leaves a one-instalment answer looking like a
+        # three-instalment one that lost its rows.
+        "section_ref": ("Section 234C(1)(b)" if result.is_presumptive_44ad_44ada
+                        else "Section 234C(1)(a)"),
+        "is_presumptive_44ad_44ada": result.is_presumptive_44ad_44ada,
+        "basis": result.basis,
         "installments": [
             {
                 "installment_number": i.installment_number,
@@ -734,8 +749,17 @@ def compute_advance_tax_interest(
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     """Stateless Section 234C interest estimator — does not persist anything.
+
+    TWO SCHEDULES, AND THE CALLER SAYS WHICH (IT-06). §208 gives four
+    instalments; the proviso to §211(1) gives a §44AD/§44ADA assessee ONE, the
+    whole amount by 15 March. This charged such an assessee for deferring three
+    instalments that were never due — ₹1,00,000 paid in full on 15 March, exactly
+    as the statute requires, came back with ₹4,050 of interest.
+
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
-    return api_response(True, _at_response(req.estimated_tax_paise, req.installments, req.fy))
+    return api_response(True, _at_response(
+        req.estimated_tax_paise, req.installments, req.fy,
+        is_presumptive_44ad_44ada=req.is_presumptive_44ad_44ada))
 
 
 # ── §234A and §234B — the two the CA could not reach (IT-13) ─────────────────
@@ -1090,9 +1114,20 @@ def save_advance_tax(
 ):
     """Persists the recorded payment facts (paid amount/date/challan) for
     each instalment — due_date and required_percent are always derived
-    server-side from the FY's Section 208 schedule, never trusted from the
+    server-side from the FY's advance-tax schedule, never trusted from the
     client. Interest itself is never stored (it is derived, not a fact);
     call /advance-tax/compute for the current computed breakdown.
+
+    WHICH SCHEDULE (IT-06). §208's four instalments, or the ONE the proviso to
+    §211(1) gives a §44AD/§44ADA assessee. Writing four rows for a presumptive
+    client records three instalments the statute never required, and the
+    register would then disagree with the interest computation beside it — which
+    is worse than either being wrong alone.
+
+    Changing a client's basis DELETES the rows the new schedule does not have.
+    An upsert alone would leave the three §208 rows behind, and a stale row with
+    a real paid_date on it reads as a payment against a live obligation.
+
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
     # task #230 audit finding: client_id was caller-supplied and never
     # checked against the caller's firm. Combined with the (now-fixed, see
@@ -1103,7 +1138,13 @@ def save_advance_tax(
     # values and reassigning it to their own firm_id.
     assert_client_access(current_user, req.client_id)
     db = _db()
-    due_dates = dict(installment_schedule(req.fy))
+    due_dates = dict(installment_schedule(
+        req.fy, is_presumptive_44ad_44ada=req.is_presumptive_44ad_44ada))
+    required_percent = {
+        r.number: r.cumulative_required_percent
+        for r in installment_rules(
+            is_presumptive_44ad_44ada=req.is_presumptive_44ad_44ada)
+    }
     by_number = {i.installment_number: i for i in req.installments}
     rows = []
     for number, due_date in due_dates.items():
@@ -1114,7 +1155,7 @@ def save_advance_tax(
             "financial_year": req.fy,
             "installment_number": number,
             "due_date": due_date.isoformat(),
-            "required_percent": _REQUIRED_PERCENT_BY_INSTALLMENT[number],
+            "required_percent": required_percent[number],
             "estimated_tax_paise": req.estimated_tax_paise,
             "paid_amount_paise": inst.paid_amount_paise if inst else 0,
             "paid_date": inst.paid_date.isoformat() if inst and inst.paid_date else None,
@@ -1124,4 +1165,11 @@ def save_advance_tax(
         return api_response(True, rows)
     result = (db.table("advance_tax_payments")
               .upsert(rows, on_conflict="firm_id,client_id,financial_year,installment_number").execute())
+    # Rows the schedule no longer has. Only ever non-empty when a client's basis
+    # changed — a presumptive client keeps instalment 4 and loses 1, 2 and 3.
+    stale = [n for n in (1, 2, 3, 4) if n not in due_dates]
+    if stale:
+        (db.table("advance_tax_payments").delete()
+         .eq("firm_id", current_user["firm_id"]).eq("client_id", req.client_id)
+         .eq("financial_year", req.fy).in_("installment_number", stale).execute())
     return api_response(True, result.data or rows)
