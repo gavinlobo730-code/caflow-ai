@@ -87,6 +87,78 @@ class TDS26QPayload:
     warnings: list[str] = field(default_factory=list)
 
 
+@dataclass
+class TDS27QDeducteeRecord:
+    """Single deductee row for a Form 27Q return — a payment to a NON-RESIDENT.
+
+    A SEPARATE RECORD FROM TDSDeducteeRecord, and not an optional extension of
+    it, because 27Q's annexure asks for things 26Q has no column for and 26Q
+    asks for things that are meaningless here.
+
+      * TAX, SURCHARGE AND CESS ARE THREE COLUMNS. §195 charges "at the rates
+        in force" under Part II of the First Schedule with §115A, and Part II
+        carries its own surcharge ladders and a 4% cess that the resident
+        series does not. `tds_rate_pct` is the BASE rate the tax was deducted
+        at, so the three figures deliberately do not multiply out — the same
+        asymmetry the register already carries from the bill.
+      * COUNTRY AND TIN identify a payee with no Indian PAN. §206AA's 20% floor
+        has a non-resident carve-out (§206AA(7) with Rule 37BC) that residents
+        do not get, and the six Rule 37BC particulars are what earn it.
+      * A NIL IS A ROW. An ordinary import from a supplier with no permanent
+        establishment is business profits, not chargeable under §195 at all
+        (*GE India Technology Centre*, 2010) — the right withholding is nil,
+        and 27Q still reports the remittance with a REASON. 26Q has no such
+        row: it reports deductions, and a resident payment below its threshold
+        was not one. The asymmetry is the statute's.
+    """
+    deductee_name: str
+    deductee_pan: str
+    section: str                       # "195" in practice; "393(2)" from FY 2026-27
+    nature_of_payment: str
+    payment_date: str
+    payment_amount_paise: int
+    tds_rate_pct: float                # the BASE rate — surcharge and cess are below
+    tds_deducted_paise: int            # base + surcharge + cess, as withheld
+    tds_deposited_paise: int
+    challan_no: str
+    bsr_code: str
+    challan_date: str
+    country_of_residence: Optional[str] = None
+    deductee_tin: Optional[str] = None
+    surcharge_paise: int = 0
+    cess_paise: int = 0
+    #: Why nothing was withheld, where nothing was. The engine's own sentence,
+    #: not an FVU remark code: those are a published list and guessing one would
+    #: put a wrong code in a filed return (migration 312).
+    non_deduction_reason: Optional[str] = None
+
+
+@dataclass
+class TDS27QPayload:
+    """Form 27Q — TDS on payments to non-residents (IT Act §195, Rule 31A(4)(b))."""
+    tan: str
+    deductor_name: str
+    deductor_pan: str
+    deductor_address: str
+    financial_year: str
+    quarter: str
+    quarter_end_date: str
+    filing_type: str = "O"
+    total_payment_paise: int = 0
+    total_tds_deducted_paise: int = 0
+    total_tds_deposited_paise: int = 0
+    total_surcharge_paise: int = 0
+    total_cess_paise: int = 0
+    #: Remittances that withheld nothing. Counted separately because they are
+    #: the rows an assessing officer asks about, and because a return whose
+    #: deductee count and tax total disagree looks wrong without them.
+    nil_deduction_count: int = 0
+    deductees: list[TDS27QDeducteeRecord] = field(default_factory=list)
+    challans: list[dict] = field(default_factory=list)
+    validation_errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
 # ── TDS threshold/rate data ───────────────────────────────────────────────────
 # Lives in domain/tds/section_rates.py — FY-versioned, integer basis points,
 # with per-FY verification flags (audit F17: the table that used to sit here
@@ -397,6 +469,119 @@ class TDSComputer:
                 f"TDS deducted (₹{gap//100}) exceeds deposited — Challan 281 deposit required"
             )
         return errors
+
+    def compute_27q(
+        self,
+        tan: str,
+        deductor_name: str,
+        deductor_pan: str,
+        deductor_address: str,
+        financial_year: str,
+        quarter: str,
+        deductees: list[TDS27QDeducteeRecord],
+        challans: list[dict],
+    ) -> TDS27QPayload:
+        """Build the Form 27Q payload — IT Act §195, Rule 31A(4)(b).
+
+        Deliberately does NOT filter by section the way compute_26q filters out
+        §192. A payment to a non-resident is on 27Q whatever charging provision
+        reaches it: §195 in almost every case, but §194E (non-resident
+        sportsmen), §194LB/§194LC (interest to a non-resident) and §196D (FII
+        income) all charge non-residents and all report here. Filtering by
+        section would silently drop them; residency is what routes a row, and
+        the CALLER decides it from the vendor master (migration 308).
+        """
+        payload = TDS27QPayload(
+            tan=tan,
+            deductor_name=deductor_name,
+            deductor_pan=deductor_pan,
+            deductor_address=deductor_address,
+            financial_year=financial_year,
+            quarter=quarter,
+            quarter_end_date=self._quarter_end(financial_year, quarter),
+        )
+        payload.deductees = deductees
+        payload.challans = challans
+
+        payload.total_payment_paise = sum(d.payment_amount_paise for d in deductees)
+        payload.total_tds_deducted_paise = sum(d.tds_deducted_paise for d in deductees)
+        payload.total_tds_deposited_paise = sum(d.tds_deposited_paise for d in deductees)
+        payload.total_surcharge_paise = sum(d.surcharge_paise for d in deductees)
+        payload.total_cess_paise = sum(d.cess_paise for d in deductees)
+        payload.nil_deduction_count = sum(1 for d in deductees if d.tds_deducted_paise == 0)
+
+        payload.validation_errors = self._validate_27q(payload)
+        payload.warnings = self._warnings_27q(payload)
+        return payload
+
+    def _validate_27q(self, payload: TDS27QPayload) -> list[str]:
+        errors: list[str] = []
+        if not payload.tan or len(payload.tan) != 10:
+            errors.append("TAN must be 10 characters")
+        if not payload.deductor_pan or len(payload.deductor_pan) != 10:
+            errors.append("Deductor PAN must be 10 characters")
+        for d in payload.deductees:
+            if d.deductee_pan not in ("PANNOTAVBL", "PANAPPLIED") and len(d.deductee_pan) != 10:
+                errors.append(f"Invalid PAN for {d.deductee_name}: {d.deductee_pan}")
+            if d.tds_deducted_paise < 0:
+                errors.append(f"Negative TDS for {d.deductee_name}")
+            # THE §206AA FLOOR IS NOT ASSERTED HERE, and that is the difference
+            # from 26Q. §206AA(7) with Rule 37BC lets a non-resident out of the
+            # 20% floor on six particulars — name, email, phone, address,
+            # country TIN and a tax residency certificate — which
+            # domain/tds/section_195.py has already weighed by the time a rate
+            # reaches this record. Re-asserting the floor here would reject the
+            # very returns the carve-out exists for.
+            #
+            # What IS asserted is that the row can be filed at all: the FVU
+            # requires a country and a TIN wherever there is no PAN, because
+            # they are how the payee is identified.
+            if not has_pan(d.deductee_pan):
+                if not (d.country_of_residence or "").strip():
+                    errors.append(
+                        f"{d.deductee_name}: no PAN and no country of residence — "
+                        f"Form 27Q identifies a non-PAN payee by country and TIN")
+                if not (d.deductee_tin or "").strip():
+                    errors.append(
+                        f"{d.deductee_name}: no PAN and no tax identification number "
+                        f"— required on Form 27Q where PAN is not available")
+            # A NIL WITHOUT A REASON IS THE ONE THING THIS RETURN CANNOT SAY.
+            # Rule 31A(4) reports a remittance that withheld nothing with the
+            # reason it withheld nothing; a blank leaves the deductor an
+            # assessee in default under §201(1) with no recorded basis.
+            if d.tds_deducted_paise == 0 and not (d.non_deduction_reason or "").strip():
+                errors.append(
+                    f"{d.deductee_name}: nothing was withheld and no reason is "
+                    f"recorded — Form 27Q reports a nil remittance with its basis")
+        gap = payload.total_tds_deducted_paise - payload.total_tds_deposited_paise
+        if gap > 0:
+            errors.append(
+                f"TDS deducted (₹{gap//100}) exceeds deposited — Challan 281 deposit required"
+            )
+        return errors
+
+    def _warnings_27q(self, payload: TDS27QPayload) -> list[str]:
+        warnings: list[str] = []
+        # The §195 rate registry is reconciled against §115A and Part II of the
+        # First Schedule and is NOT confirmed line by line against any Finance
+        # Act — every year in it carries verified=False. Said on the return the
+        # figures are going into, not only in the module that holds them.
+        from domain.tds.section_195_rates import rates_are_verified
+        if not rates_are_verified(payload.financial_year):
+            warnings.append(
+                f"FY {payload.financial_year} section 195 rates were reconciled "
+                f"against s.115A and Part II of the First Schedule but have NOT "
+                f"been confirmed line by line against the Finance Act — check "
+                f"before filing (domain/tds/section_195_rates.py)")
+        if not payload.deductees:
+            warnings.append("No payments to a non-resident found for this quarter")
+        if payload.nil_deduction_count:
+            warnings.append(
+                f"{payload.nil_deduction_count} remittance(s) withheld nothing. "
+                f"Each is reported with its basis, and each rests on a claim — "
+                f"no permanent establishment, or a treaty with no article for "
+                f"this nature of income — that the assessing officer may test.")
+        return warnings
 
     def _validate_24q(self, payload: TDS24QPayload) -> list[str]:
         errors: list[str] = []
