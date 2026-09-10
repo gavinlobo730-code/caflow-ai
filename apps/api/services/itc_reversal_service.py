@@ -73,16 +73,27 @@ def _all_bills(db, firm_id: str, client_id: Optional[str]) -> list[dict]:
     return out
 
 
-_NOTE_TABLES = (
-    # (table, sign) — a purchase DEBIT note is a return and reduces the supply;
-    # a purchase CREDIT note is the supplier's undercharge and increases it.
-    # Both carry their own tax heads, and both have already moved GST Input in
-    # their own journal, which is why Rule 37 must not move it a second time.
-    ("debit_notes", -1),
-    ("purchase_credit_notes", +1),
-)
+def _fold_notes(rows: list, sign: int, out: dict) -> None:
+    """Add one note table's rows into the per-bill accumulator.
 
-_NOTE_LIVE_STATUSES = ("issued", "applied", "partially_applied", "draft")
+    `sign` is decided by the CALLER and not by anything on the row: a purchase
+    DEBIT note is a return and reduces the supply, a purchase CREDIT note is the
+    supplier's undercharge and increases it. Getting it backwards is the
+    difference between reversing twice and not reversing at all.
+    """
+    for n in rows:
+        bill = n.get("purchase_bill_id")
+        # A note not linked to a bill adjusts the vendor account rather than
+        # this supply, so Rule 37 has nothing to net it against.
+        if not bill or n.get("deleted_at"):
+            continue
+        if str(n.get("status") or "").lower() == "cancelled":
+            continue
+        acc = out.setdefault(bill, {"total": 0, "cgst": 0, "sgst": 0, "igst": 0})
+        acc["total"] += sign * int(n.get("total_paise") or 0)
+        acc["cgst"] += sign * int(n.get("cgst_paise") or 0)
+        acc["sgst"] += sign * int(n.get("sgst_paise") or 0)
+        acc["igst"] += sign * int(n.get("igst_paise") or 0)
 
 
 def _note_adjustments(db, firm_id: str, client_id: Optional[str]) -> dict:
@@ -93,41 +104,51 @@ def _note_adjustments(db, firm_id: str, client_id: Optional[str]) -> dict:
     wire is proportional to the ANSWER. A per-bill lookup would be a round trip
     each, from Singapore to Mumbai, for a report a CA opens once a month.
 
-    Signed on the way in, so the caller adds rather than deciding direction —
-    getting the sign wrong is the difference between reversing twice and not
-    reversing at all.
+    THE TWO TABLE NAMES ARE WRITTEN OUT, not looped over a tuple of them. A
+    `db.table(name)` with a variable is invisible to
+    tests/test_backend_columns_exist_pg.py, which checks every select list
+    against the real schema — the first draft of this cost that guard one more
+    blind spot, and a blind spot on a select feeding a statutory reversal is the
+    wrong place to spend the budget. Two literal blocks, both checked.
     """
     out: dict = {}
-    for table, sign in _NOTE_TABLES:
-        cursor = None
-        while True:
-            q = (db.table(table)
-                 .select("id, purchase_bill_id, total_paise, cgst_paise, "
-                         "sgst_paise, igst_paise, status, deleted_at")
-                 .eq("firm_id", firm_id))
-            if client_id:
-                q = q.eq("client_id", client_id)
-            if cursor is not None:
-                q = q.gt("id", cursor)
-            page = q.order("id").limit(PAGE).execute().data or []
-            for n in page:
-                bill = n.get("purchase_bill_id")
-                # A note not linked to a bill adjusts the vendor account, not
-                # this supply, so Rule 37 has nothing to net it against.
-                if not bill or n.get("deleted_at"):
-                    continue
-                if str(n.get("status") or "").lower() == "cancelled":
-                    continue
-                acc = out.setdefault(bill, {"total": 0, "cgst": 0, "sgst": 0, "igst": 0})
-                acc["total"] += sign * int(n.get("total_paise") or 0)
-                acc["cgst"] += sign * int(n.get("cgst_paise") or 0)
-                acc["sgst"] += sign * int(n.get("sgst_paise") or 0)
-                acc["igst"] += sign * int(n.get("igst_paise") or 0)
-            if len(page) < PAGE:
-                break
-            cursor = page[-1].get("id")
-            if cursor is None:
-                break
+
+    cursor = None
+    while True:
+        q = (db.table("debit_notes")
+             .select("id, purchase_bill_id, total_paise, cgst_paise, "
+                     "sgst_paise, igst_paise, status, deleted_at")
+             .eq("firm_id", firm_id))
+        if client_id:
+            q = q.eq("client_id", client_id)
+        if cursor is not None:
+            q = q.gt("id", cursor)
+        page = q.order("id").limit(PAGE).execute().data or []
+        _fold_notes(page, -1, out)
+        if len(page) < PAGE:
+            break
+        cursor = page[-1].get("id")
+        if cursor is None:
+            break
+
+    cursor = None
+    while True:
+        q = (db.table("purchase_credit_notes")
+             .select("id, purchase_bill_id, total_paise, cgst_paise, "
+                     "sgst_paise, igst_paise, status, deleted_at")
+             .eq("firm_id", firm_id))
+        if client_id:
+            q = q.eq("client_id", client_id)
+        if cursor is not None:
+            q = q.gt("id", cursor)
+        page = q.order("id").limit(PAGE).execute().data or []
+        _fold_notes(page, +1, out)
+        if len(page) < PAGE:
+            break
+        cursor = page[-1].get("id")
+        if cursor is None:
+            break
+
     return out
 
 
