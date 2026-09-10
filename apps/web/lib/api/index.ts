@@ -86,6 +86,187 @@ export type ApplyStructureResult = {
   notes: string[];
 };
 
+// ── §37 amendments and the exception report (GST-13) ─────────────────────────
+//
+// CGST Act §37: a filed GSTR-1 can never be revised. A correction to it is
+// declared in a LATER return's amendment tables — 9A for invoices, 9C for
+// credit and debit notes, 10 for B2C-others — each naming the original
+// document so GSTN knows which entry it supersedes.
+
+/** The five money heads every GSTR-1 figure is reported under, in paise. */
+export type GSTHeads = {
+  taxable_paise: number; cgst_paise: number; sgst_paise: number;
+  igst_paise: number; cess_paise: number;
+};
+
+export type GSTExceptionDoc = {
+  doc_no?: string;
+  kind?: string;
+  section?: string;
+  counterparty?: string;
+  doc_date?: string;
+  /** Which amendment table this correction is declared in — "9A", "9C", "10",
+   *  or "current period" for something that was never declared at all and so
+   *  has no filed entry to supersede. */
+  declare_in?: string;
+  filed?: GSTHeads;
+  books?: GSTHeads;
+  delta?: GSTHeads;
+  filed_section?: string;
+  books_section?: string;
+} & Partial<GSTHeads>;
+
+export type GSTR1ExceptionReport = {
+  /** "ok" | "not_filed" | "payload_missing" — the last means the return was
+   *  marked filed before its payload was recorded, so nothing can be compared
+   *  and the drift for that period cannot be detected at all. */
+  status: string;
+  period: string;
+  message?: string;
+  gstin?: string;
+  filed_at?: string;
+  arn?: string;
+  clean?: boolean;
+  finding_count?: number;
+  documents?: {
+    /** In the books, never filed. Goes in the CURRENT period's ordinary
+     *  table — there is no filed entry to amend. */
+    missing_from_return: GSTExceptionDoc[];
+    /** Filed, and no longer in the books. The most serious of the four. */
+    missing_from_books: GSTExceptionDoc[];
+    amount_changed: GSTExceptionDoc[];
+    /** Now belongs to a different GSTR-1 table. Amending the value alone
+     *  would leave it in the wrong one. */
+    reclassified: GSTExceptionDoc[];
+  };
+  b2cs?: { changed: GSTExceptionDoc[]; note?: string };
+  totals?: { filed: GSTHeads; books: GSTHeads; delta: GSTHeads };
+  rule?: string;
+  ca_review_required?: boolean;
+};
+
+export type GSTAmendmentWindow = {
+  /** "open" | "closing_soon" | "expired" — §37(3)/§16(4): 30 November
+   *  following the FY, or the date GSTR-9 was furnished, whichever is
+   *  EARLIER. */
+  status?: string;
+  closes_on?: string;
+  reason?: string;
+  days_left?: number;
+};
+
+export type GSTR1AmendmentsReport = {
+  period: string;
+  source_periods: string[];
+  /** The GSTN amendment sections this period would carry, ready to merge. */
+  sections?: Record<string, unknown>;
+  /** NOT amendments: raised after the period was filed, so never declared —
+   *  they belong in this period's ordinary tables. */
+  carry_forward: Array<Record<string, unknown>>;
+  /** NOT amendments either: cancelled after filing, which has no single right
+   *  answer (amend to nil, or raise a credit note). Surfaced for the CA. */
+  needs_decision: Array<Record<string, unknown>>;
+  /** Periods whose correction window has already closed. Real drift that can
+   *  no longer be declared — surfaced because a CA needs to know what is
+   *  beyond repair. */
+  expired: Array<{ period: string; window?: GSTAmendmentWindow;
+                   counts?: Record<string, number> }>;
+  closing_soon: Array<{ period: string; window?: GSTAmendmentWindow;
+                        counts?: Record<string, number> }>;
+  as_of?: string;
+  counts: {
+    amendments?: number; carry_forward?: number; needs_decision?: number;
+    source_periods?: number; expired_periods?: number; closing_soon_periods?: number;
+  };
+  ca_review_required?: boolean;
+};
+
+export type GSTR1WithAmendments = {
+  payload?: Record<string, unknown>;
+  amendments?: {
+    sections: string[];
+    counts: Record<string, number>;
+    source_periods: string[];
+    expired: GSTR1AmendmentsReport["expired"];
+    needs_decision: Array<Record<string, unknown>>;
+    carry_forward: Array<Record<string, unknown>>;
+    closing_soon: GSTR1AmendmentsReport["closing_soon"];
+  };
+  ca_review_required?: boolean;
+  [key: string]: unknown;
+};
+
+// ── The ITC register and Table 11 advances (GST-13) ──────────────────────────
+
+/** The four heads a reversal or reclaim is declared under. NO taxable value:
+ *  Table 4 is about CREDIT, not about the supply it came from. */
+export type ITCHeads = {
+  igst_paise: number; cgst_paise: number; sgst_paise: number; cess_paise: number;
+};
+
+export type ITCRegisterRow = {
+  id: string;
+  kind: "reversal" | "reclaim";
+  period: string;
+  journal_entry_id: string;
+  /** rule_37 | rule_37a | section_16_2b | section_16_2c | other — the
+   *  RECLAIMABLE reasons only. Rules 38/42/43 and §17(5) are permanent and
+   *  belong in Table 4(B)(1), derived from the documents; registering one here
+   *  would double-count it. */
+  reason_code?: string;
+  reverses_id?: string | null;
+  purchase_bill_id?: string | null;
+  notes?: string | null;
+  created_at?: string;
+} & Partial<ITCHeads>;
+
+export type ITCRegisterPeriod = {
+  period: string;
+  /** -> GSTR-3B Table 4(B)(2) */
+  reversals: ITCRegisterRow[];
+  /** -> GSTR-3B Table 4(D)(1) */
+  reclaims: ITCRegisterRow[];
+  reversal_totals: Partial<ITCHeads>;
+  reclaim_totals: Partial<ITCHeads>;
+  ca_review_required?: boolean;
+};
+
+export type ITCReversalInput = {
+  client_id: string;
+  journal_entry_id: string;
+  period: string;
+  reason_code: string;
+  purchase_bill_id?: string;
+  notes?: string;
+} & Partial<ITCHeads>;
+
+export type ITCReclaimInput = {
+  client_id: string;
+  journal_entry_id: string;
+  period: string;
+  /** The reversal this brings back. */
+  reverses_id: string;
+  notes?: string;
+} & Partial<ITCHeads>;
+
+export type GSTR1Advances = {
+  period: string;
+  unadjusted_advances: Array<{
+    receipt_id: string; receipt_no?: string; receipt_date?: string;
+    customer_name?: string; customer_gstin?: string | null;
+    amount_paise: number; unadjusted_paise: number;
+  }>;
+  count: number;
+  total_unadjusted_paise: number;
+  /** ALWAYS false, and stated in the payload rather than only in a docstring:
+   *  a CA reading an empty Table 11 needs to know whether it is empty because
+   *  there were no advances or because nothing computes it. */
+  table_11_computed: boolean;
+  why?: string;
+  rule?: string;
+  ca_review_required?: boolean;
+};
+
 // ── The employee drawer's shapes (PAY-11) ────────────────────────────────────
 //
 // Mirrors of the router's Pydantic models. Every amount is integer paise and
@@ -2579,6 +2760,82 @@ export const api = {
       request<ApiResp<Record<string, unknown>>>(
         `/api/gst-workspace/gstr3b/${encodeURIComponent(returnId)}/status`,
         { method: "PATCH", body: JSON.stringify(body) }),
+
+    // ── §37: a filed GSTR-1 can never be revised (GST-13) ─────────────────
+    //
+    // Three finished capabilities that no screen reached. The corrections a
+    // filed period needs are declared in a LATER return's amendment tables —
+    // 9A for invoices, 9C for notes, 10 for B2C-others — and until now a CA
+    // could neither see the drift nor produce the return that carries it.
+
+    /** What the books say NOW against what the filed GSTR-1 actually said.
+     *  Reports drift; drafts no amendment and alters no return. */
+    gstr1Exceptions: (clientId: string, period: string) =>
+      request<ApiResp<GSTR1ExceptionReport>>(
+        `/api/gst-workspace/gstr1/exceptions?client_id=${encodeURIComponent(clientId)}`
+        + `&period=${encodeURIComponent(period)}`),
+
+    /** What THIS period's GSTR-1 must carry from earlier filed periods. */
+    gstr1Amendments: (clientId: string, period: string) =>
+      request<ApiResp<GSTR1AmendmentsReport>>(
+        `/api/gst-workspace/gstr1/amendments?client_id=${encodeURIComponent(clientId)}`
+        + `&period=${encodeURIComponent(period)}`),
+
+    // ── The reclaimable half of Table 4 (GST-13) ──────────────────────────
+    //
+    // Table 4(B)(2) reversals and their 4(D)(1) reclaims. The register does
+    // NOT post anything: giving credit back is a real movement and it goes
+    // through the one posting kernel like every other entry. What was missing
+    // was never a way to POST the reversal — it was a way to say WHAT IT WAS,
+    // because a journal crediting GST Input could be a Rule 37 reversal, a
+    // cancelled bill or a plain correction, and the return has to tell them
+    // apart.
+
+    itcRegister: (clientId: string, period: string) =>
+      request<ApiResp<ITCRegisterPeriod>>(
+        `/api/gst-workspace/itc/register?client_id=${encodeURIComponent(clientId)}`
+        + `&period=${encodeURIComponent(period)}`),
+
+    /** Classify an ALREADY-POSTED journal as a Table 4(B)(2) reversal.
+     *  Refused if it claims more than that journal actually moved — a return
+     *  figure the ledger cannot support is the failure this prevents. */
+    itcRegisterReversal: (body: ITCReversalInput) =>
+      request<ApiResp<Record<string, unknown>>>(
+        "/api/gst-workspace/itc/register/reversal",
+        { method: "POST", body: JSON.stringify(body) }),
+
+    /** Classify an already-posted journal as a Table 4(D)(1) reclaim.
+     *  Refused if it would reclaim more than the reversal it names still has
+     *  outstanding — credit can only come back once. */
+    itcRegisterReclaim: (body: ITCReclaimInput) =>
+      request<ApiResp<Record<string, unknown>>>(
+        "/api/gst-workspace/itc/register/reclaim",
+        { method: "POST", body: JSON.stringify(body) }),
+
+    /** Advances received against no invoice — GSTR-1 Table 11.
+     *  NAMES them and computes no tax; see `why` on the response. */
+    gstr1Advances: (clientId: string, period: string) =>
+      request<ApiResp<GSTR1Advances>>(
+        `/api/gst-workspace/gstr1/advances?client_id=${encodeURIComponent(clientId)}`
+        + `&period=${encodeURIComponent(period)}`),
+  },
+
+  gstReturns: {
+    /** GSTR-1 from the books WITH the amendment tables this period carries.
+     *
+     *  The route's own docstring records why it exists: the amendment service
+     *  had worked out which corrections were outstanding since it was built,
+     *  and merge_into_payload had been able to fold them into a payload for
+     *  just as long — and NOTHING CONNECTED THE TWO. The route was added to
+     *  connect them and still had no caller, so a CA could see an amendment
+     *  was due and had no way to file it.
+     */
+    gstr1WithAmendments: (body: {
+      client_id: string; period: string; aggregate_turnover_paise?: number;
+    }) =>
+      request<ApiResp<GSTR1WithAmendments>>(
+        "/api/gst/gstr1/with-amendments",
+        { method: "POST", body: JSON.stringify(body) }),
   },
   identity: {
     listUsers: () => request<ApiResp<{
@@ -2618,6 +2875,111 @@ export const api = {
       request<ApiResp<{ role: string | null; permissions: Record<string, string[]> }>>(
         "/api/identity/permissions"),
   },
+  /** The Annual Information Statement — IT Act §285BB.
+   *
+   *  Everything here is server-side on purpose. The screen used to parse the
+   *  portal's JSON in the browser and hold the whole reconciliation in React
+   *  state, so it was gone on refresh; migration 352 and
+   *  services/ais_service.py keep it. The browser sends the file's TEXT and
+   *  renders what comes back — there is no second parser.
+   */
+  ais: {
+    meta: () => request<ApiResp<{ transaction_types: string[]; statuses: string[] }>>(
+      "/api/ais/meta"),
+    // assessment_year, not financial year: AIS is published per AY.
+    statement: (clientId: string, assessmentYear: string, uploadId?: string) =>
+      request<ApiResp<AISStatement>>(
+        `/api/ais/statement?client_id=${encodeURIComponent(clientId)}` +
+        `&assessment_year=${encodeURIComponent(assessmentYear)}` +
+        (uploadId ? `&upload_id=${encodeURIComponent(uploadId)}` : "")),
+    upload: (body: { client_id: string; assessment_year: string; raw: string;
+                     file_name?: string }) =>
+      request<ApiResp<AISStatement>>(
+        "/api/ais/uploads", { method: "POST", body: JSON.stringify(body) }),
+    // books_amount_paise NULL is "nobody has looked" and is NOT 0. The server
+    // derives matched/amount_mismatch from the two figures and refuses a
+    // status that contradicts them.
+    saveWorking: (recordId: string, body: {
+      client_id: string; books_amount_paise: number | null;
+      status?: string | null; note?: string | null;
+    }) => request<ApiResp<AISWorking>>(
+      `/api/ais/records/${recordId}/working`,
+      { method: "PUT", body: JSON.stringify(body) }),
+    addRecord: (body: {
+      client_id: string; upload_id: string; transaction_type: string;
+      payer: string; amount_paise: number; tds_deducted_paise?: number;
+      information_label?: string | null;
+    }) => request<ApiResp<AISLine>>(
+      "/api/ais/records", { method: "POST", body: JSON.stringify(body) }),
+    deleteRecord: (recordId: string) =>
+      request<ApiResp<{ deleted: string }>>(
+        `/api/ais/records/${recordId}`, { method: "DELETE" }),
+  },
+};
+
+/** One line of the statement, with the CA's working against it. */
+export type AISLine = {
+  id: string;
+  information_source: string | null;
+  information_label: string | null;
+  transaction_type: string;
+  payer: string | null;
+  amount_paise: number;
+  tds_deducted_paise: number;
+  source: "json" | "manual";
+  /** NULL means nobody has looked. It is not nil. */
+  books_amount_paise: number | null;
+  status: "not_reviewed" | "matched" | "amount_mismatch" | "not_in_books" | "explained";
+  note: string | null;
+  reviewed_at: string | null;
+};
+
+export type AISWorking = {
+  record_id: string;
+  books_amount_paise: number | null;
+  status: string;
+  note: string | null;
+  reviewed_at: string | null;
+};
+
+export type AISUpload = {
+  id: string;
+  assessment_year: string;
+  pan: string | null;
+  taxpayer_name: string | null;
+  file_name: string | null;
+  record_count: number;
+  total_amount_paise: number;
+  total_tds_paise: number;
+  /** Sentences about what the parser could not read. A file that parsed with
+   *  problems is not a file that parsed. */
+  problems: string[];
+  created_at: string | null;
+};
+
+/** NOTE THE ABSENCE. There is no tax figure on this type and there is not
+ *  meant to be: the screen this replaced showed "Est. Tax Impact (30%)" in
+ *  rupees, and nothing here knows the client's regime, entity type or slab.
+ *  `tax_impact_refused` is the sentence the screen prints instead. */
+export type AISSummary = {
+  line_count: number;
+  total_amount_paise: number;
+  total_tds_paise: number;
+  by_status: Record<string, number>;
+  not_reviewed_count: number;
+  not_in_books_paise: number;
+  shortfall_paise: number;
+  open_paise: number;
+  tax_impact_refused: string;
+  by_type: Array<{ transaction_type: string; line_count: number;
+                   amount_paise: number; tds_paise: number }>;
+};
+
+export type AISStatement = {
+  upload: AISUpload | null;
+  records: AISLine[];
+  summary: AISSummary;
+  uploads: AISUpload[];
 };
 
 export type AuditEntry = {

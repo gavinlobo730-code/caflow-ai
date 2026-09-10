@@ -1,4 +1,4 @@
-"""An amount in words, in the Indian system — one implementation, two documents.
+"""How an Indian document states an amount — in words, and in figures.
 
 WHY THIS IS ITS OWN MODULE
     `amount_in_words` lived in services/invoice_pdf_service.py, where the tax
@@ -84,3 +84,46 @@ def amount_in_words(paise: int) -> str:
     if p:
         result += f" and {_two_digits(p)} Paise"
     return result + " Only"
+
+
+# ── In figures ────────────────────────────────────────────────────────────────
+
+def indian_digits(rupees: int) -> str:
+    """1234567 -> "12,34,567". The Indian grouping, not the Western one.
+
+    Python's own `f"{n:,}"` groups in threes and gives "1,234,567", which no
+    Indian document uses — and `apps/web` formats the same figure with
+    `Intl.NumberFormat("en-IN")` and gets it right, so the screen and the PDF
+    of one amount disagree.
+
+    That disagreement is tree-wide (roughly twenty sites across services/ and
+    domain/) and is NOT fixed by this function existing. What this is for is
+    that new code has somewhere correct to call, and the later sweep has one
+    place to point every site at.
+    """
+    n = int(rupees)
+    sign = "-" if n < 0 else ""
+    text = str(abs(n))
+    if len(text) <= 3:
+        return sign + text
+    # The last three digits, then pairs — 1,23,45,678.
+    head, tail = text[:-3], text[-3:]
+    groups = []
+    while len(head) > 2:
+        groups.insert(0, head[-2:])
+        head = head[:-2]
+    if head:
+        groups.insert(0, head)
+    return sign + ",".join(groups + [tail])
+
+
+def indian_rupees(paise: int) -> str:
+    """Integer paise as an Indian-grouped rupee figure, e.g. "8,50,000".
+
+    Whole rupees, because that is what a sentence about a return states. Never
+    float: the paise are truncated by integer division, not rounded away by a
+    division that went through a float first.
+    """
+    p = int(paise or 0)
+    sign = "-" if p < 0 else ""
+    return sign + indian_digits(abs(p) // 100)

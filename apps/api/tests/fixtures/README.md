@@ -245,3 +245,65 @@ in the diff as a smaller file rather than as a regression.
 
 `applied_through_migration` moves 321 -> 331 in both metas. 332 is the migration
 in flight in the PR that follows this one.
+
+## Guards refreshed 10 September 2026, after migrations 342-351
+
+The same ratchet fired again, for the same reason and at the same threshold:
+adding migration 352 put the repository ELEVEN migrations ahead of the guards
+fixture's mark of 341, and
+`test_guards_match_production_pg.py::test_the_in_flight_exclusion_cannot_excuse_everything`
+refused it. Past ten, the in-flight exclusion stops being a courtesy for the
+migration in the PR and starts excusing real drift.
+
+**Only the guards file moved.** The schema fixture's mark is 343 and its test
+carries no ten-migration gate, so refreshing it here would have been an
+unrelated change riding along in a feature commit. It is left for a commit of
+its own.
+
+Route and proof as before — the Supabase MCP `execute_sql` console, no libpq
+DSN — but done as a DIFF rather than a full re-capture, because the whole
+snapshot is 322 KB of JSON and paging that through a console is exactly the
+route the hash exists to make safe:
+
+1. per-TABLE digests were taken from production (265 rows, ~13 KB) and computed
+   locally from the fixture the same way;
+2. they agreed on 251 of 265 tables, so only the other **14** were fetched in
+   full — `fixed_assets`, `fixed_deposits`, `loans`, `purchase_credit_notes`,
+   `purchase_payments`, `receipts`, `sales_debit_notes`, `tds_certificates`,
+   `tds_challans`, `tds_deductions`, `tds_returns`, `vendors`,
+   `year_end_engagements`, `year_end_review_events`;
+3. those tables' entries were replaced wholesale and the WHOLE file was then
+   hashed the way the meta records:
+
+    md5(string_agg(kind||'|'||tbl||'|'||name||'|'||detail||'|'||expr_md5,
+                   E'\n' ORDER BY kind, tbl, name))
+
+    rebuilt    f650e3579b016c5b263b91db5585007a   2,150 rows
+    production f650e3579b016c5b263b91db5585007a   2,150 rows
+
+The hash covers all 2,150 rows, not the 181 that were replaced, so an unrelated
+change made in production out-of-band would have shown up as a mismatch. The
+same reconstruction against the OLD file reproduced its recorded
+`5c8cbdffbeb9e741f7888eea0cd72fbf` first, which is what makes the method itself
+trustworthy rather than merely self-consistent.
+
+Policies 623 -> 641 and constraints 1,234 -> 1,244; RLS unchanged at 265 tables.
+
+Three entries moved in a direction worth naming, because a refresh that quietly
+LOST a guard would read in the diff as a smaller file rather than as a
+regression, and two guards did disappear here:
+
+* `purchase_credit_notes_firm_id_credit_note_no_key` and
+  `sales_debit_notes_firm_id_debit_note_no_key` were REPLACED, not dropped —
+  migration 350 widened both unique keys from (firm, number) to
+  (firm, client, number) so a second client can raise a note with a number the
+  first has used. Both `..._firm_client_..._key` successors are in the new file.
+* `year_end_review_events_event_type_check` changed definition, with
+  `year_end_engagements_reopened_by_fkey` added beside it — migration 349's
+  reopen path.
+
+The eighteen new policies are the role-aware write guards of 342-348 on the
+TDS, loan and fixed-deposit tables. Nothing else moved.
+
+`applied_through_migration` moves 341 -> 351 in the guards meta. 352 is the
+migration in flight in the PR that carries this refresh.

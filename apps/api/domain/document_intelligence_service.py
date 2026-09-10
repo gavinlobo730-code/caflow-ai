@@ -504,6 +504,8 @@ def detect_document_risks(document_id: str, client_id: str, extracted_data: dict
     """Generate DocumentRisk records based on extraction data."""
     import uuid
     from datetime import datetime
+
+    from domain.reporting.amount_words import indian_rupees
     new_risks: list[dict] = []
 
     # Check confidence score
@@ -524,18 +526,48 @@ def detect_document_risks(document_id: str, client_id: str, extracted_data: dict
         })
 
     if document_type == "AIS":
+        # THE BOOK INCOME IS NOT INVENTED HERE, AND IT USED TO BE.
+        #
+        # This branch read:
+        #
+        #     book_income = int(total_income * 0.85)  # mock book income difference
+        #     diff = total_income - book_income
+        #
+        # and then reported the gap as a finding — "AIS shows ₹8,50,000 but
+        # books show ₹7,22,500. Difference ₹1,27,500." Those are not the
+        # client's books. They are the AIS figure times 0.85, so the risk fired
+        # on EVERY AIS with any income, always at exactly 15%, stating a
+        # specific rupee amount about a client's accounts that nobody had
+        # looked at.
+        #
+        # It was never reachable — detect_document_risks has no caller — which
+        # is the only reason it never told a CA that. It is left correct rather
+        # than left latent, because the next person to wire document analysis
+        # up would have shipped it.
+        #
+        # §285BB makes AIS the department's statement of what OTHERS reported.
+        # Reconciling it against the books is exactly what the AIS screen is
+        # for; it needs the books, and this function is not given them. So it
+        # says what it has and names what it does not.
         total_income = extracted_data.get("total_income_paise", 0) or 0
-        book_income = int(total_income * 0.85)  # mock book income difference
-        diff = total_income - book_income
-        if diff > 0:
+        if total_income > 0:
             new_risks.append({
                 "id": f"risk-{str(uuid.uuid4())[:8]}",
                 "document_id": document_id,
                 "client_id": client_id,
-                "severity": "high",
+                "severity": "medium",
                 "category": "AIS_MISMATCH",
-                "title": "AIS Income vs Book Income Mismatch",
-                "description": f"AIS shows ₹{total_income // 100:,} but books show ₹{book_income // 100:,}. Difference ₹{diff // 100:,}.",
+                "title": "Reconcile AIS against the books before filing",
+                # indian_rupees, not f"{x:,}" — the latter groups in threes
+                # and gives ₹850,000, which no Indian document uses and which
+                # disagrees with the same figure on the screen (apps/web
+                # formats with Intl.NumberFormat("en-IN")).
+                "description": (
+                    f"AIS reports total income of ₹{indian_rupees(total_income)} "
+                    f"(IT Act §285BB). The book figure is not held here, so no "
+                    f"difference is stated — reconcile on the AIS screen before "
+                    f"the return is filed."
+                ),
                 "resolution_status": "open",
                 "resolved_at": None,
                 "created_at": datetime.utcnow().isoformat(),

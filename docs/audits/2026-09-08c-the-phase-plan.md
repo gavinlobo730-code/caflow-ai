@@ -450,6 +450,35 @@ applying an advance receipt. **All computed, all tested, rendered by nothing.**
 in the plan and the visible progress per day is the highest.
 *Note:* `PUR-05` says in terms "Backend needs no change."
 
+**DONE — 10 September 2026, in twelve commits (7a-7l).** 7a-7g merged as
+PR #472 (`714c1c84`); 7h-7l follow in one PR.
+
+"Pure wiring" was right about the shape and wrong about the yield. Rescoping
+each finding against the code before building it changed what got built in six
+of the twelve, and three real defects that no finding names were found on the
+way:
+
+| what the finding said | what the code said |
+|---|---|
+| GST-13: three endpoints unreachable | sixteen were; two of the three named were already wired |
+| GST-13: give `gst_portal` a screen | it must NOT have one — only `ManualGSTProvider` exists, so it would report "not filed" for every filed return. Pinned by a test |
+| SALES-13: pass branding through the shared PDF helpers | that undoes three earlier commits (invoice supplier, customer statement, payslip employer). Branding is threaded through the tax-invoice path only |
+| IT-18: "invented figures" across document intelligence | every one is narrower than claimed except one line the finding does not mention — `detect_document_risks` invented the client's book income as 85% of the AIS figure and reported the difference as a risk |
+
+Found and fixed while there, in no finding: the receipts screen's
+"Unallocated" column ignored customer-deducted TDS, so a fully-paid §194J
+receipt showed -₹2,000 for ever; `amount_in_words` raised IndexError above a
+crore; and the AIS screen's own "Est. Tax Impact (30%)" was a rupee figure
+computed from nothing the screen knew.
+
+Two guards now state the RULE rather than a spelling of it — a finished payroll
+endpoint and a finished GST endpoint must be reachable from `apps/web`, with
+every exception REGISTERED and given a reason. The GST one carries nine.
+
+7l is the only Phase 7 item that needed a migration (**352**, the AIS
+reconciliation), and refreshing the production guards fixture it put over the
+ten-migration ratchet is in the same PR — see `apps/api/tests/fixtures/README.md`.
+
 ### Phase 8 — Performance: the wire carries the answer · 4 findings · ≤10 days
 `BANK-07 BANK-08 PAY-16 ACC-07`
 

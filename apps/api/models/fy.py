@@ -63,3 +63,22 @@ FYLabel = Annotated[str, BeforeValidator(_required_fy)]
 
 #: The same, where the caller may say nothing at all.
 OptionalFYLabel = Annotated[Optional[str], BeforeValidator(_optional_fy)]
+
+# ── The assessment year ────────────────────────────────────────────────────
+# An assessment year is written the same way a financial year is — '2026-27' —
+# and carries the same defect when it is taken as a bare str: '2026-28' passes
+# a shape regex and then means 2026-27, because every reader of one takes the
+# first four characters. So it gets the same validator.
+#
+# It is a SEPARATE name rather than a reuse of FYLabel because the two are
+# different years and a route that muddles them reconciles the wrong statement
+# against the wrong return. AY 2026-27 is FY 2025-26. Naming the type after
+# what the parameter means is the only thing standing between them at the
+# boundary, and `assessment_year: FYLabel` reads as an assertion that they are
+# the same.
+
+#: An assessment-year label that must be present: '2026-27' (= FY 2025-26).
+AYLabel = Annotated[str, BeforeValidator(_required_fy)]
+
+#: The same, where the caller may say nothing at all.
+OptionalAYLabel = Annotated[Optional[str], BeforeValidator(_optional_fy)]
