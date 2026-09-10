@@ -35,9 +35,10 @@ import io
 
 import pdfplumber
 
+import services.payslip_pdf_service as payslip
 from services.payslip_pdf_service import (
-    build_payslip_pdf, deduction_lines, employer_contribution_lines,
-    fy_months_upto, mask_account, ytd_totals,
+    DEDUCTION_DEFS, build_payslip_pdf, deduction_lines,
+    employer_contribution_lines, fy_months_upto, mask_account, ytd_totals,
 )
 
 
@@ -203,3 +204,51 @@ def test_no_year_to_date_supplied_means_no_year_to_date_block():
     text_zero = _text(build_payslip_pdf(SLIP, EMPLOYEE, RUN, EMPLOYER,
                                         ytd={"months": 0}))
     assert "Year to Date" not in text_zero
+
+
+def _ytd_select() -> set[str]:
+    """The columns load_ytd's own select names, read out of the source.
+
+    Parsed rather than imported, because the literal has to be INSIDE the
+    .select() call for tests/_backend_query_parser to see it — it reads
+    ast.Constant and a module-level name is still an unverified reference.
+    """
+    import ast
+    import inspect
+    import textwrap
+    tree = ast.parse(textwrap.dedent(inspect.getsource(payslip.load_ytd)))
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "select" and node.args
+                and isinstance(node.args[0], ast.Constant)):
+            return {c.strip() for c in node.args[0].value.split(",")}
+    raise AssertionError("load_ytd has no literal .select() — see the comment "
+                         "in that function about why it must have one")
+
+
+def test_the_year_to_date_query_reads_every_deduction_the_payslip_shows():
+    """The pin that lets load_ytd's select be a literal.
+
+    It used to be built by joining DEDUCTION_DEFS. That is the honest
+    expression of the dependency and it is INVISIBLE to
+    tests/test_backend_columns_exist_pg.py, which reads literal select strings
+    and checks every column against a real Postgres schema — a computed one is
+    a reference nothing verifies, and that scanner's budget exists to keep
+    exactly this from growing unnoticed.
+
+    So the select is written out, and this holds it to the definition. Adding a
+    deduction to DEDUCTION_DEFS without adding its column there would fail
+    nowhere else: the column would simply be absent from every row,
+    `slip.get(key)` would read 0, and every employee's year-to-date deductions
+    would be understated by exactly the new line — silently, in a figure that
+    has to agree with Form 16.
+    """
+    selected = _ytd_select()
+    for _label, key in DEDUCTION_DEFS:
+        assert key in selected, (
+            f"{key} is a payslip deduction and load_ytd does not select it — "
+            f"the year-to-date would read it as nil for every employee")
+    # …and nothing is selected that ytd_totals does not read, which would be a
+    # column this query does not need and the scanner would still verify.
+    assert selected == {"employee_id", "gross_paise", "net_paise"} \
+        | {key for _label, key in DEDUCTION_DEFS}

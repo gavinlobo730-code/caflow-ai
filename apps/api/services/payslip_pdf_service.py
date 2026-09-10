@@ -666,6 +666,21 @@ def load_ytd(firm_id: Optional[str], client_id: Optional[str],
     on the document either way, and a month-end pack must not fail to render
     over a supplementary figure.
     """
+    # THE SELECT BELOW IS WRITTEN OUT, and that is deliberate.
+    #
+    # It was `", ".join(key for _label, key in DEDUCTION_DEFS)`, which is the
+    # honest expression of the dependency and is INVISIBLE to
+    # tests/test_backend_columns_exist_pg.py — that scanner reads literal
+    # select strings and checks every column against a real Postgres schema, so
+    # a computed one is a reference nothing verifies, and its budget exists to
+    # stop exactly this growing unnoticed.
+    #
+    # The dependency is not lost: test_a_payslip_carries_what_an_employee_needs
+    # parses this function and holds the literal to DEDUCTION_DEFS. Adding a
+    # deduction there without adding its column here would fail nowhere else —
+    # the column would simply be absent, slip.get(key) would read 0, and every
+    # employee's year-to-date deductions would be understated by exactly the new
+    # line, in a figure that has to agree with Form 16.
     ids = [e for e in (employee_ids or []) if e]
     months = fy_months_upto(month or "")
     if not ids or not months or not firm_id or not client_id:
@@ -682,7 +697,8 @@ def load_ytd(firm_id: Optional[str], client_id: Optional[str],
             return {}
         rows = (db.table("payroll_slips")
                 .select("employee_id, gross_paise, net_paise, "
-                        + ", ".join(key for _label, key in DEDUCTION_DEFS))
+                        "pf_employee_paise, esi_employee_paise, pt_paise, "
+                        "tds_paise, loan_recovery_paise")
                 .in_("run_id", run_ids).in_("employee_id", ids)
                 .execute().data) or []
     except Exception:  # noqa: BLE001 — see the docstring: the pay is not at stake
