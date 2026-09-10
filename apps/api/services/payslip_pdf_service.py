@@ -21,6 +21,8 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+from domain.reporting.amount_words import amount_in_words
+
 logger = logging.getLogger("caflow.services")
 
 _MONTH_NAMES = [
@@ -64,6 +66,149 @@ def deduction_lines(slip: dict) -> tuple[list[list[str]], int]:
     return rows, total
 
 
+# ── The employer's own contributions ──────────────────────────────────────────
+#
+# These are NOT deducted from the employee and must never appear in the
+# deductions table: putting them there would make gross minus deductions stop
+# equalling net, which is the one arithmetic an employee actually checks. They
+# appear as their own block because the employer's contribution is what makes
+# the CTC conversation possible — an employee told their cost to company is
+# ₹6,00,000 and shown a payslip that accounts for ₹5,40,000 has no way to find
+# the rest.
+#
+# pf_employer_paise is the WHOLE 12% and the EPS diversion is INSIDE it
+# (migration 295's own COMMENT ON COLUMN says so). Listing the 12% and the
+# EPS line side by side would state the employer paid 20.33%. So the split is
+# shown as two sub-lines that sum to the 12%, and the total below adds
+# pf_employer_paise once.
+_EMPLOYER_SPLIT: tuple[tuple[str, str], ...] = (
+    # EPF Act s.6 / Code on Social Security 2020 s.16 — employer's 12%, less
+    # the pension diversion.
+    ("Provident Fund — EPF (Employer)", "pf_employer_epf_paise"),
+    # EPS 1995 para 3 — 8.33% of the wage, capped at ₹1,250, diverted OUT of
+    # the 12% above and not additional to it.
+    ("Pension Fund — EPS (Employer)", "pf_employer_eps_paise"),
+)
+_EMPLOYER_OTHER: tuple[tuple[str, str], ...] = (
+    ("ESI (Employer)", "esi_employer_paise"),          # ESI Act §39, 3.25%
+    ("EDLI", "edli_paise"),                            # EDLI 1976, 0.5%
+    ("PF Administrative Charges", "pf_admin_paise"),   # 0.5%
+)
+
+
+def employer_contribution_lines(slip: dict) -> tuple[list[list[str]], int]:
+    """([["Employer Contributions", "Amount (Rs.)"], [label, amount], ...], total).
+
+    Pure, and separate from the PDF so the no-double-count invariant can be
+    tested as arithmetic rather than by reading a rendered document.
+
+    Returns ([], 0) when the employer contributed nothing — a block of five
+    zeroes on a contractor's payslip is noise, and unlike the statutory
+    deductions there is no "it was considered and came to nothing" to show.
+    """
+    pf_total = int(slip.get("pf_employer_paise") or 0)
+    epf = int(slip.get("pf_employer_epf_paise") or 0)
+    eps = int(slip.get("pf_employer_eps_paise") or 0)
+
+    rows: list[list[str]] = []
+    if pf_total:
+        # The split is only shown when it actually reconciles to the 12%.
+        # Migration 295 backfilled these two columns to zero for every slip
+        # written before it, and 295's own note says splitting them
+        # retrospectively would be inventing a figure — so an old slip shows
+        # the total it really holds instead of a split that does not add up.
+        if epf + eps == pf_total:
+            for label, key in _EMPLOYER_SPLIT:
+                rows.append([label, _paise_to_rupee_str(int(slip.get(key) or 0))])
+        else:
+            rows.append(["Provident Fund (Employer)", _paise_to_rupee_str(pf_total)])
+
+    total = pf_total
+    for label, key in _EMPLOYER_OTHER:
+        value = int(slip.get(key) or 0)
+        if value:
+            rows.append([label, _paise_to_rupee_str(value)])
+        total += value
+
+    if not rows:
+        return [], 0
+    return [["Employer Contributions", "Amount (Rs.)"]] + rows, total
+
+
+# ── Year to date ──────────────────────────────────────────────────────────────
+
+def fy_months_upto(month: str) -> list[str]:
+    """The 'YYYY-MM' labels from April of that financial year up to `month`.
+
+    A payslip's year-to-date is the FINANCIAL year to date, not the calendar
+    year: it is the figure that reconciles to Form 16 and to the §192
+    withholding, both of which run April to March. A January slip's YTD
+    therefore starts the previous April, and an April slip's YTD is itself.
+
+    Returns [] for a label this cannot parse, which makes the YTD block absent
+    rather than wrong.
+    """
+    text = str(month or "").strip()
+    if len(text) < 7 or text[4] != "-":
+        return []
+    try:
+        year, mon = int(text[:4]), int(text[5:7])
+    except ValueError:
+        return []
+    if not 1 <= mon <= 12:
+        return []
+    fy_start_year = year if mon >= 4 else year - 1
+    out, y, m = [], fy_start_year, 4
+    while True:
+        out.append(f"{y}-{m:02d}")
+        if y == year and m == mon:
+            return out
+        m += 1
+        if m == 13:
+            m, y = 1, y + 1
+        if len(out) > 12:                       # a month outside its own FY
+            return []
+
+
+def ytd_totals(slips) -> dict:
+    """Year-to-date gross, deductions and net over the slips handed in.
+
+    The caller decides WHICH slips (see fy_months_upto); this only adds up.
+    Deductions are summed from DEDUCTION_DEFS rather than from a stored total,
+    so a deduction added to the payslip is in the YTD the same day it is on
+    the slip.
+    """
+    gross = net = deductions = 0
+    tds = 0
+    months = 0
+    for slip in slips or []:
+        months += 1
+        gross += int(slip.get("gross_paise") or 0)
+        net += int(slip.get("net_paise") or 0)
+        tds += int(slip.get("tds_paise") or 0)
+        for _label, key in DEDUCTION_DEFS:
+            deductions += int(slip.get(key) or 0)
+    return {"months": months, "gross_paise": gross,
+            "deductions_paise": deductions, "tds_paise": tds, "net_paise": net}
+
+
+def mask_account(number) -> str:
+    """A bank account with only its last four digits shown.
+
+    The payslip is emailed, printed and handed to landlords. The account number
+    is on it so the employee can confirm WHICH account was credited, which the
+    last four digits answer; the whole number answers a different question
+    nobody asked. A number of four digits or fewer is shown whole — masking it
+    to nothing would defeat the only purpose it has.
+    """
+    digits = "".join(ch for ch in str(number or "") if ch.isalnum())
+    if not digits:
+        return ""
+    if len(digits) <= 4:
+        return digits
+    return "X" * (len(digits) - 4) + digits[-4:]
+
+
 def _paise_to_rupee_str(paise: int) -> str:
     """Format integer paise as a rupee string, e.g. 123456 -> 'Rs.1,234.56'.
 
@@ -93,7 +238,8 @@ def _pay_period(slip: dict, run: dict) -> tuple[str, int, int]:
     return label, mi, yi
 
 
-def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict) -> bytes:
+def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict,
+                      ytd: Optional[dict] = None) -> bytes:
     """Render a salary slip PDF and return raw bytes.
 
     `slip` is a payroll_slips row; component paise columns are optional and only
@@ -140,6 +286,25 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict) -> 
                      or "Employer")
     story.append(Paragraph(employer_name, ParagraphStyle(
         "title", parent=styles["Title"], fontSize=16, spaceAfter=2)))
+    # The employer's own registrations. An employee querying their PF with the
+    # EPFO, or an ESIC claim, is asked for the ESTABLISHMENT the contribution
+    # was remitted under — a number they have no other way to learn, and one
+    # this platform already holds in client_statutory_identity (migration 325).
+    # A registration that is not on file is simply absent; a blank label would
+    # read as "your employer is not registered".
+    reg_bits = []
+    if employer.get("epf_establishment_code"):
+        reg_bits.append(f"EPF Estt.: {employer['epf_establishment_code']}")
+    if employer.get("esic_employer_code"):
+        reg_bits.append(f"ESIC Code: {employer['esic_employer_code']}")
+    if employer.get("tan"):
+        # IT Act §203A — quoted on the TDS certificate this slip's §192
+        # withholding ends up on, so it is the number that ties them together.
+        reg_bits.append(f"TAN: {employer['tan']}")
+    if employer.get("pan"):
+        reg_bits.append(f"PAN: {employer['pan']}")
+    if reg_bits:
+        story.append(Paragraph(" &nbsp;|&nbsp; ".join(reg_bits), small))
     story.append(Paragraph(f"Payslip for {period_label}", small))
     story.append(Spacer(1, 6 * mm))
 
@@ -151,6 +316,22 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict) -> 
         emp_lines.append(f"Dept: {employee['department']}")
     if employee.get("pan"):
         emp_lines.append(f"PAN: {employee['pan']}")
+    # The employee's own statutory identifiers. The UAN is what the employee
+    # signs in to the EPFO member portal with; without it on the slip they have
+    # to ask their employer for it, which is the query this document exists to
+    # prevent.
+    if employee.get("uan"):
+        emp_lines.append(f"UAN: {employee['uan']}")
+    if employee.get("esi_number"):
+        emp_lines.append(f"ESIC No.: {employee['esi_number']}")
+    if employee.get("bank_account_no"):
+        # Masked — see mask_account. Enough to confirm which account was
+        # credited, not enough to be a payment instruction if the slip is
+        # forwarded.
+        acct = f"Bank A/c: {mask_account(employee['bank_account_no'])}"
+        if employee.get("bank_ifsc"):
+            acct += f" ({employee['bank_ifsc']})"
+        emp_lines.append(acct)
 
     meta_lines = [f"<b>Pay Period:</b> {period_label}"]
     if slip.get("working_days") is not None:
@@ -232,7 +413,34 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict) -> 
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(deductions)
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 4 * mm))
+
+    # ─── Employer contributions ─────────────────────────────────────────────
+    # Deliberately AFTER the deductions table and outside it: none of this was
+    # taken from the employee, and the net below is gross minus the deductions
+    # above and nothing else.
+    employer_rows, employer_total = employer_contribution_lines(slip)
+    if employer_rows:
+        employer_rows.append(["Total Employer Contribution",
+                              _paise_to_rupee_str(employer_total)])
+        contributions = Table(employer_rows, colWidths=[120 * mm, 60 * mm])
+        contributions.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(contributions)
+        story.append(Paragraph(
+            "Employer contributions are paid by the employer in addition to "
+            "the gross salary above. They are not deducted from your pay.",
+            small))
+        story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 2 * mm))
 
     # ─── Net Pay ────────────────────────────────────────────────────────────
     # Net is the authoritative stored value (gross - deductions), integer paise.
@@ -251,8 +459,43 @@ def build_payslip_pdf(slip: dict, employee: dict, run: dict, employer: dict) -> 
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     story.append(net)
-    story.append(Spacer(1, 12 * mm))
+    # In words, under the figure. This is the line a lender reads and the line
+    # an employee disputes; a figure alone can be misread by a decimal place
+    # and a photocopy can lose a comma.
+    story.append(Paragraph(f"<b>In words:</b> {amount_in_words(net_paise)}",
+                           styles["Normal"]))
+    story.append(Spacer(1, 6 * mm))
 
+    # ─── Year to date ───────────────────────────────────────────────────────
+    # The FINANCIAL year to date — April to this month — because that is the
+    # period Form 16 and the §192 withholding are computed over, so these are
+    # the figures that must agree with the certificate at the end of the year.
+    # Absent rather than zero when the caller did not supply it: a YTD of zero
+    # in month nine is a statement, and a wrong one.
+    if ytd and int(ytd.get("months") or 0):
+        ytd_rows = [
+            [f"Year to Date (April - {period_label}, {ytd['months']} month(s))",
+             "Amount (Rs.)"],
+            ["Gross Earnings", _paise_to_rupee_str(ytd.get("gross_paise") or 0)],
+            ["Total Deductions", _paise_to_rupee_str(ytd.get("deductions_paise") or 0)],
+            ["of which TDS (§192)", _paise_to_rupee_str(ytd.get("tds_paise") or 0)],
+            ["Net Paid", _paise_to_rupee_str(ytd.get("net_paise") or 0)],
+        ]
+        ytd_table = Table(ytd_rows, colWidths=[120 * mm, 60 * mm])
+        ytd_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(ytd_table)
+        story.append(Spacer(1, 6 * mm))
+
+    story.append(Spacer(1, 4 * mm))
     story.append(Paragraph(
         "This is a computer-generated payslip and does not require a signature. "
         "Amounts are stated in Indian Rupees. For queries, contact your employer.",
@@ -278,7 +521,9 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str]) -> tuple[bytes, str]:
 
     slip_res = (
         db.table("payroll_slips")
-        .select("*, payroll_employees(name, pan, designation, department), payroll_runs(month, firm_id, client_id)")
+        .select("*, payroll_employees(name, pan, designation, department, "
+                "uan, esi_number, bank_account_no, bank_ifsc), "
+                "payroll_runs(month, firm_id, client_id)")
         .eq("id", slip_id)
         .maybe_single()
         .execute()
@@ -300,8 +545,11 @@ def get_payslip_pdf(slip_id: str, firm_id: Optional[str]) -> tuple[bytes, str]:
         raise PermissionError("Access denied")
 
     employer = load_employer(run.get("firm_id") or firm_id, run.get("client_id"))
+    ytd = load_ytd(run.get("firm_id") or firm_id, run.get("client_id"),
+                   run.get("month"), [slip.get("employee_id")]).get(
+                       slip.get("employee_id"))
 
-    pdf = build_payslip_pdf(slip, employee, run, employer)
+    pdf = build_payslip_pdf(slip, employee, run, employer, ytd=ytd)
     _label, m, y = _pay_period(slip, run)
     period = f"{y}-{m:02d}" if m and y else "payslip"
     filename = f"payslip-{period}.pdf"
@@ -346,12 +594,19 @@ def build_run_payslip_zip(run_id: str, firm_id: Optional[str]) -> tuple[bytes, s
         raise PermissionError("Access denied")
 
     slips = (db.table("payroll_slips")
-             .select("*, payroll_employees(name, pan, designation, department)")
+             .select("*, payroll_employees(name, pan, designation, department, "
+                     "uan, esi_number, bank_account_no, bank_ifsc)")
              .eq("run_id", run_id).execute().data) or []
     if not slips:
         raise ValueError("This run has no payslips")
 
     employer = load_employer(run.get("firm_id"), run.get("client_id"))
+    # ONE year-to-date query for the whole run, not one per employee. Thirty
+    # employees would otherwise be thirty more round trips to Mumbai on top of
+    # the thirty this function exists to collapse into one.
+    ytd_by_employee = load_ytd(run.get("firm_id"), run.get("client_id"),
+                               run.get("month"),
+                               [s.get("employee_id") for s in slips])
     month = run.get("month") or "payslips"
 
     problems: list[str] = []
@@ -364,7 +619,8 @@ def build_run_payslip_zip(run_id: str, firm_id: Optional[str]) -> tuple[bytes, s
             employee = slip.pop("payroll_employees", None) or {}
             name = (employee.get("name") or "employee").strip()
             try:
-                pdf = build_payslip_pdf(slip, employee, run, employer)
+                pdf = build_payslip_pdf(slip, employee, run, employer,
+                                        ytd=ytd_by_employee.get(slip.get("employee_id")))
             except Exception as e:  # noqa: BLE001 — one bad slip must not lose the rest
                 logger.exception("payslip render failed for slip %s", slip.get("id"))
                 problems.append(f"{name}: could not be rendered ({e.__class__.__name__}).")
@@ -394,6 +650,67 @@ def _payslip_filename(name: str, month: str, used: set) -> str:
     return candidate
 
 
+def load_ytd(firm_id: Optional[str], client_id: Optional[str],
+             month: Optional[str], employee_ids) -> dict:
+    """{employee_id: ytd_totals(...)} for the financial year up to `month`.
+
+    TWO QUERIES, BOUNDED BY THE SIZE OF THE ANSWER, not by transaction volume:
+    at most twelve payroll runs in a financial year, and at most one slip per
+    employee per run. That is the reporting rule — a year-to-date that read the
+    slip table unfiltered would grow with the client's whole payroll history to
+    print one column.
+
+    Returns {} rather than raising when the period cannot be resolved or the
+    query fails: the YTD block is then absent from the payslip, and an absent
+    block is honest where a zero would be a false statement. The pay itself is
+    on the document either way, and a month-end pack must not fail to render
+    over a supplementary figure.
+    """
+    # THE SELECT BELOW IS WRITTEN OUT, and that is deliberate.
+    #
+    # It was `", ".join(key for _label, key in DEDUCTION_DEFS)`, which is the
+    # honest expression of the dependency and is INVISIBLE to
+    # tests/test_backend_columns_exist_pg.py — that scanner reads literal
+    # select strings and checks every column against a real Postgres schema, so
+    # a computed one is a reference nothing verifies, and its budget exists to
+    # stop exactly this growing unnoticed.
+    #
+    # The dependency is not lost: test_a_payslip_carries_what_an_employee_needs
+    # parses this function and holds the literal to DEDUCTION_DEFS. Adding a
+    # deduction there without adding its column here would fail nowhere else —
+    # the column would simply be absent, slip.get(key) would read 0, and every
+    # employee's year-to-date deductions would be understated by exactly the new
+    # line, in a figure that has to agree with Form 16.
+    ids = [e for e in (employee_ids or []) if e]
+    months = fy_months_upto(month or "")
+    if not ids or not months or not firm_id or not client_id:
+        return {}
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    try:
+        runs = (db.table("payroll_runs")
+                .select("id")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .in_("month", months).execute().data) or []
+        run_ids = [r.get("id") for r in runs if r.get("id")]
+        if not run_ids:
+            return {}
+        rows = (db.table("payroll_slips")
+                .select("employee_id, gross_paise, net_paise, "
+                        "pf_employee_paise, esi_employee_paise, pt_paise, "
+                        "tds_paise, loan_recovery_paise")
+                .in_("run_id", run_ids).in_("employee_id", ids)
+                .execute().data) or []
+    except Exception:  # noqa: BLE001 — see the docstring: the pay is not at stake
+        logger.exception("year-to-date lookup failed for client %s %s", client_id, month)
+        return {}
+
+    by_employee: dict = {}
+    for row in rows:
+        by_employee.setdefault(row.get("employee_id"), []).append(row)
+    return {eid: ytd_totals(slips) for eid, slips in by_employee.items()}
+
+
 def load_employer(firm_id: Optional[str], client_id: Optional[str]) -> dict:
     """The `clients` row the payslip is issued BY — firm-scoped, and refused
     rather than defaulted.
@@ -410,14 +727,31 @@ def load_employer(firm_id: Optional[str], client_id: Optional[str]) -> dict:
             "it — the payroll run carries no client."
         )
     from core.supabase_client import get_supabase
-    row = (get_supabase().table("clients")
+    db = get_supabase()
+    row = (db.table("clients")
            .select("id,client_name,legal_name,trade_name,gstin,pan")
            .eq("id", client_id).eq("firm_id", firm_id)
            .maybe_single().execute())
-    employer = getattr(row, "data", None) or {}
+    employer = dict(getattr(row, "data", None) or {})
     if not employer:
         raise ValueError(
             f"Client {client_id} not found for firm {firm_id} — a payslip "
             "cannot be issued without knowing who the employer is."
         )
+
+    # The employer's OWN registrations (migration 325). A separate table and a
+    # separate read, because a client that has not recorded them is normal —
+    # not every client runs payroll — and the payslip simply omits the line.
+    # Failure here must not take the payslip down with it: the pay is the
+    # document, the establishment code is a convenience on it.
+    try:
+        ident = (db.table("client_statutory_identity")
+                 .select("tan,epf_establishment_code,esic_employer_code,lin")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .maybe_single().execute())
+        for key, value in (getattr(ident, "data", None) or {}).items():
+            if value:
+                employer[key] = value
+    except Exception:  # noqa: BLE001 — see above
+        logger.exception("statutory identity lookup failed for client %s", client_id)
     return employer

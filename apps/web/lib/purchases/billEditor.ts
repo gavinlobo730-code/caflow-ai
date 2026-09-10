@@ -23,6 +23,20 @@ export interface PurchaseBillLine {
   unit: string;
   expense_account_id: string;
   service_catalogue_id: string;
+  /** CGST Act §17(5) — false means this line's GST is BLOCKED input tax credit.
+   *
+   *  NEVER INFERRED, and defaulted true (migration 240's own rule): the
+   *  heuristic below only prompts, and a line the CA has not looked at must
+   *  behave exactly as every line did before this field existed.
+   *
+   *  Optional in the type because a line built before this field existed —
+   *  a duplicate seed, a draft rehydrated from the server — has neither key,
+   *  and `undefined` has to mean eligible rather than "unknown".
+   */
+  itc_eligible?: boolean;
+  /** The §17(5) clause, when itc_eligible is false. Free text by design
+   *  (migration 240): the CA-facing wording may change without a migration. */
+  blocked_credit_reason?: string;
 }
 
 /** A line is "valid" (postable) when it has positive qty & rate and a linked
@@ -34,6 +48,53 @@ export function isValidBillLine(l: PurchaseBillLine): boolean {
   // rate typed the way Indian amounts are grouped passed as a valid ONE RUPEE
   // line, previewed at ₹1 and saved at ₹1 with nothing said.
   return parseLineAmounts(l.qty, l.rate) !== null && !!l.service_catalogue_id;
+}
+
+/** ONE LINE PAYLOAD, sent to the TDS preview AND to the save.
+ *
+ *  The preview exists to show the CA the figure the save will produce, so it
+ *  has to send the same lines; building them twice is how the two start
+ *  disagreeing on the taxable base as well as on the rate.
+ *
+ *  It lives HERE rather than in the editor component so it can be tested under
+ *  `node --test` — which is how PUR-05 was caught: `itc_eligible` had been on
+ *  the API model, the column and the GSTR-3B computation since migration 240,
+ *  and the payload builder simply did not carry it, with nothing able to say so.
+ */
+export interface BillLinePayload {
+  description: string;
+  hsn_sac?: string;
+  quantity: number;
+  unit?: string;
+  rate_paise: number;
+  gst_rate_percent: number;
+  expense_account_id?: string;
+  service_catalogue_id?: string;
+  itc_eligible?: boolean;
+  blocked_credit_reason?: string;
+}
+
+export function buildLinePayload(lines: PurchaseBillLine[]): BillLinePayload[] {
+  return lines.filter(isValidBillLine).map((l) => ({
+    description: l.description,
+    hsn_sac: l.hsn_sac || undefined,
+    quantity: parseLineAmounts(l.qty, l.rate)!.quantity,
+    unit: l.unit || undefined,
+    // Non-null by construction: the filter above is isValidBillLine, which is
+    // parseLineAmounts itself. The old form was
+    // Math.round((parseFloat(l.rate) || 0) * 100) — exact for a plain decimal
+    // and silently 100 paise for "1,25,000".
+    rate_paise: parseLineAmounts(l.qty, l.rate)!.ratePaise,
+    gst_rate_percent: l.gst_rate,
+    expense_account_id: l.expense_account_id || undefined,
+    service_catalogue_id: l.service_catalogue_id || undefined,
+    // CGST Act §17(5). Sent EXPLICITLY rather than omitted when true, so a line
+    // the CA un-blocked reaches the server as eligible instead of keeping
+    // whatever the stored row said.
+    itc_eligible: lineIsItcEligible(l),
+    blocked_credit_reason: lineIsItcEligible(l)
+      ? undefined : (l.blocked_credit_reason || undefined),
+  }));
 }
 
 export interface BillPreviewTotals {
@@ -85,6 +146,8 @@ export interface BillEditorValidation {
     billDate?: string;
     lines?: string;
     exchangeRate?: string;
+    /** CGST Act §17(5) — a line marked blocked with no clause named. */
+    itc?: string;
   };
   ok: boolean;
 }
@@ -99,7 +162,136 @@ export function validateBillEditor(input: BillEditorValidationInput): BillEditor
   if (input.isForeign && (!input.exchangeRate.trim() || !(parseFloat(input.exchangeRate) > 0))) {
     errors.exchangeRate = "Enter a valid exchange rate.";
   }
+  // §17(5) blocks the SAVE, not just the display. A line marked blocked with no
+  // clause is a reversal in GSTR-3B Table 4(B)(1) that nobody can justify in an
+  // assessment — and the flag would still reduce the claim, so letting it save
+  // trades one unsupported figure for another.
+  const itc = blockedCreditProblems(input.lines);
+  if (itc.length) {
+    errors.itc = itc.map((p) => `Line ${p.lineIndex + 1}: ${p.message}`).join(" ");
+  }
   return { errors, ok: Object.keys(errors).length === 0 };
+}
+
+// ── CGST Act §17(5) — the clauses a CA picks from ───────────────────────────
+//
+// DATA, NOT LOGIC. Nothing here decides whether a line is blocked; it is the
+// list of reasons §17(5) actually gives, so a CA who has decided says WHICH
+// clause. The code is stored as free text on purpose (migration 240) because
+// the CA-facing wording changes more often than the schema should.
+//
+// WHERE THE FIGURE GOES, since it is easy to assume: blocked credit is in
+// GSTR-3B Table 4(A) GROSS — 4(A) is auto-populated from 2B and netting it
+// would break the tie-up — and reversed in 4(B)(1) as a reversal "absolute in
+// nature and not reclaimable". It is NOT repeated in 4(D). Notification
+// 14/2022 with Circular 170/02/2022-GST; domain/gst/gstr3b_computer.py is the
+// authority and already does this.
+
+export interface BlockedCreditReason {
+  code: string;
+  clause: string;
+  label: string;
+  note?: string;
+}
+
+export const BLOCKED_CREDIT_REASONS: BlockedCreditReason[] = [
+  { code: "17_5_a_motor_vehicle", clause: "§17(5)(a)",
+    label: "Motor vehicle for transporting persons (≤13 seats)",
+    note: "Unless used for further supply of such vehicles, passenger transport, or driving instruction." },
+  { code: "17_5_aa_vessel_aircraft", clause: "§17(5)(aa)",
+    label: "Vessel or aircraft",
+    note: "Same exceptions, plus transport of goods." },
+  { code: "17_5_ab_service_on_those", clause: "§17(5)(ab)",
+    label: "Insurance, servicing or repair of the above" },
+  { code: "17_5_b_food_beverage", clause: "§17(5)(b)(i)",
+    label: "Food, beverages, outdoor catering, health services",
+    note: "Unless the inward supply is used to make the same taxable outward supply." },
+  { code: "17_5_b_club_membership", clause: "§17(5)(b)(ii)",
+    label: "Club, health or fitness centre membership" },
+  { code: "17_5_b_insurance", clause: "§17(5)(b)(iii)",
+    label: "Life or health insurance",
+    note: "Unless obligatory for the employer under a law in force." },
+  { code: "17_5_b_travel_benefit", clause: "§17(5)(b)(iv)",
+    label: "Travel benefit to employees on vacation (LTC)" },
+  { code: "17_5_c_works_contract_immovable", clause: "§17(5)(c)",
+    label: "Works contract for immovable property",
+    note: "Unless it is an input service for a further works contract, or is plant and machinery." },
+  { code: "17_5_d_own_account_immovable", clause: "§17(5)(d)",
+    label: "Construction of immovable property on own account",
+    note: "Including where it is used in the course of business. Plant and machinery is excepted." },
+  { code: "17_5_e_composition", clause: "§17(5)(e)",
+    label: "Supplies on which the supplier paid composition tax" },
+  { code: "17_5_f_non_resident", clause: "§17(5)(f)",
+    label: "Received by a non-resident taxable person",
+    note: "Except goods imported by them." },
+  { code: "17_5_g_personal_consumption", clause: "§17(5)(g)",
+    label: "Goods or services for personal consumption" },
+  { code: "17_5_h_gifts_samples_lost", clause: "§17(5)(h)",
+    label: "Lost, stolen, destroyed, written off, or given as a gift or free sample" },
+  { code: "17_5_i_demand", clause: "§17(5)(i)",
+    label: "Tax paid on a demand under §74, §129 or §130" },
+  { code: "other", clause: "§17(5)",
+    label: "Other — recorded in the bill's notes" },
+];
+
+const REASON_CODES = new Set(BLOCKED_CREDIT_REASONS.map((r) => r.code));
+
+/** A line is eligible unless it has been explicitly marked otherwise.
+ *
+ *  `undefined` is eligible, not unknown: migration 240 defaults the column to
+ *  true so no bill written before the field existed changes meaning, and the
+ *  editor has to agree with the column or a re-saved draft would flip. */
+export function lineIsItcEligible(l: PurchaseBillLine): boolean {
+  return l.itc_eligible !== false;
+}
+
+export interface BlockedCreditProblem { lineIndex: number; message: string }
+
+/** A line marked ineligible must say under which clause.
+ *
+ *  Not decoration: `blocked_credit_reason` is what a CA reads back in an
+ *  assessment two years later to justify the reversal, and §17(5) has fourteen
+ *  clauses with different exceptions. "Blocked" with no clause is a figure
+ *  nobody can defend.
+ */
+export function blockedCreditProblems(lines: PurchaseBillLine[]): BlockedCreditProblem[] {
+  const out: BlockedCreditProblem[] = [];
+  lines.forEach((l, i) => {
+    if (lineIsItcEligible(l)) return;
+    const reason = (l.blocked_credit_reason ?? "").trim();
+    if (!reason) {
+      out.push({ lineIndex: i, message: "Blocked ITC needs the §17(5) clause it is blocked under." });
+    } else if (!REASON_CODES.has(reason)) {
+      out.push({ lineIndex: i, message: `"${reason}" is not a §17(5) clause this form offers.` });
+    }
+  });
+  return out;
+}
+
+/** The GST on the ineligible lines — what will be reversed in Table 4(B)(1).
+ *
+ *  A PREVIEW, computed the same way previewBillTotals computes the rest, so
+ *  the CA sees the reversal before saving. The server recomputes it from the
+ *  same lines; this never decides anything.
+ */
+export function ineligibleGstPaise(lines: PurchaseBillLine[], isInterstate: boolean): number {
+  // previewBillTotals over the blocked lines, NOT a second GST calculation.
+  // The rate string it passes to dnLineGst is pinned to the Python backend by
+  // shared/gst-parity-vectors.json, and a copy here would be a second answer to
+  // the one thing that is pinned.
+  return previewBillTotals(lines.filter((l) => !lineIsItcEligible(l)), isInterstate).gst_paise;
+}
+
+/** The reason code a heuristic hit suggests, so the prompt and the control the
+ *  CA then uses agree. Undefined where the hint has no single clause. */
+export function reasonForHintLabel(label: string): string | undefined {
+  return {
+    "Motor vehicle": "17_5_a_motor_vehicle",
+    "Food & beverages": "17_5_b_food_beverage",
+    "Club / fitness membership": "17_5_b_club_membership",
+    "Life / health insurance": "17_5_b_insurance",
+    "Employee travel benefit": "17_5_b_travel_benefit",
+  }[label];
 }
 
 // ── CGST Act §17(5) blocked-credit heuristic ────────────────────────────────

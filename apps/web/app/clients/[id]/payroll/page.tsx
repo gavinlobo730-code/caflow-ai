@@ -16,7 +16,12 @@ import { EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { api } from "@/lib/api";
+import type { AnnexureIIResponse } from "@/lib/api";
+import { financialYearOfMonth, financialYearChoicesAround } from "@/lib/dates/periods";
 import { DisburseModal } from "@/components/payroll/DisburseModal";
+import EmployeeDrawer from "@/components/payroll/EmployeeDrawer";
+import ApplyStructureModal from "@/components/payroll/ApplyStructureModal";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
@@ -273,6 +278,11 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [saving, setSaving] = useState(false);
   // M17: distinguish a failed roster fetch from a client with no employees.
   const [loadFailed, setLoadFailed] = useState(false);
+  // PAY-11. The roster used to render seven read-only cells and no row action,
+  // so an employee could be created and paid and nothing else — six finished
+  // backend capabilities, including the leaver's settlement, had no way in.
+  const [openEmployee, setOpenEmployee] = useState<Employee | null>(null);
+  const { can } = usePermissions();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -477,14 +487,14 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[#F1F5F9] bg-[#F8FAFC]">
-              {["Name", "Designation", "Department", "Basic", "PF", "ESI", "Status"].map(h => (
+              {["Name", "Designation", "Department", "Basic", "PF", "ESI", "Status", ""].map(h => (
                 <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-[#F1F5F9]">
             {employees.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No employees yet</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No employees yet</td></tr>
             ) : employees.map(e => (
               <tr key={e.id} className="hover:bg-[#F8FAFC] transition-colors">
                 <td className="px-4 py-3 font-medium text-[#1E293B]">{e.name}</td>
@@ -494,11 +504,31 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
                 <td className="px-4 py-3">{e.pf_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-[#94A3B8]">No</span>}</td>
                 <td className="px-4 py-3">{e.esi_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-[#94A3B8]">No</span>}</td>
                 <td className="px-4 py-3"><span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", e.status === "active" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600")}>{e.status}</span></td>
+                <td className="px-4 py-3 text-right">
+                  <button onClick={() => setOpenEmployee(e)}
+                    className="text-[11px] px-2 py-1 border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F1F5F9]">
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {openEmployee && (
+        <EmployeeDrawer
+          employee={openEmployee}
+          clientId={clientId}
+          // Recording a settlement posts an immutable journal and closes the
+          // employee, so it needs payroll:finalize — the same tier that
+          // finalises a run. The button is ABSENT rather than disabled for
+          // anyone else; a disabled control invites the question.
+          canFinalize={can("payroll", "finalize")}
+          onClose={() => setOpenEmployee(null)}
+          onChanged={load}
+        />
+      )}
     </div>
   );
 }
@@ -1329,8 +1359,173 @@ function OutputsTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
+      <AnnexureIIPanel clientId={clientId} month={run?.month} />
+
       <StatutoryTab clientId={clientId} />
       <ReportsTab clientId={clientId} />
+    </div>
+  );
+}
+
+// ─── 24Q Annexure II — the year-end deliverable ───────────────────────────────
+//
+// PAY-11. The endpoint has been finished since the payroll module was built and
+// NOTHING CALLED IT. A CA closing a client's year had to produce the annual
+// salary detail somewhere else, which is the deliverable the whole year of
+// payroll exists to produce.
+//
+// IT IS NOT A FORM 16 AND MUST NOT LOOK LIKE ONE. CBDT Notification 09/2019
+// makes Part B a TRACES download; an employer who prints their own has issued
+// nothing. TRACES builds Part B from exactly one input — this annexure, filed
+// with Q4 — so this is the honest thing to hand over, and the panel says so
+// rather than leaving a CA to infer it.
+//
+// ON THE OUTPUTS SHELF, next to the ECR and the 24Q working paper, because it
+// is an output. It is deliberately NOT on the deadline list: a deadline row is
+// not a return.
+
+function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string }) {
+  // Default to the financial year of the month the shelf is showing, so a CA
+  // who selected March 2027 is offered 2026-27 rather than today's year.
+  const [fy, setFy] = useState(() => financialYearOfMonth(month));
+  const [data, setData] = useState<AnnexureIIResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => { setFy(financialYearOfMonth(month)); }, [month]);
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const res = await api.payroll.annexureII(clientId, fy);
+      if (!res?.success) throw new Error(res?.error ?? "That did not load.");
+      setData(res.data);
+    } catch (e) {
+      setData(null);
+      setErr(e instanceof Error ? e.message : "That did not load.");
+    } finally { setLoading(false); }
+  }, [clientId, fy]);
+
+  useEffect(() => { if (open) load(); }, [open, load]);
+
+  const rows = data?.rows ?? [];
+  const totals = data?.totals ?? {};
+
+  return (
+    <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-[12px] font-semibold text-[#1E293B]">
+            Form 24Q Annexure II — annual salary detail
+          </p>
+          <p className="text-[10px] text-[#94A3B8] mt-1 max-w-[60ch]">
+            Filed with Q4. TRACES builds each employee&apos;s Form 16 Part B from it —
+            nothing here issues a certificate, and Part B is downloaded from TRACES
+            (CBDT Notification 09/2019).
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <select value={fy} onChange={(e) => setFy(e.target.value)}
+            className="border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400">
+            {financialYearChoicesAround(month).map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={() => setOpen((v) => !v)}
+            className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+            {open ? "Hide" : "Show"}
+          </button>
+          <button
+            onClick={async () => {
+              setBusy(true); setErr(null);
+              try { await api.payroll.downloadAnnexureII(clientId, fy); }
+              catch (e) { setErr(e instanceof Error ? e.message : "That did not download."); }
+              finally { setBusy(false); }
+            }}
+            disabled={busy}
+            className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+            {busy ? "Building…" : "Download CSV"}
+          </button>
+        </div>
+      </div>
+
+      {err && <p className="mt-3 text-[12px] px-3 py-2 rounded-lg bg-red-50 text-red-600">{err}</p>}
+
+      {open && (loading ? <div className="mt-3"><TableSkeleton cols={6} rows={3} bare /></div> : (
+        <div className="mt-3 space-y-3">
+          {/* PROBLEMS BLOCK, GAPS DO NOT — and the two must not be one list.
+              A gap is something only the employee holds (§17(2), a §10
+              exemption, Chapter VI-A), and an annexure with no Chapter VI-A is
+              correct for someone who declared none. */}
+          {!!data?.problems?.length && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-[11px] font-semibold text-red-700">
+                Not ready to file — {data.problems.length} problem{data.problems.length === 1 ? "" : "s"}
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {data.problems.map((p, i) => (
+                  <li key={i} className="text-[11px] text-red-700">· {p}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!!data?.gaps?.length && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-[11px] font-semibold text-amber-800">
+                What payroll cannot know — the employee holds these
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {data.gaps.map((g, i) => (
+                  <li key={i} className="text-[11px] text-amber-800">· {g}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {rows.length === 0 ? (
+            <p className="text-[12px] text-[#94A3B8] py-6 text-center">
+              No finalised payroll in {fy}, so there is no annual salary detail to show.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-left text-[#64748B] border-b border-[#E2E8F0]">
+                    <th className="py-1.5 pr-2">Employee</th>
+                    <th className="py-1.5 pr-2">PAN</th>
+                    <th className="py-1.5 pr-2">Regime</th>
+                    <th className="py-1.5 pr-2 text-right">Months</th>
+                    <th className="py-1.5 pr-2 text-right">Gross salary</th>
+                    <th className="py-1.5 pr-2 text-right">Income u/h Salaries</th>
+                    <th className="py-1.5 text-right">TDS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.employee_id} className="border-b border-[#F1F5F9]">
+                      <td className="py-1.5 pr-2 text-[#1E293B]">{r.name}</td>
+                      <td className="py-1.5 pr-2 font-mono text-[10px]">{r.pan || "—"}</td>
+                      <td className="py-1.5 pr-2">{r.regime === "new" ? "115BAC" : "Old"}</td>
+                      <td className="py-1.5 pr-2 text-right">{r.months_paid}</td>
+                      <td className="py-1.5 pr-2 text-right">{fmt(r.gross_salary_paise)}</td>
+                      <td className="py-1.5 pr-2 text-right">{fmt(r.income_under_salaries_paise)}</td>
+                      <td className="py-1.5 text-right">{fmt(r.tds_deducted_paise)}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold text-[#1E293B]">
+                    <td className="py-1.5 pr-2" colSpan={4}>
+                      TOTAL · {totals.employees ?? rows.length} employee(s)
+                    </td>
+                    <td className="py-1.5 pr-2 text-right">{fmt(totals.gross_salary_paise ?? 0)}</td>
+                    <td className="py-1.5 pr-2 text-right">{fmt(totals.income_under_salaries_paise ?? 0)}</td>
+                    <td className="py-1.5 text-right">{fmt(totals.tds_paise ?? 0)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1788,6 +1983,12 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   const [saveError, setSaveError] = useState<string | null>(null);
   // M17: distinguish a failed fetch from a client with no salary structures.
   const [loadFailed, setLoadFailed] = useState(false);
+  // PAY-11. salary_structures has existed since migration 054 and nothing ever
+  // read it — the template was a card a CA could look at while still keying
+  // every employee's basic, HRA and DA in one at a time.
+  const [applying, setApplying] = useState<SalaryStructure | null>(null);
+  const [roster, setRoster] = useState<Employee[]>([]);
+  const [applied, setApplied] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1804,6 +2005,18 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // The roster is loaded once beside the structures rather than per modal
+  // open: it is one query either way and the modal is opened repeatedly while
+  // a CA works down a list of grades.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`);
+        setRoster(res?.data ?? []);
+      } catch { setRoster([]); }
+    })();
+  }, [clientId]);
 
   async function addStructure() {
     // A structure's percentages are applied to every employee it is put on, so
@@ -1887,9 +2100,28 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
               <p>Basic {s.basic_percent}% · HRA {s.hra_percent}%</p>
               <p>{s.pf_applicable ? "PF ✓" : "PF ✗"} · {s.esi_applicable ? "ESI ✓" : "ESI ✗"}</p>
             </div>
+            <button onClick={() => { setApplying(s); setApplied(null); }}
+              className="mt-3 px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">
+              Apply to employees
+            </button>
           </div>
         ))}
       </div>
+
+      {applied && (
+        <p className="text-[12px] px-3 py-2 rounded-lg bg-green-50 text-green-700">{applied}</p>
+      )}
+
+      {applying && (
+        <ApplyStructureModal
+          structureId={applying.id}
+          structureName={applying.name}
+          clientId={clientId}
+          employees={roster}
+          onClose={() => setApplying(null)}
+          onApplied={(text) => { setApplied(text); setApplying(null); }}
+        />
+      )}
     </div>
   );
 }

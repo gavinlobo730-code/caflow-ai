@@ -56,16 +56,11 @@ export interface ServerTdsPreview {
   txn_net_payable: number;
 }
 
-export interface TdsPreviewLine {
-  description: string;
-  hsn_sac?: string;
-  quantity: number;
-  unit?: string;
-  rate_paise: number;
-  gst_rate_percent: number;
-  expense_account_id?: string;
-  service_catalogue_id?: string;
-}
+/** The payload line, MOVED to lib/purchases/billEditor.ts so it can be built
+ *  and tested without React. Re-exported under its old name because this
+ *  module's callers know it by that. */
+export type { BillLinePayload as TdsPreviewLine } from "./billEditor.ts";
+import type { BillLinePayload as TdsPreviewLine } from "./billEditor.ts";
 
 export interface TdsPreviewInput {
   clientId: string;

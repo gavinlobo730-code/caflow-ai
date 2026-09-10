@@ -39,6 +39,7 @@ from domain.tds import vocabulary as tds_vocabulary
 from domain.dpdp import retention as dpdp_retention
 from services import epfo_ecr_filing_service as ecr_filings
 from domain.payroll.esic import build_esic_return
+from domain.payroll import annexure2 as annexure2_domain
 from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
 from domain.payroll.professional_tax import classify_state as classify_pt_state
@@ -4439,12 +4440,8 @@ def form_24q_csv(
     )
 
 
-@router.get("/24q-annexure-ii")
-def form_24q_annexure_ii(
-    client_id: str = Query(...),
-    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
-    current_user: dict = Depends(rbac("payroll", "read"))
-):
+def _assemble_annexure_ii(current_user: dict, client_id: str,
+                          financial_year: str) -> "annexure2_domain.AnnexureII":
     """The annual salary detail that TRACES turns into Form 16 Part B.
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
@@ -4467,9 +4464,7 @@ def form_24q_annexure_ii(
     assert_client_access(current_user, client_id)
     db = _db()
     if not db:
-        return api_response(True, {"financial_year": financial_year, "rows": [],
-                                   "problems": [], "gaps": [], "totals": {},
-                                   "ready": False})
+        return annexure2_domain.AnnexureII()
 
     months = [m for q in ("Q1", "Q2", "Q3", "Q4")
               for m in months_in_quarter(financial_year, q)]
@@ -4561,12 +4556,30 @@ def form_24q_annexure_ii(
             "covers the whole year, so any month missing here is salary the "
             "certificate will not show.")
 
+    return ann
+
+
+@router.get("/24q-annexure-ii")
+def form_24q_annexure_ii(
+    client_id: str = Query(...),
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """The annual salary detail that TRACES turns into Form 16 Part B.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    See _assemble_annexure_ii for why this is not a Form 16 generator.
+    """
+    ann = _assemble_annexure_ii(current_user, client_id, financial_year)
     return api_response(True, {
         "client_id": client_id,
         "financial_year": financial_year,
         "rows": [{**r.__dict__,
+                  "regime": "new" if r.uses_new_regime else "old",
                   "gross_salary_paise": r.gross_salary_paise,
                   "net_salary_paise": r.net_salary_paise,
+                  "allowable_professional_tax_paise": r.allowable_professional_tax_paise,
                   "income_under_salaries_paise": r.income_under_salaries_paise}
                  for r in ann.rows],
         "problems": ann.problems,
@@ -4578,6 +4591,38 @@ def form_24q_annexure_ii(
                         "issues a certificate.",
         "disclaimer": "CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.",
     })
+
+
+@router.get("/24q-annexure-ii.csv")
+def form_24q_annexure_ii_csv(
+    client_id: str = Query(...),
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    current_user: dict = Depends(rbac("payroll", "read"))
+):
+    """The same annexure, as the file the CA keys into the FVU utility.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+
+    ONE ASSEMBLY, TWO RENDERINGS. The screen reads the JSON above and this
+    writes the CSV, both from _assemble_annexure_ii — so what a CA approved on
+    screen is what leaves in the file. A CSV built in the browser from the JSON
+    would be a second answer to "what is income under the head Salaries", and
+    the §16(iii) treatment alone (§115BAC(2)(i) allows clause (ia) and nothing
+    else) is enough to make the two disagree.
+
+    A NOT-READY YEAR STILL DOWNLOADS, and the reasons are IN the file — same
+    rule as the 24Q working paper. This is what a CA checks BEFORE filing Q4,
+    and refusing to produce it refuses to show them what is wrong.
+    """
+    from fastapi.responses import Response
+
+    ann = _assemble_annexure_ii(current_user, client_id, financial_year)
+    blob = annexure2_domain.to_csv(ann, financial_year=financial_year)
+    return Response(
+        content=blob, media_type="text/csv",
+        headers={"Content-Disposition":
+                 f'attachment; filename="24Q-AnnexureII-{financial_year}.csv"'},
+    )
 
 
 @router.get("/reports/statutory-summary")

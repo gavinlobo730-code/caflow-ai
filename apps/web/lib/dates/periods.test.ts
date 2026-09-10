@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/dates/periods.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fyRangeFor, shiftFY, resolvePeriodRange, periodOptionLabel, splitPeriodColumns, periodSplitNotice, formatRangeLabel, financialYearChoices, encodePeriodChoice, decodePeriodChoice, periodChoices, FY_CHOICE_COUNT } from "./periods.ts";
+import { fyRangeFor, shiftFY, resolvePeriodRange, periodOptionLabel, splitPeriodColumns, periodSplitNotice, formatRangeLabel, financialYearChoices, financialYearOfMonth, financialYearChoicesAround, encodePeriodChoice, decodePeriodChoice, periodChoices, FY_CHOICE_COUNT } from "./periods.ts";
 
 const FY = "2026-27";
 const TODAY = "2026-07-12"; // a Sunday
@@ -289,4 +289,38 @@ test("picking a financial year picks the April-March range for that year", () =>
   const { mode, financialYear } = decodePeriodChoice("fy:2024-25", "2026-27");
   assert.deepEqual(resolvePeriodRange(mode, financialYear, { from: "", to: "" }),
                    { start: "2024-04-01", end: "2025-03-31" });
+});
+
+
+// ── The financial year a payroll month belongs to (PAY-11) ───────────────────
+//
+// The Annexure II panel is asked for a YEAR while the shelf above it is showing
+// a MONTH. Deriving one from the other wrongly points a CA at a year with no
+// payroll in it, which reads as "this client has no annual salary detail".
+
+test("financialYearOfMonth: March and April are one month and two financial years apart", () => {
+  assert.equal(financialYearOfMonth("2027-03"), "2026-27");
+  assert.equal(financialYearOfMonth("2027-04"), "2027-28");
+  assert.equal(financialYearOfMonth("2026-04"), "2026-27");
+  assert.equal(financialYearOfMonth("2026-12"), "2026-27");
+  assert.equal(financialYearOfMonth("2027-01"), "2026-27");
+});
+
+test("financialYearOfMonth: anything unparseable falls back to today's year", () => {
+  const today = new Date("2026-08-28T00:00:00Z");
+  for (const bad of ["", "2026", "2026/07", "2026-13", "2026-00", "xxxx-07", null, undefined]) {
+    assert.equal(financialYearOfMonth(bad, today), "2026-27", `${bad} did not fall back`);
+  }
+});
+
+test("financialYearChoicesAround always contains the month's own year", () => {
+  // The trap: financialYearChoices ends at TODAY's year, so a client whose last
+  // finalised payroll is two years old could not be asked for its annexure at
+  // all — the value would not be in the list.
+  const today = new Date("2026-08-28T00:00:00Z");
+  const years = financialYearChoicesAround("2024-05", FY_CHOICE_COUNT, today);
+  assert.ok(years.includes("2024-25"), years.join(","));
+  assert.ok(years.includes("2026-27"), "today's year is still offered");
+  assert.deepEqual(years, [...years].sort().reverse(), "newest first");
+  assert.equal(new Set(years).size, years.length, "no duplicates");
 });

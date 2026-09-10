@@ -22,8 +22,15 @@ from domain.income_tax.capital_gains_engine import (
 )
 from domain.income_tax.assessee import assessee_kind_for_entity_type
 from domain.income_tax.advance_tax_interest_engine import (
-    compute_234c_interest, installment_schedule, InstallmentPayment, INSTALLMENT_RULES,
+    compute_234a_interest, compute_234b_interest, compute_234c_interest,
+    installment_schedule, InstallmentPayment, INSTALLMENT_RULES,
 )
+from domain.income_tax.itr_json import build_itr_payload, itr_field_placements
+from domain.income_tax.loss_set_off import BroughtForwardLoss, KNOWN_LOSS_TYPES
+from domain.income_tax.presumptive import (
+    compute_44ad, compute_44ada, compute_44ae, GoodsCarriage,
+)
+from services.compliance_obligation_service import itr_due_date_for_client, fy_end_year
 from models.fy import FYLabel, OptionalFYLabel
 
 router = APIRouter(prefix="/api/income-tax", tags=["income-tax"])
@@ -76,6 +83,31 @@ class HRAInput(BaseModel):
     hra_received_paise: int = 0
     rent_paid_paise: int = 0
     is_metro: bool = False
+
+
+class BroughtForwardLossInput(BaseModel):
+    """One row of brought_forward_losses, as the screen holds it.
+
+    `amount_paise` is what REMAINS of the loss (remaining_amount_paise), not
+    what it originally was — a loss already partly utilised in an earlier year
+    can only relieve what is left of it.
+    """
+    loss_type: str
+    amount_paise: int = Field(ge=0)
+    assessment_year: Optional[str] = None
+    expiry_assessment_year: Optional[str] = None
+    is_expired: bool = False
+    source_itr_ack: Optional[str] = None
+
+    @field_validator("loss_type")
+    @classmethod
+    def a_type_with_a_rule(cls, v: str) -> str:
+        t = str(v or "").strip().lower()
+        if t not in KNOWN_LOSS_TYPES:
+            raise ValueError(
+                f"loss_type must be one of {', '.join(sorted(KNOWN_LOSS_TYPES))} "
+                f"— the head decides which section reaches the loss.")
+        return t
 
 
 class ComputeITRRequest(BaseModel):
@@ -160,6 +192,17 @@ class ComputeITRRequest(BaseModel):
     tds_deducted_paise: int = 0
     advance_tax_paid_paise: int = 0
 
+    # IT-10. Losses carried forward from earlier years, as brought_forward_losses
+    # holds them. Passed straight through to the engine, which sets each off only
+    # against the head its own section reaches (§72 business, §73 speculation,
+    # §71B house property, §74 capital) — see domain/income_tax/loss_set_off.py.
+    #
+    # The presumptive figure is here for the same reason: the engine has honoured
+    # it since IT-01, and no request model carried it, so the §44AD/§44ADA/§44AE
+    # branch was unreachable from this endpoint (IT-16).
+    brought_forward_losses: list[BroughtForwardLossInput] = Field(default_factory=list)
+    presumptive_income_paise: Optional[int] = Field(default=None, ge=0)
+
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -200,6 +243,18 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         house_property_income_paise=req.house_property_income_paise,
         business_income_paise=req.business_income_paise,
         disallowances_paise=req.disallowances_paise,
+        presumptive_income_paise=req.presumptive_income_paise,
+        brought_forward_losses=[
+            BroughtForwardLoss(
+                loss_type=l.loss_type,
+                amount_paise=l.amount_paise,
+                assessment_year=l.assessment_year,
+                expiry_assessment_year=l.expiry_assessment_year,
+                is_expired=l.is_expired,
+                source_itr_ack=l.source_itr_ack,
+            )
+            for l in req.brought_forward_losses
+        ],
         capital_gains_stcg_paise=req.capital_gains_stcg_paise,
         capital_gains_ltcg_paise=req.capital_gains_ltcg_paise,
         capital_gains_ltcg_other_paise=req.capital_gains_ltcg_other_paise,
@@ -307,6 +362,15 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             "tds_and_advance_paise": result.tds_and_advance_paise,
             "net_payable_paise": result.net_payable_paise,
             "is_refund": result.net_payable_paise < 0,
+        },
+        # What the brought-forward losses actually relieved, and the working
+        # behind it: which section reached which head, and what is carried
+        # forward still. A total with no breakdown is not checkable, and a
+        # loss the statute would not let through has to be visibly NOT set off
+        # rather than quietly absent.
+        "brought_forward": {
+            "set_off_paise": result.brought_forward_set_off_paise,
+            "lines": result.brought_forward_set_off,
         },
         "warnings": result.warnings,
         "validation_errors": result.validation_errors,
@@ -672,6 +736,326 @@ def compute_advance_tax_interest(
     """Stateless Section 234C interest estimator — does not persist anything.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
     return api_response(True, _at_response(req.estimated_tax_paise, req.installments, req.fy))
+
+
+# ── §234A and §234B — the two the CA could not reach (IT-13) ─────────────────
+#
+# advance_tax_interest_engine has carried compute_234a_interest and
+# compute_234b_interest, complete and tested, while this router imported only
+# compute_234c_interest. So a CA saw the instalment-shortfall interest and
+# neither of the other two, and the three are not alternatives: §234C charges
+# fixed notional periods per instalment, §234B charges the actual months from
+# 1 April of the assessment year where advance tax plus TDS fell below 90% of
+# assessed tax, and §234A charges the delay in FURNISHING the return. A return
+# filed late on fully-paid tax owes 234A and nothing else; a return filed on
+# time on half-paid tax owes 234B and nothing else.
+
+
+class ComputeSection234ABRequest(BaseModel):
+    """Everything both sections need, plus the three facts that decide the
+    §139(1) due date — because §234A's whole charge hangs on that date and
+    guessing it is not available.
+
+    The due date is NOT accepted from the caller. It is derived by
+    compliance_obligation_service.itr_due_date_for_client, which is the one
+    authority for it, and its `decided` / `basis` / `statutory_gaps` come back
+    in the response. Where the statute does not settle it on facts the app
+    holds, that service returns the EARLIER of the two dates and says so —
+    early costs nothing and late costs exactly this interest.
+    """
+    fy: FYLabel
+    tax_on_total_income_paise: int = Field(ge=0)
+    #: §234B charges on ASSESSED tax. It is normally the same figure as the tax
+    #: on total income; it is a separate field because the two diverge after an
+    #: assessment, and silently reusing one for the other would charge the
+    #: wrong base on the section whose base is the whole argument.
+    assessed_tax_paise: Optional[int] = Field(default=None, ge=0)
+    tds_tcs_paise: int = Field(default=0, ge=0)
+    advance_tax_paid_paise: int = Field(default=0, ge=0)
+    relief_paise: int = Field(default=0, ge=0)
+    #: None means NOT YET FURNISHED, which is not the same as nil interest —
+    #: the engine runs the period to the assessment date and says it is still
+    #: running. Reporting zero for an unfiled return would tell a CA the
+    #: cheapest moment to file is never.
+    return_furnished_on: Optional[str] = None
+    assessment_date: Optional[str] = None
+    entity_type: Optional[str] = None
+    has_tax_audit_engagement: bool = False
+    has_transfer_pricing_report: bool = False
+
+    @field_validator("return_furnished_on", "assessment_date")
+    @classmethod
+    def a_real_date_or_nothing(cls, v: Optional[str]) -> Optional[str]:
+        if v in (None, ""):
+            return None
+        try:
+            date.fromisoformat(v[:10])
+        except ValueError:
+            raise ValueError("dates must be ISO YYYY-MM-DD")
+        return v[:10]
+
+
+def _section_interest_payload(r) -> dict:
+    return {
+        "section": r.section,
+        "applies": r.applies,
+        "base_paise": r.base_paise,
+        "months": r.months,
+        "interest_paise": r.interest_paise,
+        "from_date": r.from_date.isoformat() if r.from_date else None,
+        "to_date": r.to_date.isoformat() if r.to_date else None,
+        # Shown, not summarised: each sentence names the rule it applied and
+        # the figures it applied it to, which is what a CA checks.
+        "reasons": list(r.reasons),
+    }
+
+
+@router.post("/interest/234ab")
+def compute_234ab_interest(
+    req: ComputeSection234ABRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Stateless §234A and §234B interest — persists nothing.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    due = itr_due_date_for_client(
+        req.fy,
+        entity_type=req.entity_type,
+        has_tax_audit_engagement=req.has_tax_audit_engagement,
+        has_transfer_pricing_report=req.has_transfer_pricing_report,
+    )
+    due_date = date.fromisoformat(due["due_date"])
+    assessment_date = date.fromisoformat(req.assessment_date) if req.assessment_date else ist_today()
+    furnished = date.fromisoformat(req.return_furnished_on) if req.return_furnished_on else None
+
+    s234a = compute_234a_interest(
+        tax_on_total_income_paise=req.tax_on_total_income_paise,
+        tds_tcs_paise=req.tds_tcs_paise,
+        advance_tax_paid_paise=req.advance_tax_paid_paise,
+        relief_paise=req.relief_paise,
+        due_date=due_date,
+        return_furnished_on=furnished,
+        assessment_date=assessment_date,
+    )
+    # §234B runs from 1 April of the ASSESSMENT year — not the end of the
+    # financial year, and not any instalment date.
+    s234b = compute_234b_interest(
+        assessed_tax_paise=(req.assessed_tax_paise
+                            if req.assessed_tax_paise is not None
+                            else req.tax_on_total_income_paise),
+        advance_tax_paid_paise=req.advance_tax_paid_paise,
+        tds_tcs_paise=req.tds_tcs_paise,
+        assessment_year_start=date(fy_end_year(req.fy), 4, 1),
+        assessment_date=assessment_date,
+    )
+    return api_response(True, {
+        "fy": req.fy,
+        "section_234a": _section_interest_payload(s234a),
+        "section_234b": _section_interest_payload(s234b),
+        "total_interest_paise": s234a.interest_paise + s234b.interest_paise,
+        # The provenance of the date §234A is charged from. `decided: false`
+        # means the statute does not settle it on facts held here and the
+        # EARLIER date was taken — the interest below is then a floor, not a
+        # figure to rely on, and statutory_gaps names what would settle it.
+        "itr_due_date": due,
+        "assessment_date": assessment_date.isoformat(),
+        "return_furnished_on": furnished.isoformat() if furnished else None,
+    })
+
+
+# ── §44AD, §44ADA and §44AE — reachable from nothing (IT-16) ─────────────────
+#
+# The engines are complete and covered by tests/test_presumptive_taxation.py,
+# and ITRComputeRequest already honours their output at
+# itr_engine.py:presumptive_income_paise — but no request model carried the
+# inputs, so the branch was unreachable from outside the test suite. These
+# three endpoints are the missing half.
+
+
+class Compute44ADRequest(BaseModel):
+    fy: OptionalFYLabel = None
+    turnover_paise: int = Field(ge=0)
+    #: The split matters: the 3 crore ceiling and the 6% rate both turn on how
+    #: much of the turnover came through a bank. Sending only the total gets
+    #: the 8% rate on everything and the lower limit.
+    digital_turnover_paise: int = Field(default=0, ge=0)
+    cash_receipts_paise: int = Field(default=0, ge=0)
+    declared_income_paise: Optional[int] = Field(default=None, ge=0)
+
+
+class Compute44ADARequest(BaseModel):
+    fy: OptionalFYLabel = None
+    gross_receipts_paise: int = Field(ge=0)
+    cash_receipts_paise: int = Field(default=0, ge=0)
+    declared_income_paise: Optional[int] = Field(default=None, ge=0)
+
+
+class GoodsCarriageInput(BaseModel):
+    gross_vehicle_weight_kg: int = Field(gt=0)
+    #: Every month or PART of a month owned — a vehicle bought on 28 March is
+    #: owned for a part of March and that month is charged in full.
+    months_owned: int = Field(ge=0, le=12)
+
+
+class Compute44AERequest(BaseModel):
+    fy: OptionalFYLabel = None
+    vehicles: list[GoodsCarriageInput] = Field(default_factory=list)
+    declared_income_paise: Optional[int] = Field(default=None, ge=0)
+
+
+def _presumptive_payload(r) -> dict:
+    return {
+        "section": r.section,
+        "eligible": r.eligible,
+        "presumptive_income_paise": r.presumptive_income_paise,
+        "declared_income_paise": r.declared_income_paise,
+        "turnover_limit_paise": r.turnover_limit_paise,
+        "enhanced_limit_applied": r.enhanced_limit_applied,
+        "reasons": list(r.reasons),
+        "workings": list(r.workings),
+    }
+
+
+@router.post("/presumptive/44ad")
+def compute_presumptive_44ad(
+    req: Compute44ADRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """§44AD — presumptive income of an eligible business. Persists nothing.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    return api_response(True, _presumptive_payload(compute_44ad(
+        turnover_paise=req.turnover_paise,
+        digital_turnover_paise=req.digital_turnover_paise,
+        cash_receipts_paise=req.cash_receipts_paise,
+        declared_income_paise=req.declared_income_paise,
+        fy=req.fy,
+    )))
+
+
+@router.post("/presumptive/44ada")
+def compute_presumptive_44ada(
+    req: Compute44ADARequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """§44ADA — presumptive income of a specified profession. Persists nothing.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    return api_response(True, _presumptive_payload(compute_44ada(
+        gross_receipts_paise=req.gross_receipts_paise,
+        cash_receipts_paise=req.cash_receipts_paise,
+        declared_income_paise=req.declared_income_paise,
+        fy=req.fy,
+    )))
+
+
+@router.post("/presumptive/44ae")
+def compute_presumptive_44ae(
+    req: Compute44AERequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """§44AE — presumptive income from goods carriages. Persists nothing.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
+    return api_response(True, _presumptive_payload(compute_44ae(
+        vehicles=[GoodsCarriage(gross_vehicle_weight_kg=v.gross_vehicle_weight_kg,
+                                months_owned=v.months_owned)
+                  for v in req.vehicles],
+        declared_income_paise=req.declared_income_paise,
+        fy=req.fy,
+    )))
+
+
+# ── "This figure goes in this field" (IT-17) ─────────────────────────────────
+#
+# itr_field_placements is the useful half of a return generator without the
+# dangerous half: it says where each computed number belongs in the form and
+# leaves the FILE to the department's own utility. Every path in it is checked
+# against the seven committed schemas in domain/income_tax/schemas/ by
+# tests/test_itr_schema_paths.py — and until now neither it nor build_itr_payload
+# was imported anywhere outside those tests, so a CA had the computation and no
+# way to see where any of it went.
+#
+# This deliberately does NOT expose generate_itr_json. That function refuses
+# with SoftwareProviderNotRegistered until the Third Party Software Utility
+# Developer registration exists, and the refusal is right: a JSON this software
+# emits without that registration is not a file the portal will take. See
+# docs/compliance/07-getting-permission-to-file.md.
+
+_ITR_FORMS = ("ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6", "ITR-7")
+
+
+class ITRFieldPlacementsRequest(BaseModel):
+    form: str
+    assessment_year: str = "2026-27"
+    gross_total_income_paise: int = Field(default=0, ge=0)
+    total_deductions_paise: int = Field(default=0, ge=0)
+    total_income_paise: int = Field(default=0, ge=0)
+    tax_on_total_income_paise: int = Field(default=0, ge=0)
+    rebate_87a_paise: int = Field(default=0, ge=0)
+    surcharge_paise: int = Field(default=0, ge=0)
+    cess_paise: int = Field(default=0, ge=0)
+    total_tax_paise: int = Field(default=0, ge=0)
+    tds_tcs_paise: int = Field(default=0, ge=0)
+    advance_tax_paid_paise: int = Field(default=0, ge=0)
+    self_assessment_tax_paise: int = Field(default=0, ge=0)
+    interest_234a_paise: int = Field(default=0, ge=0)
+    interest_234b_paise: int = Field(default=0, ge=0)
+    interest_234c_paise: int = Field(default=0, ge=0)
+
+    @field_validator("form")
+    @classmethod
+    def a_form_that_exists(cls, v: str) -> str:
+        f = (v or "").strip().upper()
+        if f not in _ITR_FORMS:
+            raise ValueError(f"form must be one of {', '.join(_ITR_FORMS)}")
+        return f
+
+
+@router.post("/itr/field-placements")
+def itr_field_placements_endpoint(
+    req: ITRFieldPlacementsRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Where each computed figure belongs in the form, in whole rupees.
+
+    Rupee rounding happens HERE and not earlier: this is the statutory payload
+    boundary, the same place domain/gst/money.py rounds for GSTR-1 and GSTR-3B.
+
+    `not_on_this_form: true` is an ANSWER, not a missing mapping — §87A has no
+    home on ITR-5/6/7 and surcharge none on ITR-1/4, and saying so is what
+    stops a CA hunting for a field that does not exist.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+    """
+    payload = build_itr_payload(
+        form=req.form,
+        assessment_year=req.assessment_year,
+        gross_total_income_paise=req.gross_total_income_paise,
+        total_deductions_paise=req.total_deductions_paise,
+        total_income_paise=req.total_income_paise,
+        tax_on_total_income_paise=req.tax_on_total_income_paise,
+        rebate_87a_paise=req.rebate_87a_paise,
+        surcharge_paise=req.surcharge_paise,
+        cess_paise=req.cess_paise,
+        total_tax_paise=req.total_tax_paise,
+        tds_tcs_paise=req.tds_tcs_paise,
+        advance_tax_paid_paise=req.advance_tax_paid_paise,
+        self_assessment_tax_paise=req.self_assessment_tax_paise,
+        interest_234a_paise=req.interest_234a_paise,
+        interest_234b_paise=req.interest_234b_paise,
+        interest_234c_paise=req.interest_234c_paise,
+    )
+    return api_response(True, {
+        "form": payload.form,
+        "assessment_year": payload.assessment_year,
+        "placements": itr_field_placements(payload),
+        # Whether the paths came from a schema a human downloaded and checked,
+        # or from a mapping nobody has confirmed against the department's file.
+        # can_emit_file is the SAME fact under its other name (itr_json.py sets
+        # both from `verified`): it says the paths are trustworthy, NOT that a
+        # file may be produced. The registration gate is separate and lives in
+        # generate_itr_json, which this endpoint deliberately does not call.
+        "schema_is_verified": payload.schema_is_verified,
+        "can_emit_file": payload.can_emit_file,
+        "notes": list(payload.notes),
+    })
 
 
 @router.get("/advance-tax")
