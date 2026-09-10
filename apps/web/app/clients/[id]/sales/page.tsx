@@ -53,6 +53,7 @@ import { writeDuplicateSeed } from "@/lib/invoices/duplicateSeed";
 import {
   API, apiCall, apiGet, getAuthToken, fmt, STATUS_BADGE, DELIVERY_STATUS_LABEL,
   type InvoiceDelivery, type InvoiceDetail,
+  outstandingOf,
   type Customer, type SalesInvoice,
   type CurrencyOption, type InvoiceStatus,
 } from "@/lib/invoices/shared";
@@ -153,8 +154,7 @@ const fmtDateTime = formatDateTime;
  */
 function isOverdueForUi(inv: SalesInvoice): boolean {
   if (inv.status !== "issued" && inv.status !== "partially_paid") return false;
-  const outstanding = inv.total_paise - (inv.paid_paise ?? 0);
-  if (outstanding <= 0) return false;
+  if (outstandingOf(inv) <= 0) return false;
   if (inv.is_overdue) return true;
   if (inv.due_date) return inv.due_date < todayLocalISO();
   return false;
@@ -1020,7 +1020,7 @@ function Statements({ clientId }: { clientId: string }) {
     const res = await apiGet(`/api/sales-invoices/?client_id=${clientId}&customer_id=${customerId}`, token);
     if (res.success) {
       const open = ((res.data as SalesInvoice[]) ?? []).filter(
-        (i) => !["draft", "cancelled", "paid"].includes(i.status) && (i.total_paise - (i.paid_paise ?? 0)) > 0
+        (i) => !["draft", "cancelled", "paid"].includes(i.status) && outstandingOf(i) > 0
       );
       setApplyInvoices(open);
     }
@@ -1246,7 +1246,7 @@ function Statements({ clientId }: { clientId: string }) {
                 <option value="">Select an outstanding invoice…</option>
                 {applyInvoices.map((i) => (
                   <option key={i.id} value={i.id}>
-                    {i.invoice_no} — outstanding ₹{stmtRupees(i.total_paise - (i.paid_paise ?? 0))}
+                    {i.invoice_no} — outstanding ₹{stmtRupees(outstandingOf(i))}
                   </option>
                 ))}
               </select>
@@ -1380,7 +1380,7 @@ function SalesInvoices({
         selectAll(() => supabase
           .from("client_sales_invoices")
           .select(
-            "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, paid_paise, status, supply_state_code, is_interstate, is_overdue, days_overdue, reminder_count, last_reminded_at, customers(name)"
+            "id, invoice_no, invoice_date, due_date, customer_id, taxable_amount_paise, total_gst_paise, total_paise, paid_paise, outstanding_paise, status, supply_state_code, is_interstate, is_overdue, days_overdue, reminder_count, last_reminded_at, customers(name)"
           )
           .eq("client_id", clientId)
           .is("deleted_at", null)
@@ -1418,7 +1418,8 @@ function SalesInvoices({
       const mapped: SalesInvoice[] = ((invData ?? []) as unknown as Array<
         { id: string; invoice_no: string; invoice_date: string; due_date: string | null;
           customer_id: string; taxable_amount_paise: number; total_gst_paise: number;
-          total_paise: number; paid_paise: number; status: string; supply_state_code: string | null;
+          total_paise: number; paid_paise: number; outstanding_paise: number | null;
+          status: string; supply_state_code: string | null;
           is_interstate: boolean; is_overdue: boolean | null; days_overdue: number | null;
           reminder_count: number | null; last_reminded_at: string | null;
           customers: { name: string } | null }
@@ -1433,6 +1434,7 @@ function SalesInvoices({
         gst_paise: r.total_gst_paise,
         total_paise: r.total_paise,
         paid_paise: r.paid_paise,
+        outstanding_paise: r.outstanding_paise ?? undefined,
         status: r.status as InvoiceStatus,
         supply_state_code: r.supply_state_code,
         is_interstate: r.is_interstate,
@@ -1445,10 +1447,20 @@ function SalesInvoices({
       setInvoices(mapped);
       setCustomers((custData as Customer[]) ?? []);
 
-      // Summary: outstanding = issued + partially_paid (total_paise), paid FY, issued FY
+      // Summary. OUTSTANDING IS WHAT IS STILL OWING, not what was billed
+      // (SALES-05): this summed the GROSS total of every issued and
+      // partially-paid invoice, so ₹10,00,000 billed with ₹8,00,000 collected
+      // and ₹50,000 credited read as ₹10,00,000 owing instead of ₹1,50,000, and
+      // every partial payment made the tile worse. `outstanding_paise` is a
+      // generated column (migration 278) — total + debit notes − paid −
+      // credited — so it cannot drift from its parts the way a subtraction in
+      // the browser did.
+      //
+      // Issued and Paid stay GROSS on purpose: they are "what was billed" and
+      // "what was settled" for the period, which is what those words mean.
       let outstanding = 0, issued = 0, paid = 0;
       for (const inv of mapped) {
-        if (inv.status === "issued" || inv.status === "partially_paid") outstanding += inv.total_paise;
+        if (inv.status === "issued" || inv.status === "partially_paid") outstanding += outstandingOf(inv);
         if (inv.status === "issued" || inv.status === "partially_paid" || inv.status === "paid") issued += inv.total_paise;
         if (inv.status === "paid") paid += inv.total_paise;
       }
@@ -1863,7 +1875,12 @@ function SalesInvoices({
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3">
-        <SummaryCard label="Outstanding" value={loadFailed ? "—" : fmt(stats.outstanding)} color="amber" />
+        {/* "This FY" like its neighbours: the query is scoped to the selected
+            period (invoice_date between range.from and range.to), so this is
+            the period's unpaid balance and not the client's whole receivable.
+            Unlabelled it read as the latter, which is a second way to be
+            wrong about the same tile. */}
+        <SummaryCard label="Outstanding This FY" value={loadFailed ? "—" : fmt(stats.outstanding)} color="amber" />
         <SummaryCard label="Issued This FY" value={loadFailed ? "—" : fmt(stats.issued)} color="blue" />
         <SummaryCard label="Paid This FY" value={loadFailed ? "—" : fmt(stats.paid)} color="green" />
       </div>
@@ -2310,7 +2327,7 @@ function RemindInvoiceModal({
 }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const outstanding = invoice.total_paise - (invoice.paid_paise ?? 0);
+  const outstanding = outstandingOf(invoice);
 
   async function handleConfirm() {
     setSending(true);

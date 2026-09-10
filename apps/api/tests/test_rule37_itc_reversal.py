@@ -110,7 +110,8 @@ def test_a_fully_paid_bill_reverses_nothing():
     r = reversal_for_bill(total_paise=118_000_00, paid_paise=118_000_00,
                           cgst_paise=9_000_00, sgst_paise=9_000_00)
 
-    assert r == {"unpaid_paise": 0, "cgst_paise": 0, "sgst_paise": 0,
+    assert r == {"unpaid_paise": 0, "supply_value_paise": 118_000_00,
+                 "cgst_paise": 0, "sgst_paise": 0,
                  "igst_paise": 0, "total_paise": 0}
 
 
