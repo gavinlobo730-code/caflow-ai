@@ -667,12 +667,17 @@ class ReportingService:
         return _bank_total(self._lines(snap, basis), AccountResolver(snap.accounts).bank_ids)
 
 
-def mock_ledger_source() -> InMemoryLedgerSource:
+def mock_ledger_source(allowed_client_ids: Optional[set] = None) -> InMemoryLedgerSource:
     """
     Build a LedgerSource from the legacy in-memory seed (accounting_service)
     for dev/demo and no-DB environments. The seed has no sales/purchase
     documents, so cash basis equals accrual there (honest: with no allocation
     data, nothing can be reclassified) while still exercising the real engine.
+
+    `allowed_client_ids` is accepted so the caller's scope is threaded the same
+    way on both sources. In practice `core.authz.effective_client_ids` returns
+    None in mock mode — there are no assignments to enforce without a database —
+    so this is the shape being consistent rather than a control doing work.
     """
     from domain.accounting_service import MOCK_ACCOUNTS, MOCK_JOURNAL_ENTRIES
     from .model import Account, JournalEntry, JournalLine
@@ -694,4 +699,5 @@ def mock_ledger_source() -> InMemoryLedgerSource:
             id=e["id"], entry_date=e["entry_date"], client_id=e.get("client_id", ""),
             firm_id=e.get("firm_id", ""), entry_type=e.get("entry_type", ""), lines=lines,
         ))
-    return InMemoryLedgerSource(accounts=accounts, entries=entries)
+    return InMemoryLedgerSource(accounts=accounts, entries=entries,
+                                allowed_client_ids=allowed_client_ids)

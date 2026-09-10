@@ -212,7 +212,14 @@ change. The code is the authority; keep this file in step with it.
   the date GSTR-9 was furnished, whichever is EARLIER**. Filing the annual return early
   shuts the window early. `compliance_engine.correction_window_closes()` is the function
   to use — `november_30_cutoff()` is only the statutory outer limit and will tell a CA a
-  correction is available when it is not.
+  correction is available when it is not. **The GSTR-9 date is RESOLVED FROM THE BOOKS**
+  by `gst_amendment_service.annual_returns_filed` (`gstr1_returns` with
+  `return_type='gstr9'`, `status='submitted'`), keyed **per financial year** — the source
+  periods of one call straddle years, so a single date applied to all of them shortens
+  the wrong one — and converted **UTC → IST** before the date is taken, because 20:00 UTC
+  on 30 November is 1 December in India and the two fall on opposite sides of the cutoff.
+  It used to take an `annual_return_filed_on` parameter that nothing ever passed, so every
+  window reported the 30 November limit (GST-09).
 - **§195 asks CHARGEABILITY before it asks a rate, and the resident sections do
   not reach a non-resident at all.** §194C, §194J and their neighbours charge, in
   their own words, sums paid "to a **resident**"; §195 charges a payment to a
@@ -512,6 +519,19 @@ PostgREST. That is why:
   RLS is genuinely enforced on the API path too.
 - RBAC: `Partner > Manager > Executive > Reviewer > Client`
   (`core/permissions.py`, applied as `rbac(resource, action)`).
+
+## Reporting scope — "all clients" means the caller's clients
+
+A reporting endpoint called with no `client_id` means "all clients", and that is
+right only for a Partner: `_FIRMWIDE_ROLES` is `{Role.PARTNER}` (`core/authz.py`),
+so an Executive or a Manager is assignment-scoped. `routers/accounting.py`'s
+`_reporting_service(current_user)` builds the ledger source with
+`effective_client_ids`, and the scope lives **on the source** rather than on each
+report — a source is created per request from the caller's own scope, so a fetch
+added later inherits the rule instead of having to remember it. `None` means no
+restriction; an EMPTY set means nothing, never "no filter". Before ACC-17 the seven
+reporting endpoints aggregated across the whole firm, and the Schedule III screen
+offers "All Clients" as an ordinary control, so it did not need a hand-made request.
 
 ## Reporting performance — the rule, not a preference
 

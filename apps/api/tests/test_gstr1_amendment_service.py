@@ -289,7 +289,7 @@ def test_an_early_annual_return_closes_the_window_early(db):
 
     out = svc.outstanding_amendments(
         db, FIRM, CLIENT, "072025", as_of=date(2026, 9, 1),
-        annual_return_filed_on=date(2026, 8, 15))
+        annual_returns_filed={"2025-26": date(2026, 8, 15)})
 
     assert out["counts"]["amendments"] == 0
     assert out["counts"]["expired_periods"] == 1

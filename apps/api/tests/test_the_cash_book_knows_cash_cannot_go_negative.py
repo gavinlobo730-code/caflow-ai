@@ -140,8 +140,30 @@ def test_the_cash_book_endpoint_requires_a_client():
 def test_the_cash_book_does_not_reimplement_the_running_balance():
     """It asks the same reporting engine /ledger uses. A second running-balance
     implementation is the drift CLAUDE.md's reporting section warns about, and
-    the account-ledger SQL parity test exists because it has happened here."""
+    the account-ledger SQL parity test exists because it has happened here.
+
+    Asserted as the SHAPE of the call rather than its exact text. This used to
+    match the literal `_reporting_service().ledger(`, and ACC-17 — which gave
+    the factory the caller's scope, so the call reads
+    `_reporting_service(current_user).ledger(` — broke it while satisfying
+    everything it exists to protect. A guard that fails on a change it does not
+    care about teaches people to edit the guard.
+    """
+    import ast
     import inspect
+    import textwrap
     from routers import accounting
-    src = inspect.getsource(accounting.get_cash_book)
-    assert "_reporting_service().ledger(" in src
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(accounting.get_cash_book)))
+    calls = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute) and n.func.attr == "ledger"
+        and isinstance(n.func.value, ast.Call)
+        and isinstance(n.func.value.func, ast.Name)
+        and n.func.value.func.id == "_reporting_service"
+    ]
+    assert calls, (
+        "the cash book must read its running balance from _reporting_service(…)"
+        ".ledger(…), the same engine /ledger uses — not compute its own"
+    )
