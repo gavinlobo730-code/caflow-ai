@@ -34,11 +34,31 @@ export interface RegisterNote {
   text: string;
 }
 
+/** What describe_gaps() actually returns — a CODE and the sentence for it.
+ *
+ *  THIS WAS TYPED AS A BARE string[] AND IT NEVER WAS ONE.
+ *  domain/tds/residency.describe_gaps returns
+ *  `[{"code": c, "message": GAP_MESSAGES.get(c, "")}]`, and its docstring has
+ *  said so since it was written. The declaration below said `string[]`, so
+ *  TypeScript typed the objects as strings and let them through to `{n.text}` —
+ *  and React THROWS on a plain object child ("Objects are not valid as a React
+ *  child (found: object with keys {code, message})"). Every gap the register
+ *  reported took the purchases page down with it, which is worse than the
+ *  silence PUR-14 fixed: the CA lost the screen instead of the sentence.
+ *
+ *  Found while wiring the payment path onto the same vocabulary; nothing in the
+ *  bill path had a test that fed a real backend payload through, only source
+ *  scans that check the call is made. */
+export interface GapDetail {
+  code: string;
+  message: string;
+}
+
 interface RegisterResult {
   synced?: boolean;
   reason?: string;
   vendor_name?: string | null;
-  gap_details?: string[];
+  gap_details?: GapDetail[];
   statutory_gaps?: string[];
 }
 
@@ -46,6 +66,22 @@ interface RegisterResult {
 export function registerNotesFrom(data: unknown): RegisterNote[] {
   const reg = (data as { tds_register?: RegisterResult } | null)?.tds_register;
   if (!reg) return [];
+  return notesFrom(reg);
+}
+
+/** The notes in one `POST /api/purchase-payments` response.
+ *
+ *  The payment path reports the SAME vocabulary — services/tds_register_service
+ *  .sync_for_payment calls the same describe_gaps — but at the top level of the
+ *  payment rather than under `tds_register`, because a payment has no second
+ *  document to nest it under. One renderer either way, so a gap cannot be worded
+ *  one way on a bill and another on an advance. */
+export function paymentNotesFrom(data: unknown): RegisterNote[] {
+  if (!data || typeof data !== "object") return [];
+  return notesFrom(data as RegisterResult);
+}
+
+function notesFrom(reg: RegisterResult): RegisterNote[] {
   const vendor = reg.vendor_name ?? null;
 
   // A FAILED SYNC IS THE LOUDEST CASE, not a silent one. The bill and its
@@ -66,7 +102,12 @@ export function registerNotesFrom(data: unknown): RegisterNote[] {
   // the sentences and fall back to the codes rather than showing nothing — a
   // response that named a gap must never render as "no gaps".
   const details = reg.gap_details ?? [];
-  if (details.length > 0) return details.map((text) => ({ vendor, text }));
+  if (details.length > 0) {
+    // The MESSAGE, falling back to the code — a gap whose wording the backend
+    // could not supply is still a gap, and an empty note reads as none.
+    return details.map((d) => ({ vendor, text: d?.message || d?.code || "" }))
+                  .filter((n) => n.text !== "");
+  }
   return (reg.statutory_gaps ?? []).map((code) => ({ vendor, text: code }));
 }
 

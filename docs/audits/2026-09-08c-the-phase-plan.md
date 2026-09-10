@@ -623,6 +623,42 @@ is; they are NOT features, so the "which ones will a CA pay for" question below
 does not reach them. PUR-10 is the one to take first — a vendor payment made
 outside the purchase-bill path withholds nothing at all today.
 
+#### 11a · PUR-10 — DONE. An advance to a contractor withholds
+Migration 358, `services/vendor_tds.py`, both payment paths, the journal, the
+register, and the payments screen.
+
+§194 and §195 charge "at the time of credit ... or at the time of PAYMENT
+thereof, whichever is EARLIER", and only the credit half existed: both resolvers
+lived inside `routers/purchase_bills.py` as private functions, so the payment
+path had no engine to call. A ₹5,00,000 mobilisation advance withheld ₹0 where
+§194C charges ₹10,000, with §201(1A) interest from the payment date and a
+§40(a)(ia) disallowance of 30% of the expenditure.
+
+**The hard half was not the charge, it was not charging twice.** An advance and
+the bill that later absorbs it are ONE sum credited-or-paid. Adding both to the
+year's aggregate charges ₹10,00,000 on ₹5,00,000 and leaves Trade Payables with
+a debit balance equal to the over-deduction. So a bill absorbs the outstanding
+advance pool and records what it took in
+`purchase_bills.tds_advance_adjusted_paise`; the pool is
+`Σ payments.tds_base_paise − Σ bills.tds_advance_adjusted_paise`, needing no
+matching table. Reversing an advance a bill already absorbed puts the sum back
+into the aggregate rather than leaving it charged nowhere.
+
+**Two things it deliberately does not do.** A payment in a FOREIGN currency does
+not withhold — the vendor is credited in their own currency while the tax is
+remitted in rupees, so the cash leg is not "amount − tax" — and says so as a
+named gap (`foreign_advance_not_withheld`) rather than reporting a silent zero.
+And an advance to a non-resident is REFUSED where §195 cannot resolve
+chargeability, exactly as the bill path refuses, because under-deduction there
+disallows the whole expenditure under §40(a)(i).
+
+**One unrecorded defect found on the way.** `lib/purchases/registerNotes.ts`
+typed `gap_details` as `string[]` while `describe_gaps` has always returned
+`[{code, message}]`, so every statutory gap the register reported reached
+`{n.text}` as an object — which React refuses to render. The screen PUR-14 built
+to stop the silence crashed instead. Fixed, and pinned by a payload test rather
+than another source scan.
+
 Form 3CD, §54 reinvestment exemptions, GSTR-9, QRMP, multi-GSTIN, the MSME
 §43B(h) tracker, recurring journals out of `localStorage`, Schedule III mapping
 that changes something, invoice discounts, closing stock as at a date.

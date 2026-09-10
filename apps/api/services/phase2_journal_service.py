@@ -766,7 +766,17 @@ class Phase2JournalService:
     ) -> Optional[str]:
         """
         Dr Trade Payables = amount_paise
-        Cr Bank Account   = amount_paise
+        Cr Bank Account   = amount_paise - tds_paise
+        Cr TDS Payable    = tds_paise (if >0)
+
+        amount_paise IS THE SUM CREDITED OR PAID TO THE VENDOR, not the cash.
+        That is what the allocations are drawn against and what settles the
+        bills, so it stays the payables debit; what the withholding changes is
+        the split of the credit side. IT Act §194C/§194J/§195 charge "at the
+        time of credit ... or at the time of payment thereof, whichever is
+        EARLIER", so an advance is a charging event in its own right — see
+        services/vendor_tds.py. Every row written before migration 358 carries
+        tds_paise 0, so every journal already posted is exactly what it was.
         """
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_purchase_payment: %s", payment.get("payment_no"))
@@ -788,6 +798,7 @@ class Phase2JournalService:
                 find_account=self._find_account)
             bank_id = paid_from.account_id
 
+            tds_paise = int(payment.get("tds_paise") or 0)
             lines = [
                 {
                     "account_id": payables_id,
@@ -798,10 +809,24 @@ class Phase2JournalService:
                 {
                     "account_id": bank_id,
                     "debit_paise": 0,
-                    "credit_paise": payment["amount_paise"],
+                    "credit_paise": payment["amount_paise"] - tds_paise,
                     "narration": "Bank payment to vendor",
                 },
             ]
+            if tds_paise > 0:
+                # Same control account the bill's own withholding credits, so a
+                # deduction made at the payment and one made at the credit land
+                # in one place for the challan (Rule 30) and one 26Q/27Q.
+                tds_pay_id = self._find_account(
+                    db, firm_id, client_id, "%TDS Payable%", system_key="tds_payable"
+                )
+                section = payment.get("tds_section") or "194C"
+                lines.append({
+                    "account_id": tds_pay_id,
+                    "debit_paise": 0,
+                    "credit_paise": tds_paise,
+                    "narration": f"TDS payable on advance — IT Act §{section}",
+                })
 
             _ccy = self._currency_kwargs(db, payment, firm_id, client_id, lines)
             return self._create_journal(

@@ -164,13 +164,17 @@ def aggregate_so_far(
         withheld += int(b.get("tds_paise") or 0)
         advance_absorbed += adjusted
 
+    # A REVERSED PAYMENT IS NOT A PAYMENT. reverse_payment reverses its journal
+    # and its TDS credit with it (migration 215's is_reversed), so leaving it in
+    # the aggregate would charge a sum that never left and credit tax that was
+    # never withheld.
     payments = (db.table("purchase_payments")
-                .select("id, tds_base_paise, tds_paise, tds_section")
+                .select("id, tds_base_paise, tds_paise, tds_section, is_reversed")
                 .eq("firm_id", firm_id).eq("vendor_id", vendor_id)
                 .gte("payment_date", fy_start).lte("payment_date", fy_end)
                 .execute().data) or []
     for p in payments:
-        if p.get("id") == exclude_payment_id:
+        if p.get("id") == exclude_payment_id or p.get("is_reversed"):
             continue
         charged = int(p.get("tds_base_paise") or 0)
         if not charged:
@@ -181,8 +185,20 @@ def aggregate_so_far(
         withheld += int(p.get("tds_paise") or 0)
         advance_charged += charged
 
+    # AN ADJUSTMENT WHOSE ADVANCE HAS SINCE GONE PUTS THE SUM BACK IN THE BASE.
+    # A bill that absorbed ₹5,00,000 of advance took that ₹5,00,000 out of its
+    # own charged base, because the advance had already carried the tax. If that
+    # advance is later reversed — or its bill cancelled — the sum is charged
+    # nowhere, and the year's aggregate is short by exactly the difference. A
+    # posted bill's withholding cannot be silently rewritten, so the shortfall
+    # is restored here instead and the NEXT bill re-charges it, crediting under
+    # §200 whatever is still actually withheld. Without this the two figures
+    # simply drift apart and the vendor is under-deducted for the rest of the
+    # year with nothing saying so.
+    orphaned = max(0, advance_absorbed - advance_charged)
+
     return Aggregate(
-        base_paise=base,
+        base_paise=base + orphaned,
         tds_paise=withheld,
         unadjusted_advance_paise=max(0, advance_charged - advance_absorbed),
     )
@@ -440,3 +456,165 @@ def resolve_withholding(
         why=out.why,
         advance_adjusted_paise=out.advance_adjusted_paise,
     )
+
+
+# The vendor columns the two resolvers actually read. Not used to narrow a
+# query — both callers select("*"), as the bill path does — but written down so
+# a reviewer can see what a withholding decision depends on without reading two
+# engines: PAN and residency decide WHICH section, the §195 paperwork decides
+# whether a treaty or a nil is available at all.
+VENDOR_FIELDS_THAT_DECIDE_WITHHOLDING = (
+    "pan", "tds_applicable", "tds_section", "residential_status",
+    "country_of_residence", "tax_identification_number", "trc_on_file",
+    "form_10f_on_file", "no_pe_declaration_on_file",
+    "section_195_nature_of_income", "non_resident_payee_class",
+    "treaty_rate_bps", "email", "phone", "address",
+)
+
+
+# The bill states in which the vendor's account has actually been credited —
+# transcribed from services/tds_register_service.IN_THE_BOOKS, which says why: a
+# draft posts no journal, so nothing has been credited and nothing is owed.
+_IN_THE_BOOKS = frozenset({"received", "partially_paid", "paid", "overdue"})
+
+
+def open_payable_paise(db, *, firm_id: str, client_id: str, vendor_id: str) -> int:
+    """What this vendor is still owed on bills already in the books.
+
+    Computed from the parts rather than read from purchase_bills.outstanding_-
+    paise, which is a GENERATED column (migration 278) and therefore exists only
+    in Postgres — the in-memory source every mock-mode test runs against has the
+    parts and not the total. The formula is migration 278's own, character for
+    character: net payable + credit notes − paid − debited (CGST Act §34).
+    """
+    if db is None or not vendor_id:
+        return 0
+    rows = (db.table("purchase_bills")
+            .select("status, net_payable_paise, credit_note_paise, "
+                    "paid_paise, debited_paise, deleted_at")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("vendor_id", vendor_id)
+            .neq("status", "cancelled")
+            .execute().data) or []
+    total = 0
+    for b in rows:
+        if b.get("deleted_at") or (b.get("status") or "").lower() not in _IN_THE_BOOKS:
+            continue
+        total += (int(b.get("net_payable_paise") or 0)
+                  + int(b.get("credit_note_paise") or 0)
+                  - int(b.get("paid_paise") or 0)
+                  - int(b.get("debited_paise") or 0))
+    return max(0, total)
+
+
+def columns_for_advance(
+    vendor: dict, unallocated_paise: int, payment_date: str, firm_id: str, db, *,
+    payment_total_paise: int,
+    open_payable_paise: int = 0,
+    exclude_payment_id: Optional[str] = None,
+) -> dict:
+    """The TDS columns a vendor payment carries, for the ADVANCE part of it.
+
+    WHAT COUNTS AS AN ADVANCE, WHICH IS THE WHOLE QUESTION
+
+        advance = max(0, unallocated − open payable)
+
+    §194 charges a sum at its CREDIT or its PAYMENT, whichever is EARLIER. So
+    the part of a payment that discharges a liability already on the books is
+    the LATER event for a sum already charged, and is not charged again — even
+    where the CA never linked it to a bill. Only the excess is a sum paid for
+    which no credit has yet been made, and only that is charged here.
+
+    Leaving the `unallocated` figure to speak for itself was wrong and the
+    end-to-end purchase cycle caught it: a ₹1,08,000 payment settling a
+    ₹1,08,000 bill, recorded without a bill link (which that test records as a
+    known gap), withheld a second ₹10,800 on money the bill had already
+    withheld from. `unallocated` means "not tied to a bill row", not "not owed".
+
+    THE RESIDUAL, NAMED RATHER THAN GUESSED AT. A CA who advances ₹5,00,000,
+    never links it, and then pays the whole bill again has paid the vendor
+    twice; the second payment discharges a real credit, so it is not charged,
+    and the first advance stays unlinked for ever. Charging it would over-deduct
+    on every CA who is merely slow to allocate, which is recoverable only by the
+    payee claiming a refund. The books show it as a debit balance on the vendor,
+    which is where it belongs.
+
+    ONE HELPER BECAUSE THERE ARE TWO PAYMENT PATHS. routers/purchase_payments
+    (single-bill, legacy) and services/purchase_payment_service (multi-bill
+    allocations) both create payments, and a withholding computed two ways is
+    a withholding that will eventually be computed two different ways.
+
+    `advance_paise` is the UNALLOCATED part of the payment and nothing else.
+    The allocated part settles bills that were charged when they were credited;
+    charging it again here would deduct the same sum twice.
+
+    THE BASE IS RECORDED EVEN WHERE NOTHING IS WITHHELD, and that is the point
+    of `tds_base_paise` being separate from `tds_paise`. §194C(5) aggregates
+    "the amounts of such sums credited or paid", not the sums that bore tax —
+    so a ₹25,000 advance under the ₹30,000 single limb still counts toward the
+    year's ₹1,00,000 aggregate, and the advance that eventually crosses it
+    carries the whole year's tax. A base of zero would silently forgive it.
+
+    THE DEDUCTION IS BOUNDED BY THE PAYMENT, which is not academic here. The
+    charge falls on the YEAR'S AGGREGATE, so the document that crosses a
+    threshold carries the whole year's tax and that can exceed its own value: a
+    §194J payee advanced ₹49,000 (nil, inside the ₹50,000 limb) and then ₹2,000
+    owes ₹5,100 on the ₹51,000 aggregate. Unbounded, the bank leg goes negative
+    — a payment that took money OUT of the vendor — and migration 358's own
+    CHECK rejects the row AFTER the journal has posted, so the payment cannot be
+    recorded at all. The bill path bounds at the bill total for exactly this
+    reason; this bounds at the payment total, which is the cash actually leaving
+    and therefore what can be held back out of it.
+
+    THE SHORTFALL IS NOT LOST. `tds_base_paise` records the whole advance while
+    `tds_paise` records what was actually withheld, so the next document to this
+    payee sees the base charged and less tax withheld, and re-charges the
+    difference through §200. No state is needed for it.
+
+    Returns the payload keys verbatim so a caller merges rather than maps, plus
+    `_tds_why` and `_tds_citation`, which are NOT columns: the first is the
+    sentence the CA reads beside the figure, the second is what the register
+    quotes as the reason a §195 remittance withheld nothing.
+    """
+    empty = {
+        "tds_paise": 0, "tds_base_paise": 0, "tds_section": None,
+        "tds_rate_bps": None, "tds_surcharge_paise": 0, "tds_cess_paise": 0,
+        "tds_nature_of_income": None, "tds_basis": None,
+    }
+    advance_paise = max(0, int(unallocated_paise) - int(open_payable_paise))
+    if advance_paise <= 0 or not (vendor or {}).get("tds_applicable"):
+        return empty
+
+    w = resolve_withholding(
+        vendor, advance_paise, payment_date, firm_id, db,
+        exclude_payment_id=exclude_payment_id,
+        # An advance absorbs nothing: it IS the earlier event. Only a bill
+        # adjusts, because only a bill can arrive second.
+        adjust_against_advances=False,
+        event_noun="advance",
+    )
+    if not w.section:
+        return empty
+    withheld = min(w.tds_paise, max(0, int(payment_total_paise)))
+    return {
+        "tds_paise": withheld,
+        "tds_base_paise": advance_paise,
+        "tds_section": w.section,
+        "tds_rate_bps": w.rate_bps,
+        "tds_surcharge_paise": w.surcharge_paise,
+        "tds_cess_paise": w.cess_paise,
+        "tds_nature_of_income": w.nature,
+        "tds_basis": w.basis,
+        "_tds_why": w.why,
+        "_tds_citation": w.citation,
+    }
+
+
+def strip_non_columns(payload: dict) -> dict:
+    """The same dict without the two underscore keys, ready for an insert.
+
+    PostgREST rejects the WHOLE write with PGRST204 when one key is not a
+    column, so the explanation the CA reads must not travel into the row by
+    accident.
+    """
+    return {k: v for k, v in payload.items() if not k.startswith("_")}

@@ -160,6 +160,15 @@ GAP_FORM_15CA_NOT_RECORDED = "form_15ca_not_recorded"
 # not close, and a validator may say the same. The gap exists so that arrives as
 # a sentence rather than as a surprise at the FVU.
 GAP_TDS_IS_A_FY_CATCH_UP = "tds_is_a_fy_catch_up"
+# A foreign-currency vendor payment left an unallocated remainder — an ADVANCE,
+# and §194/§195 charge at credit or payment whichever is earlier — and nothing
+# was withheld on it. The INR paths do withhold (migration 358); the realized-FX
+# path deliberately does not, because the vendor is credited in a foreign
+# currency and the tax is remitted in rupees, so the cash leg is not simply
+# "amount less tax" and getting that wrong understates what the vendor was
+# actually paid. Reported rather than guessed at, and rather than left silent:
+# under-deducting under §195 disallows the WHOLE expenditure (§40(a)(i)).
+GAP_FOREIGN_ADVANCE_NOT_WITHHELD = "foreign_advance_not_withheld"
 
 # What each code MEANS, for the CA who has to act on it. A bare
 # "no_pe_declaration_undated" on a screen is a code, not a prompt: it says
@@ -171,6 +180,14 @@ GAP_MESSAGES: dict[str, str] = {
         "was reported on Form 26Q, which is right for a domestic supplier — "
         "set the residential status on the vendor to confirm it, or correct it "
         "to non-resident so the deduction moves to 27Q.",
+    GAP_FOREIGN_ADVANCE_NOT_WITHHELD:
+        "This payment left an unallocated advance in a foreign currency, and no "
+        "tax was withheld on it. §194 and §195 both charge at credit or payment, "
+        "whichever is earlier, so an advance is a deduction event — but this "
+        "path pays the vendor in their own currency while the tax is remitted in "
+        "rupees, and the software does not compute that split. Deduct and deposit "
+        "it outside the software, or record the advance as an INR payment, which "
+        "does withhold.",
     GAP_27Q_IDENTIFIERS_MISSING:
         "This deduction belongs on Form 27Q, which reports the payee's country "
         "and — where there is no PAN — its tax identification number. Add them "
