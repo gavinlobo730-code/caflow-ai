@@ -86,6 +86,116 @@ export type ApplyStructureResult = {
   notes: string[];
 };
 
+// ── §37 amendments and the exception report (GST-13) ─────────────────────────
+//
+// CGST Act §37: a filed GSTR-1 can never be revised. A correction to it is
+// declared in a LATER return's amendment tables — 9A for invoices, 9C for
+// credit and debit notes, 10 for B2C-others — each naming the original
+// document so GSTN knows which entry it supersedes.
+
+/** The five money heads every GSTR-1 figure is reported under, in paise. */
+export type GSTHeads = {
+  taxable_paise: number; cgst_paise: number; sgst_paise: number;
+  igst_paise: number; cess_paise: number;
+};
+
+export type GSTExceptionDoc = {
+  doc_no?: string;
+  kind?: string;
+  section?: string;
+  counterparty?: string;
+  doc_date?: string;
+  /** Which amendment table this correction is declared in — "9A", "9C", "10",
+   *  or "current period" for something that was never declared at all and so
+   *  has no filed entry to supersede. */
+  declare_in?: string;
+  filed?: GSTHeads;
+  books?: GSTHeads;
+  delta?: GSTHeads;
+  filed_section?: string;
+  books_section?: string;
+} & Partial<GSTHeads>;
+
+export type GSTR1ExceptionReport = {
+  /** "ok" | "not_filed" | "payload_missing" — the last means the return was
+   *  marked filed before its payload was recorded, so nothing can be compared
+   *  and the drift for that period cannot be detected at all. */
+  status: string;
+  period: string;
+  message?: string;
+  gstin?: string;
+  filed_at?: string;
+  arn?: string;
+  clean?: boolean;
+  finding_count?: number;
+  documents?: {
+    /** In the books, never filed. Goes in the CURRENT period's ordinary
+     *  table — there is no filed entry to amend. */
+    missing_from_return: GSTExceptionDoc[];
+    /** Filed, and no longer in the books. The most serious of the four. */
+    missing_from_books: GSTExceptionDoc[];
+    amount_changed: GSTExceptionDoc[];
+    /** Now belongs to a different GSTR-1 table. Amending the value alone
+     *  would leave it in the wrong one. */
+    reclassified: GSTExceptionDoc[];
+  };
+  b2cs?: { changed: GSTExceptionDoc[]; note?: string };
+  totals?: { filed: GSTHeads; books: GSTHeads; delta: GSTHeads };
+  rule?: string;
+  ca_review_required?: boolean;
+};
+
+export type GSTAmendmentWindow = {
+  /** "open" | "closing_soon" | "expired" — §37(3)/§16(4): 30 November
+   *  following the FY, or the date GSTR-9 was furnished, whichever is
+   *  EARLIER. */
+  status?: string;
+  closes_on?: string;
+  reason?: string;
+  days_left?: number;
+};
+
+export type GSTR1AmendmentsReport = {
+  period: string;
+  source_periods: string[];
+  /** The GSTN amendment sections this period would carry, ready to merge. */
+  sections?: Record<string, unknown>;
+  /** NOT amendments: raised after the period was filed, so never declared —
+   *  they belong in this period's ordinary tables. */
+  carry_forward: Array<Record<string, unknown>>;
+  /** NOT amendments either: cancelled after filing, which has no single right
+   *  answer (amend to nil, or raise a credit note). Surfaced for the CA. */
+  needs_decision: Array<Record<string, unknown>>;
+  /** Periods whose correction window has already closed. Real drift that can
+   *  no longer be declared — surfaced because a CA needs to know what is
+   *  beyond repair. */
+  expired: Array<{ period: string; window?: GSTAmendmentWindow;
+                   counts?: Record<string, number> }>;
+  closing_soon: Array<{ period: string; window?: GSTAmendmentWindow;
+                        counts?: Record<string, number> }>;
+  as_of?: string;
+  counts: {
+    amendments?: number; carry_forward?: number; needs_decision?: number;
+    source_periods?: number; expired_periods?: number; closing_soon_periods?: number;
+  };
+  ca_review_required?: boolean;
+};
+
+export type GSTR1WithAmendments = {
+  payload?: Record<string, unknown>;
+  amendments?: {
+    sections: string[];
+    counts: Record<string, number>;
+    source_periods: string[];
+    expired: GSTR1AmendmentsReport["expired"];
+    needs_decision: Array<Record<string, unknown>>;
+    carry_forward: Array<Record<string, unknown>>;
+    closing_soon: GSTR1AmendmentsReport["closing_soon"];
+  };
+  ca_review_required?: boolean;
+  [key: string]: unknown;
+};
+
 // ── The employee drawer's shapes (PAY-11) ────────────────────────────────────
 //
 // Mirrors of the router's Pydantic models. Every amount is integer paise and
@@ -2579,6 +2689,44 @@ export const api = {
       request<ApiResp<Record<string, unknown>>>(
         `/api/gst-workspace/gstr3b/${encodeURIComponent(returnId)}/status`,
         { method: "PATCH", body: JSON.stringify(body) }),
+
+    // ── §37: a filed GSTR-1 can never be revised (GST-13) ─────────────────
+    //
+    // Three finished capabilities that no screen reached. The corrections a
+    // filed period needs are declared in a LATER return's amendment tables —
+    // 9A for invoices, 9C for notes, 10 for B2C-others — and until now a CA
+    // could neither see the drift nor produce the return that carries it.
+
+    /** What the books say NOW against what the filed GSTR-1 actually said.
+     *  Reports drift; drafts no amendment and alters no return. */
+    gstr1Exceptions: (clientId: string, period: string) =>
+      request<ApiResp<GSTR1ExceptionReport>>(
+        `/api/gst-workspace/gstr1/exceptions?client_id=${encodeURIComponent(clientId)}`
+        + `&period=${encodeURIComponent(period)}`),
+
+    /** What THIS period's GSTR-1 must carry from earlier filed periods. */
+    gstr1Amendments: (clientId: string, period: string) =>
+      request<ApiResp<GSTR1AmendmentsReport>>(
+        `/api/gst-workspace/gstr1/amendments?client_id=${encodeURIComponent(clientId)}`
+        + `&period=${encodeURIComponent(period)}`),
+  },
+
+  gstReturns: {
+    /** GSTR-1 from the books WITH the amendment tables this period carries.
+     *
+     *  The route's own docstring records why it exists: the amendment service
+     *  had worked out which corrections were outstanding since it was built,
+     *  and merge_into_payload had been able to fold them into a payload for
+     *  just as long — and NOTHING CONNECTED THE TWO. The route was added to
+     *  connect them and still had no caller, so a CA could see an amendment
+     *  was due and had no way to file it.
+     */
+    gstr1WithAmendments: (body: {
+      client_id: string; period: string; aggregate_turnover_paise?: number;
+    }) =>
+      request<ApiResp<GSTR1WithAmendments>>(
+        "/api/gst/gstr1/with-amendments",
+        { method: "POST", body: JSON.stringify(body) }),
   },
   identity: {
     listUsers: () => request<ApiResp<{
