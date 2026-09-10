@@ -91,6 +91,16 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("bank_reconciliations", "adjustments_set_at"): "migration 355",
     ("fixed_assets", "it_block_key"): "migration 357",
     ("fixed_assets", "put_to_use_date"): "migration 357",
+    ("purchase_payments", "tds_paise"): "migration 358",
+    ("purchase_payments", "tds_base_paise"): "migration 358",
+    ("purchase_payments", "tds_section"): "migration 358",
+    ("purchase_payments", "tds_rate_bps"): "migration 358",
+    ("purchase_payments", "tds_surcharge_paise"): "migration 358",
+    ("purchase_payments", "tds_cess_paise"): "migration 358",
+    ("purchase_payments", "tds_nature_of_income"): "migration 358",
+    ("purchase_payments", "tds_basis"): "migration 358",
+    ("purchase_bills", "tds_advance_adjusted_paise"): "migration 358",
+    ("tds_deductions", "purchase_payment_id"): "migration 358",
 }
 
 

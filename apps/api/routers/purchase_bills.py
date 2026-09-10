@@ -23,6 +23,7 @@ from services.audit_service import log_event
 from services.credit_terms import resolve_credit_terms, apply_credit_days_due_date, apply_due_date_credit_days
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
+from services import vendor_tds
 from services.timeline_service import timeline_service
 
 # _TDS_DEFAULT_BPS WAS HERE AND IS DELETED. It mapped six sections to flat
@@ -113,13 +114,6 @@ def _current_fy_long() -> str:
     start = now.year if now.month >= 4 else now.year - 1
     return f"{start}-{str(start + 1)[2:]}"
 
-
-def _fy_bounds(date_str: str) -> tuple[str, str]:
-    """Return (fy_start_iso, fy_end_iso) for the Indian FY containing date_str.
-    Used to aggregate a vendor's prior taxable for TDS thresholds. Apr 1 – Mar 31."""
-    d = datetime.strptime(str(date_str)[:10], "%Y-%m-%d").date()
-    start = d.year if d.month >= 4 else d.year - 1
-    return f"{start}-04-01", f"{start + 1}-03-31"
 
 router = APIRouter(prefix="/api/purchase-bills", tags=["purchase_bills"])
 
@@ -371,217 +365,6 @@ def _duplicate_bill_message(bill_no: str, existing_id: str) -> str:
     )
 
 
-def _resolve_bill_resident_tds(vendor: dict, tds_section: Optional[str],
-                               total_taxable: int, bill_date: str, firm_id: str,
-                               db, exclude_bill_id: Optional[str]) -> tuple[int, int]:
-    """TDS on a payment to a RESIDENT payee — the s.194 series, unchanged.
-
-    Lifted verbatim out of _compute_bill_lines_and_totals when s.195 gained a
-    branch of its own, so the two charging regimes sit side by side instead of
-    one being nested inside the other's `if`. No behaviour changed in the move;
-    tests/test_tds_bill_engine.py is the proof.
-
-    Returns (tds_paise, tds_rate_bps).
-    """
-    if not tds_section:
-        raise HTTPException(
-            status_code=422,
-            detail="Vendor is marked TDS-applicable but has no TDS section set.",
-        )
-    from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
-    from domain.tds.residency import deduction_section_refusal
-    from domain.tds.section_rates import parent_of, rate_gap_for
-    # FY-aggregate of this vendor's prior taxable under the same section, so the
-    # §194C ₹1L aggregate threshold is honoured across multiple bills.
-    fy_prior = 0
-    fy_prior_tds = 0
-    if not _USE_MOCK and db is not None:
-        fy_start, fy_end = _fy_bounds(bill_date)
-        # deleted_at IS NULL — soft-deleted bills keep status "draft", so the
-        # .neq("status","cancelled") filter alone still counted them toward
-        # the §194C FY-aggregate threshold, wrongly triggering TDS deduction
-        # on later bills. Drafts themselves stay counted deliberately: the
-        # threshold is "credited or paid or LIKELY to be credited" (IT Act
-        # §194C(5)) and a live draft is expected to be received.
-        # THE AGGREGATE IS THE SECTION'S, NOT THE CLAUSE'S. s.194I and s.194J
-        # each have limbs with their own rate — "194I(A)", "194J(A)" — and a
-        # vendor moved between limbs mid-year must not lose the year's running
-        # total, or the threshold is re-crossed and the s.200 credit for what
-        # earlier bills already withheld is stranded. So the query is by
-        # PARENT and the clause keys are filtered in Python: PostgREST has no
-        # "starts with this section" that would not also match s.194IA.
-        _parent = parent_of(tds_section, _bill_fy_label(bill_date))
-        prior = (db.table("purchase_bills")
-                 .select("id, taxable_amount_paise, tds_paise, tds_section")
-                 .eq("firm_id", firm_id).eq("vendor_id", vendor.get("id"))
-                 .neq("status", "cancelled")
-                 .is_("deleted_at", "null")
-                 .gte("bill_date", fy_start).lte("bill_date", fy_end)
-                 .execute().data) or []
-        prior = [b for b in prior
-                 if parent_of(b.get("tds_section") or "",
-                              _bill_fy_label(bill_date)) == _parent]
-        _earlier = [b for b in prior if b.get("id") != exclude_bill_id]
-        fy_prior = sum(int(b.get("taxable_amount_paise") or 0) for b in _earlier)
-        # ...and what those bills ALREADY withheld. The charge is on the FY
-        # aggregate (IT Act §194C(5) and the parallel "aggregate of the sums"
-        # limbs of §§194A/194D/194G/194H/194J), so without this credit the same
-        # aggregate is taxed again on every later bill: three ₹1,00,000 §194J
-        # bills withheld ₹10,000, ₹20,000 and ₹30,000 instead of ₹10,000 each.
-        # IT Act §200 — tax already deducted and paid to the credit of the
-        # Central Government is not deducted a second time.
-        #
-        # BOTH LIMBS MUST COUNT THE SAME BILLS, and that is why drafts are in
-        # both. It was argued on 8 September that §200 reaches only tax
-        # "deducted and paid to the credit of the Central Government", so a
-        # DRAFT — which has no journal, no challan and no register row — should
-        # be excluded from the credit. Read alone that is right about §200 and
-        # wrong about this code, because `fy_total` above is the CHARGE BASE
-        # and it counts drafts too.
-        #
-        # Worked through: bill A received (₹1,00,000, withheld ₹10,000), bill B
-        # a live draft (₹1,00,000), bill C now being created (₹1,00,000).
-        # Charging C on the ₹3,00,000 aggregate and crediting A+B withholds
-        # ₹10,000, so the ledger holds ₹20,000 against the ₹2,00,000 actually
-        # credited — correct. Crediting A alone withholds ₹20,000 and the
-        # ledger holds ₹30,000 against the same ₹2,00,000 — an OVER-deduction
-        # of ₹10,000, recoverable from the payee only by a refund claim.
-        #
-        # The draft appears on both sides and cancels. Excluding it from one
-        # side only is what breaks it.
-        fy_prior_tds = sum(int(b.get("tds_paise") or 0) for b in _earlier)
-    # Resolve thresholds/rates for the FY the BILL falls in, not "today" —
-    # a bill entered late for a prior FY must use that year's law.
-    try:
-        _bill_d = datetime.strptime(str(bill_date)[:10], "%Y-%m-%d").date()
-        _fy_start_year = _bill_d.year if _bill_d.month >= 4 else _bill_d.year - 1
-        bill_fy = f"{_fy_start_year}-{str(_fy_start_year + 1)[2:]}"
-    except (ValueError, KeyError):
-        bill_fy = None  # malformed/missing date → registry defaults to current FY
-    try:
-        _tds = TDSComputer().resolve_tds(
-            section=tds_section,
-            taxable_paise=total_taxable,
-            fy_prior_taxable_paise=fy_prior,
-            fy_prior_tds_paise=fy_prior_tds,
-            is_company=is_company_pan(vendor.get("pan")),
-            fy=bill_fy,
-            # IT Act §206AA: no real PAN on file floors the rate at
-            # 20% (R3.10) — previously computed with zero PAN
-            # awareness, silently under-deducting for no-PAN vendors.
-            has_pan=has_pan(vendor.get("pan")),
-        )
-    except ValueError as ve:
-        # The ENGINE's ValueError is the backstop, not the message. A vendor
-        # created before models/parties.py started refusing an unanswerable
-        # section still reaches here, and "Unknown TDS section '194IA'" is an
-        # internal string with no statute and no next step. Ask the same rule
-        # the vendor master asks, so the legacy row gets the same sentence.
-        named = deduction_section_refusal(tds_section, bill_fy)
-        raise HTTPException(status_code=422, detail=named or str(ve))
-    # Persist the rate ACTUALLY applied — 0 when below threshold (nothing
-    # deducted), the section/payee rate when TDS was deducted (H6, §203 audit).
-    #
-    # The third value is NOT persisted and is for the preview: a sentence
-    # saying WHY this figure. A number with no reason is a number a CA cannot
-    # check, and this one moves with the year's running total — the same vendor
-    # and the same amount deduct differently on the bill that crosses the
-    # aggregate. Composed here, from what the engine returned, rather than in
-    # the browser: which facts matter is a statutory judgement, and the
-    # frontend holds none of them.
-    if not _tds.applies:
-        why = (f"Nothing withheld: §{tds_section} does not charge this bill. "
-               f"The year's payments to this payee under this section so far "
-               f"are ₹{(fy_prior + total_taxable) // 100:,}.")
-    elif fy_prior > 0:
-        why = (f"§{tds_section} at {_tds.rate_pct:g}% on the year's aggregate of "
-               f"₹{(fy_prior + total_taxable) // 100:,}, less ₹{fy_prior_tds // 100:,} "
-               f"already withheld on earlier bills (§200).")
-    else:
-        why = f"§{tds_section} at {_tds.rate_pct:g}% on ₹{total_taxable // 100:,}."
-    if _tds.applies and not has_pan(vendor.get("pan")):
-        why += " Floored at 20% — no PAN on file (§206AA)."
-    # THE LIMB THIS SOFTWARE CANNOT PRICE, said on the bill it affects rather
-    # than left in a module comment. s.194I and s.194J each charge one limb at
-    # a lower rate than the other and only the higher is held, so a plant
-    # rental or a technical engagement over-deducts — recoverable, but only if
-    # somebody knows.
-    _gap = rate_gap_for(tds_section, bill_fy)
-    if _tds.applies and _gap:
-        why += " " + _gap
-    return _tds.tds_paise, (_tds.rate_bps if _tds.applies else 0), why
-
-
-def _resolve_bill_section_195(vendor: dict, total_taxable: int, bill_date: str,
-                              firm_id: str = "", db=None):
-    """Withholding on a payment to a NON-RESIDENT payee — IT Act s.195.
-
-    A different charging section from s.194C and its neighbours, not a
-    different rate for the same one: they charge sums paid "to a resident" and
-    do not reach a non-resident at all. So there is no threshold, no FY
-    aggregate, and the rate keys on the NATURE of the income rather than the
-    kind of work — plus surcharge and cess, which the resident series does not
-    carry. domain/tds/section_195.py holds the reasoning and the citations.
-
-    Refuses rather than guessing. A refusal stops the bill and makes a human
-    decide; a wrong number is withheld, paid to the Government, reported on 27Q
-    and discovered by the supplier.
-    """
-    from domain.tds.section_195 import payee_class_from_pan, resolve_section_195
-    from domain.tds.tds_computer import has_pan
-    from services.treaty_rate_service import treaty_position
-
-    nature = vendor.get("section_195_nature_of_income")
-    # The treaty position comes from the firm's own reading, keyed by (country,
-    # nature) — migration 310. A per-vendor treaty_rate_bps still overrides it.
-    pos = treaty_position(db, firm_id, vendor, nature)
-
-    res = resolve_section_195(
-        amount_paise=total_taxable,
-        nature=nature,
-        # THE RECORDED CLASS WINS OVER THE DERIVED ONE, the same precedence
-        # treaty_position already gives a per-vendor treaty rate over the
-        # firm's country table. A non-resident payee often has no Indian PAN,
-        # so the derivation answers "unknown" in the ordinary case — and
-        # "unknown" is a refusal, not a guess.
-        payee_class=(vendor.get("non_resident_payee_class")
-                     or payee_class_from_pan(vendor.get("pan"))),
-        has_pan=has_pan(vendor.get("pan")),
-        trc_on_file=bool(vendor.get("trc_on_file")),
-        form_10f_on_file=bool(vendor.get("form_10f_on_file")),
-        no_pe_declaration_on_file=bool(vendor.get("no_pe_declaration_on_file")),
-        treaty_rate_bps=(pos.rate_bps if pos.found else None),
-        treaty_has_no_article=(pos.found and pos.no_article),
-        # Rule 37BC's six particulars. Name, address, email and phone are
-        # ordinary vendor fields; the TRC and the country TIN are the two that
-        # a domestic vendor never has, so they are what actually gate it.
-        rule_37bc_particulars_held=bool(
-            vendor.get("trc_on_file")
-            and (vendor.get("tax_identification_number") or "").strip()
-            and (vendor.get("country_of_residence") or "").strip()
-            and (vendor.get("email") or "").strip()
-            and (vendor.get("phone") or "").strip()
-            and (vendor.get("address") or "").strip()
-        ),
-        fy=_bill_fy_label(bill_date),
-    )
-    if not res.applies:
-        raise HTTPException(status_code=422, detail=res.refusal_detail)
-    return res
-
-
-def _bill_fy_label(bill_date: str) -> Optional[str]:
-    """The FY the BILL falls in, so a bill entered late for a prior year uses
-    that year's law. None on a malformed date — the registry then defaults to
-    the current FY, which is what the resident path already does."""
-    try:
-        d = datetime.strptime(str(bill_date)[:10], "%Y-%m-%d").date()
-        y = d.year if d.month >= 4 else d.year - 1
-        return f"{y}-{str(y + 1)[2:]}"
-    except (ValueError, KeyError, TypeError):
-        return None
-
-
 def _compute_bill_lines_and_totals(
     lines_data: list[dict],
     is_interstate: bool,
@@ -701,37 +484,31 @@ def _compute_bill_lines_and_totals(
     # Why the resident figure is what it is. Not persisted; the preview shows
     # it. None on a s.195 bill, where tds_basis carries the reason instead.
     tds_resident_why = None
+    tds_advance_adjusted_paise = 0
     tds_section = (vendor.get("tds_section") or "").upper().strip() or None
     if vendor.get("tds_applicable"):
-        from domain.tds.residency import is_non_resident
-        # RESIDENCY DECIDES THE CHARGING SECTION, NOT JUST THE RETURN FORM.
-        # s.194C, s.194J and their neighbours charge, in their own words, sums
-        # paid "to a resident". A payment to a non-resident is deducted under
-        # s.195 at the rates in force, so it does not go through the resident
-        # engine at all — different section, different base, no threshold,
-        # plus surcharge and cess.
-        if is_non_resident(vendor.get("residential_status")):
-            _s195 = _resolve_bill_section_195(vendor, total_taxable, bill_date,
-                                              firm_id, db)
-            tds_paise = _s195.tds_paise
-            # The BASE rate, not the effective one: Form 27Q's deductee
-            # annexure asks for the rate at which tax was deducted and reports
-            # surcharge and cess in their own columns.
-            tds_rate_bps = _s195.rate_bps
-            tds_surcharge_paise = _s195.surcharge_paise
-            tds_cess_paise = _s195.cess_paise
-            tds_nature = _s195.nature
-            # How the number was arrived at — not_chargeable / treaty / act /
-            # 206aa_floor. Persisted so a NIL can be told apart from an absence
-            # months later, and so the register can say WHY nothing was
-            # withheld on a remittance that still belongs on 27Q.
-            tds_basis = _s195.basis
-            tds_citation = _s195.citation
-            tds_section = "195"
-        else:
-            tds_paise, tds_rate_bps, tds_resident_why = _resolve_bill_resident_tds(
-                vendor, tds_section, total_taxable, bill_date, firm_id, db,
-                exclude_bill_id)
+        # WHICH SECTION CHARGES IS DECIDED IN services/vendor_tds.py, and so is
+        # how much. Both resolvers used to live in this router as private
+        # functions, which is why the payment path — where §194 charges the
+        # EARLIER of credit and payment — had no engine to call and withheld
+        # nothing on an advance (PUR-10). One module, two callers.
+        _w = vendor_tds.resolve_withholding(
+            vendor, total_taxable, bill_date, firm_id, db,
+            exclude_bill_id=exclude_bill_id,
+            # Only a bill absorbs an earlier advance: the advance was charged
+            # when it was paid, and booking the bill credits the same sum.
+            adjust_against_advances=True,
+        )
+        tds_paise = _w.tds_paise
+        tds_rate_bps = _w.rate_bps
+        tds_surcharge_paise = _w.surcharge_paise
+        tds_cess_paise = _w.cess_paise
+        tds_nature = _w.nature
+        tds_basis = _w.basis
+        tds_citation = _w.citation
+        tds_resident_why = _w.why
+        tds_advance_adjusted_paise = _w.advance_adjusted_paise
+        tds_section = _w.section
     # ── The deduction is bounded by the payment ────────────────────────────
     # TDS is withheld FROM a sum paid or credited, so it cannot exceed that
     # sum. That was academic while the charge fell on the marginal bill —
@@ -782,6 +559,11 @@ def _compute_bill_lines_and_totals(
         "tds_paise":            tds_paise,
         "tds_rate_bps":         tds_rate_bps,
         "tds_section":          tds_section,
+        # How much of this bill's value was already charged as an advance and
+        # is therefore NOT charged again (§194 — credit or payment, whichever
+        # is earlier). Stored because the next bill has to know the pool was
+        # consumed; see services/vendor_tds.aggregate_so_far.
+        "tds_advance_adjusted_paise": tds_advance_adjusted_paise,
         "tds_surcharge_paise":  tds_surcharge_paise,
         "tds_cess_paise":       tds_cess_paise,
         "tds_nature_of_income": tds_nature,
@@ -952,6 +734,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     tds_cess_paise      = computed["tds_cess_paise"]
     tds_nature_of_income = computed["tds_nature_of_income"]
     tds_basis            = computed["tds_basis"]
+    tds_advance_adjusted_paise = computed["tds_advance_adjusted_paise"]
     net_payable_paise = computed["net_payable_paise"]
 
     # Currency columns (INR identity leaves them inert). Foreign net payable is
@@ -1019,6 +802,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "tds_cess_paise":        tds_cess_paise,
             "tds_nature_of_income":  tds_nature_of_income,
             "tds_basis":             tds_basis,
+            "tds_advance_adjusted_paise": tds_advance_adjusted_paise,
             "is_reverse_charge":     is_reverse_charge,
             "net_payable_paise":     net_payable_paise,
             "status":                "draft",
@@ -1065,6 +849,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "tds_cess_paise":        tds_cess_paise,
         "tds_nature_of_income":  tds_nature_of_income,
         "tds_basis":             tds_basis,
+        "tds_advance_adjusted_paise": tds_advance_adjusted_paise,
         "is_reverse_charge":     is_reverse_charge,
         "net_payable_paise":     net_payable_paise,
         "status":                "draft",
@@ -1564,6 +1349,7 @@ def update_purchase_bill(
                             "tds_cess_paise":        computed["tds_cess_paise"],
                             "tds_nature_of_income":  computed["tds_nature_of_income"],
                             "tds_basis":             computed["tds_basis"],
+                            "tds_advance_adjusted_paise": computed["tds_advance_adjusted_paise"],
                             "net_payable_paise":     computed["net_payable_paise"],
                             "txn_taxable":           computed["txn_taxable"],
                             "txn_total_gst":         computed["txn_total_gst"],
@@ -1684,6 +1470,7 @@ def update_purchase_bill(
                 "tds_cess_paise":        computed["tds_cess_paise"],
                 "tds_nature_of_income":  computed["tds_nature_of_income"],
                 "tds_basis":             computed["tds_basis"],
+                "tds_advance_adjusted_paise": computed["tds_advance_adjusted_paise"],
                 "net_payable_paise":     computed["net_payable_paise"],
                 "txn_taxable":           computed["txn_taxable"],
                 "txn_total_gst":         computed["txn_total_gst"],
