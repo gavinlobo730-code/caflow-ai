@@ -57,12 +57,15 @@ points and are likewise formatted by integer arithmetic.
 """
 import io
 import logging
+import re
 from typing import Optional
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import (
+    Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
@@ -260,6 +263,70 @@ def _qr_flowable(qr_data: Optional[str]):
         return None
 
 
+def _accent_colour(value: Optional[str]):
+    """A branding colour as reportlab understands it, or None.
+
+    The router validates #RRGGBB on the way in; this refuses anything else on
+    the way out rather than trusting a row written before that validation, or
+    by a migration. A bad colour is no colour — never a raised exception in a
+    document builder.
+    """
+    text = str(value or "").strip()
+    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", text):
+        return None
+    try:
+        return colors.HexColor(text)
+    except Exception:                       # pragma: no cover - defensive
+        return None
+
+
+# How long the PDF will wait for a branding image before giving up on it.
+#
+# THIS IS A NETWORK CALL INSIDE A DOCUMENT BUILDER, which is why the budget is
+# small and the failure is silent. The API runs in Singapore and the asset is
+# in Supabase storage; a logo that does not answer must cost an invoice a
+# second, not a timeout. An invoice without a logo is still a valid Rule 46 tax
+# invoice — one that never renders is not.
+_IMAGE_TIMEOUT_SECONDS = 3.0
+_MAX_IMAGE_BYTES = 2_000_000
+
+
+def _remote_image(url: Optional[str], *, max_width_mm: float, max_height_mm: float):
+    """A branding image as a flowable, or None. Never raises.
+
+    Used for the firm's logo and for an uploaded UPI QR. Both are the
+    SUPPLIER's own and both are optional, so every failure — no URL, a bad
+    scheme, a slow host, an oversized file, an unreadable image — is None.
+    """
+    text = str(url or "").strip()
+    if not text.startswith(("http://", "https://")):
+        return None
+    try:
+        import httpx
+        with httpx.Client(timeout=_IMAGE_TIMEOUT_SECONDS, follow_redirects=True) as client:
+            res = client.get(text)
+        res.raise_for_status()
+        blob = res.content
+        if not blob or len(blob) > _MAX_IMAGE_BYTES:
+            logger.warning("caflow.invoice_pdf: branding image is empty or too large")
+            return None
+        img = Image(io.BytesIO(blob))
+        # Scale to fit the box, never up: a 64px logo blown up to 40mm is worse
+        # than a small one.
+        scale = min(max_width_mm * mm / img.imageWidth,
+                    max_height_mm * mm / img.imageHeight, 1.0)
+        img.drawWidth = img.imageWidth * scale
+        img.drawHeight = img.imageHeight * scale
+        return img
+    except Exception:                       # noqa: BLE001 — see the docstring
+        logger.warning("caflow.invoice_pdf: could not load the branding image")
+        return None
+
+
+def _logo(url: Optional[str]):
+    return _remote_image(url, max_width_mm=45, max_height_mm=18)
+
+
 def _place_of_supply_label(code: Optional[str]) -> Optional[str]:
     code = (str(code).strip() if code else "")
     if not code:
@@ -421,9 +488,20 @@ def _render_tax_invoice(
     hsn_sac_fallback: Optional[str],
     fallback_line_label: Optional[str],
     report_gaps: bool,
+    branding: Optional[dict] = None,
 ) -> bytes:
     """Render a Rule 46 tax invoice. `supplier` and `recipient` are already
-    normalised party dicts — this function never decides who the supplier is."""
+    normalised party dicts — this function never decides who the supplier is.
+
+    `branding` IS THE SUPPLIER'S OWN, and it is optional for a reason. The
+    practice's logo, accent colour, bank account and footer belong on the
+    practice's FEE invoice, where the practice is the supplier. They belong
+    NOWHERE on a client's sales invoice: the CA is not a party to that supply,
+    and putting their bank details on it would ask the client's customer to pay
+    the accountant. That is the same confusion the supplier line, the customer
+    statement and the payslip employer each had, so this argument is passed by
+    build_invoice_pdf and deliberately not by build_sales_invoice_pdf.
+    """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -435,10 +513,22 @@ def _render_tax_invoice(
     bold = ParagraphStyle("bold", parent=styles["Normal"], fontName="Helvetica-Bold")
     cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8, leading=10)
 
+    brand = branding or {}
+    accent = _accent_colour(brand.get("primary_color"))
+
     story = []
+    # The supplier's own logo, above their name. Fetched over the network, so
+    # a slow or dead URL must not take the invoice down with it — see _logo.
+    logo = _logo(brand.get("logo_url"))
+    if logo is not None:
+        story.append(logo)
+        story.append(Spacer(1, 3 * mm))
     story.append(Paragraph("TAX INVOICE", ParagraphStyle(
-        "title", parent=styles["Title"], fontSize=16, spaceAfter=2)))
+        "title", parent=styles["Title"], fontSize=16, spaceAfter=2,
+        textColor=accent or colors.black)))
     story.append(Paragraph("(Issued under Section 31, CGST Act 2017 read with Rule 46, CGST Rules 2017)", small))
+    if brand.get("tagline"):
+        story.append(Paragraph(str(brand["tagline"]), small))
     story.append(Spacer(1, 6 * mm))
 
     meta_lines = [
@@ -628,20 +718,64 @@ def _render_tax_invoice(
             for gap in gaps:
                 story.append(Paragraph(f"• {gap}", small))
 
+    # ─── How to pay the supplier ────────────────────────────────────────────
+    #
+    # NOT a Rule 46 particular — the rule says nothing about a bank account —
+    # but it is the reason an invoice gets paid, and it is the supplier's own.
+    # Rendered only where `branding` was passed, which is the fee invoice: the
+    # practice's account on a client's sales invoice would ask the client's
+    # customer to pay the accountant.
+    pay_lines = []
+    if brand.get("bank_name") or brand.get("account_number"):
+        holder = brand.get("account_holder") or supplier.get("name") or ""
+        if holder:
+            pay_lines.append(f"<b>Account Name:</b> {holder}")
+        if brand.get("bank_name"):
+            pay_lines.append(f"<b>Bank:</b> {brand['bank_name']}")
+        if brand.get("account_number"):
+            pay_lines.append(f"<b>A/c No:</b> {brand['account_number']}")
+        if brand.get("ifsc_code"):
+            pay_lines.append(f"<b>IFSC:</b> {brand['ifsc_code']}")
+    if brand.get("upi_id"):
+        pay_lines.append(f"<b>UPI:</b> {brand['upi_id']}")
+    if pay_lines:
+        story.append(Spacer(1, 6 * mm))
+        story.append(Paragraph("Payment Details", bold))
+        # An uploaded IMAGE, not QR data: _qr_flowable would ENCODE the URL,
+        # and scanning that opens a web page instead of a payment.
+        qr_img = _remote_image(brand.get("upi_qr_url"), max_width_mm=32, max_height_mm=32)
+        block = Table(
+            [[Paragraph("<br/>".join(pay_lines), styles["Normal"]), qr_img or ""]],
+            colWidths=[135 * mm, 45 * mm],
+        )
+        block.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        story.append(block)
+
     story.append(Spacer(1, 14 * mm))
     # Rule 46(q): the signature is the SUPPLIER's.
     story.append(Paragraph(f"For {supplier['name']}", bold))
     story.append(Spacer(1, 14 * mm))
     story.append(Paragraph("Authorised Signatory", styles["Normal"]))
 
+    if brand.get("footer_text"):
+        story.append(Spacer(1, 8 * mm))
+        story.append(Paragraph(str(brand["footer_text"]), small))
+
     doc.build(story)
     return buf.getvalue()
 
 
-def build_invoice_pdf(invoice: dict, firm: dict, client: dict, engagement: Optional[dict] = None) -> bytes:
+def build_invoice_pdf(invoice: dict, firm: dict, client: dict,
+                      engagement: Optional[dict] = None,
+                      branding: Optional[dict] = None) -> bytes:
     """Render the PRACTICE's own fee invoice: the firm supplies, the client
     receives. Do not use this for a client's sales invoice — see
-    build_sales_invoice_pdf()."""
+    build_sales_invoice_pdf().
+
+    `branding` is the FIRM's — logo, accent colour, tagline, bank account, UPI
+    and footer, from firm_branding + invoice_settings. This is the document
+    those settings were always for, and it is the only invoice they belong on.
+    """
     label = "Professional Services — Chartered Accountancy"
     if engagement and engagement.get("service_type"):
         label = f"Professional Services — {engagement['service_type']}"
@@ -649,6 +783,7 @@ def build_invoice_pdf(invoice: dict, firm: dict, client: dict, engagement: Optio
         invoice,
         _firm_party(firm),
         _client_party(client),
+        branding=branding,
         line_detail=False,
         # The practice's own supply genuinely is SAC 998211 (legal and
         # accounting services), so it remains this document's default.
@@ -663,7 +798,16 @@ def build_invoice_pdf(invoice: dict, firm: dict, client: dict, engagement: Optio
 def build_sales_invoice_pdf(invoice: dict, client: dict, customer: dict) -> bytes:
     """Render a CLIENT's own sales invoice: the client supplies, the client's
     customer receives. The CA practice is not a party to this supply and appears
-    nowhere on it."""
+    nowhere on it.
+
+    NO `branding` ARGUMENT, DELIBERATELY. firm_branding and invoice_settings are
+    the PRACTICE's, and the practice's logo, bank account and UPI on this
+    document would ask the client's customer to pay the accountant. It is the
+    same confusion the supplier line, the customer statement and the payslip
+    employer each had. A client's own branding would be a different store —
+    `clients` has no logo, bank, UPI or footer column at all — and adding one is
+    a migration, not a wiring job.
+    """
     return _render_tax_invoice(
         invoice,
         _client_party(client, legal_name_first=True),
@@ -706,9 +850,42 @@ def get_invoice_pdf(invoice_id: str) -> tuple[bytes, str]:
         except Exception:
             engagement = None
 
-    pdf = build_invoice_pdf(invoice, firm, client, engagement)
+    pdf = build_invoice_pdf(invoice, firm, client, engagement,
+                            branding=_load_branding(invoice.get("firm_id")))
     filename = f"invoice-{invoice.get('invoice_no', invoice_id)}.pdf"
     return pdf, filename
+
+
+def _load_branding(firm_id: Optional[str]) -> dict:
+    """The firm's own branding and payment details, as one dict.
+
+    TWO ROWS, ONE ARGUMENT. `firm_branding` holds the look (logo, colours,
+    tagline) and `invoice_settings` holds how to pay (bank, IFSC, UPI, footer);
+    they are separate tables because they are edited on separate screens, and
+    the renderer has no reason to know that.
+
+    A full Settings UI has written both of these since the module existed and
+    NOTHING EVER READ THEM: `grep -rn "branding" apps/api/services apps/api/
+    routers apps/api/domain` returned only routers/branding.py itself. A CA
+    could upload a logo, set an accent colour, record their bank account and
+    write a footer, and every invoice came out with a fixed #1f2937 header and
+    no way to be paid.
+
+    Returns {} on any failure, and that is the rule for this whole feature: a
+    tax invoice that renders without a logo is valid under Rule 46; one that
+    does not render is not.
+    """
+    if not firm_id:
+        return {}
+    out: dict = {}
+    try:
+        from repositories.branding_repository import branding_repo
+        out.update(branding_repo.get_branding(firm_id) or {})
+        out.update(branding_repo.get_invoice_settings(firm_id) or {})
+    except Exception:                       # noqa: BLE001 — see the docstring
+        logger.warning("caflow.invoice_pdf: could not load branding for firm %s", firm_id)
+        return {}
+    return out
 
 
 def _load_firm(firm_id: Optional[str]) -> dict:
