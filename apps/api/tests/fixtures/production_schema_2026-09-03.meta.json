@@ -1,8 +1,8 @@
 {
- "captured_at_ist": "2026-09-09T01:20",
- "applied_through_migration": 343,
- "schema_md5": "dff5c56db004d43f0cd6c4dc3d193124",
- "columns": 3999,
- "tables": 270,
- "note": "applied_through_migration is the highest migration recorded in production's schema_migrations when this snapshot was taken. The migrations in the repo are ALLOWED to be ahead of it by exactly the migrations not yet merged; test_schema_matches_production_pg.py uses this to tell a column that is in flight from a column that has been declared for months and never reached production. Refresh both files together."
+ "captured_at_ist": "2026-09-10T20:15",
+ "applied_through_migration": 358,
+ "schema_md5": "032ab2c4faf8496eefc6ff2fae0148a1",
+ "columns": 4081,
+ "tables": 274,
+ "note": "applied_through_migration is the highest migration recorded in production's schema_migrations when this snapshot was taken. The migrations in the repo are ALLOWED to be ahead of it by exactly the migrations not yet merged; test_schema_matches_production_pg.py uses this to tell a column that is in flight from a column that has been declared for months and never reached production. Refresh both files together. The FILENAME still says 2026-09-03 and that is deliberate: production_types.py selects the newest production_schema_*.json by glob, and renaming would silently orphan the guards fixture captured beside it, which is a separate capture on its own cycle. The capture date lives here."
 }

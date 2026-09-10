@@ -70,37 +70,14 @@ _NUMERIC_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 # Keep this SHORT. A long list means the snapshot needs refreshing, not that the
 # list needs another entry.
 ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
-    ("year_end_engagements", "reopened_at"): "migration 344",
-    ("year_end_engagements", "reopened_by"): "migration 344",
-    ("year_end_engagements", "reopen_reason"): "migration 344",
-    ("vendors", "non_resident_payee_class"): "migration 348",
-    ("client_sales_invoices", "shipping_bill_no"): "migration 349",
-    ("client_sales_invoices", "shipping_bill_date"): "migration 349",
-    ("client_sales_invoices", "port_code"): "migration 349",
-    ("fixed_assets", "deleted_at"): "migration 351",
-    ("fixed_assets", "deleted_by"): "migration 351",
-    ("fixed_assets", "updated_at"): "migration 351",
-    ("fixed_assets", "corrections_count"): "migration 351",
-    ("bank_statements", "totals_mismatch_reason"): "migration 354",
-    ("bank_statements", "totals_mismatch_debit_difference_paise"): "migration 354",
-    ("bank_statements", "totals_mismatch_credit_difference_paise"): "migration 354",
-    ("bank_statements", "totals_mismatch_acknowledged_by"): "migration 354",
-    ("bank_statements", "totals_mismatch_acknowledged_at"): "migration 354",
-    ("bank_reconciliations", "adjustments_reason"): "migration 355",
-    ("bank_reconciliations", "adjustments_set_by"): "migration 355",
-    ("bank_reconciliations", "adjustments_set_at"): "migration 355",
-    ("fixed_assets", "it_block_key"): "migration 357",
-    ("fixed_assets", "put_to_use_date"): "migration 357",
-    ("purchase_payments", "tds_paise"): "migration 358",
-    ("purchase_payments", "tds_base_paise"): "migration 358",
-    ("purchase_payments", "tds_section"): "migration 358",
-    ("purchase_payments", "tds_rate_bps"): "migration 358",
-    ("purchase_payments", "tds_surcharge_paise"): "migration 358",
-    ("purchase_payments", "tds_cess_paise"): "migration 358",
-    ("purchase_payments", "tds_nature_of_income"): "migration 358",
-    ("purchase_payments", "tds_basis"): "migration 358",
-    ("purchase_bills", "tds_advance_adjusted_paise"): "migration 358",
-    ("tds_deductions", "purchase_payment_id"): "migration 358",
+    # Migrations 344-358 were all HERE until the snapshot was refreshed on
+    # 10 September 2026 — nine of them, one past the cap below, which is the
+    # cap doing its job. The fixture now matches production column for column
+    # (md5 032ab2c4faf8496eefc6ff2fae0148a1 over 4,081 columns in 274 tables,
+    # verified against the live database), so the only entries left are the
+    # migration this branch has not merged yet.
+    ("purchase_bills", "tds_certificate_no"): "migration 359",
+    ("purchase_payments", "tds_certificate_no"): "migration 359",
 }
 
 

@@ -25,6 +25,7 @@ WHAT IS AND IS NOT HERE
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -32,6 +33,8 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.ist_clock import fy_bounds as _fy_bounds_from_label, ist_fy_label
+
+_logger = logging.getLogger("caflow.vendor_tds")
 
 # NO MOCK-MODE FLAG HERE, DELIBERATELY. The routers carry one because they
 # decide whether to touch a database at all; by the time this module is called
@@ -79,16 +82,23 @@ class Aggregate:
     `resolve_tds` takes `fy_prior_taxable_paise` AND `fy_prior_tds_paise`, and
     a caller passing the first without the second re-charges the growing
     aggregate on every later document (CLAUDE.md).
+
+    `base_in_window_paise` is how much of that base fell inside a date window
+    the caller asked about — how much of a §197 certificate's Rule 28AA(4)
+    ceiling earlier documents have already used up. Zero when no window was
+    asked for, which is not the same as "none".
     """
     base_paise: int = 0
     tds_paise: int = 0
     unadjusted_advance_paise: int = 0
+    base_in_window_paise: int = 0
 
 
 def aggregate_so_far(
     db, *, firm_id: str, vendor_id: str, section: Optional[str], on_date: str,
     exclude_bill_id: Optional[str] = None,
     exclude_payment_id: Optional[str] = None,
+    window: Optional[tuple] = None,
 ) -> Aggregate:
     """The year's aggregate credited or paid to this vendor under this section.
 
@@ -142,10 +152,27 @@ def aggregate_so_far(
     withheld = 0
     advance_charged = 0
     advance_absorbed = 0
+    in_window = 0
+    w_from, w_to = (window or (None, None))
+
+    def _inside(on) -> bool:
+        """Whether a document's own date falls in the caller's window.
+
+        String comparison on ISO dates, which is exactly what the PostgREST
+        range filters above already do — one comparison rule for the query and
+        for the arithmetic, rather than two that can disagree at a boundary.
+        """
+        if not w_from or not w_to:
+            return False
+        return w_from <= str(on or "")[:10] <= w_to
 
     bills = (db.table("purchase_bills")
-             .select("id, taxable_amount_paise, tds_paise, tds_section, "
-                     "tds_advance_adjusted_paise")
+             # bill_date is selected because the §197 window is measured on it
+             # — the FakeDB honours a select list exactly as PostgREST does, so
+             # a column left out of it reads as None and every bill silently
+             # falls OUTSIDE the certificate's validity period.
+             .select("id, bill_date, taxable_amount_paise, tds_paise, "
+                     "tds_section, tds_advance_adjusted_paise")
              .eq("firm_id", firm_id).eq("vendor_id", vendor_id)
              .neq("status", "cancelled")
              .is_("deleted_at", "null")
@@ -160,16 +187,20 @@ def aggregate_so_far(
         # The bill's OWN charged base, which is what it was charged on: the
         # part it absorbed from an advance was charged when the advance was
         # paid and is already in the payments loop below.
-        base += max(0, int(b.get("taxable_amount_paise") or 0) - adjusted)
+        own = max(0, int(b.get("taxable_amount_paise") or 0) - adjusted)
+        base += own
         withheld += int(b.get("tds_paise") or 0)
         advance_absorbed += adjusted
+        if _inside(b.get("bill_date")):
+            in_window += own
 
     # A REVERSED PAYMENT IS NOT A PAYMENT. reverse_payment reverses its journal
     # and its TDS credit with it (migration 215's is_reversed), so leaving it in
     # the aggregate would charge a sum that never left and credit tax that was
     # never withheld.
     payments = (db.table("purchase_payments")
-                .select("id, tds_base_paise, tds_paise, tds_section, is_reversed")
+                .select("id, payment_date, tds_base_paise, tds_paise, "
+                        "tds_section, is_reversed")
                 .eq("firm_id", firm_id).eq("vendor_id", vendor_id)
                 .gte("payment_date", fy_start).lte("payment_date", fy_end)
                 .execute().data) or []
@@ -184,6 +215,8 @@ def aggregate_so_far(
         base += charged
         withheld += int(p.get("tds_paise") or 0)
         advance_charged += charged
+        if _inside(p.get("payment_date")):
+            in_window += charged
 
     # AN ADJUSTMENT WHOSE ADVANCE HAS SINCE GONE PUTS THE SUM BACK IN THE BASE.
     # A bill that absorbed ₹5,00,000 of advance took that ₹5,00,000 out of its
@@ -201,6 +234,7 @@ def aggregate_so_far(
         base_paise=base + orphaned,
         tds_paise=withheld,
         unadjusted_advance_paise=max(0, advance_charged - advance_absorbed),
+        base_in_window_paise=in_window,
     )
 
 
@@ -211,6 +245,40 @@ class ResidentWithholding:
     rate_bps: int
     why: str
     advance_adjusted_paise: int = 0
+    #: IT Act §197 — the certificate that lowered the rate, for the 26Q
+    #: deductee row's own lower-deduction fields (migration 037 has carried
+    #: them since it was written and nothing ever set them).
+    is_lower_deduction: bool = False
+    certificate_no: Optional[str] = None
+
+
+def certificates_for(db, *, firm_id: str, client_id: Optional[str],
+                     vendor_id: Optional[str]) -> list:
+    """This vendor's §197 certificates, or an empty list.
+
+    Firm- AND client-scoped: the service-role key bypasses RLS, so the
+    app-layer filter is the primary isolation control (CLAUDE.md). client_id is
+    tolerated as None only because the resident resolver is reachable from a
+    preview that does not carry one — the firm filter still holds, and a vendor
+    belongs to exactly one client.
+    """
+    if db is None or not vendor_id:
+        return []
+    q = (db.table("tds_lower_deduction_certificates").select("*")
+         .eq("firm_id", firm_id).eq("vendor_id", vendor_id))
+    if client_id:
+        q = q.eq("client_id", client_id)
+    try:
+        return q.execute().data or []
+    except Exception:                                            # noqa: BLE001
+        # A certificate table that cannot be read must not stop a bill being
+        # booked. The consequence of missing one is an OVER-deduction the payee
+        # can reclaim; the consequence of failing the save is a CA who cannot
+        # record a real purchase. Never silent: the caller's `why` says the
+        # certificate was not consulted only when one was actually found, so an
+        # unreadable table shows as the ordinary section rate.
+        _logger.warning("could not read §197 certificates for vendor %s", vendor_id)
+        return []
 
 
 def resolve_resident_tds(
@@ -219,6 +287,7 @@ def resolve_resident_tds(
     exclude_payment_id: Optional[str] = None,
     adjust_against_advances: bool = False,
     event_noun: str = "bill",
+    client_id: Optional[str] = None,
 ) -> ResidentWithholding:
     """TDS on a sum credited or paid to a RESIDENT payee — the §194 series.
 
@@ -238,11 +307,29 @@ def resolve_resident_tds(
     from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
     from domain.tds.residency import deduction_section_refusal
     from domain.tds.section_rates import rate_gap_for
+    from domain.tds import lower_deduction
+
+    payee_has_pan = has_pan(vendor.get("pan"))
+    # IT Act §197 — read BEFORE the aggregate, because the certificate's
+    # validity period is the window the aggregate has to measure against. Asked
+    # of the YEAR rather than of this document's date: the charge is on the
+    # year's aggregate, so a bill dated after the certificate expired still
+    # recomputes the whole year, and dropping the certificate at that point
+    # would re-charge the earlier certified slice at the full rate.
+    fy_start, fy_end = fy_bounds(on_date)
+    position = lower_deduction.position_for(
+        certificates_for(db, firm_id=firm_id, client_id=client_id,
+                         vendor_id=vendor.get("id")),
+        section=tds_section, fy_start=fy_start, fy_end=fy_end,
+        has_pan=payee_has_pan)
+    cert = position.certificate
+    window = ((cert.valid_from.isoformat(), cert.valid_to.isoformat())
+              if cert else None)
 
     agg = aggregate_so_far(
         db, firm_id=firm_id, vendor_id=vendor.get("id"), section=tds_section,
         on_date=on_date, exclude_bill_id=exclude_bill_id,
-        exclude_payment_id=exclude_payment_id,
+        exclude_payment_id=exclude_payment_id, window=window,
     )
     fy_prior = agg.base_paise
     fy_prior_tds = agg.tds_paise
@@ -252,6 +339,29 @@ def resolve_resident_tds(
     adjusted = (min(taxable_paise, agg.unadjusted_advance_paise)
                 if adjust_against_advances else 0)
     own_base = max(0, taxable_paise - adjusted)
+    # HOW MUCH OF THE YEAR'S AGGREGATE THE CERTIFICATE REACHES. Rule 28AA(4)'s
+    # ceiling is on the sums credited or paid INSIDE the validity period, so the
+    # certified slice is what earlier documents in the window already used plus
+    # this one — capped at the ceiling. The rest of the aggregate, including any
+    # document dated outside the window, stays at the section rate.
+    certified_base = 0
+    this_doc_inside = False
+    headroom_before = 0
+    if cert is not None:
+        this_doc_inside = window is not None and window[0] <= str(on_date)[:10] <= window[1]
+        # What the ceiling still had when THIS document was reached, which is
+        # what decides the rate that goes on ITS 26Q row — separately from how
+        # much of the whole year the certificate reaches.
+        headroom_before = max(0, cert.ceiling_paise - agg.base_in_window_paise)
+        in_window = agg.base_in_window_paise + (own_base if this_doc_inside else 0)
+        # consumed_paise=0 and the whole in-window total as the base: this is
+        # not an incremental draw-down but a restatement of the year so far, so
+        # what the certificate reaches is min(in-window total, ceiling) in one
+        # step. Capped at the charge base as well, because a window can reach
+        # into a prior document that this aggregate excludes.
+        certified_base = lower_deduction.certified_base(
+            cert, consumed_paise=0,
+            charge_base_paise=min(in_window, fy_prior + own_base))
     # Resolve thresholds/rates for the FY the EVENT falls in, not "today" —
     # a bill entered late for a prior FY must use that year's law.
     event_fy = fy_label(on_date)
@@ -266,7 +376,9 @@ def resolve_resident_tds(
             # IT Act §206AA: no real PAN on file floors the rate at
             # 20% (R3.10) — previously computed with zero PAN
             # awareness, silently under-deducting for no-PAN vendors.
-            has_pan=has_pan(vendor.get("pan")),
+            has_pan=payee_has_pan,
+            certified_base_paise=certified_base,
+            certificate_rate_bps=(cert.rate_bps if cert is not None else None),
         )
     except ValueError as ve:
         # The ENGINE's ValueError is the backstop, not the message. A vendor
@@ -303,7 +415,21 @@ def resolve_resident_tds(
         why += (f" ₹{adjusted // 100:,} of this {event_noun} was already "
                 f"charged as an advance and is not charged again "
                 f"(§194 — credit or payment, whichever is earlier).")
-    if _tds.applies and not has_pan(vendor.get("pan")):
+    # IT Act §197, said on the document. A certificate that lowered the rate and
+    # a certificate that was REFUSED are both facts a CA has to see: the second
+    # looks, from the figure alone, exactly like the software ignoring a
+    # certificate they know they recorded.
+    if _tds.applies and _tds.certified_base_paise and cert is not None:  # noqa: E501
+        why += (f" §197 certificate {cert.certificate_no} at "
+                f"{cert.rate_bps / 100:g}% on ₹{_tds.certified_base_paise // 100:,} "
+                f"of that.")
+        if _tds.certified_base_paise < (fy_prior + own_base):
+            why += (f" The certificate's ₹{cert.ceiling_paise // 100:,} ceiling "
+                    f"(Rule 28AA(4)) is exhausted, so the excess is at the "
+                    f"section rate.")
+    elif position.refusal:
+        why += " " + position.detail
+    if _tds.applies and not payee_has_pan:
         why += " Floored at 20% — no PAN on file (§206AA)."
     # THE LIMB THIS SOFTWARE CANNOT PRICE, said on the document it affects
     # rather than left in a module comment. §194I and §194J each charge one
@@ -313,11 +439,32 @@ def resolve_resident_tds(
     _gap = rate_gap_for(tds_section, event_fy)
     if _tds.applies and _gap:
         why += " " + _gap
+    # THE RATE THAT GOES ON THE 26Q ROW. Form 26Q's annexure has ONE rate
+    # column, so where the certificate covers the whole charge base it is the
+    # certified rate — that, with the certificate number, is what the FVU
+    # requires whenever a below-normal rate is used. Where the ceiling was
+    # crossed mid-year two rates genuinely applied to one aggregate and no
+    # single figure is true; the section rate goes on the row and the sentence
+    # above says why the arithmetic does not close, which is the same treatment
+    # the FY catch-up already gets (GAP_TDS_IS_A_FY_CATCH_UP).
+    # THIS DOCUMENT carried the certified rate only if it fell inside the
+    # window AND the ceiling still had room for the whole of it. A document
+    # dated after the certificate expired benefits from the year's certified
+    # slice through the aggregate, but its own 26Q row is at the section rate —
+    # which is what happened.
+    used_certificate = bool(
+        _tds.applies and cert is not None and this_doc_inside and headroom_before > 0)
+    fully_certified = used_certificate and headroom_before >= own_base
+    rate_bps = _tds.rate_bps if _tds.applies else 0
+    if fully_certified and cert is not None:
+        rate_bps = cert.rate_bps
     return ResidentWithholding(
         tds_paise=_tds.tds_paise,
-        rate_bps=(_tds.rate_bps if _tds.applies else 0),
+        rate_bps=rate_bps,
         why=why,
         advance_adjusted_paise=adjusted,
+        is_lower_deduction=used_certificate,
+        certificate_no=(cert.certificate_no if used_certificate and cert else None),
     )
 
 
@@ -400,6 +547,10 @@ class Withholding:
     citation: str = ""
     why: Optional[str] = None
     advance_adjusted_paise: int = 0
+    #: IT Act §197 — the certificate number that lowered the rate, or None.
+    #: `is_lower_deduction` on the register row is exactly "this is not None",
+    #: so only one of the two is ever stored.
+    certificate_no: Optional[str] = None
 
 
 def resolve_withholding(
@@ -408,6 +559,7 @@ def resolve_withholding(
     exclude_payment_id: Optional[str] = None,
     adjust_against_advances: bool = False,
     event_noun: str = "bill",
+    client_id: Optional[str] = None,
 ) -> Withholding:
     """Which section charges, and how much — the whole dispatch in one place.
 
@@ -425,6 +577,32 @@ def resolve_withholding(
     tds_section = (vendor.get("tds_section") or "").upper().strip() or None
     if is_non_resident(vendor.get("residential_status")):
         res = resolve_non_resident_tds(vendor, taxable_paise, on_date, firm_id, db)
+        # A §197 CERTIFICATE ON A §195 PAYEE IS NOT APPLIED, and is not silent.
+        # §197(1) does reach §195, but the §195 engine resolves by NATURE of
+        # income against §115A, Part II's surcharge ladders and the DTAA under
+        # §90(2) — applying a flat certified rate on top of that would be a
+        # fourth rate in a comparison the statute already defines, and getting
+        # it wrong disallows the WHOLE expenditure under §40(a)(i). So the
+        # figure stands at the §195 rate and the CA is told the certificate was
+        # not used, rather than shown a number that quietly ignored it.
+        from domain.tds import lower_deduction
+        from domain.tds.tds_computer import has_pan as _has_pan
+        _fy_start, _fy_end = fy_bounds(on_date)
+        _pos = lower_deduction.position_for(
+            certificates_for(db, firm_id=firm_id, client_id=client_id,
+                             vendor_id=vendor.get("id")),
+            section="195", fy_start=_fy_start, fy_end=_fy_end,
+            has_pan=_has_pan(vendor.get("pan")))
+        _note = None
+        if _pos.found and _pos.certificate is not None:
+            _note = (
+                f"A §197 certificate ({_pos.certificate.certificate_no}) is on "
+                f"file for this payee and was NOT applied: §195 is resolved by "
+                f"the nature of the income under §115A and Part II of the First "
+                f"Schedule, with the DTAA under §90(2), and this software does "
+                f"not combine a certified rate with that comparison. Withhold "
+                f"the certified amount outside the software if the certificate "
+                f"governs.")
         return Withholding(
             tds_paise=res.tds_paise,
             # The BASE rate, not the effective one: Form 27Q's deductee
@@ -441,13 +619,14 @@ def resolve_withholding(
             # withheld on a remittance that still belongs on 27Q.
             basis=res.basis,
             citation=res.citation,
+            why=_note,
         )
 
     out = resolve_resident_tds(
         vendor, tds_section, taxable_paise, on_date, firm_id, db,
         exclude_bill_id, exclude_payment_id=exclude_payment_id,
         adjust_against_advances=adjust_against_advances,
-        event_noun=event_noun,
+        event_noun=event_noun, client_id=client_id,
     )
     return Withholding(
         tds_paise=out.tds_paise,
@@ -455,6 +634,7 @@ def resolve_withholding(
         section=tds_section,
         why=out.why,
         advance_adjusted_paise=out.advance_adjusted_paise,
+        certificate_no=out.certificate_no,
     )
 
 
@@ -580,6 +760,7 @@ def columns_for_advance(
         "tds_paise": 0, "tds_base_paise": 0, "tds_section": None,
         "tds_rate_bps": None, "tds_surcharge_paise": 0, "tds_cess_paise": 0,
         "tds_nature_of_income": None, "tds_basis": None,
+        "tds_certificate_no": None,
     }
     advance_paise = max(0, int(unallocated_paise) - int(open_payable_paise))
     if advance_paise <= 0 or not (vendor or {}).get("tds_applicable"):
@@ -588,6 +769,7 @@ def columns_for_advance(
     w = resolve_withholding(
         vendor, advance_paise, payment_date, firm_id, db,
         exclude_payment_id=exclude_payment_id,
+        client_id=vendor.get("client_id"),
         # An advance absorbs nothing: it IS the earlier event. Only a bill
         # adjusts, because only a bill can arrive second.
         adjust_against_advances=False,
@@ -605,6 +787,7 @@ def columns_for_advance(
         "tds_cess_paise": w.cess_paise,
         "tds_nature_of_income": w.nature,
         "tds_basis": w.basis,
+        "tds_certificate_no": w.certificate_no,
         "_tds_why": w.why,
         "_tds_citation": w.citation,
     }

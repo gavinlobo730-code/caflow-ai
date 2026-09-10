@@ -33,7 +33,8 @@ MIGRATION_SOURCES = [_MIG_DIR / "260_role_aware_write_policies.sql",
                      _MIG_DIR / "296_employee_income_tax_declarations.sql",
                      _MIG_DIR / "297_let_an_employee_file_their_own_declaration.sql",
                      _MIG_DIR / "345_the_tds_register_is_role_guarded.sql",
-                     _MIG_DIR / "346_loans_and_deposits_carry_a_role_rule.sql"]
+                     _MIG_DIR / "346_loans_and_deposits_carry_a_role_rule.sql",
+                     _MIG_DIR / "359_a_certificate_is_not_a_rate.sql"]
 
 # Covered by migration 260 — each mirrors a live rbac() guard on an endpoint
 # that writes the same table.
@@ -68,6 +69,14 @@ GUARDED = {
     # rule (loans_assignment_scope) was already in force and is untouched; what
     # 346 adds is that a REVIEWER assigned to the client can no longer write.
     "loans", "fixed_deposits",
+    # migration 359 — the §197 lower-deduction certificate master. No endpoint
+    # writes it, so the tier is argued in that file rather than mirrored: a
+    # certificate LOWERS what is withheld from a real supplier, and an invented
+    # one under-deducts and makes the deductor an assessee in default under
+    # §201(1). Executive+ to write, Manager+ to delete — the same shape
+    # migration 357 used for an opening written-down value, and for the same
+    # reason: a figure one person records and everybody else's numbers rest on.
+    "tds_lower_deduction_certificates",
 }
 
 # Written from the browser and NOT yet role-guarded. An entry needs a product
