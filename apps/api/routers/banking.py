@@ -238,7 +238,7 @@ def _next_bank_account_code(db, firm_id: str) -> str:
 #: The SUBTYPE is 'Bank Overdraft' and that was checked, not chosen:
 #: domain/reporting/schedule_iii.bs_bucket() substring-scans for the literal
 #: "overdraft", so 'Bank OD' and 'Cash Credit' both fall to Other Current
-#: Liabilities instead of Short Term Borrowings — the caption Schedule III
+#: Liabilities instead of Short-term Borrowings — the caption Schedule III
 #: Division I puts "loans repayable on demand from banks" under.
 _OVERDRAWN_BANK_TYPES = frozenset({"Cash Credit", "Overdraft"})
 _OD_LEDGER = ("Liability", "Bank Overdraft")

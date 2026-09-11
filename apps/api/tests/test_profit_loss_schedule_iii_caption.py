@@ -80,7 +80,7 @@ def test_revenue_line_caption():
 # and the mirrored pinning test in accounting page.test.ts, not a silent drift.
 _KNOWN_REVENUE_CAPTIONS = {"Revenue from Operations", "Other Income"}
 _KNOWN_EXPENSE_CAPTIONS = {
-    "Cost of Materials Consumed", "Employee Benefit Expense", "Finance Costs",
+    "Cost of Materials Consumed", "Employee Benefits Expense", "Finance Costs",
     "Depreciation & Amortisation", "Tax Expense", "Other Expenses",
 }
 

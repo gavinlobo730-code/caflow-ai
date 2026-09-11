@@ -203,8 +203,8 @@ def test_the_resolver_never_guesses_a_bank_from_the_clients_list():
 @pytest.mark.parametrize("bank_type,caption", [
     ("Current",     "Cash & Cash Equivalents"),
     ("Savings",     "Cash & Cash Equivalents"),
-    ("Cash Credit", "Short Term Borrowings"),
-    ("Overdraft",   "Short Term Borrowings"),
+    ("Cash Credit", "Short-term Borrowings"),
+    ("Overdraft",   "Short-term Borrowings"),
 ])
 def test_an_overdraft_ledger_lands_under_short_term_borrowings(bank_type, caption):
     """BANK-02. The subtype was CHECKED against bs_bucket rather than chosen:

@@ -1271,6 +1271,12 @@ export const api = {
     accounts: () => request("/api/accounting/accounts"),
     createAccount: (data: unknown) => request("/api/accounting/accounts", { method: "POST", body: JSON.stringify(data) }),
     updateAccount: (id: string, data: unknown) => request(`/api/accounting/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    // The Schedule III captions a mapping may be set to, served by the module
+    // that does the classifying. The mapping screen used to carry its own
+    // hardcoded list, which had drifted in both directions — it offered five
+    // captions the engine could not honour, and spelled five others
+    // differently, which is how nine live mappings were being discarded.
+    scheduleIiiCaptions: () => request("/api/accounting/schedule-iii/captions"),
     journal: (params?: Record<string, string>) => request(`/api/accounting/journal${params ? "?" + new URLSearchParams(params) : ""}`),
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
     postJournalEntry: (id: string) => request(`/api/accounting/journal/${id}/post`, { method: "PATCH" }),

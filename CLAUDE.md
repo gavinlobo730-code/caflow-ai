@@ -551,6 +551,35 @@ PostgREST. That is why:
 - RBAC: `Partner > Manager > Executive > Reviewer > Client`
   (`core/permissions.py`, applied as `rbac(resource, action)`).
 
+## Schedule III captions — one vocabulary, and the screen is served it
+
+`apps/api/domain/reporting/schedule_iii.py` owns the caption list and is the
+only place allowed to. `GET /api/accounting/schedule-iii/captions` serves it to
+the mapping screen, which until 11-09-2026 carried its own hardcoded copy.
+
+That copy had drifted in **both** directions at once, and it was measurable: it
+offered five captions the classifier had never heard of, and spelled five others
+differently — so **nine of the fifty mapped accounts in production were being
+silently discarded**, the CA's decision saved and then ignored while the
+statement went back to guessing from the subtype.
+
+- **Canonical spelling is the screen's** — hyphenated `Short-term`, plural
+  `Employee Benefits Expense` — an owner decision of 11-09-2026 taken on
+  convergence (screen, stored data and classifier agreed) rather than on a
+  reading of Schedule III, which could not be reached: `icai.org` and every
+  `.gov.in` are refused at this environment's egress proxy.
+- **`CAPTION_ALIASES` honours the older spellings** so nothing already stored is
+  lost, and `canonical_caption()` is the only resolver — `bs_bucket`,
+  `pl_bucket` and `classify` all go through it. **`Fixed Assets` is NOT an
+  alias**: Schedule III makes it a heading over Tangible and Intangible, so it
+  resolves from the account's own subtype rather than being guessed flat.
+- **A subtype's hyphens are folded** before the keyword scan, so a human typing
+  `Long-term Borrowings` as a subtype matches the `long term` keywords.
+- **Still open:** `apps/web/lib/accounting/scheduleIiiCaptions.ts` is a third
+  classifier, in the browser. The P&L already prefers the backend caption; the
+  client Balance Sheet does not, and the two disagree on wording. See
+  `docs/audits/WHERE-WE-STOPPED.md`.
+
 ## Reporting scope — "all clients" means the caller's clients
 
 A reporting endpoint called with no `client_id` means "all clients", and that is

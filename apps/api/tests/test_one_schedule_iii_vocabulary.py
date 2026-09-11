@@ -130,8 +130,8 @@ def test_cost_of_materials_is_an_expense_not_an_asset():
 # ── The CA's mapping is read, and only where it makes sense ──────────────────
 
 def test_an_explicit_mapping_outranks_the_subtype_scan():
-    caption, basis = classify("Asset", "Widget Deposits", "Long Term Investments")
-    assert (caption, basis) == ("Long Term Investments", "mapping")
+    caption, basis = classify("Asset", "Widget Deposits", "Long-term Investments")
+    assert (caption, basis) == ("Long-term Investments", "mapping")
 
 
 def test_without_a_mapping_the_subtype_still_decides():

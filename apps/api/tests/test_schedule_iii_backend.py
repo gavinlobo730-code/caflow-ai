@@ -16,24 +16,24 @@ def test_bs_bucket_equity_split():
 
 
 def test_bs_bucket_liabilities():
-    assert bs_bucket("Liability", "Long Term Borrowings") == "Long Term Borrowings"
-    assert bs_bucket("Liability", "Term Loan from Bank") == "Long Term Borrowings"
+    assert bs_bucket("Liability", "Long-term Borrowings") == "Long-term Borrowings"
+    assert bs_bucket("Liability", "Term Loan from Bank") == "Long-term Borrowings"
     assert bs_bucket("Liability", "Deferred Tax Liability") == "Deferred Tax Liability"
     assert bs_bucket("Liability", "Trade Payables") == "Trade Payables"
     assert bs_bucket("Liability", "Sundry Creditors") == "Trade Payables"
-    assert bs_bucket("Liability", "Bank Overdraft") == "Short Term Borrowings"
+    assert bs_bucket("Liability", "Bank Overdraft") == "Short-term Borrowings"
     assert bs_bucket("Liability", "GST Payable") == "Other Current Liabilities"
 
 
 def test_bs_bucket_assets():
     assert bs_bucket("Asset", "Plant & Machinery") == "Tangible Fixed Assets"
     assert bs_bucket("Asset", "Goodwill") == "Intangible Fixed Assets"
-    assert bs_bucket("Asset", "Long Term Investment") == "Long Term Investments"
+    assert bs_bucket("Asset", "Long Term Investment") == "Long-term Investments"
     assert bs_bucket("Asset", "Inventory / Stock") == "Inventories"
     assert bs_bucket("Asset", "Trade Receivables") == "Trade Receivables"
     assert bs_bucket("Asset", "Sundry Debtors") == "Trade Receivables"
     assert bs_bucket("Asset", "Bank Account") == "Cash & Cash Equivalents"
-    assert bs_bucket("Asset", "Advance to Suppliers") == "Short Term Loans & Advances"
+    assert bs_bucket("Asset", "Advance to Suppliers") == "Short-term Loans & Advances"
     assert bs_bucket("Asset", "Prepaid Expenses") == "Other Current Assets"
 
 
@@ -47,7 +47,7 @@ def test_pl_bucket_revenue_and_expense():
     assert pl_bucket("Revenue", "Sales of Services") == "Revenue from Operations"
     assert pl_bucket("Revenue", "Interest Income") == "Other Income"
     assert pl_bucket("Expense", "Raw Material Purchase") == "Cost of Materials Consumed"
-    assert pl_bucket("Expense", "Employee Salaries") == "Employee Benefit Expense"
+    assert pl_bucket("Expense", "Employee Salaries") == "Employee Benefits Expense"
     assert pl_bucket("Expense", "Bank Charges") == "Finance Costs"
     assert pl_bucket("Expense", "Depreciation") == "Depreciation & Amortisation"
     assert pl_bucket("Expense", "Income Tax") == "Tax Expense"
@@ -129,7 +129,7 @@ def test_build_schedule_iii_caption_amounts():
     assert pcaps["Revenue from Operations"] == 10_00_000_00
     assert pcaps["Other Income"] == 50_000_00
     assert pcaps["Cost of Materials Consumed"] == 4_00_000_00
-    assert pcaps["Employee Benefit Expense"] == 2_00_000_00
+    assert pcaps["Employee Benefits Expense"] == 2_00_000_00
 
 
 def test_build_schedule_iii_loss_is_negative():

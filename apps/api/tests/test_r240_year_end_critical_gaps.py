@@ -112,7 +112,7 @@ def test_get_default_mappings_auto_init_classifies_by_real_enum(monkeypatch):
     # ACC-10 the mapping was read by nothing and this went to the catch-all.
     db.seed("chart_of_accounts", {"id": "a6", "firm_id": "F1", "account_type": "Asset",
                           "account_subtype": "Widget Deposits", "account_name": "Deposit",
-                          "schedule_iii_mapping": "Long Term Investments"})
+                          "schedule_iii_mapping": "Long-term Investments"})
 
     resp = m.get_default_mappings(PARTNER_F1)
     assert resp["success"] is True

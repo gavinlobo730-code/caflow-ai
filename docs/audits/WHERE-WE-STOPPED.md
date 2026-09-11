@@ -161,3 +161,62 @@ data-repair job. That moves it up the order.
 
 Also: 7 clients, 12,899 journal entries, 1 payroll run and none finalised — so
 the ESI rounding fix needs no back-fill.
+
+---
+
+## 11 September 2026, later — ACC-10's backend and mapping screen are done
+
+Landed: the caption vocabulary reconciled to the screen's spellings (owner
+decision A4, option (a)), an alias table so nothing already stored is lost,
+`GET /api/accounting/schedule-iii/captions` serving the one list, and the
+mapping screen rewritten to fetch it and to SAVE — it was read-only, so the
+only way to set a mapping was to re-import the whole chart of accounts.
+
+**The rename was wider than it looked.** The first pass used a hand-written file
+list and missed five modules — `ratios.py`, `trend.py`,
+`financial_analysis_service.py`, `xbrl_service.py` and two tests. The backend
+suite caught every one. The second pass grepped instead of guessing, which is
+what the first should have done.
+
+### What is left of ACC-10, measured
+
+**`apps/web/lib/accounting/scheduleIiiCaptions.ts` — the third classifier — is
+still live**, and it is business logic in the browser against the standing rule.
+Its blast radius is now precise:
+
+- **The Profit & Loss is nearly clear.** `app/clients/[id]/accounting/page.tsx`
+  line 1781 reads `b.schedule_iii_caption ?? plBucket(...)` — the backend
+  caption wins and the browser function is a fallback for the window before it
+  arrives.
+- **The Balance Sheet is not.** Lines 2108–2110 call `bsBucket(...)`
+  unconditionally. There is no backend caption on that path at all.
+- **And the two disagree on wording.** Compared mechanically, the browser
+  classifier emits captions the backend does not know: `Employee Benefit
+  Expense` (the spelling just retired), `Tangible Assets` / `Intangible Assets`
+  (vs `Tangible Fixed Assets`), `Non-Current Investments` (vs `Long-term
+  Investments`), `Cost of Materials` (vs `Cost of Materials Consumed`) and
+  `Tax Liabilities` (no backend equivalent).
+
+So a CA reading the client accounting screen's Balance Sheet sees **different
+line names** from the ones on the year-end statements. That is the remaining
+half of ACC-10 and it is a well-scoped piece: put a caption on the balance-sheet
+API rows the way the P&L already has one, then delete the browser classifier.
+
+**Deliberately not started in the same change.** `page.tsx` is 3,476 lines and
+this commit already moves the vocabulary under every consumer.
+
+### Also outstanding, unchanged
+
+The CHECK constraint on `schedule_iii_mapping` (it would fail on the nine
+production rows until they are normalised — the alias makes them WORK, it does
+not rewrite them), and surfacing the residual count on the mapping screen.
+
+### The five captions the screen used to offer and the engine does not present
+
+Capital Work in Progress, Goodwill & Intangibles, Long-term Provisions,
+Short-term Provisions, Deferred Tax Asset. All real Schedule III lines. They are
+**absent from the menu rather than added to the engine**, because adding one
+means teaching the statement builders, the year-end translation and the PDF
+about it. Nothing in production is mapped to any of them, so removing them cost
+nothing — but a CA who wanted one now cannot ask for it, which is the honest
+trade and worth revisiting.

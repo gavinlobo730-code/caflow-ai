@@ -59,8 +59,23 @@ def test_unmapped_the_deposit_falls_into_other_current_assets():
 def test_mapped_the_rupees_move_to_the_caption_the_ca_chose():
     """THE POINT OF ACC-10. Same ledger, same subtype — one column changed on
     the chart of accounts, and the Balance Sheet presents it there."""
+    out = _captions("Long-term Investments")
+    assert out["Long-term Investments"] == 5_00_000
+    assert out.get("Other Current Assets", 0) == 0
+
+
+def test_a_mapping_stored_under_the_older_spelling_is_still_honoured():
+    """The alias, on a real case rather than an invented one.
+
+    "Long Term Investments" is what this module called the caption until
+    11-09-2026; "Long-term Investments" is what the mapping screen has always
+    offered and what production holds. Nine of the fifty mapped accounts in the
+    live database were being DISCARDED over exactly this kind of difference —
+    the CA chose, and the statement quietly went back to guessing.
+    """
     out = _captions("Long Term Investments")
-    assert out["Long Term Investments"] == 5_00_000
+    assert out["Long-term Investments"] == 5_00_000, (
+        "an older spelling must resolve to the caption it means, not be ignored")
     assert out.get("Other Current Assets", 0) == 0
 
 

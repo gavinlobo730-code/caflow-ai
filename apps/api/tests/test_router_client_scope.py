@@ -936,6 +936,20 @@ FOLLOW: dict[str, str] = {
 # endpoint nobody looked at — which is the whole point of listing them here
 # rather than loosening the sweep.
 EXEMPT: dict[str, str] = {
+    # ── /api/accounting: the Schedule III vocabulary, which holds no data ────
+    # A list of the captions a mapping may be set to. It reads no table, takes
+    # no client_id, and returns the same words for every firm in India, because
+    # they come from Schedule III to the Companies Act rather than from anybody's
+    # ledger. A client guard here would have to invent a client to check.
+    #
+    # It exists so the mapping SCREEN stops carrying its own copy: the hardcoded
+    # list had drifted in two directions, offering captions the engine could not
+    # honour and spelling others differently, which is how nine live mappings
+    # were being discarded. The write path that USES a caption —
+    # PATCH /api/accounting/accounts/{id} — is client-guarded where it belongs.
+    "/api/accounting/schedule-iii/captions":
+        "a statutory vocabulary, not data: no table, no client_id, and the same "
+        "captions for every firm. The PATCH that stores one is guarded.",
     # ── /api/payroll: the firm's own reading of a state notification ────────
     # firm_pt_slabs has firm_id and NO client_id (migration 327), and that is
     # the whole point of it: professional tax is levied by the STATE, so the
