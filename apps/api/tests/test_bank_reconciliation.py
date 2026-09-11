@@ -152,6 +152,18 @@ def _open(db, opening=100000, closing=160000):
                               actor_id="user-1")["id"]
 
 
+def _set_aside(db, tid):
+    """What a CA does with a statement line they are not going to post.
+
+    BANK-23 made an unpassed in-period line block completion, and t4 in the
+    fixture is exactly one — deliberately, since it is what proves `reconcile`
+    refuses an unposted line. Every completion test therefore has to deal with
+    it, and setting it aside is how a real practice does: the line is seen,
+    judged, and closed without a journal. It also exercises the carve-out —
+    a set-aside line must NOT go on blocking completion for ever."""
+    next(t for t in db.store["bank_transactions"] if t["id"] == tid)["match_status"] = "ignored"
+
+
 # ── Session lifecycle ─────────────────────────────────────────────────────────
 
 def test_create_session_opens(db):
@@ -185,6 +197,7 @@ def test_perfect_reconciliation_ties_out_and_completes(db):
     rid = _open(db, 100000, 160000)
     out = svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
     assert out["summary"]["reconciles"] is True
+    _set_aside(db, "t4")          # the in-period line nobody passed
     done = svc.complete(db, FIRM, rid, actor_id="user-1")
     assert done["status"] == "completed" and done["completed_at"] is not None
 
@@ -229,6 +242,7 @@ def test_adjustment_makes_it_tie_out(db):
     svc.set_adjustment(db, FIRM, rid, 5000,
                        "bank charges debited on 31 March, not yet in the books")
     assert svc.report(db, FIRM, rid)["ties_out"] is True
+    _set_aside(db, "t4")          # the in-period line nobody passed
     assert svc.complete(db, FIRM, rid)["status"] == "completed"
 
 
@@ -248,6 +262,7 @@ def test_update_session_no_longer_writes_the_adjustment(db):
 def test_completed_session_is_immutable(db):
     rid = _open(db, 100000, 160000)
     svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
+    _set_aside(db, "t4")          # the in-period line nobody passed
     svc.complete(db, FIRM, rid)
     for call in (
         lambda: svc.reconcile(db, FIRM, rid, ["t1"]),
@@ -328,6 +343,7 @@ def test_snapshot_report_stable_after_txn_change(db):
     import copy
     rid = _open(db, 100000, 160000)
     svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
+    _set_aside(db, "t4")          # the in-period line nobody passed
     svc.complete(db, FIRM, rid)
     before = copy.deepcopy(svc.report(db, FIRM, rid))
     assert before["reconciled_transaction_ids"] == ["t1", "t2", "t3"]
@@ -345,6 +361,7 @@ def test_snapshot_report_stable_after_txn_change(db):
 def test_snapshot_csv_stable_after_txn_change(db):
     rid = _open(db, 100000, 160000)
     svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
+    _set_aside(db, "t4")          # the in-period line nobody passed
     svc.complete(db, FIRM, rid)
     csv_before = svc.report_csv(db, FIRM, rid)
 
@@ -357,6 +374,7 @@ def test_snapshot_csv_stable_after_txn_change(db):
 def test_get_session_serves_frozen_summary(db):
     rid = _open(db, 100000, 160000)
     svc.reconcile(db, FIRM, rid, ["t1", "t2", "t3"])
+    _set_aside(db, "t4")          # the in-period line nobody passed
     svc.complete(db, FIRM, rid)
     frozen = svc.get_session(db, FIRM, rid)["summary"]
     # mutate underlying data, then re-read

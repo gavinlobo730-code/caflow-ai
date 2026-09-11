@@ -22,6 +22,7 @@ from core.db_paging import fetch_all
 
 from domain.banking import reconciliation as recon
 from domain.banking import brs as brs_domain
+from domain.banking import entry as E
 from services.timeline_service import timeline_service
 
 _logger = logging.getLogger("caflow.bank_reconciliation")
@@ -58,18 +59,40 @@ class BankReconciliationService:
                .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id).execute())
         return [r["id"] for r in (res.data or [])]
 
-    def _posted_account_txns(self, db, firm_id: str, bank_account_id: str) -> list[dict]:
-        """All POSTED transactions belonging to the account's statements."""
+    def _account_txns(self, db, firm_id: str, bank_account_id: str) -> list[dict]:
+        """EVERY transaction belonging to the account's statements, passed or not.
+
+        The filter used to live inside this fetch, and that is BANK-23: a line
+        the CA has not passed yet is on the bank statement — the bank moved the
+        money — but it is not in the books, so it is precisely a source of the
+        difference the reconciliation exists to explain. Dropping it here meant
+        it reached no bucket at all, so the tie-out failed by its amount while
+        the screen said "0 unreconciled" and offered nothing to click.
+
+        So the fetch returns everything and `_classify` splits it. One round
+        trip either way — apps/api is in Singapore and Postgres in Mumbai, and
+        a second query for the unpassed half would be a second crossing.
+        """
         stmt_ids = self._account_statement_ids(db, firm_id, bank_account_id)
         if not stmt_ids:
             return []
         # PAGED: a reconciliation that only saw the first 1000 lines would tie
         # out against part of the statement and call the rest a difference.
-        rows = fetch_all(
+        return fetch_all(
             lambda: (db.table("bank_transactions").select("*")
                      .eq("firm_id", firm_id).in_("statement_id", stmt_ids)),
-            label="reconciliation._posted_account_txns")
-        return [t for t in rows if t.get("posted_journal_id")]
+            label="reconciliation._account_txns")
+
+    def _posted_account_txns(self, db, firm_id: str, bank_account_id: str) -> list[dict]:
+        """All POSTED transactions belonging to the account's statements.
+
+        Kept, with its meaning intact, for the callers that genuinely want only
+        what is in the books: the opening-balance suggestion accumulates
+        reconciled closing balances, and the match lookup resolves ids to
+        journals. Neither has anything to say about a line with no journal.
+        """
+        return [t for t in self._account_txns(db, firm_id, bank_account_id)
+                if t.get("posted_journal_id")]
 
     def _validate_bank_account(self, db, firm_id: str, client_id: str, bank_account_id: str) -> dict:
         res = (db.table("bank_accounts").select("*")
@@ -83,22 +106,66 @@ class BankReconciliationService:
 
     # ── classification (reconciled / unreconciled / exceptions) ────────────────
     def _classify(self, session: dict, txns: list[dict]) -> dict:
+        """Four buckets, from EVERY line on the account's statements.
+
+        `txns` is now `_account_txns`, not `_posted_account_txns`, and the
+        posted filter lives here — so the fourth bucket is computed from the
+        same rows as the other three rather than from a second fetch, and no
+        line can fall between them.
+        """
         recon_id = session["id"]
         start, end = _d(session["period_start"]), _d(session["period_end"])
 
         def in_range(t) -> bool:
             return start <= _d(t["transaction_date"]) <= end
 
-        reconciled = [t for t in txns if t.get("reconciliation_id") == recon_id]
-        unreconciled = [t for t in txns if t.get("reconciliation_id") is None and in_range(t)]
+        posted = [t for t in txns if t.get("posted_journal_id")]
+
+        reconciled = [t for t in posted if t.get("reconciliation_id") == recon_id]
+        unreconciled = [t for t in posted if t.get("reconciliation_id") is None and in_range(t)]
         # Posted txns in this period already claimed by ANOTHER session — a conflict
         # that needs human attention (cannot be reconciled here).
         exceptions = [
             {**t, "exception_reason": "Reconciled in another session"}
-            for t in txns
+            for t in posted
             if t.get("reconciliation_id") not in (None, recon_id) and in_range(t)
         ]
-        return {"reconciled": reconciled, "unreconciled": unreconciled, "exceptions": exceptions}
+        # BANK-23. In the period, on the statement, and NOT in the books. It
+        # cannot be reconciled — there is no journal to reconcile — so it is
+        # not "unreconciled"; it is work that has not been done yet, and it is
+        # the difference. The answer is Bank › Entries, not this screen, which
+        # is why it is a bucket of its own rather than folded into one that
+        # offers a tick box.
+        #
+        # BOTH conditions, and each rules out a different false answer.
+        #
+        # NO JOURNAL is what "not in the books" MEANS, and it is the half that
+        # must come first: entry_state's `passed` branch keys on
+        # `match_status = 'posted'`, so a row carrying a journal whose status
+        # had not caught up would be called unpassed and block a completion
+        # over a line that is demonstrably in the ledger.
+        #
+        # OPEN STATE then carves out the two lines that legitimately have no
+        # journal and never will:
+        #   * one the CA SET ASIDE — a decision ("not ours", "a duplicate",
+        #     "no entry needed");
+        #   * the RECEIVING side of a transfer pair, which bank_posting_service
+        #     refuses to post by name, because the paying side already wrote the
+        #     whole double entry and posting both would count the same money
+        #     twice.
+        # Either in this bucket would make the period uncompletable for ever.
+        #
+        # E.OPEN_STATES is the module's own word for "still to do", so what is
+        # left is the Entries queue narrowed to the period rather than a second
+        # opinion about it. The stored column is preferred and the twin is the
+        # fallback, exactly as bank_entry_service reads it.
+        not_passed = [t for t in txns
+                      if not t.get("posted_journal_id")
+                      and (t.get("entry_state") or E.entry_state(t)) in E.OPEN_STATES
+                      and in_range(t)]
+
+        return {"reconciled": reconciled, "unreconciled": unreconciled,
+                "exceptions": exceptions, "not_passed": not_passed}
 
     def _summary(self, session: dict, reconciled: list[dict]) -> dict:
         deposits, withdrawals = recon.split_amounts(reconciled)
@@ -288,7 +355,7 @@ class BankReconciliationService:
         snap = self._frozen_snapshot(session)
         if snap is not None:  # completed → serve frozen summary/counts
             return {**snap["reconciliation"], "summary": snap["summary"], "counts": snap["counts"]}
-        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        txns = self._account_txns(db, firm_id, session["bank_account_id"])
         buckets = self._classify(session, txns)
         view = self._session_view(session)
         view["summary"] = self._summary(session, buckets["reconciled"])
@@ -296,6 +363,7 @@ class BankReconciliationService:
             "reconciled": len(buckets["reconciled"]),
             "unreconciled": len(buckets["unreconciled"]),
             "exceptions": len(buckets["exceptions"]),
+            "not_passed": len(buckets["not_passed"]),
         }
         return view
 
@@ -640,7 +708,7 @@ class BankReconciliationService:
         session = self._get_session(db, firm_id, recon_id)
         if session.get("status") == "completed":
             raise HTTPException(status_code=409, detail="Reconciliation is already completed.")
-        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        txns = self._account_txns(db, firm_id, session["bank_account_id"])
         buckets = self._classify(session, txns)
         summary = self._summary(session, buckets["reconciled"])
         # F1 Condition 2: every in-period statement line must be reviewed. A clean
@@ -653,6 +721,20 @@ class BankReconciliationService:
                 detail=(f"Cannot complete — {unreconciled} transaction(s) in this period are "
                         f"still unreconciled. Every statement line must be reconciled before "
                         f"completing, even if the balance already ties out."))
+        # BANK-23. Checked here, BEFORE the tie-out, because it is the CAUSE of
+        # the difference the tie-out would otherwise report with nothing to
+        # attribute it to: these lines are on the statement and not in the
+        # books, so the reconciled book balance is short by exactly their net.
+        # The refusal names where to go, since nothing on this screen can fix
+        # them — there is no journal here to reconcile.
+        not_passed = len(buckets["not_passed"])
+        if not_passed:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"Cannot complete — {not_passed} statement line(s) in this period have "
+                        f"not been passed to the books yet, so they are on the bank statement "
+                        f"and not in the ledger. Pass or set them aside under Bank › Entries, "
+                        f"then come back. Until then the difference below includes them."))
         # F1 Condition 1: arithmetic tie-out.
         if not summary["reconciles"]:
             raise HTTPException(
@@ -714,7 +796,7 @@ class BankReconciliationService:
         Read-only. Nothing is written; nothing is reconciled.
         """
         session = self._get_session(db, firm_id, recon_id)
-        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        txns = self._account_txns(db, firm_id, session["bank_account_id"])
         buckets = self._classify(session, txns)
 
         candidates = set(transaction_ids or [])
@@ -892,11 +974,13 @@ class BankReconciliationService:
             "reconciled": [line(t) for t in buckets["reconciled"]],
             "unreconciled": [line(t) for t in buckets["unreconciled"]],
             "exceptions": [line(t) for t in buckets["exceptions"]],
+            "not_passed": [line(t) for t in buckets["not_passed"]],
             "reconciled_transaction_ids": [t["id"] for t in buckets["reconciled"]],
             "counts": {
                 "reconciled": len(buckets["reconciled"]),
                 "unreconciled": len(buckets["unreconciled"]),
                 "exceptions": len(buckets["exceptions"]),
+                "not_passed": len(buckets["not_passed"]),
             },
         }
 
@@ -907,7 +991,7 @@ class BankReconciliationService:
         snap = self._frozen_snapshot(session)
         if snap is not None:
             return snap
-        txns = self._posted_account_txns(db, firm_id, session["bank_account_id"])
+        txns = self._account_txns(db, firm_id, session["bank_account_id"])
         return self._compute_report(session, txns)
 
     def report_csv(self, db, firm_id, recon_id) -> str:
@@ -932,8 +1016,11 @@ class BankReconciliationService:
         w.writerow(["Ties out", "YES" if rep["ties_out"] else "NO"])
         w.writerow([])
         w.writerow(["Section", "Date", "Description", "Reference", "Debit", "Credit", "Journal", "Note"])
-        for sect in ("reconciled", "unreconciled", "exceptions"):
-            for t in rep[sect]:
+        # `rep.get(sect)` rather than `rep[sect]`: a COMPLETED session serves a
+        # frozen snapshot (F2), and a snapshot written before BANK-23 has no
+        # not_passed key. A certified report must keep printing.
+        for sect in ("reconciled", "unreconciled", "exceptions", "not_passed"):
+            for t in rep.get(sect) or []:
                 w.writerow([sect, t["transaction_date"], t["description"], t.get("reference_no") or "",
                             rupees(t["debit_paise"]), rupees(t["credit_paise"]),
                             t.get("posted_journal_id") or "", t.get("exception_reason") or ""])
