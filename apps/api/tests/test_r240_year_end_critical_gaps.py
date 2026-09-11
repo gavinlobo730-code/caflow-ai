@@ -80,13 +80,15 @@ def test_schedule_line_for_account_falls_back_gracefully_without_subtype():
     assert m._schedule_line_for_account("Expense", "") == "other_expenses"
 
 
-def test_get_default_mappings_auto_init_classifies_by_real_enum(monkeypatch):
-    import routers.year_end_mappings as m
-    import core.supabase_client as sc
+def test_the_chart_of_accounts_classifies_by_real_enum():
+    """The classification itself, which is what task #240 was about.
 
-    monkeypatch.setattr(m, "_USE_MOCK", False)
-    db = FakeDB()
-    monkeypatch.setattr(sc, "get_supabase", lambda: db)
+    It used to be asserted THROUGH `get_default_mappings`, because that
+    endpoint auto-initialised `account_group_mappings` from the chart of
+    accounts and the rows it wrote were the only way to see the answer. The
+    write is gone (see the test below) and the classification is now read on
+    every statement, so it is asserted directly."""
+    from domain.reporting.year_end_lines import schedule_line_for_account as line
 
     # chart_of_accounts, NOT the `accounts` view. `public.accounts` is
     # `SELECT * FROM chart_of_accounts` created by migration 016, and Postgres
@@ -94,39 +96,59 @@ def test_get_default_mappings_auto_init_classifies_by_real_enum(monkeypatch):
     # chart_of_accounts had THEN and nothing since, `schedule_iii_mapping`
     # (migration 057) included. Reading the view returned rows with no mapping
     # on them, which is ACC-10's defect arriving by a different route.
-    db.seed("chart_of_accounts", {"id": "a1", "firm_id": "F1", "account_type": "Asset",
-                          "account_subtype": "Trade Receivables", "account_name": "Debtors"})
-    db.seed("chart_of_accounts", {"id": "a2", "firm_id": "F1", "account_type": "Liability",
-                          "account_subtype": "Trade Payables", "account_name": "Creditors"})
-    db.seed("chart_of_accounts", {"id": "a3", "firm_id": "F1", "account_type": "Revenue",
-                          "account_subtype": None, "account_name": "Sales"})
-    db.seed("chart_of_accounts", {"id": "a4", "firm_id": "F1", "account_type": "Equity",
-                          "account_subtype": "Share Capital", "account_name": "Capital"})
+    assert line("Asset", "Trade Receivables") == "trade_receivables"
+    assert line("Liability", "Trade Payables") == "trade_payables"
+    assert line("Revenue", None) == "revenue_from_operations"
+    assert line("Equity", "Share Capital") == "share_capital"
     # The largest expense on a trading client's P&L. pl_bucket returns "Cost of
     # Materials Consumed" and the translation table's key said "Cost of
     # Materials", so this landed on other_current_assets — an expense on the
     # balance sheet — until ACC-10.
-    db.seed("chart_of_accounts", {"id": "a5", "firm_id": "F1", "account_type": "Expense",
-                          "account_subtype": "Raw Material", "account_name": "Purchases"})
+    assert line("Expense", "Raw Material") == "cost_of_materials_consumed"
     # A subtype no keyword matches, with the CA's own mapping beside it. Before
     # ACC-10 the mapping was read by nothing and this went to the catch-all.
-    db.seed("chart_of_accounts", {"id": "a6", "firm_id": "F1", "account_type": "Asset",
-                          "account_subtype": "Widget Deposits", "account_name": "Deposit",
-                          "schedule_iii_mapping": "Long-term Investments"})
+    assert line("Asset", "Widget Deposits", "Long-term Investments") == \
+        "long_term_investments"
+
+    for got in (line("Asset", "Trade Receivables"),
+                line("Liability", "Trade Payables"),
+                line("Revenue", None),
+                line("Expense", "Raw Material"),
+                line("Asset", "Widget Deposits", "Long-term Investments")):
+        assert got != "other_current_assets", got
+
+
+def test_the_defaults_endpoint_writes_nothing(monkeypatch):
+    """It used to INSERT a row per account in the firm's chart of accounts, on
+    a GET guarded `("year_end", "read")`.
+
+    Two things were wrong. A read-level action wrote. And it froze a DERIVED
+    answer: `schedule_line_for_account` is a pure function of the account, the
+    rows were written once and never re-derived, and a stored row outranks the
+    derivation — so the first CA to open this screen would have permanently
+    detached the year-end statements from their own /accounting/schedule-iii
+    decisions, for every account existing at that moment and no other."""
+    import routers.year_end_mappings as m
+    import core.supabase_client as sc
+
+    monkeypatch.setattr(m, "_USE_MOCK", False)
+    db = FakeDB()
+    monkeypatch.setattr(sc, "get_supabase", lambda: db)
+
+    db.seed("chart_of_accounts", {"id": "a1", "firm_id": "F1", "account_type": "Asset",
+                                  "account_subtype": "Trade Receivables",
+                                  "account_name": "Debtors"})
+    db.seed("chart_of_accounts", {"id": "a2", "firm_id": "F1", "account_type": "Revenue",
+                                  "account_subtype": None, "account_name": "Sales"})
 
     resp = m.get_default_mappings(PARTNER_F1)
     assert resp["success"] is True
-
-    mappings = {r["account_id"]: r["schedule_line"] for r in db.rows("account_group_mappings")}
-    assert mappings["a1"] == "trade_receivables"
-    assert mappings["a2"] == "trade_payables"
-    assert mappings["a3"] == "revenue_from_operations"
-    assert mappings["a4"] == "share_capital"
-    assert mappings["a5"] == "cost_of_materials_consumed"
-    assert mappings["a6"] == "long_term_investments"
-    # None of these are the old broken catch-all.
-    for aid in ("a1", "a2", "a3", "a5", "a6"):
-        assert mappings[aid] != "other_current_assets", aid
+    assert resp["data"]["firm_has_mappings"] is False
+    assert resp["data"]["existing_count"] == 0
+    assert db.rows("account_group_mappings") == [], (
+        "the defaults GET wrote mapping rows — it froze the derived "
+        "classification, and a later change to an account's Schedule III "
+        "mapping would then be ignored by the year-end statements forever")
 
 
 # =============================================================================

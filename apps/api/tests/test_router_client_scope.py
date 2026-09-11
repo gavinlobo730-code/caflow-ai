@@ -1176,8 +1176,11 @@ EXEMPT: dict[str, str] = {
     "/api/year-end/mappings/bulk":
         "same table, the bulk-upsert variant.",
     "/api/year-end/mappings/defaults":
-        "same table — default mapping suggestions plus firm-level "
-        "auto-initialization from the firm's own chart of accounts.",
+        "same table — the per-account_type default suggestions, read-only. "
+        "It used to auto-initialize the whole firm's mappings from its chart "
+        "of accounts on a GET; that write is gone, because the classification "
+        "is derived on every read now and freezing it detached the year-end "
+        "statements from the CA's own Schedule III decisions.",
     "/api/clients":
         "shared by GET list_clients and POST create_client. create_client "
         "makes a brand-new client — there is no existing client_id to check "

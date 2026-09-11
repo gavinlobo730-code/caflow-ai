@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
+from domain.reporting.year_end_lines import schedule_line_for_account
 # M2 audit finding: every endpoint below resolved its engagement by firm_id
 # alone (_get_engagement, live mode) or not at all (_mock_engagement_meta,
 # mock mode — checked existence only, not even firm_id); list_versions and
@@ -364,7 +365,7 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
     fy_start      = eng["fy_start"]
     fy_end        = eng["fy_end"]
 
-    # Map schedule_type to schedule_line codes from account_group_mappings
+    # Which schedule_line codes each schedule tab is made of.
     _schedule_to_lines = {
         "cash_bank":   ["cash_and_bank"],
         "receivables": ["trade_receivables", "short_term_loans_and_advances"],
@@ -377,27 +378,54 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
 
     target_lines = _schedule_to_lines.get(schedule_type, [])
 
-    mappings_res = (
-        db.table("account_group_mappings")
-        .select("account_id, schedule_line")
+    # WHICH LEDGERS BELONG ON THIS SCHEDULE IS DERIVED FROM THE ACCOUNT, and a
+    # row in account_group_mappings overrides it. This used to read that table
+    # and nothing else, and the table holds ZERO rows in production — it is
+    # written only by a GET on routers/year_end_mappings that no screen has
+    # ever called — so all seven tabs were empty for every client, forever.
+    # The CA's own `schedule_iii_mapping`, recorded on 50 accounts, was sitting
+    # right there unread.
+    #
+    # THIS CLIENT'S ACCOUNTS AND THE FIRM'S OWN, and no other client's. The
+    # mappings table is firm-scoped with no client column, so the old query
+    # could only ever have been firm-wide; deriving from chart_of_accounts
+    # makes the client filter both possible and necessary, or one client's
+    # schedule would list another's ledger names at nil.
+    accounts_res = (
+        db.table("chart_of_accounts")
+        .select("id, account_name, account_code, account_type, account_subtype, "
+                "schedule_iii_mapping")
         .eq("firm_id", firm_id)
-        .in_("schedule_line", target_lines)
+        .or_(f"client_id.eq.{client_id},client_id.is.null")
         .execute()
     )
-    account_ids = [m["account_id"] for m in (mappings_res.data or [])]
+    client_accounts = accounts_res.data or []
+
+    overrides = {
+        m["account_id"]: m["schedule_line"]
+        for m in (
+            db.table("account_group_mappings")
+            .select("account_id, schedule_line")
+            .eq("firm_id", firm_id)
+            .execute()
+            .data or []
+        )
+    }
+
+    accts_map = {}
+    account_ids = []
+    for acct in client_accounts:
+        line = overrides.get(acct["id"]) or schedule_line_for_account(
+            acct.get("account_type"), acct.get("account_subtype"),
+            acct.get("schedule_iii_mapping"))
+        if line in target_lines:
+            account_ids.append(acct["id"])
+            accts_map[acct["id"]] = acct
 
     line_items = []
     total_paise = 0  # integer paise — never float
 
     if account_ids:
-        accts_res = (
-            db.table("accounts")
-            .select("id, account_name, account_code, account_type")
-            .in_("id", account_ids)
-            .execute()
-        )
-        accts_map = {a["id"]: a for a in (accts_res.data or [])}
-
         # THE BALANCE AS AT YEAR END, NOT THE YEAR'S MOVEMENT (FA-09).
         #
         # This used to window journal_lines on
@@ -454,23 +482,20 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
         "schedule_type":  schedule_type,
         "line_items":     line_items,
         "total_paise":    total_paise,     # integer paise — never float
-        # NOTHING IS MAPPED, AND AN EMPTY SCHEDULE MUST NOT READ AS A NIL ONE.
+        # NO LEDGER CLASSIFIES HERE, AND AN EMPTY SCHEDULE MUST NOT READ AS A
+        # NIL ONE. An empty `line_items` with no explanation is a claim — "this
+        # client has no fixed assets" — and the endpoint cannot tell that apart
+        # from a chart of accounts that has no such ledger yet. It says which.
         #
-        # `account_group_mappings` is what says which ledgers belong on which
-        # schedule, and it has a full CRUD API — GET/POST/PUT bulk/defaults on
-        # routers/year_end_mappings.py — that NO SCREEN CALLS. Measured on
-        # production: the table holds ZERO rows, so every schedule this endpoint
-        # can return is empty for every client.
-        #
-        # An empty `line_items` with no explanation is a claim: "this client has
-        # no fixed assets". This says which it is. Named rather than raised,
-        # because a genuinely empty schedule is a legitimate answer and the
-        # endpoint cannot tell the two apart from the data alone — only from
-        # whether anything was mapped at all.
+        # The sentence changed with the derivation above. It used to blame
+        # account group mappings, which was true while they were the only
+        # source and is not now: the classification comes from the account's
+        # own type, subtype and Schedule III mapping, so an empty schedule
+        # means no ledger in this client's chart of accounts classifies to it.
         "gaps": ([] if account_ids else [
-            f"No ledger is mapped to the {schedule_type.replace('_', ' ')} "
-            f"schedule, so this is empty because nothing has been assigned to "
-            f"it — not because the client has none. Account group mappings are "
-            f"what assign them, and this firm has none recorded."
+            f"No ledger in this client's chart of accounts classifies to the "
+            f"{schedule_type.replace('_', ' ')} schedule, so this is empty "
+            f"because nothing belongs to it — not because the balances are "
+            f"nil. Check the account's type and its Schedule III mapping."
         ]),
     }

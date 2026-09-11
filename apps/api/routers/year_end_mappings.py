@@ -1,12 +1,23 @@
 """
 Year End Account Group Mappings router — Phase 6.
-Maps Chart of Accounts → Schedule III line codes for financial statement generation.
 Reference: Companies Act 2013, Schedule III.
 
-Default mappings are auto-initialized per account_type when none exist for a firm.
+A ROW HERE IS AN OVERRIDE. An account's Schedule III line is DERIVED from the
+account itself — its type, its subtype and the CA's own `schedule_iii_mapping`
+— by domain/reporting/year_end_lines.schedule_line_for_account, on every read.
+A row in `account_group_mappings` displaces that derived answer for one
+account, and exists only where a human has explicitly POSTed one.
+
+It did not work that way until 2026-09-11, and the consequence was severe: the
+year-end statements read this table and NOTHING else, sending every account it
+did not find to `other_current_assets`. The table holds zero rows in
+production, so a whole balanced ledger landed on one line and both sides of the
+Balance Sheet came to nil — with the `total_assets == total_equity_and_
+liabilities` check passing on 0 == 0. See
+tests/test_the_year_end_statements_use_the_chart_of_accounts.py.
+
 All monetary values: integer paise (BIGINT). Never float.
 """
-import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -18,22 +29,29 @@ from pydantic import BaseModel
 from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
-from services.year_end_financial_service import BS_EQUITY_LIABILITY_LINES, BS_ASSET_LINES
-from domain.reporting.schedule_iii import bs_bucket, classify, pl_bucket
+from domain.reporting.year_end_lines import (
+    CAPTION_TO_SCHEDULE_LINE,
+    DEFAULT_ACCOUNT_TYPE_MAP,
+    LINE_NORMAL_BALANCE,
+    schedule_line_for_account,
+    statement_type_for,
+)
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
-_logger = logging.getLogger("caflow.year_end_mappings")
 
 router = APIRouter(prefix="/year-end", tags=["year-end-mappings"])
 
-_BS_LINES = set(BS_EQUITY_LIABILITY_LINES) | set(BS_ASSET_LINES)
-
-
-def _statement_type_for(schedule_line: str) -> str:
-    """Balance Sheet vs P&L, per the SAME classification
-    services.year_end_financial_service uses to build the statements
-    themselves — single source of truth for the Schedule III line taxonomy."""
-    return "balance_sheet" if schedule_line in _BS_LINES else "profit_loss"
+# THE TAXONOMY AND THE CLASSIFIER NOW LIVE IN domain/reporting/year_end_lines.
+# They were defined here, in a ROUTER, while the two modules that most needed
+# them — the financial-statement service and the schedules endpoint — read a
+# cache of this function's answer instead and got zeros when it was empty.
+# The private aliases below are kept because they are what this module's
+# tests address; they are the same objects, not copies.
+_statement_type_for       = statement_type_for
+_schedule_line_for_account = schedule_line_for_account
+_CAPTION_TO_SCHEDULE_LINE = CAPTION_TO_SCHEDULE_LINE
+_DEFAULT_ACCOUNT_TYPE_MAP = DEFAULT_ACCOUNT_TYPE_MAP
+_LINE_NORMAL_BALANCE      = LINE_NORMAL_BALANCE
 
 
 def _account_name(db, account_id: str) -> Optional[str]:
@@ -45,157 +63,6 @@ def _account_name(db, account_id: str) -> Optional[str]:
         .eq("id", account_id).maybe_single().execute().data
     )
     return (row or {}).get("account_name")
-
-# ── Default mapping rules ─────────────────────────────────────────────────────
-# account_type → schedule_line
-# Companies Act 2013, Schedule III
-#
-# task #240 fix: this used to be keyed on invented lowercase categories
-# ("bank", "receivable", "fixed_asset", "tax_asset", ...) that never matched
-# chart_of_accounts.account_type's real CHECK-constrained enum (migration
-# 003: 'Asset', 'Liability', 'Equity', 'Revenue', 'Expense' -- see the
-# `accounts` view, migration 016, which is a plain passthrough of
-# chart_of_accounts). Only "equity"/"expense" happened to coincide after
-# lowercasing; every Asset/Liability/Revenue account (i.e. most of a real
-# Chart of Accounts) silently fell through get_default_mappings()'s
-# `.get(acct_type, "other_current_assets")` fallback -- misclassifying
-# receivables, payables, cash, fixed assets and ALL revenue onto a single
-# generic Balance Sheet line, corrupting the auto-initialized Schedule III
-# mapping that services.year_end_financial_service.generate_financial_statements
-# relies on as its single source of truth for account_group_mappings.
-#
-# Fix: classify by the REAL (account_type, account_subtype) pair using the
-# SAME bucket rules as the reporting engine's Schedule III grouping
-# (domain.reporting.schedule_iii.bs_bucket/pl_bucket -- already the single
-# source of truth for this taxonomy elsewhere in the codebase). This map is
-# now only the coarse per-account_type fallback used when a subtype-level
-# bucket can't be determined (e.g. no account_subtype set).
-_DEFAULT_ACCOUNT_TYPE_MAP = {
-    "asset":     "other_current_assets",
-    "liability": "other_current_liabilities",
-    "equity":    "reserves_and_surplus",
-    "revenue":   "revenue_from_operations",
-    "expense":   "other_expenses",
-}
-
-# Schedule III statutory caption (as returned by domain.reporting.schedule_iii's
-# bs_bucket/pl_bucket) → year-end schedule_line code (the snake_case taxonomy
-# services.year_end_financial_service.BS_EQUITY_LIABILITY_LINES/BS_ASSET_LINES/
-# PL_INCOME_LINES/PL_EXPENSE_LINES actually use).
-_CAPTION_TO_SCHEDULE_LINE = {
-    "Share Capital":               "share_capital",
-    "Reserves & Surplus":          "reserves_and_surplus",
-    "Deferred Tax Liability":      "deferred_tax_liabilities",
-    "Trade Payables":              "trade_payables",
-    "Short-term Borrowings":       "short_term_borrowings",
-    "Long-term Borrowings":        "long_term_borrowings",
-    "Other Current Liabilities":   "other_current_liabilities",
-    "Intangible Fixed Assets":     "intangible_assets",
-    "Tangible Fixed Assets":       "tangible_assets",
-    "Long-term Investments":       "long_term_investments",
-    "Inventories":                 "inventories",
-    "Trade Receivables":           "trade_receivables",
-    "Cash & Cash Equivalents":     "cash_and_bank",
-    "Short-term Loans & Advances": "short_term_loans_and_advances",
-    "Other Current Assets":        "other_current_assets",
-    "Revenue from Operations":     "revenue_from_operations",
-    "Other Income":                "other_income",
-    # "Cost of Materials Consumed", spelled the way pl_bucket returns it. The
-    # key here read "Cost of Materials" from the day it was written, which
-    # pl_bucket has never returned — so every cost-of-materials account fell
-    # through `.get(caption, "other_current_assets")` and was classified as a
-    # CURRENT ASSET in the year-end financial statements. On a trading or
-    # manufacturing client that is the single largest expense on the P&L:
-    # profit overstated by the whole of it, and a phantom asset of the same
-    # amount on the balance sheet. The vocabulary in domain/reporting/
-    # schedule_iii.py and the totality test below are what stop it recurring.
-    "Cost of Materials Consumed":  "cost_of_materials_consumed",
-    "Employee Benefits Expense":    "employee_benefit_expense",
-    "Finance Costs":               "finance_costs",
-    "Depreciation & Amortisation": "depreciation_and_amortisation",
-    # Schedule III Part II item VII — struck AFTER profit before tax, so it is
-    # NOT an operating expense. Mapping it to other_expenses subtracted a real
-    # tax provision inside PBT and then charged tax on the reduced figure
-    # again.
-    "Tax Expense":                 "current_tax",
-    "Current Tax":                 "current_tax",
-    "Deferred Tax":                "deferred_tax",
-    "Other Expenses":              "other_expenses",
-}
-
-
-def _schedule_line_for_account(account_type: str, account_subtype: Optional[str],
-                               schedule_iii_mapping: Optional[str] = None) -> str:
-    """Classify an account into a year-end schedule_line using the SAME
-    Schedule III bucket rules as the reporting engine (single source of
-    truth for the statutory caption taxonomy), keyed on the REAL
-    chart_of_accounts.account_type enum, not an invented one.
-
-    The CA's own `schedule_iii_mapping` outranks the subtype scan (ACC-10), so
-    the year-end statements and the live Balance Sheet classify an account the
-    same way. They were already meant to share this taxonomy; without the
-    mapping they shared only half of it."""
-    typ = (account_type or "").strip()
-    caption, _basis = classify(typ, account_subtype, schedule_iii_mapping)
-    if caption:
-        line = _CAPTION_TO_SCHEDULE_LINE.get(caption)
-        if line is not None:
-            return line
-        # A caption this table does not know. The old fallback here was the
-        # literal "other_current_assets", which put an unmapped EXPENSE on the
-        # balance sheet — the worst available answer, and how the cost-of-
-        # materials defect went unseen. Falling back BY ACCOUNT TYPE at least
-        # keeps an expense an expense. test_every_caption_has_a_schedule_line
-        # asserts this branch is unreachable; it survives as the safe landing
-        # if somebody adds a caption and forgets the row.
-        _logger.error(
-            "year-end mapping: Schedule III caption %r has no schedule_line — "
-            "falling back to the account type. Add it to "
-            "_CAPTION_TO_SCHEDULE_LINE.", caption)
-    return _DEFAULT_ACCOUNT_TYPE_MAP.get(typ.lower(), "other_current_assets")
-
-# Normal balance per schedule line (debit or credit)
-_LINE_NORMAL_BALANCE = {
-    # Assets / Expenses → debit normal
-    "tangible_assets":               "debit",
-    "intangible_assets":             "debit",
-    "capital_wip":                   "debit",
-    "long_term_investments":         "debit",
-    "deferred_tax_assets":           "debit",
-    "long_term_loans_and_advances":  "debit",
-    "other_non_current_assets":      "debit",
-    "current_investments":           "debit",
-    "inventories":                   "debit",
-    "trade_receivables":             "debit",
-    "cash_and_bank":                 "debit",
-    "short_term_loans_and_advances": "debit",
-    "other_current_assets":          "debit",
-    "cost_of_materials_consumed":    "debit",
-    "purchases_of_stock_in_trade":   "debit",
-    "changes_in_inventories":        "debit",
-    "employee_benefit_expense":      "debit",
-    "finance_costs":                 "debit",
-    "depreciation_and_amortisation": "debit",
-    "other_expenses":                "debit",
-    # Schedule III Part II item VII. Debit-normal like any expense; a credit
-    # balance here is a tax WRITE-BACK, which is legitimate and must keep its
-    # sign rather than be floored away.
-    "current_tax":                   "debit",
-    "deferred_tax":                  "debit",
-    # Liabilities / Income / Equity → credit normal
-    "share_capital":                 "credit",
-    "reserves_and_surplus":          "credit",
-    "long_term_borrowings":          "credit",
-    "deferred_tax_liabilities":      "credit",
-    "other_long_term_liabilities":   "credit",
-    "long_term_provisions":          "credit",
-    "short_term_borrowings":         "credit",
-    "trade_payables":                "credit",
-    "other_current_liabilities":     "credit",
-    "short_term_provisions":         "credit",
-    "revenue_from_operations":       "credit",
-    "other_income":                  "credit",
-}
 
 # Mock store: firm_id → list of mapping records
 _MOCK_MAPPINGS: dict[str, list[dict]] = {}
@@ -437,63 +304,31 @@ def get_default_mappings(
     )
     existing_count = existing_count_res.count or 0
 
-    if existing_count == 0:
-        # Auto-initialize mappings from the firm's chart of accounts
-        # ── chart_of_accounts, NOT the `accounts` VIEW ──────────────────────
-        # `public.accounts` is `SELECT * FROM chart_of_accounts`, created by
-        # migration 016. Postgres EXPANDS a view's `*` at creation time and
-        # freezes it, so the view carries the columns chart_of_accounts had in
-        # migration 016 and nothing added since — `schedule_iii_mapping` came in
-        # with migration 057 and is simply not there. Reading the view would
-        # have silently returned rows with no mapping on them, which is the
-        # defect ACC-10 is about, arriving by a different route.
-        #
-        # The view is `security_invoker = true`, so RLS applies identically
-        # either way, and this query already filters on firm_id. Nothing else
-        # changes.
-        accounts_res = (
-            db.table("chart_of_accounts")
-            # schedule_iii_mapping is the CA's own decision about where this
-            # account presents (ACC-10). Auto-initialising the year-end mappings
-            # without it would seed them from the subtype scan alone and then
-            # ignore the mapping forever, because these rows are written once
-            # and never re-derived.
-            .select("id, account_type, account_subtype, account_name, schedule_iii_mapping")
-            .eq("firm_id", firm_id)
-            .execute()
-        )
-        accounts = accounts_res.data or []
-        now = datetime.now(timezone.utc).isoformat()
-
-        auto_records = []
-        for acct in accounts:
-            acct_type    = (acct.get("account_type") or "").lower()
-            schedule_line = _schedule_line_for_account(
-                acct.get("account_type"), acct.get("account_subtype"),
-                acct.get("schedule_iii_mapping"))
-            auto_records.append({
-                "id":             str(uuid.uuid4()),
-                "firm_id":        firm_id,
-                "account_id":     acct["id"],
-                "account_name":   acct.get("account_name"),
-                "schedule_line":  schedule_line,
-                "account_type":   acct_type,
-                "normal_balance": _LINE_NORMAL_BALANCE.get(schedule_line, "debit"),
-                "statement_type": _statement_type_for(schedule_line),
-                "created_at":     now,
-                "updated_at":     now,
-            })
-
-        if auto_records:
-            db.table("account_group_mappings").insert(auto_records).execute()
-            existing_count = len(auto_records)
-            log_event(
-                firm_id, "account_group_mapping", firm_id, "auto_initialize",
-                actor_id=current_user.get("auth_user_id"),
-                actor_email=current_user.get("email"),
-                new_data={"count": len(auto_records)},
-            )
-
+    # THE AUTO-INITIALISATION IS GONE, AND ITS REMOVAL IS THE POINT.
+    #
+    # This GET used to write: finding no rows, it read the firm's whole chart
+    # of accounts, classified every account, and INSERTED the answers. Two
+    # things were wrong with that, and the second is why removing it matters
+    # more now than it did before.
+    #
+    #   * A GET that writes. This endpoint is guarded `("year_end", "read")`,
+    #     so a Reviewer with read-only rights could seed a firm's entire
+    #     Schedule III classification by opening a screen.
+    #
+    #   * IT FROZE A DERIVED ANSWER. `schedule_line_for_account` is a pure
+    #     function of the account — its type, subtype and the CA's own
+    #     `schedule_iii_mapping` — and these rows are written once and never
+    #     re-derived. So the moment they existed, a CA changing an account's
+    #     mapping on /accounting/schedule-iii would see the year-end statements
+    #     ignore the change forever, because the frozen row outranks it. That
+    #     is ACC-10 coming back by a different door, and it would have been
+    #     invisible: the new accounts added afterwards WOULD follow the CA's
+    #     decision, so half the chart would obey it and half would not.
+    #
+    # The statements and schedules now classify from the chart of accounts on
+    # every read (see domain/reporting/year_end_lines), so there is nothing for
+    # a cache to be a cache OF. A row in this table is what a human explicitly
+    # POSTed — a deliberate override of the derived line — and only that.
     return api_response(True, {
         "defaults":          defaults,
         "firm_has_mappings": existing_count > 0,

@@ -17,19 +17,27 @@ the screen worse rather than better:
      live branch always answers the same one. No caller could be written
      against both.
 
-  4. NOTHING IS MAPPED. `account_group_mappings` decides which ledgers belong
+  4. NOTHING IS MAPPED. `account_group_mappings` decided which ledgers belong
      on which schedule, and MEASURED ON PRODUCTION IT HOLDS ZERO ROWS — its
      full CRUD API (routers/year_end_mappings.py) is called by no screen. So
-     every schedule is empty for every client, and an empty `line_items` with
+     every schedule was empty for every client, and an empty `line_items` with
      no explanation is the claim "this client has no fixed assets".
+
+     NOW FIXED, and not by building a second mapping screen. The classification
+     is DERIVED from the account — type, subtype and the CA's own
+     `schedule_iii_mapping`, which production has on 50 accounts — by the same
+     `schedule_line_for_account` the mappings router uses; a stored mapping row
+     overrides it where a firm has recorded one. `/accounting/schedule-iii` is
+     already the screen where a CA records that decision, and a second one in a
+     second vocabulary is the mistake this codebase keeps making.
 
   5. NO OPENING BALANCE. The figure was `debit - credit` over
      `entry_date BETWEEN fy_start AND fy_end` — the year's MOVEMENT, not the
      balance. A client carrying ₹5,00,000 of receivables into the year and
      billing ₹1,00,000 in it was shown ₹1,00,000.
 
-(4) is the one that cannot be fixed here: a mapping screen is a build. What is
-fixed is that the endpoint SAYS SO instead of answering an empty list silently.
+All five are fixed. (4) also had a far worse twin in the statement service —
+see test_the_year_end_statements_use_the_chart_of_accounts.py.
 """
 from __future__ import annotations
 
@@ -160,8 +168,8 @@ def test_the_page_shows_the_server_s_gaps_on_an_empty_schedule():
 # ── (4) nothing is mapped, and it says so ────────────────────────────────────
 
 def test_an_unmapped_schedule_is_reported_rather_than_returned_empty():
-    """`account_group_mappings` holds ZERO rows in production and no screen
-    writes it, so this is every schedule for every client today."""
+    """A client whose chart of accounts holds no ledger for this schedule. The
+    answer is still empty — correctly — but it says which kind of empty."""
     from routers.year_end_statements import _fetch_schedule_from_db
 
     class _Empty:
@@ -169,6 +177,7 @@ def test_an_unmapped_schedule_is_reported_rather_than_returned_empty():
             return self
         def select(self, *a, **k): return self
         def eq(self, *a, **k): return self
+        def or_(self, *a, **k): return self
         def in_(self, *a, **k): return self
         def lte(self, *a, **k): return self
         def execute(self): return type("R", (), {"data": []})()
@@ -180,8 +189,9 @@ def test_an_unmapped_schedule_is_reported_rather_than_returned_empty():
     assert out["line_items"] == []
     assert out["gaps"], (
         "an empty schedule came back with no explanation — which reads as "
-        "'this client has no fixed assets' rather than 'nothing is mapped'")
-    assert "mapped" in out["gaps"][0]
+        "'this client has no fixed assets' rather than 'no ledger belongs "
+        "here'")
+    assert "classifies" in out["gaps"][0]
 
 
 # ── (5) the balance, not the movement ────────────────────────────────────────
@@ -205,6 +215,7 @@ def test_the_figure_is_the_closing_balance_not_the_year_s_movement():
             return self
         def select(self, *a, **k): return self
         def eq(self, *a, **k): return self
+        def or_(self, *a, **k): return self
         def lte(self, *a, **k): return self
         def gte(self, *a, **k):
             if self._t == "account_period_balances":
@@ -212,13 +223,15 @@ def test_the_figure_is_the_closing_balance_not_the_year_s_movement():
             return self
         def in_(self, *a, **k): return self
         def execute(self):
-            if self._t == "account_group_mappings":
-                return type("R", (), {"data": [
-                    {"account_id": "A1", "schedule_line": "trade_receivables"}]})()
-            if self._t == "accounts":
+            # NO account_group_mappings ROW — production holds none, so this is
+            # the real case. The account classifies to trade_receivables off
+            # its own subtype.
+            if self._t == "chart_of_accounts":
                 return type("R", (), {"data": [
                     {"id": "A1", "account_name": "Trade Receivables",
-                     "account_code": "1200", "account_type": "Asset"}]})()
+                     "account_code": "1200", "account_type": "Asset",
+                     "account_subtype": "Trade Receivables",
+                     "schedule_iii_mapping": None}]})()
             if self._t == "account_period_balances":
                 return type("R", (), {"data": [
                     # Brought forward — a month BEFORE this financial year.
@@ -266,3 +279,139 @@ def test_the_balances_are_read_in_one_query_not_one_per_account():
         "account_period_balances is what a balance comes from (migrations "
         "227/228), and per-row reads are what the reporting rule forbids")
     assert body.count('table("account_period_balances")') == 1
+
+
+# ── the derivation, and the tenancy it made necessary ────────────────────────
+
+def test_the_schedule_lists_only_this_client_s_ledgers():
+    """`account_group_mappings` is firm-scoped with NO client column, so while
+    it was the only source this query could only ever be firm-wide. Deriving
+    from `chart_of_accounts` makes a client filter both possible and REQUIRED —
+    without it, one client's Cash & Bank schedule lists every other client's
+    bank accounts by name, at nil.
+
+    A firm-level account (client_id IS NULL) belongs on every client's
+    schedule and is the reason the filter is an OR rather than an equality."""
+    from routers.year_end_statements import _fetch_schedule_from_db
+
+    class _DB:
+        filters: list = []
+
+        def table(self, name):
+            self._t = name
+            return self
+        def select(self, *a, **k): return self
+        def eq(self, *a, **k):
+            if self._t == "chart_of_accounts":
+                _DB.filters.append(("eq",) + a)
+            return self
+        def or_(self, *a, **k):
+            if self._t == "chart_of_accounts":
+                _DB.filters.append(("or_",) + a)
+            return self
+        def in_(self, *a, **k): return self
+        def lte(self, *a, **k): return self
+        def execute(self):
+            if self._t == "chart_of_accounts":
+                return type("R", (), {"data": [
+                    {"id": "A1", "account_name": "HDFC Current",
+                     "account_code": "1100", "account_type": "Asset",
+                     "account_subtype": "Bank Account",
+                     "schedule_iii_mapping": None}]})()
+            return type("R", (), {"data": []})()
+
+    eng = {"id": "ENG1", "firm_id": "F1", "client_id": "C1",
+           "financial_year": "2026-27", "fy_start": "2026-04-01",
+           "fy_end": "2027-03-31"}
+    _DB.filters = []
+    out = _fetch_schedule_from_db(_DB(), eng, "cash_bank")
+
+    # The ledger classified without any mapping row at all.
+    assert [i["description"] for i in out["line_items"]] == ["HDFC Current"]
+
+    kinds = {f[0] for f in _DB.filters}
+    assert "or_" in kinds, (
+        "the chart-of-accounts read carries no client filter, so this "
+        "client's schedule lists every other client's ledgers in the firm")
+    clause = next(f[1] for f in _DB.filters if f[0] == "or_")
+    assert "client_id.eq.C1" in clause and "client_id.is.null" in clause, clause
+    assert ("eq", "firm_id", "F1") in _DB.filters, _DB.filters
+
+
+def test_a_stored_mapping_row_overrides_the_derived_line():
+    """The mappings table keeps meaning something: where a firm HAS recorded a
+    decision it wins. Otherwise this fix would discard the very data the
+    mappings API exists to hold."""
+    from routers.year_end_statements import _fetch_schedule_from_db
+
+    class _DB:
+        def table(self, name):
+            self._t = name
+            return self
+        def select(self, *a, **k): return self
+        def eq(self, *a, **k): return self
+        def or_(self, *a, **k): return self
+        def in_(self, *a, **k): return self
+        def lte(self, *a, **k): return self
+        def execute(self):
+            if self._t == "chart_of_accounts":
+                return type("R", (), {"data": [
+                    # Its SUBTYPE says cash; the firm has said otherwise.
+                    {"id": "A1", "account_name": "Escrow", "account_code": "1150",
+                     "account_type": "Asset", "account_subtype": "Bank Account",
+                     "schedule_iii_mapping": None}]})()
+            if self._t == "account_group_mappings":
+                return type("R", (), {"data": [
+                    {"account_id": "A1",
+                     "schedule_line": "short_term_loans_and_advances"}]})()
+            if self._t == "account_period_balances":
+                return type("R", (), {"data": [
+                    {"account_id": "A1", "debit_paise": 7_000_00,
+                     "credit_paise": 0}]})()
+            return type("R", (), {"data": []})()
+
+    eng = {"id": "ENG1", "firm_id": "F1", "client_id": "C1",
+           "financial_year": "2026-27", "fy_start": "2026-04-01",
+           "fy_end": "2027-03-31"}
+    cash = _fetch_schedule_from_db(_DB(), eng, "cash_bank")
+    assert cash["line_items"] == [], (
+        "the stored mapping was ignored and the subtype scan put this account "
+        "back on Cash & Bank")
+    recv = _fetch_schedule_from_db(_DB(), eng, "receivables")
+    assert recv["total_paise"] == 7_000_00, recv
+
+
+def test_the_ca_s_schedule_iii_mapping_decides_the_schedule():
+    """ACC-10 reaching the year-end tabs. The CA marks an account on
+    /accounting/schedule-iii and that decision must move it here too — it is
+    the same taxonomy, and production holds it on 50 accounts."""
+    from routers.year_end_statements import _fetch_schedule_from_db
+
+    class _DB:
+        def table(self, name):
+            self._t = name
+            return self
+        def select(self, *a, **k): return self
+        def eq(self, *a, **k): return self
+        def or_(self, *a, **k): return self
+        def in_(self, *a, **k): return self
+        def lte(self, *a, **k): return self
+        def execute(self):
+            if self._t == "chart_of_accounts":
+                return type("R", (), {"data": [
+                    {"id": "A1", "account_name": "Plant & Machinery",
+                     "account_code": "1500", "account_type": "Asset",
+                     "account_subtype": "Miscellaneous",
+                     "schedule_iii_mapping": "Tangible Fixed Assets"}]})()
+            if self._t == "account_period_balances":
+                return type("R", (), {"data": [
+                    {"account_id": "A1", "debit_paise": 12_00_000_00,
+                     "credit_paise": 0}]})()
+            return type("R", (), {"data": []})()
+
+    eng = {"id": "ENG1", "firm_id": "F1", "client_id": "C1",
+           "financial_year": "2026-27", "fy_start": "2026-04-01",
+           "fy_end": "2027-03-31"}
+    out = _fetch_schedule_from_db(_DB(), eng, "fixed_assets")
+    assert out["total_paise"] == 12_00_000_00, out
+    assert out["gaps"] == []
