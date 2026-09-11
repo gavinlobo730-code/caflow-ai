@@ -654,11 +654,16 @@ communicated to the recipient, and **GSTR-2B is that communication**.
   `raw["book_invoices"]` did. A re-upload REPLACES, and an unparseable file
   persists NOTHING — a zero written and called reconciled is the false clean
   result this replaced.
-- **Two screens still exist.** `/gst/reconciliation` matches two uploaded files
-  in the browser and saves nothing; it carries a banner saying so and pointing
-  at the client GST tab's GSTR-2B Recon, which is the real one. Keeping or
-  deleting it is an owner decision — see
-  `docs/audits/2026-09-08-what-is-left.md` §6b.
+- **One screen, since 11-09-2026.** There were two. `/gst/reconciliation`
+  matched two uploaded files in the browser, saved nothing, and forgot the
+  answer on refresh; it carried a banner disowning itself, which is a warning
+  label rather than a fix. **Deleted on the owner's decision.** The real one is
+  the client GST tab's GSTR-2B Recon, and it is per-client by nature — the
+  firm-level GST page cannot know whose books to reconcile, so its link was
+  removed rather than repointed.
+  `apps/web/scripts/the-2b-reconciliation-reads-the-books.test.ts` now asserts
+  the file is absent and that nothing links to the route, so a second
+  implementation cannot reappear quietly.
 - **Not built:** invoice-wise Rule 36(4). The reconciliation now knows per
   document whether 2B allows the credit; `gstr3b_computer` still caps in
   aggregate.

@@ -230,15 +230,6 @@ test("a split leg that is not an amount is refused by its own name", () => {
     "and the modal must have words for it");
 });
 
-test("the GST reconciliation import reports an unreadable amount", () => {
-  // A zero in an ITC reconciliation is not a missing figure — it is a claim
-  // that no tax was charged (CGST s.16). Dropping the row is no better: that
-  // reads as "the supplier never filed it".
-  const src = code("app/gst/reconciliation/page.tsx");
-  assert.match(src, /is not an amount/,
-    "parseCsv must name the row it could not read rather than zeroing it");
-});
-
 test("a trial-balance cell that will not read blocks the import instead of posting zero", () => {
   // The import posts ONE balanced opening journal from these rows, so a
   // silently-zeroed cell either unbalances the entry — refused by the backend,

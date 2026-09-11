@@ -80,7 +80,6 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["gst"],
   ["gst","gstr1"],
   ["gst","gstr3b"],
-  ["gst","reconciliation"],
   ["health"],
   ["health",":client_id"],
   ["health","alerts"],

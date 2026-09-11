@@ -89,12 +89,18 @@ test('"not reconciled" and "supplier has not filed" are different words', () => 
   assert.match(src, /not reconciled/);
 });
 
-test("the browser-side reconciliation says what it is", () => {
-  // Two screens doing one job drift. Until the owner decides which to keep, a
-  // CA must not discover the difference by losing an evening to a refresh.
-  const src = code(OLD_SCREEN);
-  assert.match(src, /does not read your client&apos;s books, and it does not save anything/,
-    "the old screen must say plainly that it persists nothing");
-  assert.match(src, /GSTR-2B Recon/,
-    "and point at the one that does");
+test("the browser-side reconciliation is gone, and nothing links to it", () => {
+  // Two screens doing one job drift, and this one saved NOTHING: it matched two
+  // uploaded files in the browser and forgot the answer on refresh. It carried a
+  // banner disowning itself, which is a warning label rather than a fix — a CA
+  // could still lose an evening's reconciliation to a reload. Deleted on the
+  // owner's decision of 11 September 2026.
+  //
+  // The real one is on the client's GST tab and writes gstr2a_records, which is
+  // why it is per-client: the firm-level GST page cannot know whose books to
+  // reconcile, so the link is removed rather than repointed.
+  assert.equal(fs.existsSync(path.join(ROOT, OLD_SCREEN)), false,
+    `${OLD_SCREEN} was deleted; a reappearance is a second implementation`);
+  assert.doesNotMatch(code("app/gst/page.tsx"), /gst\/reconciliation/,
+    "and no screen may link to a route that no longer exists");
 });
