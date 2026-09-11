@@ -10,7 +10,10 @@
  * authority; this just stops the two from ever disagreeing.
  */
 
-import { computeLineGst } from "../money/gstLine.ts";
+import { bpsFromPercentInput } from "../money/rupeeInput.ts";
+import { applyDiscountsToLines, computeLineGst, taxablePaise,
+         quantityFromInput, ratePaiseFromRupees, splitLineGst,
+         gstRateBpsFromPercent } from "../money/gstLine.ts";
 
 /** GST rate slabs (%) offered in the invoice/credit-note line editors. */
 export const GST_RATES = [0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28];
@@ -101,6 +104,25 @@ export interface InvoiceLine {
   unit: string;
   /** service_catalogue pick for this line — mandatory on every line (migration 206). */
   serviceCatalogueId?: string | null;
+  /**
+   * A discount recorded in the invoice — CGST §15(3)(a) — as a PERCENTAGE, as
+   * typed. Excluded from the value of supply, so the GST is charged on the net.
+   *
+   * The editor offers a percentage per line because a trade discount comes off
+   * a price list; the API also accepts a flat `discount_paise` for an importer
+   * or an integration, which is why the payload carries both shapes.
+   *
+   * Absent on a credit or debit note, which use this same type: §15(3)(b) — a
+   * discount AFTER the supply — needs a pre-supply agreement and the
+   * recipient's ITC reversal, and is the §34 note itself, not a field on it.
+   */
+  discountPercent?: string;
+}
+
+/** A document-level discount, already resolved to the units the server takes. */
+export interface DocumentDiscount {
+  percentBps?: number | null;
+  amountPaise?: number | null;
 }
 
 /** Server line shape (from GET /api/sales-invoices/{id}). */
@@ -120,6 +142,11 @@ export interface ServerInvoiceLine {
   /** Which service_catalogue preset (if any) this line was picked from — see
    * lib/invoices/lineItemPayload.ts's InvoiceLineInput.serviceCatalogueId. */
   service_catalogue_id?: string | null;
+  /** §15(3)(a), migration 364. `discount_paise` includes this line's pro-rata
+   *  share of any document-level discount; the percentage is only what was
+   *  typed on the line itself, which is why an edit rehydrates that one. */
+  discount_paise?: number | null;
+  discount_percent_bps?: number | null;
 }
 
 /** Full invoice detail (header + lines + accounting + customer embed). */
@@ -154,6 +181,9 @@ export interface InvoiceDetail {
   round_off_enabled?: boolean | null;
   round_off_paise?: number | null;
   taxable_amount_paise: number;
+  /** §15(3)(a) totals for the whole invoice, migration 364. */
+  discount_paise?: number | null;
+  discount_percent_bps?: number | null;
   total_gst_paise: number;
   cgst_paise: number;
   sgst_paise: number;
@@ -222,30 +252,86 @@ export const DELIVERY_STATUS_LABEL: Record<string, string> = {
  */
 export function computeGst(
   lines: InvoiceLine[],
-  isInterstate: boolean
+  isInterstate: boolean,
+  discount?: DocumentDiscount,
 ): {
   taxable_paise: number;
   cgst_paise: number;
   sgst_paise: number;
   igst_paise: number;
   total_paise: number;
+  /** Gross before any §15(3)(a) discount — taxable + discount, by construction. */
+  gross_paise: number;
+  discount_paise: number;
 } {
   let taxable_paise = 0;
   let cgst_paise = 0;
   let sgst_paise = 0;
   let igst_paise = 0;
+  let gross_paise = 0;
+  let discount_paise = 0;
 
-  for (const line of lines) {
+  // §15(3)(a): the discount is excluded from the VALUE of supply, so it comes
+  // off before the tax. Resolved for the whole document at once because a
+  // document-level discount is allocated pro-rata and a line cannot know its
+  // own share until every line's own discount is settled — the same reason,
+  // and the same module, as apps/api/routers/sales_invoices.py.
+  const gross = lines.map((l) =>
+    taxablePaise(quantityFromInput(l.qty), ratePaiseFromRupees(l.rate)));
+  const resolved = applyDiscountsToLines(
+    lines.map((l, i) => ({
+      gross_paise: gross[i],
+      discount_percent_bps: percentBpsOf(l.discountPercent),
+    })),
+    discount?.percentBps,
+    discount?.amountPaise,
+  );
+
+  lines.forEach((line, i) => {
+    gross_paise += gross[i];
+    if (resolved) {
+      // The discounted path. splitLineGst rather than computeLineGst, because
+      // the taxable value has already been settled above.
+      const r = resolved[i];
+      const h = splitLineGst(r.taxable_paise, gstRateBpsFromPercent(line.gst_rate), isInterstate);
+      discount_paise += r.discount_paise;
+      taxable_paise += r.taxable_paise;
+      cgst_paise += h.cgst_paise;
+      sgst_paise += h.sgst_paise;
+      igst_paise += h.igst_paise;
+      return;
+    }
+    // The server would refuse this discount (larger than the line, or than the
+    // bill). Preview the UNDISCOUNTED figures rather than an invented capped
+    // one: the editor's validation is what tells the CA, and a preview that
+    // quietly applied a different discount would be the drift this whole
+    // module exists to prevent.
     const g = computeLineGst(line, isInterstate);
     taxable_paise += g.taxable_paise;
     cgst_paise    += g.cgst_paise;
     sgst_paise    += g.sgst_paise;
     igst_paise    += g.igst_paise;
-  }
+  });
 
   const gst_paise = igst_paise + cgst_paise + sgst_paise;
   const total_paise = taxable_paise + gst_paise;
-  return { taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise };
+  return { taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise,
+           gross_paise, discount_paise };
+}
+
+/**
+ * A typed discount percentage → basis points, or null for "no discount".
+ *
+ * Delegates to lib/money/rupeeInput.bpsFromPercentInput, which is the one
+ * parser: "5" is 500 bps, "2.5" is 250, and anything that is not a number at
+ * all is refused rather than silently becoming 0. A blank cell means no
+ * discount, which is not the same as a 0% one — but both compute to nothing,
+ * so they are one value here.
+ */
+export function percentBpsOf(typed?: string | null): number | null {
+  if (typed === undefined || typed === null || typed.trim() === "") return null;
+  const bps = bpsFromPercentInput(typed.trim());
+  return bps === null ? null : bps;
 }
 
 // ── Indian state master (GST state codes) ────────────────────────────────────
@@ -278,6 +364,9 @@ export interface PreviewTotals {
   gst_paise: number;
   round_off_paise: number;
   grand_total_paise: number;
+  /** Gross before any §15(3)(a) discount. Absent on callers that predate it. */
+  gross_paise?: number;
+  discount_paise?: number;
 }
 
 /**
@@ -294,8 +383,9 @@ export function previewTotals(
   lines: InvoiceLine[],
   isInterstate: boolean,
   applyRoundOff: boolean = false,
+  discount?: DocumentDiscount,
 ): PreviewTotals {
-  const g = computeGst(lines, isInterstate);
+  const g = computeGst(lines, isInterstate, discount);
   const gst = g.cgst_paise + g.sgst_paise + g.igst_paise;
   const round_off = applyRoundOff ? previewRoundOffPaise(g.total_paise) : 0;
   return {
@@ -306,6 +396,8 @@ export function previewTotals(
     gst_paise: gst,
     round_off_paise: round_off,
     grand_total_paise: g.total_paise + round_off,
+    gross_paise: g.gross_paise,
+    discount_paise: g.discount_paise,
   };
 }
 

@@ -18,6 +18,67 @@ All amounts are integer paise.
 from __future__ import annotations
 
 
+# ── The vocabulary ────────────────────────────────────────────────────────────
+#
+# THE EXACT SET OF CAPTIONS bs_bucket AND pl_bucket CAN RETURN.
+#
+# It exists because a caption is a STRING that travels: the year-end statements
+# translate it into their own snake_case schedule lines, the P&L tab prints it,
+# and the ratio engine matches on it. A caption one of those does not know does
+# not fail — it falls through whatever default that caller has, silently.
+#
+# That is not hypothetical. `routers/year_end_mappings._CAPTION_TO_SCHEDULE_LINE`
+# carried the key "Cost of Materials" while pl_bucket has always returned "Cost
+# of Materials Consumed", and its fallback was `other_current_assets`. So on a
+# trading or manufacturing client the single largest expense on the P&L was
+# classified as a CURRENT ASSET in the year-end financial statements: profit
+# overstated by the whole cost of materials, and a phantom asset of the same
+# amount on the balance sheet. Nothing failed and nothing warned.
+#
+# So the set is declared once, the two functions are asserted to return only its
+# members, and every translation table is asserted TOTAL over it.
+BALANCE_SHEET_CAPTIONS = (
+    "Share Capital",
+    "Reserves & Surplus",
+    "Deferred Tax Liability",
+    "Trade Payables",
+    "Short Term Borrowings",
+    "Long Term Borrowings",
+    "Other Current Liabilities",
+    "Intangible Fixed Assets",
+    "Tangible Fixed Assets",
+    "Long Term Investments",
+    "Inventories",
+    "Trade Receivables",
+    "Cash & Cash Equivalents",
+    "Short Term Loans & Advances",
+    "Other Current Assets",
+)
+
+PROFIT_LOSS_CAPTIONS = (
+    "Revenue from Operations",
+    "Other Income",
+    "Cost of Materials Consumed",
+    "Employee Benefit Expense",
+    "Finance Costs",
+    "Depreciation & Amortisation",
+    "Tax Expense",
+    "Other Expenses",
+)
+
+CAPTIONS = frozenset(BALANCE_SHEET_CAPTIONS) | frozenset(PROFIT_LOSS_CAPTIONS)
+
+# Which captions a caller lands on when nothing more specific matched. Named,
+# because "the residual caption" is a real statutory concept — Schedule III has
+# an "Other" line in each section precisely so nothing is unpresented — and
+# because a report can then say HOW MANY balances reached it, which is the
+# difference between a classification and a shrug.
+RESIDUAL_CAPTIONS = frozenset({
+    "Other Current Assets", "Other Current Liabilities",
+    "Reserves & Surplus", "Other Expenses", "Revenue from Operations",
+})
+
+
 # ── Balance Sheet grouping — Companies Act 2013, Schedule III, Part I ──────────
 def bs_bucket(account_type: str, account_subtype: str | None) -> str | None:
     """Map an account's structured (type, subtype) to a Schedule III Balance

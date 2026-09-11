@@ -142,6 +142,135 @@ export function taxablePaise(quantity: number, ratePaise: number): number {
   return Number(product / pow10(scale));
 }
 
+/**
+ * A discount recorded in the invoice — CGST Act §15(3)(a).
+ *
+ * Mirrors `apps/api/domain/gst/discount.py` operation for operation, and is
+ * pinned to it by shared/gst-parity-vectors.json. Integer arithmetic in BigInt,
+ * because integer floor division is the one operation Python and JavaScript do
+ * identically with no precision setting to agree on.
+ *
+ * §15(3): "The value of the supply shall not include any discount which is
+ * given — (a) before or at the time of the supply if such discount has been
+ * duly recorded in the invoice". So the tax is charged on the NET, and the
+ * relief is conditional on the invoice showing the discount.
+ *
+ * §15(3)(b) — a discount given AFTER the supply — is the §34 credit-note path
+ * and is deliberately not reachable from here.
+ *
+ * Every rounding goes DOWN: a larger discount is a smaller taxable value and
+ * less tax, so flooring can only leave the taxable value a paise higher, which
+ * is the direction that cannot under-declare.
+ *
+ * Returns null when the discount exceeds the line — the value of a supply
+ * cannot be negative, and the server refuses it with a 422. The preview must
+ * refuse it too rather than showing a figure that will not save.
+ */
+export function discountPaise(
+  grossPaise: number,
+  percentBps?: number | null,
+  amountPaise?: number | null,
+): number | null {
+  if (!Number.isFinite(grossPaise) || grossPaise < 0) return null;
+  let out: number;
+  if (percentBps !== null && percentBps !== undefined) {
+    if (!Number.isFinite(percentBps) || percentBps < 0 || percentBps > 10000) return null;
+    out = Number(
+      floorDiv(BigInt(Math.trunc(grossPaise)) * BigInt(Math.trunc(percentBps)), BigInt(10000)),
+    );
+  } else if (amountPaise !== null && amountPaise !== undefined) {
+    if (!Number.isFinite(amountPaise)) return null;
+    out = Math.trunc(amountPaise);
+  } else {
+    return 0;
+  }
+  if (out < 0 || out > grossPaise) return null;
+  return out;
+}
+
+/**
+ * Split a document-level discount across lines pro-rata by `weights` (each
+ * line's value after its own discount), summing to EXACTLY `totalPaise`.
+ *
+ * Largest remainder, ties broken by position — the mirror of
+ * `discount.allocate`. A pro-rata split that loses a paise makes the invoice
+ * total differ from the figure the customer was quoted.
+ *
+ * Returns null where the server would refuse: a discount larger than the bill.
+ */
+export function allocateDiscount(totalPaise: number, weights: number[]): number[] | null {
+  if (totalPaise < 0) return null;
+  const n = weights.length;
+  if (n === 0 || totalPaise === 0) return new Array(n).fill(0);
+
+  const base = weights.reduce((a, b) => a + b, 0);
+  if (base <= 0) return new Array(n).fill(0);
+  if (totalPaise > base) return null;
+
+  const bBase = BigInt(base);
+  const bTotal = BigInt(Math.trunc(totalPaise));
+  const out: number[] = [];
+  const remainder: bigint[] = [];
+  for (let i = 0; i < n; i++) {
+    const num = bTotal * BigInt(Math.trunc(weights[i]));
+    const q = floorDiv(num, bBase);
+    out.push(Number(q));
+    remainder.push(num - q * bBase);
+  }
+
+  // Each floor loses less than one whole paise, so the residue is strictly less
+  // than the number of lines and every line gets at most one.
+  const residue = totalPaise - out.reduce((a, b) => a + b, 0);
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => {
+    if (remainder[a] > remainder[b]) return -1;
+    if (remainder[a] < remainder[b]) return 1;
+    return a - b;
+  });
+  for (let k = 0; k < residue; k++) out[order[k]] += 1;
+  return out;
+}
+
+export interface LineDiscount {
+  discount_paise: number;
+  taxable_paise: number;
+}
+
+/**
+ * Resolve every discount on one invoice — the mirror of
+ * `discount.apply_to_lines`.
+ *
+ * LINE FIRST, THEN DOCUMENT. The document discount is a percentage OF THE BILL,
+ * and the bill is what is left after the line discounts; taking both off the
+ * gross would compound two reliefs the customer was quoted as one.
+ *
+ * Returns null if any part of it would be refused by the server.
+ */
+export function applyDiscountsToLines(
+  lines: { gross_paise: number; discount_percent_bps?: number | null; discount_paise?: number | null }[],
+  documentPercentBps?: number | null,
+  documentAmountPaise?: number | null,
+): LineDiscount[] | null {
+  const lineDiscounts: number[] = [];
+  const nets: number[] = [];
+  for (const ln of lines) {
+    const d = discountPaise(ln.gross_paise, ln.discount_percent_bps, ln.discount_paise);
+    if (d === null) return null;
+    lineDiscounts.push(d);
+    nets.push(ln.gross_paise - d);
+  }
+
+  const billNet = nets.reduce((a, b) => a + b, 0);
+  const docTotal = discountPaise(billNet, documentPercentBps, documentAmountPaise);
+  if (docTotal === null) return null;
+  const shares = allocateDiscount(docTotal, nets);
+  if (shares === null) return null;
+
+  return lines.map((_, i) => ({
+    discount_paise: lineDiscounts[i] + shares[i],
+    taxable_paise: nets[i] - shares[i],
+  }));
+}
+
 export interface LineGstAmounts {
   taxable_paise: number;
   cgst_paise: number;

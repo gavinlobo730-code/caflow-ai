@@ -11,8 +11,10 @@ different actions:
   schema download. Code cannot derive them and guessing produces a confidently
   wrong number in somebody's pay or return.
 * **C. Commercial gates** — a registration or a licence. Months, not code.
+* **E. Operational** — something outside the code is failing and somebody has to
+  look at a console this session cannot reach.
 
-Last reviewed: 11 September 2026 (after Phase 11e).
+Last reviewed: 11 September 2026 (after Phase 11g).
 
 ---
 
@@ -156,3 +158,62 @@ intelligence and executive-dashboard endpoints have the same shape and were left
 Needs a backfill as well as a code fix, and the right time is **while production
 still holds zero fixed assets**. After the first register is migrated in, it
 becomes a data-repair job.
+
+---
+
+## E. Operational — things outside the code that need somebody to look
+
+### E1. Render deploys fail on a health-check timeout — DIAGNOSED 11 Sep 2026
+**Raised by the owner, who supplied the Render event log. No longer a mystery.**
+
+**Every failed deploy gives the same reason, verbatim:**
+
+> Timed out after waiting for internal **health check** to return a successful
+> response code
+
+**It is not a build failure and not a bad commit.** The owner re-triggered the
+SAME commit — `a8c1dac`, the Phase 11e merge — manually at 11:42, and it went
+**live at 11:44**. Identical code, identical image: the auto-deploy timed out
+and the manual retry succeeded. The event log shows that alternating all the way
+back: 11b live, 11c failed, 11d live, 11e failed, 9d failed, 8 failed, 7h live,
+6 failed, 5 failed, 4 failed, 1b live, 1a failed. Cloudflare Pages deployed both
+frontends successfully on every one of those commits.
+
+**Where the time goes, and it is our code.** `apps/api/main.py` does all of this
+at MODULE IMPORT time, before uvicorn can answer anything:
+
+1. `validate_config()`;
+2. `run_startup_check()` (`core/schema_guard.py`), which calls `get_supabase()`
+   and queries the live schema — **a cross-region round trip, Singapore to
+   Mumbai**, on a cold connection;
+3. `start_scheduler()` — APScheduler;
+4. `log_scheduler_startup_health()` — another database read;
+5. the slept-through-jobs catch-up kick.
+
+On Render's FREE tier the instance is cold and CPU-throttled, so the import
+graph of a large FastAPI app plus those round trips sometimes lands inside
+Render's health-check window and sometimes does not. That is exactly the
+coin-flip the event log shows, and exactly why a manual retry on a warm
+scheduler succeeds.
+
+**What it costs today.** Nothing is corrupted and nothing is lost — but a failed
+deploy means Render keeps serving the PREVIOUS image, while
+`apply pending migrations — production` (a GitHub Actions job, not part of the
+Render deploy) applies every merged migration regardless. So after a failed
+deploy the database is ahead of the code until somebody clicks Manual Deploy.
+Safe direction — new columns and functions the old code does not call — and
+`schema_guard` is the backstop for the other direction. But it is a manual step
+on every merge that nobody is reminded to take.
+
+**The fix, not yet made, because it touches the deploy path of a live service
+and is the owner's call:** make `/health` answerable before the expensive boot
+work rather than after it. Concretely — move (2), (3), (4) and (5) out of module
+import and into a FastAPI `lifespan`/startup hook that runs them on a background
+thread, keeping `/health` returning 503 while the schema check is outstanding
+(which is what task #244 wanted) rather than keeping the whole process from
+answering at all. Raising Render's health-check timeout is the smaller change
+and treats the symptom; both are worth doing and the second is free.
+
+**Deliberately not investigated further mid-phase**, at the owner's direction:
+"keep this in the open questions so that once you are done with all the phases
+we can go through this together."

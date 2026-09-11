@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
+from domain.gst import discount as gst_discount
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
@@ -710,15 +711,47 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     total_sgst_paise    = 0
     total_igst_paise    = 0
 
-    for ln in lines_data:
+    # ── §15(3)(a): THE DISCOUNT COMES OFF BEFORE THE TAX ────────────────────
+    # "The value of the supply shall not include any discount which is given
+    # before or at the time of the supply if such discount has been duly
+    # recorded in the invoice." So the gross is qty x rate, the discount is
+    # subtracted, and the TAX is charged on what is left.
+    #
+    # Resolved for the whole document at once, and not per line in the loop
+    # below, because a document-level discount is allocated pro-rata across the
+    # lines and a line cannot know its own share until every line's own discount
+    # is settled. domain/gst/discount.py holds the rule; this is the only place
+    # the sales-invoice path calls it.
+    _gross = [int(Decimal(str(l.get("quantity", 1))) * int(l.get("rate_paise", 0)))
+              for l in lines_data]
+    try:
+        _discounts = gst_discount.apply_to_lines(
+            [{"gross_paise": g,
+              "discount_percent_bps": l.get("discount_percent_bps"),
+              "discount_paise": l.get("discount_paise")}
+             for g, l in zip(_gross, lines_data)],
+            document_percent_bps=data.get("discount_percent_bps"),
+            document_amount_paise=data.get("discount_paise"),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    total_discount_paise = 0
+
+    for ln, _d in zip(lines_data, _discounts):
         qty        = ln.get("quantity", 1)
         rate_paise = int(ln.get("rate_paise", 0))
         # Model uses gst_rate_percent (e.g. 18.0), convert to bps (10000 bps = 100%)
         gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)
         gst_rate_bps = int(round(gst_rate_percent * 100))
 
-        # Integer multiplication: use Decimal for quantity precision, cast immediately
-        taxable_paise = int(Decimal(str(qty)) * rate_paise)
+        # Integer multiplication: use Decimal for quantity precision, cast
+        # immediately. This is the GROSS; taxable_paise is what is left after
+        # the §15(3)(a) discount, and it is the value of supply — what the
+        # journal, GSTR-1, the ledgers and the ageing all already mean by it.
+        discount_paise = int(_d["discount_paise"])
+        taxable_paise = int(_d["taxable_paise"])
+        total_discount_paise += discount_paise
 
         cgst_paise, sgst_paise, igst_paise = _compute_line_gst(
             taxable_paise, gst_rate_bps, is_interstate
@@ -740,6 +773,10 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "unit":           ln.get("unit") or "NOS",
             "rate_paise":     rate_paise,
             "gst_rate_bps":   gst_rate_bps,
+            # The line's GROSS is taxable_amount_paise + discount_paise, by
+            # construction — see migration 364 for why it is not a third column.
+            "discount_paise": discount_paise,
+            "discount_percent_bps": _d.get("discount_percent_bps"),
             "taxable_amount_paise": taxable_paise,
             "cgst_paise":     cgst_paise,
             "sgst_paise":     sgst_paise,
@@ -856,6 +893,11 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         "shipping_bill_date":    data.get("shipping_bill_date") or None,
         "port_code":             data.get("port_code") or None,
             "reference_no":          data.get("reference_no"),
+            # The footer line the customer was shown (§15(3)(a)). Summed from
+            # the lines rather than taken from the request, so the header can
+            # never disagree with the figures the tax was charged on.
+            "discount_paise":        total_discount_paise,
+            "discount_percent_bps":  data.get("discount_percent_bps"),
             "taxable_amount_paise":  total_taxable_paise,
             "cgst_paise":            total_cgst_paise,
             "sgst_paise":            total_sgst_paise,
@@ -903,6 +945,9 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         "shipping_bill_date":    data.get("shipping_bill_date") or None,
         "port_code":             data.get("port_code") or None,
         "reference_no":          data.get("reference_no"),
+        # See above — summed from the lines, never taken from the request.
+        "discount_paise":        total_discount_paise,
+        "discount_percent_bps":  data.get("discount_percent_bps"),
         "taxable_amount_paise":  total_taxable_paise,
         "cgst_paise":            total_cgst_paise,
         "sgst_paise":            total_sgst_paise,
@@ -949,6 +994,8 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "unit":                  ln["unit"],
             "rate_paise":            ln["rate_paise"],
             "gst_rate_bps":          ln["gst_rate_bps"],
+            "discount_paise":        ln["discount_paise"],
+            "discount_percent_bps":  ln["discount_percent_bps"],
             "taxable_amount_paise":  ln["taxable_amount_paise"],
             "cgst_paise":            ln["cgst_paise"],
             "sgst_paise":            ln["sgst_paise"],
@@ -1320,15 +1367,43 @@ def update_invoice(
             total_cgst    = 0
             total_sgst    = 0
             total_igst    = 0
+            total_discount = 0
 
-            for ln in data["lines"]:
+            # §15(3)(a), identically to the create path and through the same
+            # module — two implementations of a value-of-supply rule is how an
+            # edited invoice comes to disagree with the one that was issued.
+            # A document discount ABSENT from the patch keeps the stored one:
+            # a PATCH that only re-sends the lines is not a request to drop the
+            # footer discount the customer was shown.
+            _doc_pct = (data.get("discount_percent_bps")
+                        if "discount_percent_bps" in data else None)
+            _doc_amt = (data.get("discount_paise") if "discount_paise" in data
+                        else (None if _doc_pct is not None
+                              else int(inv.get("discount_paise") or 0) or None))
+            _gross = [int(Decimal(str(l.get("quantity", 1))) * int(l.get("rate_paise", 0)))
+                      for l in data["lines"]]
+            try:
+                _discounts = gst_discount.apply_to_lines(
+                    [{"gross_paise": g,
+                      "discount_percent_bps": l.get("discount_percent_bps"),
+                      "discount_paise": l.get("discount_paise")}
+                     for g, l in zip(_gross, data["lines"])],
+                    document_percent_bps=_doc_pct,
+                    document_amount_paise=_doc_amt,
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+
+            for ln, _d in zip(data["lines"], _discounts):
                 qty          = ln.get("quantity", 1)
                 rate_paise   = int(ln.get("rate_paise", 0))
                 gst_rate_percent = float(ln.get("gst_rate_percent", 0) or ln.get("gst_rate_bps", 0) / 100)
                 gst_rate_bps = int(round(gst_rate_percent * 100))
-                taxable      = int(Decimal(str(qty)) * rate_paise)
+                line_discount = int(_d["discount_paise"])
+                taxable      = int(_d["taxable_paise"])
                 cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
 
+                total_discount += line_discount
                 total_taxable += taxable
                 total_cgst    += cgst
                 total_sgst    += sgst
@@ -1346,6 +1421,8 @@ def update_invoice(
                     "unit":                 ln.get("unit") or "NOS",
                     "rate_paise":           rate_paise,
                     "gst_rate_bps":         gst_rate_bps,
+                    "discount_paise":       line_discount,
+                    "discount_percent_bps": _d.get("discount_percent_bps"),
                     "taxable_amount_paise": taxable,
                     "cgst_paise":           cgst,
                     "sgst_paise":           sgst,
@@ -1400,6 +1477,13 @@ def update_invoice(
                 if (round_off_on_edit and dc.currency == "INR")
                 else 0
             )
+            # The footer line the customer was shown. Summed from the lines, so
+            # the header can never disagree with the figures the tax was charged
+            # on — and converted to base like every other money column, because
+            # a discount on a USD invoice is USD.
+            data["discount_paise"] = dc.to_base(total_discount)
+            if _doc_pct is not None:
+                data["discount_percent_bps"] = _doc_pct
             data["taxable_amount_paise"] = base_taxable
             data["cgst_paise"]           = base_cgst
             data["sgst_paise"]           = base_sgst

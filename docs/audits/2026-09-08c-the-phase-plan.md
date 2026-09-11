@@ -830,13 +830,55 @@ The chain itself is untouched — it is load-bearing — and the derived figures
 in NEW response keys (`balance_qty_units`, `balance_value_paise`) rather than
 relabelling what the database holds.
 
+#### 11g · SALES-11 — DONE. A discount on the invoice, and §15(3)(a) applied to it
+
+There was no discount concept anywhere on the sales-invoice path — no Pydantic
+field, no column, no editor control — and the taxable value was `qty x rate`
+with nothing subtracted. A trading client giving a 5% trade discount could only
+have it netted into the rate by hand, which loses the disclosure the customer's
+copy shows, makes the invoice un-reconcilable to the price list, and forfeits
+the relief, which §15(3)(a) makes conditional on the discount being **recorded
+in the invoice**.
+
+**§15(3)(b) is a different remedy and is deliberately out of reach.** A discount
+given AFTER the supply is excluded only where it was agreed at or before the
+supply, is linked to the invoices, and the recipient has REVERSED the
+attributable ITC — that is the §34 credit note, not a field on one. So
+`SalesInvoiceLineIn` carries the discount and the shared `InvoiceLineIn` the
+note routes use does not, and a PG test asserts no note table grew a discount
+column.
+
+**The design decisions worth keeping:**
+
+* the AMOUNT is stored and the PERCENTAGE is only a disclosure — a percentage of
+  an integer paise amount does not generally land on an integer, so recomputing
+  it at read time would give a different number from the one taxed;
+* the GROSS is not stored: it is `taxable + discount` by construction, so a
+  third column could only disagree with the other two;
+* a document-level discount is allocated PRO-RATA across the lines before tax,
+  because GST is charged per line at the line's own rate — 5% off a bill of 18%
+  goods and 5% services is not 5% off one number;
+* LINE first, then DOCUMENT on what is left: taking both off the gross would
+  compound two reliefs the customer was quoted as one;
+* every rounding FLOORS (a larger discount is less tax, so flooring cannot
+  under-declare) and the split uses LARGEST REMAINDER so the parts sum to the
+  whole — a pro-rata split that loses a paise makes the invoice total differ
+  from the figure the customer was quoted;
+* a discount larger than the line is REFUSED, not capped, on the table
+  (migration 364), in the service, and in the preview.
+
+`shared/gst-parity-vectors.json` grew twelve discount documents pinning the
+browser mirror to the Python, and the PDF's summary block was extracted into
+`summary_lines()` so "is the discount on the document" — which is the statutory
+test — finally has an answer a test can give.
+
 ---
 
 Left in Phase 11, all features rather than defects:
 
 Form 3CD, §54 reinvestment exemptions, GSTR-9, QRMP, multi-GSTIN, the MSME
 §43B(h) tracker, recurring journals out of `localStorage`, Schedule III mapping
-that changes something, invoice discounts.
+that changes something.
 
 ### Phase 12 — The 158 mediums and lows · ≤699 days, and that is the loosest number here
 

@@ -1,4 +1,516 @@
 {
+  "discounts": [
+    {
+      "label": "5% line discount, one line",
+      "is_interstate": false,
+      "document_discount_percent_bps": null,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "1000.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": 500,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 100000,
+            "discount_paise": 5000,
+            "taxable_paise": 95000,
+            "cgst_paise": 8550,
+            "sgst_paise": 8550,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 100000,
+        "total_discount_paise": 5000,
+        "taxable_paise": 95000,
+        "cgst_paise": 8550,
+        "sgst_paise": 8550,
+        "igst_paise": 0,
+        "gst_paise": 17100,
+        "grand_total_paise": 112100
+      }
+    },
+    {
+      "label": "flat line discount in paise",
+      "is_interstate": false,
+      "document_discount_percent_bps": null,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "1000.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": null,
+          "discount_paise": 2500
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 100000,
+            "discount_paise": 2500,
+            "taxable_paise": 97500,
+            "cgst_paise": 8775,
+            "sgst_paise": 8775,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 100000,
+        "total_discount_paise": 2500,
+        "taxable_paise": 97500,
+        "cgst_paise": 8775,
+        "sgst_paise": 8775,
+        "igst_paise": 0,
+        "gst_paise": 17550,
+        "grand_total_paise": 115050
+      }
+    },
+    {
+      "label": "percentage wins when both are sent",
+      "is_interstate": false,
+      "document_discount_percent_bps": null,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "1000.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": 500,
+          "discount_paise": 9999
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 100000,
+            "discount_paise": 5000,
+            "taxable_paise": 95000,
+            "cgst_paise": 8550,
+            "sgst_paise": 8550,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 100000,
+        "total_discount_paise": 5000,
+        "taxable_paise": 95000,
+        "cgst_paise": 8550,
+        "sgst_paise": 8550,
+        "igst_paise": 0,
+        "gst_paise": 17100,
+        "grand_total_paise": 112100
+      }
+    },
+    {
+      "label": "100% discount \u2014 a free-of-charge line",
+      "is_interstate": false,
+      "document_discount_percent_bps": null,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "1000.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": 10000,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 100000,
+            "discount_paise": 100000,
+            "taxable_paise": 0,
+            "cgst_paise": 0,
+            "sgst_paise": 0,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 100000,
+        "total_discount_paise": 100000,
+        "taxable_paise": 0,
+        "cgst_paise": 0,
+        "sgst_paise": 0,
+        "igst_paise": 0,
+        "gst_paise": 0,
+        "grand_total_paise": 0
+      }
+    },
+    {
+      "label": "no discount at all is the old arithmetic",
+      "is_interstate": false,
+      "document_discount_percent_bps": null,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "1000.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 100000,
+            "discount_paise": 0,
+            "taxable_paise": 100000,
+            "cgst_paise": 9000,
+            "sgst_paise": 9000,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 100000,
+        "total_discount_paise": 0,
+        "taxable_paise": 100000,
+        "cgst_paise": 9000,
+        "sgst_paise": 9000,
+        "igst_paise": 0,
+        "gst_paise": 18000,
+        "grand_total_paise": 118000
+      }
+    },
+    {
+      "label": "discount floors, never rounds up",
+      "is_interstate": false,
+      "document_discount_percent_bps": null,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "333.33",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": 333,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 33333,
+            "discount_paise": 1109,
+            "taxable_paise": 32224,
+            "cgst_paise": 2900,
+            "sgst_paise": 2900,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 33333,
+        "total_discount_paise": 1109,
+        "taxable_paise": 32224,
+        "cgst_paise": 2900,
+        "sgst_paise": 2900,
+        "igst_paise": 0,
+        "gst_paise": 5800,
+        "grand_total_paise": 38024
+      }
+    },
+    {
+      "label": "2% document discount over two lines, one already discounted",
+      "is_interstate": false,
+      "document_discount_percent_bps": 200,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "1000.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": 500,
+          "discount_paise": null
+        },
+        {
+          "qty": "1",
+          "rate": "500.00",
+          "gst_rate_percent": 5,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 100000,
+            "discount_paise": 6900,
+            "taxable_paise": 93100,
+            "cgst_paise": 8379,
+            "sgst_paise": 8379,
+            "igst_paise": 0
+          },
+          {
+            "gross_paise": 50000,
+            "discount_paise": 1000,
+            "taxable_paise": 49000,
+            "cgst_paise": 1225,
+            "sgst_paise": 1225,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 150000,
+        "total_discount_paise": 7900,
+        "taxable_paise": 142100,
+        "cgst_paise": 9604,
+        "sgst_paise": 9604,
+        "igst_paise": 0,
+        "gst_paise": 19208,
+        "grand_total_paise": 161308
+      }
+    },
+    {
+      "label": "document discount with a residue to allocate",
+      "is_interstate": false,
+      "document_discount_percent_bps": null,
+      "document_discount_paise": 10,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "100.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        },
+        {
+          "qty": "1",
+          "rate": "100.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        },
+        {
+          "qty": "1",
+          "rate": "100.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 10000,
+            "discount_paise": 4,
+            "taxable_paise": 9996,
+            "cgst_paise": 899,
+            "sgst_paise": 900,
+            "igst_paise": 0
+          },
+          {
+            "gross_paise": 10000,
+            "discount_paise": 3,
+            "taxable_paise": 9997,
+            "cgst_paise": 899,
+            "sgst_paise": 900,
+            "igst_paise": 0
+          },
+          {
+            "gross_paise": 10000,
+            "discount_paise": 3,
+            "taxable_paise": 9997,
+            "cgst_paise": 899,
+            "sgst_paise": 900,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 30000,
+        "total_discount_paise": 10,
+        "taxable_paise": 29990,
+        "cgst_paise": 2697,
+        "sgst_paise": 2700,
+        "igst_paise": 0,
+        "gst_paise": 5397,
+        "grand_total_paise": 35387
+      }
+    },
+    {
+      "label": "document discount across different slabs",
+      "is_interstate": false,
+      "document_discount_percent_bps": 750,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "1000.00",
+          "gst_rate_percent": 28,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        },
+        {
+          "qty": "2",
+          "rate": "250.00",
+          "gst_rate_percent": 5,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        },
+        {
+          "qty": "0.5",
+          "rate": "800.00",
+          "gst_rate_percent": 12,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 100000,
+            "discount_paise": 7500,
+            "taxable_paise": 92500,
+            "cgst_paise": 12950,
+            "sgst_paise": 12950,
+            "igst_paise": 0
+          },
+          {
+            "gross_paise": 50000,
+            "discount_paise": 3750,
+            "taxable_paise": 46250,
+            "cgst_paise": 1156,
+            "sgst_paise": 1156,
+            "igst_paise": 0
+          },
+          {
+            "gross_paise": 40000,
+            "discount_paise": 3000,
+            "taxable_paise": 37000,
+            "cgst_paise": 2220,
+            "sgst_paise": 2220,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 190000,
+        "total_discount_paise": 14250,
+        "taxable_paise": 175750,
+        "cgst_paise": 16326,
+        "sgst_paise": 16326,
+        "igst_paise": 0,
+        "gst_paise": 32652,
+        "grand_total_paise": 208402
+      }
+    },
+    {
+      "label": "document discount, inter-state",
+      "is_interstate": true,
+      "document_discount_percent_bps": 1000,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "1000.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        },
+        {
+          "qty": "1",
+          "rate": "500.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 100000,
+            "discount_paise": 10000,
+            "taxable_paise": 90000,
+            "cgst_paise": 0,
+            "sgst_paise": 0,
+            "igst_paise": 16200
+          },
+          {
+            "gross_paise": 50000,
+            "discount_paise": 5000,
+            "taxable_paise": 45000,
+            "cgst_paise": 0,
+            "sgst_paise": 0,
+            "igst_paise": 8100
+          }
+        ],
+        "total_gross_paise": 150000,
+        "total_discount_paise": 15000,
+        "taxable_paise": 135000,
+        "cgst_paise": 0,
+        "sgst_paise": 0,
+        "igst_paise": 24300,
+        "gst_paise": 24300,
+        "grand_total_paise": 159300
+      }
+    },
+    {
+      "label": "a flat document amount that exactly clears the bill",
+      "is_interstate": false,
+      "document_discount_percent_bps": null,
+      "document_discount_paise": 10000,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "100.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": null,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 10000,
+            "discount_paise": 10000,
+            "taxable_paise": 0,
+            "cgst_paise": 0,
+            "sgst_paise": 0,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 10000,
+        "total_discount_paise": 10000,
+        "taxable_paise": 0,
+        "cgst_paise": 0,
+        "sgst_paise": 0,
+        "igst_paise": 0,
+        "gst_paise": 0,
+        "grand_total_paise": 0
+      }
+    },
+    {
+      "label": "line and document discounts compound on the NET, not the gross",
+      "is_interstate": false,
+      "document_discount_percent_bps": 1000,
+      "document_discount_paise": null,
+      "lines": [
+        {
+          "qty": "1",
+          "rate": "1000.00",
+          "gst_rate_percent": 18,
+          "discount_percent_bps": 1000,
+          "discount_paise": null
+        }
+      ],
+      "expected": {
+        "lines": [
+          {
+            "gross_paise": 100000,
+            "discount_paise": 19000,
+            "taxable_paise": 81000,
+            "cgst_paise": 7290,
+            "sgst_paise": 7290,
+            "igst_paise": 0
+          }
+        ],
+        "total_gross_paise": 100000,
+        "total_discount_paise": 19000,
+        "taxable_paise": 81000,
+        "cgst_paise": 7290,
+        "sgst_paise": 7290,
+        "igst_paise": 0,
+        "gst_paise": 14580,
+        "grand_total_paise": 95580
+      }
+    }
+  ],
   "documents": [
     {
       "label": "two lines, exact total",

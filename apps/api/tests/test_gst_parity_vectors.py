@@ -21,6 +21,7 @@ from decimal import Decimal
 import pytest
 
 from routers.sales_invoices import _compute_line_gst, _round_off_paise
+from domain.gst import discount as gst_discount
 
 _FIXTURE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -33,6 +34,7 @@ with open(_FIXTURE) as _fh:
 
 VECTORS = _DATA["vectors"]
 DOCUMENTS = _DATA["documents"]
+DISCOUNTS = _DATA["discounts"]
 
 
 def _ids(items):
@@ -87,6 +89,71 @@ def test_backend_matches_parity_document(d):
     assert c + s + i == exp["gst_paise"]
     assert ro == exp["round_off_paise"]
     assert base_total + ro == exp["grand_total_paise"]
+
+
+@pytest.mark.parametrize("d", DISCOUNTS, ids=_ids(DISCOUNTS))
+def test_backend_matches_parity_discount(d):
+    """§15(3)(a) — the discount comes off before the tax, and the browser
+    mirror (gstLine.applyDiscountsToLines) must land on the same integers.
+
+    This pins the TAXABLE VALUE, not just the discount arithmetic. A document
+    discount allocated even a paise differently previews a different tax from
+    the one the server saves, which is the exact class of drift this whole
+    fixture exists to prevent.
+    """
+    gross = []
+    for ln in d["lines"]:
+        quantity = float(ln["qty"])
+        # Mirrors the frontend's rate_paise (JS Math.round is half-away-from-zero).
+        rate_paise = int((float(ln["rate"]) * 100) + 0.5)
+        gross.append(int(Decimal(str(quantity)) * rate_paise))
+
+    resolved = gst_discount.apply_to_lines(
+        [{"gross_paise": g,
+          "discount_percent_bps": ln["discount_percent_bps"],
+          "discount_paise": ln["discount_paise"]}
+         for g, ln in zip(gross, d["lines"])],
+        document_percent_bps=d["document_discount_percent_bps"],
+        document_amount_paise=d["document_discount_paise"],
+    )
+
+    t = c = s_ = i = 0
+    for g, ln, r, want in zip(gross, d["lines"], resolved, d["expected"]["lines"]):
+        assert g == want["gross_paise"]
+        assert int(r["discount_paise"]) == want["discount_paise"]
+        assert int(r["taxable_paise"]) == want["taxable_paise"]
+        bps = int(round(float(ln["gst_rate_percent"]) * 100))
+        lc, ls, li = _compute_line_gst(int(r["taxable_paise"]), bps, d["is_interstate"])
+        assert (lc, ls, li) == (want["cgst_paise"], want["sgst_paise"], want["igst_paise"])
+        t += int(r["taxable_paise"]); c += lc; s_ += ls; i += li
+
+    exp = d["expected"]
+    assert t == exp["taxable_paise"]
+    assert c + s_ + i == exp["gst_paise"]
+    # The allocated parts sum to the whole: a pro-rata split that loses a paise
+    # makes the invoice total differ from the figure the customer was quoted.
+    assert sum(int(r["discount_paise"]) for r in resolved) == exp["total_discount_paise"]
+    assert sum(gross) - exp["total_discount_paise"] == exp["taxable_paise"]
+
+
+def test_the_discount_cases_cover_both_levels_and_the_residue():
+    """A fixture that only ever tested one line and one discount would pass
+    while the pro-rata allocation was wrong, which is the half that cannot be
+    checked by inspection."""
+    assert len(DISCOUNTS) >= 10
+    assert any(len(d["lines"]) >= 3 for d in DISCOUNTS), "no multi-line case"
+    assert any(d["document_discount_percent_bps"] for d in DISCOUNTS), "no document %"
+    assert any(d["document_discount_paise"] for d in DISCOUNTS), "no document amount"
+    assert any(ln["discount_percent_bps"] for d in DISCOUNTS for ln in d["lines"]), \
+        "no line %"
+    assert any(ln["discount_paise"] for d in DISCOUNTS for ln in d["lines"]), \
+        "no line amount"
+    # At least one where the parts could not divide evenly, so the residue rule
+    # is exercised rather than assumed.
+    assert any(
+        d["document_discount_paise"] and len(d["lines"]) > 1
+        and d["document_discount_paise"] % len(d["lines"]) != 0
+        for d in DISCOUNTS), "no case with a residue to allocate"
 
 
 def test_fixture_covers_the_known_divergences():

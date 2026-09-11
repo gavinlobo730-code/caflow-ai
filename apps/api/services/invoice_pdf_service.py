@@ -479,6 +479,70 @@ def _summary_row(n_cols: int, label: str, value: str) -> list:
     return row
 
 
+def summary_lines(invoice: dict, lines: list, amount_paise: int, gst_paise: int,
+                  cgst_paise: int, sgst_paise: int, igst_paise: int,
+                  total_paise: int) -> list[tuple[str, str]]:
+    """The invoice's summary block, as (label, value) pairs.
+
+    EXTRACTED SO IT CAN BE TESTED. What goes in this block is statutory — Rule
+    46(l) governs the rate labels and CGST §15(3)(a) makes a discount's relief
+    conditional on the invoice RECORDING it — and none of it was assertable
+    while it was built inline into a reportlab Table: the rendered PDF writes
+    text as positioned glyphs, so "is the discount line on the document" had no
+    answer a test could give. It does now.
+    """
+    out: list[tuple[str, str]] = []
+
+    # The invoice-level rate label. Never a constant — an "18%" label beside a
+    # 5% amount breaches Rule 46(l) even though the amount itself is right.
+    invoice_rate = _document_rate(lines, amount_paise, gst_paise)
+
+    def _head_label(name: str, halved: bool) -> str:
+        if invoice_rate is None:
+            return name
+        # CGST and SGST are each half of the rate (CGST Act §9(1) with the
+        # corresponding SGST Act); IGST is the whole of it (IGST Act §5(1)).
+        rate = invoice_rate // 2 if halved else invoice_rate
+        return f"{name} @ {_pct_label(rate)}%"
+
+    # CGST §15(3)(a): a discount is excluded from the value of supply only "if
+    # such discount has been DULY RECORDED IN THE INVOICE". So the customer's
+    # copy shows the gross and the deduction, and the taxable value is what is
+    # left — the relief is conditional on these lines being here. Printing only
+    # the net would satisfy the arithmetic and not the section.
+    #
+    # Shown only when there is one, so an ordinary invoice keeps the layout it
+    # has always had.
+    discount_paise = int(invoice.get("discount_paise", 0) or 0)
+    if discount_paise:
+        out.append(("Gross Value", _paise_to_rupee_str(amount_paise + discount_paise)))
+        pct = invoice.get("discount_percent_bps")
+        # _pct_label takes MILLI-percent (18000 = 18%), and discount_percent_bps
+        # is basis points (500 = 5%) — x10, or a 5% discount prints as 0.5%.
+        label = ("Less: Discount" if pct in (None, "")
+                 else f"Less: Discount @ {_pct_label(int(pct) * 10)}%")
+        out.append((label, f"-{_paise_to_rupee_str(discount_paise)}"))
+
+    out.append(("Taxable Value", _paise_to_rupee_str(amount_paise)))
+    if cgst_paise or sgst_paise:
+        out.append((_head_label("CGST", True), _paise_to_rupee_str(cgst_paise)))
+        out.append((_head_label("SGST", True), _paise_to_rupee_str(sgst_paise)))
+    if igst_paise:
+        out.append((_head_label("IGST", False), _paise_to_rupee_str(igst_paise)))
+
+    # Invoice-level round-off line (nearest ₹1) — shown only when non-zero so the
+    # taxable + GST rows still reconcile to the printed Total. CGST Act §15.
+    round_off_paise = int(invoice.get("round_off_paise", 0) or 0)
+    if round_off_paise:
+        # _paise_to_rupee_str uses floor division, so format the sign explicitly
+        # (a −30 paise round-off must render "-0.30", not "-1.70").
+        _sign = "-" if round_off_paise < 0 else ""
+        out.append(("Round Off", f"{_sign}{_paise_to_rupee_str(abs(round_off_paise))}"))
+
+    out.append(("Total", _paise_to_rupee_str(total_paise)))
+    return out
+
+
 def _render_tax_invoice(
     invoice: dict,
     supplier: dict,
@@ -630,33 +694,9 @@ def _render_tax_invoice(
         rows.append(row)
 
     summary_from = len(rows)
-    # The invoice-level rate label. Never a constant — an "18%" label beside a
-    # 5% amount breaches Rule 46(l) even though the amount itself is right.
-    invoice_rate = _document_rate(lines, amount_paise, gst_paise)
-
-    def _head_label(name: str, halved: bool) -> str:
-        if invoice_rate is None:
-            return name
-        # CGST and SGST are each half of the rate (CGST Act §9(1) with the
-        # corresponding SGST Act); IGST is the whole of it (IGST Act §5(1)).
-        rate = invoice_rate // 2 if halved else invoice_rate
-        return f"{name} @ {_pct_label(rate)}%"
-
-    rows.append(_summary_row(n_cols, "Taxable Value", _paise_to_rupee_str(amount_paise)))
-    if cgst_paise or sgst_paise:
-        rows.append(_summary_row(n_cols, _head_label("CGST", True), _paise_to_rupee_str(cgst_paise)))
-        rows.append(_summary_row(n_cols, _head_label("SGST", True), _paise_to_rupee_str(sgst_paise)))
-    if igst_paise:
-        rows.append(_summary_row(n_cols, _head_label("IGST", False), _paise_to_rupee_str(igst_paise)))
-    # Invoice-level round-off line (nearest ₹1) — shown only when non-zero so the
-    # taxable + GST rows still reconcile to the printed Total. CGST Act §15.
-    round_off_paise = int(invoice.get("round_off_paise", 0) or 0)
-    if round_off_paise:
-        # _paise_to_rupee_str uses floor division, so format the sign explicitly
-        # (a −30 paise round-off must render "-0.30", not "-1.70").
-        _sign = "-" if round_off_paise < 0 else ""
-        rows.append(_summary_row(n_cols, "Round Off", f"{_sign}{_paise_to_rupee_str(abs(round_off_paise))}"))
-    rows.append(_summary_row(n_cols, "Total", _paise_to_rupee_str(total_paise)))
+    for label, value in summary_lines(invoice, lines, amount_paise, gst_paise,
+                                      cgst_paise, sgst_paise, igst_paise, total_paise):
+        rows.append(_summary_row(n_cols, label, value))
 
     style = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")),

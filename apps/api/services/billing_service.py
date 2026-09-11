@@ -28,7 +28,11 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from models.invoices import SalesInvoiceIn, InvoiceLineIn
+# SalesInvoiceLineIn, not the shared InvoiceLineIn: SalesInvoiceIn.lines is
+# typed to the sales-invoice line, which is the one that may carry a
+# §15(3)(a) discount. See models/invoices.SalesInvoiceLineIn for why the
+# credit and debit notes deliberately cannot.
+from models.invoices import SalesInvoiceIn, SalesInvoiceLineIn
 from services.internal_client_service import get_internal_client_id
 from services.numbering import draft_placeholder_invoice_no
 
@@ -216,7 +220,7 @@ def generate_for_schedule(firm_id: str, schedule: dict, current_user: dict,
     internal_id = internal_id or "mock-internal"
     customer_id = ensure_customer_link(firm_id, schedule["client_id"], internal_id)
 
-    line = InvoiceLineIn(
+    line = SalesInvoiceLineIn(
         service_catalogue_id=schedule["service_id"],
         description=schedule.get("description") or "Professional fees",
         hsn_sac=CA_SERVICE_SAC, quantity=1,
