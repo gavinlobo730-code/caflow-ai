@@ -413,6 +413,10 @@ export function previewTotals(
 // ── Editor validation (Batch 3) ──────────────────────────────────────────────
 // Mirrors the minimums the backend enforces so the UI can block + explain BEFORE
 // calling the API. The server remains authoritative.
+// The place-of-supply code set, from the module that already owns it. See the
+// note on isValidStateCode for why this is NOT lib/gst/gstin.ts's list.
+import { isValidStateCode } from "./compliance.ts";
+
 export interface EditorValidationInput {
   customerId: string;
   invoiceNo: string;
@@ -420,6 +424,15 @@ export interface EditorValidationInput {
   lines: InvoiceLine[];
   isForeign: boolean;
   exchangeRate: string;
+  /** The 2-digit place of supply as the editor has it, blank if unset. CGST
+   *  Rule 46(n) requires it on a tax invoice and GSTR-1 is rejected without a
+   *  valid state code, so it is checked HERE — the CA is at the keyboard now,
+   *  and the alternative is meeting the error at the return build weeks later
+   *  on an invoice already issued, posted and sent (SALES-29). */
+  supplyStateCode?: string | null;
+  /** What the invoice declares about the supply (migration 268). */
+  supplyType?: string | null;
+  isReverseCharge?: boolean | null;
 }
 
 export interface EditorValidation {
@@ -429,6 +442,8 @@ export interface EditorValidation {
     invoiceDate?: string;
     lines?: string;
     exchangeRate?: string;
+    supplyState?: string;
+    supplyType?: string;
   };
   /** Number of lines that carry a description + positive qty + positive rate. */
   validLineCount: number;
@@ -463,6 +478,22 @@ export function isValidLine(l: InvoiceLine): boolean {
   );
 }
 
+/** Nil-rated, exempt and non-GST all assert that no tax is chargeable.
+ *  ZERO-RATED IS DELIBERATELY ABSENT: §16(3)(b) lets an exporter or SEZ
+ *  supplier supply ON PAYMENT of IGST and reclaim it under §54, so a
+ *  zero-rated invoice carrying tax is lawful. Mirrors
+ *  apps/api/domain/gst/supply_classification.UNTAXED_SUPPLY_TYPES. */
+const UNTAXED_SUPPLY_TYPES = new Set(["nil_rated", "exempt", "non_gst"]);
+
+function isUntaxedSupplyType(t: string | null | undefined): boolean {
+  return UNTAXED_SUPPLY_TYPES.has((t ?? "taxable").trim().toLowerCase());
+}
+
+function hasTaxOnAnUntaxedSupply(input: EditorValidationInput): boolean {
+  if (!isUntaxedSupplyType(input.supplyType) && !input.isReverseCharge) return false;
+  return input.lines.some((l) => isValidLine(l) && Number(l.gst_rate ?? 0) > 0);
+}
+
 export function validateInvoiceEditor(input: EditorValidationInput): EditorValidation {
   const errors: EditorValidation["errors"] = {};
   if (!input.customerId) errors.customer = "Select a customer.";
@@ -477,6 +508,23 @@ export function validateInvoiceEditor(input: EditorValidationInput): EditorValid
 
   if (input.isForeign && (!input.exchangeRate.trim() || !(parseFloat(input.exchangeRate) > 0))) {
     errors.exchangeRate = "Enter a valid exchange rate.";
+  }
+
+  // A place of supply — CGST Rule 46(n). The server requires a valid one at
+  // ISSUE; stopping the CA here means they fix it while the invoice is still a
+  // draft rather than after it has gone to the customer.
+  const pos = (input.supplyStateCode ?? "").trim();
+  if (pos && !isValidStateCode(pos)) {
+    errors.supplyState = `"${pos}" is not a valid GST state code.`;
+  }
+
+  // The classification must not contradict the tax the lines carry (SALES-16).
+  // apps/api/domain/gst/supply_classification.py is the authority and refuses
+  // the same invoice; this is the same message at the point of entry.
+  if (hasTaxOnAnUntaxedSupply(input)) {
+    errors.supplyType = input.isReverseCharge && !isUntaxedSupplyType(input.supplyType)
+      ? "Reverse charge means the recipient pays the tax (CGST §9(3)/(4), Rule 46(p)) — set the line rates to 0% or untick reverse charge."
+      : "A nil-rated, exempt or non-GST supply attracts no tax (CGST §2(47)/§2(78)) — set the line rates to 0% or change the supply type to Taxable.";
   }
 
   return { errors, validLineCount, ok: Object.keys(errors).length === 0 };

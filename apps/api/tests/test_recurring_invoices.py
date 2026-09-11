@@ -266,8 +266,14 @@ def _make_classified(supply="exempt", inv_type="SEZ_without_payment", rcm=True, 
         "frequency": kw.get("freq", "monthly"), "start_date": kw.get("start", "2026-06-01"),
         "end_date": None,
         "supply_type": supply, "invoice_type": inv_type, "is_reverse_charge": rcm,
+        # 0%, because the template is an EXEMPT reverse-charge supply and both
+        # of those mean no tax is charged (CGST §2(47); §9(3)/(4) with Rule
+        # 46(p)). This fixture carried 18% until SALES-16 made the invoice
+        # path refuse a classification its own tax contradicts — and a
+        # RECURRING template is the worst place for that, because generation
+        # runs unattended and would have minted the same bad invoice monthly.
         "lines": [{"service_catalogue_id": "SVC-1", "description": "Retainer", "hsn_sac": "998222",
-                   "rate_paise": 100000, "gst_rate_percent": 18.0, "is_service": True}],
+                   "rate_paise": 100000, "gst_rate_percent": 0.0, "is_service": True}],
     }, created_by="u1")
 
 

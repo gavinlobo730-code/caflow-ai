@@ -348,8 +348,16 @@ export function InvoiceEditor({
     [lines, isInterstate, isForeign, roundOffEnabled, documentDiscount],
   );
   const validation = useMemo(
-    () => validateInvoiceEditor({ customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate }),
-    [customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate],
+    // The place of supply and the GSTR-1 classification are validated HERE, at
+    // the keyboard, and not only when the return is built (SALES-16/29). The
+    // server refuses the same two things at issue; this is the same refusal
+    // early enough that the invoice is still a draft.
+    () => validateInvoiceEditor({
+      customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate,
+      supplyStateCode, supplyType, isReverseCharge,
+    }),
+    [customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate,
+     supplyStateCode, supplyType, isReverseCharge],
   );
   const estimatedBasePaise = isForeign && !Number.isNaN(rateNum) && rateNum > 0 && totals.grand_total_paise > 0
     ? estimateBaseMinor(totals.grand_total_paise, rateNum)
@@ -487,7 +495,7 @@ export function InvoiceEditor({
     // became mandatory (migration 206). Skip the create-time gate and PATCH the
     // soft fields directly.
     if (!isLocked && !validation.ok) {
-      setError(validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
+      setError(validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? validation.errors.supplyState ?? validation.errors.supplyType ?? "Fix the highlighted fields.");
       return;
     }
     // Pre-check email for Save & Send so we never issue and then fail to deliver.
@@ -768,7 +776,7 @@ export function InvoiceEditor({
       {!isLocked && attempted && !validation.ok && (
         <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
-          <span>{validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
+          <span>{validation.errors.customer ?? validation.errors.invoiceNo ?? validation.errors.invoiceDate ?? validation.errors.lines ?? validation.errors.exchangeRate ?? validation.errors.supplyState ?? validation.errors.supplyType}</span>
         </div>
       )}
     </div>
@@ -840,6 +848,17 @@ export function InvoiceEditor({
               <label className="block text-xs font-medium text-[#475569] mb-1">Supply State</label>
               <StateLookup value={supplyStateCode ?? ""} onChange={onSupplyStateChange}
                 placeholder="— Select —" ariaLabel="Supply state" disabled={isLocked} />
+              {fieldErr(validation.errors.supplyState)}
+              {/* Rule 46(n). The server refuses to ISSUE without one, so say so
+                  here — a draft may be incomplete, an issued invoice may not,
+                  and finding out at the GSTR-1 build is six weeks too late. */}
+              {!isLocked && !(supplyStateCode ?? "").trim() && (
+                <p className="mt-1 text-[10px] text-amber-700">
+                  Needed to issue — CGST Rule 46(n). Defaults from the customer&apos;s
+                  state or GSTIN, and failing that the client&apos;s own state
+                  (IGST §12(2)(b)(ii)).
+                </p>
+              )}
               {isLocked && <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued (CGST Act §34).</p>}
             </div>
             <div>

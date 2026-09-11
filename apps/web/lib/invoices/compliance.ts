@@ -11,7 +11,14 @@ import type { InvoiceStatus } from "./gst";
 // A valid GST state code is a 2-digit number 01–38 (states/UTs, up to Ladakh),
 // or 96/97 (foreign / other territory). Kept self-contained so this pure module
 // has no cross-module value imports (node --test strips only type imports).
-function isValidStateCode(code: string): boolean {
+//
+// EXPORTED so lib/invoices/gst.ts's editor validation uses this one rather than
+// a third list. There are already two in the browser and they differ for a
+// reason: lib/gst/gstin.ts's set is GSTIN PREFIXES (99, Centre Jurisdiction, is
+// one; 96 never is), and this one is PLACES OF SUPPLY (96, outside India, is one
+// on an export; 99 never is). They are not the same question, so they are not
+// merged — but there must not be a third.
+export function isValidStateCode(code: string): boolean {
   if (!/^\d{2}$/.test(code)) return false;
   const n = Number(code);
   return (n >= 1 && n <= 38) || n === 96 || n === 97;

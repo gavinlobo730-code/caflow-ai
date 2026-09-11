@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from typing import Sequence
 
+from domain.gst import supply_classification
+
 # CGST Act Section 25 — GSTIN format: 2-digit state + PAN + entity + Z + checksum
 GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
@@ -60,6 +62,11 @@ class InvoiceToValidate:
     igst_paise: int
     is_interstate: bool
     gst_rate: float | None      # overall header rate if available
+    # What the invoice DECLARES about the supply (migration 268). Optional so
+    # every existing caller keeps working; a row that does not carry them is
+    # read as the plain domestic taxable sale the columns default to.
+    supply_type: str | None = None
+    is_reverse_charge: bool = False
 
 
 class GSTValidator:
@@ -97,6 +104,21 @@ class GSTValidator:
                 f"Invalid place of supply code: '{pos}'. Must be a valid 2-digit state code.",
                 ref,
             ))
+
+        # THE CLASSIFICATION HAS TO MATCH THE TAX (SALES-16). Checked HERE as
+        # well as at the invoice path, because this is where a row written
+        # before that check existed meets the return — and the failure is
+        # silent otherwise: _build_nil_exempt reports a nil/exempt/non-GST
+        # supply as value only, dropping the tax heads, and an rchrg=Y row
+        # tells the portal the recipient owes tax the supplier has collected.
+        conflict = supply_classification.tax_conflict(
+            supply_type=inv.supply_type,
+            is_reverse_charge=inv.is_reverse_charge,
+            cgst_paise=inv.cgst_paise, sgst_paise=inv.sgst_paise,
+            igst_paise=inv.igst_paise,
+        )
+        if conflict:
+            errors.append(ValidationError("supply_type", conflict, ref))
 
         # Party GSTIN format if provided
         if inv.party_gstin and not GSTIN_RE.match(inv.party_gstin):

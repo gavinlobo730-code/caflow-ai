@@ -29,9 +29,10 @@ def _setup(monkeypatch):
     return si, db
 
 
-def _line():
+def _line(gst_rate_percent: float = 18.0):
     return InvoiceLineIn(service_catalogue_id="SVC-1", description="Consulting", hsn_sac="9982",
-                         quantity=1, rate_paise=1_000_000, gst_rate_percent=18.0)
+                         quantity=1, rate_paise=1_000_000,
+                         gst_rate_percent=gst_rate_percent)
 
 
 def _invoice_dict(invoice_no):
@@ -175,6 +176,11 @@ def test_bulk_create_persists_the_gstr1_classification(monkeypatch):
     inv["supply_type"] = "exempt"
     inv["invoice_type"] = "SEZ_without_payment"
     inv["is_reverse_charge"] = True
+    # An exempt reverse-charge supply carries no tax — CGST §2(47), and
+    # §9(3)/(4) with Rule 46(p). The fixture said 18% until SALES-16, which is
+    # the invoice the defect let through: the ledger charged the tax and
+    # GSTR-1 declared a value-only nil supply.
+    inv["lines"] = [_line(gst_rate_percent=0.0)]
 
     resp = si.bulk_create_invoices(_BulkPayload([inv]), CALLER)
 
@@ -205,7 +211,12 @@ def test_classification_is_per_invoice_across_a_batch(monkeypatch):
     invoice's classification across the rest — bulk_cache is shared state."""
     si, db = _setup(monkeypatch)
     exempt = _invoice_dict("CLS-010"); exempt["supply_type"] = "exempt"
+    exempt["lines"] = [_line(gst_rate_percent=0.0)]   # see SALES-16, above
     plain = _invoice_dict("CLS-011")
+    # Zero-rated KEEPS its 18%, deliberately. §16(3)(b) lets an exporter or SEZ
+    # supplier supply ON PAYMENT of IGST and reclaim it under §54, so a
+    # zero-rated invoice carrying tax is lawful — which is why
+    # supply_classification does not refuse it.
     zero = _invoice_dict("CLS-012"); zero["supply_type"] = "zero_rated"; zero["invoice_type"] = "Deemed_export"
 
     resp = si.bulk_create_invoices(_BulkPayload([exempt, plain, zero]), CALLER)
