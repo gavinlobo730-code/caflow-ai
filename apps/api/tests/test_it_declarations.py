@@ -255,7 +255,8 @@ def test_with_no_history_the_year_is_spread_over_twelve_months():
     """
     assert _months_remaining_for_spread(0) == 12
     common = dict(declaration=None, annual_gross_paise=15_00_000 * 100,
-                  basic_plus_da_paise=0, hra_received_paise=0,
+                  basic_plus_da_paise=0, salary_for_80ccd2_paise=0,
+                  hra_received_paise=0,
                   professional_tax_paise=0, fy=FY)
     april = _monthly_tds(month=4, tds_already_deducted_paise=0,
                          months_already_paid=0, **common)
@@ -274,7 +275,8 @@ def test_192_3_spreads_what_is_left_over_the_months_that_remain():
     """
     assert _months_remaining_for_spread(8) == 4
     common = dict(declaration=None, annual_gross_paise=15_00_000 * 100,
-                  basic_plus_da_paise=0, hra_received_paise=0,
+                  basic_plus_da_paise=0, salary_for_80ccd2_paise=0,
+                  hra_received_paise=0,
                   professional_tax_paise=0, fy=FY)
     # Annual tax on ₹15,00,000 under the new regime is ₹97,500; eight months at
     # ₹8,125 is ₹65,000, leaving ₹32,500 over four months.
@@ -286,7 +288,8 @@ def test_over_withholding_is_never_refunded_through_the_payslip():
     """§192 authorises DEDUCTING tax, not paying it back. Where more has been
     withheld than the year now needs, the excess is refunded on assessment."""
     common = dict(declaration=None, annual_gross_paise=15_00_000 * 100,
-                  basic_plus_da_paise=0, hra_received_paise=0,
+                  basic_plus_da_paise=0, salary_for_80ccd2_paise=0,
+                  hra_received_paise=0,
                   professional_tax_paise=0, fy=FY)
     assert _monthly_tds(month=3, tds_already_deducted_paise=5_00_000 * 100,
                         months_already_paid=11, **common) == 0
@@ -301,6 +304,7 @@ def test_a_late_verified_declaration_trues_up_inside_the_year():
     year later.
     """
     common = dict(annual_gross_paise=15_00_000 * 100, basic_plus_da_paise=0,
+                  salary_for_80ccd2_paise=0,
                   hra_received_paise=0, professional_tax_paise=0, fy=FY,
                   month=1, months_already_paid=9,
                   tds_already_deducted_paise=9 * 17_550 * 100)
