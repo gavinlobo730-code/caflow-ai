@@ -1267,10 +1267,24 @@ export const api = {
     create: (body: unknown) => request("/api/reminders", { method: "POST", body: JSON.stringify(body) }),
     markSent: (id: string) => request(`/api/reminders/${id}/sent`, { method: "PATCH" }),
   },
+  mca: {
+    // ADT-1 / AOC-4 / MGT-7 across the caller's clients, counted from each
+    // company's REAL last_agm_date. The calendar built these in the browser off
+    // an assumed 30 September AGM, a day early on both — see the endpoint's
+    // docstring. A company with no AGM date recorded comes back in
+    // `without_agm_date` rather than being given a plausible one.
+    firmCalendar: () => request("/api/mca/calendar/firm"),
+  },
   accounting: {
     accounts: () => request("/api/accounting/accounts"),
     createAccount: (data: unknown) => request("/api/accounting/accounts", { method: "POST", body: JSON.stringify(data) }),
     updateAccount: (id: string, data: unknown) => request(`/api/accounting/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    // The Schedule III captions a mapping may be set to, served by the module
+    // that does the classifying. The mapping screen used to carry its own
+    // hardcoded list, which had drifted in both directions — it offered five
+    // captions the engine could not honour, and spelled five others
+    // differently, which is how nine live mappings were being discarded.
+    scheduleIiiCaptions: () => request("/api/accounting/schedule-iii/captions"),
     journal: (params?: Record<string, string>) => request(`/api/accounting/journal${params ? "?" + new URLSearchParams(params) : ""}`),
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
     postJournalEntry: (id: string) => request(`/api/accounting/journal/${id}/post`, { method: "PATCH" }),

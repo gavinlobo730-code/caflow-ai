@@ -13,7 +13,17 @@ from typing import Optional
 from core.ist_clock import ist_today
 from .model import Account, JournalEntry, ProjectedLine
 from .resolver import AccountResolver
-from .schedule_iii import pl_bucket
+from .schedule_iii import classify
+
+
+def _caption(a) -> tuple[str | None, str]:
+    """One account's Schedule III caption and how it was arrived at.
+
+    A named helper rather than an inline call because both the P&L and the
+    Balance Sheet need it and a second spelling is how the UI came to carry its
+    own pl_bucket that forgot Cost of Sales.
+    """
+    return classify(a.type, a.subtype, a.schedule_iii_mapping)
 
 
 def _acc(accounts: dict[str, Account], aid: str) -> Account:
@@ -189,7 +199,14 @@ def profit_loss(lines: list[ProjectedLine], accounts: dict[str, Account],
                 "account_code": a.code,
                 "account_type": a.type,
                 "account_subtype": a.subtype,
-                "schedule_iii_caption": pl_bucket(a.type, a.subtype),
+                # The CA's own schedule_iii_mapping outranks the subtype scan
+                # (ACC-10). `schedule_iii_basis` says WHICH decided — "mapping",
+                # "subtype" or "residual" — so a statement can report how many
+                # balances are on an "Other" line because nobody chose rather
+                # than because somebody did. See schedule_iii.classify.
+                "schedule_iii_mapping": a.schedule_iii_mapping,
+                "schedule_iii_caption": _caption(a)[0],
+                "schedule_iii_basis": _caption(a)[1],
                 "amount_paise": amt,
             })
         rows.sort(key=lambda x: x["account_name"])
@@ -488,6 +505,10 @@ def balance_sheet(lines: list[ProjectedLine], accounts: dict[str, Account],
                     "account_code": a.code,
                     "account_type": a.type,
                     "account_subtype": a.subtype,
+                    # See the P&L section above — same rule, same reason.
+                    "schedule_iii_mapping": a.schedule_iii_mapping,
+                    "schedule_iii_caption": _caption(a)[0],
+                    "schedule_iii_basis": _caption(a)[1],
                     "balance_paise": bal,
                 })
         result.sort(key=lambda x: x["account_name"])
@@ -513,6 +534,12 @@ def balance_sheet(lines: list[ProjectedLine], accounts: dict[str, Account],
             "account_code": "",
             "account_type": "Equity",
             "account_subtype": "Reserves & Surplus",
+            # Not an account and so not mappable: this row is computed, and
+            # Reserves & Surplus is where Schedule III puts it. "mapping"
+            # because the decision is made here, deliberately, not fallen into.
+            "schedule_iii_mapping": None,
+            "schedule_iii_caption": "Reserves & Surplus",
+            "schedule_iii_basis": "mapping",
             "balance_paise": net_profit,
         })
     equity = [sect("Equity", equity_rows)]

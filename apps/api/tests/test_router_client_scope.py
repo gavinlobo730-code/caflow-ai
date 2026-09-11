@@ -125,6 +125,11 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/mca-workspace": (
         "assert_client_access", "_visible_or_none", "can_access_client",
         "_load_or_none",
+        # /calendar/firm is a LIST across the caller's clients rather than a
+        # row addressed by a named client_id, so it narrows with
+        # effective_client_ids the way the reporting endpoints do (ACC-17)
+        # instead of asserting access to one id it was handed.
+        "effective_client_ids",
     ),
     # `entities` and the two entity↔entity tables carry no client column at all
     # (migrations 059/156) — they are firm-level and EXEMPT below. Everything
@@ -936,6 +941,20 @@ FOLLOW: dict[str, str] = {
 # endpoint nobody looked at — which is the whole point of listing them here
 # rather than loosening the sweep.
 EXEMPT: dict[str, str] = {
+    # ── /api/accounting: the Schedule III vocabulary, which holds no data ────
+    # A list of the captions a mapping may be set to. It reads no table, takes
+    # no client_id, and returns the same words for every firm in India, because
+    # they come from Schedule III to the Companies Act rather than from anybody's
+    # ledger. A client guard here would have to invent a client to check.
+    #
+    # It exists so the mapping SCREEN stops carrying its own copy: the hardcoded
+    # list had drifted in two directions, offering captions the engine could not
+    # honour and spelling others differently, which is how nine live mappings
+    # were being discarded. The write path that USES a caption —
+    # PATCH /api/accounting/accounts/{id} — is client-guarded where it belongs.
+    "/api/accounting/schedule-iii/captions":
+        "a statutory vocabulary, not data: no table, no client_id, and the same "
+        "captions for every firm. The PATCH that stores one is guarded.",
     # ── /api/payroll: the firm's own reading of a state notification ────────
     # firm_pt_slabs has firm_id and NO client_id (migration 327), and that is
     # the whole point of it: professional tax is levied by the STATE, so the
@@ -1116,38 +1135,6 @@ EXEMPT: dict[str, str] = {
         "GLOBAL/CLIENT/COMPLIANCE_SUGGESTED_QUESTIONS are hardcoded prompt "
         "lists in models/ai_copilot.py — no client_id in the request, no "
         "stored data read.",
-    # These four aggregate across the whole firm with no per-client
-    # identifiers in their CURRENT output — confirmed by reading
-    # domain/ai_copilot_service.py's actual implementations, not the
-    # aspirational Pydantic response models in models/ai_copilot.py (which
-    # declare fields like at_risk_clients/cross_client_conflicts that the
-    # real functions do not populate). That is a real gap, not a
-    # non-issue — recorded as an open question in the audit doc rather than
-    # guarded here, because a correct fix is bigger than a guard:
-    "/api/copilot/intelligence/compliance":
-        "get_compliance_intelligence caches ONE firm-wide summary per firm "
-        "(ai_summaries, entity_id=None) shared across every caller "
-        "regardless of assignment — narrowing the counts it computes "
-        "without also changing the cache key would still serve a "
-        "firm-wide-cached response to the next assignment-scoped caller.",
-    "/api/copilot/intelligence/workflows":
-        "failing_workflows/overdue_approvals come from workflow_failures/ "
-        "workflow_approvals, neither of which carries a client_id column "
-        "(only instance_id, migration 068) — narrowing by client requires "
-        "joining through workflow_instances, which the repository does not "
-        "currently expose.",
-    "/api/copilot/intelligence/relationships":
-        "cross_client_conflicts is computed over the firm's WHOLE client "
-        "list by design (PAN/email-domain cross-matching only means "
-        "something compared across every client) — the same tension "
-        "already recorded for /api/relationships/entities: narrowing the "
-        "input set would change what the analysis IS, not just who can "
-        "see it.",
-    "/api/copilot/executive-dashboard":
-        "same caching issue as intelligence/compliance (ai_summaries, "
-        "summary_type='executive', entity_id=None) — also aggregates "
-        "revenue/capacity/churn signals across every client by design, "
-        "the same tension as intelligence/relationships.",
     # platform.py — the platform OWNER's cross-tenant admin surface, not a
     # firm member's. Every endpoint reads/writes only firms/users rows via
     # get_service_supabase() and is gated by require_platform_admin(_mfa)

@@ -16,7 +16,6 @@ import {
   Plus,
   X,
   Calendar,
-  GitMerge,
   FileText,
   Receipt,
 } from "lucide-react";
@@ -844,13 +843,6 @@ export default function GSTPage() {
           >
             <Receipt className="w-3.5 h-3.5" />
             GSTR-3B
-          </Link>
-          <Link
-            href="/gst/reconciliation"
-            className="flex items-center gap-1.5 text-xs bg-white border border-[#E2E8F0] text-[#334155] px-3 py-2 rounded-lg hover:bg-[#F8FAFC]"
-          >
-            <GitMerge className="w-3.5 h-3.5" />
-            GSTR-2B Reconciliation
           </Link>
           <button
             onClick={() => setShowAddModal(true)}

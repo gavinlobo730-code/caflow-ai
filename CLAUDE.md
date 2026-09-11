@@ -421,6 +421,17 @@ ESI may err the other way — unconfirmed, and pinned by a test so a later chang
 is deliberate. Gratuity likewise. Verified 2026-09-04; see
 `docs/compliance/04-mca-epfo-esic.md`.
 
+**ESI CONTRIBUTIONS ROUND UP TO THE NEXT WHOLE RUPEE — both shares.** ESIC's
+filing manual, of the figure the portal computes: *"Employee Contribution will
+be calculated and displayed. This is rounded to next higher rupee"*; the same
+has applied to the employer's share since October 2004. `_compute_esi` floored
+to the paise until 11-09-2026, which under-remitted on every wage that is not a
+clean multiple — and the employer carries that shortfall with interest. Note it
+runs the OPPOSITE way to the GST discount rounding, which floors: there,
+flooring cannot under-declare tax; here, rounding up cannot under-deduct
+contribution. Both take the direction that is safe for the person who would
+otherwise carry the liability, which is why they differ.
+
 **Partly a gap: professional tax and the Labour Welfare Fund.** PT slabs are
 still bare literals in `routers/payroll.py`, covering **Maharashtra, Tamil Nadu,
 Karnataka and West Bengal** — four of the twenty-two states
@@ -540,6 +551,35 @@ PostgREST. That is why:
 - RBAC: `Partner > Manager > Executive > Reviewer > Client`
   (`core/permissions.py`, applied as `rbac(resource, action)`).
 
+## Schedule III captions — one vocabulary, and the screen is served it
+
+`apps/api/domain/reporting/schedule_iii.py` owns the caption list and is the
+only place allowed to. `GET /api/accounting/schedule-iii/captions` serves it to
+the mapping screen, which until 11-09-2026 carried its own hardcoded copy.
+
+That copy had drifted in **both** directions at once, and it was measurable: it
+offered five captions the classifier had never heard of, and spelled five others
+differently — so **nine of the fifty mapped accounts in production were being
+silently discarded**, the CA's decision saved and then ignored while the
+statement went back to guessing from the subtype.
+
+- **Canonical spelling is the screen's** — hyphenated `Short-term`, plural
+  `Employee Benefits Expense` — an owner decision of 11-09-2026 taken on
+  convergence (screen, stored data and classifier agreed) rather than on a
+  reading of Schedule III, which could not be reached: `icai.org` and every
+  `.gov.in` are refused at this environment's egress proxy.
+- **`CAPTION_ALIASES` honours the older spellings** so nothing already stored is
+  lost, and `canonical_caption()` is the only resolver — `bs_bucket`,
+  `pl_bucket` and `classify` all go through it. **`Fixed Assets` is NOT an
+  alias**: Schedule III makes it a heading over Tangible and Intangible, so it
+  resolves from the account's own subtype rather than being guessed flat.
+- **A subtype's hyphens are folded** before the keyword scan, so a human typing
+  `Long-term Borrowings` as a subtype matches the `long term` keywords.
+- **Still open:** `apps/web/lib/accounting/scheduleIiiCaptions.ts` is a third
+  classifier, in the browser. The P&L already prefers the backend caption; the
+  client Balance Sheet does not, and the two disagree on wording. See
+  `docs/audits/WHERE-WE-STOPPED.md`.
+
 ## Reporting scope — "all clients" means the caller's clients
 
 A reporting endpoint called with no `client_id` means "all clients", and that is
@@ -643,11 +683,16 @@ communicated to the recipient, and **GSTR-2B is that communication**.
   `raw["book_invoices"]` did. A re-upload REPLACES, and an unparseable file
   persists NOTHING — a zero written and called reconciled is the false clean
   result this replaced.
-- **Two screens still exist.** `/gst/reconciliation` matches two uploaded files
-  in the browser and saves nothing; it carries a banner saying so and pointing
-  at the client GST tab's GSTR-2B Recon, which is the real one. Keeping or
-  deleting it is an owner decision — see
-  `docs/audits/2026-09-08-what-is-left.md` §6b.
+- **One screen, since 11-09-2026.** There were two. `/gst/reconciliation`
+  matched two uploaded files in the browser, saved nothing, and forgot the
+  answer on refresh; it carried a banner disowning itself, which is a warning
+  label rather than a fix. **Deleted on the owner's decision.** The real one is
+  the client GST tab's GSTR-2B Recon, and it is per-client by nature — the
+  firm-level GST page cannot know whose books to reconcile, so its link was
+  removed rather than repointed.
+  `apps/web/scripts/the-2b-reconciliation-reads-the-books.test.ts` now asserts
+  the file is absent and that nothing links to the route, so a second
+  implementation cannot reappear quietly.
 - **Not built:** invoice-wise Rule 36(4). The reconciliation now knows per
   document whether 2B allows the credit; `gstr3b_computer` still caps in
   aggregate.
@@ -820,6 +865,16 @@ no failing check to point at. Filter inside, in the `scope` job, as these workfl
 - `render.yaml` must declare every environment variable the backend reads —
   `tests/test_render_manifest_matches_code.py` enforces this in both directions
   (nothing read-but-undeclared, nothing declared-but-unread).
+- **The slow half of startup runs on a thread, and must stay there.** The
+  schema-drift check, the scheduler start, its health log and the catch-up
+  sweep are started by `main._lifespan` on a daemon thread — not at module
+  import, where they used to be. Three of the four make a Singapore-to-Mumbai
+  round trip, and doing that before uvicorn binds timed out Render's deploy
+  health check on every deploy for weeks. `/health` answers 200 with
+  `schema: "checking"` while the check is outstanding and flips to 503 on real
+  drift; **answering 503 while merely unchecked reproduces the original bug**,
+  because Render cannot tell "still checking" from "broken".
+  `tests/test_health_answers_before_the_slow_boot.py` is the guard.
 - The daily job sweep is in-process APScheduler (`jobs/scheduler.py`), gated on
   `ENABLE_SCHEDULER`, enabled in exactly one process. On Render's free tier the instance
   sleeps, so `.github/workflows/wake-before-scheduler.yml` pings `/health` across the

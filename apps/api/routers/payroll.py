@@ -917,13 +917,49 @@ def _compute_esi(gross_paise: int, fy: Optional[str] = None,
     payroll history knows. It defaults to False so a caller that has not been
     taught the rule behaves as before rather than silently over-deducting
     someone who was never covered.
+
+    BOTH SHARES ROUND UP TO THE NEXT WHOLE RUPEE — NOT TO THE PAISE
+
+    ESIC's own manual for filing the monthly contribution says of the figure the
+    portal computes: "Employee Contribution will be calculated and displayed.
+    This is rounded to next higher rupee." The same rounding has applied to the
+    EMPLOYER's share since October 2004.
+
+    This used to floor to the paise, and the paise is not a unit ESI works in.
+    The consequence was not academic. On ₹15,500 of wages the employee share is
+    ₹116.25 exactly; we deducted ₹116.25 and posted ₹116.25, while the portal
+    demands ₹117 and the challan is raised for ₹117. Every wage that is not a
+    clean multiple produced a books-to-challan difference in the same direction
+    — short — across every covered employee, every month. Under-remitted ESI is
+    the EMPLOYER's liability with interest, which is the same reasoning Rule 50
+    above rests on.
+
+    "Next higher rupee" is a CEILING, not half-up: any fraction of a rupee goes
+    up, and 1 paise over rounds the same as 99. Rounding up is also the only
+    direction that cannot under-deduct, so where a secondary source garbles the
+    rule into "50 paise and above" this takes the primary reading.
+
+    Integer arithmetic throughout, per the paise rule — no float touches a
+    rupee figure here.
     """
     r = payroll_rates_for(fy).esi
     if gross_paise > r.wage_ceiling_paise and not covered_at_period_start:
         return {"employee": 0, "employer": 0}
-    employee = math.floor(gross_paise * r.employee_rate_bps / 10000)
-    employer = math.floor(gross_paise * r.employer_rate_bps / 10000)
-    return {"employee": employee, "employer": employer}
+    return {"employee": _esi_share_paise(gross_paise, r.employee_rate_bps),
+            "employer": _esi_share_paise(gross_paise, r.employer_rate_bps)}
+
+
+def _esi_share_paise(wages_paise: int, rate_bps: int) -> int:
+    """One ESI share, rounded UP to the next whole rupee. See _compute_esi.
+
+    Both shares go through here so the two cannot drift: a rounding rule
+    implemented twice is a rounding rule implemented once correctly.
+
+    wages x bps / 10000 is the exact share in paise; dividing by a further 100
+    puts it in rupees, and the negated floor-divide is an integer ceiling.
+    """
+    rupees = -(-wages_paise * rate_bps // 1_000_000)
+    return rupees * 100
 
 
 def _percent_of(base_paise: int, percent) -> int:

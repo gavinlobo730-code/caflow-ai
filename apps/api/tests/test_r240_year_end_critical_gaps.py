@@ -88,14 +88,31 @@ def test_get_default_mappings_auto_init_classifies_by_real_enum(monkeypatch):
     db = FakeDB()
     monkeypatch.setattr(sc, "get_supabase", lambda: db)
 
-    db.seed("accounts", {"id": "a1", "firm_id": "F1", "account_type": "Asset",
+    # chart_of_accounts, NOT the `accounts` view. `public.accounts` is
+    # `SELECT * FROM chart_of_accounts` created by migration 016, and Postgres
+    # freezes a view's `*` at creation — so it carries the columns
+    # chart_of_accounts had THEN and nothing since, `schedule_iii_mapping`
+    # (migration 057) included. Reading the view returned rows with no mapping
+    # on them, which is ACC-10's defect arriving by a different route.
+    db.seed("chart_of_accounts", {"id": "a1", "firm_id": "F1", "account_type": "Asset",
                           "account_subtype": "Trade Receivables", "account_name": "Debtors"})
-    db.seed("accounts", {"id": "a2", "firm_id": "F1", "account_type": "Liability",
+    db.seed("chart_of_accounts", {"id": "a2", "firm_id": "F1", "account_type": "Liability",
                           "account_subtype": "Trade Payables", "account_name": "Creditors"})
-    db.seed("accounts", {"id": "a3", "firm_id": "F1", "account_type": "Revenue",
+    db.seed("chart_of_accounts", {"id": "a3", "firm_id": "F1", "account_type": "Revenue",
                           "account_subtype": None, "account_name": "Sales"})
-    db.seed("accounts", {"id": "a4", "firm_id": "F1", "account_type": "Equity",
+    db.seed("chart_of_accounts", {"id": "a4", "firm_id": "F1", "account_type": "Equity",
                           "account_subtype": "Share Capital", "account_name": "Capital"})
+    # The largest expense on a trading client's P&L. pl_bucket returns "Cost of
+    # Materials Consumed" and the translation table's key said "Cost of
+    # Materials", so this landed on other_current_assets — an expense on the
+    # balance sheet — until ACC-10.
+    db.seed("chart_of_accounts", {"id": "a5", "firm_id": "F1", "account_type": "Expense",
+                          "account_subtype": "Raw Material", "account_name": "Purchases"})
+    # A subtype no keyword matches, with the CA's own mapping beside it. Before
+    # ACC-10 the mapping was read by nothing and this went to the catch-all.
+    db.seed("chart_of_accounts", {"id": "a6", "firm_id": "F1", "account_type": "Asset",
+                          "account_subtype": "Widget Deposits", "account_name": "Deposit",
+                          "schedule_iii_mapping": "Long-term Investments"})
 
     resp = m.get_default_mappings(PARTNER_F1)
     assert resp["success"] is True
@@ -105,10 +122,11 @@ def test_get_default_mappings_auto_init_classifies_by_real_enum(monkeypatch):
     assert mappings["a2"] == "trade_payables"
     assert mappings["a3"] == "revenue_from_operations"
     assert mappings["a4"] == "share_capital"
+    assert mappings["a5"] == "cost_of_materials_consumed"
+    assert mappings["a6"] == "long_term_investments"
     # None of these are the old broken catch-all.
-    assert mappings["a1"] != "other_current_assets"
-    assert mappings["a2"] != "other_current_assets"
-    assert mappings["a3"] != "other_current_assets"
+    for aid in ("a1", "a2", "a3", "a5", "a6"):
+        assert mappings[aid] != "other_current_assets", aid
 
 
 # =============================================================================

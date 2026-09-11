@@ -49,6 +49,32 @@ safe; keeping it costs a screen nobody can act on.
 then we will go to the open questions." Kept here only so the answer is on the
 record — this is no longer a question.
 
+### A4. Which spelling goes on the printed financial statements?
+
+**NEW, 11 September 2026, and it is the only genuinely open decision here.**
+
+Three places in the product name the lines of a Schedule III financial
+statement, and they disagree on spelling — the screen a CA picks from says
+"Employee Benefits Expense" and "Short-term Borrowings", the code that prints
+the statement says "Employee Benefit Expense" and "Short Term Borrowings".
+Because the two do not match exactly, **nine of the fifty mappings CAs have
+already made in production are silently discarded** and the statement falls
+back to guessing from the account's subtype.
+
+Making them agree is straightforward. **Which spelling is canonical is not**,
+because these words are PRINTED on a statutory document and the authority is
+Schedule III itself — which could not be read: `icai.org` and every `.gov.in`
+are refused at the egress proxy.
+
+**Recommendation: adopt the screen's spellings.** They are what CAs have been
+choosing, they are what production holds, and they match the Act as far as
+memory goes. That is convergence, not a reading of the statute, which is why it
+is a question rather than a decision already taken.
+
+**Nothing is blocked either way.** An alias table honours a mapping whichever
+way it was spelled, so the nine discarded choices are recovered regardless; only
+the printed wording turns on the answer.
+
 ---
 
 ## B. Facts nobody in the repo holds
@@ -120,100 +146,205 @@ level tracking would settle it properly and is not built.
 
 ---
 
-## C. Commercial gates — months, not code
+## C. Commercial gates — PARKED, not pending
 
-`docs/compliance/07-getting-permission-to-file.md` is the playbook.
+**Owner decision, 11 September 2026: no registrations are being pursued.**
+Nothing in this section is a question, a task, or something anybody is waiting
+on. It is here so that a later decision to resume starts from research already
+done rather than from scratch.
 
-| # | Gate | State |
-|---|---|---|
-| C1 | Third Party Software Utility Developer registration (`SW########`) | **self-service, available now** |
-| C2 | NIC e-invoice sandbox | **free now** |
-| C3 | ERI Type-2 (income tax filing) | months of commercial work |
-| C4 | GSP or an ASP sub-licence (GST filing) | months; gates everything GST |
-| C5 | NIC production credentials (e-invoice / e-way bill) | months |
-| C6 | An India static-IP egress hop | needed by several of the above |
-| C7 | MCA, EPFO, ESIC filing | **no route exists** — there is no API to be granted |
-| C8 | Account Aggregator (live bank feeds) | **CLOSED** — no FIU licence exists to apply for and no published purpose code covers bookkeeping. Route 3 (do not consume via AA) chosen 2026-09-06. Reopens only if a purpose code is added |
+What that covers: the Third Party Software Utility Developer registration, the
+NIC e-invoice sandbox and production credentials, ERI for income-tax filing,
+GSP or an ASP sub-licence for GST filing, and an India static-IP egress hop.
 
-e-invoice IRN and e-way bill remain the only two statutory outputs software can
-complete end to end, because the IRP signs and there is no taxpayer signature.
+Two things are worth remembering if it ever reopens, and both are in
+`docs/compliance/08-government-api-access-the-verified-position.md`:
+
+- **e-invoice and e-way bill are the only two statutory outputs software can
+  complete end to end**, and their sandbox is free and self-service. They are
+  the cheapest place to restart.
+- **MCA, EPFO, ESIC and professional tax have no route at all** — no API, no
+  programme, nothing to apply for, for us or for any competitor. That one is
+  not a decision; it is a fact about the portals.
+
+**Account Aggregator (live bank feeds) stays CLOSED** on its own merits, decided
+2026-09-06 — no FIU licence exists for a firm like this to apply for, and no
+published purpose code covers bookkeeping. It reopens only if a purpose code is
+added, which nobody is waiting on.
 
 ---
 
 ## D. Known-wrong things I have reported and deliberately not fixed
 
-### D1. `app/calendar/page.tsx` builds 14 deadlines in the browser, and two are wrong
-AOC-4 shows 29 October where §137 gives 30 October, MGT-7 shows 28 November
-where §92 gives 29 November, and all 14 assume a 30 September AGM for every
-client. Allow-listed and reported rather than fixed, because the fix is to
-delete the browser copy and read `services/compliance_engine.py` — a Phase 7
-shape, not a date edit.
+### D1. The calendar's MCA deadlines — FIXED 11 September 2026
 
-### D2. `/api/copilot/intelligence/*` still aggregates firm-wide
-ACC-17 drew the line for the seven reporting endpoints (Phase 12b). The copilot
-intelligence and executive-dashboard endpoints have the same shape and were left
-— an Executive omitting `client_id` there still gets the whole practice.
+**The invented AGM was the serious half, not the off-by-one.** AOC-4 showed
+29 October where §137 gives 30 and MGT-7 showed 28 November where §92 gives 29,
+because the browser counted the AGM day itself. But it also assumed the AGM was
+**30 September for every client**, which is wrong for every company whose
+meeting was not — and a CA reading a firm-wide calendar could not tell a
+computed row from an assumed one.
 
-### D3. FA-02 — the last remaining critical, latent
-Needs a backfill as well as a code fix, and the right time is **while production
-still holds zero fixed assets**. After the first register is migrated in, it
-becomes a data-repair job.
+`mca_companies.last_agm_date` has held the real date since migration 038, whose
+own comment reads *"AGM date drives AOC-4/MGT-7 deadline"*. The browser copy
+never read it.
+
+`GET /api/mca-workspace/calendar/firm` now computes ADT-1, AOC-4 and MGT-7 from
+each company's own AGM through `compliance_engine.mca_due_date`, scoped to the
+caller's clients. **A company with no AGM date recorded is NAMED, not
+defaulted** — returned in `without_agm_date` and shown on the calendar as a
+gap, because 30 September is a plausible guess and a plausible guess on a
+statutory deadline is how a filing is missed.
+
+**Still in the browser, and still owed:** the other eleven deadlines — GST, TDS,
+ITR and DIR-3 KYC. Those are rule-based and fall out of the calendar date alone,
+so they are correct today; they nevertheless duplicate
+`services/compliance_engine.py`, which is the Phase 7 shape this entry
+originally described. The three that needed a client FACT are the ones that
+could not stay.
+
+### D2. `/api/copilot/intelligence/*` aggregates firm-wide — FIXED 11 Sep 2026
+
+**And it was worse than this entry said.** `firm:read` is `_AT_LEAST_MANAGER`,
+so `/executive-dashboard` reached a Manager too, not only an Executive. Four
+endpoints passed a bare `firm_id`: `/intelligence/compliance`,
+`/intelligence/workflows`, `/intelligence/relationships` and
+`/executive-dashboard`. `/intelligence/client/{id}` was guarded from the start —
+the line had been drawn and stopped one endpoint short.
+
+The relationship endpoint was the worst of the four: it feeds client PANs and
+email domains into an AI prompt to find related parties, so it disclosed
+identifying data about clients the caller is not assigned to.
+
+**A second leak the entry never mentioned.** These summaries cache on
+`(firm_id, summary_type, entity_id)` with `entity_id=None` on every call — so
+scoping the queries alone would still have served a Partner's firm-wide answer
+to the next Executive who asked, from cache. The scope is now part of the key.
+
+Each of the three exemption reasons in `test_router_client_scope.py` was
+answered rather than overridden, and **all four exemptions are removed** — the
+guard now enforces this permanently:
+
+- *"narrowing without changing the cache key would still serve a firm-wide
+  response"* → the scope IS the key.
+- *"workflow_failures/approvals carry no client_id, and the repository does not
+  expose the join"* → **out of date**: `client_ids_for_instances` exists and the
+  workflow router already uses it. One query, not one per row.
+- *"narrowing the input set would change what the analysis IS"* → true, and the
+  one place scoping changes meaning. PAN cross-matching only says something
+  across the whole book, so a narrowed "no related parties" reads as a clean
+  bill of health for the firm. The privacy duty still wins, so the answer is
+  narrowed **and says so**: `analysed_client_count` and `scoped` are on the
+  response.
+- Template analytics aggregate per template with no client dimension and cannot
+  be narrowed, only withheld — a scoped caller now gets none rather than counts
+  that silently span clients they may not see.
+
+### D3. FA-02 — CLOSED 11 September 2026, and two of its premises were stale
+
+Re-checked against the code rather than the record, and most of it had already
+been overtaken:
+
+- **"No edit path (FA-10)"** — wrong now. `PATCH /{asset_id}` exists and
+  `wdv_rate_percent` is in `_TIER_C_FIELDS`, so a rate is correctable as a
+  prospective revision of an estimate (Schedule II Part C Note 7, AS 10).
+- **"It goes wrong the first time a register is migrated in"** — there is no
+  bulk import. `POST ""` is the only path that creates an asset, it uses the
+  Schedule II derived default, the Tally migration service writes no fixed
+  assets, and no frontend writes the table directly.
+- Production holds **zero** fixed assets, so there was nothing to back-fill.
+
+**What was genuinely left, and is now built:** nothing told anybody that an
+asset's stored basis disagrees with Schedule II. A row written before the rate
+was derived from Part C carries an Income-tax Act block rate — Furniture at 10%
+where Part C gives 25.89% — and under-depreciates for the asset's whole life,
+silently.
+
+**A backfill migration would have been the wrong fix**, and the statute is why:
+Schedule II **Part A** expressly permits a different useful life or residual
+value provided it is **disclosed and justified**. Nothing in the schema
+distinguishes a stale default from a deliberate judgement, so a migration would
+have overwritten the judgement, changed the depreciation charge and moved the
+profit.
+
+So it is REPORTED, as a fourth finding on `/register-integrity` — the endpoint
+that already reports and repairs nothing. The CA corrects it or discloses it.
+Conforming means matching **any** class the category offers, not the default, or
+a CA who picked Schedule II's second life would be flagged for following the
+table.
 
 ---
 
 ## E. Operational — things outside the code that need somebody to look
 
-### E1. Render deploys fail on a health-check timeout — DIAGNOSED 11 Sep 2026
-**Raised by the owner, who supplied the Render event log. No longer a mystery.**
+### E1. Render deploys fail on a health-check timeout — FIXED 11 September 2026
 
-**Every failed deploy gives the same reason, verbatim:**
+**Owner approved the fix; done.** The schema-drift check, the scheduler start,
+its health log and the catch-up sweep all ran at module import — before uvicorn
+binds a socket — and three of the four make a Singapore-to-Mumbai round trip.
+Render's deploy health check timed out on every one of them, on code that was
+fine, which a manual re-deploy of the same commit proved each time.
 
-> Timed out after waiting for internal **health check** to return a successful
-> response code
+They now run on a daemon thread started from a FastAPI `lifespan`, and `/health`
+answers 200 immediately with `schema: "checking"`.
 
-**It is not a build failure and not a bad commit.** The owner re-triggered the
-SAME commit — `a8c1dac`, the Phase 11e merge — manually at 11:42, and it went
-**live at 11:44**. Identical code, identical image: the auto-deploy timed out
-and the manual retry succeeded. The event log shows that alternating all the way
-back: 11b live, 11c failed, 11d live, 11e failed, 9d failed, 8 failed, 7h live,
-6 failed, 5 failed, 4 failed, 1b live, 1a failed. Cloudflare Pages deployed both
-frontends successfully on every one of those commits.
+**The trade-off, recorded because it is a real one.** Task #244 made a deploy
+that depends on an unapplied migration fail its own health check. That is now
+DELAYED rather than removed: `/health` flips to 503 the moment drift is found,
+so the exposure goes from *"no deploy ever succeeds"* to *"a deploy with real
+drift serves traffic for about one Mumbai round trip"*. The old behaviour was
+failing every good deploy to guard against a rare bad one.
 
-**Where the time goes, and it is our code.** `apps/api/main.py` does all of this
-at MODULE IMPORT time, before uvicorn can answer anything:
+`tests/test_health_answers_before_the_slow_boot.py` pins all of it, including
+the trap: **answering 503 while merely unchecked reproduces the original bug
+exactly**, because Render cannot tell "still checking" from "broken".
 
-1. `validate_config()`;
-2. `run_startup_check()` (`core/schema_guard.py`), which calls `get_supabase()`
-   and queries the live schema — **a cross-region round trip, Singapore to
-   Mumbai**, on a cold connection;
-3. `start_scheduler()` — APScheduler;
-4. `log_scheduler_startup_health()` — another database read;
-5. the slept-through-jobs catch-up kick.
+**⚠️ One thing was NOT done, because it cannot be.** Raising Render's
+health-check timeout was the other half of the plan. Render's blueprint exposes
+only `healthCheckPath` — there is no timeout field in `render.yaml` — so there
+is nothing to raise from here. The code fix stands alone.
 
-On Render's FREE tier the instance is cold and CPU-throttled, so the import
-graph of a large FastAPI app plus those round trips sometimes lands inside
-Render's health-check window and sometimes does not. That is exactly the
-coin-flip the event log shows, and exactly why a manual retry on a warm
-scheduler succeeds.
+**Still true and unchanged:** after any failed deploy the database is ahead of
+the code until somebody clicks Manual Deploy, because migrations apply through a
+separate GitHub Actions job. Fewer failed deploys means that happens less, not
+never.
 
-**What it costs today.** Nothing is corrupted and nothing is lost — but a failed
-deploy means Render keeps serving the PREVIOUS image, while
-`apply pending migrations — production` (a GitHub Actions job, not part of the
-Render deploy) applies every merged migration regardless. So after a failed
-deploy the database is ahead of the code until somebody clicks Manual Deploy.
-Safe direction — new columns and functions the old code does not call — and
-`schema_guard` is the backstop for the other direction. But it is a manual step
-on every merge that nobody is reminded to take.
+---
 
-**The fix, not yet made, because it touches the deploy path of a live service
-and is the owner's call:** make `/health` answerable before the expensive boot
-work rather than after it. Concretely — move (2), (3), (4) and (5) out of module
-import and into a FastAPI `lifespan`/startup hook that runs them on a background
-thread, keeping `/health` returning 503 while the schema check is outstanding
-(which is what task #244 wanted) rather than keeping the whole process from
-answering at all. Raising Render's health-check timeout is the smaller change
-and treats the symptom; both are worth doing and the second is free.
+## F. Pages that would need a human with a browser — MOSTLY CLOSED
 
-**Deliberately not investigated further mid-phase**, at the owner's direction:
-"keep this in the open questions so that once you are done with all the phases
-we can go through this together."
+### What closed on 11 September 2026
+
+**ESIC's own filing manual was obtained and read in full.** It settled the file
+format, confirmed the six columns we already emit, and — more usefully — settled
+the DESIGN: ESIC says to fill the portal's own template and not a lookalike, so
+Track F1 fills the CA's downloaded workbook rather than minting one. It also
+found a live defect: ESI contributions round UP to the next whole rupee and we
+were computing to the paise. Fixed.
+
+### What is parked with the registrations
+
+The ERI registration page, GSTN's GSP eligibility criteria, `test-dev.tdscpc.gov.in`
+and the Third Party Software Utility Developer page all existed to price
+registrations nobody is pursuing. **Parked.** They are listed with what is needed
+off each in §6.4 of the filing-access paper, so resuming costs an afternoon.
+
+### The one that is still a real product gap
+
+**The ESIC numeric reason codes.** They explain why an insured person had zero
+wages in a month, and ESIC surfaces the list only inside the employer portal at
+filing time. `domain/payroll/esic.py` deliberately refuses to invent one and
+withholds the whole file until a CA supplies it — which the manual now shows is
+more right than when it was written, because **a zero-wage row removes that
+person from the establishment**, so a guessed code would de-register somebody
+rather than merely misreport them.
+
+**Needs an ESIC employer login, which this firm does not have.** Not blocking:
+the refusal is safe and the CA can type the code. It closes the day somebody is
+next inside a client's ESIC portal.
+
+### Two statutory facts that would tidy things up, neither urgent
+
+Odisha's reported professional-tax repeal and Punjab's Development Tax (see
+B12 — naming a state that no longer levies produces a false gap warning, never a
+wrong deduction), and the current MCA XBRL validation tool version.

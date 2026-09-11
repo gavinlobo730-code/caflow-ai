@@ -7,7 +7,9 @@ from core.exceptions import PermissionDeniedError, unhandled_failure
 load_dotenv()
 
 import os
+import contextlib
 import logging
+import threading
 import sentry_sdk
 
 _logger = logging.getLogger("caflow.main")
@@ -109,7 +111,51 @@ from routers import portal_access, portal_self, portal_data
 # Phase 4.6 — Online Payments (links + public gateway webhook)
 from routers import payments
 
-app = FastAPI(title="PracticeSync AI API", version="2.0.0")
+@contextlib.asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Start the slow boot work on a thread, so /health can answer at once.
+
+    WHY THIS EXISTS — every Render deploy was failing
+
+    The schema-drift check, the scheduler start, its health log and the
+    catch-up sweep all used to run at MODULE IMPORT, which is before uvicorn
+    binds a socket. Three of the four make a round trip to Postgres, and this
+    service runs in Singapore while the database is in Mumbai, so that is three
+    cross-region round trips before the process can say anything at all.
+
+    Render gives a new deploy a fixed window to answer its health check and
+    then declares it failed. Every deploy for weeks timed out that way —
+    "Timed out after waiting for internal health check to return a successful
+    response code" — on code that was fine, which a manual re-deploy of the
+    SAME commit then proved by succeeding. The real damage was not the noise:
+    a failed deploy leaves Render serving the PREVIOUS image while the
+    migration job applies that commit's migrations anyway, so the database ran
+    ahead of the code until somebody clicked Manual Deploy.
+
+    A FastAPI lifespan startup does NOT help on its own — it completes before
+    the server accepts connections, so it has exactly the import-time problem.
+    The work has to move off the startup path entirely, onto a thread.
+
+    THE TRADE-OFF WITH TASK #244, STATED PLAINLY
+
+    #244 made a deploy carrying code that depends on an unapplied migration
+    fail its OWN health check, so Render would not cut traffic to it. That
+    protection is now delayed rather than removed: /health answers 200 while
+    the check is outstanding, and flips to 503 the moment drift is found, at
+    which point Render pulls the instance.
+
+    So the exposure changes from "no deploy ever succeeds" to "a deploy with
+    real drift serves traffic for about as long as one Mumbai round trip takes".
+    That is the right side of the trade: the old behaviour was failing every
+    good deploy to guard against a rare bad one, and a bad one is still caught
+    seconds later. What must NOT happen is /health returning 503 while the
+    check is merely outstanding — that reproduces the original bug exactly.
+    """
+    threading.Thread(target=_boot_background, name="boot", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="PracticeSync AI API", version="2.0.0", lifespan=_lifespan)
 
 
 def _failure_response(request: Request, exc: Exception) -> JSONResponse:
@@ -412,38 +458,63 @@ try:
 except Exception:
     _logger.exception("config validation failed")
 
-# task #244 — boot-time schema-drift guard: fails /health (see below) if a
-# migration the deployed code depends on was never applied to this database.
+# Everything below runs on the boot thread started by _lifespan, NOT at import.
+# Read that docstring before moving any of it back: three of these four make a
+# cross-region round trip to Postgres, and doing them before uvicorn binds is
+# what was failing every Render deploy.
+#
+# task #244 — schema-drift guard: flips /health to 503 if a migration the
+# deployed code depends on was never applied to this database. Starts as
+# "not yet checked", which /health must treat as healthy rather than as drift.
 # See core/schema_guard.py's module docstring for the incident this closes.
-try:
-    from core.schema_guard import run_startup_check
-    _SCHEMA_DRIFT = run_startup_check()
-except Exception:
-    _logger.exception("schema drift check failed")
-    _SCHEMA_DRIFT = {"checked": False, "missing": []}
+_SCHEMA_DRIFT: dict = {"checked": False, "missing": []}
 
 # Phase 10B — Workflow Scheduler (daily jobs + workflow schedule runner)
 from jobs.scheduler import start_scheduler, run_due_schedules, log_scheduler_startup_health
-start_scheduler()
-# H11: emit a clear startup health line so operators see at boot whether the
-# scheduler is actually enabled/running (otherwise compliance reminders + recurring
-# jobs silently never run). Non-fatal — never blocks app start.
-try:
-    log_scheduler_startup_health()
-except Exception:
-    _logger.exception("scheduler startup health check failed")
 
-# task #155: H11 only ever LOGGED the stale state above. Act on it — if this
-# process is starting after 06:00 IST and today's jobs have not run, the timer
-# fired while the instance was asleep (GitHub's wake cron is best-effort and
-# runs late or not at all), and APScheduler will not catch up on its own. Runs
-# the outstanding jobs on a background thread; each is idempotent and skipped if
-# it already succeeded today. Non-fatal — never blocks app start.
-try:
-    from jobs.scheduler import run_catchup_if_stale
-    run_catchup_if_stale()
-except Exception:
-    _logger.exception("scheduler catch-up check failed")
+
+def _boot_background() -> None:
+    """The slow half of startup. Every step is non-fatal and logs its own failure.
+
+    Ordered deliberately: the schema check first, because it is the one that can
+    say "do not serve traffic", and the scheduler last, because a job firing
+    against a drifted schema is the thing #244 exists to prevent.
+    """
+    global _SCHEMA_DRIFT
+    try:
+        from core.schema_guard import run_startup_check
+        _SCHEMA_DRIFT = run_startup_check()
+    except Exception:
+        _logger.exception("schema drift check failed")
+        # Left as not-checked: an exception is not evidence of drift, and
+        # reporting one as drift would fail every deploy on a transient DB
+        # hiccup — which is the failure mode this whole change exists to end.
+        _SCHEMA_DRIFT = {"checked": False, "missing": []}
+
+    try:
+        start_scheduler()
+    except Exception:
+        _logger.exception("scheduler start failed")
+
+    # H11: emit a clear startup health line so operators see at boot whether the
+    # scheduler is actually enabled/running (otherwise compliance reminders +
+    # recurring jobs silently never run).
+    try:
+        log_scheduler_startup_health()
+    except Exception:
+        _logger.exception("scheduler startup health check failed")
+
+    # task #155: H11 only ever LOGGED the stale state above. Act on it — if this
+    # process is starting after 06:00 IST and today's jobs have not run, the
+    # timer fired while the instance was asleep (GitHub's wake cron is
+    # best-effort and runs late or not at all), and APScheduler will not catch
+    # up on its own. Each job is idempotent and skipped if it already succeeded
+    # today.
+    try:
+        from jobs.scheduler import run_catchup_if_stale
+        run_catchup_if_stale()
+    except Exception:
+        _logger.exception("scheduler catch-up check failed")
 
 # Phase 13 — the AI memory pipeline is job #11 of run_daily_jobs above, not a
 # thread started here (task #158). Its old 24-hour sleep loop ran the whole
@@ -476,4 +547,11 @@ def healthcheck():
                 "was committed but never applied. See scripts/db/apply_migrations.py.",
             ),
         )
-    return api_response(True, {"status": "ok"})
+    # 200 while the check is still running, and the body says so. Answering 503
+    # here would BE the bug this endpoint was rewritten to fix: Render's deploy
+    # health check would time out on a perfectly good deploy, exactly as it did
+    # for weeks. "Not yet checked" is not evidence of drift. See _lifespan.
+    return api_response(True, {
+        "status": "ok",
+        "schema": "ok" if _SCHEMA_DRIFT.get("checked") else "checking",
+    })

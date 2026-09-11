@@ -42,16 +42,16 @@ BALANCE_SHEET_CAPTIONS = (
     "Reserves & Surplus",
     "Deferred Tax Liability",
     "Trade Payables",
-    "Short Term Borrowings",
-    "Long Term Borrowings",
+    "Short-term Borrowings",
+    "Long-term Borrowings",
     "Other Current Liabilities",
     "Intangible Fixed Assets",
     "Tangible Fixed Assets",
-    "Long Term Investments",
+    "Long-term Investments",
     "Inventories",
     "Trade Receivables",
     "Cash & Cash Equivalents",
-    "Short Term Loans & Advances",
+    "Short-term Loans & Advances",
     "Other Current Assets",
 )
 
@@ -59,7 +59,7 @@ PROFIT_LOSS_CAPTIONS = (
     "Revenue from Operations",
     "Other Income",
     "Cost of Materials Consumed",
-    "Employee Benefit Expense",
+    "Employee Benefits Expense",
     "Finance Costs",
     "Depreciation & Amortisation",
     "Tax Expense",
@@ -73,19 +73,118 @@ CAPTIONS = frozenset(BALANCE_SHEET_CAPTIONS) | frozenset(PROFIT_LOSS_CAPTIONS)
 # an "Other" line in each section precisely so nothing is unpresented — and
 # because a report can then say HOW MANY balances reached it, which is the
 # difference between a classification and a shrug.
+# NOT "Revenue from Operations" or "Reserves & Surplus". Those are the last
+# branch of their section AND the right answer for the ordinary case: every
+# sales account really is revenue from operations, and equity that is not share
+# capital really is reserves. Calling them residual would report a gap on every
+# well-classified client and teach people to ignore the count.
 RESIDUAL_CAPTIONS = frozenset({
-    "Other Current Assets", "Other Current Liabilities",
-    "Reserves & Surplus", "Other Expenses", "Revenue from Operations",
+    "Other Current Assets",
+    "Other Current Liabilities",
+    "Other Expenses",
 })
+
+#: Spellings a stored mapping may use that mean a caption above.
+#:
+#: WHY THIS EXISTS, measured rather than imagined. Until 11-09-2026 the caption
+#: strings lived in three places that disagreed: this module, the hardcoded menu
+#: in apps/web/app/accounting/schedule-iii-mapping/page.tsx, and a third
+#: classifier in apps/web/lib/accounting/scheduleIiiCaptions.ts. The screen
+#: offered "Employee Benefits Expense" and "Short-term Borrowings"; this module
+#: recognised "Employee Benefit Expense" and "Short Term Borrowings". A mapping
+#: that is not a known caption is IGNORED — deliberately, since the column is
+#: free text — so the CA's explicit decision was silently discarded and the
+#: statement fell back to guessing from the subtype.
+#:
+#: Measured on production: nine of the fifty mapped accounts were being
+#: discarded that way. All nine were spelling, not disagreement.
+#:
+#: The canonical spellings are now the SCREEN's, on the owner's decision of
+#: 11-09-2026, because they are what CAs have been choosing and what the data
+#: holds. ⚠️ The authority is Schedule III itself, which could not be read from
+#: this environment — icai.org and every gov.in are refused at the egress proxy.
+#: These aliases mean the choice is honoured whichever way it was spelled, so
+#: nothing is lost if that reading ever turns out to be wrong.
+CAPTION_ALIASES = {
+    "Short Term Borrowings": "Short-term Borrowings",
+    "Long Term Borrowings": "Long-term Borrowings",
+    "Short Term Loans & Advances": "Short-term Loans & Advances",
+    "Long Term Investments": "Long-term Investments",
+    "Employee Benefit Expense": "Employee Benefits Expense",
+}
+
+#: "Fixed Assets" is the odd one, and it is NOT an alias — it is a heading.
+#: Schedule III puts Tangible and Intangible UNDER it, and this module presents
+#: them as separate lines, so the caption a CA picked is real but under-specified
+#: rather than merely spelled differently. Resolved from the account's own
+#: subtype instead of guessed flat: all three accounts carrying it in production
+#: are tangible (Computers & Laptops, Furniture & Fixtures, Office Equipment),
+#: and aliasing it to Tangible would still have been wrong the first time
+#: somebody mapped goodwill to it.
+_FIXED_ASSETS_HEADING = "Fixed Assets"
+
+
+def canonical_caption(mapping: str | None, account_subtype: str | None = None) -> str | None:
+    """The caption a stored mapping means, or None if this module cannot say.
+
+    None is the honest answer for an unknown string and the callers treat it as
+    "no mapping" — the column is free text with no CHECK, an importer can put
+    anything in it, and trusting an unknown value would carry it into the
+    year-end translation to land wherever that table's fallback points.
+    """
+    if not mapping:
+        return None
+    mapping = mapping.strip()
+    if mapping in CAPTIONS:
+        return mapping
+    if mapping in CAPTION_ALIASES:
+        return CAPTION_ALIASES[mapping]
+    if mapping == _FIXED_ASSETS_HEADING:
+        sub = (account_subtype or "").lower()
+        return ("Intangible Fixed Assets" if "intangible" in sub or "goodwill" in sub
+                else "Tangible Fixed Assets")
+    return None
 
 
 # ── Balance Sheet grouping — Companies Act 2013, Schedule III, Part I ──────────
-def bs_bucket(account_type: str, account_subtype: str | None) -> str | None:
-    """Map an account's structured (type, subtype) to a Schedule III Balance
-    Sheet caption. Returns None for accounts that do not belong on the Balance
-    Sheet (e.g. Revenue/Expense)."""
-    sub = (account_subtype or "").lower()
+def bs_bucket(account_type: str, account_subtype: str | None,
+              schedule_iii_mapping: str | None = None) -> str | None:
+    """Map an account to a Schedule III Balance Sheet caption. Returns None for
+    accounts that do not belong on the Balance Sheet (e.g. Revenue/Expense).
+
+    THE CA'S OWN MAPPING WINS (ACC-10). `chart_of_accounts.schedule_iii_mapping`
+    is an explicit decision a human made about where THIS account presents, and
+    it used to be written by the CSV importer, displayed by a read-only screen,
+    and read by no computation at all — so a CA could spend an afternoon on the
+    Schedule III Mapping screen and the Balance Sheet would not move by a rupee.
+
+    The subtype scan below is the FALLBACK, and it is a keyword match on free
+    text: an account whose subtype happens not to contain the magic substring
+    lands in "Other Current Assets" with no warning. That is fine as a default
+    and indefensible as the only answer, which is why an explicit mapping now
+    outranks it and why `classify()` reports how many balances reached a
+    residual caption by default rather than by decision.
+
+    A mapping that is not a caption this module knows is IGNORED rather than
+    trusted: the column is free text with no CHECK, an importer can put anything
+    in it, and an unknown string would otherwise travel into the year-end
+    translation and land wherever that table's fallback points.
+    """
+    # Hyphens folded to spaces: the keywords below are written "long term",
+    # and a subtype a human typed as "Long-term Borrowings" means the same
+    # thing. Folding here rather than adding a second spelling to every keyword.
+    sub = (account_subtype or "").lower().replace("-", " ")
     typ = (account_type or "").lower()
+
+    # The mapping is honoured only once the account is known to belong on this
+    # statement. Checking it first let a Revenue account carrying an
+    # "Inventories" mapping return a Balance Sheet caption — which is a mistake
+    # in the data, not an instruction, and would have put turnover on the
+    # balance sheet.
+    if typ in ("equity", "liability", "asset"):
+        chosen = canonical_caption(schedule_iii_mapping, account_subtype)
+        if chosen in BALANCE_SHEET_CAPTIONS:
+            return chosen
 
     if typ == "equity":
         # "Share Capital" vs "Reserves & Surplus" (Schedule III, Part I, EQ&L)
@@ -112,9 +211,9 @@ def bs_bucket(account_type: str, account_subtype: str | None) -> str | None:
         # "term loan", so testing the long-term branch first presented every
         # working-capital loan as a non-current borrowing.
         if "short term" in sub or "overdraft" in sub or "cc limit" in sub:
-            return "Short Term Borrowings"
+            return "Short-term Borrowings"
         if "long term" in sub or "term loan" in sub or "debenture" in sub:
-            return "Long Term Borrowings"
+            return "Long-term Borrowings"
         return "Other Current Liabilities"
     if typ == "asset":
         # Intangibles FIRST — their subtype ("Intangible Asset") also
@@ -126,7 +225,7 @@ def bs_bucket(account_type: str, account_subtype: str | None) -> str | None:
         )):
             return "Tangible Fixed Assets"
         if "long term investment" in sub or "investment" in sub:
-            return "Long Term Investments"
+            return "Long-term Investments"
         if "inventor" in sub or "stock" in sub:
             return "Inventories"
         # Bare "receivable": the seeded subtype is "Receivable" (TDS
@@ -136,17 +235,27 @@ def bs_bucket(account_type: str, account_subtype: str | None) -> str | None:
         if "cash" in sub or "bank" in sub:
             return "Cash & Cash Equivalents"
         if "short term loan" in sub or "advance" in sub:
-            return "Short Term Loans & Advances"
+            return "Short-term Loans & Advances"
         return "Other Current Assets"
     return None
 
 
 # ── Statement of P&L grouping — Companies Act 2013, Schedule III, Part II ──────
-def pl_bucket(account_type: str, account_subtype: str | None) -> str | None:
-    """Map an account's structured (type, subtype) to a Schedule III P&L caption.
-    Returns None for non-P&L accounts."""
-    sub = (account_subtype or "").lower()
+def pl_bucket(account_type: str, account_subtype: str | None,
+              schedule_iii_mapping: str | None = None) -> str | None:
+    """Map an account to a Schedule III P&L caption. Returns None for non-P&L
+    accounts. The CA's own `schedule_iii_mapping` wins — see bs_bucket."""
+    # Hyphens folded to spaces: the keywords below are written "long term",
+    # and a subtype a human typed as "Long-term Borrowings" means the same
+    # thing. Folding here rather than adding a second spelling to every keyword.
+    sub = (account_subtype or "").lower().replace("-", " ")
     typ = (account_type or "").lower()
+
+    # Same rule, same reason — see bs_bucket.
+    if typ in ("revenue", "expense"):
+        chosen = canonical_caption(schedule_iii_mapping, account_subtype)
+        if chosen in PROFIT_LOSS_CAPTIONS:
+            return chosen
 
     if typ == "revenue":
         if "other income" in sub or "interest income" in sub or "dividend" in sub:
@@ -163,7 +272,7 @@ def pl_bucket(account_type: str, account_subtype: str | None) -> str | None:
         if "material" in sub or "cost of goods" in sub or "purchase" in sub or "raw material" in sub:
             return "Cost of Materials Consumed"
         if "employee" in sub or "salary" in sub or "wages" in sub or "staff" in sub:
-            return "Employee Benefit Expense"
+            return "Employee Benefits Expense"
         if "finance" in sub or "interest expense" in sub or "bank charge" in sub:
             return "Finance Costs"
         if "depreciation" in sub or "amortisation" in sub or "amortization" in sub:
@@ -172,6 +281,52 @@ def pl_bucket(account_type: str, account_subtype: str | None) -> str | None:
             return "Tax Expense"
         return "Other Expenses"
     return None
+
+
+def classify(account_type: str, account_subtype: str | None,
+             schedule_iii_mapping: str | None = None) -> tuple[str | None, str]:
+    """The caption AND how it was arrived at.
+
+    Returns `(caption, basis)` where basis is one of:
+
+      * `"mapping"`  — the CA said so, on the Schedule III Mapping screen or in
+        the imported chart of accounts. The only answer with a human behind it.
+      * `"subtype"`  — a keyword in the account's free-text subtype matched.
+        Usually right, and never checked by anyone.
+      * `"residual"` — nothing matched and the account landed on one of the
+        section's "Other" lines. Schedule III HAS those lines so nothing goes
+        unpresented, but a balance that reached one by default is not the same
+        as a balance a CA put there, and a statement that cannot tell them apart
+        is a statement nobody can review.
+
+    "Revenue from Operations" and "Reserves & Surplus" are deliberately NOT
+    residual even though they are the last branch of their section: they are
+    also the right answer for the ordinary case, so reporting them as gaps
+    would flag every well-classified client and teach people to ignore the
+    count.
+
+    The basis exists so a report can SAY how many balances are on an "Other"
+    line because nobody decided. That was the missing half of ACC-10: the
+    mapping screen showed a green "37 of 53 accounts mapped" while the
+    statements ignored the mapping entirely, so the count measured nothing.
+    """
+    chosen = canonical_caption(schedule_iii_mapping, account_subtype)
+    if chosen in CAPTIONS:
+        # Honoured only on the side it belongs to — an "Inventories" mapping on
+        # a Revenue account is a mistake, not an instruction.
+        caption = (bs_bucket(account_type, account_subtype, schedule_iii_mapping)
+                   or pl_bucket(account_type, account_subtype, schedule_iii_mapping))
+        # Compared against the CANONICAL form, not the raw string: an aliased
+        # spelling resolves to a caption that is deliberately not equal to what
+        # was stored, and comparing to the raw value would report every aliased
+        # mapping as "subtype" — the CA's decision honoured but not credited.
+        if caption == chosen:
+            return caption, "mapping"
+
+    caption = bs_bucket(account_type, account_subtype) or pl_bucket(account_type, account_subtype)
+    if caption is None:
+        return None, "residual"
+    return caption, ("residual" if caption in RESIDUAL_CAPTIONS else "subtype")
 
 
 def _line(label: str, paise: int, indent: bool = True,
@@ -209,17 +364,40 @@ def bucket_amounts(pl: dict, bs: dict) -> tuple[dict[str, int], dict[str, int]]:
     bs_buckets: dict[str, int] = {}
     for section in (*bs.get("assets", []), *bs.get("liabilities", []), *bs.get("equity", [])):
         for ln in section.get("lines", []):
-            cap = bs_bucket(ln.get("account_type", ""), ln.get("account_subtype"))
+            cap = _caption_of(ln, bs_bucket)
             if cap:
                 bs_buckets[cap] = bs_buckets.get(cap, 0) + ln.get("balance_paise", 0)
 
     pl_buckets: dict[str, int] = {}
     for group in _PL_GROUPS:
         for ln in pl.get(group, {}).get("lines", []):
-            cap = pl_bucket(ln.get("account_type", ""), ln.get("account_subtype"))
+            cap = _caption_of(ln, pl_bucket)
             if cap:
                 pl_buckets[cap] = pl_buckets.get(cap, 0) + ln.get("amount_paise", 0)
     return bs_buckets, pl_buckets
+
+
+def _caption_of(line: dict, fallback_bucket) -> str | None:
+    """The caption the BUILDER already put on this line, or the bucket scan if
+    the line predates it.
+
+    THIS IS THE STEP THAT MAKES THE MAPPING SCREEN MEAN SOMETHING (ACC-10).
+    `builders` resolves each account's caption through `classify`, which honours
+    `chart_of_accounts.schedule_iii_mapping`. Re-deriving it here from the
+    subtype alone would throw that away — which is exactly what happened for as
+    long as the mapping existed: it was written by the importer, shown on a
+    read-only screen, and read by nothing, so a CA could map every account and
+    the Balance Sheet would not move by a rupee.
+
+    The fallback survives because `bucket_amounts` is also handed statement
+    dicts built elsewhere (the year-end snapshots, and any caller that
+    constructs a document by hand), and a line with no caption on it is not an
+    error — it is an older shape.
+    """
+    cap = line.get("schedule_iii_caption")
+    if cap and cap in CAPTIONS:
+        return cap
+    return fallback_bucket(line.get("account_type", ""), line.get("account_subtype"))
 
 
 # ── Comparatives — Schedule III, Division I, General Instructions para 5 ─────
@@ -357,9 +535,9 @@ def _build_one_year(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
     # ── Balance Sheet: Equity & Liabilities ──────────────────────────────────
     share_cap, reserves = gb("Share Capital"), gb("Reserves & Surplus")
     shareholders_funds = share_cap + reserves
-    ltb, dtl = gb("Long Term Borrowings"), gb("Deferred Tax Liability")
+    ltb, dtl = gb("Long-term Borrowings"), gb("Deferred Tax Liability")
     non_current_liab = ltb + dtl
-    stb, tp, ocl = gb("Short Term Borrowings"), gb("Trade Payables"), gb("Other Current Liabilities")
+    stb, tp, ocl = gb("Short-term Borrowings"), gb("Trade Payables"), gb("Other Current Liabilities")
     current_liab = stb + tp + ocl
     total_equity_liab = shareholders_funds + non_current_liab + current_liab
 
@@ -369,21 +547,21 @@ def _build_one_year(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
             _line("Reserves & Surplus", reserves),
         ], shareholders_funds, "Total Shareholders' Funds"),
         _section("II. Non-Current Liabilities", [
-            _line("Long Term Borrowings", ltb),
+            _line("Long-term Borrowings", ltb),
             _line("Deferred Tax Liability", dtl),
         ], non_current_liab, "Total Non-Current Liabilities"),
         _section("III. Current Liabilities", [
-            _line("Short Term Borrowings", stb),
+            _line("Short-term Borrowings", stb),
             _line("Trade Payables", tp),
             _line("Other Current Liabilities", ocl),
         ], current_liab, "Total Current Liabilities"),
     ]
 
     # ── Balance Sheet: Assets ────────────────────────────────────────────────
-    tangible, intangible, lt_inv = gb("Tangible Fixed Assets"), gb("Intangible Fixed Assets"), gb("Long Term Investments")
+    tangible, intangible, lt_inv = gb("Tangible Fixed Assets"), gb("Intangible Fixed Assets"), gb("Long-term Investments")
     non_current_assets = tangible + intangible + lt_inv
     inv, tr, cash = gb("Inventories"), gb("Trade Receivables"), gb("Cash & Cash Equivalents")
-    stla, oca = gb("Short Term Loans & Advances"), gb("Other Current Assets")
+    stla, oca = gb("Short-term Loans & Advances"), gb("Other Current Assets")
     current_assets = inv + tr + cash + stla + oca
     total_assets = non_current_assets + current_assets
 
@@ -391,13 +569,13 @@ def _build_one_year(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
         _section("I. Non-Current Assets", [
             _line("Fixed Assets — Tangible", tangible),
             _line("Fixed Assets — Intangible", intangible),
-            _line("Long Term Investments", lt_inv),
+            _line("Long-term Investments", lt_inv),
         ], non_current_assets, "Total Non-Current Assets"),
         _section("II. Current Assets", [
             _line("Inventories", inv),
             _line("Trade Receivables", tr),
             _line("Cash & Cash Equivalents", cash),
-            _line("Short Term Loans & Advances", stla),
+            _line("Short-term Loans & Advances", stla),
             _line("Other Current Assets", oca),
         ], current_assets, "Total Current Assets"),
     ]
@@ -407,7 +585,7 @@ def _build_one_year(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
     total_revenue = rev_ops + other_income
 
     materials = gp("Cost of Materials Consumed")
-    emp = gp("Employee Benefit Expense")
+    emp = gp("Employee Benefits Expense")
     finance = gp("Finance Costs")
     depr = gp("Depreciation & Amortisation")
     other_exp = gp("Other Expenses")
@@ -425,7 +603,7 @@ def _build_one_year(pl: dict, bs: dict, fy_start: str, fy_end: str) -> dict:
     expenses = [
         _section("II. Expenses", [
             _line("Cost of Materials Consumed", materials),
-            _line("Employee Benefit Expense", emp),
+            _line("Employee Benefits Expense", emp),
             _line("Finance Costs", finance),
             _line("Depreciation & Amortisation Expense", depr),
             _line("Other Expenses", other_exp),

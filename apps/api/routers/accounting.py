@@ -174,6 +174,44 @@ def _assert_account_scope(current_user: dict, account_id: str) -> dict:
     return account
 
 
+@router.get("/schedule-iii/captions")
+def schedule_iii_captions(current_user: dict = Depends(rbac("accounting", "read"))):
+    """The Schedule III captions a mapping may be set to, grouped by statement.
+
+    THE SCREEN MUST NOT CARRY ITS OWN LIST, which is what this endpoint is for.
+
+    Until 11-09-2026 apps/web/app/accounting/schedule-iii-mapping/page.tsx held
+    a hardcoded SCHEDULE_III_SECTIONS array, and it had drifted from the engine
+    in two directions at once. It offered five captions the classifier had never
+    heard of — Capital Work in Progress, Goodwill & Intangibles, Long-term and
+    Short-term Provisions, Deferred Tax Asset — so a CA could pick one and the
+    statement would ignore it; and it spelled five others differently, which is
+    how NINE of the fifty mapped accounts in production ended up discarded.
+
+    A menu the engine cannot honour is worse than no menu: the CA believes the
+    decision was recorded. So the list is served from the vocabulary that does
+    the classifying, and there is no second copy to drift.
+
+    The five captions the screen used to offer and the engine does not present
+    are DELIBERATELY absent rather than added here. They are real Schedule III
+    lines, and adding them means teaching the statement builders, the year-end
+    translation and the PDF about each — a scoped piece of work, not a string in
+    a list. Nothing in production is mapped to any of them, so removing them
+    from the menu costs nothing today.
+    """
+    from domain.reporting.schedule_iii import (
+        BALANCE_SHEET_CAPTIONS, PROFIT_LOSS_CAPTIONS, RESIDUAL_CAPTIONS)
+    return api_response(True, {
+        "sections": [
+            {"heading": "Balance Sheet", "items": list(BALANCE_SHEET_CAPTIONS)},
+            {"heading": "Profit & Loss", "items": list(PROFIT_LOSS_CAPTIONS)},
+        ],
+        # So the screen can mark them: a balance on one of these is there
+        # because nobody decided, not because somebody chose it.
+        "residual": sorted(RESIDUAL_CAPTIONS),
+    })
+
+
 @router.patch("/accounts/{account_id}")
 def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = Depends(rbac("accounting", "write"))):
     """Rename an account, recode it, or retire it.
@@ -221,13 +259,19 @@ def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = 
         update["parent_group"] = (fields["parent_group"] or "").strip() or None
     if "sub_group" in fields:
         update["sub_group"] = (fields["sub_group"] or "").strip() or None
+    if "schedule_iii_mapping" in fields:
+        # ACC-10. The model has already refused anything that is not a Schedule
+        # III caption, so what arrives here is either a caption or "" meaning
+        # "clear it and go back to the subtype scan".
+        update["schedule_iii_mapping"] = fields["schedule_iii_mapping"] or None
     if not update:
         # `description` has no column on chart_of_accounts — accepting it and
         # silently dropping it is the same lie this endpoint is being fixed for.
         raise HTTPException(
             status_code=422,
-            detail=("Only name, code, is_active, parent_id, parent_group and "
-                    "sub_group can be changed on an account."))
+            detail=("Only name, code, is_active, parent_id, parent_group, "
+                    "sub_group and schedule_iii_mapping can be changed on an "
+                    "account."))
     try:
         res = (db.table("chart_of_accounts").update(update)
                .eq("id", account_id).eq("firm_id", current_user["firm_id"]).execute())

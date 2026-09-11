@@ -144,7 +144,8 @@ class SupabaseLedgerSource(LedgerSource):
     # Base columns always present. system_account_key (migration 092) and
     # reversal_of (migration 055) are added later and probed for separately, so
     # reports run whether or not those migrations have been applied.
-    _BASE_ACCOUNT_COLS = "id, account_code, account_name, account_type, account_subtype"
+    _BASE_ACCOUNT_COLS = ("id, account_code, account_name, account_type, "
+                      "account_subtype, schedule_iii_mapping")
     _ENTRY_SCALAR_COLS = ("id, entry_date, client_id, firm_id, entry_type, "
                           "reference_no, narration, created_at")
     _BASE_LINE_COLS = "account_id, debit_paise, credit_paise"
@@ -328,6 +329,7 @@ class SupabaseLedgerSource(LedgerSource):
             r["id"]: Account(
                 id=r["id"], code=r.get("account_code", ""), name=r.get("account_name", ""),
                 type=r.get("account_type", ""), subtype=r.get("account_subtype"),
+                schedule_iii_mapping=r.get("schedule_iii_mapping"),
                 # .get() yields None when the column is absent → resolver name fallback.
                 system_key=r.get("system_account_key"),
             )

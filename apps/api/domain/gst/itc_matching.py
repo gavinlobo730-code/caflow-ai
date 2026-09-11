@@ -3,7 +3,8 @@ Matching a client's purchase bills against what GSTR-2B says — CGST §16(2)(aa
 
 WHY THIS IS A DOMAIN MODULE AND NOT A SCREEN
     It was a browser function. `reconcile()` in
-    apps/web/app/gst/reconciliation/page.tsx matched in TypeScript, over a
+    apps/web/app/gst/reconciliation/page.tsx — deleted 11-09-2026, named here
+    because it is why this module exists — matched in TypeScript, over a
     purchase register the CA had to export from this product and upload back
     into it, and threw the answer away on refresh. CLAUDE.md: computation,
     validation and statutory rules live in apps/api. So this is the rule, once,

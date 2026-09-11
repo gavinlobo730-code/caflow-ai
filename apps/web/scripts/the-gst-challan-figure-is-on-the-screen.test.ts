@@ -96,7 +96,9 @@ test("no GST screen states the withdrawn Rule 36(4) buffer", () => {
   // deciding how much credit to claim — the cushion it promises does not
   // exist, and claiming into it is what draws the reversal notice the same
   // banner warns about.
-  for (const rel of ["app/gst/reconciliation/page.tsx", "app/gst/gstr3b/page.tsx"]) {
+  // app/gst/reconciliation/page.tsx was the other screen making this claim and
+  // was deleted on 11-09-2026; see the-2b-reconciliation-reads-the-books.test.ts.
+  for (const rel of ["app/gst/gstr3b/page.tsx"]) {
     const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
     // Comments are NOT stripped here: the header comments are what a developer
     // reads to learn the rule, and both stated the superseded figure.

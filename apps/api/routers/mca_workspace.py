@@ -35,11 +35,11 @@ from pydantic import BaseModel, Field
 
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import assert_client_access, can_access_client
+from core.authz import assert_client_access, can_access_client, effective_client_ids
 from core.validators import validate_cin, validate_din, validate_pan
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
-from services.compliance_engine import mca_due_date
+from services.compliance_engine import mca_due_date, MCA_AGM_OFFSET_DAYS
 from models.fy import OptionalFYLabel
 
 router = APIRouter(prefix="/api/mca-workspace", tags=["mca_workspace"])
@@ -555,6 +555,105 @@ def complete_filing(
         acknowledgement_url=body.acknowledgement_url,
     )
     return update_filing_status(filing_id, body_with_filed, current_user)
+
+
+@router.get("/calendar/firm")
+def mca_calendar_firmwide(current_user: dict = Depends(rbac("mca", "read"))):
+    """Every MCA annual deadline across the caller's clients, from the REAL AGM.
+
+    WHY THIS EXISTS (D1)
+
+    apps/web/app/calendar/page.tsx built fourteen deadlines in the browser, and
+    the three MCA ones were the worst of them: it assumed an AGM on
+    **30 September for every client**, then counted the offsets inclusively and
+    got both dates a day early — AOC-4 on 29 October where §137 gives 30, MGT-7
+    on 28 November where §92 gives 29.
+
+    Two mistakes, and the second is the serious one. A day early is merely
+    wrong; a FABRICATED AGM date is wrong for every company whose AGM was not on
+    30 September, which is most of them once a year-end differs or an extension
+    is granted — and a CA reading a firm-wide calendar has no way to tell which
+    rows were computed and which were assumed.
+
+    `mca_companies.last_agm_date` has held the real date since migration 038,
+    whose own comment says "AGM date drives AOC-4/MGT-7 deadline". The browser
+    copy never read it.
+
+    A COMPANY WITH NO AGM DATE RECORDED IS NAMED, NOT DEFAULTED. That is the
+    whole point: 30 September is a plausible guess and a plausible guess on a
+    statutory deadline is how a filing is missed. The caller gets the company
+    back in `without_agm_date` and can record it.
+
+    Scoped to the caller's clients, not the firm's: "all clients" is right only
+    for a Partner (core.authz._FIRMWIDE_ROLES).
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA21.
+    """
+    firm_id = current_user["firm_id"]
+    allowed = effective_client_ids(current_user)
+
+    if _USE_MOCK:
+        rows = list(_MOCK_COMPANIES.values())
+    else:
+        from core.supabase_client import get_supabase
+        q = (get_supabase().table("mca_companies")
+             .select("id, client_id, cin, company_name, last_agm_date, is_active")
+             .eq("firm_id", firm_id))
+        # An EMPTY set means no clients, never "no filter".
+        if allowed is not None:
+            if not allowed:
+                return api_response(True, {"deadlines": [], "without_agm_date": []})
+            q = q.in_("client_id", sorted(allowed))
+        rows = q.execute().data or []
+
+    if allowed is not None:
+        rows = [r for r in rows if r.get("client_id") in allowed]
+    rows = [r for r in rows if r.get("is_active", True)]
+
+    deadlines: list[dict] = []
+    without: list[dict] = []
+    for c in rows:
+        agm = c.get("last_agm_date")
+        if not agm:
+            without.append({
+                "client_id": c.get("client_id"),
+                "cin": c.get("cin"),
+                "company_name": c.get("company_name"),
+                "what_it_means": (
+                    "No AGM date is recorded, and ADT-1, AOC-4 and MGT-7 are all "
+                    "counted from it — so these deadlines cannot be computed for "
+                    "this company. Record the AGM date rather than assuming one."),
+            })
+            continue
+        try:
+            agm_dt = date.fromisoformat(str(agm)[:10])
+        except ValueError:
+            without.append({
+                "client_id": c.get("client_id"),
+                "cin": c.get("cin"),
+                "company_name": c.get("company_name"),
+                "what_it_means": f"The recorded AGM date {agm!r} is not a date.",
+            })
+            continue
+        for form, section in (("ADT-1", "§139"), ("AOC-4", "§137"), ("MGT-7", "§92")):
+            deadlines.append({
+                "client_id": c.get("client_id"),
+                "company_name": c.get("company_name"),
+                "cin": c.get("cin"),
+                "form_type": form,
+                "agm_date": agm_dt.isoformat(),
+                "due_date": mca_due_date(agm_dt, form).isoformat(),
+                "description": f"Companies Act 2013 {section} — {form}, "
+                               f"AGM + {MCA_AGM_OFFSET_DAYS[form]} days",
+            })
+
+    deadlines.sort(key=lambda d: (d["due_date"], d["company_name"] or "", d["form_type"]))
+    return api_response(True, {
+        "deadlines": deadlines,
+        # Reported beside the answer, never folded into it — the same shape the
+        # payroll run uses for statutory_gaps.
+        "without_agm_date": without,
+    })
 
 
 @router.get("/calendar")

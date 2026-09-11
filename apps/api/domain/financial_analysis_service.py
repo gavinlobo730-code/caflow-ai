@@ -41,11 +41,11 @@ Rules you MUST follow:
 # equal these caption labels, so the old exact-match sets summed 0 on every
 # balance sheet and the current ratio was permanently None.
 _CURRENT_ASSET_BUCKETS = {
-    "Trade Receivables", "Cash & Cash Equivalents", "Short Term Loans & Advances",
+    "Trade Receivables", "Cash & Cash Equivalents", "Short-term Loans & Advances",
     "Other Current Assets", "Inventories",
 }
 _CURRENT_LIAB_BUCKETS = {
-    "Short Term Borrowings", "Trade Payables", "Other Current Liabilities",
+    "Short-term Borrowings", "Trade Payables", "Other Current Liabilities",
 }
 
 

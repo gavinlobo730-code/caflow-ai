@@ -25,6 +25,13 @@ class Account:
     type: str                      # Asset | Liability | Equity | Revenue/Income | Expense
     subtype: Optional[str] = None
     system_key: Optional[str] = None   # ar | ap | bank | gst_output | gst_input | tds_* | advance_*
+    # chart_of_accounts.schedule_iii_mapping — the CA's OWN decision about where
+    # this account presents on the statutory statements, made on the Schedule III
+    # Mapping screen or in the imported chart of accounts. It outranks the
+    # free-text subtype scan; see domain/reporting/schedule_iii.classify.
+    # Optional because it is nullable and because most accounts have never been
+    # mapped: nothing here invents one.
+    schedule_iii_mapping: Optional[str] = None
 
     @property
     def is_income(self) -> bool:

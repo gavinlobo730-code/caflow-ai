@@ -33,7 +33,7 @@ ACCOUNTS = [
     Account("ar",     "1100", "Trade Receivables",      "Asset",     "Receivable", system_key="ar"),
     Account("inv",    "1200", "Inventory",              "Asset",     "Inventory"),
     Account("fa",     "1500", "Plant & Machinery",      "Asset",     "Fixed Asset"),
-    Account("lti",    "1600", "Long Term Investments",  "Asset",     "Long Term Investment"),
+    Account("lti",    "1600", "Long-term Investments",  "Asset",     "Long Term Investment"),
     Account("ap",     "2150", "Trade Payables",         "Liability", "Payable", system_key="ap"),
     Account("stl",    "2400", "Bank Overdraft",         "Liability", "Short Term Loan"),
     Account("ltl",    "2500", "Term Loan",              "Liability", "Long Term Loan"),
@@ -99,14 +99,14 @@ def _line(doc_section, caption):
 @pytest.mark.parametrize("attr,caption", [
     ("share_capital",            "Share Capital"),
     ("reserves",                 "Reserves & Surplus"),
-    ("long_term_borrowings",     "Long Term Borrowings"),
-    ("short_term_borrowings",    "Short Term Borrowings"),
+    ("long_term_borrowings",     "Long-term Borrowings"),
+    ("short_term_borrowings",    "Short-term Borrowings"),
     ("trade_payables",           "Trade Payables"),
     ("other_current_liabilities", "Other Current Liabilities"),
     ("inventories",              "Inventories"),
     ("trade_receivables",        "Trade Receivables"),
     ("cash",                     "Cash & Cash Equivalents"),
-    ("long_term_investments",    "Long Term Investments"),
+    ("long_term_investments",    "Long-term Investments"),
 ])
 def test_every_balance_sheet_component_equals_the_statement_line(svc, attr, caption):
     pl, bs = _statements(svc)
@@ -121,7 +121,7 @@ def test_every_balance_sheet_component_equals_the_statement_line(svc, attr, capt
     ("revenue_from_operations", "Revenue from Operations"),
     ("other_income",            "Other Income"),
     ("cost_of_materials",       "Cost of Materials Consumed"),
-    ("employee_benefits",       "Employee Benefit Expense"),
+    ("employee_benefits",       "Employee Benefits Expense"),
     ("finance_costs",           "Finance Costs"),
     ("depreciation",            "Depreciation & Amortisation Expense"),
     ("other_expenses",          "Other Expenses"),

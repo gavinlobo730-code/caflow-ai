@@ -58,10 +58,15 @@ class TestESI:
         assert result["employer"] == 0
 
     def test_esi_exactly_at_ceiling(self):
-        """Gross = ₹21,000 → ESI applicable."""
+        """Gross = ₹21,000 → ESI applicable, both shares to the next rupee.
+
+        UPDATED 11-09-2026: asserted ₹157.50 and ₹682.50 until ESIC's filing
+        manual settled that both shares round UP to the next whole rupee. See
+        tests/test_esi_rounds_to_the_next_rupee.py.
+        """
         result = _compute_esi(2100000)
-        assert result["employee"] == 15750   # 0.75% of ₹21,000
-        assert result["employer"] == 68250   # 3.25% of ₹21,000
+        assert result["employee"] == 15800   # 0.75% = ₹157.50, up to ₹158
+        assert result["employer"] == 68300   # 3.25% = ₹682.50, up to ₹683
 
     def test_esi_zero(self):
         result = _compute_esi(0)

@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { api } from "@/lib/api";
 import {
   ChevronLeft,
   ChevronRight,
@@ -218,30 +219,18 @@ function generateDeadlines(clientIds: string[]): Deadline[] {
         done: false,
       });
     }
-    // AOC-4: 29 Oct (within 30 days of AGM on 30 Sep)
-    if (m === 9) { // October
-      deadlines.push({
-        id: `aoc4-${y}`,
-        date: new Date(y, 9, 29),
-        label: "AOC-4",
-        category: "MCA",
-        description: "Companies Act 2013 Section 137 — financial statements filing due 29 Oct",
-        clientIds,
-        done: false,
-      });
-    }
-    // MGT-7: 28 Nov (within 60 days of AGM on 30 Sep)
-    if (m === 10) { // November
-      deadlines.push({
-        id: `mgt7-${y}`,
-        date: new Date(y, 10, 28),
-        label: "MGT-7",
-        category: "MCA",
-        description: "Companies Act 2013 Section 92 — annual return due 28 Nov",
-        clientIds,
-        done: false,
-      });
-    }
+    // ADT-1, AOC-4 and MGT-7 are NOT generated here, and that is the fix.
+    //
+    // They used to be, on an AGM assumed to be 30 September for every client,
+    // with the offsets counted inclusively — so AOC-4 showed 29 October where
+    // Companies Act s.137 gives 30, and MGT-7 showed 28 November where s.92
+    // gives 29. A day early is merely wrong; the invented AGM was wrong for
+    // every company whose meeting was not on 30 September, and a CA reading
+    // this calendar could not tell a computed row from an assumed one.
+    //
+    // mca_companies.last_agm_date has held the real date since migration 038.
+    // These three now come from GET /api/mca/calendar/firm, which counts from
+    // it and NAMES a company that has none rather than defaulting one.
   }
 
   return deadlines;
@@ -347,10 +336,52 @@ export default function CalendarPage() {
     load();
   }, []);
 
-  // Regenerate deadlines when clients load
+  const [agmGaps, setAgmGaps] = useState<{ company_name: string }[]>([]);
+
+  // Regenerate deadlines when clients load.
+  //
+  // The rule-based ones (GST, TDS, ITR, DIR-3 KYC) fall out of the calendar
+  // date alone. The three MCA annual forms do NOT — they are counted from each
+  // company's own AGM — so they are fetched rather than guessed.
   useEffect(() => {
+    let live = true;
     const clientIds = clients.map(c => c.id);
-    setDeadlines(generateDeadlines(clientIds));
+    const base = generateDeadlines(clientIds);
+    setDeadlines(base);
+
+    (async () => {
+      try {
+        const res = await api.mca.firmCalendar() as {
+          success: boolean;
+          data?: {
+            deadlines: { client_id: string; company_name: string; form_type: string;
+                         due_date: string; description: string }[];
+            without_agm_date: { company_name: string }[];
+          };
+        };
+        if (!live || !res.success || !res.data) return;
+        setAgmGaps(res.data.without_agm_date ?? []);
+        setDeadlines([
+          ...base,
+          ...res.data.deadlines.map(d => ({
+            // Per COMPANY, not per year: two companies with different AGMs have
+            // different AOC-4 dates, and one row keyed by year would collapse them.
+            id: `mca-${d.form_type}-${d.client_id}-${d.due_date}`,
+            date: new Date(d.due_date + "T00:00:00"),
+            label: d.form_type,
+            category: "MCA" as const,
+            description: `${d.company_name} — ${d.description}`,
+            clientIds: [d.client_id],
+            done: false,
+          })),
+        ]);
+      } catch {
+        // The rule-based deadlines still stand; the MCA ones are simply absent,
+        // which is the honest degradation — better than the assumed dates this
+        // replaced.
+      }
+    })();
+    return () => { live = false; };
   }, [clients]);
 
   const clientMap = new Map(clients.map(c => [c.id, c]));
@@ -407,6 +438,23 @@ export default function CalendarPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* A company with no AGM date recorded has no ADT-1, AOC-4 or MGT-7 on
+          this calendar, and silence there looks exactly like "nothing due".
+          Named, for the same reason a payroll run names its statutory gaps. */}
+      {agmGaps.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <p className="text-xs font-medium text-amber-800">
+            {agmGaps.length} compan{agmGaps.length === 1 ? "y has" : "ies have"} no AGM
+            date recorded, so their ADT-1, AOC-4 and MGT-7 deadlines are not shown
+          </p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            All three are counted from the AGM, so there is no date to compute —
+            record it on the client&apos;s MCA tab.{" "}
+            {agmGaps.map(g => g.company_name).filter(Boolean).join(", ")}
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
