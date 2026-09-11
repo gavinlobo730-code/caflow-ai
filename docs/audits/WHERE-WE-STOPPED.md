@@ -348,7 +348,85 @@ have dated the challan a day before the money moved. Caught by the existing
 | F1 | the ESIC `.xls` the portal accepts | **blocked on an owner decision** — filling the CA's own downloaded template needs `xlrd` + `xlwt` + `xlutils`, all three unmaintained |
 | F2 | a record for ESI and PT remittances | done — migration 365 |
 | F3 | the handoff screen | **done** |
-| F4 | the challan is money | reshaped to a RECONCILIATION (365 carries the link; what is left is the screen that lists unmatched remittances beside the bank) |
+| F4 | the challan is money | **done** — as a RECONCILIATION, not a posting |
 | F5 | professional tax: the artefact | not started — and it needs the state slabs a human must supply first |
 | F6 | the never-do list, as code | **half done** — the credential/OTP/frame rule is now a test. The other two rules are still prose |
+| F7 | the DSC register | not started |
+
+---
+
+## Track F4 — which entry paid this remittance (done)
+
+`GET /api/payroll/clients/{id}/remittance-reconciliation` lists every ESI and
+professional-tax remittance recorded as PAID with no journal entry tied to it,
+each with the entries that could be its payment. A panel at the top of the
+Payroll **File** tab renders it, client-wide, and links with one click.
+
+**The question it answers.** On the ledger, a statutory liability **nobody has
+paid** and one that was **paid and never tied back** look identical — both sit
+uncleared on ESI Payable at year end, and telling them apart meant opening the
+bank statement one account at a time.
+
+**Still not a posting.** The PATCH behind the button writes a reference and
+nothing else. `services/bank_posting_service.post` already wrote
+`Dr <liability> / Cr Bank` when the CA passed the bank statement line, and it is
+the one path for money movement; posting from here as well would debit the
+statutory liability twice. That was F4's original shape and it was wrong — see
+the section above.
+
+### The rule that makes the matcher work, and it is easy to get backwards
+
+**Match on what LEFT THE BANK, not on what the entry took off the liability.**
+
+`statutory_remittances.amount_paise` is the CHALLAN's figure — migration 365
+says so — and a challan can carry more than the liability. Interest and damages
+under ESI Act s.39(5) are added at the portal and are an EXPENSE, not a
+reduction of the payable:
+
+```
+Dr  ESI Payable                      10,000
+Dr  Interest on Statutory Dues          500
+  Cr  Bank                                     10,500
+```
+
+Matching the challan against the debit to ESI Payable would fail on **every
+late remittance** — which is the entire population a reconciliation exists to
+find. The entry TOTAL is what left the bank, and a balanced entry's total is
+its credit side, so no account has to be classified as a bank for this to work.
+The panel names the difference rather than leaving a CA to derive it from two
+numbers.
+
+### What it refuses
+
+- **Nothing is ever linked automatically.** A candidate carries a grade —
+  `exact` or `near` — and a reason SENTENCE, never a score. A CA who paid two
+  identical challans in one week gets two exact candidates and is the only one
+  who can say which is which. Same rule as the bank-entry drafts
+  (`docs/architecture/09`).
+- **A remittance with no `paid_on` gets nothing**, not everything. Without a
+  date there is no window, and offering every entry that ever touched ESI
+  Payable is not a shortlist — it is the ledger, re-presented as a suggestion.
+- **±7 days**, and the number is a judgement written down rather than a rule:
+  net banking debits the same day, a cheque clears over a few, and a CA
+  recording the challan date may be a day out. Wider would start offering next
+  month's remittance as a candidate for this one.
+
+### One defect found on the way, in this change's own first draft
+
+The money formatter used Python's `f"{n:,}"`, which groups in **threes** — so
+₹1,25,000 came out as "₹125,000", a figure no Indian document uses and one the
+browser renders correctly two lines away on the same screen.
+`domain/reporting/amount_words.indian_digits` already existed for exactly this,
+with the same reasoning on it. Delegated, not re-implemented.
+
+### Track F after this
+
+| | Phase | State |
+|---|---|---|
+| F1 | the ESIC `.xls` the portal accepts | **blocked on an owner decision** — three unmaintained dependencies |
+| F2 | a record for ESI and PT remittances | done — migration 365 |
+| F3 | the handoff screen | done |
+| F4 | the challan is money | **done**, as a reconciliation |
+| F5 | professional tax: the artefact | not started — needs the state slabs a human must supply |
+| F6 | the never-do list, as code | **half done** — the credential/OTP/frame rule is a test; two prose rules left |
 | F7 | the DSC register | not started |
