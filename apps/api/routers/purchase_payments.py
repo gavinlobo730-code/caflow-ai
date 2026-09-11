@@ -28,29 +28,18 @@ from services import vendor_tds
 from services import reversal_service
 from services import purchase_payment_service
 from services.numbering import sequence_after
+from core.ist_clock import fy_code, ist_fy_label
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payments")
 
 
-def _current_fy_long() -> str:
-    """Return full financial year string like '2025-26' for display/timeline use.
-    Indian FY runs April 1 – March 31.
-    """
-    now = datetime.now(timezone.utc)
-    start = now.year if now.month >= 4 else now.year - 1
-    return f"{start}-{str(start + 1)[2:]}"
 
 router = APIRouter(prefix="/api/purchase-payments", tags=["purchase_payments"])
 
 MOCK_PURCHASE_PAYMENTS: list[dict] = []
 
 
-def _current_fy() -> str:
-    now = datetime.now(timezone.utc)
-    if now.month >= 4:
-        return f"{str(now.year)[2:]}{str(now.year + 1)[2:]}"
-    return f"{str(now.year - 1)[2:]}{str(now.year)[2:]}"
 
 
 def _now_iso() -> str:
@@ -376,7 +365,9 @@ def create_purchase_payment(
     period_validation_service.validate_posting_date(firm_id, payment_date)
 
     if _USE_MOCK:
-        fy = _current_fy()
+        # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from
+        # today (SALES-24) — see core.ist_clock.fy_code.
+        fy = fy_code(payment_date)
         payment = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
@@ -464,7 +455,9 @@ def create_purchase_payment(
                 db, firm_id=firm_id, client_id=client_id, vendor_id=vendor_id))
         tds_paise = int(tds_cols.get("tds_paise") or 0)
 
-        fy = _current_fy()
+        # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from
+        # today (SALES-24) — see core.ist_clock.fy_code.
+        fy = fy_code(payment_date)
         seq = _next_payment_seq(db, firm_id, fy)
         payment_no = f"VPMT-{fy}-{seq:04d}"
 
@@ -545,7 +538,7 @@ def create_purchase_payment(
         timeline_service.log_timeline_event(
             client_id=client_id,
             firm_id=firm_id,
-            financial_year=_current_fy_long(),
+            financial_year=ist_fy_label(payment_date),
             category="accounting",
             event_type="payment_recorded",
             title=f"Vendor Payment {payment_no} recorded",
@@ -703,7 +696,9 @@ def _create_foreign_payment(db, firm_id: str, client_id: str, data: dict, actor:
             lines.append({"account_id": fx_id, "debit_paise": -fx_diff, "credit_paise": 0,
                           "narration": "Realized FX loss", "txn_debit": 0, "txn_credit": 0})
 
-    fy = _current_fy()
+    # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from today
+    # (SALES-24) — see core.ist_clock.fy_code.
+    fy = fy_code(payment_date)
     seq = _next_payment_seq(db, firm_id, fy)
     payment_no = f"VPMT-{fy}-{seq:04d}"
     # task #102: pre-generated so the journal can carry source_type/source_id

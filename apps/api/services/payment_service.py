@@ -20,11 +20,11 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.authz import can_access_client
-from core.ist_clock import ist_today
+from core.ist_clock import ist_fy_label, ist_today
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services import email_service
-from services.receipt_service import create_receipt_core, _current_fy_long
+from services.receipt_service import create_receipt_core
 from services.payments import get_provider, PaymentLinkRequest, CAPTURED, FAILED, REFUNDED
 
 _logger = logging.getLogger("caflow.payment_service")
@@ -323,7 +323,7 @@ def _apply_event(db, payment: dict, event, firm_id: str) -> None:
         log_event(firm_id, "customer_payment", str(payment["id"]), "captured",
                   new_data={"receipt_id": receipt.get("id"), "amount_paise": payment["amount_paise"]})
         timeline_service.log_timeline_event(
-            client_id=payment["client_id"], firm_id=firm_id, financial_year=_current_fy_long(),
+            client_id=payment["client_id"], firm_id=firm_id, financial_year=ist_fy_label(receipt.get("receipt_date")),
             category="accounting", event_type="online_payment_captured",
             title="Online payment received",
             description=f"Online payment of ₹{int(payment['amount_paise']) // 100:,} captured.",

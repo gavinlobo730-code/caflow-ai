@@ -28,23 +28,14 @@ from services import vendor_tds
 from domain.tds.residency import (
     GAP_FOREIGN_ADVANCE_NOT_WITHHELD, describe_gaps,
 )
+from core.ist_clock import fy_code, ist_fy_label
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payment_service")
 
 
-def _current_fy() -> str:
-    now = datetime.now(timezone.utc)
-    if now.month >= 4:
-        return f"{str(now.year)[2:]}{str(now.year + 1)[2:]}"
-    return f"{str(now.year - 1)[2:]}{str(now.year)[2:]}"
 
 
-def _current_fy_long() -> str:
-    """Full FY string like '2025-26' for display/timeline. Indian FY: Apr 1 – Mar 31."""
-    now = datetime.now(timezone.utc)
-    start = now.year if now.month >= 4 else now.year - 1
-    return f"{start}-{str(start + 1)[2:]}"
 
 
 def _next_payment_seq(db, firm_id: str, fy: str) -> int:
@@ -172,7 +163,9 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
 
     period_validation_service.validate_posting_date(firm_id or "", data["payment_date"])
 
-    fy = _current_fy()
+    # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from today
+    # (SALES-24) — see core.ist_clock.fy_code.
+    fy = fy_code(data["payment_date"])
 
     if db is None:
         payment_id = str(uuid.uuid4())
@@ -360,7 +353,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         new_data={"amount_paise": amount_paise, "vendor_id": data["vendor_id"]},
     )
     timeline_service.log_timeline_event(
-        client_id=client_id, firm_id=firm_id or "", financial_year=_current_fy_long(),
+        client_id=client_id, firm_id=firm_id or "", financial_year=ist_fy_label(data["payment_date"]),
         category="accounting", event_type="payment_recorded",
         title=f"Vendor Payment {payment_no} recorded",
         description=f"Payment of ₹{amount_paise // 100:,} made to vendor across {len(alloc_payloads)} bill(s).",
@@ -501,7 +494,9 @@ def create_foreign_payment_core(firm_id: str, data: dict, actor: dict, db) -> di
             lines.append({"account_id": fx_id, "debit_paise": -fx_diff, "credit_paise": 0,
                           "narration": "Realized FX loss", "txn_debit": 0, "txn_credit": 0})
 
-    fy = _current_fy()
+    # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from today
+    # (SALES-24) — see core.ist_clock.fy_code.
+    fy = fy_code(data["payment_date"])
     seq = _next_payment_seq(db, firm_id, fy)
     payment_no = f"VPMT-{fy}-{seq:04d}"
     payment_id = str(uuid.uuid4())

@@ -25,6 +25,7 @@ from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from services import ageing_schedule_service, ratio_analysis_service
 from models.fy import FYLabel, OptionalFYLabel
+from core.ist_clock import ist_fy_label
 
 
 def _reporting_service(current_user: Optional[dict] = None) -> ReportingService:
@@ -54,11 +55,6 @@ def _reporting_service(current_user: Optional[dict] = None) -> ReportingService:
     return ReportingService(mock_ledger_source(allowed))
 
 
-def _current_fy_long() -> str:
-    """Return full financial year string like '2025-26'. Indian FY: April 1 – March 31."""
-    now = datetime.now(timezone.utc)
-    start = now.year if now.month >= 4 else now.year - 1
-    return f"{start}-{str(start + 1)[2:]}"
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 _logger = logging.getLogger("caflow.accounting")
@@ -1355,7 +1351,7 @@ def get_schedule_iii_trend(
     Amounts are integer paise; ratios are basis points, 10,000 bps = 1.00.
     """
     assert_client_access(current_user, client_id)
-    end_fy = to_fy or _current_fy_long()
+    end_fy = to_fy or ist_fy_label()
     ratio_analysis_service.fy_bounds(end_fy)        # validates, 422s if it does not
     start_year = int(end_fy.split("-")[0]) - (years - 1)
     fy_labels = [f"{y}-{str(y + 1)[2:]}" for y in range(start_year, start_year + years)]

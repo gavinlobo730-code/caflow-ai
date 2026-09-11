@@ -20,6 +20,7 @@ from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.numbering import sequence_after
+from core.ist_clock import fy_code, ist_fy_label
 
 
 class CreditNoteIn(BaseModel):
@@ -53,13 +54,6 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.credit_notes")
 
 
-def _current_fy_long() -> str:
-    """Return full financial year string like '2025-26' for display/timeline use.
-    Indian FY runs April 1 – March 31.
-    """
-    now = datetime.now(timezone.utc)
-    start = now.year if now.month >= 4 else now.year - 1
-    return f"{start}-{str(start + 1)[2:]}"
 
 router = APIRouter(prefix="/api/credit-notes", tags=["credit_notes"])
 
@@ -105,11 +99,6 @@ def _assert_cn_scope(current_user: dict, cn_id: str) -> Optional[str]:
     return client_id
 
 
-def _current_fy() -> str:
-    now = datetime.now(timezone.utc)
-    if now.month >= 4:
-        return f"{str(now.year)[2:]}{str(now.year + 1)[2:]}"
-    return f"{str(now.year - 1)[2:]}{str(now.year)[2:]}"
 
 
 def _next_cn_seq(db, firm_id: str, client_id: str, fy: str) -> int:
@@ -276,7 +265,14 @@ def create_credit_note(
             period_lock_service.assert_open(
                 get_supabase(), firm_id or "", client_id, data["credit_note_date"])
 
-        fy = _current_fy()
+        # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from
+        # today (SALES-24). A March-dated document keyed in April used to be
+        # numbered into next year's series and sat out of order in the year it
+        # belongs to; the lock and period checks above used the document date
+        # correctly all along. core.ist_clock.fy_code also fixes the second
+        # half of the same line: `datetime.now(timezone.utc)` is still on
+        # 31 March between 00:00 and 05:30 IST on 1 April.
+        fy = fy_code(data["credit_note_date"])
 
         if _USE_MOCK:
             seq = sequence_after(
@@ -644,7 +640,7 @@ def issue_credit_note(
         timeline_service.log_timeline_event(
             client_id=client_id,
             firm_id=firm_id or "",
-            financial_year=_current_fy_long(),
+            financial_year=ist_fy_label(updated_cn.get("credit_note_date")),
             category="accounting",
             event_type="credit_note_issued",
             title=f"Credit Note {updated_cn.get('credit_note_no', '')} issued",

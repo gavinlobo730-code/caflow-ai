@@ -25,6 +25,7 @@ from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services import vendor_tds
 from services.timeline_service import timeline_service
+from core.ist_clock import ist_fy_label
 
 # _TDS_DEFAULT_BPS WAS HERE AND IS DELETED. It mapped six sections to flat
 # rates and had no readers — grep proved it dead — but it was the last place in
@@ -106,13 +107,6 @@ def _assert_batch_scope(current_user: dict, client_ids) -> None:
         assert_client_access(current_user, client_id)
 
 
-def _current_fy_long() -> str:
-    """Return full financial year string like '2025-26' for display/timeline use.
-    Indian FY runs April 1 – March 31.
-    """
-    now = datetime.now(timezone.utc)
-    start = now.year if now.month >= 4 else now.year - 1
-    return f"{start}-{str(start + 1)[2:]}"
 
 
 router = APIRouter(prefix="/api/purchase-bills", tags=["purchase_bills"])
@@ -1666,7 +1660,7 @@ def receive_purchase_bill(
         timeline_service.log_timeline_event(
             client_id=updated_bill.get("client_id", ""),
             firm_id=current_user.get("firm_id", ""),
-            financial_year=_current_fy_long(),
+            financial_year=ist_fy_label(updated_bill.get("bill_date")),
             category="accounting",
             event_type="bill_posted",
             title=f"Purchase Bill {updated_bill.get('bill_no', bill_id)} posted",

@@ -49,4 +49,8 @@ def test_a_malformed_year_is_422_not_a_silently_shifted_window():
 def test_it_defaults_to_the_current_financial_year():
     out = ac.get_schedule_iii_trend(client_id=CLIENT, years=2, to_fy=None,
                                     current_user=USER)
-    assert out["data"]["requested_fys"][-1] == ac._current_fy_long()
+    # ist_fy_label() — routers.accounting had a private copy of this until the
+    # SALES-24 sweep, one of thirteen identical ones. Asserted against the
+    # shared helper rather than a literal, so this stays true next April.
+    from core.ist_clock import ist_fy_label
+    assert out["data"]["requested_fys"][-1] == ist_fy_label()

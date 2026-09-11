@@ -27,6 +27,7 @@ from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.numbering import sequence_after
+from core.ist_clock import fy_code, ist_fy_label
 
 # Same private Storage bucket routers/documents.py and document_intelligence_v1.py
 # use — plain attachment (a scanned goods-return note, vendor acknowledgment),
@@ -73,17 +74,8 @@ MOCK_DEBIT_NOTES: list[dict] = []
 MOCK_DEBIT_NOTE_LINES: list[dict] = []
 
 
-def _current_fy() -> str:
-    now = datetime.now(timezone.utc)
-    if now.month >= 4:
-        return f"{str(now.year)[2:]}{str(now.year + 1)[2:]}"
-    return f"{str(now.year - 1)[2:]}{str(now.year)[2:]}"
 
 
-def _current_fy_long() -> str:
-    now = datetime.now(timezone.utc)
-    start = now.year if now.month >= 4 else now.year - 1
-    return f"{start}-{str(start + 1)[2:]}"
 
 
 def _compute_line_gst(taxable: int, gst_rate_bps: int, is_interstate: bool) -> tuple[int, int, int]:
@@ -210,7 +202,14 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
             from core.supabase_client import get_supabase
             period_lock_service.assert_open(
                 get_supabase(), firm_id or "", client_id, data["debit_note_date"])
-        fy = _current_fy()
+        # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from
+        # today (SALES-24). A March-dated document keyed in April used to be
+        # numbered into next year's series and sat out of order in the year it
+        # belongs to; the lock and period checks above used the document date
+        # correctly all along. core.ist_clock.fy_code also fixes the second
+        # half of the same line: `datetime.now(timezone.utc)` is still on
+        # 31 March between 00:00 and 05:30 IST on 1 April.
+        fy = fy_code(data["debit_note_date"])
 
         payload = {
             "firm_id": firm_id, "client_id": client_id, "vendor_id": data["vendor_id"],
@@ -558,7 +557,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   new_data={"status": "issued", "journal_entry_id": journal_id, "applied_paise": applied})
         timeline_service.log_timeline_event(
-            client_id=client_id, firm_id=firm_id or "", financial_year=_current_fy_long(),
+            client_id=client_id, firm_id=firm_id or "", financial_year=ist_fy_label(updated.get("debit_note_date")),
             category="accounting", event_type="debit_note_issued",
             title=f"Debit Note {updated.get('debit_note_no', '')} issued",
             description=f"Debit note for ₹{updated.get('total_paise', 0)//100:,} issued.",

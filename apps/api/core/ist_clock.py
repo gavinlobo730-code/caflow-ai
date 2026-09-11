@@ -98,15 +98,60 @@ def preceding_fy(fy_label: str) -> str:
     return f"{start_year}-{str(start_year + 1)[2:]}"
 
 
-def ist_fy_label(d: date | None = None) -> str:
+def _as_ist_date(d=None) -> date:
+    """A date, a datetime, an ISO date string, or None for today in IST.
+
+    Accepting the string is deliberate: every document date in this codebase
+    arrives from PostgREST or a request body as `'2026-03-31'`, and a caller
+    that has to convert first is a caller that can forget to — which is how the
+    financial year came to be read off the clock instead of the document
+    (SALES-24)."""
+    if d is None:
+        return ist_today()
+    if isinstance(d, str):
+        return date.fromisoformat(d[:10])
+    if isinstance(d, datetime):
+        return d.astimezone(IST).date() if d.tzinfo else d.date()
+    return d
+
+
+def ist_fy_label(d=None) -> str:
     """Indian FY label ('YYYY-YY') for the given date, defaulting to the
     current IST calendar date. FY runs 1 April - 31 March. Consolidates what
     were previously independent, identical implementations in
     services/compliance_obligation_service.py and
     domain/income_tax/statutory_rates.py."""
-    d = d or ist_today()
+    d = _as_ist_date(d)
     start = d.year if d.month >= 4 else d.year - 1
     return f"{start}-{str(start + 1)[2:]}"
+
+
+def fy_code(d=None) -> str:
+    """The FOUR-DIGIT financial-year code a document number carries: '2627' for
+    FY 2026-27. Accepts a date, a datetime, an ISO date string, or None for
+    today in IST.
+
+    WHY IT TAKES A DATE (SALES-24). Six modules had a private `_current_fy()`
+    reading `datetime.now(timezone.utc)`, and every one of them was used to
+    build a document NUMBER — `RCPT-{fy}-0001`, `CN-{fy}-…`, `SDN-{fy}-…`,
+    `PCN-{fy}-…`, `DN-{fy}-…`, `PP-{fy}-…` — while the document's own date sat
+    on the line above. Year-end is when a CA keys the most documents: every
+    March-dated receipt entered in April was numbered into NEXT year's series
+    and sat out of order in the year it belongs to, discovered when the year's
+    register was printed and the numbers did not run. The FY-lock and period
+    checks used the document date correctly all along; only the number was
+    wrong.
+
+    And `timezone.utc` was the second defect in the same line. Between 00:00
+    and 05:30 IST on 1 April the server is still on 31 March, so a document
+    dated into the new year was numbered into the old one — the exact case
+    core.ist_clock exists for.
+
+    DERIVED FROM `ist_fy_label` rather than computed again, so the two
+    spellings of one financial year cannot disagree.
+    """
+    label = ist_fy_label(d)          # '2026-27'
+    return f"{label[2:4]}{label[5:7]}"
 
 
 def month_end_date(period: str) -> str:
