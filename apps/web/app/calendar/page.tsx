@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Client } from "@/lib/types";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayLocalISO, toLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -632,7 +632,7 @@ export default function CalendarPage() {
               <div className="divide-y divide-[#F8FAFC]">
                 {upcomingDeadlines.map(dl => {
                   const style = CATEGORY_STYLES[dl.category];
-                  const daysAway = Math.ceil((dl.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                  const daysAway = daysBetweenLocalISO(toLocalISO(today), toLocalISO(dl.date)) ?? 0;
                   const urgentClass = daysAway <= 3 ? "text-red-600 font-semibold" : daysAway <= 7 ? "text-amber-600" : "text-[#94A3B8]";
 
                   return (

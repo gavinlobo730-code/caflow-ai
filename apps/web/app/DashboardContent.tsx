@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
-import { toLocalISO } from "@/lib/dateMath";
+import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { api } from "@/lib/api";
 import { mapComplianceKpis } from "@/lib/dashboard/complianceKpis";
 
@@ -120,12 +120,16 @@ function getUpcomingDeadlines(today: Date): UpcomingDeadline[] {
   deadlines.push({ name: "TDS Return Q4", date: new Date(fyYear + 1, 4, 31) });
   deadlines.push({ name: "ITR Filing Deadline", date: new Date(fyYear + 1, 6, 31) });
 
-  const todayMs = today.getTime();
+  // Both operands here were locally-built Dates, so the arithmetic was right —
+  // but it was right by construction, not by rule, and nothing said so. The
+  // shared helper takes calendar dates on both sides and cannot be handed a
+  // live instant by mistake.
+  const todayISO = todayLocalISO();
   return deadlines
     .map((d) => ({
       name: d.name,
       date: toLocalISO(d.date),
-      daysLeft: Math.ceil((d.date.getTime() - todayMs) / 86400000),
+      daysLeft: daysBetweenLocalISO(todayISO, toLocalISO(d.date)) ?? 0,
     }))
     .filter((d) => d.daysLeft >= 0)
     .sort((a, b) => a.daysLeft - b.daysLeft)

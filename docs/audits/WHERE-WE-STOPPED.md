@@ -757,3 +757,245 @@ it measured something adjacent to what it appeared to measure. Four of the five
 would have shipped a second implementation of something that already worked,
 which is the specific harm CLAUDE.md's "one implementation, or two pinned by a
 parity test" rule exists to prevent.
+
+---
+
+## The day-count sweep — and the rule turned out to have TWO halves
+
+Scoped out of the previous tranche and done here. The count in that section was
+right about rule 1 and **did not know rule 2 existed**, which is the part worth
+recording: the first scan found ONE instance of the second defect and there were
+five.
+
+### Rule 1 — nothing divides by a day in milliseconds
+
+**14 sites, 13 files.** `lib/dateMath.daysBetweenLocalISO` anchors both sides to
+local midnight and its docstring has always said *"never mix a date-only string
+with a live `new Date()` instant"*. Seven sites did exactly that.
+
+**`app/risks/page.tsx` is the one worth reading, because it was wrong ALL DAY,
+EVERY DAY** — not only in the overnight window the sibling guard describes:
+
+```ts
+const today = new Date(); today.setHours(0, 0, 0, 0);     // LOCAL midnight
+Math.floor((today - new Date(due_date)) / 86400000)       // UTC midnight
+```
+
+Local midnight in IST is 18:30 UTC on the previous day, so the difference is
+**always 5½ hours short of a whole number of days** and `floor` takes the day
+off. A filing ten days overdue read **nine** — on the figure `overdueRiskLevel`
+thresholds at 30 and 15, so a client crossed into "high" a day late every time.
+
+The same page's `daysLeft` does the same subtraction with `Math.ceil`, so a DSC
+or an FD **expiring today read "1 day left"**. The two err in opposite
+directions for the same reason, which is what a rounding function does to a
+constant bias.
+
+The other six: `engagements` (the 7-day expiring count was fractional, so the
+same letter came and went from the count during the day), `clients/[id]/overview`,
+`clients/documents`, `reports` (invoice ageing) and `risks` again.
+
+**Five more were correct and hand-rolled** — both operands built locally, or
+both date-only strings. They are fixed too, and the reason is the point: each
+was correct *by construction*, and establishing that took reading them. A guard
+removes that reading from the next person's job. `accounting/loans` is the
+example — its `daysToDate` already delegated to the helper while an FD maturity
+calculation eight lines up did not.
+
+**Two identical copies collapsed into one.** `app/payroll/page.tsx`'s
+`getDueDateStatus` and `app/payroll/reports/page.tsx`'s `dueDateStatus` were
+byte-identical — same overdue / due-soon / upcoming bands, same hand-rolled
+count. Now `lib/dateMath.dueDateUrgency`. They agreed, which is exactly why
+nobody would have noticed when one of them stopped.
+
+### Rule 2 — no module reads the clock when it loads
+
+**This is the half the first pass missed, and how it missed is the lesson.**
+
+A module-scope `const TODAY = new Date()` is evaluated once, when the bundle
+loads. Everything derived from it is frozen for the life of the tab — and a
+compliance dashboard is precisely the tab somebody leaves open. A scan for
+`^const .*TODAY.* = new Date()` found **one** file. There were **five**:
+
+| file | what was frozen |
+|---|---|
+| `app/mca/page.tsx` | "N days remaining" and the amber-under-30 colour on five statutory MCA deadlines, plus "Filings Due This Month" |
+| `app/gst/page.tsx` | the deadlines banner **and `currentPeriod`**, which decides which filings count as "this month" — so a tab open across a month boundary kept counting September while October's GSTR-1 was the live obligation |
+| `app/accounting/loans/page.tsx` | `daysToDate`, and the default disbursement and start dates on two forms — **open one the next morning and it defaulted to yesterday** |
+| `app/accounting/msme-tracker/page.tsx` | whether an MSMED §15 payment is late |
+| `app/accounting/schedule-iii/page.tsx` | the FY options on the year-end statements, so a tab open across 1 April offered the year that had just ended as "current" |
+
+**Only the first was `new Date()`.** One was `const TODAY_ISO = todayLocalISO()`
+— the CORRECT helper, called in the wrong place. That is why the rule is stated
+over *a module-scope binding initialised from a live clock read* rather than
+over any spelling of the clock, and it is the money-parser lesson for the third
+time: the first version of that guard named three spellings and passed on
+sixteen files using a fourth.
+
+`app/mca/page.tsx` is the sharpest case. Its own header comment records this
+being fixed **once already**, from a version that froze the YEAR too. The year
+moved; the day did not.
+
+### The guard
+
+`apps/web/scripts/a-day-count-comes-from-the-one-helper.test.ts`, sibling to
+`a-calendar-date-is-never-read-back-in-utc.test.ts` — same module, same failure,
+different question.
+
+Both rules are stated over the OPERATION. Rule 1 bans the **division**, not the
+constant: `24 * 60 * 60 * 1000` as a TTL, or `Date.now() + 7 * 86400000` to build
+an instant, are not day counts and stay legal. It is dividing by a day that
+turns a millisecond difference into a count of calendar days, and that is the
+operation that must be anchored. A fifth test pins both rules' shape, because a
+guard that names spellings is the failure mode this whole family keeps
+repeating. It also scans **whole-file text, not line by line** — `loans`
+put its divisor on the next line and a line scan called it clean.
+
+Two files are exempt and both are named: `lib/dateMath.ts`, the one
+implementation, and `lib/dateMath.test.ts`, which re-derives the arithmetic
+on purpose (a test that proved the helper by calling the helper would prove
+nothing).
+
+### Verified
+
+979 frontend tests, `tsc` clean, lint unchanged, the static export builds.
+
+Six mutations applied and reverted, each caught by exactly the right test: a
+division restored (rule 1), a divisor on its own line (rule 1, the whole-file
+scan), `const TODAY = new Date()` (rule 2), `const TODAY_ISO = todayLocalISO()`
+(rule 2 — the spelling the first sweep missed), a `new Date(todayLocalISO()…)`
+at module scope (rule 2), and the helper renamed out from under the guard.
+
+**A process note, because it cost real work.** The first negative-control run
+used `git checkout -- <file>` to revert each mutation, on a tree where the
+sweep was UNCOMMITTED — so it reverted to `HEAD` and destroyed four files' worth
+of fixes, silently, and the guard then failed its own baseline. The mutations
+were re-run with the tree **staged first**, so `git checkout --` restores the
+staged version. Stage before mutating.
+
+---
+
+## FA-02 — the last remaining critical, and it was SIX of six
+
+`2026-09-08b-what-is-left.md` records one critical left, FA-02, described as:
+
+> The default WDV rate is now derived from Schedule II Part C's useful lives and
+> is right. **The stored rows are not.** There is no backfill migration, the
+> compute path prefers the asset's own `wdv_rate_percent`, and **FA-10 leaves no
+> edit path** — so a wrong rate is frozen in for the asset's life.
+
+**Two of those three limbs are false**, and the third is a deliberate refusal
+rather than a gap:
+
+* **There IS an edit path.** `PATCH /api/fixed-assets/{asset_id}` has
+  `wdv_rate_percent` in `_TIER_C_FIELDS`. (FA-10's "no edit path" was already
+  known stale — this finding rests on it.)
+* **There IS a detector.** `routers/fixed_assets.schedule_ii_departure` names
+  every asset whose basis is not one Part C prescribes, with the stored figure,
+  the prescribed set, and a sentence. `tests/test_a_depreciation_basis_off_
+  schedule_ii_is_named.py` pins it.
+* **The missing backfill is the RIGHT call, and the statute says why.**
+  **Schedule II Part A expressly permits a company to use a different useful
+  life or residual value**, provided the difference is disclosed in the accounts
+  and justified. So a rate off the table is not necessarily an error — it may be
+  a judgement somebody has to disclose, and nothing in the schema distinguishes
+  the two. A migration would silently overwrite the judgement, change the
+  depreciation charge and **move the profit**. Reporting is correct; repairing
+  would not be.
+
+  The subtlety that would otherwise produce false findings is handled too:
+  **conforming means matching ANY class the category offers, not the default
+  one.** Part C gives several lives per category, and a CA picking the second
+  has chosen from the table rather than departed from it.
+
+### What WAS actually missing
+
+**`GET /api/fixed-assets/register-integrity` was called by no screen.** It is
+the whole of FA-02's remedy and three-quarters of FA-07's, and it reported to
+nobody — the rule CLAUDE.md states in as many words: *a figure the computer gets
+right and no screen shows is not a fixed bug*. It is also, precisely, one of the
+137 unreachable endpoints the ratchet merged an hour earlier counts.
+
+Built here: a **Register integrity** panel on the client fixed-assets Reports
+tab, rendering all four finding kinds — no acquisition entry, a bill capitalised
+twice, an asset from a bill that is gone, and the Schedule II departure.
+
+* **It reports and offers no fix button.** Every remedy is a judgement — repost,
+  delete the duplicate, re-link the bill, correct the rate or disclose it — and
+  which is right depends on facts the ledger does not hold. The endpoint repairs
+  nothing for the same reason.
+* **The sentence is the server's**, rendered and never rebuilt. A statutory
+  explanation composed in the browser is a second implementation of the rule.
+* **A failed check does not look like a clean register.** The endpoint returns
+  `checked` for exactly that reason — "no findings" over nothing checked is a
+  different statement — and the panel renders an explicit error state rather
+  than an empty list.
+
+The reachability ratchet did its job on its first working day: with the panel
+added, `/api/fixed-assets` fell to zero and the guard **failed on the stale
+budget entry**, naming it. Budget removed, `TOTAL_BUDGET` 134 → 133.
+
+### The guard, and two mistakes inside it worth keeping
+
+`apps/api/tests/test_the_register_integrity_findings_reach_a_screen.py`, on the
+**Python** side because `routers/fixed_assets.py` owns the vocabulary of finding
+kinds — a guard in `apps/web` would assert the screen against a copy held in
+`apps/web` and pass whenever both drifted together, which is what the Schedule
+III mapping screen's hardcoded caption list did for months.
+
+It was written wrong twice, both times the same way, both times in a guard
+written to prevent exactly that:
+
+1. **It matched a quoting style.** `f'"{kind}"' in code` failed on all four
+   kinds, because the screen's lookup table uses bare object keys
+   (`no_acquisition_journal: "…"`). The rule is *the screen names this kind*;
+   `"…"` was one spelling of it. Now a word-boundary match on the identifier.
+2. **It matched TYPE DECLARATIONS, not behaviour.** Two mutations **passed**:
+   replacing the rendered `{f.what_it_means}` with hardcoded text, and changing
+   the catch to report a clean zero-asset result. Both names survived in the
+   TypeScript type declaring them. Now the assertions are over the JSX
+   interpolation and over the catch body specifically.
+
+### Verified
+
+Four mutations applied and reverted, each caught: the screen stops calling the
+endpoint (2 failed), a kind loses its title (1), the sentence rebuilt in the
+browser (1), a failed check rendered as clean (1). The last two **passed** until
+the guard was tightened, which is how both flaws above were found.
+
+### A third guard that read prose as code, on the same day
+
+Adding the panel turned `scripts/schedule-ii-is-not-a-second-table.test.ts` red
+— on a **comment**. Its rule is that the fixed-assets page holds no copy of the
+Schedule II rate table, and it checked the retired literals (`25.89`, `31.67`, …)
+against the RAW source. The new panel's comment explains that Furniture at 10%
+is the Income-tax Act block rate where Part C gives **25.89%**, which is the
+single most useful sentence anyone could write beside it.
+
+The guard already drew this distinction for the NAME — it matches
+`WDV_RATES\s*[:=]`, the declaration rather than the identifier, with a note
+saying the comment explaining what WDV_RATES was "is worth keeping" — and then
+checked the numbers against prose anyway. It now strips comments, which makes it
+**narrower in the right direction, not weaker**: a rate literal inside a comment
+cannot drift into a computation, and drifting into a computation is the entire
+harm. Re-verified against three mutations in CODE — a retired literal, a derived
+one restated, and the category list — all still caught.
+
+That is the third guard this session to read its own explanation as a violation
+(after ACC-10's caption guard and this tranche's own finding-kind check). The
+pattern is worth naming: **a guard whose subject is code must be given code.**
+
+### So the running tally is now SIX of six
+
+| claim | what was actually there |
+|---|---|
+| FA-10 — no edit path for a fixed asset | the edit path existed |
+| the workflow repository has no join | the join existed |
+| F7 — nothing tracks a DSC | `dsc_records` since migration 014 |
+| F5 — PT needs state slabs a human must supply first | `firm_pt_slabs` since migration 327 |
+| `/api/dsc` has no caller | it had two — the ratchet matches paths, not verbs |
+| **FA-02 — no edit path, a wrong rate frozen for life** | **an edit path, a detector, and a documented statutory reason not to backfill. The real gap was one screen.** |
+
+Every one of the six would have shipped a second implementation of something
+that already worked. **Read the code before building against an audit claim —
+including this session's own.**

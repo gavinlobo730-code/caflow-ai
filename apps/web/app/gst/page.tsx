@@ -89,31 +89,46 @@ const computeStatus = computeOverdueStatus;
 
 // ─── Key deadlines banner ─────────────────────────────────────────────────────
 
-const _today = new Date(todayLocalISO() + "T00:00:00");
-const currentMonth = MONTH_NAMES[_today.getMonth()];
-const currentYear = _today.getFullYear();
+// FUNCTIONS, not module constants, and the difference is a filing period.
+//
+// `const _today = new Date(...)` ran once when the bundle loaded, and
+// currentMonth / currentYear were derived from it — so the deadline banner, the
+// heading and `currentPeriod` (which decides which filings count as "this
+// month") were all frozen at page load. A tab open across a month boundary went
+// on counting September's filings while the GSTR-1 due on the 11th of October
+// was the live obligation.
+function currentMonthName(): string {
+  return MONTH_NAMES[Number(todayLocalISO().slice(5, 7)) - 1];
+}
+function currentYearNumber(): number {
+  return Number(todayLocalISO().slice(0, 4));
+}
 
 /** CGST Act Section 37: GSTR-1 due 11th of this month (for prior month) */
-const KEY_DEADLINES = [
-  {
-    label: "GSTR-1",
-    date: `11 ${currentMonth} ${currentYear}`,
-    note: "CGST Act Section 37 — Outward Supplies",
-    color: "bg-blue-50 border-blue-200 text-blue-700",
-  },
-  {
-    label: "GSTR-3B",
-    date: `20 ${currentMonth} ${currentYear}`,
-    note: "CGST Act Section 39 — Monthly Summary",
-    color: "bg-amber-50 border-amber-200 text-amber-700",
-  },
-  {
-    label: "GSTR-9",
-    date: `31 Dec ${currentYear}`,
-    note: "CGST Act Section 44 — Annual Return",
-    color: "bg-purple-50 border-purple-200 text-purple-700",
-  },
-];
+function keyDeadlines() {
+  const month = currentMonthName();
+  const year = currentYearNumber();
+  return [
+    {
+      label: "GSTR-1",
+      date: `11 ${month} ${year}`,
+      note: "CGST Act Section 37 — Outward Supplies",
+      color: "bg-blue-50 border-blue-200 text-blue-700",
+    },
+    {
+      label: "GSTR-3B",
+      date: `20 ${month} ${year}`,
+      note: "CGST Act Section 39 — Monthly Summary",
+      color: "bg-amber-50 border-amber-200 text-amber-700",
+    },
+    {
+      label: "GSTR-9",
+      date: `31 Dec ${year}`,
+      note: "CGST Act Section 44 — Annual Return",
+      color: "bg-purple-50 border-purple-200 text-purple-700",
+    },
+  ];
+}
 
 // ─── Status badge style map ───────────────────────────────────────────────────
 
@@ -737,7 +752,7 @@ export default function GSTPage() {
   ], []);
 
   // ── Summary counts (current month) ────────────────────────────────────────
-  const currentPeriod = `${currentMonth} ${currentYear}`;
+  const currentPeriod = `${currentMonthName()} ${currentYearNumber()}`;
 
   const totalClients = new Set(filings.map((f) => f.client_id)).size;
 
@@ -867,11 +882,11 @@ export default function GSTPage() {
         <div className="flex items-center gap-2 mb-3">
           <Calendar className="w-4 h-4 text-[#64748B]" />
           <span className="text-xs font-semibold text-[#334155]">
-            Key GST Deadlines — {currentMonth} {currentYear}
+            Key GST Deadlines — {currentMonthName()} {currentYearNumber()}
           </span>
         </div>
         <div className="flex flex-wrap gap-2">
-          {KEY_DEADLINES.map((d) => (
+          {keyDeadlines().map((d) => (
             <div
               key={d.label}
               className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-xs ${d.color}`}

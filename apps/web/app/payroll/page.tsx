@@ -13,7 +13,7 @@ import {
   Receipt, CalendarDays, ArrowRight,
 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { toLocalISO } from "@/lib/dateMath";
+import { toLocalISO, dueDateUrgency } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -133,15 +133,11 @@ function getStatutoryDeadlines(today: Date): {
   return deadlines;
 }
 
-function getDueDateStatus(
-  due: Date,
-  today: Date,
-): "overdue" | "due-soon" | "upcoming" {
-  const diffMs = due.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) return "overdue";
-  if (diffDays <= 7) return "due-soon";
-  return "upcoming";
+// The rule itself now lives in lib/dateMath.dueDateUrgency, beside the other
+// whole-day helpers — app/payroll/reports/page.tsx had a byte-identical copy of
+// this function, and two implementations of one statutory classifier drift.
+function getDueDateStatus(due: Date, today: Date): "overdue" | "due-soon" | "upcoming" {
+  return dueDateUrgency(toLocalISO(due), toLocalISO(today));
 }
 
 /* The EPFO ECR and the ESIC return were BUILT HERE, in the browser, until

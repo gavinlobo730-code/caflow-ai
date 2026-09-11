@@ -21,7 +21,7 @@ import { getClients } from "@/lib/data/clients";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ComplianceEntry {
@@ -138,8 +138,16 @@ async function getFirmId(): Promise<string> {
   return data.firm_id as string;
 }
 
-function daysBetween(dateStr: string, now: Date): number {
-  return Math.floor((now.getTime() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24));
+// Days elapsed since `dateStr`, both anchored to LOCAL midnight.
+//
+// The form this replaced — Math.floor((localMidnightToday - new Date(dateStr)) /
+// 86400000) — was short by exactly one day EVERY time, not just overnight.
+// `new Date("2026-09-01")` is UTC midnight; local midnight in IST is 18:30 UTC
+// on the previous day, so the difference is always 5.5 hours under a whole
+// number of days and floor() takes the day off. A filing 10 days overdue read
+// 9, and overdueRiskLevel() turns on 30 and 15.
+function daysBetween(dateStr: string, todayISO: string): number {
+  return daysBetweenLocalISO(String(dateStr).slice(0, 10), todayISO) ?? 0;
 }
 
 function overdueRiskLevel(days: number): "high" | "medium" | "low" {
@@ -244,7 +252,7 @@ export default function RisksPage() {
         compliance
           .filter((e) => e.filing_status !== "filed" && !TDS_STATEMENT_TYPES.includes(e.compliance_type))
           .map((e) => {
-            const days = daysBetween(e.due_date, today);
+            const days = daysBetween(e.due_date, todayStr);
             return { clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.compliance_type, dueDate: e.due_date, daysOverdue: days, riskLevel: overdueRiskLevel(days) };
           })
           .sort((a, b) => b.daysOverdue - a.daysOverdue)
@@ -254,7 +262,7 @@ export default function RisksPage() {
       setTdsRisks(
         compliance
           .filter((e) => TDS_STATEMENT_TYPES.includes(e.compliance_type) && e.filing_status !== "filed")
-          .map((e) => ({ clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.compliance_type, dueDate: e.due_date, daysOverdue: daysBetween(e.due_date, today), riskLevel: "high" as const }))
+          .map((e) => ({ clientId: e.client_id, clientName: clientMap[e.client_id] ?? "Unknown", filingType: e.compliance_type, dueDate: e.due_date, daysOverdue: daysBetween(e.due_date, todayStr), riskLevel: "high" as const }))
           .sort((a, b) => b.daysOverdue - a.daysOverdue)
       );
 
@@ -316,7 +324,7 @@ export default function RisksPage() {
                 clientName: client.client_name,
                 installment: inst.label,
                 dueDate: inst.date,
-                daysOverdue: daysBetween(inst.date, today),
+                daysOverdue: daysBetween(inst.date, todayStr),
               });
             }
           }
@@ -350,7 +358,7 @@ export default function RisksPage() {
           clientName: "Firm-wide",
           dscHolder: d.holder_name,
           expiryDate: d.expiry_date,
-          daysLeft: Math.ceil((new Date(d.expiry_date).getTime() - today.getTime()) / 86400000),
+          daysLeft: daysBetweenLocalISO(todayStr, String(d.expiry_date).slice(0, 10)) ?? 0,
         }))
       );
 
@@ -388,7 +396,7 @@ export default function RisksPage() {
           clientName: clientMap[f.client_id] ?? "Unknown",
           bankName: f.bank_name,
           maturityDate: f.maturity_date,
-          daysLeft: Math.ceil((new Date(f.maturity_date).getTime() - today.getTime()) / 86400000),
+          daysLeft: daysBetweenLocalISO(todayStr, String(f.maturity_date).slice(0, 10)) ?? 0,
           maturityAmountPaise: f.maturity_amount_paise,
         }))
       );

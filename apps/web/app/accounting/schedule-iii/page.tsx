@@ -16,14 +16,27 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { currentFinancialYearLabel } from "@/lib/dateMath";
 
-// Financial year helpers — FY runs April 1 to March 31 (Indian fiscal year)
-const CURRENT_FY_YEAR = new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1;
-const FY_OPTIONS = [CURRENT_FY_YEAR, CURRENT_FY_YEAR - 1, CURRENT_FY_YEAR - 2].map((y) => ({
-  label: `FY ${y}-${String(y + 1).slice(2)}`,
-  start: `${y}-04-01`,
-  end: `${y + 1}-03-31`,
-}));
+// Financial year helpers — FY runs April 1 to March 31 (Indian fiscal year).
+//
+// A FUNCTION, not a module constant. Read at load, the FY options were frozen
+// for the life of the tab, so a tab open across the small hours of 1 April kept
+// offering the year that had just ended as "current" — on the screen that
+// builds the year-end statements. currentFinancialYearLabel is the one
+// implementation of the April-to-March rule; this takes its first half rather
+// than restating the month test a fourth time.
+function currentFyYear(): number {
+  return Number(currentFinancialYearLabel().slice(0, 4));
+}
+function fyOptions() {
+  const y0 = currentFyYear();
+  return [y0, y0 - 1, y0 - 2].map((y) => ({
+    label: `FY ${y}-${String(y + 1).slice(2)}`,
+    start: `${y}-04-01`,
+    end: `${y + 1}-03-31`,
+  }));
+}
 
 interface Client {
   id: string;
@@ -289,7 +302,7 @@ export default function ScheduleIIIPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fy = FY_OPTIONS[fyIndex];
+  const fy = fyOptions()[fyIndex];
 
   // Load clients once
   useEffect(() => {
@@ -366,7 +379,7 @@ export default function ScheduleIIIPage() {
             onChange={(e) => setFyIndex(Number(e.target.value))}
             className="px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {FY_OPTIONS.map((f, i) => (
+            {fyOptions().map((f, i) => (
               <option key={f.label} value={i}>{f.label}</option>
             ))}
           </select>

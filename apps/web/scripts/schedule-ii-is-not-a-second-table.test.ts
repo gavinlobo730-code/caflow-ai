@@ -29,12 +29,32 @@ import fs from "node:fs";
 import path from "node:path";
 
 const PAGE = path.join(import.meta.dirname, "..", "app/clients/[id]/fixed-assets/page.tsx");
-const page = () => fs.readFileSync(PAGE, "utf8");
+const raw = () => fs.readFileSync(PAGE, "utf8");
+
+/** The page with comments stripped.
+ *
+ *  THE ASSERTIONS ARE ABOUT CODE, and this file already said so once: it matches
+ *  `WDV_RATES\s*[:=]`, the declaration rather than the name, because "the comment
+ *  above the fetch explains what WDV_RATES was and why it went, which is worth
+ *  keeping". The NUMBERS were checked against the raw text anyway, and on
+ *  2026-09-11 that caught a comment on a new Register-integrity panel explaining
+ *  that Furniture at 10% is the Income-tax Act block rate where Part C gives
+ *  25.89%. That sentence is the single most useful thing anyone could write
+ *  beside that panel, and this test refused it.
+ *
+ *  A rate literal inside a comment cannot drift into a computation, which is the
+ *  whole harm the rule exists to prevent — so stripping comments makes the check
+ *  narrower in the right direction, not weaker. The same correction was made to
+ *  test_the_browser_fallback_speaks_the_engines_vocabulary.py, for the same
+ *  reason, on the same day. */
+const page = () => raw()
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/^\s*\/\/.*$/gm, "")
+  .replace(/\/\/.*$/gm, "");
 
 test("the page holds no rate table of its own", () => {
   const s = page();
-  // The declaration, not the name: the comment above the fetch explains what
-  // WDV_RATES was and why it went, which is worth keeping.
+  // The declaration, not the name — see `page()` above.
   assert.doesNotMatch(s, /WDV_RATES\s*[:=]/, "the rate table belongs to apps/api");
   assert.doesNotMatch(s, /const CATEGORIES\s*=/,
     "the category list is half of the same statutory table — it comes from the same place");

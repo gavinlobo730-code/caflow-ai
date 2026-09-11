@@ -25,6 +25,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { formatDate as formatDateShared } from "@/lib/services/formatting";
+import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
@@ -1218,11 +1219,16 @@ function EngagementsPageInner() {
   const signedThisMonth = letters.filter(
     (l) => l.status === "Signed" && l.signed_at && l.signed_at >= thisMonthStart
   ).length;
+  // "Expiring within 7 days" is a WHOLE-DAY question, so both sides are anchored
+  // to local midnight. Subtracting a live instant from `new Date(expiry_date)` —
+  // which is UTC midnight — made the count fractional and 5.5 hours out in IST:
+  // a letter expiring today read 0.77 days (in) at 10 a.m. and −0.2 (out) at
+  // 6 a.m., so the same letter came and went from the count during the day.
+  const todayISO = todayLocalISO();
   const expiringCount = letters.filter((l) => {
     if (!l.expiry_date || l.status === "Signed" || l.status === "Rejected") return false;
-    const expiry = new Date(l.expiry_date);
-    const daysUntil = (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-    return daysUntil >= 0 && daysUntil <= 7;
+    const daysUntil = daysBetweenLocalISO(todayISO, String(l.expiry_date).slice(0, 10));
+    return daysUntil !== null && daysUntil >= 0 && daysUntil <= 7;
   }).length;
 
   const tabs: { id: ActiveTab; label: string }[] = [

@@ -101,7 +101,6 @@ const LOAN_TYPE_LABELS: Record<LoanType, string> = {
   other: "Other",
 };
 
-const TODAY_ISO = todayLocalISO();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -136,9 +135,11 @@ function calculateFDMaturityPaise(
   maturityDate: string
 ): number {
   if (!startDate || !maturityDate) return principalPaise;
-  const days =
-    (new Date(maturityDate).getTime() - new Date(startDate).getTime()) /
-    (24 * 60 * 60 * 1000);
+  // Both sides are date-only strings, so the old inline subtraction was exact
+  // — but it was exact by luck (two UTC midnights cancelling), and the next
+  // person to pass a live instant here would not have noticed. daysToDate below
+  // already delegates; this now does too.
+  const days = daysBetweenLocalISO(startDate, maturityDate) ?? 0;
   if (days <= 0) return principalPaise;
   const factor = Math.pow(1 + annualRatePercent / 100, days / 365);
   return Math.round(principalPaise * factor); // integer paise
@@ -169,7 +170,7 @@ function daysToDate(isoDate: string): number {
   // consolidation) — mathematically identical result, since a fixed
   // UTC offset (no Indian DST) cancels the same way whether both sides
   // are parsed as UTC midnight (the old inline version) or local midnight.
-  return daysBetweenLocalISO(TODAY_ISO, isoDate) ?? 0;
+  return daysBetweenLocalISO(todayLocalISO(), isoDate) ?? 0;
 }
 
 function formatDate(isoDate: string): string {
@@ -204,7 +205,7 @@ export default function LoansAndFDPage() {
     outstanding: "",
     interest_rate: "",
     emi: "",
-    disbursement_date: TODAY_ISO,
+    disbursement_date: todayLocalISO(),
     maturity_date: "",
     notes: "",
   });
@@ -219,7 +220,7 @@ export default function LoansAndFDPage() {
     fd_number: "",
     principal: "",
     interest_rate: "",
-    start_date: TODAY_ISO,
+    start_date: todayLocalISO(),
     maturity_date: "",
     is_auto_renewed: false,
     tds_applicable: true,
@@ -346,7 +347,7 @@ export default function LoansAndFDPage() {
       outstanding: "",
       interest_rate: "",
       emi: "",
-      disbursement_date: TODAY_ISO,
+      disbursement_date: todayLocalISO(),
       maturity_date: "",
       notes: "",
     });
@@ -412,7 +413,7 @@ export default function LoansAndFDPage() {
       fd_number: "",
       principal: "",
       interest_rate: "",
-      start_date: TODAY_ISO,
+      start_date: todayLocalISO(),
       maturity_date: "",
       is_auto_renewed: false,
       tds_applicable: true,

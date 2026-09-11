@@ -58,11 +58,12 @@ By subsystem, remaining only:
 | Income tax / ITR | 0 | 11 | 8 | 6 | 25 |
 | Payroll | 0 | 6 | 15 | 2 | 23 |
 
-**Four of the five criticals are closed.** One is left, and it is latent:
+~~**Four of the five criticals are closed.** One is left, and it is latent:~~
+**ALL FIVE criticals are closed as of 11-09-2026.** The last one was mostly already closed when this was written:
 
 | id | state | what is left |
 |---|---|---|
-| **FA-02** | partial | The default WDV rate is now derived from Schedule II Part C's useful lives and is right. **The stored rows are not.** There is no backfill migration, the compute path prefers the asset's own `wdv_rate_percent`, and FA-10 leaves no edit path — so a wrong rate is frozen in for the asset's life. Production holds **zero** fixed assets, so nothing is wrong today; it goes wrong the first time a register is migrated in. |
+| **FA-02** | ~~partial~~ **CLOSED 11-09-2026** | ⚠️ **Two limbs of this were false when written.** `PATCH /api/fixed-assets/{asset_id}` has always had `wdv_rate_percent` in `_TIER_C_FIELDS`, so there IS an edit path (it rests on FA-10's "no edit path", already known stale); and `schedule_ii_departure` already NAMED every asset whose basis is off Part C. The missing backfill is a deliberate refusal, not a gap: **Schedule II Part A expressly permits a different useful life or residual value if disclosed and justified**, so a migration would overwrite a judgement, change the depreciation charge and move the profit. The real gap was that `GET /register-integrity` reached **no screen** — now a Register integrity panel on the client fixed-assets Reports tab, pinned by `tests/test_the_register_integrity_findings_reach_a_screen.py`. See `WHERE-WE-STOPPED.md`. |
 
 ---
 
@@ -291,8 +292,13 @@ two statutory outputs software can complete end to end.
    stop exactly that.
 2. **§2.3, §2.4, §2.6** — an afternoon each. §2.6 is the only one a CA's
    *employee* sees.
-3. **FA-02's backfill**, while production still holds zero assets. After the
-   first register is migrated in, it needs a data fix as well as a code one.
+3. ~~**FA-02's backfill**, while production still holds zero assets.~~
+   ⚠️ **DO NOT DO THIS.** A backfill would overwrite a judgement Schedule II
+   Part A expressly permits (a different useful life or residual value, if
+   disclosed and justified), changing the depreciation charge and moving the
+   profit. FA-02 is closed by REPORTING: `schedule_ii_departure` names every
+   departure and `GET /register-integrity` now reaches a screen. Corrected
+   11-09-2026 — see the FA-02 section of `WHERE-WE-STOPPED.md`.
 4. **The §4 carry-overs**, cheapest first: PAY-22 is genuinely one line;
    `post_draft`'s missing `client_id` is one argument; the UTC dates are three.
 5. **Then the roadmap's Stage 2 → 3 → 4**, unchanged, which the closure of
