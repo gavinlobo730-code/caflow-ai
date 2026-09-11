@@ -772,13 +772,71 @@ re-derived somewhere else and wrong there.
   where it totals them, pointing at the Statutory summary for the remittable
   figure. A guard asserts both halves.
 
+#### 11e · INV-06 + PAY-14 — DONE. A figure the books hold that the return never saw
+
+* **INV-06** — a stock write-off reverses ITC in the GL, citing §17(5)(h), and
+  GSTR-3B Table 4(B)(1) got nothing: `itc_reversal_register`'s CHECK refused
+  every permanent ground, on the reasoning that a permanent reversal "is derived
+  from the documents". True of a cancelled purchase; not true of a write-off,
+  which has no document — the supply happened and the goods were destroyed.
+  Migration 362 widens the CHECK to the five permanent grounds and makes
+  `reclaimable` a GENERATED column, because whether credit can come back is a
+  property of the ground and not a decision. A reclaim against a permanent
+  parent is refused by the service AND by a trigger.
+* **PAY-14** — a leaver's §192 deduction was on the challan and off Form 24Q.
+  The quarterly Annexure I was assembled from `payroll_runs` alone while the
+  annual Annexure II reads `payroll_settlements`, so the two disagreed by
+  exactly the settlement TDS — which TRACES reads as a short-deduction default,
+  and the employee gets no 26AS credit until Q4. The settlement is appended as a
+  SLIP-SHAPED row into the same month bucket, so it goes through the identical
+  PAN, §206AA and challan gates rather than a second assembly path.
+
+Also carried: the guards fixture refresh, because
+`test_the_in_flight_exclusion_cannot_excuse_everything` refused to run eleven
+migrations behind its cap of ten. Re-captured and proved by reproducing
+production's own checksum; **280 insertions, zero deletions** — nothing had
+drifted, the fixture was just short of what 352–361 added.
+
+#### 11f · INV-01 — DONE. What the stock was worth on a date, and a balance column that foots
+
+Two halves of one finding, and the second is the one that is easy to miss.
+
+* **There was no closing-stock-as-at-a-date figure anywhere.** `list_stock_items`
+  takes no date; nothing computed one. So at year end the CA could not produce
+  the stock statement that ties to the Inventories line, or the quantitative-
+  details working paper. Migration 363's `public.stock_position_as_at` sums the
+  ledger's **deltas** — one row per item, per the reporting rule — with
+  `domain/reporting/stock_position.py` as its mock-mode twin and
+  `tests/test_stock_position_parity_pg.py` holding the two identical.
+* **The drill-down's Balance column did not add up.** The running totals are
+  chained in INSERTION order — deliberately, so a bill received late does not
+  fall out of the chain — while the ledger is DISPLAYED in date order, and the
+  screen rendered the stored columns beside it. With a 1 July bill entered after
+  a 10 July sale it showed "+20 → balance 110" above "−10 → balance 90". Neither
+  row foots and a CA reconciling stock cannot tell why. Migration 250 had
+  already rebuilt those totals in display order, which is not the order new
+  movements chain in, so the two have been disagreeing about the current
+  position as well.
+
+**Why the deltas and never the running totals**: addition commutes, so
+Σ delta over `movement_date <= D` is the same whatever order the rows went in —
+and it is the RIGHT number, because the inventory journal posts exactly
+`value_delta_paise` at exactly `movement_date`. The statement ties to the
+Inventory control account by construction. Over an item's whole history it also
+equals the stored running total, because `_compute_stock_out` force-closes so
+that "the deltas always sum to the running value"; a test pins that invariant.
+
+The chain itself is untouched — it is load-bearing — and the derived figures go
+in NEW response keys (`balance_qty_units`, `balance_value_paise`) rather than
+relabelling what the database holds.
+
 ---
 
 Left in Phase 11, all features rather than defects:
 
 Form 3CD, §54 reinvestment exemptions, GSTR-9, QRMP, multi-GSTIN, the MSME
 §43B(h) tracker, recurring journals out of `localStorage`, Schedule III mapping
-that changes something, invoice discounts, closing stock as at a date.
+that changes something, invoice discounts.
 
 ### Phase 12 — The 158 mediums and lows · ≤699 days, and that is the loosest number here
 
