@@ -836,6 +836,16 @@ no failing check to point at. Filter inside, in the `scope` job, as these workfl
 - `render.yaml` must declare every environment variable the backend reads —
   `tests/test_render_manifest_matches_code.py` enforces this in both directions
   (nothing read-but-undeclared, nothing declared-but-unread).
+- **The slow half of startup runs on a thread, and must stay there.** The
+  schema-drift check, the scheduler start, its health log and the catch-up
+  sweep are started by `main._lifespan` on a daemon thread — not at module
+  import, where they used to be. Three of the four make a Singapore-to-Mumbai
+  round trip, and doing that before uvicorn binds timed out Render's deploy
+  health check on every deploy for weeks. `/health` answers 200 with
+  `schema: "checking"` while the check is outstanding and flips to 503 on real
+  drift; **answering 503 while merely unchecked reproduces the original bug**,
+  because Render cannot tell "still checking" from "broken".
+  `tests/test_health_answers_before_the_slow_boot.py` is the guard.
 - The daily job sweep is in-process APScheduler (`jobs/scheduler.py`), gated on
   `ENABLE_SCHEDULER`, enabled in exactly one process. On Render's free tier the instance
   sleeps, so `.github/workflows/wake-before-scheduler.yml` pings `/health` across the
