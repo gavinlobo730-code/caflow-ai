@@ -1173,6 +1173,32 @@ def bulk_create_invoices(
     return api_response(True, {"created": created, "errors": errors})
 
 
+
+def _eway_assessment(lines: list) -> dict:
+    """CGST Rule 138(1) with Explanation 2 — served with the invoice.
+
+    THE AUTHORITY IS HERE, not in the browser (SALES-17). The Compliance panel
+    used to decide this itself and decided it on the pre-GST taxable value, so a
+    ₹48,000 consignment at 18% — ₹56,640, over the limit — was advised as
+    "usually not required". `apps/web/lib/invoices/compliance.assessEway`
+    survives as a FALLBACK for the window where the frontend has redeployed
+    ahead of the backend, and is pinned to this module by
+    shared/eway-parity-vectors.json; the panel prefers what is served here.
+    """
+    from domain.gst.eway import EwayLine, assess
+    return assess([
+        EwayLine(
+            hsn_sac=ln.get("hsn_sac"),
+            taxable_amount_paise=int(ln.get("taxable_amount_paise") or 0),
+            cgst_paise=int(ln.get("cgst_paise") or 0),
+            sgst_paise=int(ln.get("sgst_paise") or 0),
+            igst_paise=int(ln.get("igst_paise") or 0),
+            gst_rate_bps=int(ln.get("gst_rate_bps") or 0),
+        )
+        for ln in (lines or [])
+    ]).as_dict()
+
+
 @router.get("/{invoice_id}")
 def get_invoice(
     invoice_id: str,
@@ -1186,6 +1212,7 @@ def get_invoice(
             if not inv:
                 raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
             inv["lines"] = [ln for ln in MOCK_SALES_INVOICE_LINES if ln["invoice_id"] == invoice_id]
+            inv["eway_assessment"] = _eway_assessment(inv["lines"])
             return api_response(True, inv)
 
         from core.supabase_client import get_supabase
@@ -1210,6 +1237,7 @@ def get_invoice(
             .execute()
         )
         invoice["lines"] = lines_resp.data or []
+        invoice["eway_assessment"] = _eway_assessment(invoice["lines"])
         # Resolve a human "Created By" for the detail view (UX only). Prefer the
         # users table; fall back to the create event in the audit trail (covers
         # invoices created before created_by was captured). Never fatal.

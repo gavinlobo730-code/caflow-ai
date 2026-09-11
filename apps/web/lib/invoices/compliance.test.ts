@@ -51,11 +51,37 @@ test("irnEligibility: draft blocks, B2C blocks, already-generated blocks, B2B ok
   assert.equal(irnEligibility(inv({ recipient_gstin: null, gst_treatment: "export_with_payment" }), false).eligible, true);
 });
 
-test("ewayEligibility: below threshold + services are advisory, not blockers", () => {
-  const low = ewayEligibility(inv({ taxable_amount_paise: EWAY_THRESHOLD_PAISE - 1 }), false);
-  assert.equal(low.eligible, true);
-  assert.equal(low.warnings.some((w) => /₹50,000/.test(w)), true);
-  assert.equal(ewayEligibility(inv({ line_hsn_codes: ["998221", "998314"] }), false).warnings.some((w) => /services/.test(w)), true);
+test("ewayEligibility: the threshold is the CONSIGNMENT value, and it is advisory", () => {
+  // SALES-17. This test used to read
+  //     ewayEligibility(inv({ taxable_amount_paise: EWAY_THRESHOLD_PAISE - 1 }))
+  // and assert a "₹50,000" warning — asserting the defect, which is why it
+  // survived. Rule 138(1) Explanation 2 measures the consignment value
+  // INCLUDING the tax charged in the document, so the input is the LINES.
+  // scripts/eway-parity.test.ts holds the arithmetic against the backend's own
+  // vectors; what is asserted here is that ewayEligibility carries it.
+  const goods = (taxable: number, tax: number) => [{
+    hsn_sac: "7306", taxable_amount_paise: taxable, igst_paise: tax,
+    gst_rate_bps: 1800,
+  }];
+
+  // ₹48,000 taxable is below the limit; ₹56,640 of consignment is not.
+  const over = ewayEligibility(inv({ lines: goods(4_800_000, 864_000) }), false);
+  assert.equal(over.eligible, true, "it stays advisory — the CA decides");
+  assert.equal(over.warnings.some((w) => /required/.test(w)), true,
+    "a ₹56,640 consignment must not be advised as below ₹50,000");
+
+  const under = ewayEligibility(inv({ lines: goods(2_000_000, 360_000) }), false);
+  assert.equal(under.warnings.some((w) => /does not\s+exceed/.test(w)), true);
+
+  // Rule 138 governs the movement of GOODS. A fee invoice is not a small
+  // consignment — the rule does not arise, which is a different sentence.
+  const services = ewayEligibility(inv({
+    lines: [{ hsn_sac: "998221", taxable_amount_paise: 9_000_000,
+              igst_paise: 1_620_000, gst_rate_bps: 1800 }],
+  }), false);
+  assert.equal(services.warnings.some((w) => /movement of goods/.test(w)), true);
+
+  assert.equal(EWAY_THRESHOLD_PAISE, 5_000_000);
   assert.equal(ewayEligibility(inv({ status: "draft" }), false).eligible, false);
   assert.equal(ewayEligibility(inv(), true).eligible, false);
 });

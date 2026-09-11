@@ -73,6 +73,10 @@ export interface SalesInvoice {
   reminder_count?: number;
   last_reminded_at?: string | null;
   // Multi-Currency (Phase 3 backend) — undefined/"INR" for a domestic invoice.
+  /** CGST Rule 138(1) with Explanation 2, decided server-side and served with
+   *  the invoice. See ComplianceInvoice.eway_assessment in lib/invoices/
+   *  compliance.ts — the browser has a mirror, but only as a fallback. */
+  eway_assessment?: import("@/lib/invoices/compliance").ServedEwayAssessment | null;
   txn_currency?: string | null;
   exchange_rate?: string | null;
   txn_total?: number | null;
@@ -203,6 +207,10 @@ export interface InvoiceDetail {
   lines: ServerInvoiceLine[];
   // Multi-Currency (Phase 3 backend) — optional; absent/undefined or "INR" means
   // an ordinary INR invoice. Set once at creation, never editable afterward.
+  /** CGST Rule 138(1) with Explanation 2, decided server-side and served with
+   *  the invoice. See ComplianceInvoice.eway_assessment in lib/invoices/
+   *  compliance.ts — the browser has a mirror, but only as a fallback. */
+  eway_assessment?: import("@/lib/invoices/compliance").ServedEwayAssessment | null;
   txn_currency?: string | null;
   exchange_rate?: string | null;
   txn_total?: number | null;

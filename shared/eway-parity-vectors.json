@@ -1,0 +1,206 @@
+{
+  "_comment": [
+    "CGST Rule 138(1) with Explanation 2 — is an e-way bill required?",
+    "",
+    "Read by apps/api/tests/test_eway_parity.py and",
+    "apps/web/scripts/eway-parity.test.ts. Two implementations of one statutory",
+    "rule exist because the Compliance panel recomputes on every keystroke and a",
+    "round trip per keystroke is not a panel; this file is what stops them",
+    "drifting, the same arrangement as shared/gst-parity-vectors.json.",
+    "",
+    "Every amount is integer paise. gst_rate_bps is basis points: 1800 = 18%,",
+    "0 = nil-rated or exempt."
+  ],
+  "vectors": [
+    {
+      "label": "SALES-17's own case: Rs 48,000 of goods at 18% is a Rs 56,640 consignment",
+      "why": "The taxable value is below Rs 50,000 and the consignment value is not. The browser compared the taxable value and told the CA an e-way bill was 'usually not required'; goods moving without one are detained under s.129 and the penalty is the tax plus an equal amount.",
+      "lines": [
+        {"hsn_sac": "7306", "taxable_amount_paise": 4800000, "igst_paise": 864000, "gst_rate_bps": 1800}
+      ],
+      "expected": {
+        "consignment_value_paise": 5664000,
+        "exceeds_threshold": true,
+        "verdict": "required",
+        "goods_lines": 1,
+        "service_lines": 0,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 0,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "exactly Rs 50,000 — NOT required",
+      "why": "Rule 138(1) says 'exceeding fifty thousand rupees'. A strict inequality, and the old `taxable < THRESHOLD` test made the boundary itself required.",
+      "lines": [
+        {"hsn_sac": "7306", "taxable_amount_paise": 5000000, "gst_rate_bps": 1800}
+      ],
+      "expected": {
+        "consignment_value_paise": 5000000,
+        "exceeds_threshold": false,
+        "verdict": "not_required",
+        "goods_lines": 1,
+        "service_lines": 0,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 0,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "one paise over Rs 50,000 — required",
+      "why": "The other side of the same boundary.",
+      "lines": [
+        {"hsn_sac": "7306", "taxable_amount_paise": 5000001, "gst_rate_bps": 1800}
+      ],
+      "expected": {
+        "consignment_value_paise": 5000001,
+        "exceeds_threshold": true,
+        "verdict": "required",
+        "goods_lines": 1,
+        "service_lines": 0,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 0,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "intrastate: CGST and SGST both count toward the consignment value",
+      "why": "Explanation 2 names 'the central tax, State or Union territory tax, integrated tax and cess'. Adding only one head is the same defect in a smaller size.",
+      "lines": [
+        {"hsn_sac": "7306", "taxable_amount_paise": 4500000, "cgst_paise": 405000, "sgst_paise": 405000, "gst_rate_bps": 1800}
+      ],
+      "expected": {
+        "consignment_value_paise": 5310000,
+        "exceeds_threshold": true,
+        "verdict": "required",
+        "goods_lines": 1,
+        "service_lines": 0,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 0,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "cess is part of the consignment value",
+      "why": "Explanation 2 names it expressly. A sales line does not carry a cess column yet (SALES-20), so this vector is the rule ahead of the schema rather than a case that arises today.",
+      "lines": [
+        {"hsn_sac": "2402", "taxable_amount_paise": 3000000, "igst_paise": 840000, "cess_paise": 1200000, "gst_rate_bps": 2800}
+      ],
+      "expected": {
+        "consignment_value_paise": 5040000,
+        "exceeds_threshold": true,
+        "verdict": "required",
+        "goods_lines": 1,
+        "service_lines": 0,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 0,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "pure services — Rule 138 never arises",
+      "why": "An invoice of services moves no goods. Saying 'below Rs 50,000' about a Rs 1,06,200 fee invoice is not merely unhelpful, it is the wrong reason.",
+      "lines": [
+        {"hsn_sac": "998211", "taxable_amount_paise": 9000000, "igst_paise": 1620000, "gst_rate_bps": 1800}
+      ],
+      "expected": {
+        "consignment_value_paise": 0,
+        "exceeds_threshold": false,
+        "verdict": "not_required",
+        "goods_lines": 0,
+        "service_lines": 1,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 0,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "mixed exempt and taxable goods — the exempt value comes out",
+      "why": "Explanation 2's closing limb: 'shall exclude the value of exempt supply of goods where the invoice is issued in respect of both exempt and taxable supply of goods'. Rs 45,000 of taxable goods plus Rs 8,100 tax is Rs 53,100; the Rs 30,000 of exempt goods beside it does not count.",
+      "lines": [
+        {"hsn_sac": "7306", "taxable_amount_paise": 4500000, "igst_paise": 810000, "gst_rate_bps": 1800},
+        {"hsn_sac": "0401", "taxable_amount_paise": 3000000, "gst_rate_bps": 0}
+      ],
+      "expected": {
+        "consignment_value_paise": 5310000,
+        "exceeds_threshold": true,
+        "verdict": "required",
+        "goods_lines": 2,
+        "service_lines": 0,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 3000000,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "mixed, and the taxable half alone does NOT exceed the limit",
+      "why": "The exclusion cuts both ways. Rs 20,000 of taxable goods plus tax is Rs 23,600 even though the invoice totals Rs 1,23,600, so no e-way bill arises on this rule.",
+      "lines": [
+        {"hsn_sac": "7306", "taxable_amount_paise": 2000000, "igst_paise": 360000, "gst_rate_bps": 1800},
+        {"hsn_sac": "0401", "taxable_amount_paise": 10000000, "gst_rate_bps": 0}
+      ],
+      "expected": {
+        "consignment_value_paise": 2360000,
+        "exceeds_threshold": false,
+        "verdict": "not_required",
+        "goods_lines": 2,
+        "service_lines": 0,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 10000000,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "wholly exempt goods — undetermined, with the Annexure named",
+      "why": "Explanation 2's exclusion is conditioned on the invoice carrying BOTH exempt and taxable goods, so on a wholly exempt invoice it does not apply and the value is the whole of it. But Rule 138(14) lists cases needing no e-way bill whatever the value, including the goods in the Annexure to Rule 138 — some 150 entries this codebase does not hold. Guessing either way is a detention or a wasted hour.",
+      "lines": [
+        {"hsn_sac": "0401", "taxable_amount_paise": 8000000, "gst_rate_bps": 0}
+      ],
+      "expected": {
+        "consignment_value_paise": 8000000,
+        "exceeds_threshold": true,
+        "verdict": "undetermined",
+        "goods_lines": 1,
+        "service_lines": 0,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 0,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "a line with no HSN at all — counted, and reported",
+      "why": "The document does not say whether it is goods. Counting it keeps the answer on the side that cannot advise a missing e-way bill, and the gap says the code is absent.",
+      "lines": [
+        {"hsn_sac": null, "taxable_amount_paise": 4800000, "igst_paise": 864000, "gst_rate_bps": 1800}
+      ],
+      "expected": {
+        "consignment_value_paise": 5664000,
+        "exceeds_threshold": true,
+        "verdict": "required",
+        "goods_lines": 0,
+        "service_lines": 0,
+        "unclassified_lines": 1,
+        "excluded_exempt_paise": 0,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "goods and services on one invoice — only the goods are the consignment",
+      "why": "A machine plus its installation service. Rule 138 measures what moves.",
+      "lines": [
+        {"hsn_sac": "8471", "taxable_amount_paise": 4400000, "igst_paise": 792000, "gst_rate_bps": 1800},
+        {"hsn_sac": "998719", "taxable_amount_paise": 2000000, "igst_paise": 360000, "gst_rate_bps": 1800}
+      ],
+      "expected": {
+        "consignment_value_paise": 5192000,
+        "exceeds_threshold": true,
+        "verdict": "required",
+        "goods_lines": 1,
+        "service_lines": 1,
+        "unclassified_lines": 0,
+        "excluded_exempt_paise": 0,
+        "gaps": 0
+      }
+    }
+  ]
+}
