@@ -575,10 +575,26 @@ statement went back to guessing from the subtype.
   resolves from the account's own subtype rather than being guessed flat.
 - **A subtype's hyphens are folded** before the keyword scan, so a human typing
   `Long-term Borrowings` as a subtype matches the `long term` keywords.
-- **Still open:** `apps/web/lib/accounting/scheduleIiiCaptions.ts` is a third
-  classifier, in the browser. The P&L already prefers the backend caption; the
-  client Balance Sheet does not, and the two disagree on wording. See
-  `docs/audits/WHERE-WE-STOPPED.md`.
+- **`apps/web/lib/accounting/scheduleIiiCaptions.ts` is a FALLBACK, not a third
+  classifier**, and both halves of that are enforced. Every screen prefers the
+  backend's `schedule_iii_caption` and reaches the browser copy only through a
+  `??`, for the window where the frontend has redeployed ahead of the backend.
+  The client Balance Sheet did NOT, until 11-09-2026: `fromSection` dropped the
+  caption the API had always sent and `bsBucket()` guessed one from the
+  subtype — and `bsBucket` cannot see `schedule_iii_mapping`, so **13 of the 26
+  mapped balance-sheet accounts in production were shown under a different
+  caption than the year-end statements gave them**, including a Long-term
+  Investment presented as Other Current Assets.
+  `apps/api/tests/test_the_browser_fallback_speaks_the_engines_vocabulary.py`
+  holds the line from the side that owns the vocabulary — a guard written in
+  `apps/web` would assert the engine against a copy of itself and pass whenever
+  both drifted together, which is what the mapping screen's hardcoded list did
+  for months.
+- **`Tax Expense` is absent from `PL_EXP_ORDER` on purpose.** Schedule III
+  Part II presents tax below profit before tax and the client P&L tab has no
+  below-the-line row, so listing it among the operating expenses would fold it
+  into total expenses. The extra-bucket fallback renders it separately. Pinned
+  by a test, because it reads exactly like an omission.
 
 ## Reporting scope — "all clients" means the caller's clients
 

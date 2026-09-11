@@ -1970,6 +1970,12 @@ interface BSApiLine {
   account_name: string;
   account_code?: string;
   account_subtype?: string | null;
+  // The AUTHORITATIVE Schedule III caption, from domain/reporting/builders.py
+  // via schedule_iii.classify — which reads the account's own
+  // schedule_iii_mapping, the CA's explicit choice on the mapping screen.
+  // builders.balance_sheet has always sent it; this interface did not declare
+  // it and fromSection below dropped it. See the comment there.
+  schedule_iii_caption?: string | null;
   balance_paise: number;
 }
 interface BSApiSection { label: string; lines: BSApiLine[]; total_paise: number }
@@ -2044,7 +2050,21 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
             (secs ?? []).flatMap((s) => (s.lines ?? []).map((l) => ({
               account_id: l.account_id ?? l.account_name, account_code: l.account_code ?? "",
               account_name: l.account_name, account_type: type,
-              account_subtype: l.account_subtype ?? null, net_paise: l.balance_paise,
+              account_subtype: l.account_subtype ?? null,
+              // CARRIED, not recomputed. This line used to stop at
+              // account_subtype, so the backend's caption was fetched and
+              // discarded and bsBucket() guessed one from the subtype — which
+              // cannot see schedule_iii_mapping at all. Measured against
+              // production on 11-09-2026: 13 of the 26 mapped balance-sheet
+              // accounts were shown under a DIFFERENT caption here than in the
+              // year-end statements. Long-term Investments appeared as Other
+              // Current Assets (a non-current asset presented as current), a
+              // Short-term Borrowing as Other Current Liabilities, and five
+              // tax accounts the CA had mapped to Other Current Liabilities
+              // appeared under "Tax Liabilities" — a caption the engine does
+              // not have and no other statement shows.
+              schedule_iii_caption: l.schedule_iii_caption ?? null,
+              net_paise: l.balance_paise,
             })));
           const balances = [
             ...fromSection(d.assets, "Asset"),
@@ -2105,18 +2125,25 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
   const totalLiabEquityByCol = columns.map((c) => c.totals.liabEquity);
   const isBalanced = columns.length === 0 || columns.every((c) => c.totals.balanced);
 
-  const assetBuckets = groupBy(assets, (b) => bsBucket(b.account_type, b.account_subtype));
-  const liabBuckets = groupBy(liabilities, (b) => bsBucket(b.account_type, b.account_subtype));
-  const equityBuckets = groupBy(equity, (b) => bsBucket(b.account_type, b.account_subtype));
+  // The backend's caption is the truth (it reads the CA's own
+  // schedule_iii_mapping); bsBucket() is only a fallback for the brief window
+  // where the frontend has redeployed ahead of the backend. Exactly the shape
+  // the P&L tab already uses — see captionOf in ProfitAndLoss above.
+  const captionOf = (b: AccountBalance) =>
+    b.schedule_iii_caption ?? bsBucket(b.account_type, b.account_subtype);
+
+  const assetBuckets = groupBy(assets, captionOf);
+  const liabBuckets = groupBy(liabilities, captionOf);
+  const equityBuckets = groupBy(equity, captionOf);
 
   // Same defence-in-depth as the P&L tab (see ProfitAndLoss above): the Total
   // Assets/Liabilities/Equity figures are the backend's own totals, computed
-  // independently of this grouping — if bsBucket() ever produced a caption
-  // not in the lists above, that account's balance would silently vanish
-  // from the visible breakdown while the total stayed (invisibly) correct.
-  // bsBucket()'s current outputs are all covered by the lists above, but
-  // rendering anything uncovered anyway means that can never again go
-  // unnoticed the way Cost of Materials Consumed did.
+  // independently of this grouping — so a caption not in the ORDER lists would
+  // otherwise vanish from the visible breakdown while the total stayed
+  // (invisibly) correct. Rendering anything uncovered anyway means that can
+  // never again go unnoticed the way Cost of Materials Consumed did, and it
+  // matters more now that the caption comes from the server: a caption added
+  // to the engine reaches this screen before anybody edits these arrays.
   const assetExtraBuckets = Object.keys(assetBuckets).filter((k) => !BS_ASSET_ORDER.includes(k));
   const liabExtraBuckets = Object.keys(liabBuckets).filter((k) => !BS_LIAB_ORDER.includes(k));
   const eqExtraBuckets = Object.keys(equityBuckets).filter((k) => !BS_EQ_ORDER.includes(k));
@@ -3224,7 +3251,10 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     const rows: Record<string, string | number>[] = [];
     const section = (secs: BSApiSection[] | undefined, type: string) => {
       for (const s of secs ?? []) for (const l of s.lines ?? [])
-        rows.push({ "Schedule III Category": bsBucket(type, l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": type, "Amount (₹)": money(l.balance_paise) });
+        // The same caption the screen groups by — an export that classified
+        // differently from the statement it was exported from is worse than no
+        // export, because it is the copy that leaves the building.
+        rows.push({ "Schedule III Category": l.schedule_iii_caption ?? bsBucket(type, l.account_subtype ?? null), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": type, "Amount (₹)": money(l.balance_paise) });
     };
     section(d?.assets, "Asset");
     rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Assets", "Type": "", "Amount (₹)": money(d?.total_assets_paise ?? 0) });
