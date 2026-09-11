@@ -348,7 +348,180 @@ have dated the challan a day before the money moved. Caught by the existing
 | F1 | the ESIC `.xls` the portal accepts | **blocked on an owner decision** — filling the CA's own downloaded template needs `xlrd` + `xlwt` + `xlutils`, all three unmaintained |
 | F2 | a record for ESI and PT remittances | done — migration 365 |
 | F3 | the handoff screen | **done** |
-| F4 | the challan is money | reshaped to a RECONCILIATION (365 carries the link; what is left is the screen that lists unmatched remittances beside the bank) |
+| F4 | the challan is money | **done** — as a RECONCILIATION, not a posting |
 | F5 | professional tax: the artefact | not started — and it needs the state slabs a human must supply first |
 | F6 | the never-do list, as code | **half done** — the credential/OTP/frame rule is now a test. The other two rules are still prose |
 | F7 | the DSC register | not started |
+
+---
+
+## Track F4 — which entry paid this remittance (done)
+
+`GET /api/payroll/clients/{id}/remittance-reconciliation` lists every ESI and
+professional-tax remittance recorded as PAID with no journal entry tied to it,
+each with the entries that could be its payment. A panel at the top of the
+Payroll **File** tab renders it, client-wide, and links with one click.
+
+**The question it answers.** On the ledger, a statutory liability **nobody has
+paid** and one that was **paid and never tied back** look identical — both sit
+uncleared on ESI Payable at year end, and telling them apart meant opening the
+bank statement one account at a time.
+
+**Still not a posting.** The PATCH behind the button writes a reference and
+nothing else. `services/bank_posting_service.post` already wrote
+`Dr <liability> / Cr Bank` when the CA passed the bank statement line, and it is
+the one path for money movement; posting from here as well would debit the
+statutory liability twice. That was F4's original shape and it was wrong — see
+the section above.
+
+### The rule that makes the matcher work, and it is easy to get backwards
+
+**Match on what LEFT THE BANK, not on what the entry took off the liability.**
+
+`statutory_remittances.amount_paise` is the CHALLAN's figure — migration 365
+says so — and a challan can carry more than the liability. Interest and damages
+under ESI Act s.39(5) are added at the portal and are an EXPENSE, not a
+reduction of the payable:
+
+```
+Dr  ESI Payable                      10,000
+Dr  Interest on Statutory Dues          500
+  Cr  Bank                                     10,500
+```
+
+Matching the challan against the debit to ESI Payable would fail on **every
+late remittance** — which is the entire population a reconciliation exists to
+find. The entry TOTAL is what left the bank, and a balanced entry's total is
+its credit side, so no account has to be classified as a bank for this to work.
+The panel names the difference rather than leaving a CA to derive it from two
+numbers.
+
+### What it refuses
+
+- **Nothing is ever linked automatically.** A candidate carries a grade —
+  `exact` or `near` — and a reason SENTENCE, never a score. A CA who paid two
+  identical challans in one week gets two exact candidates and is the only one
+  who can say which is which. Same rule as the bank-entry drafts
+  (`docs/architecture/09`).
+- **A remittance with no `paid_on` gets nothing**, not everything. Without a
+  date there is no window, and offering every entry that ever touched ESI
+  Payable is not a shortlist — it is the ledger, re-presented as a suggestion.
+- **±7 days**, and the number is a judgement written down rather than a rule:
+  net banking debits the same day, a cheque clears over a few, and a CA
+  recording the challan date may be a day out. Wider would start offering next
+  month's remittance as a candidate for this one.
+
+### One defect found on the way, in this change's own first draft
+
+The money formatter used Python's `f"{n:,}"`, which groups in **threes** — so
+₹1,25,000 came out as "₹125,000", a figure no Indian document uses and one the
+browser renders correctly two lines away on the same screen.
+`domain/reporting/amount_words.indian_digits` already existed for exactly this,
+with the same reasoning on it. Delegated, not re-implemented.
+
+### Track F after this
+
+| | Phase | State |
+|---|---|---|
+| F1 | the ESIC `.xls` the portal accepts | **blocked on an owner decision** — three unmaintained dependencies |
+| F2 | a record for ESI and PT remittances | done — migration 365 |
+| F3 | the handoff screen | done |
+| F4 | the challan is money | **done**, as a reconciliation |
+| F5 | professional tax: the artefact | not started — needs the state slabs a human must supply |
+| F6 | the never-do list, as code | **done** — all three rules |
+| F7 | the DSC register | **already built** — the plan's premise was wrong, see below |
+
+---
+
+## Track F6 — the never-do list, as code (done)
+
+Three product rules that protect the whole filing position, now tests:
+
+1. **No field anywhere collects a government-portal password, PIN or OTP** —
+   `apps/web/scripts/no-screen-takes-a-portal-credential.test.ts`, from F3.
+2. **No column anywhere stores a portal credential or token** —
+   `apps/api/tests/test_the_never_do_list.py`.
+3. **Nothing transmits to a government host** — same file.
+
+**All three were already true. That is the point.** None of these tests fixed
+anything; what they do is make the day somebody adds the first one a deliberate
+decision with a review attached, rather than a line in a large diff nobody reads
+as a policy change — which is how this class of thing actually gets in.
+
+### Rule 2 is matched on a name's SEGMENTS, not its letters
+
+`pincode`, `mapping`, `shipping_bill_no` and `is_pinned` all contain "pin". A
+guard that fires on those is one somebody silences rather than reads. Eight
+columns genuinely match the vocabulary and every one is OURS, each with its
+reason: `lock_pin` (the firm's own year-lock PIN), `token_no` (the serial
+printed on a DSC's USB crypto token — an inventory label for a physical object),
+the three invite tokens and the engagement `sign_token` (links this product
+mints), and two AI usage counters.
+
+### Rule 3's FIRST SHAPE WAS WRONG, and how is the part worth keeping
+
+It began as "no backend file may name a government host" — and **23 files failed
+it**, every module whose docstring says the ECR is uploaded at
+`unifiedportal-emp.epfindia.gov.in`. Those are the right thing to write: the
+whole product is built on telling a CA exactly where to go. An exemption list
+with 23 entries of "this is a comment" is not a policy, it is paperwork.
+
+Naming a portal is not the risk; TRANSMITTING to one is. So the rule is stated
+over the thing that can actually transmit — **the modules that can make an
+outbound request at all**. There are eleven, and a test now pins each with its
+destination:
+
+| destination | modules |
+|---|---|
+| Groq | `ai_copilot` (router + domain), `assistant`, `financial_analysis_service`, `document_intelligence_v2` |
+| Gemini | `document_intelligence_v1`, `statement_vision` |
+| Resend | `email_service` |
+| Razorpay | `payments/razorpay` |
+| our own deployed API | `scripts/smoke_api` (a smoke test, not the service) |
+| **a firm-supplied URL** | `invoice_pdf_service` — the branding logo. The only destination not fixed in code, bounded by a timeout and a byte cap |
+
+A grep for `^import httpx` found four of those eleven. The AST scan found all
+eleven, including `google.genai` imported lazily inside a function — which is
+why the check reads imports properly rather than matching line starts.
+
+A separate test asserts the opposite direction too: that naming a portal in
+prose **is** allowed and common (more than ten modules do it), and that no
+module both reaches the network and names a government host. That combination
+is the entire rule.
+
+### Verified
+
+Four mutations, each applied and reverted: a new module calling `gst.gov.in`
+(2 failed), a new module reaching the network undeclared (1), a
+`gst_portal_password` column (1), a `portal_otp` column (1).
+
+---
+
+## Track F7 — the DSC register: ALREADY BUILT, and the plan was wrong
+
+The plan says *"Nothing anywhere tracks a digital signature certificate."*
+**That is false**, and was false when it was written. What exists:
+
+- **`public.dsc_records`** (migration **014**) — holder, PAN, Class 2/3,
+  purpose, issued and expiry dates, issuer, the crypto token's serial, notes.
+- **`routers/dsc.py`** — list, create, patch, **renew**, delete, under its own
+  `dsc` RBAC resource, with a duplicate guard on (PAN, type, expiry) and a
+  refusal when `issued_date` is after `expiry_date`.
+- **`apps/web/app/settings/dsc-tracker/page.tsx`**, linked from `SettingsPanel`
+  and — the part F7's rationale actually wanted — from **`DeadlinesPanel`**, so
+  it sits beside the filing deadlines.
+- **Expiry within 60 days surfaced on `/risks`**, per holder.
+
+So F7 is closed as **already done**, not implemented again. The finding stands
+as a reminder that the 7 September audit's "nothing does X" claims are worth
+checking before building: this is the third one this session that turned out to
+be stale (FA-10's edit path, the workflow repository's join, and now F7).
+
+### The one thing F7 pointed at that is genuinely NOT built
+
+"An expired or unassociated DSC is the most common cause of a stalled MCA
+filing" — and nothing connects the two. `mca_directors` exists and
+`dsc_records` carries a PAN, so a join is possible; what is missing is the fact
+nobody holds: **which director signs which form**. That is a human decision, of
+the same shape as the MSMED classification and the DTAA rate, and it would need
+a place to record it before any warning could be honest. Scoped, not started.

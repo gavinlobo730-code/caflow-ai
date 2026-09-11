@@ -20,9 +20,11 @@ is the explanation.
 from __future__ import annotations
 
 import re
+from datetime import date, timedelta
 from typing import Optional
 
 from core.ist_clock import ist_today
+from domain.payroll import remittance_match
 from domain.payroll.statutory import esi_contribution_period
 
 ESIC = "esic"
@@ -222,3 +224,124 @@ def retract(db, *, firm_id: str, remittance_id: str,
            .eq("id", remittance_id).eq("firm_id", firm_id)
            .is_("deleted_at", "null").execute().data)
     return bool(res)
+
+
+# ── Which ledger each scheme settles, and how far to look ────────────────────
+#
+# The name patterns are the ones services/phase2_journal_service already posts
+# the accrual to — %ESI Payable% and %PT Payable%. Named here rather than
+# re-derived: a matcher looking at a different account from the one the accrual
+# credited would find nothing and report every remittance as unmatched, which
+# is a worse answer than no matcher at all.
+#
+# EPF is absent on purpose. It has its own record (migration 335) with EPFO's
+# own sequencing, this table does not carry it, and `record` refuses it.
+_LIABILITY_PATTERN = {
+    ESIC: "%ESI Payable%",
+    PROFESSIONAL_TAX: "%PT Payable%",
+}
+
+
+def _liability_account_id(db, *, firm_id: str, client_id: str,
+                          scheme: str) -> Optional[str]:
+    """The account a scheme's accrual was credited to, or None.
+
+    None rather than a raise: a client whose chart has no ESI Payable has never
+    accrued ESI, so there is nothing to reconcile and the caller reports "no
+    candidates" rather than failing a screen.
+    """
+    pattern = _LIABILITY_PATTERN.get(scheme)
+    if not pattern:
+        return None
+    rows = (db.table("chart_of_accounts").select("id, client_id, account_name")
+            .eq("firm_id", firm_id).ilike("account_name", pattern)
+            .eq("is_active", True).execute().data) or []
+    # A firm-level account (client_id IS NULL) is allowed on any of that firm's
+    # entries — see the journal_lines trigger in migration 360 — so it is a
+    # legitimate match, but this client's OWN account wins where both exist.
+    own = [r for r in rows if r.get("client_id") == client_id]
+    return (own or rows)[0]["id"] if (own or rows) else None
+
+
+def payment_candidates(db, *, firm_id: str, client_id: str,
+                       remittance: dict,
+                       window_days: int = remittance_match.DEFAULT_WINDOW_DAYS
+                       ) -> list[dict]:
+    """Journal entries that could have paid this remittance, best first.
+
+    THE QUERY IS BOUNDED BY THE ANSWER, not by the ledger. It reads the lines
+    on ONE account inside a fortnight, then the entries behind them — a handful
+    of rows for a monthly obligation, whatever the client's transaction volume.
+    See CLAUDE.md's reporting rule; apps/api is in Singapore and Postgres is in
+    Mumbai.
+
+    Nothing is linked here. The ranking and every sentence come from
+    domain/payroll/remittance_match.py, which has the tests.
+    """
+    paid_on = remittance.get("paid_on")
+    if not paid_on:
+        return []
+    account_id = _liability_account_id(
+        db, firm_id=firm_id, client_id=client_id,
+        scheme=str(remittance.get("scheme") or ""))
+    if not account_id:
+        return []
+
+    try:
+        centre = date.fromisoformat(str(paid_on)[:10])
+    except (ValueError, TypeError):
+        return []
+    lo = (centre - timedelta(days=window_days)).isoformat()
+    hi = (centre + timedelta(days=window_days)).isoformat()
+
+    entries = (db.table("journal_entries")
+               .select("id, entry_date, reference_no, narration")
+               .eq("firm_id", firm_id).eq("client_id", client_id)
+               .gte("entry_date", lo).lte("entry_date", hi)
+               .is_("deleted_at", "null").execute().data) or []
+    entries = [e for e in entries if e.get("id")]
+    if not entries:
+        return []
+
+    lines = (db.table("journal_lines")
+             .select("journal_entry_id, account_id, debit_paise, credit_paise")
+             .in_("journal_entry_id", [e["id"] for e in entries])
+             .execute().data) or []
+
+    debited: dict = {}
+    total: dict = {}
+    for ln in lines:
+        eid = ln.get("journal_entry_id")
+        # The entry TOTAL is its credit side, which for a payment entry is what
+        # left the bank — see domain/payroll/remittance_match.py for why that,
+        # and not the liability debit, is the figure a challan matches.
+        total[eid] = total.get(eid, 0) + int(ln.get("credit_paise") or 0)
+        if ln.get("account_id") == account_id:
+            debited[eid] = debited.get(eid, 0) + int(ln.get("debit_paise") or 0)
+
+    # Only entries that actually CLEARED this liability. An entry in the window
+    # that never touched the account is not a candidate for paying it.
+    shortlist = [
+        {"journal_entry_id": e["id"], "entry_date": e.get("entry_date"),
+         "reference_no": e.get("reference_no"), "narration": e.get("narration"),
+         "liability_debit_paise": debited.get(e["id"], 0),
+         "entry_total_paise": total.get(e["id"], 0)}
+        for e in entries if debited.get(e["id"], 0) > 0
+    ]
+    return [c.to_dict() for c in remittance_match.candidates(
+        amount_paise=int(remittance.get("amount_paise") or 0),
+        paid_on=str(paid_on)[:10], entries=shortlist, window_days=window_days)]
+
+
+def unmatched_with_candidates(db, *, firm_id: str, client_id: str) -> list[dict]:
+    """Every paid remittance with no entry tied to it, each with its candidates.
+
+    The month-end list. `unlinked` alone says WHICH obligations are unmatched;
+    this says what to match them to, which is the difference between a warning
+    and a task somebody can finish.
+    """
+    return [
+        {**r, "candidates": payment_candidates(
+            db, firm_id=firm_id, client_id=client_id, remittance=r)}
+        for r in unlinked(db, firm_id=firm_id, client_id=client_id)
+    ]

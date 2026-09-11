@@ -38,11 +38,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, Check, Copy, Download, ExternalLink, Info, Lock,
+  AlertTriangle, Check, Copy, Download, ExternalLink, Info, Link2, Lock,
 } from "lucide-react";
 
 import { api, request, type ApiResp, type HandoffObligation,
-         type Remittance, type StatutoryHandoff as Handoff } from "@/lib/api";
+         type Remittance, type StatutoryHandoff as Handoff,
+         type UnmatchedRemittance } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { todayLocalISO } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
@@ -464,6 +465,145 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
   );
 }
 
+// ─── what was paid and never tied back (Track F, phase F4) ──────────────────
+//
+// THE QUESTION, and it is the reason migration 365 carries a journal_entry_id
+// at all: on the ledger, a statutory liability NOBODY HAS PAID and one that was
+// PAID AND NEVER TIED BACK look identical. Both sit uncleared on ESI Payable at
+// year end, and a CA closing the books has to open the bank statement to tell
+// them apart, one account at a time.
+//
+// LINKING IS NOT POSTING. The PATCH behind the button writes a reference and
+// nothing else — bank_posting_service.post already wrote Dr <liability> /
+// Cr Bank when the CA passed the bank statement line, and a posting from here
+// as well would debit the statutory liability twice.
+//
+// CLIENT-WIDE, not month-wide, deliberately: an unmatched September remittance
+// is still unmatched while the CA is working on October, and a list that
+// followed the month picker would hide exactly the rows somebody has forgotten.
+
+function UnmatchedRemittances({ clientId, onLinked }: {
+  clientId: string; onLinked: () => void;
+}) {
+  const [rows, setRows] = useState<UnmatchedRemittance[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<Note>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await api.payroll.remittanceReconciliation(clientId);
+      setRows(res?.success ? (res.data?.unmatched ?? []) : []);
+    } catch { setRows([]); }
+    finally { setLoaded(true); }
+  }, [clientId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function link(remittanceId: string, journalEntryId: string) {
+    setBusy(remittanceId); setNote(null);
+    try {
+      const res = await api.payroll.linkRemittancePayment(
+        clientId, remittanceId, journalEntryId);
+      if (!res?.success) throw new Error(res?.error ?? "That did not link.");
+      setNote({ kind: "ok", text: "Matched. The liability now shows which "
+                                  + "entry cleared it." });
+      await load();
+      onLinked();
+    } catch (e) {
+      setNote({ kind: "err", text: e instanceof Error ? e.message : "That did not link." });
+    } finally { setBusy(null); }
+  }
+
+  // Nothing outstanding is the ordinary state, and an empty panel on every
+  // screen teaches people to stop reading it.
+  if (!loaded || rows.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-amber-200 p-4 space-y-3">
+      <div>
+        <p className="text-[13px] font-semibold text-[#0F172A]">
+          Paid, but not yet matched to a bank payment ({rows.length})
+        </p>
+        <p className="text-[11px] text-[#64748B] mt-0.5">
+          On the ledger these look exactly like a liability nobody has paid.
+          Matching one records WHICH entry cleared it — it posts nothing, and
+          the entry itself is unchanged.
+        </p>
+      </div>
+
+      {note && (
+        <p className={`text-[11px] px-3 py-2 rounded-lg ${
+          note.kind === "ok" ? "bg-green-50 text-green-700"
+          : "bg-red-50 text-red-600"}`}>{note.text}</p>
+      )}
+
+      {rows.map((r) => (
+        <div key={r.id} className="border-t border-[#F1F5F9] pt-3">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <p className="text-[12px] text-[#1E293B]">
+              <span className="font-semibold">
+                {r.scheme === "esic" ? "ESI" : `Professional tax — ${r.state ?? ""}`}
+              </span>
+              {" · "}{fmtMonth(r.wage_month)}
+              {r.challan_number ? ` · challan ${r.challan_number}` : ""}
+            </p>
+            <p className="text-[12px] font-mono text-[#0F172A]">
+              {fmtPaise(r.amount_paise)}
+            </p>
+          </div>
+          <p className="text-[10px] text-[#94A3B8]">
+            Paid {r.paid_on ?? "—"}
+          </p>
+
+          {r.candidates.length === 0 ? (
+            <p className="text-[11px] text-[#64748B] mt-2 bg-[#F8FAFC] rounded-lg px-3 py-2">
+              No entry in the books clears this liability around that date. Either
+              the bank line has not been passed yet, or the payment went through
+              a different account — pass the statement line first, then come back.
+            </p>
+          ) : (
+            <div className="mt-2 space-y-1.5">
+              {r.candidates.map((c) => (
+                <div key={c.journal_entry_id}
+                  className="flex items-start justify-between gap-3 rounded-lg
+                             border border-[#E2E8F0] px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-[#1E293B]">
+                      <span className={`inline-block px-1.5 py-0.5 rounded mr-1.5
+                        text-[9px] font-semibold uppercase tracking-wide ${
+                        c.grade === "exact" ? "bg-green-100 text-green-800"
+                                            : "bg-slate-100 text-slate-600"}`}>
+                        {c.grade}
+                      </span>
+                      {c.entry_date}
+                      {c.reference_no ? ` · ${c.reference_no}` : ""}
+                    </p>
+                    {/* The sentence is composed on the server. It carries the
+                        statutory reasoning — that interest on a late challan
+                        rides on the same payment — which a string built here
+                        would lose. */}
+                    <p className="text-[10px] text-[#64748B] mt-0.5">{c.reason}</p>
+                  </div>
+                  <button onClick={() => link(r.id, c.journal_entry_id)}
+                    disabled={busy !== null}
+                    className="shrink-0 px-2.5 py-1 text-[11px] border border-[#E2E8F0]
+                               rounded-lg hover:bg-[#F8FAFC] text-[#334155]
+                               disabled:opacity-40 flex items-center gap-1">
+                    <Link2 size={11} />
+                    {busy === r.id ? "Matching…" : "This one"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
 // ─── the screen ─────────────────────────────────────────────────────────────
 
 export default function StatutoryHandoff({ clientId }: { clientId: string }) {
@@ -544,6 +684,10 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
           {err}
         </p>
       )}
+
+      {/* Client-wide, above the month. See UnmatchedRemittances — it renders
+          nothing when there is nothing outstanding. */}
+      <UnmatchedRemittances clientId={clientId} onLinked={load} />
 
       {handoff?.unattributed_pt_paise ? (
         <p className="text-[11px] text-red-700 bg-red-50 border border-red-200

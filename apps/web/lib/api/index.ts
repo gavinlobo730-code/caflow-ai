@@ -85,6 +85,23 @@ export type StatutoryHandoff = {
   disclaimer?: string;
 };
 
+/** One entry that could have paid a remittance. `entry_total_paise` is what
+ *  LEFT THE BANK, which is the figure a challan matches — a late challan
+ *  carries interest under ESI Act s.39(5), which is an expense and not a
+ *  reduction of the payable, so the liability debit is smaller. */
+export type RemittanceCandidate = {
+  journal_entry_id: string;
+  entry_date: string;
+  reference_no: string | null;
+  narration: string | null;
+  liability_debit_paise: number;
+  entry_total_paise: number;
+  days_apart: number;
+  grade: "exact" | "near";
+  /** composed on the server — render it, do not rebuild the sentence */
+  reason: string;
+};
+
 export type Remittance = {
   id: string;
   scheme: "esic" | "professional_tax";
@@ -2149,6 +2166,25 @@ export const api = {
       `/api/payroll/clients/${clientId}/remittances`,
       { method: "POST", body: JSON.stringify(body) }),
 
+    /** THE MONTH-END LIST (Track F, phase F4). Every ESI / professional-tax
+     *  remittance recorded as PAID with no journal entry tied to it, each with
+     *  the entries that could be its payment.
+     *
+     *  The question it answers is the reason migration 365 carries a
+     *  journal_entry_id at all: on the ledger, a statutory liability NOBODY HAS
+     *  PAID and one that was PAID AND NEVER TIED BACK look identical — both sit
+     *  uncleared on ESI Payable at year end.
+     *
+     *  Candidates are RANKED AND EXPLAINED on the server
+     *  (domain/payroll/remittance_match.py). Each carries a grade — "exact" or
+     *  "near" — and a sentence, never a score: a CA who paid two identical
+     *  challans in one week has two exact candidates and is the only one who
+     *  can say which is which. */
+    remittanceReconciliation: (clientId: string) =>
+      request<ApiResp<{ client_id: string; window_days: number;
+                        unmatched: UnmatchedRemittance[] }>>(
+        `/api/payroll/clients/${clientId}/remittance-reconciliation`),
+
     /** Tie a remittance to the journal entry that paid it. A LINK, never a
      *  posting: bank_posting_service already writes Dr liability / Cr Bank when
      *  the CA passes the bank statement line, and posting from here as well
@@ -3409,4 +3445,8 @@ export type ApprovalRequest = {
   decided_by_email?: string;
   reason?: string;
   created_at?: string;
+};
+
+export type UnmatchedRemittance = Remittance & {
+  candidates: RemittanceCandidate[];
 };

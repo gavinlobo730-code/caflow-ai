@@ -49,6 +49,7 @@ from domain.payroll.lwf import classify_state as classify_lwf_state
 from domain.payroll.professional_tax import classify_state as classify_pt_state
 from domain.payroll import identity as identity_domain
 from domain.payroll import handoff as handoff_domain
+from domain.payroll import remittance_match
 from domain.payroll import age as age_domain
 from domain.payroll import attendance as attendance_domain
 from domain.payroll import firm_rates
@@ -4449,6 +4450,43 @@ def retract_remittance(
                                remittance_id=remittance_id):
         raise HTTPException(status_code=404, detail="Remittance not found")
     return api_response(True, {"remittance_id": remittance_id, "retracted": True})
+
+
+@router.get("/clients/{client_id}/remittance-reconciliation")
+def remittance_reconciliation(
+    client_id: str,
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """Statutory remittances paid with no journal entry tied to them (F4).
+
+    THE QUESTION THIS ANSWERS, and it is the reason migration 365 carries a
+    journal_entry_id at all: on the ledger, a statutory liability NOBODY HAS
+    PAID and one that was PAID AND NEVER TIED BACK look identical. Both sit
+    uncleared on ESI Payable at year end, and a CA closing the books has to
+    open the bank statement to tell them apart, one account at a time.
+
+    Each row comes back with the entries that could be its payment, ranked, so
+    the second kind can be matched and only the first kind is left to chase.
+
+    NOTHING IS LINKED HERE. This endpoint reads; PATCH
+    /clients/{client_id}/remittances/{id}/payment is the one that writes, and
+    it writes a LINK — never a posting. services/bank_posting_service.post
+    already writes Dr <liability> / Cr Bank when the CA passes the bank
+    statement line, and posting from here as well would debit the statutory
+    liability twice.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here reaches a portal.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"client_id": client_id, "unmatched": []})
+    assert_client_access(current_user, client_id)
+    return api_response(True, {
+        "client_id": client_id,
+        "unmatched": remittances.unmatched_with_candidates(
+            db, firm_id=current_user["firm_id"], client_id=client_id),
+        "window_days": remittance_match.DEFAULT_WINDOW_DAYS,
+    })
 
 
 @router.get("/clients/{client_id}/ecr-sequence")
