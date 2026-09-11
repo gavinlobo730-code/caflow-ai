@@ -209,3 +209,76 @@ def test_retracting_is_a_soft_delete(db):
     assert svc.retract(db, firm_id=FIRM, remittance_id=row["id"])
     assert db.rows, "the row must survive — the challan number is held nowhere else"
     assert db.rows[0]["deleted_at"]
+
+
+# ── the write payload is checked against real Postgres, indirectly ───────────
+#
+# `record()` assembles its payload in Python — only the fields the CA actually
+# supplied — so tests/_backend_query_parser.py cannot read it, and it counts as
+# two of the unreadable references test_backend_columns_exist_pg.py budgets.
+#
+# The alternative was worse. Making the write literal means spelling the same
+# fifteen-column dict at BOTH the insert and the update call, and two copies of
+# a column list is the defect this codebase spends most of its guards on.
+#
+# So the blind spot is closed from the other end. `read()` names every column
+# of this table in one literal select, which the pg check DOES verify against
+# the real schema — and the test below asserts that every key `record()` can
+# write appears in that list. Payload keys are a subset of the select list, and
+# the select list is checked against Postgres; the chain is closed without
+# duplicating anything.
+
+def _payload_keys(db) -> set:
+    """Every column name `record()` writes, across the branches that differ."""
+    seen: set = set()
+
+    class _Capturing(_Table):
+        def insert(self, row):
+            seen.update(row)
+            return super().insert(row)
+
+        def update(self, row):
+            seen.update(row)
+            return super().update(row)
+
+    db.table = lambda name: _Capturing(db.rows)  # type: ignore[method-assign]
+
+    # ESI, new: carries a contribution period and no state.
+    svc.record(db, firm_id=FIRM, client_id=CLIENT, scheme=svc.ESIC,
+               wage_month="2026-09", submitted_on="2026-10-14")
+    # ESI, the same remittance paid: the UPDATE branch, with every evidence
+    # field supplied.
+    svc.record(db, firm_id=FIRM, client_id=CLIENT, scheme=svc.ESIC,
+               wage_month="2026-09", submitted_on="2026-10-14",
+               status=svc.PAID, paid_on="2026-10-20", challan_number="CH-1",
+               challan_date="2026-10-20", amount_paise=45_00_00,
+               run_id="run-1", notes="via net banking", recorded_by="u1")
+    # PT: carries a state and no contribution period.
+    svc.record(db, firm_id=FIRM, client_id=CLIENT,
+               scheme=svc.PROFESSIONAL_TAX, wage_month="2026-09",
+               state="Maharashtra", submitted_on="2026-10-14")
+    return seen
+
+
+def test_every_column_record_writes_is_one_the_reader_names(db):
+    """The unreadable write payload, checked through the readable select.
+
+    If this fails, a column was added to `record()` and not to `read()` — which
+    would mean the pg column check never sees it, and a name that Postgres does
+    not have would reach production as a silent PostgREST error.
+    """
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent))
+    from _backend_query_parser import scan_file  # noqa: E402
+
+    module = (Path(__file__).parent.parent / "services"
+              / "statutory_remittance_service.py")
+    readable = {col for _f, rel, col in scan_file(module)[0]
+                if rel == "statutory_remittances"}
+    assert readable, "the parser found no readable columns — it has stopped working"
+
+    unchecked = sorted(_payload_keys(db) - readable)
+    assert not unchecked, (
+        f"record() writes {unchecked}, which read() does not name — so the "
+        f"pg column check never verifies them. Add them to read()'s select.")

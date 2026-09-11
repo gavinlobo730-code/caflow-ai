@@ -229,6 +229,15 @@ UNFIXED: dict[str, str] = {}
 # sending the whole row back would reverse and re-post an acquisition journal
 # for a typo in a name field.
 #
+#   services/statutory_remittance_service.py::record  —  .insert(row) and
+#   .update(row), where `row` is assembled in Python
+# Filing the return and paying the challan are two calls about ONE remittance
+# (migration 365's partial unique index would reject the second as a duplicate),
+# so the payload carries only the fields the CA actually supplied. Writing it
+# literally would mean spelling the same fifteen-column dict at BOTH call sites,
+# and two copies of a column list is the defect most of these guards exist to
+# prevent.
+#
 # Checked elsewhere, and more strictly than a scanner can. The numbering
 # helper's tables come from NUMBER_SERIES, a literal dict in the same module,
 # and tests/test_document_number_scope_matches_the_constraint_pg.py reads every
@@ -239,8 +248,18 @@ UNFIXED: dict[str, str] = {}
 # column production does not have, and a value its type would reject), and
 # tests/test_an_asset_can_be_corrected.py writes all of them end to end;
 # migration 351 adds the four new ones and test_schema_matches_production_pg.py
-# compares the result against production.
-MAX_UNREADABLE = 446
+# compares the result against production. The remittance payload is closed from
+# the other end: `read()` in the same module names every column of that table in
+# one literal select, which the check below DOES verify against the real schema,
+# and tests/test_statutory_remittances_are_recorded.py asserts that every key
+# `record()` can write appears in that list. Payload keys are a subset of the
+# select list; the select list is checked against Postgres. The chain closes
+# without duplicating anything.
+#
+# 446 -> 447 on 2026-09-11. The tree stood at 445 against a budget of 446, so
+# the two writes above took the one unit of slack and one more; raised in the
+# same commit that added them, which is what the budget is for.
+MAX_UNREADABLE = 447
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
