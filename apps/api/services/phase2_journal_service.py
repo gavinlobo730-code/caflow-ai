@@ -19,6 +19,7 @@ from fastapi import HTTPException
 # providers are imported lazily in exchange_rate_service() to keep the hot path light.
 from core.ist_clock import month_end_date
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
+from domain.accounting import journal_source as JS
 from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -169,6 +170,7 @@ class Phase2JournalService:
                 narration=f"Sales invoice {invoice['invoice_no']} to customer — CGST Act §9",
                 entry_type="Sales",
                 lines=lines,
+                source_type=JS.SALES_INVOICE, source_id=invoice.get("id"),
                 **_ccy,
             )
         except ValueError:
@@ -375,6 +377,7 @@ class Phase2JournalService:
                 narration=f"Credit note {cn['credit_note_no']} — CGST Act §34",
                 entry_type="Journal",
                 lines=lines,
+                source_type=JS.CREDIT_NOTE, source_id=cn.get("id"),
             )
         except ValueError:
             raise
@@ -443,6 +446,7 @@ class Phase2JournalService:
                 narration=f"Debit note {dn['debit_note_no']} — CGST Act §34",
                 entry_type="Journal",
                 lines=lines,
+                source_type=JS.DEBIT_NOTE, source_id=dn.get("id"),
             )
         except ValueError:
             raise
@@ -530,6 +534,7 @@ class Phase2JournalService:
                 narration=f"Sales debit note {dn['debit_note_no']} — CGST Act §34(3)",
                 entry_type="Journal",
                 lines=lines,
+                source_type=JS.SALES_DEBIT_NOTE, source_id=dn.get("id"),
             )
         except ValueError:
             raise
@@ -601,6 +606,7 @@ class Phase2JournalService:
                 narration=f"Purchase credit note {cn['credit_note_no']} — CGST Act §34(3)",
                 entry_type="Journal",
                 lines=lines,
+                source_type=JS.PURCHASE_CREDIT_NOTE, source_id=cn.get("id"),
             )
         except ValueError:
             raise
@@ -811,6 +817,7 @@ class Phase2JournalService:
                 entry_type="Purchase",
                 lines=lines,
                 **_ccy,
+                source_type=JS.PURCHASE_BILL, source_id=bill.get("id"),
             )
         except ValueError:
             raise
@@ -1114,6 +1121,7 @@ class Phase2JournalService:
                 narration=f"Payroll accrual for {run['month']}",
                 entry_type="Journal",
                 lines=lines,
+                source_type=JS.PAYROLL_RUN, source_id=run.get("id"),
             )
         except ValueError:
             raise
@@ -1221,6 +1229,7 @@ class Phase2JournalService:
                 narration=f"Full and final settlement — {settlement.get('employee_name') or ''}".strip(" —"),
                 entry_type="Journal",
                 lines=lines,
+                source_type=JS.SETTLEMENT, source_id=settlement.get("id"),
             )
         except ValueError:
             raise
@@ -1256,6 +1265,7 @@ class Phase2JournalService:
                 narration=f"Salary disbursement for {run['month']}",
                 entry_type="Payment",
                 lines=lines,
+                source_type=JS.PAYROLL_DISBURSEMENT, source_id=run.get("id"),
             )
         except ValueError:
             raise
@@ -1348,6 +1358,7 @@ class Phase2JournalService:
                         {"account_id": expense_id, "debit_paise": 0, "credit_paise": cost,
                          "narration": "Reversed out of purchases — capitalised"},
                     ],
+                    source_type=JS.FIXED_ASSET, source_id=asset.get("id"),
                 )
 
             if mode == "credit":
@@ -1383,6 +1394,7 @@ class Phase2JournalService:
                 narration=f"Asset acquisition: {asset['asset_name']}",
                 entry_type="Journal",
                 lines=lines,
+                source_type=JS.FIXED_ASSET, source_id=asset.get("id"),
             )
         except ValueError:
             # Re-raise account resolution errors (unmapped asset-category CoA
@@ -1433,6 +1445,7 @@ class Phase2JournalService:
                     {"account_id": accum_dep_id, "debit_paise": 0, "credit_paise": depreciation_paise,
                      "narration": f"Accumulated depreciation: {asset['asset_name']}"},
                 ],
+                source_type=JS.DEPRECIATION, source_id=asset.get("id"),
             )
         except ValueError:
             # Re-raise account resolution errors so the router returns 422
@@ -1515,6 +1528,7 @@ class Phase2JournalService:
                 narration=f"Asset disposal: {asset['asset_name']}",
                 entry_type="Journal",
                 lines=lines,
+                source_type=JS.ASSET_DISPOSAL, source_id=asset.get("id"),
             )
         except ValueError:
             # Re-raise account resolution errors so the router returns 422
@@ -1589,6 +1603,7 @@ class Phase2JournalService:
             db, firm_id=firm_id, client_id=client_id,
             entry_date=str(txn["transaction_date"])[:10],
             reference_no=ref, narration=narration, entry_type=entry_type, lines=lines,
+            source_type=JS.BANK_TRANSACTION, source_id=txn.get("id"),
         )
 
     def _find_account(
