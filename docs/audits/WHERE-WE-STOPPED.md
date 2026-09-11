@@ -91,3 +91,73 @@ localStorage), `PUR-15` (§43B(h) MSME tracker), `GST-11` (QRMP), `GST-10`
   live service boots and is the owner's call. `OPEN-QUESTIONS.md` §E1.
 * **The backend is behind `main`** until somebody clicks Manual Deploy on Render.
   Migrations apply regardless, through a separate GitHub Actions job.
+
+---
+
+## Added 11 September 2026 — what production says, and the root cause 11h missed
+
+Read against the live database rather than against memory, which changed the
+shape of the remaining work.
+
+### There are THREE Schedule III vocabularies, not two
+
+11h built one source in `apps/api/domain/reporting/schedule_iii.py` and fixed
+the computation. It did not look at where the CA actually chooses:
+
+| # | Where | What it is |
+|---|---|---|
+| 1 | `apps/api/domain/reporting/schedule_iii.py` | the backend vocabulary — 23 captions. What 11h built |
+| 2 | `apps/web/app/accounting/schedule-iii-mapping/page.tsx` lines 20–22 | **a hardcoded menu the screen OFFERS**, with different spellings and five captions the backend has never heard of |
+| 3 | `apps/web/lib/accounting/scheduleIiiCaptions.ts` | **a browser-side classifier** — business logic in the frontend, against the standing rule |
+
+**The consequence, measured.** Of 50 accounts carrying a
+`schedule_iii_mapping` in production, **nine hold a value the backend
+classifier silently discards** — the CA made a choice, the screen recorded it,
+and the financial statements ignore it and fall back to the subtype scan:
+
+| What the CA chose | What the backend knows |
+|---|---|
+| `Fixed Assets` (3 accounts) | `Tangible Fixed Assets` / `Intangible Fixed Assets` |
+| `Employee Benefits Expense` (2) | `Employee Benefit Expense` — singular |
+| `Short-term Loans & Advances` (2) | `Short Term Loans & Advances` — no hyphen |
+| `Long-term Investments` (1) | `Long Term Investments` |
+| `Short-term Borrowings` (1) | `Short Term Borrowings` |
+
+The screen also offers five captions with no backend equivalent at all —
+Capital Work in Progress, Goodwill & Intangibles, Long-term Provisions,
+Short-term Provisions, Deferred Tax Asset. **A menu the engine cannot honour.**
+
+### What that makes the remaining work
+
+1. **The screen serves the backend's vocabulary** instead of a hardcoded list.
+   One list, fetched, not copied. This is the visible half of ACC-10 and it is
+   now the main item, not the PATCH wiring.
+2. **Reconcile the spellings.** The screen's are hyphenated and plural, and are
+   what production holds, so the backend should adopt them — three things then
+   agree.
+   ⚠️ **But this changes captions PRINTED on a statutory financial statement,
+   and the exact Schedule III wording is NOT verified.** `icai.org` and every
+   `.gov.in` are refused at the egress proxy. Adopting the screen's spellings is
+   defensible on convergence — the screen, the data and the classifier's memory
+   all agree — and it is still not a reading of the statute. **Logged as a new
+   open question; the alias table means nothing breaks either way.**
+3. **An alias table** maps the loose spellings onto canonical captions so a
+   mapping already made is honoured whichever way it was spelled. `Fixed Assets`
+   is the one that is genuinely ambiguous rather than merely spelled
+   differently — all three live accounts are tangible by name and subtype, but
+   a future intangible would be wrong, so it resolves through the account's own
+   subtype rather than being aliased flat.
+4. **Then** the CHECK constraint (it would fail on nine rows today), the
+   read-only screen's PATCH wiring, the residual count, the negative control
+   and the PR.
+5. **`scheduleIiiCaptions.ts` should go**, or become display-only. A classifier
+   in the browser is the thing ACC-10 exists to remove.
+
+### Production, for sequencing
+
+`fixed_assets` **= 0**. So **FA-02's free window is still open**: fix it before
+the first register is migrated in and it is a code change; after, it is a
+data-repair job. That moves it up the order.
+
+Also: 7 clients, 12,899 journal entries, 1 payroll run and none finalised — so
+the ESI rounding fix needs no back-fill.
