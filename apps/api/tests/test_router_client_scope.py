@@ -1130,38 +1130,6 @@ EXEMPT: dict[str, str] = {
         "GLOBAL/CLIENT/COMPLIANCE_SUGGESTED_QUESTIONS are hardcoded prompt "
         "lists in models/ai_copilot.py — no client_id in the request, no "
         "stored data read.",
-    # These four aggregate across the whole firm with no per-client
-    # identifiers in their CURRENT output — confirmed by reading
-    # domain/ai_copilot_service.py's actual implementations, not the
-    # aspirational Pydantic response models in models/ai_copilot.py (which
-    # declare fields like at_risk_clients/cross_client_conflicts that the
-    # real functions do not populate). That is a real gap, not a
-    # non-issue — recorded as an open question in the audit doc rather than
-    # guarded here, because a correct fix is bigger than a guard:
-    "/api/copilot/intelligence/compliance":
-        "get_compliance_intelligence caches ONE firm-wide summary per firm "
-        "(ai_summaries, entity_id=None) shared across every caller "
-        "regardless of assignment — narrowing the counts it computes "
-        "without also changing the cache key would still serve a "
-        "firm-wide-cached response to the next assignment-scoped caller.",
-    "/api/copilot/intelligence/workflows":
-        "failing_workflows/overdue_approvals come from workflow_failures/ "
-        "workflow_approvals, neither of which carries a client_id column "
-        "(only instance_id, migration 068) — narrowing by client requires "
-        "joining through workflow_instances, which the repository does not "
-        "currently expose.",
-    "/api/copilot/intelligence/relationships":
-        "cross_client_conflicts is computed over the firm's WHOLE client "
-        "list by design (PAN/email-domain cross-matching only means "
-        "something compared across every client) — the same tension "
-        "already recorded for /api/relationships/entities: narrowing the "
-        "input set would change what the analysis IS, not just who can "
-        "see it.",
-    "/api/copilot/executive-dashboard":
-        "same caching issue as intelligence/compliance (ai_summaries, "
-        "summary_type='executive', entity_id=None) — also aggregates "
-        "revenue/capacity/churn signals across every client by design, "
-        "the same tension as intelligence/relationships.",
     # platform.py — the platform OWNER's cross-tenant admin surface, not a
     # firm member's. Every endpoint reads/writes only firms/users rows via
     # get_service_supabase() and is gated by require_platform_admin(_mfa)

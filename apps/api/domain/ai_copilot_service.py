@@ -493,8 +493,74 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
 
     # ── Compliance Intelligence ────────────────────────────────────────────────
 
-    async def get_compliance_intelligence(self, firm_id: str) -> dict:
-        cached = self._repo.get_summary(firm_id, "compliance")
+    # ── Client scoping (ACC-17's line, drawn here too) ──────────────────────
+    #
+    # `allowed_client_ids` is None for a caller with no restriction — a Partner —
+    # and a SET otherwise. An EMPTY set means "no clients", never "no filter";
+    # that distinction is the whole bug in this shape, and getting it backwards
+    # hands an Executive the entire practice.
+    #
+    # Four endpoints here took only a firm_id and answered across every client
+    # of the firm. /intelligence/client/{id} was guarded from the start, so the
+    # line was drawn and then stopped one endpoint short.
+
+    @staticmethod
+    def _scope_key(allowed_client_ids) -> str | None:
+        """The cache's entity_id, so a scope can never read another's answer.
+
+        These summaries are cached on (firm_id, summary_type, entity_id) and
+        every caller passed entity_id=None — so scoping the QUERIES alone would
+        still have served a Partner's firm-wide answer to the next Executive who
+        asked. The scope has to be part of the key.
+
+        A digest rather than the ids themselves: the column is short, the set can
+        be long, and the value only ever needs to distinguish one scope from
+        another.
+        """
+        if allowed_client_ids is None:
+            return None
+        import hashlib
+        joined = ",".join(sorted(allowed_client_ids))
+        return "scope:" + hashlib.sha256(joined.encode()).hexdigest()[:32]
+
+    @staticmethod
+    def _visible(rows, allowed_client_ids, key: str = "client_id") -> list[dict]:
+        """Rows the caller may see. A row with no client on it is firm-level."""
+        if allowed_client_ids is None:
+            return list(rows or [])
+        return [r for r in (rows or [])
+                if r.get(key) is None or r.get(key) in allowed_client_ids]
+
+    def _visible_by_instance(self, firm_id: str, rows, allowed_client_ids) -> list[dict]:
+        """Workflow failures and approvals, narrowed to the caller's clients.
+
+        These tables carry a firm_id and NO client_id — they hang off an
+        instance that may have one. `client_ids_for_instances` resolves the
+        parents in ONE query and already exists for exactly this; the workflow
+        router uses it and this service never did.
+
+        A row whose instance cannot be resolved is DROPPED for a scoped caller,
+        not kept: an unresolvable parent is not evidence that the caller is
+        entitled to the row.
+        """
+        if allowed_client_ids is None:
+            return list(rows or [])
+        rows = list(rows or [])
+        ids = [r.get("instance_id") for r in rows if r.get("instance_id")]
+        owners = _get_workflow_repo().client_ids_for_instances(firm_id, ids)
+        out = []
+        for r in rows:
+            owner = owners.get(r.get("instance_id"))
+            # A truly firm-level row (an instance with no client) stays.
+            if r.get("instance_id") in owners and (owner is None or owner in allowed_client_ids):
+                out.append(r)
+        return out
+
+    async def get_compliance_intelligence(
+        self, firm_id: str, allowed_client_ids=None
+    ) -> dict:
+        scope = self._scope_key(allowed_client_ids)
+        cached = self._repo.get_summary(firm_id, "compliance", scope)
         if cached:
             return cached
 
@@ -509,7 +575,9 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
             # One fetch instead of three — all_tasks, overdue_tasks and
             # due_soon_tasks were each independently re-fetching the firm's
             # entire compliance_records history.
-            all_tasks = _get_compliance_records_repo().find_all(firm_id=firm_id)
+            all_tasks = self._visible(
+                _get_compliance_records_repo().find_all(firm_id=firm_id),
+                allowed_client_ids)
             overdue_tasks = [r for r in all_tasks if r.get("status") == "Overdue"]
             due_soon_tasks = _due_soon_from_records(all_tasks, 14)
         except Exception:
@@ -551,7 +619,7 @@ Cite CGST Act / IT Act sections where relevant."""
         return self._repo.upsert_summary(
             firm_id,
             "compliance",
-            None,
+            scope,
             {
                 "title": "Compliance Intelligence Report",
                 "content": content,
@@ -569,7 +637,9 @@ Cite CGST Act / IT Act sections where relevant."""
 
     # ── Workflow Intelligence ──────────────────────────────────────────────────
 
-    async def get_workflow_intelligence(self, firm_id: str) -> dict:
+    async def get_workflow_intelligence(
+        self, firm_id: str, allowed_client_ids=None
+    ) -> dict:
         wf_repo = _get_workflow_repo()
 
         failures: list[dict] = []
@@ -577,9 +647,17 @@ Cite CGST Act / IT Act sections where relevant."""
         analytics: list[dict] = []
 
         try:
-            failures = wf_repo.list_failures(firm_id, resolved=False)
-            approvals = wf_repo.list_approvals(firm_id, status="pending")
-            analytics = wf_repo.get_analytics(firm_id)
+            failures = self._visible_by_instance(
+                firm_id, wf_repo.list_failures(firm_id, resolved=False),
+                allowed_client_ids)
+            approvals = self._visible_by_instance(
+                firm_id, wf_repo.list_approvals(firm_id, status="pending"),
+                allowed_client_ids)
+            # get_analytics aggregates per TEMPLATE across the whole firm and
+            # carries no client dimension, so it cannot be narrowed — only
+            # withheld. A scoped caller gets no template analytics rather than
+            # counts that silently include clients they may not see.
+            analytics = wf_repo.get_analytics(firm_id) if allowed_client_ids is None else []
         except Exception:
             pass
 
@@ -635,14 +713,18 @@ Provide:
 
     # ── Relationship Intelligence ──────────────────────────────────────────────
 
-    async def get_relationship_intelligence(self, firm_id: str) -> dict:
+    async def get_relationship_intelligence(
+        self, firm_id: str, allowed_client_ids=None
+    ) -> dict:
         # Fetch client data to ground the analysis
         clients: list[dict] = []
         multi_entity_pans: list[str] = []
         duplicate_email_domains: list[str] = []
 
         try:
-            clients = _get_client_repo().find_all(firm_id=firm_id)
+            # Scoped by the client's OWN id, not a client_id column.
+            clients = self._visible(
+                _get_client_repo().find_all(firm_id=firm_id), allowed_client_ids, "id")
             # Detect PAN cross-matches (same individual directing multiple entities)
             pan_counts: dict[str, int] = {}
             for c in clients:
@@ -686,6 +768,20 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
         now = datetime.utcnow()
         return {
             "firm_id": firm_id,
+            # THE ONE PLACE SCOPING CHANGES WHAT THE ANSWER MEANS.
+            #
+            # PAN and email-domain cross-matching only says something when it is
+            # run across the whole book: the same PAN directing two entities is
+            # the finding. Narrowed to one Manager's three clients, "no PANs
+            # across multiple entities" is true and reads as a clean bill of
+            # health for the firm, which it is not.
+            #
+            # The privacy duty still wins — the alternative is handing every
+            # client's PAN to staff who are not assigned to them — so the answer
+            # is narrowed AND says so. A caller who sees a client count here
+            # knows the analysis did not span the practice.
+            "analysed_client_count": len(clients),
+            "scoped": allowed_client_ids is not None,
             "ownership_risks": [],
             "cross_client_conflicts": [
                 {"type": "multi_entity_pan", "count": len(multi_entity_pans)}
@@ -700,8 +796,11 @@ Cite relevant sections of Companies Act 2013 and IT Act."""
 
     # ── Executive Dashboard ────────────────────────────────────────────────────
 
-    async def get_executive_dashboard(self, firm_id: str) -> dict:
-        cached = self._repo.get_summary(firm_id, "executive")
+    async def get_executive_dashboard(
+        self, firm_id: str, allowed_client_ids=None
+    ) -> dict:
+        scope = self._scope_key(allowed_client_ids)
+        cached = self._repo.get_summary(firm_id, "executive", scope)
         if cached:
             return cached
 
@@ -858,7 +957,7 @@ Firm data as of {now.strftime('%d %B %Y')}:
         self._repo.upsert_summary(
             firm_id,
             "executive",
-            None,
+            scope,
             {
                 "title": "Executive Intelligence Dashboard",
                 "content": ai_summary,

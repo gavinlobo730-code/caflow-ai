@@ -183,10 +183,42 @@ client. Allow-listed and reported rather than fixed, because the fix is to
 delete the browser copy and read `services/compliance_engine.py` — a Phase 7
 shape, not a date edit.
 
-### D2. `/api/copilot/intelligence/*` still aggregates firm-wide
-ACC-17 drew the line for the seven reporting endpoints (Phase 12b). The copilot
-intelligence and executive-dashboard endpoints have the same shape and were left
-— an Executive omitting `client_id` there still gets the whole practice.
+### D2. `/api/copilot/intelligence/*` aggregates firm-wide — FIXED 11 Sep 2026
+
+**And it was worse than this entry said.** `firm:read` is `_AT_LEAST_MANAGER`,
+so `/executive-dashboard` reached a Manager too, not only an Executive. Four
+endpoints passed a bare `firm_id`: `/intelligence/compliance`,
+`/intelligence/workflows`, `/intelligence/relationships` and
+`/executive-dashboard`. `/intelligence/client/{id}` was guarded from the start —
+the line had been drawn and stopped one endpoint short.
+
+The relationship endpoint was the worst of the four: it feeds client PANs and
+email domains into an AI prompt to find related parties, so it disclosed
+identifying data about clients the caller is not assigned to.
+
+**A second leak the entry never mentioned.** These summaries cache on
+`(firm_id, summary_type, entity_id)` with `entity_id=None` on every call — so
+scoping the queries alone would still have served a Partner's firm-wide answer
+to the next Executive who asked, from cache. The scope is now part of the key.
+
+Each of the three exemption reasons in `test_router_client_scope.py` was
+answered rather than overridden, and **all four exemptions are removed** — the
+guard now enforces this permanently:
+
+- *"narrowing without changing the cache key would still serve a firm-wide
+  response"* → the scope IS the key.
+- *"workflow_failures/approvals carry no client_id, and the repository does not
+  expose the join"* → **out of date**: `client_ids_for_instances` exists and the
+  workflow router already uses it. One query, not one per row.
+- *"narrowing the input set would change what the analysis IS"* → true, and the
+  one place scoping changes meaning. PAN cross-matching only says something
+  across the whole book, so a narrowed "no related parties" reads as a clean
+  bill of health for the firm. The privacy duty still wins, so the answer is
+  narrowed **and says so**: `analysed_client_count` and `scoped` are on the
+  response.
+- Template analytics aggregate per template with no client dimension and cannot
+  be narrowed, only withheld — a scoped caller now gets none rather than counts
+  that silently span clients they may not see.
 
 ### D3. FA-02 — the last remaining critical, latent
 Needs a backfill as well as a code fix, and the right time is **while production

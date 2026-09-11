@@ -222,7 +222,12 @@ async def compliance_intelligence(
 ):
     """Generate AI-powered compliance intelligence for all clients."""
     firm_id = current_user["firm_id"]
-    result = await _service().get_compliance_intelligence(firm_id)
+    # "All clients" means the CALLER's clients. effective_client_ids returns
+    # None for a Partner and a set for anyone assignment-scoped; this endpoint
+    # answered across the whole firm for every role until 11-09-2026, and
+    # firm:read reaches Manager while _FIRMWIDE_ROLES is Partner only.
+    result = await _service().get_compliance_intelligence(
+        firm_id, allowed_client_ids=effective_client_ids(current_user))
     return api_response(True, result)
 
 
@@ -232,7 +237,12 @@ async def workflow_intelligence(
 ):
     """Generate AI-powered workflow performance intelligence."""
     firm_id = current_user["firm_id"]
-    result = await _service().get_workflow_intelligence(firm_id)
+    # "All clients" means the CALLER's clients. effective_client_ids returns
+    # None for a Partner and a set for anyone assignment-scoped; this endpoint
+    # answered across the whole firm for every role until 11-09-2026, and
+    # firm:read reaches Manager while _FIRMWIDE_ROLES is Partner only.
+    result = await _service().get_workflow_intelligence(
+        firm_id, allowed_client_ids=effective_client_ids(current_user))
     return api_response(True, result)
 
 
@@ -242,7 +252,12 @@ async def relationship_intelligence(
 ):
     """Generate AI-powered relationship and ownership risk analysis."""
     firm_id = current_user["firm_id"]
-    result = await _service().get_relationship_intelligence(firm_id)
+    # "All clients" means the CALLER's clients. effective_client_ids returns
+    # None for a Partner and a set for anyone assignment-scoped; this endpoint
+    # answered across the whole firm for every role until 11-09-2026, and
+    # firm:read reaches Manager while _FIRMWIDE_ROLES is Partner only.
+    result = await _service().get_relationship_intelligence(
+        firm_id, allowed_client_ids=effective_client_ids(current_user))
     return api_response(True, result)
 
 
@@ -254,7 +269,12 @@ async def executive_dashboard(
 ):
     """AI-powered executive dashboard with firm-wide intelligence."""
     firm_id = current_user["firm_id"]
-    result = await _service().get_executive_dashboard(firm_id)
+    # "All clients" means the CALLER's clients. effective_client_ids returns
+    # None for a Partner and a set for anyone assignment-scoped; this endpoint
+    # answered across the whole firm for every role until 11-09-2026, and
+    # firm:read reaches Manager while _FIRMWIDE_ROLES is Partner only.
+    result = await _service().get_executive_dashboard(
+        firm_id, allowed_client_ids=effective_client_ids(current_user))
     return api_response(True, result)
 
 
