@@ -1784,6 +1784,25 @@ function SalesInvoices({
       render: (i) => <span className="font-mono text-[#334155]">{fmt(i.gst_paise)}</span> },
     { key: "total_paise", header: "Total", accessor: (i) => i.total_paise, sortable: true, align: "right", exportValue: (i) => formatPaise(i.total_paise),
       render: (i) => <span className="font-mono font-semibold text-[#0F172A]">{fmt(i.total_paise)}</span> },
+    // WHAT THE INVOICE STILL OWES (SALES-26). The list showed Total and
+    // nothing else, so the one question a CA asks of a sales register — "who
+    // owes me what" — could not be answered from it: a ₹5,00,000 invoice with
+    // ₹4,90,000 received looked identical to an untouched one. Migration 278
+    // made `outstanding_paise` a GENERATED column (total + debit notes − paid −
+    // credited) precisely so this would cost nothing; no sales screen read it.
+    { key: "outstanding_paise", header: "Balance", accessor: (i) => i.outstanding_paise ?? 0,
+      sortable: true, align: "right",
+      exportValue: (i) => formatPaise(i.outstanding_paise ?? 0),
+      render: (i) => {
+        const bal = i.outstanding_paise ?? 0;
+        return (
+          <span className={`font-mono ${bal > 0
+            ? (isOverdueForUi(i) ? "text-red-600 font-semibold" : "text-[#0F172A]")
+            : "text-[#94A3B8]"}`}>
+            {bal > 0 ? fmt(bal) : "—"}
+          </span>
+        );
+      } },
     { key: "due_date", header: "Due", accessor: (i) => i.due_date ?? "", sortable: true,
       render: (i) => (
         <span className={`whitespace-nowrap ${isOverdueForUi(i) ? "text-red-600 font-medium" : "text-[#64748B]"}`}>
@@ -3490,7 +3509,9 @@ function ReceiptForm({
       const supabase = getSupabaseClient();
       const { data } = await selectAll(() => supabase
         .from("client_sales_invoices")
-        .select("id, invoice_no, invoice_date, total_paise, status, txn_currency, exchange_rate, txn_total, paid_txn")
+        // `outstanding_paise` (migration 278, a GENERATED column: total +
+        // debit notes − paid − credited) is what a CA allocates against.
+        .select("id, invoice_no, invoice_date, total_paise, outstanding_paise, status, txn_currency, exchange_rate, txn_total, paid_txn")
         .eq("client_id", clientId)
         .eq("customer_id", customerId)
         .in("status", ["issued", "partially_paid"])
@@ -3505,12 +3526,24 @@ function ReceiptForm({
     (inv) => (inv.txn_currency || "INR").toUpperCase() === (currency || "INR").toUpperCase()
   );
 
-  // Mirrors the pre-existing INR display (invoice total, not outstanding)
-  // exactly; a foreign invoice's own total_paise is its INR-equivalent, not
-  // its face value, so substitute txn_total (the foreign-native figure) —
-  // the unit the allocation input below expects for a foreign receipt.
-  function invoiceDisplayTotal(inv: SalesInvoice): number {
-    return isForeign ? (inv.txn_total ?? 0) : inv.total_paise;
+  // WHAT THE INVOICE STILL OWES, not what it was for (SALES-26). This showed
+  // the invoice TOTAL and said so in its own comment, so a CA allocating a
+  // receipt read the figure from before every earlier payment: a ₹5,00,000
+  // invoice with ₹4,90,000 already received offered ₹5,00,000 to allocate
+  // against, and the save path's over-allocation refusal was the only thing
+  // between that and a wrong entry.
+  //
+  // INR takes `outstanding_paise` — migration 278's generated column, which is
+  // total plus debit notes less paid less credited, so it already carries the
+  // §34 notes. A FOREIGN receipt allocates in the invoice's own currency, and
+  // there is no generated column in that unit, so it is txn_total − paid_txn;
+  // that figure does NOT net a foreign-currency credit note, which is why the
+  // INR path is not made to match it.
+  function invoiceOutstanding(inv: SalesInvoice): number {
+    if (isForeign) {
+      return Math.max(0, (inv.txn_total ?? 0) - (inv.paid_txn ?? 0));
+    }
+    return inv.outstanding_paise ?? inv.total_paise;
   }
 
   // Integer paise through the exact parser, never Math.round(parseFloat(x)*100).
@@ -3784,7 +3817,7 @@ function ReceiptForm({
             {visibleInvoices.map((inv) => (
               <div key={inv.id} className="flex items-center gap-3">
                 <span className="text-xs text-[#475569] flex-1">
-                  {inv.invoice_no} — {inv.invoice_date} — {fmtAmt(invoiceDisplayTotal(inv))}
+                  {inv.invoice_no} — {inv.invoice_date} — {fmtAmt(invoiceOutstanding(inv))} due
                   {isForeign && inv.exchange_rate && (
                     <span className="ml-1 text-[10px] text-[#94A3B8]">(booked @ {inv.exchange_rate})</span>
                   )}

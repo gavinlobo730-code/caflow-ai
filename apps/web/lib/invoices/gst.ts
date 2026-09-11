@@ -77,6 +77,11 @@ export interface SalesInvoice {
    *  the invoice. See ComplianceInvoice.eway_assessment in lib/invoices/
    *  compliance.ts — the browser has a mirror, but only as a fallback. */
   eway_assessment?: import("@/lib/invoices/compliance").ServedEwayAssessment | null;
+  /** The supply's treatment, DERIVED server-side from supply_type +
+   *  invoice_type + the IGST charged (apps/api/domain/gst/treatment.py), in the
+   *  vocabulary the compliance screens use. One answer, from the fields GSTR-1
+   *  is built from — see SALES-19. */
+  gst_treatment?: import("@/lib/invoices/compliance").GstTreatment | null;
   txn_currency?: string | null;
   exchange_rate?: string | null;
   txn_total?: number | null;
@@ -211,6 +216,11 @@ export interface InvoiceDetail {
    *  the invoice. See ComplianceInvoice.eway_assessment in lib/invoices/
    *  compliance.ts — the browser has a mirror, but only as a fallback. */
   eway_assessment?: import("@/lib/invoices/compliance").ServedEwayAssessment | null;
+  /** The supply's treatment, DERIVED server-side from supply_type +
+   *  invoice_type + the IGST charged (apps/api/domain/gst/treatment.py), in the
+   *  vocabulary the compliance screens use. One answer, from the fields GSTR-1
+   *  is built from — see SALES-19. */
+  gst_treatment?: import("@/lib/invoices/compliance").GstTreatment | null;
   txn_currency?: string | null;
   exchange_rate?: string | null;
   txn_total?: number | null;

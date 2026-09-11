@@ -1233,6 +1233,23 @@ def _eway_assessment(lines: list) -> dict:
     ]).as_dict()
 
 
+def _gst_treatment(inv: dict) -> str:
+    """The supply's treatment, DERIVED FROM THE INVOICE (SALES-19).
+
+    The Compliance panel used to read this off the e-invoice record, which is a
+    separate vocabulary captured separately — so an invoice marked zero-rated /
+    SEZ showed as "Regular" until somebody also prepared an IRN, and showed
+    whatever that record said if they prepared one disagreeing. The invoice's
+    own `supply_type` + `invoice_type` is what GSTR-1 is built from, so it is
+    what the screen is told."""
+    from domain.gst.treatment import treatment_for_invoice
+    return treatment_for_invoice(
+        supply_type=inv.get("supply_type"),
+        invoice_type=inv.get("invoice_type"),
+        igst_paise=int(inv.get("igst_paise") or 0),
+    )
+
+
 @router.get("/{invoice_id}")
 def get_invoice(
     invoice_id: str,
@@ -1247,6 +1264,7 @@ def get_invoice(
                 raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
             inv["lines"] = [ln for ln in MOCK_SALES_INVOICE_LINES if ln["invoice_id"] == invoice_id]
             inv["eway_assessment"] = _eway_assessment(inv["lines"])
+            inv["gst_treatment"] = _gst_treatment(inv)
             return api_response(True, inv)
 
         from core.supabase_client import get_supabase
@@ -1272,6 +1290,7 @@ def get_invoice(
         )
         invoice["lines"] = lines_resp.data or []
         invoice["eway_assessment"] = _eway_assessment(invoice["lines"])
+        invoice["gst_treatment"] = _gst_treatment(invoice)
         # Resolve a human "Created By" for the detail view (UX only). Prefer the
         # users table; fall back to the create event in the audit trail (covers
         # invoices created before created_by was captured). Never fatal.
