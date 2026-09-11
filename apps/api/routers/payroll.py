@@ -39,12 +39,16 @@ from domain.payroll import ecr_sequence
 from domain.tds import vocabulary as tds_vocabulary
 from domain.dpdp import retention as dpdp_retention
 from services import epfo_ecr_filing_service as ecr_filings
+from services import statutory_remittance_service as remittances
+from services.compliance_engine import (epf_deposit_due_date,
+                                        esi_deposit_due_date)
 from domain.payroll.esic import build_esic_return
 from domain.payroll import annexure2 as annexure2_domain
 from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
 from domain.payroll.professional_tax import classify_state as classify_pt_state
 from domain.payroll import identity as identity_domain
+from domain.payroll import handoff as handoff_domain
 from domain.payroll import age as age_domain
 from domain.payroll import attendance as attendance_domain
 from domain.payroll import firm_rates
@@ -4072,13 +4076,25 @@ def delete_pt_registration(
     return api_response(True, {"client_id": client_id, "state": state, "deleted": True})
 
 
-def _build_run_ecr(db, current_user: dict, run_id: str):
-    """(run, month, ECRFile) for a finalised run, or the right HTTP refusal.
+def _finalised_run_inputs(db, current_user: dict, run_id: str, *, what: str):
+    """(run, month, days_in_month, slips, employees_by_id) — fetched ONCE.
 
-    ONE implementation, called by the download and by the record-what-you-filed
-    endpoint. The members frozen onto a filing record have to be the members the
-    CA actually uploaded, and the surest way to guarantee that is for both paths
-    to come through the same builder rather than assembling the figures twice.
+    Every statutory return a wage month produces reads the same two things: the
+    run's payslips, and the employees behind them. The ECR builder and the ESIC
+    builder each used to fetch both for themselves, which was harmless while
+    they were two separate downloads and is not once ONE screen asks for both —
+    apps/api runs in Singapore and Postgres is in Mumbai, so each fetch is a
+    cross-region round trip.
+
+    The employee select is the UNION of what the two returns need plus the two
+    professional-tax columns, named literally so
+    tests/test_backend_columns_exist_pg.py checks every one of them against the
+    real schema. A handful of extra columns on one row per employee costs
+    nothing; a second round trip to Mumbai does.
+
+    `what` names the return in the 409, because "the ECR reports contributions
+    actually made" and "the return reports contributions actually made" are the
+    same refusal about two different documents and a CA should be told which.
     """
     run = (db.table("payroll_runs").select("*").eq("id", run_id)
            .eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
@@ -4087,8 +4103,9 @@ def _build_run_ecr(db, current_user: dict, run_id: str):
     if run.get("status") not in ("finalized", "paid"):
         raise HTTPException(
             status_code=409,
-            detail="This run is not finalised yet. The ECR reports contributions "
-                   "actually made, and a draft run's figures can still change.")
+            detail=f"This run is not finalised yet. The {what} reports "
+                   f"contributions actually made, and a draft run's figures can "
+                   f"still change.")
 
     slips = (db.table("payroll_slips").select("*")
              .eq("run_id", run_id).execute().data) or []
@@ -4096,7 +4113,8 @@ def _build_run_ecr(db, current_user: dict, run_id: str):
     employees = []
     if emp_ids:
         employees = (db.table("payroll_employees")
-                     .select("id, name, uan, pf_applicable, eps_eligible")
+                     .select("id, name, uan, pf_applicable, eps_eligible, "
+                             "esi_number, esi_applicable, pt_applicable, pt_state")
                      .eq("firm_id", current_user["firm_id"])
                      .in_("id", emp_ids).execute().data) or []
     by_id = {e["id"]: e for e in employees}
@@ -4110,11 +4128,41 @@ def _build_run_ecr(db, current_user: dict, run_id: str):
         # figure through the day-count check.
         raise HTTPException(status_code=422,
                             detail=f"Run month {month!r} is not YYYY-MM; cannot bound NCP days.")
+    return run, month, days_in_month, slips, by_id
+
+
+def _build_run_ecr(db, current_user: dict, run_id: str, inputs=None):
+    """(run, month, ECRFile) for a finalised run, or the right HTTP refusal.
+
+    ONE implementation, called by the download, by the record-what-you-filed
+    endpoint and by the handoff screen. The members frozen onto a filing record
+    have to be the members the CA actually uploaded, and the surest way to
+    guarantee that is for every path to come through the same builder rather
+    than assembling the figures again.
+
+    `inputs` lets a caller that has already fetched the month pass it in rather
+    than fetching it twice; it is the same tuple _finalised_run_inputs returns.
+    """
+    run, month, days_in_month, slips, by_id = (
+        inputs or _finalised_run_inputs(db, current_user, run_id, what="ECR"))
 
     ceiling = payroll_rates_for(_fy_for_month(month)).pf.wage_ceiling_paise
     return run, month, build_ecr(slips=slips, employees_by_id=by_id,
                                  days_in_month=days_in_month,
                                  wage_ceiling_paise=ceiling)
+
+
+def _build_run_esic(db, current_user: dict, run_id: str, inputs=None):
+    """(run, month, ESICReturn) for a finalised run, or the right HTTP refusal.
+
+    The ESIC twin of _build_run_ecr, extracted for the same reason: the download
+    and the handoff screen must be looking at the same return, and two
+    assemblies of one statutory file drift.
+    """
+    run, month, days_in_month, slips, by_id = (
+        inputs or _finalised_run_inputs(db, current_user, run_id, what="return"))
+    return run, month, build_esic_return(slips=slips, employees_by_id=by_id,
+                                         days_in_month=days_in_month)
 
 
 @router.get("/runs/{run_id}/ecr")
@@ -4267,6 +4315,142 @@ def record_ecr_filed(
     })
 
 
+class RemittanceIn(BaseModel):
+    """What the CA did at the ESIC or professional-tax portal, after they did it.
+
+    NO CREDENTIAL FIELD AND NO OTP FIELD, and that is not an oversight. This
+    product never signs in to a portal on anybody's behalf — an OTP box here
+    would be a credential-capture surface whatever it was labelled, and the code
+    is typed on the portal, never in the software that prepared the return.
+    """
+    scheme: str
+    wage_month: str
+    state: Optional[str] = None
+    status: str = remittances.SUBMITTED
+    submitted_on: Optional[str] = None
+    paid_on: Optional[str] = None
+    challan_number: Optional[str] = None
+    challan_date: Optional[str] = None
+    amount_paise: int = 0
+    run_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class RemittancePaymentIn(BaseModel):
+    """The journal entry that paid a remittance already recorded."""
+    journal_entry_id: str
+
+
+@router.get("/clients/{client_id}/remittances")
+def list_remittances(
+    client_id: str,
+    wage_month: Optional[str] = None,
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """Every ESI and professional-tax remittance recorded for a client.
+
+    `unlinked` is the one a CA acts on at month end: a remittance marked paid
+    with no journal entry tied to it. Without that distinction a statutory
+    liability nobody has paid and one that was paid but never matched to its
+    bank line look identical on the ledger — both sit uncleared.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"client_id": client_id, "remittances": [],
+                                   "unlinked": []})
+    assert_client_access(current_user, client_id)
+    firm_id = current_user["firm_id"]
+    return api_response(True, {
+        "client_id": client_id,
+        "remittances": remittances.read(db, firm_id=firm_id, client_id=client_id,
+                                        wage_month=wage_month),
+        "unlinked": remittances.unlinked(db, firm_id=firm_id, client_id=client_id),
+    })
+
+
+@router.post("/clients/{client_id}/remittances")
+def record_remittance(
+    client_id: str,
+    body: RemittanceIn,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Record an ESI or PT remittance the CA made at the portal.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here reaches any portal;
+    this writes down what a human already did on esic.gov.in or the state's own
+    site, because there is no API to observe it with.
+
+    Recording the payment UPDATES the filing rather than adding a row: filing
+    the return and paying the challan are two entries about one remittance, and
+    migration 365's unique index would reject the second as a duplicate.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"client_id": client_id, "recorded": False,
+                                   "reason": "mock mode: nothing is stored"})
+    assert_client_access(current_user, client_id)
+    try:
+        row = remittances.record(
+            db, firm_id=current_user["firm_id"], client_id=client_id,
+            scheme=body.scheme, wage_month=body.wage_month, state=body.state,
+            status=body.status, submitted_on=body.submitted_on,
+            paid_on=body.paid_on, challan_number=body.challan_number,
+            challan_date=body.challan_date, amount_paise=body.amount_paise,
+            run_id=body.run_id, notes=body.notes,
+            recorded_by=current_user.get("id"))
+    except remittances.RemittanceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return api_response(True, {"client_id": client_id, "remittance": row})
+
+
+@router.patch("/clients/{client_id}/remittances/{remittance_id}/payment")
+def link_remittance_payment(
+    client_id: str,
+    remittance_id: str,
+    body: RemittancePaymentIn,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Tie a remittance to the journal entry that paid it.
+
+    A LINK, NEVER A POSTING. services/bank_posting_service.post already writes
+    Dr <liability> / Cr Bank when the CA passes the bank statement line, and it
+    is the one path for money movement — posting from here as well would debit
+    the statutory liability twice.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"remittance_id": remittance_id, "linked": False})
+    assert_client_access(current_user, client_id)
+    linked = remittances.link_payment(
+        db, firm_id=current_user["firm_id"], remittance_id=remittance_id,
+        journal_entry_id=body.journal_entry_id)
+    if not linked:
+        raise HTTPException(status_code=404, detail="Remittance not found")
+    return api_response(True, {"remittance_id": remittance_id, "linked": True})
+
+
+@router.delete("/clients/{client_id}/remittances/{remittance_id}")
+def retract_remittance(
+    client_id: str,
+    remittance_id: str,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Retract a remittance recorded in error — a SOFT delete.
+
+    The challan number, the date and the amount that actually left the bank are
+    held nowhere else, so a row that simply vanished would leave no trace that a
+    liability had ever been reported settled.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"remittance_id": remittance_id, "retracted": False})
+    assert_client_access(current_user, client_id)
+    if not remittances.retract(db, firm_id=current_user["firm_id"],
+                               remittance_id=remittance_id):
+        raise HTTPException(status_code=404, detail="Remittance not found")
+    return api_response(True, {"remittance_id": remittance_id, "retracted": True})
+
+
 @router.get("/clients/{client_id}/ecr-sequence")
 def client_ecr_sequence(
     client_id: str,
@@ -4363,40 +4547,10 @@ def run_esic(
         return api_response(True, {"run_id": run_id, "csv": "", "problems": [],
                                    "totals": {}, "filable": False})
     _assert_run_scope(db, current_user, run_id)
-
-    run = (db.table("payroll_runs").select("*").eq("id", run_id)
-           .eq("firm_id", current_user["firm_id"]).maybe_single().execute().data)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    if run.get("status") not in ("finalized", "paid"):
-        raise HTTPException(
-            status_code=409,
-            detail="This run is not finalised yet. The return reports contributions "
-                   "actually made, and a draft run's figures can still change.")
-
-    slips = (db.table("payroll_slips").select("*")
-             .eq("run_id", run_id).execute().data) or []
-    emp_ids = [s.get("employee_id") for s in slips if s.get("employee_id")]
-    employees = []
-    if emp_ids:
-        employees = (db.table("payroll_employees")
-                     .select("id, name, esi_number, esi_applicable")
-                     .eq("firm_id", current_user["firm_id"])
-                     .in_("id", emp_ids).execute().data) or []
-    by_id = {e["id"]: e for e in employees}
-
-    month = str(run.get("month") or "")
-    try:
-        y, m = int(month[:4]), int(month[5:7])
-        days_in_month = calendar.monthrange(y, m)[1]
-    except (ValueError, IndexError):
-        raise HTTPException(status_code=422,
-                            detail=f"Run month {month!r} is not YYYY-MM; cannot count days.")
+    run, month, ret = _build_run_esic(db, current_user, run_id)
 
     _esic_identity, _ = _read_statutory_identity(
         db, current_user["firm_id"], run.get("client_id"))
-    ret = build_esic_return(slips=slips, employees_by_id=by_id,
-                            days_in_month=days_in_month)
     return api_response(True, {
         "run_id": run_id,
         "month": month,
@@ -4528,6 +4682,163 @@ def _assemble_24q_source(db, current_user: dict, client_id: str,
     deductor, deductor_problems = identity_domain.deductor_block(identity, client_row)
     src.problems.extend(deductor_problems)
     return src, months, deductor
+
+
+@router.get("/runs/{run_id}/handoff")
+def run_handoff(
+    run_id: str,
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """Everything a CA needs to settle this month's statutory dues, in one place.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This transmits nothing, files
+    nothing and signs nothing. It answers "what do I type in which box" for a
+    human who has the portal open in the next tab, which is step 4 of the seven
+    between correct books and a closed obligation — and the only one of the six
+    that are ours that nothing did. See
+    docs/compliance/08-government-api-access-the-verified-position.md §5.
+
+    WHAT IT REFUSES TO CONTAIN
+
+    No credential field, no OTP field, no embedded portal frame — for EPFO, for
+    ESIC or for any state. A password box here is a credential-capture surface
+    whatever it is labelled, and an EVC or OTP is typed on the portal, never in
+    the software that prepared the return. Those are the same three refusals the
+    GST filing demo and the Account Aggregator consent flow already make, and
+    they do not weaken when a real filing integration exists: they are what makes
+    one safe to build.
+
+    WHY THE ASSEMBLY IS HERE AND NOT IN THE SCREEN
+
+    Which obligations a month raises, in what order, with which warnings, is a
+    statutory judgement. Professional tax has no due date this product will
+    state, ESI's period is not the wage month, and EPFO's blocking rule can make
+    a correct file unacceptable today. domain/payroll/handoff.py holds all of
+    that with its own tests; this endpoint only feeds it the figures.
+
+    ONE FETCH OF THE MONTH. The ECR and the ESIC return read the same slips and
+    the same employees, and this screen wants both — so _finalised_run_inputs
+    reads them once and both builders are handed the result. apps/api runs in
+    Singapore and Postgres is in Mumbai.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"run_id": run_id, "month": None,
+                                   "obligations": [], "recorded": []})
+    _assert_run_scope(db, current_user, run_id)
+
+    firm_id = current_user["firm_id"]
+    inputs = _finalised_run_inputs(db, current_user, run_id,
+                                   what="statutory return")
+    run, month, _days, slips, by_id = inputs
+    client_id = run.get("client_id")
+    y, m = int(month[:4]), int(month[5:7])
+
+    _run, _month, ecr = _build_run_ecr(db, current_user, run_id, inputs=inputs)
+    _run, _month, esic = _build_run_esic(db, current_user, run_id, inputs=inputs)
+    ident, pt_registrations = _read_statutory_identity(db, firm_id, client_id)
+
+    # WHERE THIS MONTH SITS IN EPFO'S QUEUE. The revamped ECR will not accept a
+    # month while an earlier one is unapproved, which is a fact about the upload
+    # rather than about the file — so it reaches the panel as `blocking`, beside
+    # the download and never instead of it.
+    prior = ecr_filings.read_filings(db, firm_id=firm_id, client_id=client_id)
+    sequence = ecr_sequence.sequence_for(
+        month,
+        finalised_months=ecr_filings.finalised_months(
+            db, firm_id=firm_id, client_id=client_id),
+        filings=prior)
+    decision = ecr_sequence.decide_returns(
+        month, members=ecr_filings.members_from_ecr(ecr), filings=prior)
+    epf_recorded = next((dict(f) for f in prior
+                         if str(f.get("wage_month")) == month), None)
+
+    # What has already been recorded for this month, so the screen shows a
+    # settled obligation as settled rather than asking for it again.
+    recorded = remittances.read(db, firm_id=firm_id, client_id=client_id,
+                                wage_month=month)
+    esic_recorded = next((r for r in recorded
+                          if r.get("scheme") == remittances.ESIC), None)
+    pt_recorded = {(r.get("state") or "").strip().upper(): r for r in recorded
+                   if r.get("scheme") == remittances.PROFESSIONAL_TAX}
+
+    # ── professional tax, per state ─────────────────────────────────────────
+    # Summed from the SLIPS, not from the run header: payroll_runs.total_pt_paise
+    # is one number for the month, and one number cannot be paid when a client
+    # has staff in two states. The state comes off the employee, which is where
+    # _compute_pt reads it from too.
+    pt_by_state: dict[str, int] = {}
+    pt_heads: dict[str, int] = {}
+    unattributed = 0
+    for slip in slips:
+        pt = int(slip.get("pt_paise") or 0)
+        if pt <= 0:
+            continue
+        emp = by_id.get(slip.get("employee_id")) or {}
+        state = (emp.get("pt_state") or "").strip().upper()
+        if not state:
+            # _compute_pt cannot withhold without a state, so this should be
+            # unreachable — REPORTED rather than dropped, because a deduction
+            # nobody can attribute is money withheld from an employee that no
+            # authority will be paid.
+            unattributed += pt
+            continue
+        pt_by_state[state] = pt_by_state.get(state, 0) + pt
+        pt_heads[state] = pt_heads.get(state, 0) + 1
+
+    obligations = [
+        handoff_domain.epf_obligation(
+            wage_month=month,
+            due_date=epf_deposit_due_date(y, m).isoformat(),
+            establishment_code=ident.get("epf_establishment_code"),
+            identity_gaps=[g.note for g in identity_domain.ecr_gaps(ident)],
+            file_totals=ecr.totals(),
+            edli_paise=int(run.get("total_edli_paise") or 0),
+            admin_paise=int(run.get("total_pf_admin_paise") or 0),
+            problems=list(ecr.problems),
+            filable=bool(ecr.is_filable),
+            filename=f"ECR_{month.replace('-', '')}.txt",
+            blocking_months=list(sequence.blocking),
+            sequence_note=sequence.note,
+            required_returns=list(decision.required_returns),
+            return_type_reason=decision.reason,
+            interest_note=ecr_sequence.INTEREST_AND_DAMAGES_NOTE,
+            recorded=epf_recorded,
+        ),
+        handoff_domain.esic_obligation(
+            wage_month=month,
+            contribution_period=esi_contribution_period(month),
+            due_date=esi_deposit_due_date(y, m).isoformat(),
+            employer_code=ident.get("esic_employer_code"),
+            identity_gaps=[g.note for g in identity_domain.esic_gaps(ident)],
+            file_totals=esic.totals(),
+            employee_share_paise=sum(int(s.get("esi_employee_paise") or 0)
+                                     for s in slips),
+            employer_share_paise=sum(int(s.get("esi_employer_paise") or 0)
+                                     for s in slips),
+            problems=list(esic.problems),
+            filable=bool(esic.is_filable),
+            filename=f"ESIC_{month.replace('-', '')}.csv",
+            recorded=esic_recorded,
+        ),
+    ] + handoff_domain.professional_tax_obligations(
+        wage_month=month,
+        by_state=pt_by_state,
+        headcount_by_state=pt_heads,
+        registrations=pt_registrations,
+        recorded_by_state=pt_recorded,
+    )
+
+    return api_response(True, {
+        "run_id": run_id,
+        "client_id": client_id,
+        "month": month,
+        "obligations": [o.to_dict() for o in obligations],
+        "unattributed_pt_paise": unattributed,
+        "disclaimer": "CA REVIEW REQUIRED — every filing below is made by you, "
+                      "on the portal. Nothing here is transmitted, and nothing "
+                      "here asks for a password or an OTP.",
+    })
 
 
 @router.get("/24q-source")

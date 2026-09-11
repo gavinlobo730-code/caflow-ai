@@ -279,3 +279,76 @@ So F4 becomes a **reconciliation**, not a posting: match a remittance to the
 entry that paid it, and report the ones that are not matched.
 
 **F3 (the handoff screen) is unblocked** — 365 is the record it needed.
+
+---
+
+## Track F3 — the handoff screen (done)
+
+The Payroll module of a client now has a **File** tab: every statutory
+settlement the month raises, in the order its portal asks for it.
+
+**The gap it closes** is step 4 of the seven between books that are right and an
+obligation that is closed — compute, emit the artefact, pre-flight, **hand off**,
+file, capture the acknowledgement, reconcile. Exactly one of the seven belongs
+to the government. Six are ours and this was the one nothing did. Settling one
+client-month meant the register for the figures, Setup for the establishment
+code, Outputs for the file, three portals, and a spreadsheet to remember which
+of them were done — then typing numbers from one into another with nowhere to
+put the challan number that came back.
+
+### What it shows, per obligation
+
+Identifier → period → the figures the portal will ask you to confirm → the file
+→ one field for the reference that comes back. EPF, ESI, and **one panel per
+state** for professional tax.
+
+### Three things it deliberately refuses, asserted rather than promised
+
+- **No credential field, no OTP field, no embedded portal frame** — for EPFO,
+  for ESIC, for any state. `apps/web/scripts/no-screen-takes-a-portal-credential.test.ts`
+  states the rule tree-wide with an allowlist of our OWN sign-in screens, and
+  `apps/api/tests/test_the_handoff_says_what_goes_in_which_box.py` asserts the
+  same over the panels the server builds. Both carry negative controls.
+- **No due date for professional tax.** Each state fixes its own and there is no
+  rule to derive; `compliance_engine.payroll_deposit_due_dates` already refuses
+  for that reason. The panel SAYS why rather than leaving a blank, because
+  silence reads as "nothing is due".
+- **No professional-tax file**, because none is produced for any state yet
+  (F5). The panel says so rather than offering a button that is not there.
+
+### What it moved rather than copied
+
+The ECR and ESIC downloads and the record-what-you-filed form LEFT the Outputs
+shelf. They were never shelf items — a CA downloading the ECR is mid-way through
+a filing, not collecting a document. Two copies of one filing flow would drift,
+so Outputs now points at the File tab.
+
+The filing form also gained the thing it was missing: the **return type now
+defaults to what EPFO is expecting**, which `ecr_sequence.decide_returns`
+already decides. The old form asked from scratch and defaulted to Regular
+whatever the month needed — and a Supplementary recorded as a Regular leaves the
+real Regular outstanding, which blocks the next month.
+
+### One defect found on the way, and it was nearly shipped
+
+`ecr_sequence`'s return types are **lowercase** (`REGULAR = "regular"`). The
+first draft compared against `"Regular"`, so the "upload this as a Supplementary"
+warning would have fired on every ordinary month — which is how a real warning
+becomes invisible. A test now pins the comparison.
+
+The screen's challan date also read a calendar date out of a UTC instant, which
+in IST is yesterday between midnight and 05:30 — so a CA filing at 1 a.m. would
+have dated the challan a day before the money moved. Caught by the existing
+`a-calendar-date-is-never-read-back-in-utc` guard, which is the guard working.
+
+### Track F after this
+
+| | Phase | State |
+|---|---|---|
+| F1 | the ESIC `.xls` the portal accepts | **blocked on an owner decision** — filling the CA's own downloaded template needs `xlrd` + `xlwt` + `xlutils`, all three unmaintained |
+| F2 | a record for ESI and PT remittances | done — migration 365 |
+| F3 | the handoff screen | **done** |
+| F4 | the challan is money | reshaped to a RECONCILIATION (365 carries the link; what is left is the screen that lists unmatched remittances beside the bank) |
+| F5 | professional tax: the artefact | not started — and it needs the state slabs a human must supply first |
+| F6 | the never-do list, as code | **half done** — the credential/OTP/frame rule is now a test. The other two rules are still prose |
+| F7 | the DSC register | not started |

@@ -24,6 +24,7 @@ import ApplyStructureModal from "@/components/payroll/ApplyStructureModal";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
+import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -55,7 +56,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
  *  `setup` is deliberately NOT a verb and sits after them: the client's
  *  statutory registrations are a fact about the client, not a step in a month.
  */
-type Tab = "inputs" | "register" | "release" | "outputs" | "setup";
+type Tab = "inputs" | "register" | "release" | "outputs" | "file" | "setup";
 
 /** The server refuses a shorter reason and so does migration 328's CHECK. Not a
  *  quality bar — a floor under "ok", "-" and ".", which is what a required
@@ -1156,7 +1157,6 @@ function OutputsTab({ clientId }: { clientId: string }) {
   // only the server knows — a run being finalised says the books closed, not
   // that anybody uploaded anything.
   const [ecrSeq, setEcrSeq] = useState<ECRSequence | null>(null);
-  const [recording, setRecording] = useState(false);
 
   const loadSequence = useCallback(async () => {
     try {
@@ -1178,64 +1178,12 @@ function OutputsTab({ clientId }: { clientId: string }) {
   }, [clientId, loadSequence]);
 
   const run = runs.find((r) => r.id === runId);
-  const released = !!run && (run.status === "finalized" || run.status === "paid");
 
   async function go(key: string, fn: () => Promise<unknown>, ok: string) {
     setBusy(key); setMsg(null);
     try { await fn(); setMsg({ kind: "ok", text: ok }); }
     catch (e) { setMsg({ kind: "err", text: e instanceof Error ? e.message : "That did not work." }); }
     finally { setBusy(null); }
-  }
-
-  /** The ECR and the ESIC return come back as TEXT with `problems` and
-   *  `filable` — a CA has to see which members the file cannot carry BEFORE
-   *  the portal rejects the batch. */
-  async function statutoryFile(kind: "ecr" | "esic") {
-    if (!run) return;
-    setBusy(kind); setMsg(null);
-    try {
-      const res = (await (kind === "ecr" ? api.payroll.runEcr(run.id) : api.payroll.runEsic(run.id))) as {
-        data?: { filename?: string; lines?: string; csv?: string; problems?: string[];
-                 filable?: boolean; blocking_months?: string[]; sequence_note?: string;
-                 required_returns?: string[]; return_type_reason?: string };
-      };
-      const d = res?.data;
-      const problems = d?.problems ?? [];
-      const label = kind === "ecr" ? "ECR" : "ESIC return";
-      if (!d?.filable) {
-        setMsg({ kind: "warn", text: problems.length
-          ? `${label} blocked — ${problems.join(" · ")}`
-          : `No member of this run carries a ${kind === "ecr" ? "PF" : "ESI"} contribution, so there is no ${label} to build.` });
-        return;
-      }
-      const content = kind === "ecr" ? d.lines : d.csv;
-      if (!content) { setMsg({ kind: "err", text: "The server returned an empty file." }); return; }
-      // The file is CORRECT even when the month is blocked — EPFO's sequence
-      // rule is about the upload, not the contents — so this warns beside the
-      // download rather than withholding it. Same judgement the server makes in
-      // keeping blocking_months out of `problems`.
-      const blocked = kind === "ecr" ? (d.blocking_months ?? []) : [];
-      const needs = kind === "ecr" ? (d.required_returns ?? []) : [];
-      // Both go to a government portal. Neither gets a BOM — extra bytes break
-      // the parse on upload.
-      const blob = new Blob([content], { type: kind === "ecr" ? "text/plain" : "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = d.filename ?? `${label.replace(/\s/g, "_")}_${run.month}.${kind === "ecr" ? "txt" : "csv"}`;
-      a.click();
-      URL.revokeObjectURL(url);
-      if (blocked.length) {
-        setMsg({ kind: "warn", text: d.sequence_note ?? `${label} downloaded.` });
-      } else if (needs.length) {
-        setMsg({ kind: "warn", text: `${label} downloaded. Upload it as a `
-          + `${needs.join(" and a ")} return — ${d.return_type_reason ?? ""}` });
-      } else {
-        setMsg({ kind: "ok", text: `${label} downloaded.` });
-      }
-    } catch (e) {
-      setMsg({ kind: "err", text: e instanceof Error ? e.message : "That did not work." });
-    } finally { setBusy(null); }
   }
 
   if (loading) return <div className="p-5"><TransactionListSkeleton rows={3} /></div>;
@@ -1255,14 +1203,6 @@ function OutputsTab({ clientId }: { clientId: string }) {
     { key: "register", label: "Salary register (CSV)", ready: true,
       hint: "Twenty-eight columns in the document's order — the sheet that goes to the client and into the audit file.",
       run: () => go("register", () => api.payroll.downloadSalaryRegister(clientId, run!.month), "Register downloaded.") },
-    { key: "ecr", label: "EPFO ECR", ready: released,
-      hint: released ? "The UAN-based text file for unifiedportal-emp.epfindia.gov.in."
-                     : "Needs a finalised run — the ECR reports contributions actually made.",
-      run: () => statutoryFile("ecr") },
-    { key: "esic", label: "ESIC contribution file", ready: released,
-      hint: released ? "The IP-number CSV for the ESIC portal."
-                     : "Needs a finalised run — it reports contributions actually made.",
-      run: () => statutoryFile("esic") },
     { key: "24q", label: "Form 24Q working paper", ready: true,
       hint: "The quarter's deductee rows. A working paper, not a return — CA review required, nothing is filed.",
       run: () => go("24q", () => {
@@ -1327,37 +1267,21 @@ function OutputsTab({ clientId }: { clientId: string }) {
           reconciles the challans against before paying them, and the register
           is the month read employee by employee — the Reports tab that used to
           hold it was a noun for the same thing. */}
-      {/* RECORDING A FILING IS NOT FILING. There is no EPFO API, so the product
-          cannot observe that a return went in and can only be told. Without
-          this the queue above never advances and every month stays outstanding
-          for ever, which turns a real warning into noise. */}
-      {released && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[12px] font-semibold text-[#1E293B]">
-                Record what you filed with EPFO
-              </p>
-              <p className="text-[10px] text-[#94A3B8] mt-1">
-                After you upload at unifiedportal-emp.epfindia.gov.in. Nothing here
-                is transmitted — this only tells PracticeSync the month is done, so
-                the next one stops being blocked.
-              </p>
-            </div>
-            <button onClick={() => setRecording((v) => !v)}
-              className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] shrink-0">
-              {recording ? "Cancel" : "Record filing"}
-            </button>
-          </div>
-          {recording && run && (
-            <ECRFilingForm
-              run={run}
-              onDone={(text) => { setRecording(false); setMsg({ kind: "ok", text }); loadSequence(); }}
-              onError={(text) => setMsg({ kind: "err", text })}
-            />
-          )}
-        </div>
-      )}
+      {/* The ECR and the ESIC file, and recording what came back, have MOVED
+          to the File tab. They were never shelf items: a CA downloading the ECR
+          is mid-way through a filing, not collecting a document, and the
+          establishment code, the figures the portal will ask them to confirm
+          and the field for the TRRN were on three other screens. Two copies of
+          one filing flow would drift, so this points at the one that is left.
+          Track F, phase F3. */}
+      <p className="text-[11px] text-[#64748B] bg-[#F8FAFC] border border-[#E2E8F0]
+                    rounded-xl px-3 py-2">
+        Filing EPF, ESI or professional tax for this month? That is on the{" "}
+        <span className="font-semibold text-[#334155]">File</span> tab — the
+        identifiers, the figures the portal will ask you to confirm, the file
+        and somewhere to record what came back, in the order the portal asks
+        for them.
+      </p>
 
       <AnnexureIIPanel clientId={clientId} month={run?.month} />
 
@@ -1543,76 +1467,12 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
 // approved, so only an approved return clears a month. The two are separate
 // options here for that reason, not as a workflow nicety.
 
-function ECRFilingForm({ run, onDone, onError }: {
-  run: PayrollRun;
-  onDone: (text: string) => void;
-  onError: (text: string) => void;
-}) {
-  const [returnType, setReturnType] = useState("regular");
-  const [status, setStatus] = useState("submitted");
-  const [submittedOn, setSubmittedOn] = useState("");
-  const [approvedOn, setApprovedOn] = useState("");
-  const [trrn, setTrrn] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    setSaving(true);
-    try {
-      await api.payroll.recordEcrFiled(run.id, {
-        return_type: returnType,
-        status,
-        submitted_on: submittedOn || undefined,
-        approved_on: status === "approved" ? (approvedOn || undefined) : undefined,
-        trrn: trrn.trim() || undefined,
-      });
-      onDone(`Recorded the ${returnType} return for ${run.month} as ${status}.`);
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "That did not save.");
-    } finally { setSaving(false); }
-  }
-
-  const field = "border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-[12px] outline-none focus:border-blue-400";
-  return (
-    <div className="mt-3 pt-3 border-t border-[#F1F5F9] grid grid-cols-2 gap-3">
-      <label className="text-[11px] text-[#64748B]">Return type
-        <select value={returnType} onChange={(e) => setReturnType(e.target.value)}
-          className={`${field} w-full mt-1`}>
-          <option value="regular">Regular — every active member for the month</option>
-          <option value="supplementary">Supplementary — members added after the Regular was approved</option>
-          <option value="revised">Revised — figures already submitted, corrected</option>
-        </select>
-      </label>
-      <label className="text-[11px] text-[#64748B]">State at the portal
-        <select value={status} onChange={(e) => setStatus(e.target.value)}
-          className={`${field} w-full mt-1`}>
-          <option value="submitted">Submitted — not yet validated</option>
-          <option value="approved">Approved — this clears the month</option>
-        </select>
-      </label>
-      <label className="text-[11px] text-[#64748B]">Submitted on
-        <input type="date" value={submittedOn} onChange={(e) => setSubmittedOn(e.target.value)}
-          className={`${field} w-full mt-1`} />
-      </label>
-      {status === "approved" && (
-        <label className="text-[11px] text-[#64748B]">Approved on
-          <input type="date" value={approvedOn} onChange={(e) => setApprovedOn(e.target.value)}
-            className={`${field} w-full mt-1`} />
-        </label>
-      )}
-      <label className="text-[11px] text-[#64748B]">TRRN (optional)
-        <input value={trrn} onChange={(e) => setTrrn(e.target.value)}
-          placeholder="EPFO reference for the upload"
-          className={`${field} w-full mt-1`} />
-      </label>
-      <div className="col-span-2 flex justify-end">
-        <button onClick={save} disabled={saving}
-          className="px-3 py-1.5 text-[12px] rounded-lg bg-[#1E293B] text-white disabled:opacity-40">
-          {saving ? "Recording…" : "Record"}
-        </button>
-      </div>
-    </div>
-  );
-}
+// ECRFilingForm MOVED to components/payroll/StatutoryHandoff.tsx, where the
+// filing it records actually happens — and gained the thing it was missing:
+// the return type now DEFAULTS to what EPFO is expecting, which the server
+// already decides (domain/payroll/ecr_sequence.decide_returns). This one asked
+// from scratch and defaulted to Regular whatever the month needed, and a
+// Supplementary recorded as a Regular leaves the real Regular outstanding.
 
 // ─── Setup Tab — the client's own statutory registrations ─────────────────────
 //
@@ -1921,6 +1781,10 @@ export default function PayrollPage() {
     { id: "register", label: "Register", icon: Play },
     { id: "release",  label: "Release",  icon: TrendingUp },
     { id: "outputs",  label: "Outputs",  icon: Download },
+    // FILE — the handoff. Separate from Outputs on purpose: Outputs is a shelf
+    // ("give me the file"), this is the screen a CA works from with the portal
+    // open in the next tab ("what do I type in this box"). Track F, phase F3.
+    { id: "file",     label: "File",     icon: Upload },
     { id: "setup",    label: "Setup",    icon: Settings },
   ];
 
@@ -1966,6 +1830,10 @@ export default function PayrollPage() {
         {tab === "release"  && <ReleaseTab clientId={clientId} />}
         {/* OUTPUTS — this client-month's shelf, every file server-built. */}
         {tab === "outputs"  && <OutputsTab clientId={clientId} />}
+        {/* FILE — every statutory settlement this month raises, in the order
+            its portal asks for it. It transmits nothing and asks for no
+            credential; see components/payroll/StatutoryHandoff.tsx. */}
+        {tab === "file"     && <StatutoryHandoff clientId={clientId} />}
         {tab === "setup"    && <StatutoryIdentityTab clientId={clientId} />}
       </div>
     </div>
