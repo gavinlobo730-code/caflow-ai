@@ -52,6 +52,22 @@ export function CompliancePanel({
     gst_treatment: irn.record?.gst_treatment ?? null,
     taxable_amount_paise: invoice.taxable_amount_paise,
     line_hsn_codes: invoice.lines.map((l) => l.hsn_sac),
+    // Rule 138's consignment value is measured PER LINE, including the tax and
+    // cess charged on it and excluding exempt goods where the invoice carries
+    // both (Explanation 2 to Rule 138(1)). `taxable_amount_paise` alone cannot
+    // answer it, and comparing it against ₹50,000 advised a ₹56,640 consignment
+    // as "usually not required" — see assessEway in lib/invoices/compliance.
+    lines: invoice.lines.map((l) => ({
+      hsn_sac: l.hsn_sac,
+      taxable_amount_paise: l.taxable_amount_paise,
+      cgst_paise: l.cgst_paise,
+      sgst_paise: l.sgst_paise,
+      igst_paise: l.igst_paise,
+      gst_rate_bps: l.gst_rate_bps,
+    })),
+    // What the server decided (apps/api/domain/gst/eway.py, the authority).
+    // The browser mirror is only reached where this is absent.
+    eway_assessment: invoice.eway_assessment ?? null,
   }), [invoice, irn.record]);
 
   const treatment = gstTreatment(compInv);

@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from domain.reporting.amount_words import indian_rupees
 from domain.income_tax.statutory_rates import (
     FYTaxRates, apply_rebate_87a, apply_surcharge_with_marginal_relief,
     cess_paise, rates_for, resolve_surcharge_bracket, slab_tax_paise,
@@ -371,6 +372,21 @@ class ITRComputeRequest:
     is_senior_citizen: bool = False       # 60-80 years
     is_very_senior_citizen: bool = False  # > 80 years
 
+    # WAS THIS ASSESSEE RESIDENT IN INDIA THIS YEAR (IT Act §6)?
+    #
+    # Defaulted True because this engine was ALREADY assuming it, silently, in
+    # two places: §87A reaches "an individual, being a resident" and is granted
+    # here unconditionally, and §80G's adjusted-GTI base deliberately omits the
+    # §§115A/115AB/115AC/115AD income a non-resident can have (see that
+    # comment). Making the assumption a field states it rather than changing
+    # it — and gives the basic-exemption absorption below the test its own
+    # provisos require, without inventing residence for callers that never
+    # said. A caller that knows better can now say so.
+    #
+    # NOT derived from the client record: `clients` has no residential status
+    # column, and §6 turns on days present in India, which no ledger holds.
+    is_resident: bool = True
+
     # Financial year (e.g. "2025-26"); defaults to the current FY. See
     # domain.income_tax.statutory_rates for which years are verified.
     fy: Optional[str] = None
@@ -428,6 +444,18 @@ class ITRComputeResult:
     cess_paise: int = 0
     total_tax_paise: int = 0
     rebate_87a_paise: int = 0
+
+    #: How much of the basic exemption the slab income did not use and the
+    #: special-rate capital gains absorbed — the proviso to §111A(1), the
+    #: proviso to §112(1)(a)(ii) and the second proviso to §112A(2). Zero for
+    #: an assessee the provisos do not reach, and zero where the slab income
+    #: already used the whole exemption.
+    basic_exemption_absorbed_paise: int = 0
+    #: Per-section working behind that figure, so a CA can see WHICH gain the
+    #: exemption was set against — the statute gives no order and this engine
+    #: takes the highest rate first, which is a choice a reader is entitled to
+    #: check. One string per bucket that absorbed anything.
+    basic_exemption_absorption: list = field(default_factory=list)
 
     # Payable
     tds_and_advance_paise: int = 0
@@ -622,10 +650,27 @@ class ITREngine:
             + business_income
         )
         gti = ordinary_income + stcg + ltcg + ltcg_other
-        result.gross_total_income_paise = gti
 
         # 3. Chapter VI-A deductions (only for old regime for most)
+        #
+        # TWO ACCUMULATORS, NOT ONE, AND THE SPLIT IS THE POINT. §10(13A) HRA
+        # is an EXEMPTION that never enters salary, and §24(b) interest is a
+        # deduction in computing income under the head "house property"
+        # (§22-27). Neither is in Chapter VI-A. Both used to be added to the
+        # same running total as §80C and the rest, which left the arithmetic
+        # right and two REPORTED figures wrong: gross total income was
+        # overstated by their sum, and so was the total this engine labels
+        # "Deductions under Chapter VI-A" — the figure itr_json.py writes into
+        # SCHEDULE VI-A of the return (itr_json.py:337). An inflated
+        # Schedule VI-A with no section behind it is what a §143(1)(a)
+        # adjustment is for.
+        #
+        # `head_reliefs` reduces the income; `deductions` is Chapter VI-A. The
+        # sum of the two is what taxable income is computed on, so no tax
+        # figure moves — this splits a presentation, it does not change a
+        # charge.
         deductions = 0
+        head_reliefs = 0
 
         # 80CCD(2) — employer NPS, deductible under BOTH regimes (see the
         # LIMIT_80CCD2_* constants' docstring for the government/other cap
@@ -637,6 +682,37 @@ class ITREngine:
         d80ccd2 = min(req.employer_nps_80ccd2_paise, salary_base_80ccd2 * cap_percent // 100)
         result.deduction_80ccd2_paise = d80ccd2
         deductions += d80ccd2
+
+        # SAY SO WHEN THE UNVERIFIED CONSERVATIVE CHOICE ACTUALLY COSTS
+        # SOMETHING. The 10% above is the pre-2024 figure and the LIMIT_80CCD2_*
+        # docstring explains why it is still used in both regimes: the
+        # Budget 2024 enhancement to 14% for a NON-government employee under
+        # §115BAC(1A) could not be confirmed against the Act's text from this
+        # environment (egress is refused at the proxy), and under-claiming is
+        # the safe direction. Safe is not the same as invisible. Until now the
+        # engine simply computed the smaller figure and said nothing, so a CA
+        # who knows the 14% number saw a deduction they could not account for
+        # and no reason for it.
+        #
+        # Raised only where it BITES — a non-government employee, on the new
+        # regime, whose employer contribution exceeds 10% of salary. Anywhere
+        # else the two percentages give the same answer and a warning would be
+        # noise.
+        if (req.use_new_regime and not req.is_government_employee
+                and req.employer_nps_80ccd2_paise > salary_base_80ccd2 * cap_percent // 100):
+            at_stake = (min(req.employer_nps_80ccd2_paise,
+                            salary_base_80ccd2 * LIMIT_80CCD2_GOVT_PERCENT // 100)
+                        - d80ccd2)
+            if at_stake > 0:
+                result.warnings.append(
+                    f"§80CCD(2) is allowed here at {cap_percent}% of salary. The "
+                    f"Finance (No. 2) Act 2024 is understood to have raised this "
+                    f"to {LIMIT_80CCD2_GOVT_PERCENT}% for an employee taxed under "
+                    f"§115BAC(1A), which would allow a further "
+                    f"₹{indian_rupees(at_stake)} — but that amendment is not verified "
+                    f"against the Act's own text from this deployment, so the "
+                    f"lower figure is used. Check the current §80CCD(2) proviso "
+                    f"before filing.")
 
         if not req.use_new_regime:
             # 80C
@@ -663,17 +739,45 @@ class ITREngine:
             result.deduction_80tta_paise = tta_ttb
             deductions += tta_ttb
 
-            # HRA exemption (Section 10(13A)) — reduces GTI directly
+            # HRA exemption (Section 10(13A)). NOT Chapter VI-A: §10 exempts
+            # the allowance from total income altogether, so it never enters
+            # salary in the first place. It reduces the income — see
+            # `head_reliefs` above.
             hra_exempt = req.hra.exemption_paise()
             result.deduction_hra_paise = hra_exempt
-            deductions += hra_exempt
+            head_reliefs += hra_exempt
 
-            # Section 24(b) — home loan interest
+            # Section 24(b) — home loan interest. NOT Chapter VI-A either:
+            # §24 is inside the head "Income from house property" (§§22-27),
+            # which is why the return puts it in Schedule HP and not in
+            # Schedule VI-A.
             d24b = min(req.home_loan_interest_24b_paise, LIMIT_24B_PAISE)
             result.deduction_24b_paise = d24b
-            deductions += d24b
+            head_reliefs += d24b
 
-            deductions += req.other_deductions_paise
+            # ANYTHING ELSE THE CA CLAIMS, WITH NO SECTION ATTACHED.
+            #
+            # This IS Chapter VI-A — it is the catch-all for the heads this
+            # engine does not model — so it belongs in `deductions`. But
+            # nothing here can check it, and that is worth saying out loud
+            # rather than leaving as an uncapped addition: §80CCE caps §80C,
+            # §80CCC and §80CCD(1) at ₹1,50,000 BETWEEN THEM, and §80E, §80DD,
+            # §80DDB, §80U and §80GG each carry a limit of their own. An §80C
+            # item routed through here escapes the §80CCE cap entirely, which
+            # is the failure worth naming because `Deductions80C` has no field
+            # for several §80C(2) clauses and a CA has nowhere else to put
+            # them — except `s80c.other_paise`, which exists and IS inside the
+            # cap.
+            if req.other_deductions_paise > 0:
+                deductions += req.other_deductions_paise
+                result.warnings.append(
+                    f"₹{indian_rupees(req.other_deductions_paise)} is claimed as "
+                    f"'other deductions' with no section stated, so no ceiling "
+                    f"could be applied to it. §80CCE caps §80C, §80CCC and "
+                    f"§80CCD(1) at ₹1,50,000 between them, and §80E, §80DD, "
+                    f"§80DDB, §80U and §80GG each carry their own limit. If any "
+                    f"part of this is an §80C item, claim it under §80C instead "
+                    f"— that total is inside the cap.")
 
             # 80G — computed LAST, because its own ceiling is a percentage
             # of what is left after every other deduction.
@@ -711,17 +815,24 @@ class ITREngine:
             # inventing a figure nobody supplied would move the ceiling in
             # the direction that over-claims. If either is ever added as an
             # input it belongs in this subtraction.
-            adjusted_gti = max(0, ordinary_income - deductions)
+            adjusted_gti = max(0, ordinary_income - head_reliefs - deductions)
             d80g, warnings_80g = compute_80g_deduction(req.donations_80g, adjusted_gti)
             result.deduction_80g_paise = d80g
             deductions += d80g
             result.warnings.extend(warnings_80g)
 
+        # Gross total income is §14's figure: the heads AFTER each head's own
+        # computation, and before Chapter VI-A. So the §10(13A) exemption and
+        # the §24(b) interest come off it, and only Chapter VI-A is reported as
+        # a deduction — which is what Schedule VI-A carries.
+        result.gross_total_income_paise = gti - head_reliefs
         result.total_deductions_paise = deductions
 
         # 4. Taxable income
         # Capital gains are excluded from deductions (Section 112A/111A)
-        ordinary_taxable = max(0, ordinary_income - deductions)
+        # `head_reliefs + deductions` is what the single accumulator used to
+        # hold, so this line computes exactly what it computed before.
+        ordinary_taxable = max(0, ordinary_income - head_reliefs - deductions)
         taxable_income = ordinary_taxable + stcg + ltcg + ltcg_other
         result.taxable_income_paise = taxable_income
 
@@ -733,16 +844,42 @@ class ITREngine:
         # for Chapter VI-A deductions or §87A rebate/marginal relief below —
         # see the F17 fix note ahead of the rebate step). Rates are FY-versioned
         # in statutory_rates.py (R3.1) rather than inline here.
-        # IT Act Section 111A: STCG on equity
-        stcg_tax = stcg * rates.stcg_111a_rate_bps // 10000
         # IT Act Section 112A: LTCG on equity, less the exemption. The
         # exemption is annual, applied once to the year's aggregate 112A
         # gain — see capital_gains_engine.compute_capital_gains, which is
-        # per-transfer and says so.
-        ltcg_taxable = max(0, ltcg - rates.ltcg_112a_exemption_paise)
+        # per-transfer and says so. Taken BEFORE the basic-exemption
+        # absorption below, and the order does not matter: absorbing first
+        # and exempting second gives the same charged base, because both
+        # steps floor at zero.
+        ltcg_112a_taxable = max(0, ltcg - rates.ltcg_112a_exemption_paise)
+
+        # THE BASIC EXEMPTION THE SLAB INCOME DID NOT USE ABSORBS INTO THESE
+        # GAINS. IT Act proviso to §111A(1), proviso to §112(1)(a)(ii) and
+        # second proviso to §112A(2) — three provisos in identical words:
+        # where "the total income as reduced by such capital gains is below
+        # the maximum amount which is not chargeable to income-tax", the
+        # gains "shall be reduced by the amount by which the total income as
+        # so reduced falls short of" it, and the tax is computed on the
+        # balance.
+        #
+        # Omitting this was not a rounding difference. ₹5,00,000 of §111A
+        # STCG and no other income was charged ₹1,04,000 — 20% on the whole
+        # gain plus cess — where the Act charges ₹20,800, because the first
+        # ₹4,00,000 is the exemption nothing else had used. It reached a
+        # screen when 714c1c84 wired capital gains into the client
+        # computation tab.
+        charged = self._absorb_basic_exemption(
+            req, rates, ordinary_taxable, result,
+            [("§111A (STCG on equity)", stcg, rates.stcg_111a_rate_bps),
+             ("§112A (LTCG on equity)", ltcg_112a_taxable, rates.ltcg_112a_rate_bps),
+             ("§112 (LTCG on other assets)", ltcg_other, rates.ltcg_112_other_rate_bps)],
+        )
+        # IT Act Section 111A: STCG on equity
+        stcg_tax = charged[0] * rates.stcg_111a_rate_bps // 10000
+        ltcg_taxable = charged[1]
         ltcg_tax = ltcg_taxable * rates.ltcg_112a_rate_bps // 10000
         # IT Act Section 112: LTCG on any other asset
-        ltcg_other_tax = ltcg_other * rates.ltcg_112_other_rate_bps // 10000
+        ltcg_other_tax = charged[2] * rates.ltcg_112_other_rate_bps // 10000
 
         # 6. Rebate u/s 87A — reduces slab tax only, never special-rate CG tax.
         # Pre-existing, deliberately conservative position: the CBDT's own ITR
@@ -1059,6 +1196,93 @@ class ITREngine:
                 "domestic_company": "company"}.get(kind, kind)
 
     # ── Slab selection ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _basic_exemption_paise(slabs) -> int:
+        """The "maximum amount which is not chargeable to income-tax".
+
+        Read off the SLABS rather than stated as a constant, because that is
+        what the phrase means and it is the only reading that stays right by
+        itself: it moves with the regime (₹4,00,000 under §115BAC(1A) against
+        ₹2,50,000 under the old one), with age under the old regime
+        (₹3,00,000 at 60, ₹5,00,000 at 80), and with every Finance Act that
+        widens the nil band. A constant here would be a second copy of a
+        number statutory_rates.py already holds, and would go stale in April
+        without anything failing.
+
+        Walks the leading nil-rate brackets rather than taking the first,
+        so a future table that splits the nil band in two is still read
+        whole.
+        """
+        limit = 0
+        for bracket in slabs:
+            if bracket.rate_percent != 0:
+                break
+            if bracket.upto_paise is None:      # a wholly nil table
+                return limit
+            limit = bracket.upto_paise
+        return limit
+
+    def _absorb_basic_exemption(self, req: ITRComputeRequest, rates: FYTaxRates,
+                                ordinary_taxable: int, result: ITRComputeResult,
+                                buckets: list) -> list[int]:
+        """Set the unused basic exemption against the special-rate gains.
+
+        `buckets` is [(label, base_paise, rate_bps), ...]; returns the charged
+        base for each, in the SAME order, so the caller keeps its own names for
+        them.
+
+        APPLIED ONCE, NOT THREE TIMES. Each of the three provisos reads "the
+        total income as reduced by SUCH capital gains", so taking all three at
+        face value in isolation would set the same exemption against each
+        bucket and relieve up to three times what the Act gives. The exemption
+        is one amount; ordinary income has first call on it (it is the income
+        the slabs are charged on) and what survives is what the gains may
+        absorb. That is also how the department's own utility computes it.
+
+        WHO IT REACHES. All three provisos say "in the case of an individual
+        or a Hindu undivided family, being a RESIDENT". A firm, an LLP and a
+        company never arrive here — they take the entity-rate path long before
+        this — so the test that remains is `assessee_kind == "individual"` and
+        `is_resident`. A non-resident individual with Indian capital gains is
+        charged on the whole gain, which is what the provisos' own words do.
+
+        ALLOCATED HIGHEST RATE FIRST. The statute fixes no order between the
+        three, so the allocation is the assessee's to choose and the engine
+        takes the one most beneficial to them. Ordered by the RESOLVED rate
+        rather than by section number: §111A is 20% and §112/§112A are 12.5%
+        today, but that is a Finance Act's arrangement and not a fact about
+        the sections — reading the rate keeps this right if a later Act
+        reverses them. Ties keep the caller's order, which is stable.
+        """
+        charged = [max(0, int(base)) for _, base, _ in buckets]
+        if not any(charged):
+            return charged
+        if req.assessee_kind != "individual" or not req.is_resident:
+            return charged
+
+        slabs = self._slabs_for(rates, req.use_new_regime,
+                                req.is_senior_citizen, req.is_very_senior_citizen)
+        # "the total income as reduced by such capital gains" — the slab
+        # income, which is total income less every special-rate bucket.
+        unused = self._basic_exemption_paise(slabs) - max(0, ordinary_taxable)
+        if unused <= 0:
+            return charged
+
+        order = sorted(range(len(buckets)), key=lambda i: (-buckets[i][2], i))
+        for i in order:
+            if unused <= 0:
+                break
+            take = min(unused, charged[i])
+            if take <= 0:
+                continue
+            charged[i] -= take
+            unused -= take
+            result.basic_exemption_absorbed_paise += take
+            result.basic_exemption_absorption.append(
+                f"{buckets[i][0]}: ₹{indian_rupees(take)} of the unused basic exemption "
+                f"set against this gain, and tax charged on the balance.")
+        return charged
 
     @staticmethod
     def _slabs_for(rates: FYTaxRates, use_new_regime: bool, senior: bool, very_senior: bool):

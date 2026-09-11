@@ -129,6 +129,27 @@ export interface TaxAuditDueDates {
   basis: string;
 }
 
+/** GET /api/compliance/payroll-deposit-due-dates — what one payroll month owes.
+ *  `gaps` names what is deliberately NOT dated (professional tax), because an
+ *  absent row and a nil liability look the same on a calendar. */
+export interface PayrollDepositDueDates {
+  period: { year: number; month: number; quarter: string; financial_year_end: number };
+  deposits: { label: string; authority: string; statute: string; due_date: string }[];
+  returns: { label: string; quarter: string; authority: string; statute: string; due_date: string }[];
+  gaps: string[];
+}
+
+/** GET /api/compliance/payroll-deposit-due-dates/fy — all twelve wage months
+ *  of one financial year, plus its four TDS return dates. One call, because the
+ *  firm payroll report is a whole-year calendar. */
+export interface PayrollDepositDueDates_FY {
+  financial_year: string;
+  months: { year: number; month: number; quarter: string;
+            deposits: { label: string; authority: string; statute: string; due_date: string }[] }[];
+  returns: { label: string; quarter: string; authority: string; statute: string; due_date: string }[];
+  gaps: string[];
+}
+
 /** GET /api/compliance/due-dates/calculate — the fields this app reads. The
  *  endpoint returns more (ITR, advance tax, and the gaps that go with them);
  *  those belong to the income-tax screens, not the GST filing tracker. */
@@ -1271,6 +1292,26 @@ export const api = {
      *  its own; that copy had GSTR-9 a year late for January, February and
      *  March, because it read the calendar year off the period and a financial
      *  year is April to March. */
+    /** Every statutory deposit one payroll month gives rise to, and the four
+     *  TDS return dates of its financial year — from services/compliance_engine.py,
+     *  the single source CLAUDE.md names for every date in this product.
+     *
+     *  The same story as calculateDueDates below, one subsystem over (PAY-19).
+     *  Two payroll calendars built their own lists in the browser: both
+     *  INVENTED a monthly Professional Tax row dated the last day of the month
+     *  and labelled with Maharashtra's rule for every client — the engine
+     *  deliberately has no PT date, because it is per state and this app models
+     *  four states of twenty-two — and both OMITTED the ESI deposit (the 15th)
+     *  and the salary TDS deposit (the 7th, 30 April for March), which are the
+     *  two that attract interest. */
+    payrollDepositDueDates: (year: number, month: number) =>
+      request<ApiResp<PayrollDepositDueDates>>(
+        `/api/compliance/payroll-deposit-due-dates?year=${year}&month=${month}`),
+    /** The same, for a whole financial year — the firm payroll report's
+     *  calendar is twelve months wide and would otherwise make twelve calls. */
+    payrollDepositDueDatesForFy: (financialYear: string) =>
+      request<ApiResp<PayrollDepositDueDates_FY>>(
+        `/api/compliance/payroll-deposit-due-dates/fy?financial_year=${encodeURIComponent(financialYear)}`),
     calculateDueDates: (year: number, month: number) =>
       request<ApiResp<GstDueDates>>(
         `/api/compliance/due-dates/calculate?year=${year}&month=${month}`),
@@ -1380,7 +1421,6 @@ export const api = {
     scheduleIiiCaptions: () => request("/api/accounting/schedule-iii/captions"),
     journal: (params?: Record<string, string>) => request(`/api/accounting/journal${params ? "?" + new URLSearchParams(params) : ""}`),
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
-    postJournalEntry: (id: string) => request(`/api/accounting/journal/${id}/post`, { method: "PATCH" }),
     // One entry with its lines, plus whether it may still be edited. `editable`
     // and `lock_reason` are resolved by the same database function the write
     // path enforces with (journal_period_lock_reason, migration 266), so the

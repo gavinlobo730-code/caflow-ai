@@ -596,6 +596,40 @@ statement went back to guessing from the subtype.
   into total expenses. The extra-bucket fallback renders it separately. Pinned
   by a test, because it reads exactly like an omission.
 
+- **The year end speaks the same taxonomy in a second spelling, and the
+  translation is one table.** The statements are keyed on snake_case LINE CODES
+  (`trade_receivables`, `cash_and_bank`) rather than captions;
+  `domain/reporting/year_end_lines.py` holds the codes, the
+  caption→code table, and `schedule_line_for_account` — the one function that
+  says which line an account belongs on, deriving it from the account's type,
+  subtype and the CA's own `schedule_iii_mapping` through `classify`. It lived
+  in a ROUTER until 11-09-2026 while the two modules that needed it most read a
+  CACHE of its answer, `account_group_mappings`, instead.
+- **A row in `account_group_mappings` is an OVERRIDE, not the source**, and the
+  correction is worth the space because of what the old shape did. That table
+  is written only by `POST/PUT` on `routers/year_end_mappings.py` and, until
+  11-09-2026, by its own `GET /mappings/defaults`. No screen has ever called
+  any of them, so it holds **zero rows in production** — against 133 accounts,
+  50 carrying a `schedule_iii_mapping` the CA recorded by hand. And
+  `generate_financial_statements` sent every account it could not find there to
+  `other_current_assets`, a debit-normal balance-sheet line. With no rows that
+  is EVERY account, so the asset side came to Σ(debit − credit) over the whole
+  ledger — **nil** — and so did equity and liabilities, and revenue, and every
+  expense. The function's own `total_assets == total_equity_and_liabilities`
+  guard passed on `0 == 0`: **a Balance Sheet of zeros certifying that it
+  balanced.** Both readers now derive and treat a stored row as an override.
+- **The auto-initialisation was removed rather than fixed.** That `GET` used to
+  classify the firm's whole chart of accounts and INSERT the answers — a write
+  behind a `read` action, and worse, it FROZE a derived answer. These rows are
+  never re-derived and outrank the derivation, so the first CA to open the
+  screen would have permanently detached the year-end statements from their own
+  `/accounting/schedule-iii` decisions — for the accounts existing at that
+  moment and no others, so half the chart would obey the CA and half would not.
+- **There is deliberately NO second mapping screen.** `/accounting/schedule-iii`
+  is already where a CA records this decision. A year-end mapping screen in the
+  line-code vocabulary would be a second place to say the same thing, which is
+  the mistake this file keeps having to record.
+
 ## Reporting scope — "all clients" means the caller's clients
 
 A reporting endpoint called with no `client_id` means "all clients", and that is
@@ -946,7 +980,8 @@ current and are where to start on any "what should we fix next" question:**
 | `2026-09-07-findings/` | the 278 findings as JSON, one file per subsystem. **Sort by `verification.corrected_severity`, not `severity`** — the raw severity is the reader's first impression, the corrected one survived an adversarial check |
 | `2026-09-07-a-plus-roadmap.md` | what each of the 14 modules needs to reach A+, defined as five testable properties, in a seven-stage order that starts by proving correctness |
 | `2026-09-08c-the-phase-plan.md` | **the plan being worked to.** All 254 remaining items in twelve phases grouped by FIX SHAPE rather than by module, so each phase teaches one pattern and ends with one guard test. Every critical and high is assigned; two duplicate pairs are named (PUR-07≡TDS-13, IT-09≡FA-06) |
-| `2026-09-08b-what-is-left.md` | the current remaining-work list, re-scored against `9fbe40d`. **Start here**, not at the 7 September audit: 39 findings are closed, one critical is left (FA-02, latent), and §2 lists seven defects the last tranche introduced that the 10,389-test suite passes over. It supersedes `2026-09-08-what-is-left.md`, which is kept because its §2 is the record of what was fixed |
+| `2026-09-11-the-verification-pass.md` | **the current remaining-work list. Start here.** All 163 medium/low findings re-checked against the code by nine read-only agents: 131 still open, 15 partial, 17 closed — so the backlog is ~10% stale, not the ~73% a spot-check had suggested. §2 is the part that matters: **seven findings whose severity went UP** because Phase 7 built the screens that had been holding them latent, and nothing re-scored them. §3 carries two live defects with no finding at all. §6 is the build order |
+| `2026-09-08b-what-is-left.md` | the previous remaining-work list, re-scored against `9fbe40d`. **Superseded by the 11 September pass** — its severities predate the screens Phase 7 shipped. Kept because its §2 is the record of what the last tranche introduced |
 
 `docs/audits/2026-09-07-market-research/` holds the statutory re-check behind
 them. **Nothing in it is graded `[P]`** — direct egress is refused at the proxy

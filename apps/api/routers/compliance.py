@@ -371,6 +371,137 @@ def tax_audit_due_dates(
     })
 
 
+@router.get("/payroll-deposit-due-dates/fy")
+def payroll_deposit_due_dates_for_fy(
+    financial_year: Annotated[FYLabel, Query(description="e.g. 2026-27")],
+    current_user: dict = Depends(rbac("compliance_record", "read")),
+):
+    """The same answer for all twelve wage months of one financial year.
+
+    The firm-level payroll report is a WHOLE-YEAR statutory calendar, so asking
+    the per-month endpoint twelve times would be twelve round trips for
+    arithmetic. One call, twelve months, and the four return dates once.
+
+    `financial_year` is an FYLabel, so "2026-28" is refused rather than read as
+    2026-27 — see models/fy.py. Written `Annotated[FYLabel, Query(...)]` and not
+    `FYLabel = Query(...)`, which validates NOTHING: FastAPI builds the field
+    from Query() in the default position and discards the Annotated metadata,
+    silently, so the endpoint reads as guarded.
+    """
+    from services import compliance_engine as ce
+
+    start_year = int(financial_year[:4])
+    fy_end = start_year + 1
+    months = [(start_year, m) for m in range(4, 13)] + \
+             [(fy_end, m) for m in range(1, 4)]
+    return api_response(True, {
+        "financial_year": financial_year,
+        "months": [
+            {
+                "year": y, "month": m,
+                "quarter": ce.tds_quarter_of_month(m),
+                "deposits": [
+                    {"label": d["label"], "authority": d["authority"],
+                     "statute": d["statute"], "due_date": d["due_date"].isoformat()}
+                    for d in ce.payroll_deposit_due_dates(y, m)
+                ],
+            }
+            for y, m in months
+        ],
+        "returns": [
+            {"label": f"TDS return {r['quarter']}", "quarter": r["quarter"],
+             "authority": "Income Tax Department",
+             "statute": "IT Act Rule 31A(2)",
+             "due_date": r["due_date"].isoformat()}
+            for r in ce.tds_return_due_dates_for_fy(fy_end)
+        ],
+        "gaps": [
+            "Professional tax is not in this calendar. Its due date is fixed by "
+            "each state and there is no single rule, so a date shown here would "
+            "be wrong for most clients. Check the state's own due date for any "
+            "employee whose state levies PT."
+        ],
+    })
+
+
+@router.get("/payroll-deposit-due-dates")
+def payroll_deposit_due_dates(
+    year: int, month: int,
+    current_user: dict = Depends(rbac("compliance_record", "read")),
+):
+    """Every statutory deposit arising from one month's payroll, and the TDS
+    return the month falls in.
+
+    WHY THIS ENDPOINT EXISTS (PAY-19). `compliance_engine` has computed these
+    since it was written and CLAUDE.md names it "the single source for every
+    due date" — but the two payroll calendars in apps/web did not call it or
+    anything else. They built their own lists in the browser, and the two
+    disagreed with the engine and with each other:
+
+      * both INVENTED a monthly Professional Tax row, dated the last day of the
+        month and described as "Maharashtra: Rs 200 if > Rs 10,000", FOR EVERY
+        CLIENT. The engine deliberately omits PT — its date is fixed by each
+        state, there is no single rule, and this codebase models the slabs for
+        four states of twenty-two. A wrong date in a CA's calendar is worse
+        than a missing one, which is exactly what payroll_deposit_due_dates'
+        own docstring says.
+      * both OMITTED the ESI deposit (the 15th, reg. 31) and the monthly salary
+        TDS deposit (the 7th, Rule 30(2) — 30 April for March). Those are the
+        two that attract interest: s.201(1A)(ii) charges 1.5% a month from the
+        date of DEDUCTION, so three weeks late on March costs two months of it.
+
+    NO CLIENT, so no client scoping: this is a calendar calculator for a
+    period, the same shape as /due-dates/calculate beside it, and it is listed
+    under the same exemption for the same reason.
+
+    PROFESSIONAL TAX IS RETURNED AS A NAMED GAP rather than omitted silently.
+    A calendar that simply has no PT row cannot be told apart from one whose
+    client has no PT liability, and the CA is the only one who can settle it.
+    """
+    from services import compliance_engine as ce
+
+    if not 1 <= month <= 12:
+        raise HTTPException(status_code=422,
+                            detail=f"month must be 1-12 — got {month}.")
+
+    deposits = [
+        {"label": d["label"], "authority": d["authority"],
+         "statute": d["statute"], "due_date": d["due_date"].isoformat()}
+        for d in ce.payroll_deposit_due_dates(year, month)
+    ]
+
+    # ALL FOUR QUARTERS OF THE MONTH'S OWN FINANCIAL YEAR, not "the quarter this
+    # month is in". That distinction is a defect the browser had: January is Q4,
+    # whose return is not due until 31 May, while the Q3 return is due on
+    # 31 JANUARY itself — so a CA opening the calendar in January was shown a
+    # deadline five months out and not the one falling that week. Returning all
+    # four takes the choice away from the caller.
+    #
+    # Rule 31A(2) sets one date per quarter whatever the form — 24Q, 26Q, 27Q —
+    # and Q4 is the exception: 31 May, not the end of the month following
+    # quarter end.
+    fy_end = year if month <= 3 else year + 1
+    return api_response(True, {
+        "period": {"year": year, "month": month,
+                   "quarter": ce.tds_quarter_of_month(month),
+                   "financial_year_end": fy_end},
+        "deposits": deposits,
+        "returns": [
+            {"label": f"TDS return {r['quarter']}", "quarter": r["quarter"],
+             "authority": "Income Tax Department",
+             "statute": "IT Act Rule 31A(2)",
+             "due_date": r["due_date"].isoformat()}
+            for r in ce.tds_return_due_dates_for_fy(fy_end)
+        ],
+        "gaps": [
+            "Professional tax is not in this list. Its due date is fixed by "
+            "each state and there is no single rule, so a date shown here "
+            "would be wrong for most clients. Check the state's own due date "
+            "for any employee whose state levies PT."
+        ],
+    })
+
+
 @router.get("/due-dates/calculate")
 def calculate_due_dates(year: int, month: int,
                         frequency: str = MONTHLY,

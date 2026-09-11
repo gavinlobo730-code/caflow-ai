@@ -143,6 +143,39 @@ export interface GSTR3BWorking {
      *  read as the amount due and was short by the whole of Table 3.1(d). */
     challan_total_paise: number;
   };
+  /** CGST Rule 36(4) — the working behind the credit, which the return itself
+   *  never shows. The rule caps eligible ITC at the credit suppliers have
+   *  actually filed, and s.16(2)(aa) makes that decisive rather than
+   *  advisory. Computed since the engine was written and rendered by NOTHING
+   *  until 11-09-2026: a CA whose claim had been trimmed saw only the trimmed
+   *  figure, with no statement that a cap fired or what it was measured
+   *  against.
+   *
+   *  `compared` is the one that cannot be inferred from the amounts. A book
+   *  figure equal to the 2A figure and a book figure with no 2A uploaded at
+   *  all both show "no cap applied", and they mean opposite things. */
+  rule_36_4: {
+    /** How many GSTR-2A/2B rows were on file for the period. Zero is the
+     *  not-compared state, not a claim that no supplier filed. */
+    gstr2a_record_count: number;
+    gstr2a_igst_paise: number;
+    gstr2a_cgst_paise: number;
+    gstr2a_sgst_paise: number;
+    /** True where the cap actually bit on at least one head. */
+    cap_applied: boolean;
+    /** False where no 2A was on file, so nothing was compared. */
+    compared: boolean;
+    /** Reverse-charge tax, which is OUTSIDE the cap. Rule 36(4) reaches only
+     *  invoices "required to be furnished by the supplier under sub-section
+     *  (1) of section 37"; s.9(3)/(4) tax is self-assessed on the recipient's
+     *  own s.31(3)(f) invoice, so no supplier furnishes it and GSTR-2B
+     *  structurally cannot carry it. Without this the screen shows a book
+     *  total above the 2A with no cap and no way to tell whether that is
+     *  right. */
+    self_assessed_igst_paise: number;
+    self_assessed_cgst_paise: number;
+    self_assessed_sgst_paise: number;
+  };
   /** The other side of Table 6, which the form itself never states: credit
    *  available, credit spent, credit left. Net tax of zero is true both when
    *  liability and credit cancel out and when credit exceeds liability by

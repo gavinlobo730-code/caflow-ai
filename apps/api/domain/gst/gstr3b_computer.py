@@ -213,6 +213,15 @@ class GSTR3BResult:
     itc_2a_igst: int = 0
     itc_2a_cgst: int = 0
     itc_2a_sgst: int = 0
+    #: The part of the book figure that is SELF-ASSESSED reverse-charge tax —
+    #: §9(3)/(4), on the recipient's own §31(3)(f) invoice. Rule 36(4) does not
+    #: reach it (it reaches only what a supplier furnishes under §37(1)), so it
+    #: sits outside the cap. Reported because a CA who sees book ₹68,000
+    #: against a 2A of ₹18,000 and NO cap applied needs to be able to see why
+    #: without re-deriving it: the difference is tax they paid in cash.
+    itc_self_assessed_igst: int = 0
+    itc_self_assessed_cgst: int = 0
+    itc_self_assessed_sgst: int = 0
     itc_capped_by_2a: bool = False   # True if Rule 36(4) cap was applied
 
     # ── Table 4 derived views ────────────────────────────────────────────
@@ -794,6 +803,43 @@ def compute_gstr3b(
     book_sgst = sum(p.sgst_paise - p.ineligible_sgst_paise for p in purchases)
     book_cess = sum(p.cess_paise - p.ineligible_cess_paise for p in purchases)
 
+    # RULE 36(4) REACHES ONLY WHAT A SUPPLIER FURNISHES UNDER §37, AND
+    # REVERSE-CHARGE TAX IS NOT THAT.
+    #
+    # Rule 36(4) opens: "Input tax credit to be availed by a registered person
+    # in respect of invoices or debit notes, THE DETAILS OF WHICH ARE REQUIRED
+    # TO BE FURNISHED BY THE SUPPLIER UNDER SUB-SECTION (1) OF SECTION 37".
+    # On a §9(3)/(4) supply the supplier charges no tax and furnishes none: the
+    # recipient issues a self-invoice under §31(3)(f) and pays the tax in cash,
+    # and Rule 36(1)(b) makes THAT the document the credit rests on, "subject
+    # to the payment of tax". A document the recipient issued to itself has no
+    # supplier to have furnished it, so the sub-rule cannot reach it.
+    #
+    # WHAT THIS WAS DOING. `book_*` above sums every purchase, reverse-charge
+    # included, and GSTR-2B can only ever carry what suppliers filed — so the
+    # cap compared a book figure that includes self-assessed tax against a
+    # portal figure that structurally cannot. Measured at HEAD before this
+    # change: one ordinary ₹1,00,000 bill with ₹18,000 IGST matched in 2B, plus
+    # one RCM supply carrying ₹50,000 of self-assessed IGST, gave book ₹68,000
+    # capped to ₹18,000 — ₹50,000 of credit withheld on tax the client had
+    # already paid in cash.
+    #
+    # It has been latent since the cap was written and is LIVE now: the 2B
+    # reconciliation writes `gstr2a_records` and `gst_return_service` feeds
+    # them in with `have_2b` from the reconciliation header, so the cap fires
+    # on the return of any client whose CA has run a reconciliation.
+    #
+    # An IMPORT is deliberately NOT carved out with it. IGST on a bill of entry
+    # IS communicated — GSTR-2B carries it in `impg`/`impgsez`, which
+    # domain/gst/gstr2b.py parses — so it belongs inside the cap like any
+    # other matched credit.
+    rcm_book_igst = sum(p.igst_paise - p.ineligible_igst_paise
+                        for p in purchases if p.is_reverse_charge)
+    rcm_book_cgst = sum(p.cgst_paise - p.ineligible_cgst_paise
+                        for p in purchases if p.is_reverse_charge)
+    rcm_book_sgst = sum(p.sgst_paise - p.ineligible_sgst_paise
+                        for p in purchases if p.is_reverse_charge)
+
     result.itc_ineligible_igst = sum(p.ineligible_igst_paise for p in purchases)
     result.itc_ineligible_cgst = sum(p.ineligible_cgst_paise for p in purchases)
     result.itc_ineligible_sgst = sum(p.ineligible_sgst_paise for p in purchases)
@@ -819,13 +865,27 @@ def compute_gstr3b(
     # it never caps where it should not, it only fails to cap where it should.
     if have_2b is None:
         have_2b = len(gstr2a_records) > 0
-    itc_igst, capped_i = _apply_rule_36_4_cap(book_igst, gstr2a_igst, have_2b)
-    itc_cgst, capped_c = _apply_rule_36_4_cap(book_cgst, gstr2a_cgst, have_2b)
-    itc_sgst, capped_s = _apply_rule_36_4_cap(book_sgst, gstr2a_sgst, have_2b)
+    # Cap the §37 credit only, then add the self-assessed credit back whole.
+    # Written as cap-then-add rather than by passing an inflated numerator,
+    # because the cap must not be able to LEND the reverse-charge figure to the
+    # matched credit either: a month with ₹50,000 of RCM and an unfiled ₹18,000
+    # b2b bill owes exactly ₹50,000 of credit, not ₹68,000.
+    itc_igst, capped_i = _apply_rule_36_4_cap(
+        book_igst - rcm_book_igst, gstr2a_igst, have_2b)
+    itc_cgst, capped_c = _apply_rule_36_4_cap(
+        book_cgst - rcm_book_cgst, gstr2a_cgst, have_2b)
+    itc_sgst, capped_s = _apply_rule_36_4_cap(
+        book_sgst - rcm_book_sgst, gstr2a_sgst, have_2b)
+    itc_igst += rcm_book_igst
+    itc_cgst += rcm_book_cgst
+    itc_sgst += rcm_book_sgst
 
     result.itc_book_igst = book_igst
     result.itc_book_cgst = book_cgst
     result.itc_book_sgst = book_sgst
+    result.itc_self_assessed_igst = rcm_book_igst
+    result.itc_self_assessed_cgst = rcm_book_cgst
+    result.itc_self_assessed_sgst = rcm_book_sgst
     result.itc_2a_igst = gstr2a_igst
     result.itc_2a_cgst = gstr2a_cgst
     result.itc_2a_sgst = gstr2a_sgst

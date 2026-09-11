@@ -13,7 +13,7 @@ import {
   Receipt, CalendarDays, ArrowRight,
 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { toLocalISO, dueDateUrgency } from "@/lib/dateMath";
+import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,42 +93,25 @@ function getStatutoryDeadlines(today: Date): {
     portal: "ESIC Portal",
   });
 
-  // PT Challan — monthly, due by end of current month (state-dependent; showing general)
-  const ptDue = new Date(y, m + 1, 0); // last day of current month
-  deadlines.push({
-    id: "pt-challan",
-    label: `Professional Tax — ${today.toLocaleString("en-IN", { month: "long", year: "numeric" })}`,
-    description: "Monthly PT challan — State treasury (Maharashtra: ₹200 if salary > ₹10,000)",
-    dueDate: ptDue,
-    status: getDueDateStatus(ptDue, today),
-    portal: "State Treasury Portal",
-  });
-
-  // TDS 24Q — quarterly (IT Act Section 192)
-  // Q1: Apr-Jun → 31 Jul | Q2: Jul-Sep → 31 Oct | Q3: Oct-Dec → 31 Jan | Q4: Jan-Mar → 31 May
-  let tdsQuarter: string;
-  let tdsDue: Date;
-  if (m >= 3 && m <= 5) {
-    tdsQuarter = `Q1 Apr–Jun ${y}`;
-    tdsDue = new Date(y, 6, 31);
-  } else if (m >= 6 && m <= 8) {
-    tdsQuarter = `Q2 Jul–Sep ${y}`;
-    tdsDue = new Date(y, 9, 31);
-  } else if (m >= 9 && m <= 11) {
-    tdsQuarter = `Q3 Oct–Dec ${y}`;
-    tdsDue = new Date(y + 1, 0, 31);
-  } else {
-    tdsQuarter = `Q4 Jan–Mar ${y}`;
-    tdsDue = new Date(y, 4, 31);
-  }
-  deadlines.push({
-    id: "tds-24q",
-    label: `TDS 24Q — ${tdsQuarter}`,
-    description: "Quarterly TDS return on salary — IT Act Section 192 — filed on the e-filing portal (incometax.gov.in)",
-    dueDate: tdsDue,
-    status: getDueDateStatus(tdsDue, today),
-    portal: "e-filing portal (incometax.gov.in)",
-  });
+  // THE MONTHLY DEPOSITS AND THE QUARTERLY RETURNS COME FROM THE SERVER
+  // (PAY-19) — see `engineDeadlines` below. What is left in this function is
+  // the PF ECR and the half-yearly ESI return, neither of which the engine
+  // models.
+  //
+  // WHAT WAS HERE AND IS GONE:
+  //
+  //   * a monthly PROFESSIONAL TAX row, dated the last day of the month and
+  //     described as "Maharashtra: ₹200 if salary > ₹10,000", for every client
+  //     whatever state its employees are in. compliance_engine deliberately has
+  //     no PT date — it is fixed by each state, there is no single rule, and
+  //     this codebase models the slabs for four states of twenty-two. The
+  //     server now returns that as a NAMED GAP instead, which the tab renders.
+  //
+  //   * a hand-rolled quarter branch for the TDS return. Its `m >= 9 && m <= 11`
+  //     limb gave Q3 and the final `else` covered January, February and March —
+  //     so in JANUARY it showed "Q4, due 31 May" and not the Q3 return due on
+  //     31 January, eleven days away. The server returns all four quarters of
+  //     the month's own financial year so no caller has to make that choice.
 
   return deadlines;
 }
@@ -516,6 +499,71 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
   const today = new Date();
   const deadlines = getStatutoryDeadlines(today);
 
+  // THE DATES THE ENGINE OWNS (PAY-19). The three monthly deposits and the four
+  // quarterly return dates come from services/compliance_engine.py through
+  // GET /api/compliance/payroll-deposit-due-dates. This screen used to compute
+  // them here and got three things wrong — see getStatutoryDeadlines above.
+  //
+  // The wage month is the PREVIOUS one: a deposit arising from June's payroll
+  // falls due in July, so the calendar a CA opens in July is asking about June.
+  const [engineDeadlines, setEngineDeadlines] = useState<{
+    id: string; label: string; description: string; dueDate: Date;
+    status: "overdue" | "due-soon" | "upcoming"; portal: string;
+  }[]>([]);
+  const [deadlineGaps, setDeadlineGaps] = useState<string[]>([]);
+
+  useEffect(() => {
+    const wageMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.compliance.payrollDepositDueDates(
+          wageMonth.getFullYear(), wageMonth.getMonth() + 1);
+        if (cancelled || !res?.success || !res.data) return;
+        const periodLabel = wageMonth.toLocaleString("en-IN",
+          { month: "long", year: "numeric" });
+        const rows = res.data.deposits.flatMap((d) => {
+          const due = fromLocalISO(d.due_date);
+          return due ? [{
+            id: `deposit-${d.label}`,
+            label: `${d.label} — ${periodLabel}`,
+            description: `${d.statute} — ${d.authority}`,
+            dueDate: due,
+            status: getDueDateStatus(due, today),
+            portal: d.authority,
+          }] : [];
+        });
+        // Every quarter of the financial year, not the one this month sits in.
+        const fyEnd = res.data.period.financial_year_end;
+        const returns = res.data.returns.flatMap((r) => {
+          const due = fromLocalISO(r.due_date);
+          return due ? [{
+            id: `return-${r.quarter}`,
+            label: `${r.label} (FY ${fyEnd - 1}-${String(fyEnd).slice(2)})`,
+            description: `${r.statute} — quarterly TDS return on salary`,
+            dueDate: due,
+            status: getDueDateStatus(due, today),
+            portal: "e-filing portal (incometax.gov.in)",
+          }] : [];
+        });
+        setEngineDeadlines([...rows, ...returns]);
+        setDeadlineGaps(res.data.gaps ?? []);
+      } catch {
+        // A calendar that cannot reach the server shows what it can rather than
+        // nothing, and the gap list stays empty rather than asserting there is
+        // no gap.
+        if (!cancelled) setEngineDeadlines([]);
+      }
+    })();
+    return () => { cancelled = true; };
+    // `today` is a fresh Date each render; the wage month is what this depends
+    // on and it changes once a month.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const allDeadlines = [...deadlines, ...engineDeadlines]
+    .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+
   // Group runs by client for the "Generate" section
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id ?? "");
   const [statutoryBusy, setStatutoryBusy] = useState<string | null>(null);
@@ -667,10 +715,19 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
           <p className="text-xs text-[#64748B] mt-0.5">
             Based on today&apos;s date. Mark as filed in your records after submission.
           </p>
+          {/* WHAT IS DELIBERATELY NOT DATED (PAY-19). This list used to carry an
+              invented monthly Professional Tax row, dated the last day of the
+              month and labelled with Maharashtra's rule, for every client. The
+              engine has no PT date because it is fixed by each state; it says so
+              instead, and a calendar with a silently missing row cannot be told
+              from one whose client has no PT liability. */}
+          {deadlineGaps.map(g => (
+            <p key={g} className="text-xs text-amber-700 mt-1.5">{g}</p>
+          ))}
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {deadlines.map(d => (
+            {allDeadlines.map(d => (
               <div
                 key={d.id}
                 className={`flex items-start justify-between p-3 rounded-lg border ${

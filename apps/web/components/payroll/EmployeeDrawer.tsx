@@ -755,12 +755,19 @@ function PerquisitesSection({ employee, clientId }: {
     try {
       const res = await api.payroll.recordPerquisites(employee.id, {
         client_id: clientId, fy, items: result.items,
-      });
-      if ((res as { success?: boolean })?.success === false) {
-        throw new Error((res as { error?: string })?.error ?? "That did not record.");
+      }) as { success?: boolean; error?: string;
+              data?: { what_it_means?: string } | null };
+      if (res?.success === false) {
+        throw new Error(res?.error ?? "That did not record.");
       }
-      setDone(`Recorded for ${fy}. These reach the employee's Form 16 through `
-        + "24Q Annexure II.");
+      // THE SERVER'S OWN SENTENCE, not a second one written here (PAY-07).
+      // This message used to say only that the values reach Form 16 through
+      // 24Q Annexure II — true, and it read as reassurance, because until
+      // migration 368 the Annexure was the ONLY place they reached: not one of
+      // the year's twelve §192 deductions included them. They do now, from the
+      // next run computed, and only the backend knows that — so it says it.
+      setDone((res?.data?.what_it_means ?? "")
+        + ` These also reach the employee's Form 16 through 24Q Annexure II.`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That did not record.");
     } finally { setBusy(null); }

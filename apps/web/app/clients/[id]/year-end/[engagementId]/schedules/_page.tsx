@@ -36,6 +36,46 @@ interface ScheduleData {
   columns: { key: string; label: string; type?: "amount" | "text" | "date" }[];
   rows: ScheduleRow[];
   totals?: Record<string, number>;
+  /** What the SERVER says is missing — see `gaps` in routers/year_end_statements. */
+  gaps: string[];
+}
+
+/** What the endpoint actually answers. */
+interface ScheduleResponse {
+  line_items?: { account_code?: string; description?: string;
+                 amount_paise?: number; net_block_paise?: number }[];
+  total_paise?: number;
+  gaps?: string[];
+}
+
+/** The API's shape, rendered.
+ *
+ *  THE PAGE AND THE ENDPOINT DID NOT AGREE (FA-09). This read `columns`,
+ *  `rows` and `totals`; the endpoint has always answered `line_items` and
+ *  `total_paise`. The URL was wrong too, so every tab 404'd and the
+ *  disagreement never surfaced — fixing the URL alone would have replaced
+ *  seven 404s with a crash on `rows.length`.
+ *
+ *  The columns are built HERE rather than sent, because they are presentation:
+ *  a schedule is a code, a name and an amount whatever it is a schedule of,
+ *  and the server's job is the figures. */
+function toScheduleData(json: ScheduleResponse): ScheduleData {
+  const items = json.line_items ?? [];
+  return {
+    columns: [
+      { key: "account_code", label: "Code", type: "text" },
+      { key: "description", label: "Particulars", type: "text" },
+      { key: "amount_paise", label: "Amount", type: "amount" },
+    ],
+    rows: items.map((i) => ({
+      account_code: i.account_code ?? "",
+      description: i.description ?? "",
+      // A fixed-asset line carries its net block rather than a plain amount.
+      amount_paise: i.amount_paise ?? i.net_block_paise ?? 0,
+    })),
+    totals: { amount_paise: json.total_paise ?? 0 },
+    gaps: json.gaps ?? [],
+  };
 }
 
 // GET /api/year-end/{id}/schedules/{type}
@@ -46,7 +86,12 @@ async function fetchSchedule(engagementId: string, type: ScheduleType): Promise<
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
 
-  const res = await fetch(`${BASE_URL}/api/year-end/engagements/${engagementId}/schedules/${type}`, {
+  // FIVE SEGMENTS AGAINST A FOUR-SEGMENT ROUTE (FA-09). This carried an
+  // `engagements/` segment the API does not have — routers/year_end_statements
+  // declares `/{engagement_id}/schedules/{schedule_type}` under a `/year-end`
+  // prefix, mounted at `/api` — so FastAPI matched nothing and ALL SEVEN tabs
+  // on this page returned 404. Not one of them has ever rendered.
+  const res = await fetch(`${BASE_URL}/api/year-end/${engagementId}/schedules/${type}`, {
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -58,7 +103,7 @@ async function fetchSchedule(engagementId: string, type: ScheduleType): Promise<
   }
   const json = await res.json();
   if (!json.success) throw new Error(json.error ?? "Failed to load schedule");
-  return json.data;
+  return toScheduleData(json.data as ScheduleResponse);
 }
 
 export default function SchedulesPage() {
@@ -175,9 +220,19 @@ function ScheduleTable({ data }: { data: ScheduleData }) {
     return (
       <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-12">
         <p className="text-sm text-[#64748B]">No data for this schedule.</p>
-        <p className="text-xs text-[#94A3B8] mt-1">
-          Data will appear when transactions are posted to the General Ledger.
-        </p>
+        {/* THE SERVER'S REASON, where it has one. An empty schedule with the
+            generic line below is a CLAIM — "this client has none" — and the
+            commonest cause is that no ledger is mapped to the schedule at all,
+            which is a different thing and is the CA's to fix. */}
+        {data.gaps.length > 0 ? (
+          data.gaps.map((g) => (
+            <p key={g} className="text-xs text-amber-700 mt-2 max-w-lg mx-auto">{g}</p>
+          ))
+        ) : (
+          <p className="text-xs text-[#94A3B8] mt-1">
+            Data will appear when transactions are posted to the General Ledger.
+          </p>
+        )}
       </div>
     );
   }

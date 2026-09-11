@@ -34,9 +34,9 @@ import type {
   Employee, EmployeeYearTotals, PayrollRun, PayrollSlip,
 } from "@/lib/payroll/types";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { toLocalISO, dueDateUrgency } from "@/lib/dateMath";
+import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
 import { monthlyTdsPaiseNewRegime } from "@/lib/services/payrollTdsEstimate";
-import { api } from "@/lib/api";
+import { api, type PayrollDepositDueDates_FY } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -129,38 +129,43 @@ function dueDateStatus(due: Date, today: Date): DueStatus {
 }
 
 /**
- * Generate all statutory due dates for a given financial year.
- * PF ECR: 15th of following month (EPF Act)
- * ESI: half-yearly — Nov 11 (Apr-Sep), May 11 (Oct-Mar)
- * PT: end of each month (state-dependent)
- * TDS 24Q: Q1→31 Jul, Q2→31 Oct, Q3→31 Jan, Q4→31 May (IT Act Sec 192)
+ * The statutory due dates for one financial year.
+ *
+ * THE DATES THE ENGINE OWNS NOW COME FROM IT (PAY-19). The monthly deposits
+ * (EPF para 38(1), ESI reg. 31, TDS Rule 30(2)) and the four quarterly TDS
+ * return dates (Rule 31A(2)) are served by
+ * GET /api/compliance/payroll-deposit-due-dates/fy, from
+ * services/compliance_engine.py — the single source CLAUDE.md names for every
+ * due date in this product.
+ *
+ * WHAT THIS FUNCTION USED TO DO AND NO LONGER DOES:
+ *
+ *   * it INVENTED a monthly Professional Tax row for every month of the year,
+ *     dated the last day of the month and described as "Maharashtra: ₹200 if
+ *     > ₹10,000" — for every client, whatever state its employees are in. The
+ *     engine deliberately has no PT date: it is fixed by each state, there is
+ *     no single rule, and this app models the slabs for four states of
+ *     twenty-two. It is reported as a named gap instead, because a calendar
+ *     with a silently missing row cannot be told from one whose client has no
+ *     PT liability.
+ *
+ *   * it OMITTED the ESI deposit (the 15th) and the monthly salary TDS deposit
+ *     (the 7th; 30 April for March) — the two that attract interest.
+ *     §201(1A)(ii) runs 1.5% a month from the date of DEDUCTION.
+ *
+ * What is still built here is the HALF-YEARLY ESI RETURN (11 Nov / 11 May).
+ * The engine does not model it, and whether it still exists could not be
+ * settled from primary sources in this environment — so it is kept and marked
+ * rather than deleted on unconfirmed evidence: removing a real deadline costs
+ * a penalty, showing a stale one costs a phone call.
  */
-function buildStatutoryCalendar(fy: string, today: Date): StatutoryDueRow[] {
+function buildStatutoryCalendar(
+  fy: string,
+  today: Date,
+  served: PayrollDepositDueDates_FY | null,
+): StatutoryDueRow[] {
   const start = fyStartYear(fy);
   const rows: StatutoryDueRow[] = [];
-
-  const pfMonthList: Array<{ month: number; year: number }> = [
-    ...([4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => ({ month: m, year: start }))),
-    ...([1, 2, 3].map(m => ({ month: m, year: start + 1 }))),
-  ];
-
-  // PF ECR — monthly, due 15th of following month
-  for (const { month, year } of pfMonthList) {
-    const dueYear = month === 12 ? year + 1 : year;
-    const dueMonth = month === 12 ? 1 : month + 1;
-    const dueDate = new Date(dueYear, dueMonth - 1, 15);
-    const periodLabel = new Date(year, month - 1, 1).toLocaleString("en-IN", { month: "short", year: "numeric" });
-    rows.push({
-      id: `pf-${year}-${month}`,
-      label: `PF ECR — ${periodLabel}`,
-      description: "Electronic Challan cum Return — EPFO Unified Portal (EPF Act)",
-      dueDate: dueDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-      dueDateObj: dueDate,
-      portal: "EPFO Unified Portal",
-      status: dueDateStatus(dueDate, today),
-      category: "PF",
-    });
-  }
 
   // ESI — half-yearly
   const esiDue1 = new Date(start, 10, 11); // Nov 11 — Apr-Sep period
@@ -186,38 +191,39 @@ function buildStatutoryCalendar(fy: string, today: Date): StatutoryDueRow[] {
     category: "ESI",
   });
 
-  // PT — monthly, last day of each month
-  for (const { month, year } of pfMonthList) {
-    const dueDate = new Date(year, month, 0); // last day of month
-    const periodLabel = new Date(year, month - 1, 1).toLocaleString("en-IN", { month: "short", year: "numeric" });
-    rows.push({
-      id: `pt-${year}-${month}`,
-      label: `PT Challan — ${periodLabel}`,
-      description: "Monthly Professional Tax challan — State Treasury (Maharashtra: ₹200 if > ₹10,000)",
-      dueDate: dueDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-      dueDateObj: dueDate,
-      portal: "State Treasury Portal",
-      status: dueDateStatus(dueDate, today),
-      category: "PT",
-    });
+  // ── Everything the engine owns ──────────────────────────────────────────
+  for (const m of served?.months ?? []) {
+    const periodLabel = new Date(m.year, m.month - 1, 1)
+      .toLocaleString("en-IN", { month: "short", year: "numeric" });
+    for (const d of m.deposits) {
+      const due = fromLocalISO(d.due_date);
+      if (!due) continue;
+      rows.push({
+        id: `deposit-${m.year}-${m.month}-${d.label}`,
+        label: `${d.label} — ${periodLabel}`,
+        description: `${d.statute} — ${d.authority}`,
+        dueDate: due.toLocaleDateString("en-IN",
+          { day: "numeric", month: "short", year: "numeric" }),
+        dueDateObj: due,
+        portal: d.authority,
+        status: dueDateStatus(due, today),
+        category: d.label.startsWith("EPF") ? "PF"
+          : d.label.startsWith("ESI") ? "ESI" : "TDS",
+      });
+    }
   }
-
-  // TDS 24Q — quarterly (IT Act Section 192)
-  const tdsQuarters = [
-    { label: `TDS 24Q Q1 Apr–Jun ${start}`, due: new Date(start, 6, 31) },
-    { label: `TDS 24Q Q2 Jul–Sep ${start}`, due: new Date(start, 9, 31) },
-    { label: `TDS 24Q Q3 Oct–Dec ${start}`, due: new Date(start + 1, 0, 31) },
-    { label: `TDS 24Q Q4 Jan–Mar ${start + 1}`, due: new Date(start + 1, 4, 31) },
-  ];
-  for (const q of tdsQuarters) {
+  for (const r of served?.returns ?? []) {
+    const due = fromLocalISO(r.due_date);
+    if (!due) continue;
     rows.push({
-      id: `tds-${q.label.replace(/\s+/g, "-")}`,
-      label: q.label,
-      description: "Quarterly TDS return on salary — IT Act Section 192 — e-filing portal (incometax.gov.in)",
-      dueDate: q.due.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-      dueDateObj: q.due,
+      id: `return-${r.quarter}`,
+      label: `${r.label} — FY ${fy}`,
+      description: `${r.statute} — quarterly TDS return on salary`,
+      dueDate: due.toLocaleDateString("en-IN",
+        { day: "numeric", month: "short", year: "numeric" }),
+      dueDateObj: due,
       portal: "e-filing portal (incometax.gov.in)",
-      status: dueDateStatus(q.due, today),
+      status: dueDateStatus(due, today),
       category: "TDS",
     });
   }
@@ -1164,7 +1170,27 @@ function StatutoryDuesCalendarTab() {
   const [selectedFy, setSelectedFy] = useState(fyValue);
   const [filterCategory, setFilterCategory] = useState<CategoryFilter>("ALL");
 
-  const allRows = buildStatutoryCalendar(selectedFy, today);
+  // THE ENGINE'S DATES (PAY-19) — one call for the whole year. Until this,
+  // every date on this calendar was computed in the browser, and three of them
+  // were wrong: an invented monthly PT row, and the ESI and salary-TDS deposits
+  // simply absent.
+  const [servedDates, setServedDates] = useState<PayrollDepositDueDates_FY | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.compliance.payrollDepositDueDatesForFy(selectedFy);
+        if (!cancelled && res?.success && res.data) setServedDates(res.data);
+      } catch {
+        // The half-yearly ESI return is still built locally, so the calendar
+        // shows what it can rather than nothing.
+        if (!cancelled) setServedDates(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedFy]);
+
+  const allRows = buildStatutoryCalendar(selectedFy, today, servedDates);
   const rows = filterCategory === "ALL" ? allRows : allRows.filter(r => r.category === filterCategory);
 
   const overdue = allRows.filter(r => r.status === "overdue").length;
@@ -1186,7 +1212,14 @@ function StatutoryDuesCalendarTab() {
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-base">Statutory Dues Calendar</CardTitle>
-            <p className="text-xs text-[#64748B] mt-0.5">PF ECR, ESI, PT &amp; TDS 24Q due dates — colour-coded by status</p>
+            {/* The subtitle said "PT" and the calendar carried an INVENTED
+                monthly PT row for every client (PAY-19). It no longer does —
+                the date is per state and this app models four of twenty-two —
+                and the gap below says so rather than the row going quiet. */}
+            <p className="text-xs text-[#64748B] mt-0.5">EPF, ESI and salary-TDS deposits and the quarterly TDS returns — colour-coded by status</p>
+            {(servedDates?.gaps ?? []).map(g => (
+              <p key={g} className="text-xs text-amber-700 mt-1.5 max-w-2xl">{g}</p>
+            ))}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <select

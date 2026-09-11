@@ -1176,8 +1176,11 @@ EXEMPT: dict[str, str] = {
     "/api/year-end/mappings/bulk":
         "same table, the bulk-upsert variant.",
     "/api/year-end/mappings/defaults":
-        "same table — default mapping suggestions plus firm-level "
-        "auto-initialization from the firm's own chart of accounts.",
+        "same table — the per-account_type default suggestions, read-only. "
+        "It used to auto-initialize the whole firm's mappings from its chart "
+        "of accounts on a GET; that write is gone, because the classification "
+        "is derived on every read now and freezing it detached the year-end "
+        "statements from the CA's own Schedule III decisions.",
     "/api/clients":
         "shared by GET list_clients and POST create_client. create_client "
         "makes a brand-new client — there is no existing client_id to check "
@@ -1382,6 +1385,19 @@ EXEMPT: dict[str, str] = {
     "/api/compliance/due-dates/calculate":
         "plain year/month query params — GST/ITR due-date math (CGST Act "
         "§§37/39), no client_id, nothing stored or read.",
+    "/api/compliance/payroll-deposit-due-dates/fy":
+        "a financial-year label and nothing else — the same arithmetic as the "
+        "per-month route below, for all twelve wage months at once because the "
+        "firm-level payroll report is a whole-year calendar. Names no assessee "
+        "and reads no row.",
+    "/api/compliance/payroll-deposit-due-dates":
+        "a year and a month and nothing else — the three statutory deposits a "
+        "payroll month gives rise to (EPF Scheme para 38(1), ESI reg. 31, "
+        "IT Rule 30(2)) and the four TDS return dates of its financial year "
+        "(Rule 31A(2)). It names no assessee and reads no row; the same shape "
+        "as /due-dates/calculate above, and exempt for the same reason. It "
+        "exists because the two payroll calendars in apps/web were computing "
+        "these in the browser and getting them wrong (PAY-19).",
     "/api/compliance/tax-audit-due-dates":
         "a financial-year label and nothing else — IT Act §44AB Explanation "
         "(ii) arithmetic (the specified date is one month before the §139(1) "

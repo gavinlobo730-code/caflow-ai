@@ -20,6 +20,7 @@ import {
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import {
   getTDSDeductions, getTDSChallans,
@@ -251,9 +252,19 @@ export default function TDSReturnsPage() {
             <label className="block text-xs font-medium text-[#334155] mb-1">Financial Year</label>
             <select value={financialYear} onChange={e => setFinancialYear(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
-              <option value="2025-26">2025-26</option>
-              <option value="2024-25">2024-25</option>
-              <option value="2023-24">2023-24</option>
+              {/* DERIVED FROM THE CLOCK, NOT LISTED (TDS-18).
+                  This was three hardcoded years ending at 2025-26 while the
+                  page's own default is `currentFinancialYear()` — 2026-27
+                  today. So the control rendered BLANK over a state the list
+                  did not contain, the API returned form '140' for it, and the
+                  save hit tds_returns' `return_type IN ('24Q','26Q','27Q',
+                  '27EQ')` CHECK, which the CA saw as "Failed to save TDS
+                  return". A screen whose default its own dropdown cannot
+                  express is broken on the day the year turns, with nothing
+                  saying so. */}
+              {financialYearChoicesAround(null).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
             </select>
           </div>
           <div>

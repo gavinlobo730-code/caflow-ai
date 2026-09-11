@@ -14,67 +14,21 @@ from typing import Dict, Any
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 # ── Schedule III line codes ───────────────────────────────────────────────────
-# Companies Act 2013, Schedule III, Part I — Balance Sheet
-
-BS_EQUITY_LIABILITY_LINES = [
-    "share_capital",
-    "reserves_and_surplus",
-    "long_term_borrowings",
-    "deferred_tax_liabilities",
-    "other_long_term_liabilities",
-    "long_term_provisions",
-    "short_term_borrowings",
-    "trade_payables",
-    "other_current_liabilities",
-    "short_term_provisions",
-]
-
-BS_ASSET_LINES = [
-    "tangible_assets",
-    "intangible_assets",
-    "capital_wip",
-    "long_term_investments",
-    "deferred_tax_assets",
-    "long_term_loans_and_advances",
-    "other_non_current_assets",
-    "current_investments",
-    "inventories",
-    "trade_receivables",
-    "cash_and_bank",
-    "short_term_loans_and_advances",
-    "other_current_assets",
-]
-
-# Companies Act 2013, Schedule III, Part II — Statement of Profit & Loss
-PL_INCOME_LINES = [
-    "revenue_from_operations",
-    "other_income",
-]
-
-PL_EXPENSE_LINES = [
-    "cost_of_materials_consumed",
-    "purchases_of_stock_in_trade",
-    "changes_in_inventories",
-    "employee_benefit_expense",
-    "finance_costs",
-    "depreciation_and_amortisation",
-    "other_expenses",
-]
-
-# Schedule III, Part II, item VII: "Tax expense: (1) Current tax
-# (2) Deferred tax" is its own item, struck AFTER profit before tax — not one
-# of the expenses that produce it. These lines are therefore deliberately NOT
-# in PL_EXPENSE_LINES: including them would subtract the tax charge twice,
-# once inside PBT and once from it.
-PL_TAX_LINES = [
-    "current_tax",
-    "deferred_tax",
-]
-
-# Account types that behave as credit-normal (liabilities, income, equity)
-# For assets/expenses: balance = SUM(debit_paise) - SUM(credit_paise)
-# For liabilities/income/equity: balance = SUM(credit_paise) - SUM(debit_paise)
-_CREDIT_NORMAL_LINES = set(BS_EQUITY_LIABILITY_LINES) | set(PL_INCOME_LINES)
+# Companies Act 2013, Schedule III. The taxonomy itself lives in
+# domain/reporting/year_end_lines beside the function that classifies an account
+# into it — re-exported here because a dozen modules import these names from
+# this service and the names are what they are.
+from domain.reporting.year_end_lines import (        # noqa: E402
+    BS_ASSET_LINES,
+    BS_EQUITY_LIABILITY_LINES,
+    CREDIT_NORMAL_LINES as _CREDIT_NORMAL_LINES,
+    PL_EXPENSE_LINES,
+    PL_INCOME_LINES,
+    PL_TAX_LINES,
+    is_balance_sheet_line,
+    normal_balance_for,
+    schedule_line_for_account,
+)
 
 
 def _mock_statements(client_id: str, firm_id: str, fy_start: str, fy_end: str) -> Dict[str, Any]:
@@ -499,7 +453,36 @@ def generate_financial_statements(
         | set(pr_cum_debit) | set(pr_cum_credit)
     )
 
-    # ── 3. Load account_group_mappings for this firm ─────────────────────────
+    # ── 3. Decide each account's schedule line ───────────────────────────────
+    #
+    # A ROW IN account_group_mappings IS AN OVERRIDE, NOT THE ONLY SOURCE.
+    #
+    # This step used to read that table and nothing else, and send every
+    # account it did not find to `other_current_assets`. Measured on
+    # production, the table holds ZERO rows — it is written only by a GET on
+    # routers/year_end_mappings that no screen has ever called — so EVERY
+    # account took that branch. Both sides of the Balance Sheet then came to
+    # Σ(debit − credit) over the whole ledger, which for a balanced ledger is
+    # nil: total assets 0, total equity and liabilities 0, revenue 0, every
+    # expense 0, and the `total_assets == total_equity_and_liabilities` check
+    # at the end of this function PASSING. A Balance Sheet of zeros that
+    # certifies it balances is the worst shape a wrong number can take, because
+    # the one guard that exists confirms it.
+    #
+    # The line is now DERIVED from the account itself —
+    # domain/reporting/year_end_lines.schedule_line_for_account, the same
+    # function the mappings router uses and the same Schedule III vocabulary
+    # the live Balance Sheet classifies with — and a stored mapping row
+    # overrides it where a firm has recorded one. So the CA's own
+    # `schedule_iii_mapping`, which production HAS on 50 accounts, reaches the
+    # year-end statements instead of being ignored for want of a cache nobody
+    # filled.
+    #
+    # chart_of_accounts, NOT the `accounts` view: the view is `SELECT *` frozen
+    # at migration 016 and does not carry `schedule_iii_mapping` (migration
+    # 057). Reading it would silently drop the CA's decision — the same defect
+    # by a different route. Rows here are bounded by the number of ACCOUNTS,
+    # not by transaction volume, so this obeys the reporting rule.
     mappings_res = (
         supabase
         .table("account_group_mappings")
@@ -510,6 +493,33 @@ def generate_financial_statements(
     mapping_lookup: Dict[str, dict] = {
         m["account_id"]: m for m in (mappings_res.data or [])
     }
+
+    unmapped = [a for a in all_account_ids if a not in mapping_lookup]
+    if unmapped:
+        accounts_res = (
+            supabase
+            .table("chart_of_accounts")
+            .select("id, account_type, account_subtype, schedule_iii_mapping")
+            .eq("firm_id", firm_id)
+            .in_("id", unmapped)
+            .execute()
+        )
+        for acct in (accounts_res.data or []):
+            # A STORED ROW WINS IN CODE, not merely because the query above
+            # filtered it out. The `.in_(unmapped)` filter and this check say
+            # the same thing, and only one of them is still true if somebody
+            # later widens the query to fetch the whole chart in one go.
+            if acct["id"] in mapping_lookup:
+                continue
+            line = schedule_line_for_account(
+                acct.get("account_type"), acct.get("account_subtype"),
+                acct.get("schedule_iii_mapping"))
+            mapping_lookup[acct["id"]] = {
+                "account_id":     acct["id"],
+                "schedule_line":  line,
+                "normal_balance": normal_balance_for(line),
+                "derived":        True,
+            }
 
     # ── 4. Aggregate by schedule_line (integer paise) ────────────────────────
     # One period's aggregation, so the PRECEDING period is computed by the
@@ -523,17 +533,19 @@ def generate_financial_statements(
         for acct_id in all_account_ids:
             mapping = mapping_lookup.get(acct_id)
             if not mapping:
-                # Unmapped accounts go to other_current_assets (a Balance Sheet line)
+                # Step 3 gives EVERY account id a mapping, stored or derived,
+                # so reaching here means the id has no chart_of_accounts row in
+                # this firm at all — a journal line against a foreign or
+                # deleted account. other_current_assets keeps it on the balance
+                # sheet so the statement still foots and the figure is visible
+                # rather than dropped.
                 schedule_line  = "other_current_assets"
                 normal_balance = "debit"
             else:
                 schedule_line  = mapping["schedule_line"]
                 normal_balance = mapping.get("normal_balance", "debit")
 
-            is_balance_sheet_line = (
-                schedule_line in BS_EQUITY_LIABILITY_LINES or schedule_line in BS_ASSET_LINES
-            )
-            if is_balance_sheet_line:
+            if is_balance_sheet_line(schedule_line):
                 dr = bs_dr.get(acct_id, 0)
                 cr = bs_cr.get(acct_id, 0)
             else:

@@ -116,20 +116,41 @@ def test_the_five_rows_sum_to_table_4c_plus_4b():
 
 @pytest.mark.parametrize("interstate", [False, True])
 def test_the_rule_36_4_cap_cannot_break_that_identity(interstate):
-    """If the cap trims credit below the reverse-charge tax, ISRC is capped so
-    the rows still sum. Otherwise 4(A) would exceed the credit that exists."""
+    """The cap trims the §37 credit; ISRC is still capped at what is available,
+    so the five 4(A) rows sum to exactly 4(A). Otherwise the return files a
+    4(A) that does not reconcile with its own 4(C).
+
+    THE FIXTURE CHANGED WITH GST-19 AND THE CHANGE IS THE POINT. It used to be
+    a purchase that was ENTIRELY reverse-charge, capped against a small 2A —
+    a scenario the corrected rule makes unreachable, because Rule 36(4) reaches
+    only invoices "the details of which are required to be furnished by the
+    supplier under sub-section (1) of section 37" and a §31(3)(f) self-invoice
+    has no supplier to have furnished it. So the cap can no longer bite on an
+    all-RCM month at all.
+
+    It now MIXES the two, which is the month this actually happens in: an
+    ordinary bill the supplier has not filed, beside a reverse-charge supply.
+    The b2b credit is trimmed to the 2A, the self-assessed credit is not, and
+    the identity is asserted across both.
+    """
     from domain.gst.gstr3b_computer import GSTR2ARecord
     # Both directions: an inter-state reverse charge lands on IGST, an
     # intra-state one splits CGST/SGST. Each head caps independently, so a cap
     # applied to only some of them would pass a single-direction test.
     if interstate:
-        purchase = PurchaseTransaction(1_00000, 0, 0, 18000, 0, True)
+        purchases = [PurchaseTransaction(2_50000, 0, 0, 45000, 0, False),
+                     PurchaseTransaction(1_00000, 0, 0, 18000, 0, True)]
         two_a = GSTR2ARecord(cgst_paise=0, sgst_paise=0, igst_paise=2000)
     else:
-        purchase = REVERSE_CHARGE
+        purchases = [ORDINARY, REVERSE_CHARGE]
         two_a = GSTR2ARecord(cgst_paise=1000, sgst_paise=1000, igst_paise=0)
-    r = compute_gstr3b([_sale(90000, 90000)], [purchase], [two_a], [])
+    r = compute_gstr3b([_sale(90000, 90000)], purchases, [two_a], [])
     assert r.itc_capped_by_2a is True, "the fixture did not trigger the cap"
+    # The self-assessed half survived the cap whole — the defect GST-19 names.
+    if interstate:
+        assert r.itc_igst == 2000 + 18000
+    else:
+        assert r.itc_cgst == 1000 + 9000 and r.itc_sgst == 1000 + 9000
     t4 = r.as_gstn_payload(GSTIN, PERIOD)["itc_elg"]
     for head in ("iamt", "camt", "samt", "csamt"):
         assert sum(x[head] for x in t4["itc_avl"]) - \

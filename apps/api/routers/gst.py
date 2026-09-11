@@ -323,6 +323,11 @@ def compute_gstr3b_endpoint(req: GSTR3BRequest, current_user: dict = Depends(rba
                 "eligible_cgst_paise": result.itc_cgst,
                 "eligible_sgst_paise": result.itc_sgst,
                 "rule_36_4_cap_applied": result.itc_capped_by_2a,
+                # Outside the Rule 36(4) cap — see the note beside the same
+                # three fields in services/gst_return_service.py (GST-19).
+                "self_assessed_igst_paise": result.itc_self_assessed_igst,
+                "self_assessed_cgst_paise": result.itc_self_assessed_cgst,
+                "self_assessed_sgst_paise": result.itc_self_assessed_sgst,
             },
             "net_payable": {
                 "igst_paise": result.net_igst,

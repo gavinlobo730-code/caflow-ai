@@ -1036,9 +1036,21 @@ function ReleaseTab({ clientId }: { clientId: string }) {
     }
     setBusy(run.id); setMsg(null);
     try {
-      const res = await api.payroll.reverseRun(run.id) as { success?: boolean; error?: string | null };
+      const res = await api.payroll.reverseRun(run.id) as {
+        success?: boolean; error?: string | null;
+        data?: { loan_notes?: string[] } | null;
+      };
       if (res?.success === false) { setMsg({ kind: "err", text: res.error ?? "Could not reverse the run." }); return; }
-      setMsg({ kind: "ok", text: `Payroll for ${run.month} reversed and reopened.` });
+      // The reversal puts each borrower's loan balance back (PAY-08). It says
+      // so only when it could NOT be exact — a run finalised before the
+      // software recorded which loan each recovery came off, for an employee
+      // with more than one. Shown as a warning rather than swallowed, because
+      // the person who has to check the split is the one who just pressed
+      // Reverse; a note lost here is a balance nobody revisits.
+      const notes = res?.data?.loan_notes ?? [];
+      setMsg(notes.length
+        ? { kind: "err", text: `Payroll for ${run.month} reversed and reopened. ${notes.join(" ")}` }
+        : { kind: "ok", text: `Payroll for ${run.month} reversed and reopened. Any loan recovery this run made has been put back.` });
       await load();
     } catch (e) {
       setMsg({ kind: "err", text: e instanceof Error ? e.message : "Could not reverse the run." });
