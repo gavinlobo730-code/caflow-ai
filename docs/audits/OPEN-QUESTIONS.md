@@ -49,6 +49,32 @@ safe; keeping it costs a screen nobody can act on.
 then we will go to the open questions." Kept here only so the answer is on the
 record — this is no longer a question.
 
+### A4. Which spelling goes on the printed financial statements?
+
+**NEW, 11 September 2026, and it is the only genuinely open decision here.**
+
+Three places in the product name the lines of a Schedule III financial
+statement, and they disagree on spelling — the screen a CA picks from says
+"Employee Benefits Expense" and "Short-term Borrowings", the code that prints
+the statement says "Employee Benefit Expense" and "Short Term Borrowings".
+Because the two do not match exactly, **nine of the fifty mappings CAs have
+already made in production are silently discarded** and the statement falls
+back to guessing from the account's subtype.
+
+Making them agree is straightforward. **Which spelling is canonical is not**,
+because these words are PRINTED on a statutory document and the authority is
+Schedule III itself — which could not be read: `icai.org` and every `.gov.in`
+are refused at the egress proxy.
+
+**Recommendation: adopt the screen's spellings.** They are what CAs have been
+choosing, they are what production holds, and they match the Act as far as
+memory goes. That is convergence, not a reading of the statute, which is why it
+is a question rather than a decision already taken.
+
+**Nothing is blocked either way.** An alias table honours a mapping whichever
+way it was spelled, so the nine discarded choices are recovered regardless; only
+the printed wording turns on the answer.
+
 ---
 
 ## B. Facts nobody in the repo holds
@@ -120,23 +146,31 @@ level tracking would settle it properly and is not built.
 
 ---
 
-## C. Commercial gates — months, not code
+## C. Commercial gates — PARKED, not pending
 
-`docs/compliance/07-getting-permission-to-file.md` is the playbook.
+**Owner decision, 11 September 2026: no registrations are being pursued.**
+Nothing in this section is a question, a task, or something anybody is waiting
+on. It is here so that a later decision to resume starts from research already
+done rather than from scratch.
 
-| # | Gate | State |
-|---|---|---|
-| C1 | Third Party Software Utility Developer registration (`SW########`) | **self-service, available now** |
-| C2 | NIC e-invoice sandbox | **free now** |
-| C3 | ERI Type-2 (income tax filing) | months of commercial work |
-| C4 | GSP or an ASP sub-licence (GST filing) | months; gates everything GST |
-| C5 | NIC production credentials (e-invoice / e-way bill) | months |
-| C6 | An India static-IP egress hop | needed by several of the above |
-| C7 | MCA, EPFO, ESIC filing | **no route exists** — there is no API to be granted |
-| C8 | Account Aggregator (live bank feeds) | **CLOSED** — no FIU licence exists to apply for and no published purpose code covers bookkeeping. Route 3 (do not consume via AA) chosen 2026-09-06. Reopens only if a purpose code is added |
+What that covers: the Third Party Software Utility Developer registration, the
+NIC e-invoice sandbox and production credentials, ERI for income-tax filing,
+GSP or an ASP sub-licence for GST filing, and an India static-IP egress hop.
 
-e-invoice IRN and e-way bill remain the only two statutory outputs software can
-complete end to end, because the IRP signs and there is no taxpayer signature.
+Two things are worth remembering if it ever reopens, and both are in
+`docs/compliance/08-government-api-access-the-verified-position.md`:
+
+- **e-invoice and e-way bill are the only two statutory outputs software can
+  complete end to end**, and their sandbox is free and self-service. They are
+  the cheapest place to restart.
+- **MCA, EPFO, ESIC and professional tax have no route at all** — no API, no
+  programme, nothing to apply for, for us or for any competitor. That one is
+  not a decision; it is a fact about the portals.
+
+**Account Aggregator (live bank feeds) stays CLOSED** on its own merits, decided
+2026-09-06 — no FIU licence exists for a firm like this to apply for, and no
+published purpose code covers bookkeeping. It reopens only if a purpose code is
+added, which nobody is waiting on.
 
 ---
 
@@ -220,65 +254,40 @@ we can go through this together."
 
 ---
 
-## F. Pages I need opened — egress is refused here
+## F. Pages that would need a human with a browser — MOSTLY CLOSED
 
-Added 11 September 2026. The owner offered: *"if there are any websites that you
-can't go through and need info from them you can tell me I can go through them
-and give you images."* The full list with what is needed off each page is
-**§6.4 of `docs/compliance/08-government-api-access-the-verified-position.md`**;
-this is the register entry so it is not lost.
+### What closed on 11 September 2026
 
-### F1. The ESIC monthly-contribution Excel template — BLOCKS Track F1
+**ESIC's own filing manual was obtained and read in full.** It settled the file
+format, confirmed the six columns we already emit, and — more usefully — settled
+the DESIGN: ESIC says to fill the portal's own template and not a lookalike, so
+Track F1 fills the CA's downloaded workbook rather than minting one. It also
+found a live defect: ESI contributions round UP to the next whole rupee and we
+were computing to the paise. Fixed.
 
-`esic.gov.in` → employer login → File Monthly Contribution → *Sample MC Excel
-Template*. Need the file itself, or row 1 headers + row 2 sample + sheet name,
-and the stated accepted extension.
+### What is parked with the registrations
 
-**PARTLY CLOSED 11-09-2026.** ESIC's own filing manual was obtained and read,
-which settled the format (`.xls`, Excel 97-2003, all columns Text, no formulas)
-and — more usefully — settled the DESIGN: the manual says to use the portal's
-template and *not* a lookalike, so Track F1 fills the CA's own downloaded
-workbook rather than minting one. A real template is now wanted only as a test
-fixture. `domain/payroll/esic.py` emitting CSV remains the live defect.
+The ERI registration page, GSTN's GSP eligibility criteria, `test-dev.tdscpc.gov.in`
+and the Third Party Software Utility Developer page all existed to price
+registrations nobody is pursuing. **Parked.** They are listed with what is needed
+off each in §6.4 of the filing-access paper, so resuming costs an afternoon.
 
-### F2. The ESIC zero-wage reason codes — closes a named refusal
+### The one that is still a real product gap
 
-Same screen. The codes, their meanings, and which require a last working day.
-This is one of the rows on `CLAUDE.md`'s "statutory data a human has to supply"
-table; the list closes it.
+**The ESIC numeric reason codes.** They explain why an insured person had zero
+wages in a month, and ESIC surfaces the list only inside the employer portal at
+filing time. `domain/payroll/esic.py` deliberately refuses to invent one and
+withholds the whole file until a CA supplies it — which the manual now shows is
+more right than when it was written, because **a zero-wage row removes that
+person from the establishment**, so a guessed code would de-register somebody
+rather than merely misreport them.
 
-### F3. The EPFO ECR upload screen after the Sept-2025 revamp
+**Needs an ESIC employer login, which this firm does not have.** Not blocking:
+the refusal is safe and the CA can type the code. It closes the day somebody is
+next inside a client's ESIC portal.
 
-Format instructions, the Regular / Supplementary / Revised selector, the wage
-month dropdown, the Due Deposit Balance Summary. Confirms the `.txt` / 11 field
-/ `#~#` format is genuinely unchanged and tells Track F3 what to mirror.
+### Two statutory facts that would tidy things up, neither urgent
 
-### F4. `test-dev.tdscpc.gov.in` — real developer programme, or internal host?
-
-The only lead anywhere toward a TDS filing API. If real, §4.5 changes. If it is
-an internal test host with a public DNS name, I close the lead.
-
-### F5. ERI registration — type, fee, bank guarantee
-
-`incometax.gov.in/iec/foportal/help/eri/registration`. Email 1 of the six drafted
-in §10 exists only because I could not read this page.
-
-### F6. GSTN GSP eligibility — is there a turnover threshold?
-
-The uploaded external research claims ₹50 lakh; my searches could not corroborate
-it. Most likely single number to decide whether the GSP route is open to a firm
-this size.
-
-### F7–F13
-
-Third Party Software Utility Developer registration page; SAG Infotech's Gen
-CompLaw MCA pages (confirms mechanism B in §11); RazorpayX statutory-compliance
-docs (confirms mechanism C); greytHR's ECR page (the load-bearing quote);
-Maharashtra PT notification 28-02-2026 on Rule 11(3); Odisha PT repeal and
-Punjab Development Tax (see B12 — same question, this is how to close it);
-current MCA XBRL validation tool version.
-
-**Standing note:** if any page says something different from what
-`08-government-api-access-the-verified-position.md` says, that is the most
-valuable outcome of the exercise. Send it and the document gets corrected with a
-line saying what changed.
+Odisha's reported professional-tax repeal and Punjab's Development Tax (see
+B12 — naming a state that no longer levies produces a false gap warning, never a
+wrong deduction), and the current MCA XBRL validation tool version.
