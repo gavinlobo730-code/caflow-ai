@@ -3,100 +3,135 @@
 **This file is the register. Nothing is closed here without a decision recorded
 beside it, and nothing gets dropped because a context window ended.**
 
-Three kinds of thing live here, and they are kept apart because they need
-different actions:
+**Last rewritten: 11 September 2026**, after migration 366. Everything that had
+been answered, fixed or overtaken was REMOVED rather than left with a "FIXED"
+banner on it — the record of what was fixed lives in
+`docs/audits/WHERE-WE-STOPPED.md`, and a register half full of closed items
+stops being read. What is below is open.
 
-* **A. Owner decisions** — the code is fine either way; somebody has to choose.
+Five kinds of thing, kept apart because they need different actions:
+
+* **A. Owner decisions** — the code works either way; somebody has to choose.
 * **B. Facts nobody in the repo holds** — a state notification, a bank's rate, a
-  schema download. Code cannot derive them and guessing produces a confidently
+  schema download. Code cannot derive them, and guessing produces a confidently
   wrong number in somebody's pay or return.
-* **C. Commercial gates** — a registration or a licence. Months, not code.
-* **E. Operational** — something outside the code is failing and somebody has to
-  look at a console this session cannot reach.
+* **C. Standing decisions, and what would reopen each** — already decided, kept
+  because the trigger matters.
+* **D. Known-wrong, reported, deliberately not fixed** — real defects with a
+  reason for the delay.
+* **E. Needs a human with a browser or a login** — nothing in the repo can get it.
 
-Last reviewed: 11 September 2026 (after Phase 11g).
+---
+
+## ⚠️ Read this before working from any audit document
+
+**Sixteen of twenty-two audit claims checked on 11 September 2026 were stale or
+already closed.** Six "nothing anywhere does X" claims, six of the seven §2
+items in `2026-09-08b-what-is-left.md`, and four of its eight §4 carry-overs.
+
+| claim | what was actually there |
+|---|---|
+| FA-10 — no edit path for a fixed asset | the edit path existed |
+| the workflow repository has no join | the join existed |
+| F7 — nothing tracks a DSC | `dsc_records` since migration **014** |
+| F5 — PT needs state slabs a human must supply first | `firm_pt_slabs` since migration **327** |
+| FA-02 — no edit path, a wrong rate frozen for life | an edit path, a detector, and a statutory reason not to backfill |
+| `/api/dsc` has no caller *(this session's own new ratchet)* | it had two — the guard matches paths, not verbs |
+
+Four of those would have shipped a **second implementation of something that
+already worked**. One was produced by a guard written the same week.
+
+**So the ~228 remaining findings are LEADS, not a work list.** Read the code
+before building against any of them, including anything written this session.
 
 ---
 
 ## A. Owner decisions
 
-### A1. Should a filed GST return freeze the whole ledger, or only what fed it?
-**Status: decided by me, reversible on one word.** Phase 12a (migration 361)
-splits "closed" in two: the posting kernel enforces the CA's own deliberate
-closures (firm year lock, client year-end), and the filed-return branch is
-asked only where a document that FEEDS a return is written — invoices, bills,
-credit and debit notes, and the manual journal.
+### A1. Does the §80CCD(2) salary base include arrears of an earlier year?
 
-The alternative is Tally's shape: a period lock that blocks everything. I did
-not take it because GSTR-1 for June is filed on 11 July and GSTR-3B on the 20th,
-while June's bank reconciliation happens after both — so a hard freeze would
-stop every June receipt, payment, bank entry, depreciation charge and payroll
-accrual from the 11th onwards, for every client, every month.
+**The only genuinely open decision here, and it blocks a one-line fix.**
 
-**If you want the harder rule, it is now a one-line change** — the kernel calls
-`period_closure_reason`; pointing it at `period_lock_reason` gives you the
-freeze.
+`routers/payroll.py` computes `(basic + da) * months_in_year` and passes it as
+`basic_plus_da_paise` (the §10(13A) HRA base) but **never passes
+`salary_for_80ccd2_paise`**, which `declarations.compute` accepts and
+`itr_engine` uses. The fallback is `req.gross_salary_paise` — which includes
+HRA and every other allowance, the exact things the **Explanation to §80CCD**
+expressly excludes ("'salary' includes dearness allowance, if the terms of
+employment so provide, but excludes all other allowances and perquisites").
 
-### A2. `/gst/reconciliation` — keep the browser-only screen, or delete it?
-Two screens reconcile GSTR-2B. The real one is on the client GST tab and writes
-`gstr2a_records`. `/gst/reconciliation` matches two uploaded files in the
-browser and saves nothing; it carries a banner saying so and pointing at the
-other. Recorded in `docs/audits/2026-09-08-what-is-left.md` §6b. Deleting it is
-safe; keeping it costs a screen nobody can act on.
+**So the 14% cap is computed on too large a base and §80CCD(2) is OVER-allowed,
+under-stating tax.** That is PAY-22, and it is live.
 
-### A3. Which of Phase 11's fifteen features are worth building?
-**ANSWERED 10 September 2026: all of them.** "Once all the 13 phases are done
-then we will go to the open questions." Kept here only so the answer is on the
-record — this is no longer a question.
+**What is not settled** is which figure to pass. The `basic_plus_da_paise`
+already computed is deliberately the RECURRING basic and DA, with arrears
+excluded — and that exclusion exists for a §10(13A) reason (last year's arrears
+must not inflate this year's HRA base) that does not obviously carry to
+§80CCD(2), whose cap is "of his salary **in the previous year**" and whose
+employer contribution may well have been made on the arrears too.
 
-### A4. Which spelling goes on the printed financial statements?
+**Recommendation: pass the recurring basic + DA now.** It is unambiguously
+closer to the statute than gross, and the error direction is safe — a smaller
+base means a smaller deduction means more tax, never less. The arrears question
+can then be settled without anything being wrong in the meantime.
 
-**NEW, 11 September 2026, and it is the only genuinely open decision here.**
+### A2. Should the rule-based deadlines move out of the browser?
 
-Three places in the product name the lines of a Schedule III financial
-statement, and they disagree on spelling — the screen a CA picks from says
-"Employee Benefits Expense" and "Short-term Borrowings", the code that prints
-the statement says "Employee Benefit Expense" and "Short Term Borrowings".
-Because the two do not match exactly, **nine of the fifty mappings CAs have
-already made in production are silently discarded** and the statement falls
-back to guessing from the account's subtype.
+`app/calendar/page.tsx` still computes **twelve** deadlines in the browser —
+GSTR-1, GSTR-3B, GSTR-9, the four advance-tax instalments, the four TDS return
+quarters, and DIR-3 KYC. **They are correct today**: every one falls out of the
+calendar date alone with no client fact involved, which is why they survived
+when the three MCA ones (which need each company's own AGM date) had to move
+server-side.
 
-Making them agree is straightforward. **Which spelling is canonical is not**,
-because these words are PRINTED on a statutory document and the authority is
-Schedule III itself — which could not be read: `icai.org` and every `.gov.in`
-are refused at the egress proxy.
+They nevertheless duplicate `services/compliance_engine.py`, which CLAUDE.md
+names as the single source for every due date. Two implementations of one rule
+drift; these have not yet.
 
-**Recommendation: adopt the screen's spellings.** They are what CAs have been
-choosing, they are what production holds, and they match the Act as far as
-memory goes. That is convergence, not a reading of the statute, which is why it
-is a question rather than a decision already taken.
-
-**Nothing is blocked either way.** An alias table honours a mapping whichever
-way it was spelled, so the nine discarded choices are recovered regardless; only
-the printed wording turns on the answer.
+**Not urgent, and it is a judgement about how much duplication to carry.**
 
 ---
 
 ## B. Facts nobody in the repo holds
 
 Each of these REFUSES rather than guesses, and the refusal comes back as a named
-gap. Adding one is a human step. Full detail in CLAUDE.md §3b.
+gap in the response. Adding one is a human step. Full detail in CLAUDE.md §3b.
 
 | # | What is missing | Where it is refused | Why it cannot be derived |
 |---|---|---|---|
-| B1 | Professional tax slabs for **18 more states** | `routers/payroll.py` holds only MH, TN, KA, WB; `domain/payroll/professional_tax.py` names the rest | per state, per scheduled employment, revised by notification |
-| B2 | **Labour Welfare Fund** amounts for all 16 states that levy it | `domain/payroll/lwf.py` | same |
+| B1 | Professional tax slabs for **18 more states** | `routers/payroll.py` holds only MH, TN, KA, WB; `domain/payroll/professional_tax.py` names the rest | per state, per scheduled employment, revised by notification. **Partly relieved**: `public.firm_pt_slabs` (migration 327) lets a firm record any state's slabs against the notification they read |
+| B2 | **Labour Welfare Fund** amounts for all 16 states that levy it | `domain/payroll/lwf.py` | same, and with no firm-entry table yet |
 | B3 | The **seven ITR JSON schemas** per assessment year | `domain/income_tax/schemas/`, wired in `itr_schema.py` | published per form per AY at incometax.gov.in; cannot be generated |
 | B4 | **DTAA rates** by country × nature of income | `public.dtaa_treaty_rates` (migration 310) | ninety-odd treaties, MFN clauses needing their own §90(1) notification, several with no FTS article at all |
 | B5 | **Bonus Act §12 minimum wage** per state / employment / skill grade | `domain/payroll/bonus.py` | §12 computes on ₹7,000 **or the minimum wage, whichever is HIGHER** |
 | B6 | **SBI's Rule 3(7)(i) rate** | `domain/payroll/perquisites.py` | published by the bank on the first day of the previous year |
-| B7 | **ESIC reason codes** | `domain/payroll/esic.py` | ESIC's own list |
+| B7 | **ESIC reason codes** | `domain/payroll/esic.py` | ESIC's own list — see E1 |
 | B8 | An earlier year's **total income for §89** | `domain/payroll/arrears.py` | comes off the employee's return; the employer never held it |
 | B9 | **Prior gratuity / leave exemption used** | `gratuity.py`, `leave_encashment.py` | §10(10) and §10(10AA) are LIFETIME limits across employers |
 | B10 | A vendor's **MSMED classification** | `vendors.msme_status` | a fact about the SUPPLIER's Udyam registration; §43B(h) makes it change taxable income |
 | B11 | Which accounts hold **unbilled dues** | `chart_of_accounts.unbilled_dues_side` + `schedule_iii_unbilled_reviews` | an unbilled due has no document; no account name decides it |
+| B12 | **Which director signs which MCA form** | nothing holds it | `mca_directors` exists and `dsc_records` carries a PAN, so the join is possible — but the FACT of who signs what is a human decision nobody records. Until it exists, no "your signatory's DSC expires before this due date" warning can be honest |
+| B13 | **Per-state professional tax RETURN formats** | not built | the remaining half of Track F5. The slab half is done (migration 327 + a 460-line Settings screen); the artefact is a different layout per state, the same twenty-two-way fan |
 
-### B12. Odisha and Punjab professional tax — is the count of 22 right?
+### B14. Does the ESIC portal still refuse `.xlsx` in 2026?
+
+**This is now the ONLY thing that would reopen Track F1's dependency decision.**
+
+F1's `.xls` half was decided NO on 11 September 2026: filling the portal's own
+Excel 97-2003 template needs `xlrd` + `xlwt` + `xlutils`, two of them without a
+release since 2017 and the reader pointed at an untrusted upload inside the
+service holding every client's general ledger. The manual saying Excel 97-2003
+traces to guidance from around **2011**, and egress is blocked here, so the
+premise cannot be checked.
+
+**Nothing is blocked.** What actually bounces an ESIC upload is a missing
+insured person, not a file format — the upload is all-or-nothing against the
+portal's own mapped list — and that check is built
+(`domain/payroll/esic_mapped_ips.py`). If somebody confirms `.xlsx` is accepted,
+the template work becomes cheap and the dependency question disappears
+entirely.
+
+### B15. Odisha and Punjab professional tax — is the count of 22 right?
 `[S]`-graded and **probably one or two too high**. The 7 September research pass
 found Odisha reported as having repealed its levy from 01-04-2026 and Punjab's
 charge described as a Development Tax. Neither was confirmable (egress is
@@ -104,247 +139,143 @@ blocked). The list is deliberately NOT changed: naming a state that no longer
 levies produces a false GAP warning, never a wrong deduction. Settle against the
 state notifications.
 
-### B13. Earlier years' Finance Acts, for §89
+### B16. Earlier years' Finance Acts, for §89
 `rates_for()` substitutes `LATEST_VERIFIED_FY` for a missing year, and §89 is a
 comparison of years AT THEIR OWN RATES — so a substitute makes the whole relief
 a fiction that looks reasonable. The registry holds only 2025-26 and 2026-27, so
 **§89 does not work for most real arrears** until earlier years are added.
 
-### B14. FY 2024-25 capital gains cannot be represented
+### B17. FY 2024-25 capital gains cannot be represented
 `statutory_rates.FYTaxRates` holds one CG rate set per FY, and the Finance
 (No. 2) Act 2024 forked the rates on 23-07-2024 — so 2024-25 straddles. Adding
 it needs pre/post buckets, as the ITR form itself splits them. Post-fork years
 only, today.
 
-### B15. Is the ESI wage base narrower under the Code?
+### B18. Is the ESI wage base narrower under the Code?
 `_compute_esi` uses gross; the Code on Social Security's definition is narrower,
 so ESI may err the other way. **Unconfirmed, deliberately unchanged, and pinned
 by a test** so a later change is deliberate. Gratuity likewise.
 
-### B16. The §92E tax-audit report date
+### B19. The §92E tax-audit report date
 Deliberately not modelled: "one month prior" to 30 November is 30 October by
 calendar arithmetic while professional sources commonly say 31 October, and that
 one-day difference is unconfirmed.
 
-### B17. Which ITR due date applies to an LLP, firm, trust or individual
+### B20. Which ITR due date applies to an LLP, firm, trust or individual
 `compliance_obligation_service.itr_due_date_for_client` decides only three cases
 on facts the app holds and REFUSES the rest, returning 31 July (the earlier of
 the two) with `decided: false` and a named gap. §44AB turns on the year's
 turnover, an LLP's audit on LLP Act §34(4) with Rule 24(8), a trust's on
 §12A(1)(b) — none of those figures is held against a client.
 
-### B18. Which tax head a written-off stock ITC reversal belongs to
-A §17(5)(h) write-off reverses credit that was taken on some mix of CGST/SGST
-and IGST bills, and the write-off does not know which — the inventory module
-carries no lot-to-bill link, so nothing in the books says whether the destroyed
-goods came in interstate. INV-06 splits **intra-state by default** (odd paise to
-CGST), writes the caveat into the register row's `notes`, and takes
+### B21. Which tax head a written-off stock ITC reversal belongs to
+A §17(5)(h) write-off reverses credit taken on some mix of CGST/SGST and IGST
+bills, and the write-off does not know which — the inventory module carries no
+lot-to-bill link. INV-06 splits **intra-state by default** (odd paise to CGST),
+writes the caveat into the register row's `notes`, and takes
 `itc_reversal_is_interstate` on the adjustment so the CA can say otherwise. The
 total reversed is right either way; only the head split is approximated.
-Refusing outright would leave Table 4(B)(1) empty, which was the defect. Lot-
-level tracking would settle it properly and is not built.
+Lot-level tracking would settle it and is not built.
 
 ---
 
-## C. Commercial gates — PARKED, not pending
+## C. Standing decisions, and what would reopen each
 
-**Owner decision, 11 September 2026: no registrations are being pursued.**
-Nothing in this section is a question, a task, or something anybody is waiting
-on. It is here so that a later decision to resume starts from research already
-done rather than from scratch.
+Not questions. Recorded because the REOPENING TRIGGER is the useful part.
 
-What that covers: the Third Party Software Utility Developer registration, the
-NIC e-invoice sandbox and production credentials, ERI for income-tax filing,
-GSP or an ASP sub-licence for GST filing, and an India static-IP egress hop.
-
-Two things are worth remembering if it ever reopens, and both are in
-`docs/compliance/08-government-api-access-the-verified-position.md`:
-
-- **e-invoice and e-way bill are the only two statutory outputs software can
-  complete end to end**, and their sandbox is free and self-service. They are
-  the cheapest place to restart.
-- **MCA, EPFO, ESIC and professional tax have no route at all** — no API, no
-  programme, nothing to apply for, for us or for any competitor. That one is
-  not a decision; it is a fact about the portals.
-
-**Account Aggregator (live bank feeds) stays CLOSED** on its own merits, decided
-2026-09-06 — no FIU licence exists for a firm like this to apply for, and no
-published purpose code covers bookkeeping. It reopens only if a purpose code is
-added, which nobody is waiting on.
+| decision | taken | what would reopen it |
+|---|---|---|
+| **A filed return closes only what FED it**, not the whole ledger — the posting kernel asks the CA's own closures, the filed-return branch guards documents that feed a return (migration 361) | 11 Sep 2026 | Wanting Tally's harder rule. Verified to be **one call site**: `phase2_journal_service` asks `period_lock_service.closure_reason` once, and pointing that at `lock_reason` gives the freeze. Read the reasoning first — GSTR-1 for June is filed on 11 July and GSTR-3B on the 20th, while June's bank reconciliation happens after both, so a hard freeze stops every June receipt, payment, bank entry, depreciation charge and payroll accrual from the 11th onwards |
+| **Schedule III captions take the SCREEN's spelling** — hyphenated `Short-term`, plural `Employee Benefits Expense` | 11 Sep 2026 | Actually reading Schedule III. The decision rests on convergence (screen, stored data, classifier agreed), not on the statute — `icai.org` and every `.gov.in` are refused at the egress proxy. `CAPTION_ALIASES` honours the older spellings, so nothing stored is lost either way |
+| **No BIFF8 dependencies** for the ESIC template | 11 Sep 2026 | B14 above — confirmation that the portal still refuses `.xlsx` |
+| **A DSC is never hard-deleted from the screen** — renew supersedes instead | 11 Sep 2026 | A soft-delete column on `dsc_records`. Today a delete would destroy the record that a certificate ever existed |
+| **No registrations are being pursued** — TPSUD, NIC e-invoice, ERI, GSP, an India static-IP hop | 11 Sep 2026 | A decision to file through the software. e-invoice and e-way bill are the cheapest restart (free, self-service sandbox, and the only two statutory outputs software can complete end to end). **MCA, EPFO, ESIC and professional tax have no route at all** — that one is not a decision, it is a fact about the portals |
+| **Account Aggregator stays closed** | 6 Sep 2026 | A published purpose code covering bookkeeping. No FIU licence exists for a firm like this, and purpose defeats the partner route too. Nobody is waiting on anybody |
 
 ---
 
-## D. Known-wrong things I have reported and deliberately not fixed
+## D. Known-wrong, reported, deliberately not fixed
 
-### D1. The calendar's MCA deadlines — FIXED 11 September 2026
+### D1. The capital-gains fork never reached `itr_engine`
 
-**The invented AGM was the serious half, not the off-by-one.** AOC-4 showed
-29 October where §137 gives 30 and MGT-7 showed 28 November where §92 gives 29,
-because the browser counted the AGM day itself. But it also assumed the AGM was
-**30 September for every client**, which is wrong for every company whose
-meeting was not — and a CA reading a firm-wide calendar could not tell a
-computed row from an assumed one.
+`domain/income_tax/capital_gains_engine.py` knows the 23-07-2024 fork —
+§111A 15%→20%, §112A 10%/₹1,00,000 → 12.5%/₹1,25,000, §112 20%-with-indexation
+→ 12.5%-without, and §2(42A)'s moved holding periods. **The engine that calls it
+is still FY-keyed**: `date_of_transfer`, `transfer_date`, `sale_date` and `fork`
+have **zero occurrences** in `itr_engine.py`.
 
-`mca_companies.last_agm_date` has held the real date since migration 038, whose
-own comment reads *"AGM date drives AOC-4/MGT-7 deadline"*. The browser copy
-never read it.
+It is the DATE OF TRANSFER that decides, and a transfer before the cutoff is
+governed by the earlier law indefinitely. Related to B17 — FY 2024-25 cannot be
+represented at all until the rate registry gets pre/post buckets, so these two
+are one piece of work.
 
-`GET /api/mca-workspace/calendar/firm` now computes ADT-1, AOC-4 and MGT-7 from
-each company's own AGM through `compliance_engine.mca_due_date`, scoped to the
-caller's clients. **A company with no AGM date recorded is NAMED, not
-defaulted** — returned in `without_agm_date` and shown on the calendar as a
-gap, because 30 September is a plausible guess and a plausible guess on a
-statutory deadline is how a filing is missed.
+### D2. `filings.filed_date` records when the ARN was typed
 
-**Still in the browser, and still owed:** the other eleven deadlines — GST, TDS,
-ITR and DIR-3 KYC. Those are rule-based and fall out of the calendar date alone,
-so they are correct today; they nevertheless duplicate
-`services/compliance_engine.py`, which is the Phase 7 shape this entry
-originally described. The three that needed a client FACT are the ones that
-could not stay.
+`gst_filing_record_service` does `filed_date=filed_date or ist_today()`, so a
+return filed on the portal on the 11th and recorded here on the 14th is dated
+the 14th. That date feeds `journal_period_lock_reason`, so the period unlocks
+three days late — and the correction-window calculation (CGST §37(3), §39(9),
+§16(4)) reads the same column.
 
-### D2. `/api/copilot/intelligence/*` aggregates firm-wide — FIXED 11 Sep 2026
+Nothing collects the real date. The fix is a field on the record-filing call,
+not a computation.
 
-**And it was worse than this entry said.** `firm:read` is `_AT_LEAST_MANAGER`,
-so `/executive-dashboard` reached a Manager too, not only an Executive. Four
-endpoints passed a bare `firm_id`: `/intelligence/compliance`,
-`/intelligence/workflows`, `/intelligence/relationships` and
-`/executive-dashboard`. `/intelligence/client/{id}` was guarded from the start —
-the line had been drawn and stopped one endpoint short.
+### D3. 137 of 904 mounted endpoints have no caller
 
-The relationship endpoint was the worst of the four: it feeds client PANs and
-email domains into an AI prompt to find related parties, so it disclosed
-identifying data about clients the caller is not assigned to.
+Tracked as a ratchet — `tests/test_every_mounted_endpoint_has_a_way_in.py`, with
+a per-prefix `BUDGET` and a `TOTAL_BUDGET` that may only fall. Not a question
+and not a single defect: several are false positives no prose can clear (a path
+suffix built from a variable is genuinely a call and no static scan of this
+shape sees it), and some are deliberate.
 
-**A second leak the entry never mentioned.** These summaries cache on
-`(firm_id, summary_type, entity_id)` with `entity_id=None` on every call — so
-scoping the queries alone would still have served a Partner's firm-wide answer
-to the next Executive who asked, from cache. The scope is now part of the key.
+**It found a real one on its first working day.** `/api/fixed-assets`
+`register-integrity` — the whole of FA-02's remedy — reached no screen, and
+CLAUDE.md's rule is that a figure the computer gets right and no screen shows is
+not a fixed bug. The budget is the mechanism for working the rest down.
 
-Each of the three exemption reasons in `test_router_client_scope.py` was
-answered rather than overridden, and **all four exemptions are removed** — the
-guard now enforces this permanently:
+### D4. The 2B replace still has a non-atomic fallback
 
-- *"narrowing without changing the cache key would still serve a firm-wide
-  response"* → the scope IS the key.
-- *"workflow_failures/approvals carry no client_id, and the repository does not
-  expose the join"* → **out of date**: `client_ids_for_instances` exists and the
-  workflow router already uses it. One query, not one per row.
-- *"narrowing the input set would change what the analysis IS"* → true, and the
-  one place scoping changes meaning. PAN cross-matching only says something
-  across the whole book, so a narrowed "no related parties" reads as a clean
-  bill of health for the firm. The privacy duty still wins, so the answer is
-  narrowed **and says so**: `analysed_client_count` and `scoped` are on the
-  response.
-- Template analytics aggregate per template with no client dimension and cannot
-  be narrowed, only withheld — a scoped caller now gets none rather than counts
-  that silently span clients they may not see.
+Migration 366's `replace_gstr2b_reconciliation` makes the real path one
+transaction. The **statement-by-statement path remains for mock mode**, which has
+no `DATABASE_URL` and no SQL functions, and the service falls back to it if the
+RPC is unavailable — a local dev copy, or the window between a deploy and the
+migration job.
 
-### D3. FA-02 — CLOSED 11 September 2026, and two of its premises were stale
-
-Re-checked against the code rather than the record, and most of it had already
-been overtaken:
-
-- **"No edit path (FA-10)"** — wrong now. `PATCH /{asset_id}` exists and
-  `wdv_rate_percent` is in `_TIER_C_FIELDS`, so a rate is correctable as a
-  prospective revision of an estimate (Schedule II Part C Note 7, AS 10).
-- **"It goes wrong the first time a register is migrated in"** — there is no
-  bulk import. `POST ""` is the only path that creates an asset, it uses the
-  Schedule II derived default, the Tally migration service writes no fixed
-  assets, and no frontend writes the table directly.
-- Production holds **zero** fixed assets, so there was nothing to back-fill.
-
-**What was genuinely left, and is now built:** nothing told anybody that an
-asset's stored basis disagrees with Schedule II. A row written before the rate
-was derived from Part C carries an Income-tax Act block rate — Furniture at 10%
-where Part C gives 25.89% — and under-depreciates for the asset's whole life,
-silently.
-
-**A backfill migration would have been the wrong fix**, and the statute is why:
-Schedule II **Part A** expressly permits a different useful life or residual
-value provided it is **disclosed and justified**. Nothing in the schema
-distinguishes a stale default from a deliberate judgement, so a migration would
-have overwritten the judgement, changed the depreciation charge and moved the
-profit.
-
-So it is REPORTED, as a fourth finding on `/register-integrity` — the endpoint
-that already reports and repairs nothing. The CA corrects it or discloses it.
-Conforming means matching **any** class the category offers, not the default, or
-a CA who picked Schedule II's second life would be flagged for following the
-table.
+Deliberate: falling through is strictly better than refusing to reconcile at
+all, which is the behaviour that shipped for months. It logs a warning when it
+happens. **It stops being a fallback the day mock mode gets transactions**, which
+is not planned.
 
 ---
 
-## E. Operational — things outside the code that need somebody to look
+## E. Needs a human with a browser or a login
 
-### E1. Render deploys fail on a health-check timeout — FIXED 11 September 2026
+### E1. The ESIC numeric reason codes
 
-**Owner approved the fix; done.** The schema-drift check, the scheduler start,
-its health log and the catch-up sweep all ran at module import — before uvicorn
-binds a socket — and three of the four make a Singapore-to-Mumbai round trip.
-Render's deploy health check timed out on every one of them, on code that was
-fine, which a manual re-deploy of the same commit proved each time.
-
-They now run on a daemon thread started from a FastAPI `lifespan`, and `/health`
-answers 200 immediately with `schema: "checking"`.
-
-**The trade-off, recorded because it is a real one.** Task #244 made a deploy
-that depends on an unapplied migration fail its own health check. That is now
-DELAYED rather than removed: `/health` flips to 503 the moment drift is found,
-so the exposure goes from *"no deploy ever succeeds"* to *"a deploy with real
-drift serves traffic for about one Mumbai round trip"*. The old behaviour was
-failing every good deploy to guard against a rare bad one.
-
-`tests/test_health_answers_before_the_slow_boot.py` pins all of it, including
-the trap: **answering 503 while merely unchecked reproduces the original bug
-exactly**, because Render cannot tell "still checking" from "broken".
-
-**⚠️ One thing was NOT done, because it cannot be.** Raising Render's
-health-check timeout was the other half of the plan. Render's blueprint exposes
-only `healthCheckPath` — there is no timeout field in `render.yaml` — so there
-is nothing to raise from here. The code fix stands alone.
-
-**Still true and unchanged:** after any failed deploy the database is ahead of
-the code until somebody clicks Manual Deploy, because migrations apply through a
-separate GitHub Actions job. Fewer failed deploys means that happens less, not
-never.
-
----
-
-## F. Pages that would need a human with a browser — MOSTLY CLOSED
-
-### What closed on 11 September 2026
-
-**ESIC's own filing manual was obtained and read in full.** It settled the file
-format, confirmed the six columns we already emit, and — more usefully — settled
-the DESIGN: ESIC says to fill the portal's own template and not a lookalike, so
-Track F1 fills the CA's downloaded workbook rather than minting one. It also
-found a live defect: ESI contributions round UP to the next whole rupee and we
-were computing to the paise. Fixed.
-
-### What is parked with the registrations
-
-The ERI registration page, GSTN's GSP eligibility criteria, `test-dev.tdscpc.gov.in`
-and the Third Party Software Utility Developer page all existed to price
-registrations nobody is pursuing. **Parked.** They are listed with what is needed
-off each in §6.4 of the filing-access paper, so resuming costs an afternoon.
-
-### The one that is still a real product gap
-
-**The ESIC numeric reason codes.** They explain why an insured person had zero
-wages in a month, and ESIC surfaces the list only inside the employer portal at
-filing time. `domain/payroll/esic.py` deliberately refuses to invent one and
-withholds the whole file until a CA supplies it — which the manual now shows is
-more right than when it was written, because **a zero-wage row removes that
-person from the establishment**, so a guessed code would de-register somebody
-rather than merely misreport them.
+They explain why an insured person had zero wages in a month, and ESIC surfaces
+the list only inside the employer portal at filing time.
+`domain/payroll/esic.py` deliberately refuses to invent one and withholds the
+whole file until a CA supplies it — which the filing manual shows is more right
+than when it was written, because **a zero-wage row removes that person from the
+establishment**, so a guessed code would de-register somebody rather than merely
+misreport them.
 
 **Needs an ESIC employer login, which this firm does not have.** Not blocking:
 the refusal is safe and the CA can type the code. It closes the day somebody is
 next inside a client's ESIC portal.
 
-### Two statutory facts that would tidy things up, neither urgent
+### E2. Two statutory facts that would tidy things up, neither urgent
 
-Odisha's reported professional-tax repeal and Punjab's Development Tax (see
-B12 — naming a state that no longer levies produces a false gap warning, never a
-wrong deduction), and the current MCA XBRL validation tool version.
+Odisha's reported professional-tax repeal and Punjab's Development Tax (B15 —
+naming a state that no longer levies produces a false gap warning, never a wrong
+deduction), and the current MCA XBRL validation tool version.
+
+### E3. Schedule III itself
+
+Every claim this product makes about Schedule III caption wording, and the
+Division I / Division II ageing split, rests on memory and on convergence
+between the screen and the classifier. `icai.org` and every `.gov.in` are
+refused at this environment's egress proxy (`curl https://example.com` →
+CONNECT 403 — a network policy, not a gov.in block). One reading of the actual
+schedule would settle the C-table caption decision and confirm the ageing
+tables.
