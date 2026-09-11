@@ -70,6 +70,7 @@ from domain.payroll import settlement as settlement_domain
 from domain.payroll import arrears as arrears_domain
 from domain.payroll import one_time_earnings as one_time_domain
 from domain.payroll import perquisites as perq_domain
+from domain.reporting.amount_words import indian_rupees
 from dataclasses import replace as _replace
 
 
@@ -633,7 +634,187 @@ def _loan_instalments_for_run(db, firm_id: str, client_id: str) -> dict:
         return {}
 
 
-def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str) -> int:
+def _record_loan_movement(db, firm_id: str, client_id: str, loan: dict,
+                          run_id: str, amount_paise: int, kind: str,
+                          closed_the_loan: bool, created_by: str | None) -> None:
+    """One append-only row saying what a run did to one loan (migration 367).
+
+    `amount_paise` is given UNSIGNED and signed here from `kind`, so no caller
+    has to remember the convention the CHECK enforces: positive recovers,
+    negative gives back.
+
+    Never raises. This is the history, not the balance — the balance has
+    already been written by the caller, and refusing to finalise a correct
+    payroll because a history row would not insert is the worse failure. A
+    missing row degrades a later reversal to the fallback path, which SAYS it
+    is falling back.
+    """
+    if amount_paise <= 0:
+        return
+    try:
+        db.table("payroll_loan_recoveries").insert({
+            "firm_id": firm_id,
+            "client_id": client_id,
+            "loan_id": loan["id"],
+            "run_id": run_id,
+            "employee_id": loan["employee_id"],
+            "amount_paise": (amount_paise if kind == "recovered" else -amount_paise),
+            "kind": kind,
+            "closed_the_loan": closed_the_loan,
+            "created_by": created_by,
+        }).execute()
+    except Exception:                                           # noqa: BLE001
+        _logger.exception("could not record loan movement for run %s loan %s",
+                          run_id, loan.get("id"))
+
+
+def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
+                          created_by: str | None = None) -> list[str]:
+    """Put back what this run recovered. Returns anything the CA must be told.
+
+    THE DEFECT THIS CLOSES (PAY-08). `_apply_loan_recoveries` writes a loan
+    balance down at finalisation and reverse_run never put it back, so the
+    ordinary correction cycle — finalise, spot a wrong attendance figure,
+    reverse, correct, finalise again — wrote ONE recovery down TWICE. The
+    employee's pay is only ever reduced once (the reversed run's journals are
+    reversed), so the money that goes wrong is the EMPLOYER'S: the balance ends
+    one instalment too low and the employer under-recovers. A loan the first
+    run closed is worse — `closed_on` is set, the open-loans query stops
+    reading it, and the last instalment is never recovered at all.
+
+    EXACT WHERE THERE IS A RECORD. Migration 367 has the apply path write one
+    row per loan it touched, so the undo is that row read back and negated —
+    the right loan, the right amount, and the `closed_the_loan` flag saying
+    whether to reopen it.
+
+    HONEST WHERE THERE IS NOT. A run finalised BEFORE migration 367 has no
+    rows, and its history cannot be reconstructed: the apply walk applied
+    min(remaining, owed) in row order, so the balances afterwards do not say
+    which loan moved. Rather than guess, those runs fall back to the slip's
+    per-employee total spread over that employee's loans — newest first,
+    reopening a closed one — and the caller is handed a sentence saying the
+    balance was restored on a best-effort basis and should be checked. A
+    restored balance that is right for a single-loan employee (which is nearly
+    all of them) beats a balance left one instalment short with nothing said.
+    """
+    notes: list[str] = []
+    try:
+        rows = (db.table("payroll_loan_recoveries").select("*")
+                .eq("firm_id", firm_id).eq("run_id", run_id)
+                .eq("kind", "recovered").execute().data) or []
+    except Exception:                                           # noqa: BLE001
+        _logger.exception("could not read loan recoveries for run %s", run_id)
+        return ["This run's loan recoveries could not be read, so no loan "
+                "balance was restored. Check each borrower's outstanding "
+                "before re-finalising — it may be one instalment too low."]
+
+    already = set()
+    try:
+        for r in ((db.table("payroll_loan_recoveries").select("run_id, loan_id")
+                   .eq("firm_id", firm_id).eq("run_id", run_id)
+                   .eq("kind", "reversed").execute().data) or []):
+            already.add(r["loan_id"])
+    except Exception:                                           # noqa: BLE001
+        _logger.exception("could not read prior reversals for run %s", run_id)
+
+    if rows:
+        for row in rows:
+            # A run reversed twice must not give the money back twice — the
+            # same shape as the defect being fixed, in the other direction.
+            if row["loan_id"] in already:
+                continue
+            _restore_one_loan(db, firm_id, client_id, row["loan_id"],
+                              abs(int(row["amount_paise"] or 0)), run_id,
+                              bool(row.get("closed_the_loan")), created_by)
+        return notes
+
+    # ── Fallback: a run finalised before migration 367 ──────────────────────
+    try:
+        slips = ((db.table("payroll_slips").select("employee_id, loan_recovery_paise")
+                  .eq("run_id", run_id).execute().data) or [])
+    except Exception:                                           # noqa: BLE001
+        _logger.exception("could not read slips to undo loan recoveries for %s", run_id)
+        return ["This run's loan recoveries could not be read, so no loan "
+                "balance was restored. Check each borrower's outstanding."]
+
+    owed_back: dict = {}
+    for sl in slips:
+        amount = int(sl.get("loan_recovery_paise") or 0)
+        if amount:
+            owed_back[sl["employee_id"]] = owed_back.get(sl["employee_id"], 0) + amount
+    if not owed_back:
+        return notes
+
+    for employee_id, amount in owed_back.items():
+        try:
+            loans = (db.table("payroll_loans").select("*")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .eq("employee_id", employee_id)
+                     .order("created_at", desc=True).execute().data) or []
+        except Exception:                                       # noqa: BLE001
+            _logger.exception("could not read loans for employee %s", employee_id)
+            continue
+        left = amount
+        for loan in loans:
+            if left <= 0:
+                break
+            # Only up to what has actually been repaid on this loan — putting
+            # back more than that would break payroll_loans' own
+            # outstanding <= principal CHECK.
+            room = int(loan.get("principal_paise") or 0) - int(loan.get("outstanding_paise") or 0)
+            give = min(left, max(0, room))
+            if give <= 0:
+                continue
+            _restore_one_loan(db, firm_id, client_id, loan["id"], give, run_id,
+                              bool(loan.get("closed_on")), created_by)
+            left -= give
+        if len(loans) > 1:
+            notes.append(
+                f"This run was finalised before the software recorded WHICH loan "
+                f"each recovery came off, and this employee has {len(loans)} "
+                f"loans. ₹{indian_rupees(amount)} was put back, newest loan first — "
+                f"check the split before re-finalising.")
+    return notes
+
+
+def _restore_one_loan(db, firm_id: str, client_id: str, loan_id: str,
+                      amount_paise: int, run_id: str, reopen: bool,
+                      created_by: str | None) -> None:
+    """Add `amount_paise` back to one loan and record that we did.
+
+    Reads the loan fresh rather than trusting a balance carried from the apply
+    row: months may have passed and other runs may have recovered against it
+    since. The offsetting history row is written even where the balance update
+    fails, because a reversal that is recorded and not applied is findable, and
+    one that is applied and not recorded is the state this whole table exists
+    to prevent.
+    """
+    try:
+        loan = (db.table("payroll_loans").select("*")
+                .eq("id", loan_id).eq("firm_id", firm_id)
+                .maybe_single().execute().data)
+        if not loan:
+            return
+        restored = min(int(loan.get("principal_paise") or 0),
+                       int(loan.get("outstanding_paise") or 0) + amount_paise)
+        update = {
+            "outstanding_paise": restored,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        # Reopen a loan this run's recovery had closed. A loan with something
+        # outstanding and a closed_on date is invisible to next month's
+        # recovery, which is how the final instalment went missing.
+        if reopen or restored > 0:
+            update["closed_on"] = None
+        db.table("payroll_loans").update(update).eq("id", loan_id).execute()
+        _record_loan_movement(db, firm_id, client_id, loan, run_id,
+                              amount_paise, "reversed", False, created_by)
+    except Exception:                                           # noqa: BLE001
+        _logger.exception("could not restore loan %s for run %s", loan_id, run_id)
+
+
+def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
+                           created_by: str | None = None) -> int:
     """Reduce each loan's outstanding balance by what this run recovered.
 
     Done at FINALISATION and nowhere else. A draft run can be deleted and
@@ -681,11 +862,59 @@ def _apply_loan_recoveries(db, firm_id: str, client_id: str, run_id: str) -> int
                 "closed_on": (str(date.today()) if new_balance == 0 else None),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }).eq("id", loan["id"]).execute()
+            # WHICH loan took WHAT — migration 367. Written because the undo
+            # cannot be derived: this walk applies min(remaining, owed) in
+            # whatever order the rows came back, so with two loans the balances
+            # afterwards do not say which one moved, and a loan this closes
+            # drops out of the `closed_on IS NULL` query the undo would use to
+            # find it. Also the loan's repayment history, which nothing held.
+            _record_loan_movement(db, firm_id, client_id, loan, run_id, applied,
+                                  "recovered", new_balance == 0, created_by)
             touched += 1
         return touched
     except Exception:
         _logger.exception("could not apply loan recoveries for run %s", run_id)
         return 0
+
+
+def _perquisites_for_run(db, firm_id: str, client_id: str, fy: str) -> dict:
+    """{employee_id: total §17(2) perquisite value for the year, in paise}.
+
+    WHY §192 HAS TO SEE THESE (PAY-07). §17(1)(iv) makes "the value of any
+    perquisite" part of salary, §17(2) says what a perquisite is, and §192(1)
+    charges the employer to deduct on "the estimated income of the assessee
+    under the head 'Salaries'". So a rent-free flat or a company car is salary
+    the employer is estimating, and leaving it out under-withholds all year.
+    §192(1A) — the employer's option to bear the tax on a NON-monetary
+    perquisite itself — is an option somebody has to exercise, not the default,
+    and nothing in this product exercises it.
+
+    Until now `payroll_perquisites` was read by exactly one caller, the 24Q
+    Annexure II builder, so a CA who valued a perquisite in the client
+    workspace saw it confirmed, saw it on Form 16 Part B in May, and never saw
+    it in a single month's deduction. The confirmation message read as
+    reassurance.
+
+    ONE QUERY FOR THE RUN, like the declarations beside it: the answer is
+    bounded by headcount, and the alternative is a Singapore-to-Mumbai round
+    trip per employee.
+
+    Empty on failure. That is the pre-existing behaviour — no perquisite in the
+    estimate — so a read failure cannot make a run worse than it was; and it is
+    visible, because the figure is stated on the slip.
+    """
+    out: dict = {}
+    try:
+        for row in ((db.table("payroll_perquisites")
+                     .select("employee_id, value_paise")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .eq("fy", fy).execute().data) or []):
+            emp = row.get("employee_id")
+            out[emp] = out.get(emp, 0) + max(0, int(row.get("value_paise") or 0))
+    except Exception:                                           # noqa: BLE001
+        _logger.exception("could not read §17(2) perquisites for %s %s", client_id, fy)
+        return {}
+    return out
 
 
 def _declarations_for_run(db, firm_id: str, client_id: str,
@@ -1035,6 +1264,7 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
                   months_employed_in_fy: int = 12,
                   firm_pt_slabs: Optional[list[dict]] = None,
                   pt_on: Optional[date] = None,
+                  perquisites_paise: int = 0,
                   one_time: Optional["one_time_domain.Bundle"] = None) -> dict:
     """
     Compute a single payroll slip in integer paise. No floating point on final values.
@@ -1165,9 +1395,31 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
     #
     # `gross_already_paid_paise` needs no adjustment: earlier months' one-time
     # amounts are in the gross that was actually paid, which is exactly right.
+    # §17(2) PERQUISITES ARE SALARY, AND §192 ESTIMATES ON SALARY (PAY-07).
+    #
+    # §17(1)(iv) puts "the value of any perquisite" inside salary and §192(1)
+    # charges the employer to deduct on "the estimated income of the assessee
+    # under the head 'Salaries' for that financial year". So the year's valued
+    # perquisites belong in the estimate, and were not in it: the value reached
+    # Form 16 Part B through 24Q Annexure II in May and never reached a
+    # payslip, which under-withheld every month of the year and left the
+    # employee with the whole liability on assessment.
+    #
+    # Added to the ANNUAL figure, not to this month's gross, and that is the
+    # distinction that matters: a perquisite is a year's value, and §192(3)
+    # then spreads the resulting tax over the months that are left — which is
+    # exactly what a perquisite valued in December needs. It is deliberately
+    # NOT added to gross pay: the employee is not paid it in cash, so adding it
+    # to gross would inflate net pay, PF wages and ESI alike.
+    #
+    # §192(1A)'s option — the employer paying the tax on a non-monetary
+    # perquisite itself — is not taken, because taking it is an act somebody
+    # has to perform and nothing in this product performs it.
+    perquisites_in_estimate = max(0, perquisites_paise)
     annual_gross = (max(0, gross_already_paid_paise)
                     + recurring * months_left
-                    + ot.taxable_paise)
+                    + ot.taxable_paise
+                    + perquisites_in_estimate)
     # THE YEAR IS AS LONG AS THE EMPLOYMENT, HERE TOO.
     #
     # `annual_gross` above is already months-employed aware, and these three
@@ -1280,6 +1532,10 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         "esi_employer_paise": esi["employer"],
         "pt_paise":           pt,
         "tds_paise":          tds_monthly,
+        # What the §192 estimate above was computed on, so a CA reading a slip
+        # whose TDS moved can see why (migration 368). Deliberately NOT in
+        # gross_paise — a perquisite is a benefit, not cash.
+        "perquisites_in_tds_estimate_paise": perquisites_in_estimate,
         "loan_recovery_paise": loan_recovery,
         "net_paise":          net,
         "working_days":       working_days,
@@ -1989,6 +2245,9 @@ def create_run(
         db, current_user["firm_id"], client_id, fy)
     tds_ytd = _tds_already_deducted_this_fy(
         db, current_user["firm_id"], client_id, month, fy)
+    # The year's §17(2) valuations, which §192 estimates on and which nothing
+    # but the 24Q Annexure II builder had ever read (PAY-07).
+    perquisites = _perquisites_for_run(db, current_user["firm_id"], client_id, fy)
 
     # The pay in force this month, and any advance being recovered from it.
     revisions = _salary_in_force(db, current_user["firm_id"], client_id, month)
@@ -2059,6 +2318,7 @@ def create_run(
                                  emp.get("joining_date"), fy),
                              loan_instalment_paise=loan_due.get(emp["id"], 0),
                              firm_pt_slabs=firm_pt_slabs, pt_on=pt_on,
+                             perquisites_paise=perquisites.get(emp["id"], 0),
                              one_time=one_time_by_emp.get(str(emp["id"])))
         statutory_gaps.extend(_statutory_gaps(emp, pt_covered))
         statutory_gaps.extend(
@@ -2647,7 +2907,7 @@ def finalize_run(
         return api_response(False, None, "Payroll journal could not be posted. The run was not finalized; please retry.")
 
     # The recovery is real now that the run has posted: write the balances down.
-    _apply_loan_recoveries(db, firm_id, client_id, run_id)
+    _apply_loan_recoveries(db, firm_id, client_id, run_id, current_user.get("id"))
 
     db.table("payroll_runs").update({
         "status":          "finalized",
@@ -2817,6 +3077,20 @@ def reverse_run(
             created_by=current_user.get("id"),
         )
 
+    # PUT THE LOAN BALANCES BACK (PAY-08). The journals above undo the money;
+    # this undoes what the run did to each borrower's outstanding. Without it,
+    # the ordinary correction cycle — finalise, reverse, correct, finalise —
+    # wrote one recovery down twice, leaving the balance an instalment too low
+    # and, where the first run closed the loan, stopping the final instalment
+    # from ever being recovered.
+    #
+    # AFTER the journals and BEFORE the status reset: a failure here must not
+    # leave a run still reading 'finalized' with its accrual reversed, and the
+    # status reset is what makes the run re-finalisable — so the balances have
+    # to be back before that becomes possible.
+    loan_notes = _undo_loan_recoveries(db, firm_id, run["client_id"], run_id,
+                                       current_user.get("id"))
+
     db.table("payroll_runs").update({
         "status":                        "review",
         "journal_entry_id":              None,
@@ -2844,7 +3118,12 @@ def reverse_run(
         firm_id=firm_id, entity_type="payroll_run", entity_id=run_id,
         actor_id=current_user.get("auth_user_id"))
 
-    return api_response(True, {"id": run_id, "status": "review"})
+    # `loan_notes` is non-empty only where the undo could not be exact — a run
+    # finalised before migration 367, for an employee with more than one loan.
+    # Returned rather than logged, because the person who must check the split
+    # is the one who just pressed Reverse.
+    return api_response(True, {"id": run_id, "status": "review",
+                               "loan_notes": loan_notes})
 
 
 # ─── Reports ──────────────────────────────────────────────────────────────────
@@ -6536,8 +6815,27 @@ def record_perquisites(
         entity_type="payroll_employee", entity_id=employee_id,
         actor_id=current_user.get("auth_user_id"))
 
-    return api_response(True, {"employee_id": employee_id, "fy": body.fy,
-                               "recorded": recorded})
+    # WHAT HAPPENS NEXT, SAID OUT LOUD (PAY-07). Until these figures reached
+    # §192 this endpoint answered with a bare count, which read as
+    # reassurance: the CA saw "recorded", saw the value on Form 16 Part B in
+    # May, and never learned that not one of the twelve monthly deductions had
+    # included it. They do now — but only from the NEXT run computed, because a
+    # slip already computed was computed without them, and a month already paid
+    # cannot be re-withheld.
+    total = sum(max(0, int(i.get("value_paise") or 0)) for i in body.items)
+    return api_response(True, {
+        "employee_id": employee_id, "fy": body.fy, "recorded": recorded,
+        "total_value_paise": total,
+        "what_it_means": (
+            f"₹{indian_rupees(total)} of §17(2) perquisites is now part of this "
+            f"employee's §192 estimate for {body.fy}. It takes effect on the "
+            f"NEXT payroll run you compute — a month already finalised was "
+            f"withheld without it, and §192(3) spreads the catch-up over the "
+            f"months that are left."
+            if total else
+            "No perquisite value is recorded for this employee this year, so "
+            "nothing is added to their §192 estimate."),
+    })
 
 
 # ─── Salary revisions and employee loans ─────────────────────────────────────

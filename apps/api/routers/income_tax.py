@@ -48,6 +48,14 @@ class S80CInput(BaseModel):
     fd_5yr_paise: int = 0
     sukanya_samriddhi_paise: int = 0
     ulip_paise: int = 0
+    # THE WAY INTO THE §80CCE CAP FOR EVERYTHING §80C(2) LISTS AND THIS FORM
+    # DOES NOT. Deductions80C has carried `other_paise` since it was written
+    # (itr_engine.py) and no request model exposed it, so a CA with stamp duty
+    # on a house, an §80CCD(1) contribution or a scheduled-bank term deposit
+    # had nowhere to put it except `other_deductions_paise` — which is OUTSIDE
+    # §80CCE and so escapes the ₹1,50,000 cap altogether. Claimed here it is
+    # inside the cap, which is where §80CCE puts it.
+    other_paise: int = 0
 
 
 class S80DInput(BaseModel):
@@ -127,6 +135,20 @@ class ComputeITRRequest(BaseModel):
     # book, which owe 22%/25%/30% from the first rupee with no §87A rebate.
     entity_type: Optional[str] = None
     assessee_kind: Optional[str] = None
+
+    # WAS THIS ASSESSEE RESIDENT IN INDIA THIS YEAR (§6)?
+    #
+    # Defaults True, which is what this endpoint has always assumed — §87A is
+    # granted unconditionally and reaches only "an individual, being a
+    # resident". Exposing it changes nothing for an existing caller and lets
+    # one that knows better say so: a NON-resident individual does not get the
+    # basic-exemption absorption in the provisos to §111A(1), §112(1)(a)(ii)
+    # and §112A(2), and is charged on the whole capital gain.
+    #
+    # Not read off the client record on purpose — `clients` has no residential
+    # status column, and §6 turns on days present in India, which no ledger
+    # holds. This is the CA's answer, not a derived one.
+    is_resident: bool = True
 
     # Company only — §115BAA (22%) and §115BAB (15%) are elections, and their
     # surcharge is a FLAT 10% whatever the income.
@@ -262,6 +284,7 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         use_new_regime=req.use_new_regime,
         is_senior_citizen=req.is_senior_citizen,
         is_very_senior_citizen=req.is_very_senior_citizen,
+        is_resident=req.is_resident,
         s80c=Deductions80C(
             ppf_paise=req.s80c.ppf_paise,
             elss_paise=req.s80c.elss_paise,
@@ -272,6 +295,7 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             fd_5yr_paise=req.s80c.fd_5yr_paise,
             sukanya_samriddhi_paise=req.s80c.sukanya_samriddhi_paise,
             ulip_paise=req.s80c.ulip_paise,
+            other_paise=req.s80c.other_paise,
         ),
         nps_80ccd1b_paise=req.nps_80ccd1b_paise,
         employer_nps_80ccd2_paise=req.employer_nps_80ccd2_paise,
