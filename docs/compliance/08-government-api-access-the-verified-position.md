@@ -1463,25 +1463,37 @@ is a permanent constraint on §15 items 1–3, not a delay — and it is the rea
 F1 was redesigned to fill the CA's own downloaded template rather than mint
 one. **The constraint improved the design.**
 
-### The process discovery that changes how the rest of this gets researched
+### The process discovery — and its limit, which I got wrong the first time
 
-**The egress proxy blocks `.gov.in`. It does not block mirrors.** Chasing the
-ESIC template turned up *User Manual for Filing the Monthly Contribution and
-Payment of dues* — ESIC's own 27-page manual — sitting on a vendor forum's CDN,
-and **that fetch succeeded.** It is the first genuinely primary document read in
-this whole exercise.
+Chasing the ESIC template turned up *User Manual for Filing the Monthly
+Contribution and Payment of dues* — ESIC's own 27-page manual — sitting on a
+vendor forum's file store, and **that fetch succeeded.** It is the first
+genuinely primary document read in this whole exercise.
 
-So the method for every remaining `[U]` and `[S]` in this document is: **stop
-fetching the government URL and go looking for a mirror.** Vendor help centres,
-professional-body circulars, forum attachments and training decks carry
-enormous numbers of official PDFs verbatim. A mirror is weaker than the
-publisher's own copy — it can be stale, and the date it was mirrored is usually
-unknown — so a document obtained this way is graded `[S-gov]` and must carry
-what it is a copy OF. But it is a document rather than somebody's summary of
-one, and that is a different class of evidence.
+**I then wrote here that "the proxy blocks `.gov.in`, it does not block
+mirrors". That was wrong, and it was wrong on a sample of one.** Tested
+immediately after, in the same session:
 
-This should have been obvious three days ago. It is recorded here so the next
-open question starts with a mirror search rather than three refused fetches.
+```
+www.gstn.org.in/assets/.../eligibility-batch-5.pdf   → EGRESS_BLOCKED
+taxindiaonline.com/RC2/pdfdocs/Press_Release_...pdf  → EGRESS_BLOCKED
+tin.tin.nsdl.com/eri                                 → DNS: no such host
+```
+
+`gstn.org.in` is not a `.gov.in` and it is blocked; `taxindiaonline.com` is an
+ordinary trade site and it is blocked too. So the rule is **not** "government
+blocked, mirrors open".
+
+What actually worked was the file's HOST: the ESIC manual was served from
+`…s3.dualstack.us-west-2.amazonaws.com`. The honest reading is **a document
+sitting on a major global cloud host or CDN can come through, while Indian
+domains — official or commercial — do not.** That is much narrower than what I
+claimed, and it is a matter of where a file happens to be parked rather than a
+method I can steer.
+
+**So the corrected method is: it is worth ONE search for a cloud-hosted copy of
+any document that matters, and it is not a substitute for somebody opening the
+page.** The ESIC win was real and worth having. It was also luck.
 
 ### ESIC's filing manual — what it settled, and the defect it found
 
@@ -1543,3 +1555,31 @@ than silently.
 **This is the return on opening one page.** Three days of searching produced
 `[S]`-graded prose; one mirrored manual produced a confirmed format, four new
 rules, and a live money defect.
+
+
+### What the same session did get on ERI, without a page being opened
+
+Search only, so `[S]` — but more specific than §4.4 held, and consistent across
+sources:
+
+- **Two types.** Type 1 is an intermediary running ITD-approved computing
+  infrastructure, requiring **a due-diligence certificate from a certified
+  ISA/CISA professional and a bank guarantee**. Type 2 is an entity with **its
+  own software application** — which is the category a product like this one
+  would sit in.
+- **The registration processing fee is ₹4,600**, by cheque or demand draft in
+  favour of **"NSDL - ERI"**. `[S]`
+- The bank guarantee attaches to **Type 1**, not to Type 2, on these sources.
+  **The amount was not stated anywhere I could reach.**
+
+**This matters more than it looks and it changes §4.4's emphasis.** The
+document has been carrying "ERI registration, fees, bank guarantee" as one
+undifferentiated blocker. If the guarantee really is Type-1-only, then the
+route relevant to us — Type 2, own software — may cost ₹4,600 and a document
+set rather than a bank instrument, which is a completely different order of
+commitment.
+
+**Do not act on that yet.** It rests on secondary sources agreeing with each
+other, which is exactly the failure mode §0 describes; the ITD's own
+registration page is §15 item 5 and remains the thing to read. But it moves
+that item from "worth doing" to **the highest-value single page on the list**.
