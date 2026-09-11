@@ -29,7 +29,11 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from models.invoices import SalesInvoiceIn, InvoiceLineIn
+# SalesInvoiceLineIn, not the shared InvoiceLineIn: SalesInvoiceIn.lines is
+# typed to the sales-invoice line, which is the one that may carry a
+# §15(3)(a) discount. See models/invoices.SalesInvoiceLineIn for why the
+# credit and debit notes deliberately cannot.
+from models.invoices import SalesInvoiceIn, SalesInvoiceLineIn
 from services.numbering import draft_placeholder_invoice_no
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -455,7 +459,7 @@ def _generate_one(firm_id: str, template: dict, actor: dict, occurrence_iso: str
 
     customer = _customer(db or (None if _USE_MOCK else _db()), firm_id, template.get("customer_id"))
     lines = [
-        InvoiceLineIn(
+        SalesInvoiceLineIn(
             service_catalogue_id=ln["service_catalogue_id"],
             description=ln.get("description", ""),
             hsn_sac=ln.get("hsn_sac"),

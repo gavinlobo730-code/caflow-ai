@@ -208,6 +208,26 @@ change. The code is the authority; keep this file in step with it.
   LUT or bond (§16(3)(a)). `domain/gst/gstr3b_computer.py` is the authority for
   all three, and the callers carry them — a figure the computer gets right and
   no screen shows is not a fixed bug.
+- **A discount on the invoice reduces the value of supply; a discount after it
+  does not, and the two are different sections.** §15(3)(a) excludes a discount
+  "given before or at the time of the supply if such discount has been **duly
+  recorded in the invoice**" — so the tax is charged on the NET and the relief
+  is conditional on the document showing it, which is why the discount is a
+  column of its own rather than a smaller rate, and why the PDF prints gross,
+  deduction and net. §15(3)(b) reaches a POST-supply discount only where it was
+  established in an agreement at or before the time of supply, is specifically
+  linked to the invoices, AND the recipient has **reversed the attributable
+  ITC** — that is the §34 credit note, not a field on one, and
+  `models.invoices.InvoiceLineIn` (which the note routes use) deliberately has
+  no discount field while `SalesInvoiceLineIn` does. `domain/gst/discount.py`
+  is the rule; a **document-level** discount is allocated pro-rata across the
+  lines BEFORE tax, because GST is charged per line at the line's own rate and
+  a bill-level deduction could not otherwise be taxed on an invoice with mixed
+  rates. Line discount first, then the document one on what is left. Every
+  rounding floors — a larger discount is less tax, so flooring is the direction
+  that cannot under-declare — and the pro-rata split uses largest-remainder so
+  the parts sum to the whole exactly. `apps/web/lib/money/gstLine.ts` mirrors
+  all of it and `shared/gst-parity-vectors.json` pins the two.
 - **Correction window** (CGST §37(3), §39(9), §16(4)): 30 November following the FY, **or
   the date GSTR-9 was furnished, whichever is EARLIER**. Filing the annual return early
   shuts the window early. `compliance_engine.correction_window_closes()` is the function

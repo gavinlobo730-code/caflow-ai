@@ -11,6 +11,7 @@
  */
 
 import { ratePaiseFromRupees } from "../money/gstLine.ts";
+import { bpsFromPercentInput } from "../money/rupeeInput.ts";
 
 export interface InvoiceLineInput {
   description: string;
@@ -26,6 +27,15 @@ export interface InvoiceLineInput {
    * journal computation.
    */
   serviceCatalogueId?: string | null;
+  /**
+   * A §15(3)(a) discount as a PERCENTAGE, as typed. Sales invoices only —
+   * `SalesInvoiceLineIn` is the model that has it, and the credit/debit note
+   * models deliberately do not (§15(3)(b) is the note itself, not a field on
+   * one). Passing it on a note payload is simply dropped by Pydantic, which is
+   * the same silent-drop trap this module's header describes; the note editors
+   * never set it.
+   */
+  discountPercent?: string;
 }
 
 export interface InvoiceLinePayload {
@@ -36,6 +46,9 @@ export interface InvoiceLinePayload {
   gst_rate_percent: number;
   unit: string | undefined;
   service_catalogue_id: string | null | undefined;
+  /** Basis points: 500 = 5.00%. Omitted entirely when no discount was typed —
+   *  the server then charges on the whole value, which is the truth. */
+  discount_percent_bps?: number;
 }
 
 export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload {
@@ -49,5 +62,17 @@ export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload
     gst_rate_percent: line.gst_rate,
     unit: line.unit?.trim() || undefined,
     service_catalogue_id: line.serviceCatalogueId ?? undefined,
+    // bpsFromPercentInput is the one parser (lib/money/rupeeInput.ts). It
+    // REFUSES anything that is not a number rather than coercing it to 0 —
+    // a discount silently read as zero is an invoice charging tax the customer
+    // was told they would not pay.
+    ...(discountBps(line.discountPercent) === null
+      ? {}
+      : { discount_percent_bps: discountBps(line.discountPercent) as number }),
   };
+}
+
+function discountBps(typed?: string): number | null {
+  if (typed === undefined || typed === null || typed.trim() === "") return null;
+  return bpsFromPercentInput(typed.trim());
 }

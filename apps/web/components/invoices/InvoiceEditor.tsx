@@ -24,7 +24,9 @@ import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
 import { estimateBaseMinor } from "@/lib/services/currencyPreview";
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
-import { computeLineGst } from "@/lib/money/gstLine";
+import { computeLineGst, discountPaise, gstRateBpsFromPercent,
+         splitLineGst } from "@/lib/money/gstLine";
+import { bpsFromPercentInput, paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import {
   PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel,
 } from "@/lib/sales/paymentTerms";
@@ -40,7 +42,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import {
   apiCall, apiGet, getAuthToken, fmt,
   GST_RATES, INDIAN_STATES, STATUS_BADGE,
-  previewTotals, validateInvoiceEditor, isValidLine,
+  percentBpsOf, previewTotals, validateInvoiceEditor, isValidLine,
   type Customer, type InvoiceDetail, type InvoiceLine, type CurrencyOption,
 } from "@/lib/invoices/shared";
 
@@ -88,6 +90,13 @@ function detailLinesToEditorLines(lines: InvoiceDetail["lines"]): EditorLine[] {
     // silently drop the delete-guard link — update_invoice deletes and
     // reinserts every line from whatever gets sent back.
     serviceCatalogueId: l.service_catalogue_id ?? null,
+    // §15(3)(a) — rehydrated for the same reason serviceCatalogueId is:
+    // update_invoice deletes and reinserts every line from whatever is sent
+    // back, so a discount the editor did not carry would be silently dropped
+    // on the next save, raising the taxable value of an invoice nobody meant
+    // to change.
+    discountPercent: l.discount_percent_bps == null
+      ? undefined : String(l.discount_percent_bps / 100),
     id: l.id,
     _k: i,
   }));
@@ -181,6 +190,31 @@ export function InvoiceEditor({
   // invoice shows its exact calculated amount unless the CA turns this on.
   const [roundOffEnabled, setRoundOffEnabled] = useState(
     existing?.round_off_enabled ?? duplicateSeed?.round_off_enabled ?? false,
+  );
+  // A document-level discount under CGST §15(3)(a), allocated PRO-RATA across
+  // the lines before tax — GST is charged per line at the line's own rate, so a
+  // bill-level discount that stayed at bill level could not be taxed at all on
+  // an invoice whose lines carry different rates. The server does the
+  // allocation (domain/gst/discount.py); the preview mirrors it through
+  // lib/money/gstLine.applyDiscountsToLines, and the two are pinned by
+  // shared/gst-parity-vectors.json.
+  const [docDiscount, setDocDiscount] = useState(() => {
+    // Rehydrated for the same reason the line discount is: the PATCH resends
+    // every line, and a footer discount the editor did not carry would be
+    // dropped on the next save. The percentage is preferred when the invoice
+    // has one, because it is what the CA typed; otherwise the stored amount.
+    const src = existing ?? duplicateSeed;
+    if (!src) return "";
+    if (src.discount_percent_bps != null) return String(src.discount_percent_bps / 100);
+    if (src.discount_paise) return String(src.discount_paise / 100);
+    return "";
+  });
+  // "%" or "₹". A percentage off the bill and a flat amount off the bill are
+  // both ordinary on an Indian invoice, and the difference is not derivable
+  // from the number typed.
+  const [docDiscountMode, setDocDiscountMode] = useState<"percent" | "amount">(
+    (existing ?? duplicateSeed)?.discount_percent_bps == null
+      && (existing ?? duplicateSeed)?.discount_paise ? "amount" : "percent",
   );
   const [termCustom, setTermCustom] = useState<boolean>(() => {
     if (creditDays === "") return false;
@@ -297,9 +331,21 @@ export function InvoiceEditor({
   const { confirmLeave } = useUnsavedChanges(dirty && saving === null, undefined, confirmDialog);
 
   // ── Live preview totals + validation ────────────────────────────────────────
+  // The typed document discount, in the units the API takes. Both go through
+  // lib/money/rupeeInput — the one parser — which REFUSES anything that is not
+  // a number rather than coercing it to 0. A discount silently read as zero is
+  // an invoice charging tax the customer was told they would not pay.
+  const documentDiscount = useMemo(() => {
+    const raw = docDiscount.trim();
+    if (!raw) return undefined;
+    return docDiscountMode === "percent"
+      ? { percentBps: bpsFromPercentInput(raw) }
+      : { amountPaise: paiseFromRupeeInput(raw) };
+  }, [docDiscount, docDiscountMode]);
+
   const totals = useMemo(
-    () => previewTotals(lines, isInterstate, !isForeign && roundOffEnabled),
-    [lines, isInterstate, isForeign, roundOffEnabled],
+    () => previewTotals(lines, isInterstate, !isForeign && roundOffEnabled, documentDiscount),
+    [lines, isInterstate, isForeign, roundOffEnabled, documentDiscount],
   );
   const validation = useMemo(
     () => validateInvoiceEditor({ customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate }),
@@ -451,6 +497,18 @@ export function InvoiceEditor({
       return;
     }
     const linePayload = lines.filter(isValidLine).map(toInvoiceLinePayload);
+    // §15(3)(a) at document level. Sent as ONE of percent or amount, never
+    // both: the server's discount_for takes the percentage when both arrive,
+    // and sending a derived amount beside a typed percentage is how a form's
+    // preview becomes the document.
+    const docDiscountPayload =
+      documentDiscount === undefined
+        ? {}
+        : documentDiscount.percentBps != null
+          ? { discount_percent_bps: documentDiscount.percentBps }
+          : documentDiscount.amountPaise != null
+            ? { discount_paise: documentDiscount.amountPaise }
+            : {};
     setSaving(action);
     setError(null);
     try {
@@ -506,6 +564,7 @@ export function InvoiceEditor({
           shipping_bill_date: shippingBillDate || undefined,
           port_code: portCode.trim().toUpperCase() || undefined,
           lines: linePayload,
+          ...docDiscountPayload,
         }, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update invoice");
       } else {
@@ -526,6 +585,7 @@ export function InvoiceEditor({
           shipping_bill_date: shippingBillDate || undefined,
           port_code: portCode.trim().toUpperCase() || undefined,
           lines: linePayload,
+          ...docDiscountPayload,
           currency: isForeign ? currency : undefined,
           exchange_rate: isForeign ? exchangeRate : undefined,
         }, token);
@@ -632,7 +692,43 @@ export function InvoiceEditor({
   const summary = (
     <div className="bg-white rounded-xl border border-[#F1F5F9] p-4 space-y-2 text-xs">
       <p className="font-semibold text-[#334155]">Summary{isForeign ? ` (${currency})` : ""}</p>
+      {/* CGST §15(3)(a): the discount is EXCLUDED from the value of supply, so
+          the gross and the deduction are both shown and the taxable value is
+          what is left. Showing only the net would hide the relief the section
+          makes conditional on the invoice recording it. */}
+      {(totals.discount_paise ?? 0) > 0 && (
+        <>
+          <Row label="Gross value" value={fmtAmt(totals.gross_paise ?? 0)} />
+          <Row label="Less: discount" value={`-${fmtAmt(totals.discount_paise ?? 0)}`} />
+        </>
+      )}
       <Row label="Taxable value" value={fmtAmt(totals.taxable_paise)} />
+      {!isLocked && (
+        <div className="flex items-center gap-2 pt-1">
+          <label htmlFor="inv-doc-discount" className="text-[11px] text-[#475569] whitespace-nowrap">
+            Discount on bill
+          </label>
+          <input id="inv-doc-discount" type="text" inputMode="decimal" value={docDiscount}
+            onChange={(e) => setDocDiscount(e.target.value)}
+            placeholder="0"
+            className="w-16 px-2 py-1 border border-[#E2E8F0] rounded text-right text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          <select value={docDiscountMode} aria-label="Discount on bill unit"
+            onChange={(e) => setDocDiscountMode(e.target.value as "percent" | "amount")}
+            className="px-1.5 py-1 border border-[#E2E8F0] rounded text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500">
+            <option value="percent">%</option>
+            <option value="amount">{isForeign ? currency : "₹"}</option>
+          </select>
+        </div>
+      )}
+      {docDiscount.trim() !== "" && (totals.discount_paise ?? 0) === 0 && (
+        <p className="text-[10px] text-red-600">
+          {/* The preview refuses rather than capping: the server returns 422 on
+              a discount larger than the bill, and a preview that quietly showed
+              a capped figure would show a total that cannot be saved. */}
+          That discount is more than the invoice is worth, or is not a number. The
+          figures above ignore it.
+        </p>
+      )}
       {isInterstate ? (
         <Row label={uniformRate != null ? `IGST @ ${uniformRate}%` : "IGST"} value={fmtAmt(totals.igst_paise)} />
       ) : (
@@ -912,7 +1008,7 @@ export function InvoiceEditor({
             </p>
           )}
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[820px]">
+            <table className="w-full text-xs min-w-[900px]">
               <thead>
                 <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
                   <th className="pb-2 text-left font-semibold w-40">Product/Service *</th>
@@ -922,6 +1018,12 @@ export function InvoiceEditor({
                   <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate ({isForeign ? currency : "₹"})</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
+                  {/* CGST §15(3)(a) — a discount given before or at the time of
+                      supply and RECORDED IN THE INVOICE is excluded from the
+                      value of supply. A percentage, because a trade discount
+                      comes off a price list; the API also takes a flat amount,
+                      for an importer or an integration. */}
+                  <th className="pb-2 text-right font-semibold w-20">Disc %</th>
                   <th className="pb-2 text-right font-semibold w-24">Amount</th>
                   <th className="pb-2 w-6" />
                 </tr>
@@ -931,7 +1033,26 @@ export function InvoiceEditor({
                   // Same canonical mirror the summary uses, so the per-line
                   // column and the invoice total can never disagree with the
                   // server (or with each other).
-                  const lineTotal = computeLineGst(line, isInterstate).line_total_paise;
+                  // The line's own §15(3)(a) discount, applied here too — an
+                  // Amount column that ignored it would disagree with the
+                  // summary the moment a discount was typed. The DOCUMENT
+                  // discount is deliberately NOT in this figure: it is a
+                  // deduction from the bill, allocated pro-rata, and showing a
+                  // share of it against one row would make the column stop
+                  // being qty x rate less this line's own discount.
+                  const lineTotal = (() => {
+                    const heads = computeLineGst(line, isInterstate);
+                    const bps = percentBpsOf(line.discountPercent);
+                    if (bps === null) return heads.line_total_paise;
+                    const d = discountPaise(heads.taxable_paise, bps);
+                    if (d === null) return heads.line_total_paise;
+                    const net = splitLineGst(
+                      heads.taxable_paise - d,
+                      gstRateBpsFromPercent(line.gst_rate),
+                      isInterstate,
+                    );
+                    return net.line_total_paise;
+                  })();
                   const invalid = !isLocked && attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
                     <tr key={line._k} className={invalid ? "bg-red-50/40" : undefined}>
@@ -1018,6 +1139,14 @@ export function InvoiceEditor({
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]">
                           {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        <input type="number" min="0" max="100" step="0.01"
+                          value={line.discountPercent ?? ""}
+                          onChange={(e) => setLine(idx, { discountPercent: e.target.value })}
+                          onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked}
+                          placeholder="0" aria-label={`Line ${idx + 1} discount percent`}
+                          className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
                       </td>
                       <td className="py-1.5 px-2 text-right font-mono text-[#334155]">{lineTotal > 0 ? fmtAmt(lineTotal) : "—"}</td>
                       <td className="py-1.5">

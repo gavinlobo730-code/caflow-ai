@@ -19,6 +19,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  applyDiscountsToLines,
   computeLineGst,
   gstRateBpsFromPercent,
   quantityFromInput,
@@ -61,16 +62,116 @@ interface DocCase {
   };
 }
 
+interface DiscountCase {
+  label: string;
+  is_interstate: boolean;
+  document_discount_percent_bps: number | null;
+  document_discount_paise: number | null;
+  lines: {
+    qty: string;
+    rate: string;
+    gst_rate_percent: number;
+    discount_percent_bps: number | null;
+    discount_paise: number | null;
+  }[];
+  expected: {
+    lines: {
+      gross_paise: number;
+      discount_paise: number;
+      taxable_paise: number;
+      cgst_paise: number;
+      sgst_paise: number;
+      igst_paise: number;
+    }[];
+    total_gross_paise: number;
+    total_discount_paise: number;
+    taxable_paise: number;
+    cgst_paise: number;
+    sgst_paise: number;
+    igst_paise: number;
+    gst_paise: number;
+    grand_total_paise: number;
+  };
+}
+
 const fixture = JSON.parse(
   readFileSync(
     new URL("../../../../shared/gst-parity-vectors.json", import.meta.url),
     "utf8",
   ),
-) as { vectors: Vector[]; documents: DocCase[] };
+) as { vectors: Vector[]; documents: DocCase[]; discounts: DiscountCase[] };
 
 test("fixture is present and non-trivial", () => {
   assert.ok(fixture.vectors.length >= 30, "parity vectors were trimmed");
   assert.ok(fixture.documents.length >= 5, "parity documents were trimmed");
+  assert.ok(fixture.discounts.length >= 10, "discount parity cases were trimmed");
+});
+
+// ── §15(3)(a): the discount comes off before the tax, identically both sides ──
+//
+// These pin the TAXABLE VALUE, not just the discount arithmetic: the discount
+// is subtracted first and the GST charged on what is left, so a browser that
+// allocated a document discount even a paise differently would preview a
+// different tax from the one the server saves.
+for (const d of fixture.discounts) {
+  test(`discount parity — ${d.label}`, () => {
+    const resolved = applyDiscountsToLines(
+      d.lines.map((ln, i) => ({
+        gross_paise: d.expected.lines[i].gross_paise,
+        discount_percent_bps: ln.discount_percent_bps,
+        discount_paise: ln.discount_paise,
+      })),
+      d.document_discount_percent_bps,
+      d.document_discount_paise,
+    );
+    assert.ok(resolved, `the server accepted ${d.label}; the preview refused it`);
+
+    // The gross the browser derives from the raw strings must be the gross the
+    // fixture says the server computed — otherwise the discounts below are
+    // parity against the wrong input.
+    d.lines.forEach((ln, i) => {
+      const gross = taxablePaise(quantityFromInput(ln.qty), ratePaiseFromRupees(ln.rate));
+      assert.equal(gross, d.expected.lines[i].gross_paise, `gross, line ${i}`);
+    });
+
+    let taxable = 0, cgst = 0, sgst = 0, igst = 0;
+    resolved.forEach((r, i) => {
+      const want = d.expected.lines[i];
+      assert.equal(r.discount_paise, want.discount_paise, `discount, line ${i}`);
+      assert.equal(r.taxable_paise, want.taxable_paise, `taxable, line ${i}`);
+
+      const heads = splitLineGst(
+        r.taxable_paise,
+        gstRateBpsFromPercent(d.lines[i].gst_rate_percent),
+        d.is_interstate,
+      );
+      assert.equal(heads.cgst_paise, want.cgst_paise, `cgst, line ${i}`);
+      assert.equal(heads.sgst_paise, want.sgst_paise, `sgst, line ${i}`);
+      assert.equal(heads.igst_paise, want.igst_paise, `igst, line ${i}`);
+
+      taxable += r.taxable_paise;
+      cgst += heads.cgst_paise;
+      sgst += heads.sgst_paise;
+      igst += heads.igst_paise;
+    });
+
+    assert.equal(taxable, d.expected.taxable_paise, "document taxable");
+    assert.equal(cgst + sgst + igst, d.expected.gst_paise, "document GST");
+    assert.equal(
+      resolved.reduce((a, r) => a + r.discount_paise, 0),
+      d.expected.total_discount_paise,
+      "the allocated parts must sum to the whole discount",
+    );
+  });
+}
+
+test("a discount larger than the line is refused, not capped", () => {
+  // The server raises a 422; a preview that silently capped it would show a
+  // figure that cannot be saved, which is the drift this whole fixture exists
+  // to prevent.
+  assert.equal(applyDiscountsToLines([{ gross_paise: 100, discount_paise: 101 }]), null);
+  assert.equal(applyDiscountsToLines([{ gross_paise: 100 }], null, 101), null);
+  assert.equal(applyDiscountsToLines([{ gross_paise: 100, discount_percent_bps: 10001 }]), null);
 });
 
 for (const v of fixture.vectors) {

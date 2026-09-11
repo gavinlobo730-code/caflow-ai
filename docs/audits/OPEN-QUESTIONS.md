@@ -11,8 +11,10 @@ different actions:
   schema download. Code cannot derive them and guessing produces a confidently
   wrong number in somebody's pay or return.
 * **C. Commercial gates** — a registration or a licence. Months, not code.
+* **E. Operational** — something outside the code is failing and somebody has to
+  look at a console this session cannot reach.
 
-Last reviewed: 11 September 2026 (after Phase 11e).
+Last reviewed: 11 September 2026 (after Phase 11g).
 
 ---
 
@@ -156,3 +158,51 @@ intelligence and executive-dashboard endpoints have the same shape and were left
 Needs a backfill as well as a code fix, and the right time is **while production
 still holds zero fixed assets**. After the first register is migrated in, it
 becomes a data-repair job.
+
+---
+
+## E. Operational — things outside the code that need somebody to look
+
+### E1. Render keeps emailing "deploy failed for practicesync-api"
+**Raised by the owner 11 September 2026, on the Phase 11e merge (#482). The
+emails have been arriving for a while and been ignored.**
+
+**What it means, and what it does not.** Render auto-deploys `practicesync-api`
+on every push to `main`. A failed deploy means the **container did not come up
+on the new commit** — Render keeps serving the PREVIOUS image, so the API stays
+up but may be running older code than `main`. It is not a database failure and
+not a test failure: CI was green on every one of these commits.
+
+**Why it is not obviously harmless.** Three things are worth checking together:
+
+* **The migrations applied anyway.** `apply pending migrations — production` is
+  a GitHub Actions job, not part of the Render deploy, so every migration
+  merged to `main` has been applied to the live database whether or not the API
+  redeployed. That leaves production's SCHEMA ahead of production's CODE. That
+  is the safer direction — new columns old code ignores — and
+  `core/schema_guard.py` is the boot-time backstop for the other direction. But
+  it is exactly the drift `docs/schema-drift.md` exists to talk about, and it
+  has been accumulating silently for an unknown number of commits.
+* **The service IS answering.** `.github/workflows/wake-before-scheduler.yml`
+  pings `/health` across the scheduler window and those runs are succeeding, so
+  something is live. That is evidence the API is up — not evidence of WHICH
+  COMMIT it is running.
+* **The daily job sweep runs in that process.** If the live image is old, the
+  scheduler running the compliance sweep is old too.
+
+**What cannot be answered from inside this session.** Render's build log is the
+only thing that says WHY the deploy failed, and this environment's egress is
+refused at the proxy, so it cannot be fetched. The first step is a human
+opening the Render dashboard for `practicesync-api` → Events → the failed
+deploy → the build log. Everything after that depends on what it says.
+
+**What to check once the log is in hand** — the four failures this shape usually
+is, cheapest first: a Docker build step that needs a file the image does not
+copy; a `requirements.txt` install failing on a pinned version; the free
+instance running out of memory during the build; or the health check timing out
+on boot because `schema_guard` is refusing to start against a schema it does not
+recognise — which would be the one that ties back to the bullet above.
+
+**Deliberately not investigated further mid-phase**, at the owner's direction:
+"keep this in the open questions so that once you are done with all the phases
+we can go through this together."

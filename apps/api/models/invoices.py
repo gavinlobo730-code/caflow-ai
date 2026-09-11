@@ -5,7 +5,7 @@ CGST §8: CGST+SGST (intra-state), IGST (inter-state).
 All monetary values in integer paise.
 """
 import re
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from typing import Optional, Any
 from decimal import Decimal
 
@@ -110,6 +110,64 @@ class InvoiceLineIn(BaseModel):
         return self
 
 
+class SalesInvoiceLineIn(InvoiceLineIn):
+    """A sales-invoice line, which may carry a §15(3)(a) discount.
+
+    WHY THIS IS A SUBCLASS AND NOT TWO MORE FIELDS ON InvoiceLineIn
+
+    `InvoiceLineIn` is shared by sales invoices, credit notes and debit notes.
+    CGST §15(3) treats those differently and the difference is the whole point
+    of the section:
+
+      * (a) a discount given BEFORE or AT the time of supply and duly recorded
+        in the invoice is excluded from the value of supply. That is this class.
+      * (b) a discount given AFTER the supply is excluded only where it was
+        established in an agreement at or before the time of supply, is
+        specifically linked to the invoices, AND the recipient has reversed the
+        attributable input tax credit. That is the §34 credit-note path, which
+        the product already has.
+
+    Putting a discount field on the shared model would let a post-supply
+    discount reduce the value of a supply already made, with no credit note, no
+    linkage and no reversal at the other end — which is exactly what §15(3)(b)
+    exists to prevent. The notes cannot carry one because the type does not have
+    one.
+
+    `from_attributes` is set so a caller holding a plain `InvoiceLineIn` — the
+    recurring-invoice builder, the billing service, and a hundred tests — is
+    still accepted, with no discount, which is the truth about such a line. The
+    guarantee that matters is not that a sales line must be constructed by name;
+    it is that a NOTE cannot carry a discount, and that holds because the note
+    models are typed to the parent, which has no such field.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    # How the discount was arrived at, for the customer's copy. Basis points:
+    # 500 = 5.00%. When both arrive the PERCENTAGE wins — see
+    # domain/gst/discount.discount_for.
+    discount_percent_bps: Optional[int] = None
+    # A flat amount instead, in paise. Resolved against the line's gross; the
+    # resolved figure is what is stored and what the tax is charged on.
+    discount_paise: Optional[int] = None
+
+    @field_validator("discount_percent_bps")
+    @classmethod
+    def percent_in_range(cls, v: Optional[int]) -> Optional[int]:
+        if v is None:
+            return v
+        if v < 0 or v > 10_000:
+            raise ValueError("discount_percent_bps must be between 0 and 10000 "
+                             "(0% to 100%).")
+        return v
+
+    @field_validator("discount_paise")
+    @classmethod
+    def discount_non_negative(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 0:
+            raise ValueError("discount_paise must be non-negative — a discount "
+                             "is money taken off.")
+        return v
+
+
 class SalesInvoiceIn(BaseModel):
     """Create a new sales invoice. CGST Act §31."""
     client_id: str
@@ -124,8 +182,14 @@ class SalesInvoiceIn(BaseModel):
     # credit_days is given, the customer's credit_days is used as the default and
     # the resulting due_date + credit_days are snapshotted onto the invoice.
     credit_days: Optional[int] = None
-    lines: list[InvoiceLineIn]
+    lines: list[SalesInvoiceLineIn]
     reference_no: Optional[str] = None
+    # Document-level discount under §15(3)(a), allocated PRO-RATA across the
+    # lines before tax — GST is charged per line at the line's own rate, so a
+    # bill-level discount that stayed at bill level could not be taxed at all on
+    # an invoice whose lines carry different rates. See domain/gst/discount.py.
+    discount_percent_bps: Optional[int] = None
+    discount_paise: Optional[int] = None
     notes: Optional[str] = None
     is_inter_state: bool = False
     # Optional display/override fields (CGST Rule 46 mandatory fields on tax invoice)
@@ -217,7 +281,10 @@ class SalesInvoiceUpdateIn(BaseModel):
     due_date: Optional[str] = None
     credit_days: Optional[int] = None
     supply_state_code: Optional[str] = None
-    lines: Optional[list[InvoiceLineIn]] = None
+    lines: Optional[list[SalesInvoiceLineIn]] = None
+    # See SalesInvoiceIn — the same two, on the edit path.
+    discount_percent_bps: Optional[int] = None
+    discount_paise: Optional[int] = None
     # GSTR-1 classification (migration 268). The classifier in
     # domain/gst/classifier.py branches on these to pick the return table; left
     # unset an invoice is an ordinary domestic taxable sale, which is what every

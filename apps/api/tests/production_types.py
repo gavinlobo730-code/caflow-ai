@@ -78,6 +78,10 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     # migration this branch has not merged yet.
     ("purchase_bills", "tds_certificate_no"): "migration 359",
     ("purchase_payments", "tds_certificate_no"): "migration 359",
+    ("client_sales_invoices", "discount_paise"): "migration 364",
+    ("client_sales_invoices", "discount_percent_bps"): "migration 364",
+    ("client_sales_invoice_lines", "discount_paise"): "migration 364",
+    ("client_sales_invoice_lines", "discount_percent_bps"): "migration 364",
 }
 
 
