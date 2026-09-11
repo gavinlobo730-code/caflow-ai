@@ -684,8 +684,10 @@ def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
 
     EXACT WHERE THERE IS A RECORD. Migration 367 has the apply path write one
     row per loan it touched, so the undo is that row read back and negated —
-    the right loan, the right amount, and the `closed_the_loan` flag saying
-    whether to reopen it.
+    the right loan and the right amount. The row's `closed_the_loan` flag is
+    history rather than an instruction: `_restore_one_loan` clears `closed_on`
+    whatever it says, because money going back onto a loan means it is owed
+    again however it stood before.
 
     HONEST WHERE THERE IS NOT. A run finalised BEFORE migration 367 has no
     rows, and its history cannot be reconstructed: the apply walk applied
@@ -725,7 +727,7 @@ def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
                 continue
             _restore_one_loan(db, firm_id, client_id, row["loan_id"],
                               abs(int(row["amount_paise"] or 0)), run_id,
-                              bool(row.get("closed_the_loan")), created_by)
+                              created_by)
         return notes
 
     # ── Fallback: a run finalised before migration 367 ──────────────────────
@@ -766,7 +768,7 @@ def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
             if give <= 0:
                 continue
             _restore_one_loan(db, firm_id, client_id, loan["id"], give, run_id,
-                              bool(loan.get("closed_on")), created_by)
+                              created_by)
             left -= give
         if len(loans) > 1:
             notes.append(
@@ -778,7 +780,7 @@ def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
 
 
 def _restore_one_loan(db, firm_id: str, client_id: str, loan_id: str,
-                      amount_paise: int, run_id: str, reopen: bool,
+                      amount_paise: int, run_id: str,
                       created_by: str | None) -> None:
     """Add `amount_paise` back to one loan and record that we did.
 
@@ -797,16 +799,29 @@ def _restore_one_loan(db, firm_id: str, client_id: str, loan_id: str,
             return
         restored = min(int(loan.get("principal_paise") or 0),
                        int(loan.get("outstanding_paise") or 0) + amount_paise)
-        update = {
+        # Payload written INLINE with literal keys — a dict built in a variable
+        # is invisible to tests/test_backend_columns_exist_pg.py's scanner, and
+        # its unreadable-reference RATCHET caught this one at 448 against a
+        # budget of 447. Same shape as the `{**header}` spread that tripped it
+        # on migration 366: the budget is not raised, the reference is made
+        # readable.
+        #
+        # `closed_on` is cleared UNCONDITIONALLY rather than under the
+        # `reopen or restored > 0` branch the variable form carried, and that is
+        # a simplification rather than a behaviour change: money is going back
+        # ONTO this loan, so it is owed again whatever it was before. The one
+        # case the branch distinguished — a loan whose principal is zero, so
+        # `restored` is zero too — leaves an open loan with nothing outstanding,
+        # which `_loan_recoveries_for_run` reads and computes min(instalment, 0)
+        # = 0 against. It recovers nothing, which is right. A loan left CLOSED
+        # with something outstanding is the failure that matters, and it is the
+        # one this clears: such a loan is invisible to next month's recovery,
+        # which is how the final instalment went missing.
+        db.table("payroll_loans").update({
             "outstanding_paise": restored,
+            "closed_on": None,
             "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        # Reopen a loan this run's recovery had closed. A loan with something
-        # outstanding and a closed_on date is invisible to next month's
-        # recovery, which is how the final instalment went missing.
-        if reopen or restored > 0:
-            update["closed_on"] = None
-        db.table("payroll_loans").update(update).eq("id", loan_id).execute()
+        }).eq("id", loan_id).execute()
         _record_loan_movement(db, firm_id, client_id, loan, run_id,
                               amount_paise, "reversed", False, created_by)
     except Exception:                                           # noqa: BLE001
