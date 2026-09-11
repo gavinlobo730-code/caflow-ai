@@ -30,7 +30,11 @@ interface StockItem {
   description: string | null;
   hsn_sac: string | null;
   unit: string | null;
-  is_active: boolean;
+  // Optional because the as-at-a-date register has no answer for it: whether
+  // an item is archived TODAY is not a fact about 31 March, and folding a
+  // today-fact into a dated statement is how a working paper misleads. The
+  // Status column is dropped in that mode rather than guessed.
+  is_active?: boolean | null;
   stock_qty_units: number | null;
   avg_cost_paise: number | null;
   stock_value_paise: number | null;
@@ -43,12 +47,37 @@ interface StockLedgerLine {
   quantity_delta: string;
   unit_cost_paise: number;
   value_delta_paise: number;
+  // What the DATABASE holds: the perpetual chain, in insertion order. Every
+  // future movement's cost comes off these. Not what the Balance column shows.
   running_qty_units: string;
   running_avg_cost_paise: number;
   running_value_paise: number;
+  // What the Balance column shows: the same deltas run forward IN THE ORDER
+  // DISPLAYED, from the opening position. The two orders disagree the moment a
+  // document is entered late, which is why the column used not to foot — see
+  // apps/api/domain/reporting/stock_position.py.
+  balance_qty_units: string;
+  balance_value_paise: number;
   reference_no: string | null;
   source_type: string | null;
 }
+
+interface StockPosition {
+  as_of: string;
+  items: {
+    service_catalogue_id: string;
+    name: string;
+    unit: string | null;
+    hsn_sac: string | null;
+    qty_units: string;
+    value_paise: number;
+    avg_cost_paise: number;
+  }[];
+  total_value_paise: number;
+  total_items: number;
+}
+
+interface LedgerEdge { qty_units: string; value_paise: number; as_at: string | null }
 
 function fyDateRange(fy: string): { start: string; end: string } {
   const [startYear] = fy.split("-");
@@ -106,11 +135,35 @@ export default function InventoryPage() {
   // render identically to an empty book: "No stock-tracked products" + ₹0 (M17).
   const [loadFailed, setLoadFailed] = useState(false);
   const [drillDown, setDrillDown] = useState<StockItem | null>(null);
+  // Empty = the CURRENT position, which is what this page has always shown.
+  // A date switches it to the closing-stock statement as at that date — the
+  // figure that ties to the Inventories line on the balance sheet. They are
+  // genuinely different questions, so the subtitle says which one is on screen.
+  const [asAt, setAsAt] = useState("");
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     setLoading(true);
     try {
+      if (asAt) {
+        const res = (await api.inventory.stockSummary({ client_id: clientId, as_of: asAt })) as {
+          success: boolean; data: StockPosition | null;
+        };
+        if (!res.success || !res.data) throw new Error("load failed");
+        setItems(res.data.items.map((r) => ({
+          id: r.service_catalogue_id,
+          name: r.name,
+          description: null,
+          hsn_sac: r.hsn_sac,
+          unit: r.unit,
+          // is_active deliberately absent — see the type.
+          stock_qty_units: parseFloat(r.qty_units),
+          avg_cost_paise: r.avg_cost_paise,
+          stock_value_paise: r.value_paise,
+        })));
+        setLoadFailed(false);
+        return;
+      }
       // api.inventory.items() (routers/inventory.py::list_stock_items) reads
       // stock_qty_units/avg_cost_paise/stock_value_paise straight off each
       // item's current inventory_stock_ledger row — the authoritative
@@ -130,7 +183,7 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, asAt]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -142,7 +195,7 @@ export default function InventoryPage() {
     );
   }
 
-  const columns: Column<StockItem>[] = [
+  const allColumns: Column<StockItem>[] = [
     { key: "name", header: "Product", accessor: (i) => i.name, searchable: true, sortable: true, sticky: true, hideable: false,
       render: (i) => <span className="font-medium text-[#1E293B]">{i.name}</span> },
     { key: "hsn_sac", header: "HSN", accessor: (i) => i.hsn_sac ?? "", searchable: true,
@@ -183,6 +236,10 @@ export default function InventoryPage() {
       ) },
   ];
 
+  // The as-at register has no Status to show — the item's archived flag is a
+  // fact about today, not about the date asked for.
+  const columns = asAt ? allColumns.filter((c) => c.key !== "is_active") : allColumns;
+
   const totalValue = items.reduce((s, i) => s + (i.stock_value_paise ?? 0), 0);
 
   return (
@@ -193,12 +250,26 @@ export default function InventoryPage() {
           <p className="text-xs text-[#94A3B8] mt-0.5">
             {loadFailed
               ? "Couldn't load the stock register"
-              : `${items.length} stock-tracked product${items.length !== 1 ? "s" : ""} · Total value ${formatServicePrice(totalValue) || "₹0"}`}
+              : `${items.length} stock-tracked product${items.length !== 1 ? "s" : ""} · ${asAt ? `Closing value as at ${asAt}` : "Total value"} ${formatServicePrice(totalValue) || "₹0"}`}
           </p>
         </div>
-        <button onClick={load} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-        </button>
+        <div className="flex items-end gap-3">
+          <div>
+            <label htmlFor="stock-as-at" className="block text-[10px] font-medium text-[#94A3B8] mb-1">
+              As at
+            </label>
+            <input id="stock-as-at" type="date" value={asAt} onChange={(e) => setAsAt(e.target.value)}
+              className="px-2.5 py-[7px] text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          {asAt ? (
+            <button onClick={() => setAsAt("")} className="text-xs text-blue-600 hover:underline pb-2">
+              Show today
+            </button>
+          ) : null}
+          <button onClick={load} className="p-1.5 mb-0.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0">
@@ -245,6 +316,12 @@ function StockLedgerDrillDown({
   const [startDate, setStartDate] = useState(fyRange.start);
   const [endDate, setEndDate] = useState(fyRange.end);
   const [lines, setLines] = useState<StockLedgerLine[]>([]);
+  // The position the Balance column runs forward FROM, and the one it arrives
+  // at. Both come from the server's one rule (migration 363) rather than being
+  // re-derived here — a browser copy of a balance is how the column stopped
+  // footing in the first place.
+  const [opening, setOpening] = useState<LedgerEdge | null>(null);
+  const [closing, setClosing] = useState<LedgerEdge | null>(null);
   const [loading, setLoading] = useState(false);
   // Distinguishes "ledger fetch failed" from "no movements in this range" (M17):
   // success===false is a backend error path; an empty range still returns
@@ -257,17 +334,24 @@ function StockLedgerDrillDown({
     setLoading(true);
     try {
       const res = (await api.inventory.ledger(item.id, { client_id: clientId, start_date: startDate, end_date: endDate })) as {
-        success: boolean; data: { item: unknown; lines: StockLedgerLine[] } | null;
+        success: boolean;
+        data: { item: unknown; lines: StockLedgerLine[]; opening: LedgerEdge; closing: LedgerEdge } | null;
       };
       if (res.success && res.data) {
         setLines(res.data.lines);
+        setOpening(res.data.opening ?? null);
+        setClosing(res.data.closing ?? null);
         setLoadFailed(false);
       } else {
         setLines([]);
+        setOpening(null);
+        setClosing(null);
         setLoadFailed(true);
       }
     } catch {
       setLines([]);
+      setOpening(null);
+      setClosing(null);
       setLoadFailed(true);
     } finally {
       setLoading(false);
@@ -329,7 +413,18 @@ function StockLedgerDrillDown({
               <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
             </div>
           ) : lines.length === 0 ? (
-            <div className="text-center py-10 text-[#94A3B8] text-sm">No stock movements for this item in the selected range.</div>
+            <div className="text-center py-10 text-[#94A3B8] text-sm">
+              No stock movements for this item in the selected range.
+              {/* Nothing MOVED is not the same as holding nothing. A range with
+                  no movements still opened and closed on a position, and a CA
+                  reconciling stock needs to see it rather than an empty box. */}
+              {opening ? (
+                <span className="block mt-2 text-[#64748B]">
+                  Held {fmtQty(opening.qty_units)} throughout, valued at{" "}
+                  {formatServicePrice(opening.value_paise) || "₹0"}.
+                </span>
+              ) : null}
+            </div>
           ) : (
             <table className="w-full text-xs">
               <thead>
@@ -344,6 +439,16 @@ function StockLedgerDrillDown({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
+                {opening ? (
+                  <tr className="bg-[#F8FAFC]">
+                    <td className="px-3 py-2 text-[#64748B] whitespace-nowrap">{opening.as_at ?? "—"}</td>
+                    <td className="px-3 py-2 text-[#334155] font-medium" colSpan={2}>Opening Balance</td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-[#334155]">{fmtQty(opening.qty_units)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-[#0F172A]">{formatServicePrice(opening.value_paise) || "₹0"}</td>
+                  </tr>
+                ) : null}
                 {lines.map((l) => {
                   const delta = parseFloat(l.quantity_delta);
                   return (
@@ -355,11 +460,24 @@ function StockLedgerDrillDown({
                         {delta >= 0 ? "+" : ""}{fmtQty(delta)}
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-[#64748B]">{formatServicePrice(l.unit_cost_paise) || "—"}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-[#334155]">{fmtQty(l.running_qty_units)}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-[#0F172A]">{formatServicePrice(l.running_value_paise) || "₹0"}</td>
+                      {/* balance_*, NOT running_*: the stored running totals are
+                          chained in insertion order, so beside a date-ordered
+                          list they do not add up. See the interface above. */}
+                      <td className="px-3 py-2 text-right font-mono font-semibold text-[#334155]">{fmtQty(l.balance_qty_units)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold text-[#0F172A]">{formatServicePrice(l.balance_value_paise) || "₹0"}</td>
                     </tr>
                   );
                 })}
+                {closing ? (
+                  <tr className="bg-[#F8FAFC] border-t-2 border-[#E2E8F0]">
+                    <td className="px-3 py-2 text-[#64748B] whitespace-nowrap">{closing.as_at ?? "—"}</td>
+                    <td className="px-3 py-2 text-[#334155] font-medium" colSpan={2}>Closing Balance</td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-[#334155]">{fmtQty(closing.qty_units)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-[#0F172A]">{formatServicePrice(closing.value_paise) || "₹0"}</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           )}

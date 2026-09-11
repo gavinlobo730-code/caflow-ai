@@ -1429,6 +1429,13 @@ export const api = {
   // movements are written as a side effect of issuing/receiving documents.
   inventory: {
     items: (params: Record<string, string>) => request(`/api/inventory/items?${new URLSearchParams(params)}`),
+    /** Closing stock AS AT a date — the statement that ties to the Inventories
+     *  line on the balance sheet. Distinct from `items`, which is the CURRENT
+     *  position and takes no date: the two answer different questions, and only
+     *  this one can answer for an earlier date, because the ledger's stored
+     *  running totals are chained in insertion order. Migration 363. */
+    stockSummary: (params: Record<string, string>) =>
+      request(`/api/inventory/stock-summary?${new URLSearchParams(params)}`),
     ledger: (serviceCatalogueId: string, params: Record<string, string>) =>
       request(`/api/inventory/items/${serviceCatalogueId}/ledger?${new URLSearchParams(params)}`),
     adjust: (serviceCatalogueId: string, body: unknown) =>

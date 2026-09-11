@@ -579,6 +579,20 @@ the query, and what crosses the wire is what is OWED rather than everything ever
 billed. Both obey the rule. Which shape a report needs is decided by the size of
 its ANSWER, not by the table it reads.
 
+**Closing stock as at a date is the same shape, and it also carries a rule about
+WHICH COLUMN answers a dated question.** `public.stock_position_as_at`
+(migration 363) sums `inventory_stock_ledger`'s DELTAS to a date — one row per
+item — with `domain/reporting/stock_position.py` as its mock-mode twin and
+`tests/test_stock_position_parity_pg.py` pinning them. It never reads the
+stored running totals, and that is not a style choice: those are chained in
+INSERTION order (`_last_ledger_row` explains why, and it is right), so the
+running total on a row is the position as at when it was RECORDED, not as at its
+`movement_date`. Σ `value_delta_paise` to a date is also what ties to the
+Inventory control account, because the inventory journal posts exactly that
+delta at exactly that date. For the same reason a ledger's **Balance column is a
+property of the order it is shown in** and is derived at display time from an
+opening figure, never rendered from the stored chain.
+
 ## GSTR-2B reconciliation — the books are read in `apps/api`, and the answer is kept
 
 The one purchase-side task an Indian practice performs every month is "which of

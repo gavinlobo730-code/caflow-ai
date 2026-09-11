@@ -107,6 +107,41 @@ def list_stock_items(
         return api_response(False, None, "Unable to load the stock register. Please try again.")
 
 
+@router.get("/stock-summary")
+def stock_summary(
+    client_id: str = Query(..., description="CA client ID — stock is client-owned"),
+    as_of: Optional[str] = Query(None, description="YYYY-MM-DD; defaults to today in IST"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Closing stock as at a date — the statement that ties to the Inventories
+    line on the balance sheet, and the quantitative-details working paper a
+    §44AB audit expects.
+
+    Distinct from GET /items, which is the CURRENT position and takes no date.
+    The two deliberately answer different questions: /items reads each item's
+    latest running totals (the perpetual chain every future movement costs
+    off), this sums the DELTAS up to a date. Over an item's whole history the
+    two agree exactly — `_compute_stock_out` force-closes so that the deltas
+    sum to the running value — and as at any earlier date only this one can
+    answer at all, because the running totals are chained in INSERTION order.
+    See migration 363 and domain/reporting/stock_position.py."""
+    assert_client_access(current_user, client_id)
+    try:
+        from services import stock_position_service
+        if _USE_MOCK:
+            return api_response(True, stock_position_service.position(
+                None, current_user.get("firm_id"), client_id, as_of))
+
+        from core.supabase_client import get_supabase
+        return api_response(True, stock_position_service.position(
+            get_supabase(), current_user.get("firm_id"), client_id, as_of))
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("stock_summary: %s", e)
+        return api_response(False, None, "Unable to load the stock summary. Please try again.")
+
+
 @router.get("/items/{service_catalogue_id}/ledger")
 def get_item_stock_ledger(
     service_catalogue_id: str,
@@ -125,6 +160,8 @@ def get_item_stock_ledger(
         firm_id = current_user.get("firm_id")
         from core.supabase_client import get_supabase
         from domain.inventory_service import get_stock_ledger
+        from domain.reporting import stock_position
+        from services import stock_position_service
         db = get_supabase()
 
         item_resp = (
@@ -136,7 +173,38 @@ def get_item_stock_ledger(
             raise HTTPException(status_code=404, detail="Stock item not found.")
 
         lines = get_stock_ledger(db, service_catalogue_id, start_date, end_date)
-        return api_response(True, {"item": item_resp.data[0], "lines": lines})
+
+        # ── THE BALANCE COLUMN IS A PROPERTY OF THE ORDER IT IS SHOWN IN ─────
+        # `lines` come back ordered by (movement_date, created_at) while each
+        # row's STORED running totals were chained in insertion order — see
+        # _last_ledger_row, which explains why the chain must stay that way.
+        # The two orders disagree the moment a document is entered late, and
+        # the screen rendered the stored columns beside the date order, so
+        # neither row footed: +20 against a balance of 110 sitting above -10
+        # against a balance of 90.
+        #
+        # So the balance shown is DERIVED here, from the deltas, in the order
+        # displayed, running forward from the position as at the day before the
+        # range. Added as new keys rather than overwriting running_qty_units /
+        # running_value_paise: those are what the database holds and what every
+        # future movement costs off, and relabelling them in the response would
+        # tell the screen something untrue.
+        opening_qty, opening_value = stock_position_service.opening_for_item(
+            db, firm_id, client_id, service_catalogue_id, start_date)
+        lines = stock_position.ledger_with_balances(lines, opening_qty, opening_value)
+        closing_qty = lines[-1]["balance_qty_units"] if lines else str(opening_qty)
+        closing_value = lines[-1]["balance_value_paise"] if lines else opening_value
+
+        return api_response(True, {
+            "item": item_resp.data[0],
+            "lines": lines,
+            "opening": {"qty_units": str(opening_qty),
+                        "value_paise": opening_value,
+                        "as_at": start_date or None},
+            "closing": {"qty_units": closing_qty,
+                        "value_paise": closing_value,
+                        "as_at": end_date or None},
+        })
     except HTTPException:
         raise
     except Exception as e:

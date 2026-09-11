@@ -542,6 +542,26 @@ class _Rpc:
             self.db, self.params.get("p_firm"), self.params.get("p_client"),
             self.params.get("p_date"))
 
+    def _fn_stock_position_as_at(self):
+        """Migration 363. DELEGATES to the same Python twin production falls
+        back to, for the same reason the two above do: a double that answers
+        the question its own third way is a double that will disagree with
+        both. tests/test_stock_position_parity_pg.py pins the twin to the SQL.
+        """
+        from domain.reporting import stock_position
+        firm = self.params.get("p_firm")
+        client = self.params.get("p_client")
+        item = self.params.get("p_item")
+        rows = [r for r in self.db.rows("inventory_stock_ledger")
+                if str(r.get("firm_id")) == str(firm)
+                and str(r.get("client_id")) == str(client)
+                and (item is None or str(r.get("service_catalogue_id")) == str(item))]
+        names = {str(c["id"]): c
+                 for c in self.db.rows("service_catalogue")
+                 if str(c.get("firm_id")) == str(firm)
+                 and str(c.get("client_id")) == str(client)}
+        return stock_position.position(rows, str(self.params.get("p_as_of"))[:10], names)
+
     def _fn_post_journal_atomic(self):
         """Mirror migrations/152 post_journal_atomic: insert header + lines
         atomically (trivially atomic in-memory), with (firm, client, reference_no,
