@@ -163,53 +163,56 @@ becomes a data-repair job.
 
 ## E. Operational — things outside the code that need somebody to look
 
-### E1. Render keeps emailing "deploy failed for practicesync-api"
-**Raised by the owner 11 September 2026, on the Phase 11e merge (#482). The
-emails have been arriving for a while and been ignored.**
+### E1. Render deploys fail on a health-check timeout — DIAGNOSED 11 Sep 2026
+**Raised by the owner, who supplied the Render event log. No longer a mystery.**
 
-**What it means, and what it does not.** Render auto-deploys `practicesync-api`
-on every push to `main`. A failed deploy means the **container did not come up
-on the new commit** — Render keeps serving the PREVIOUS image, so the API stays
-up but may be running older code than `main`. It is not a database failure and
-not a test failure: CI was green on every one of these commits.
+**Every failed deploy gives the same reason, verbatim:**
 
-**Why it is not obviously harmless.** Three things are worth checking together:
+> Timed out after waiting for internal **health check** to return a successful
+> response code
 
-* **The migrations applied anyway.** `apply pending migrations — production` is
-  a GitHub Actions job, not part of the Render deploy, so every migration
-  merged to `main` has been applied to the live database whether or not the API
-  redeployed. That leaves production's SCHEMA ahead of production's CODE. That
-  is the safer direction — new columns old code ignores — and
-  `core/schema_guard.py` is the boot-time backstop for the other direction. But
-  it is exactly the drift `docs/schema-drift.md` exists to talk about, and it
-  has been accumulating silently for an unknown number of commits.
-* **The service IS answering.** `.github/workflows/wake-before-scheduler.yml`
-  pings `/health` across the scheduler window and those runs are succeeding, so
-  something is live. That is evidence the API is up — not evidence of WHICH
-  COMMIT it is running.
-* **The daily job sweep runs in that process.** If the live image is old, the
-  scheduler running the compliance sweep is old too.
+**It is not a build failure and not a bad commit.** The owner re-triggered the
+SAME commit — `a8c1dac`, the Phase 11e merge — manually at 11:42, and it went
+**live at 11:44**. Identical code, identical image: the auto-deploy timed out
+and the manual retry succeeded. The event log shows that alternating all the way
+back: 11b live, 11c failed, 11d live, 11e failed, 9d failed, 8 failed, 7h live,
+6 failed, 5 failed, 4 failed, 1b live, 1a failed. Cloudflare Pages deployed both
+frontends successfully on every one of those commits.
 
-**One narrowing fact, from the PR events of the same morning.** Cloudflare Pages
-deployed BOTH frontend projects — `practicesync` and `practicesync-ai` —
-successfully on the same commits Render failed on (#482 head `865cc80`, #483
-head `9b0a1d8`, deploy successful on each). So this is not a repo-wide problem
-and not a bad commit: it is specific to the backend's Docker build or its boot
-on Render. That rules out the whole class of "the tree is broken" causes and
-points at the image or the container's start-up.
+**Where the time goes, and it is our code.** `apps/api/main.py` does all of this
+at MODULE IMPORT time, before uvicorn can answer anything:
 
-**What cannot be answered from inside this session.** Render's build log is the
-only thing that says WHY the deploy failed, and this environment's egress is
-refused at the proxy, so it cannot be fetched. The first step is a human
-opening the Render dashboard for `practicesync-api` → Events → the failed
-deploy → the build log. Everything after that depends on what it says.
+1. `validate_config()`;
+2. `run_startup_check()` (`core/schema_guard.py`), which calls `get_supabase()`
+   and queries the live schema — **a cross-region round trip, Singapore to
+   Mumbai**, on a cold connection;
+3. `start_scheduler()` — APScheduler;
+4. `log_scheduler_startup_health()` — another database read;
+5. the slept-through-jobs catch-up kick.
 
-**What to check once the log is in hand** — the four failures this shape usually
-is, cheapest first: a Docker build step that needs a file the image does not
-copy; a `requirements.txt` install failing on a pinned version; the free
-instance running out of memory during the build; or the health check timing out
-on boot because `schema_guard` is refusing to start against a schema it does not
-recognise — which would be the one that ties back to the bullet above.
+On Render's FREE tier the instance is cold and CPU-throttled, so the import
+graph of a large FastAPI app plus those round trips sometimes lands inside
+Render's health-check window and sometimes does not. That is exactly the
+coin-flip the event log shows, and exactly why a manual retry on a warm
+scheduler succeeds.
+
+**What it costs today.** Nothing is corrupted and nothing is lost — but a failed
+deploy means Render keeps serving the PREVIOUS image, while
+`apply pending migrations — production` (a GitHub Actions job, not part of the
+Render deploy) applies every merged migration regardless. So after a failed
+deploy the database is ahead of the code until somebody clicks Manual Deploy.
+Safe direction — new columns and functions the old code does not call — and
+`schema_guard` is the backstop for the other direction. But it is a manual step
+on every merge that nobody is reminded to take.
+
+**The fix, not yet made, because it touches the deploy path of a live service
+and is the owner's call:** make `/health` answerable before the expensive boot
+work rather than after it. Concretely — move (2), (3), (4) and (5) out of module
+import and into a FastAPI `lifespan`/startup hook that runs them on a background
+thread, keeping `/health` returning 503 while the schema check is outstanding
+(which is what task #244 wanted) rather than keeping the whole process from
+answering at all. Raising Render's health-check timeout is the smaller change
+and treats the symptom; both are worth doing and the second is free.
 
 **Deliberately not investigated further mid-phase**, at the owner's direction:
 "keep this in the open questions so that once you are done with all the phases

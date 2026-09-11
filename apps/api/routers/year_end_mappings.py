@@ -98,7 +98,16 @@ _CAPTION_TO_SCHEDULE_LINE = {
     "Other Current Assets":        "other_current_assets",
     "Revenue from Operations":     "revenue_from_operations",
     "Other Income":                "other_income",
-    "Cost of Materials":           "cost_of_materials_consumed",
+    # "Cost of Materials Consumed", spelled the way pl_bucket returns it. The
+    # key here read "Cost of Materials" from the day it was written, which
+    # pl_bucket has never returned — so every cost-of-materials account fell
+    # through `.get(caption, "other_current_assets")` and was classified as a
+    # CURRENT ASSET in the year-end financial statements. On a trading or
+    # manufacturing client that is the single largest expense on the P&L:
+    # profit overstated by the whole of it, and a phantom asset of the same
+    # amount on the balance sheet. The vocabulary in domain/reporting/
+    # schedule_iii.py and the totality test below are what stop it recurring.
+    "Cost of Materials Consumed":  "cost_of_materials_consumed",
     "Employee Benefit Expense":    "employee_benefit_expense",
     "Finance Costs":               "finance_costs",
     "Depreciation & Amortisation": "depreciation_and_amortisation",
@@ -121,7 +130,20 @@ def _schedule_line_for_account(account_type: str, account_subtype: Optional[str]
     typ = (account_type or "").strip()
     caption = bs_bucket(typ, account_subtype) or pl_bucket(typ, account_subtype)
     if caption:
-        return _CAPTION_TO_SCHEDULE_LINE.get(caption, "other_current_assets")
+        line = _CAPTION_TO_SCHEDULE_LINE.get(caption)
+        if line is not None:
+            return line
+        # A caption this table does not know. The old fallback here was the
+        # literal "other_current_assets", which put an unmapped EXPENSE on the
+        # balance sheet — the worst available answer, and how the cost-of-
+        # materials defect went unseen. Falling back BY ACCOUNT TYPE at least
+        # keeps an expense an expense. test_every_caption_has_a_schedule_line
+        # asserts this branch is unreachable; it survives as the safe landing
+        # if somebody adds a caption and forgets the row.
+        _logger.error(
+            "year-end mapping: Schedule III caption %r has no schedule_line — "
+            "falling back to the account type. Add it to "
+            "_CAPTION_TO_SCHEDULE_LINE.", caption)
     return _DEFAULT_ACCOUNT_TYPE_MAP.get(typ.lower(), "other_current_assets")
 
 # Normal balance per schedule line (debit or credit)
