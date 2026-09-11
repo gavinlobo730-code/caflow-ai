@@ -19,13 +19,9 @@ from services import party_erasure
 from core.exceptions import NotFoundError
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
+from core.ist_clock import ist_fy_label
 
 
-def _current_fy_long() -> str:
-    """Return full financial year string like '2025-26'. Indian FY: April 1 – March 31."""
-    now = datetime.now(timezone.utc)
-    start = now.year if now.month >= 4 else now.year - 1
-    return f"{start}-{str(start + 1)[2:]}"
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.customers")
@@ -334,7 +330,7 @@ def create_customer(
         timeline_service.log_timeline_event(
             client_id=data.get("client_id", ""),
             firm_id=data.get("firm_id", ""),
-            financial_year=_current_fy_long(),
+            financial_year=ist_fy_label(),
             category="accounting",
             event_type="customer_created",
             title=f"Customer {data.get('name', '')} added",
@@ -526,7 +522,7 @@ def bulk_create_customers(
             timeline_service.log_timeline_event(
                 client_id=row.get("client_id", ""),
                 firm_id=firm_id,
-                financial_year=_current_fy_long(),
+                financial_year=ist_fy_label(),
                 category="accounting",
                 event_type="customer_created",
                 title=f"Customer {row.get('name', '')} added",

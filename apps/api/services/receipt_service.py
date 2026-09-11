@@ -23,6 +23,7 @@ from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
 from services.numbering import sequence_after
+from core.ist_clock import fy_code, ist_fy_label
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.receipt_service")
@@ -55,18 +56,8 @@ def _is_missing_rpc_function(err: Exception) -> bool:
     return "pgrst202" in s or ("function" in s and ("does not exist" in s or "could not find the function" in s))
 
 
-def _current_fy() -> str:
-    now = datetime.now(timezone.utc)
-    if now.month >= 4:
-        return f"{str(now.year)[2:]}{str(now.year + 1)[2:]}"
-    return f"{str(now.year - 1)[2:]}{str(now.year)[2:]}"
 
 
-def _current_fy_long() -> str:
-    """Full FY string like '2025-26' for display/timeline. Indian FY: Apr 1 – Mar 31."""
-    now = datetime.now(timezone.utc)
-    start = now.year if now.month >= 4 else now.year - 1
-    return f"{start}-{str(start + 1)[2:]}"
 
 
 def _next_receipt_seq(db, firm_id: str, client_id: str, fy: str) -> int:
@@ -194,7 +185,9 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
             lines.append({"account_id": fx_id, "debit_paise": -fx_diff, "credit_paise": 0,
                           "narration": "Realized FX loss", "txn_debit": 0, "txn_credit": 0})
 
-    fy = _current_fy()
+    # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from today
+    # (SALES-24) — see core.ist_clock.fy_code.
+    fy = fy_code(data["receipt_date"])
     seq = _next_receipt_seq(db, firm_id, client_id, fy)
     receipt_no = f"RCPT-{fy}-{seq:04d}"
     # task #102: pre-generated (matching create_receipt_core's atomic-path
@@ -474,7 +467,7 @@ def _settle_receipt_via_atomic_rpc(
     timeline_service.log_timeline_event(
         client_id=client_id,
         firm_id=firm_id or "",
-        financial_year=_current_fy_long(),
+        financial_year=ist_fy_label(receipt.get("receipt_date")),
         category="accounting",
         event_type="receipt_recorded",
         title=f"Receipt {receipt_payload.get('receipt_no', '')} recorded",
@@ -575,7 +568,9 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     # taken again. The CA's own financial-year lock, checked above, is the
     # instrument that already covers the year-end case.
 
-    fy = _current_fy()
+    # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from today
+    # (SALES-24) — see core.ist_clock.fy_code.
+    fy = fy_code(data["receipt_date"])
 
     if db is None:
         seq = sequence_after(
@@ -803,7 +798,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     timeline_service.log_timeline_event(
         client_id=client_id,
         firm_id=firm_id or "",
-        financial_year=_current_fy_long(),
+        financial_year=ist_fy_label(receipt.get("receipt_date")),
         category="accounting",
         event_type="receipt_recorded",
         title=f"Receipt {receipt.get('receipt_no', '')} recorded",

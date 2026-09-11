@@ -24,6 +24,7 @@ from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.internal_client_service import is_internal_client, assert_partner_for_internal_id, is_partner
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
+from core.ist_clock import ist_fy_label
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.sales_invoices")
@@ -114,17 +115,6 @@ def _assert_batch_scope(current_user: dict, client_ids) -> None:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _current_fy_long() -> str:
-    """Return full financial year string like '2025-26' for display/timeline use.
-    Indian FY runs April 1 – March 31.
-    """
-    now = datetime.now(timezone.utc)
-    if now.month >= 4:
-        start = now.year
-    else:
-        start = now.year - 1
-    end_short = str(start + 1)[2:]
-    return f"{start}-{end_short}"
 
 
 def _assert_invoice_no_available(
@@ -1667,7 +1657,7 @@ def issue_invoice(
         timeline_service.log_timeline_event(
             client_id=updated_inv.get("client_id", ""),
             firm_id=current_user.get("firm_id", ""),
-            financial_year=_current_fy_long(),
+            financial_year=ist_fy_label(updated_inv.get("invoice_date")),
             category="accounting",
             event_type="invoice_posted",
             title=f"Sales Invoice {updated_inv.get('invoice_no', '')} posted",
