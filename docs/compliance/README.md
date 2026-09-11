@@ -75,14 +75,20 @@ orphaning.
 | `04-mca-epfo-esic.md` | The three with no API at all, the revamped ECR, and the Labour Codes. |
 | `05-bank-data-and-the-account-aggregator.md` | Why the FIU step may be unachievable, and why upload stays the base case. |
 | `06-data-protection-dpdp.md` | The only section with a real deadline: 13 May 2027. |
+| `07-getting-permission-to-file.md` | The playbook: what to apply for, in what order, what it costs, what each unblocks. Engineering depth, with the code seams named. |
+| `08-government-api-access-the-verified-position.md` | **Start here on any filing question.** The consolidated answer — direct / approval / partner / no-API, the full chain per filing, the other integrations, and the nine questions an email would close. Cross-checks an external research baseline against `07`. |
 
-### If you read only three things
+### If you read only four things
 
-1. **`00`** — how much to trust the rest.
-2. **`05` §0** — CLAUDE.md's bank-data section tells you to register as an FIU,
+1. **`08` §§1–2** — the four access buckets, and the far more important second
+   axis: a licence you can buy, a signature the law assigns to a named human, or
+   no channel at all. Only the first is purchasable, and the second is the one
+   most often mistaken for it.
+2. **`00`** — how much to trust the rest.
+3. **`05` §0** — CLAUDE.md's bank-data section tells you to register as an FIU,
    and research says that is not a thing a SaaS company can do. **`05` §7** is
    where that line of work ends: route 3, closed.
-3. **`03` §0** — the Income-tax Act 2025 may have renumbered every TDS form the
+4. **`03` §0** — the Income-tax Act 2025 may have renumbered every TDS form the
    product emits, and 25 files carry the old vocabulary.
 
 ## What is deliberately NOT duplicated here
