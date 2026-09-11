@@ -18,7 +18,7 @@ import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNav
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { Skeleton, SkeletonText, MetricCardSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 export default function OverviewPage() {
   const { clientId } = useClientNav();
   // The activity feed is the only thing on this page scoped to a year, so
@@ -274,8 +274,12 @@ export default function OverviewPage() {
   );
 }
 
+// Whole days from today to `dateStr`, both anchored to local midnight.
+// `new Date("2026-09-30")` is UTC midnight and Date.now() is a live instant, so
+// in IST the two are 5:30 apart: between 00:00 and 05:30 this read one day too
+// many, and it is a number shown on a client's own overview.
 function daysUntil(dateStr: string): number {
-  return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
+  return daysBetweenLocalISO(todayLocalISO(), String(dateStr).slice(0, 10)) ?? 0;
 }
 
 function StatCard({

@@ -27,7 +27,7 @@ import { formatPaise, formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ReportId = "gst_summary" | "pl_statement" | "compliance_status" | "outstanding_invoices";
@@ -129,10 +129,13 @@ const REPORTS = [
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
+// Whole days a document has been outstanding, both sides anchored to local
+// midnight. `new Date(dateStr)` parses a date-only string as UTC midnight
+// while `new Date()` is a live instant, so in IST this was 5:30 short of a
+// whole day and floor() took the day off between 00:00 and 05:30 — on the
+// ageing figure of an unpaid invoice.
 function daysBetween(dateStr: string): number {
-  const d = new Date(dateStr);
-  const now = new Date();
-  return Math.floor((now.getTime() - d.getTime()) / 86400000);
+  return daysBetweenLocalISO(String(dateStr).slice(0, 10), todayLocalISO()) ?? 0;
 }
 
 function currentMonthStr(): string {

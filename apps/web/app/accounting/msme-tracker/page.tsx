@@ -63,7 +63,6 @@ function addDays(dateStr: string, days: number): string {
   return toLocalISO(d);
 }
 
-const TODAY = todayLocalISO();
 
 function computeStatus(row: MSMEPayment): Pick<PaymentRow, "due_date" | "due_days" | "status" | "disallowed_paise"> {
   // IT Act Section 43B(h): 45 days if written agreement, 15 days if oral/no agreement
@@ -83,7 +82,10 @@ function computeStatus(row: MSMEPayment): Pick<PaymentRow, "due_date" | "due_day
     }
   } else {
     // Not yet paid
-    if (TODAY > due_date) {
+    // Read at call time, not module load: frozen at load this compared
+    // against the day the tab was opened, so an MSMED §15 breach that
+    // occurred overnight did not appear until a refresh.
+    if (todayLocalISO() > due_date) {
       status = "disallowed";
       disallowed_paise = row.amount_paise;
     } else {

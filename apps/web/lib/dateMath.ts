@@ -61,6 +61,28 @@ export function computeOverdueStatus(
   return daysPastDue > 0 ? "Overdue" : "Pending";
 }
 
+export type DueUrgency = "overdue" | "due-soon" | "upcoming";
+
+/** How urgent an unfiled obligation is, from whole calendar days to its due
+ * date. "due-soon" is the seven days up to and including the due date itself.
+ *
+ * Consolidates two byte-identical copies — app/payroll/page.tsx's
+ * getDueDateStatus and app/payroll/reports/page.tsx's dueDateStatus — which
+ * both hand-rolled the day count. They agreed, which is exactly why nobody
+ * would have noticed when one of them stopped agreeing.
+ *
+ * Distinct from computeOverdueStatus above, which answers a different question
+ * (has this been FILED) and has no "soon" band. */
+export function dueDateUrgency(
+  dueISO: string,
+  todayISO: string = todayLocalISO(),
+): DueUrgency {
+  const days = daysBetweenLocalISO(todayISO, dueISO);
+  if (days === null) return "upcoming";
+  if (days < 0) return "overdue";
+  return days <= 7 ? "due-soon" : "upcoming";
+}
+
 /** Indian FY label ("YYYY-YY") for the given date's LOCAL calendar day,
  * defaulting to today. FY runs 1 April - 31 March. Consolidates what were
  * previously independent, identical implementations in

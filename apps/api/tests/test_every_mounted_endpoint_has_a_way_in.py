@@ -79,7 +79,7 @@ BUDGET: dict[str, int] = {
     "/api/customers": 2, "/api/form-26as": 2, "/api/onboarding": 2,
     "/api/scheduler": 2, "/api/vendors": 2, "/api/public": 2,
     "/api/ai-insights": 1, "/api/approvals": 1, "/api/banking": 1,
-    "/api/copilot": 1, "/api/customer-statements": 1, "/api/fixed-assets": 1,
+    "/api/copilot": 1, "/api/customer-statements": 1,
     "/api/identity": 1, "/api/tds-workspace": 1, "/api/memory": 1,
     "/api/document-intelligence-v2": 1, "/api/purchase-payments": 1,
     "/api/team": 1, "/api/accounting": 1, "/api/automation": 1,
@@ -87,7 +87,7 @@ BUDGET: dict[str, int] = {
     "/api/payroll": 1, "/api/purchase-bills": 1, "/api/tally-migration": 1,
 }
 
-TOTAL_BUDGET = 134
+TOTAL_BUDGET = 133
 
 
 def _sources() -> str:

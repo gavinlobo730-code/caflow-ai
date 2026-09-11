@@ -67,7 +67,6 @@ interface CompanyClient {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const TODAY = new Date();
 
 const FORM_TYPES = [
   { value: "AOC-4",      label: "AOC-4 — Annual Financial Statement (Section 137)" },
@@ -96,22 +95,27 @@ const STATUS_STYLE: Record<FilingStatus, string> = {
 // rather than a year hardcoded once (R3.1 fix — the previous version froze
 // both "today" and every deadline's year, so it silently went stale).
 function _nextOccurrence(month: number, day: number): Date {
-  const thisYear = new Date(TODAY.getFullYear(), month - 1, day);
+  const todayISO = todayLocalISO();
+  const year = Number(todayISO.slice(0, 4));
+  const thisYear = new Date(year, month - 1, day);
   // Compare calendar dates, not a midnight Date against a live instant — a
-  // direct `thisYear >= TODAY` comparison is false on the target day itself
+  // direct `thisYear >= today` comparison is false on the target day itself
   // (any time after local midnight already exceeds thisYear's own midnight),
   // which would wrongly skip straight to next year on the one day it's due.
-  return toLocalISO(thisYear) >= todayLocalISO() ? thisYear : new Date(TODAY.getFullYear() + 1, month - 1, day);
+  return toLocalISO(thisYear) >= todayISO ? thisYear : new Date(year + 1, month - 1, day);
 }
 function _daysUntil(d: Date): number {
-  return Math.ceil((d.getTime() - TODAY.getTime()) / 86400000);
+  return daysBetweenLocalISO(todayLocalISO(), toLocalISO(d)) ?? 0;
 }
 function _fmtShort(d: Date): string {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
-const _AGM = _nextOccurrence(9, 30); // statutory-latest AGM (30 Sep)
+function _agm(): Date {
+  return _nextOccurrence(9, 30); // statutory-latest AGM (30 Sep)
+}
 function _fromAgm(days: number): Date {
-  return new Date(_AGM.getFullYear(), _AGM.getMonth(), _AGM.getDate() + days);
+  const agm = _agm();
+  return new Date(agm.getFullYear(), agm.getMonth(), agm.getDate() + days);
 }
 function _nextMsme1(): { date: Date; label: string; period: string } {
   const h1 = _nextOccurrence(10, 31);  // Apr-Sep half, due 31 Oct
@@ -120,14 +124,29 @@ function _nextMsme1(): { date: Date; label: string; period: string } {
     ? { date: h1, label: "MSME-1 (H1)", period: `Apr–Sep ${h1.getFullYear()}` }
     : { date: h2, label: "MSME-1 (H2)", period: `Oct ${h2.getFullYear() - 1}–Mar ${h2.getFullYear()}` };
 }
-const _msme1 = _nextMsme1();
-const KEY_DEADLINES = [
-  { label: "DIR-3 KYC",  date: _fmtShort(_AGM), note: "Rule 12A — Director KYC annual", daysLeft: _daysUntil(_AGM) },
-  { label: "ADT-1",      date: _fmtShort(_fromAgm(15)), note: "Section 139 — 15 days from AGM", daysLeft: _daysUntil(_fromAgm(15)) },
-  { label: "AOC-4",      date: _fmtShort(_fromAgm(30)), note: "Section 137 — 30 days from AGM", daysLeft: _daysUntil(_fromAgm(30)) },
-  { label: "MGT-7/7A",   date: _fmtShort(_fromAgm(60)), note: "Section 92 — 60 days from AGM", daysLeft: _daysUntil(_fromAgm(60)) },
-  { label: _msme1.label, date: _fmtShort(_msme1.date), note: `Half-yearly — ${_msme1.period}`, daysLeft: _daysUntil(_msme1.date) },
-];
+// A FUNCTION, not a module constant, and that is the whole point.
+//
+// This was `const KEY_DEADLINES = [...]` evaluated once when the bundle loaded,
+// against a `const TODAY = new Date()` captured at the same moment, so "N days
+// remaining" and the amber-under-30 colour were frozen at page load — and a
+// compliance dashboard is exactly the tab somebody leaves open. Open it on the
+// 29th and it still read "1 day remaining" a week later, having gone through a
+// statutory due date without changing.
+//
+// The header comment above _nextOccurrence already records this being fixed
+// once, from a version that froze the YEAR as well. This is the same defect one
+// level down: the year moved, the day did not.
+function keyDeadlines() {
+  const agm = _agm();
+  const msme1 = _nextMsme1();
+  return [
+    { label: "DIR-3 KYC",  date: _fmtShort(agm), note: "Rule 12A — Director KYC annual", daysLeft: _daysUntil(agm) },
+    { label: "ADT-1",      date: _fmtShort(_fromAgm(15)), note: "Section 139 — 15 days from AGM", daysLeft: _daysUntil(_fromAgm(15)) },
+    { label: "AOC-4",      date: _fmtShort(_fromAgm(30)), note: "Section 137 — 30 days from AGM", daysLeft: _daysUntil(_fromAgm(30)) },
+    { label: "MGT-7/7A",   date: _fmtShort(_fromAgm(60)), note: "Section 92 — 60 days from AGM", daysLeft: _daysUntil(_fromAgm(60)) },
+    { label: msme1.label,  date: _fmtShort(msme1.date), note: `Half-yearly — ${msme1.period}`, daysLeft: _daysUntil(msme1.date) },
+  ];
+}
 
 // MCA filings, companies, and directors are loaded from the firm's real data;
 // empty until recorded (no fictional seed records shown to users).
@@ -587,7 +606,11 @@ export default function MCAPage() {
   }
 
   const totalCompanies = companies.length;
-  const dueThisMonth = filings.filter(f => { const d = new Date(f.due_date); return d.getMonth() === TODAY.getMonth() && d.getFullYear() === TODAY.getFullYear() && f.status !== "Filed"; }).length;
+  // "This month" against a module-load today rolled over a month late on a tab
+  // left open. Both sides are now the YYYY-MM prefix of a local calendar date,
+  // which needs no Date at all.
+  const thisMonthPrefix = todayLocalISO().slice(0, 7);
+  const dueThisMonth = filings.filter(f => String(f.due_date).slice(0, 7) === thisMonthPrefix && f.status !== "Filed").length;
   const overdueCount = filings.filter(f => f.status === "Overdue").length;
   const kycDueSoon = directors.filter(d => {
     const diff = daysUntilKyc(d.kyc_due_date);
@@ -770,7 +793,7 @@ export default function MCAPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { icon: <Building2 className="w-4 h-4 text-blue-600" />,    bg: "bg-blue-50",   label: "Total Companies",       value: String(totalCompanies), sub: "Company clients" },
-          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-amber-50",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: TODAY.toLocaleDateString("en-IN", { month: "short", year: "numeric" }) },
+          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-amber-50",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: new Date(todayLocalISO() + "T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "numeric" }) },
           { icon: <AlertTriangle className="w-4 h-4 text-red-600" />, bg: "bg-red-50",    label: "Overdue Filings",       value: loading ? "—" : String(overdueCount), sub: "Past due date" },
           { icon: <Users className="w-4 h-4 text-purple-600" />,      bg: "bg-purple-50", label: "Directors KYC Due",     value: String(kycDueSoon), sub: "Within 30 days" },
         ].map(c => (
@@ -885,7 +908,7 @@ export default function MCAPage() {
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {KEY_DEADLINES.map(d => (
+            {keyDeadlines().map(d => (
               <div key={d.label} className="bg-white rounded-xl border border-[#F1F5F9] p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center"><Calendar className="w-4 h-4 text-blue-600" /></div>

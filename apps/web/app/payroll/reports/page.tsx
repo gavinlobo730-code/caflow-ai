@@ -34,6 +34,7 @@ import type {
   Employee, EmployeeYearTotals, PayrollRun, PayrollSlip,
 } from "@/lib/payroll/types";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { toLocalISO, dueDateUrgency } from "@/lib/dateMath";
 import { monthlyTdsPaiseNewRegime } from "@/lib/services/payrollTdsEstimate";
 import { api } from "@/lib/api";
 
@@ -121,11 +122,10 @@ function monthLabel(yyyyMm: string): string {
 
 // ── Statutory Dues Calendar helpers ──────────────────────────────────────
 
+// This was byte-identical to app/payroll/page.tsx's getDueDateStatus. The rule
+// now lives once, in lib/dateMath.dueDateUrgency.
 function dueDateStatus(due: Date, today: Date): DueStatus {
-  const diffDays = Math.ceil((due.getTime() - today.getTime()) / 86400000);
-  if (diffDays < 0) return "overdue";
-  if (diffDays <= 7) return "due-soon";
-  return "upcoming";
+  return dueDateUrgency(toLocalISO(due), toLocalISO(today));
 }
 
 /**

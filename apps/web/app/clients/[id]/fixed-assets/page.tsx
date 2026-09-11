@@ -1422,6 +1422,155 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
           )}
         </div>
       </div>
+
+      <RegisterIntegrity clientId={clientId} />
+    </div>
+  );
+}
+
+// ── where the register disagrees with the ledger, or with Schedule II ────────
+//
+// GET /api/fixed-assets/register-integrity has existed and NO SCREEN CALLED IT.
+// It is the whole of FA-02's remedy and three-quarters of FA-07's, and a
+// finding the server computes and nothing displays is not a fixed defect —
+// which is the rule CLAUDE.md states and the reason this panel exists.
+//
+// WHY IT REPORTS AND DOES NOT OFFER A FIX BUTTON
+//     Every remedy here is a judgement. Repost the acquisition, delete the
+//     duplicate, re-link the bill, correct the rate or disclose it — which one
+//     is right depends on facts the ledger does not hold, and the endpoint
+//     itself repairs nothing for the same reason.
+//
+// THE SCHEDULE II ONE IS NOT AN ERROR REPORT
+//     Part A expressly permits a company to use a different useful life or
+//     residual value, provided it is DISCLOSED in the accounts and justified.
+//     So a rate off Part C's table may be somebody's judgement, and the copy
+//     says "correct it or disclose it" rather than calling it wrong. The rows
+//     that ARE wrong are the Income-tax Act block rates — Furniture at 10%
+//     where Part C gives 25.89% — which under-depreciate for the asset's life.
+
+type IntegrityFinding = {
+  kind: string;
+  asset_code?: string | null;
+  asset_name?: string | null;
+  asset_codes?: (string | null)[];
+  asset_category?: string | null;
+  field?: string;
+  stored?: number;
+  schedule_ii_prescribes?: number[];
+  amount_paise?: number;
+  what_it_means: string;
+};
+
+const FINDING_TITLE: Record<string, string> = {
+  no_acquisition_journal: "No acquisition entry",
+  bill_capitalised_more_than_once: "One bill capitalised twice",
+  capitalised_from_a_bill_that_is_gone: "The bill behind this asset is gone",
+  depreciation_basis_departs_from_schedule_ii: "Depreciation basis is off Schedule II",
+};
+
+function RegisterIntegrity({ clientId }: { clientId: string }) {
+  const [state, setState] = useState<
+    { status: "loading" } |
+    { status: "error"; message: string } |
+    { status: "ok"; checked: number; findings: IntegrityFinding[] }
+  >({ status: "loading" });
+
+  const load = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    setState({ status: "loading" });
+    try {
+      const j = await request<ApiEnvelope<{ checked: number; findings: IntegrityFinding[] }>>(
+        `/api/fixed-assets/register-integrity?client_id=${clientId}`);
+      if (!j.success) throw new Error(j.error ?? "Failed to load");
+      const d = j.data ?? { checked: 0, findings: [] };
+      setState({ status: "ok", checked: d.checked ?? 0, findings: d.findings ?? [] });
+    } catch (e) {
+      // An "all clear" and a failed load must not look the same. The endpoint
+      // returns `checked` for exactly this reason — "no findings" over nothing
+      // checked is a different statement — and a swallowed error here would
+      // undo that on the screen.
+      setState({ status: "error", message: e instanceof Error ? e.message : "Could not check the register." });
+    }
+  }, [clientId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold text-[#334155]">Register integrity</p>
+          <p className="text-[11px] text-[#94A3B8]">
+            Where the register disagrees with the ledger, or with Schedule II Part C
+          </p>
+        </div>
+        <button type="button" onClick={load}
+          className="text-[11px] text-[#64748B] hover:text-[#0F172A] underline underline-offset-2">
+          Re-check
+        </button>
+      </div>
+
+      {state.status === "loading" && (
+        <p className="text-xs text-[#94A3B8]">Checking…</p>
+      )}
+
+      {state.status === "error" && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {state.message} — this is a failed check, not a clean register.
+        </p>
+      )}
+
+      {state.status === "ok" && state.findings.length === 0 && (
+        <p className="text-xs text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+          {state.checked} asset{state.checked === 1 ? "" : "s"} checked, nothing to report.
+        </p>
+      )}
+
+      {state.status === "ok" && state.findings.length > 0 && (
+        <>
+          <p className="text-[11px] text-[#64748B]">
+            {state.findings.length} to look at, of {state.checked} asset
+            {state.checked === 1 ? "" : "s"} checked. Nothing here has been changed —
+            each one is a judgement only you can make.
+          </p>
+          <ul className="space-y-2">
+            {state.findings.map((f, i) => (
+              <li key={`${f.kind}-${f.asset_code ?? f.asset_codes?.join(",") ?? i}`}
+                  className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle size={12} className="text-amber-600 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-amber-900">
+                      {FINDING_TITLE[f.kind] ?? f.kind}
+                      {f.asset_code ? ` — ${f.asset_code}` : ""}
+                      {f.asset_codes?.length ? ` — ${f.asset_codes.filter(Boolean).join(", ")}` : ""}
+                    </p>
+                    {f.asset_name && (
+                      <p className="text-[11px] text-amber-800">{f.asset_name}</p>
+                    )}
+                    {/* The sentence is composed on the SERVER, next to the rule
+                        it states. Rendered, never rebuilt here. */}
+                    <p className="text-[11px] text-amber-800 mt-0.5">{f.what_it_means}</p>
+                    {f.field === "wdv_rate_percent" && f.schedule_ii_prescribes?.length ? (
+                      <p className="text-[10px] text-amber-700 mt-0.5">
+                        Stored {f.stored}% · Schedule II Part C prescribes{" "}
+                        {f.schedule_ii_prescribes.join("%, ")}% for {f.asset_category}
+                      </p>
+                    ) : null}
+                    {f.field === "useful_life_years" && f.schedule_ii_prescribes?.length ? (
+                      <p className="text-[10px] text-amber-700 mt-0.5">
+                        Stored {f.stored} years · Schedule II Part C prescribes{" "}
+                        {f.schedule_ii_prescribes.join(", ")} for {f.asset_category}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

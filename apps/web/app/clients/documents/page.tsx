@@ -16,7 +16,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
 import type { Client } from "@/lib/types";
 
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 type DocCategory = "Identity" | "GST" | "Income Tax" | "MCA" | "Financials" | "Other";
 
 const CATEGORIES: DocCategory[] = ["Identity", "GST", "Income Tax", "MCA", "Financials", "Other"];
@@ -62,10 +62,13 @@ function fmtDate(d: string | null): string {
   return `${dd} ${months[parseInt(m) - 1]} ${y}`;
 }
 
+// Whole days from today to the document's expiry, both anchored to local
+// midnight. `new Date(expiryDate)` parses a date-only string as UTC midnight
+// while `new Date()` is a live instant, so in IST this read one day too many
+// between 00:00 and 05:30 — on the figure that decides whether a client's
+// identity document is flagged as expiring.
 function daysUntilExpiry(expiryDate: string): number {
-  const today = new Date();
-  const exp = new Date(expiryDate);
-  return Math.ceil((exp.getTime() - today.getTime()) / 86400000);
+  return daysBetweenLocalISO(todayLocalISO(), String(expiryDate).slice(0, 10)) ?? 0;
 }
 
 interface UploadModalProps {
