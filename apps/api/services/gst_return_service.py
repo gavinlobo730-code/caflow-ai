@@ -789,11 +789,30 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         for b in _bills_cancelled_in(db, firm_id, client_id, start, end)
     ]
 
-    # ── Table 4(B)(2) and 4(D)(1): the reclaimable side ─────────────────────
-    # From the ITC reversal register (migration 285). Each row classifies a
-    # journal the CA has already POSTED, so unlike the Rule 37 report these
-    # amounts are on the ledger and the reconciliation below must net them.
+    # ── The register (migration 285, widened by 362) ────────────────────────
+    # Each row classifies a journal the CA has already POSTED, so unlike the
+    # Rule 37 report these amounts are on the ledger and the reconciliation
+    # below must net them.
     register = itc_register_service.for_period(db, firm_id, client_id, period)
+
+    # 4(B)(1), the half that had no route (INV-06). A cancelled bill can be
+    # derived from documents; a §17(5)(h) stock write-off cannot — the supply
+    # happened, the credit was taken, and the goods were destroyed. It was
+    # posted to the GL and declared nowhere, so the prepared return claimed
+    # credit the books had already given back.
+    reversals.extend(
+        ITCReversal(
+            igst_paise=int(r.get("igst_paise") or 0),
+            cgst_paise=int(r.get("cgst_paise") or 0),
+            sgst_paise=int(r.get("sgst_paise") or 0),
+            cess_paise=int(r.get("cess_paise") or 0),
+            reclaimable=False,
+            reason=f"{r.get('reason_code')} reversal",
+        )
+        for r in register["permanent_reversals"]
+    )
+
+    # ── Table 4(B)(2) and 4(D)(1): the reclaimable side ─────────────────────
     reversals.extend(
         ITCReversal(
             igst_paise=int(r.get("igst_paise") or 0),

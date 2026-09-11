@@ -343,3 +343,37 @@ The FILENAME still says 2026-09-03. `production_types.py` picks the newest
 `production_schema_*.json` by glob, and renaming this one would silently orphan
 `production_guards_2026-09-03.json`, which is a separate capture on its own
 cycle. The capture date is in the `.meta.json`.
+
+## Guards refreshed 11 September 2026, after migration 361
+
+The guards fixture was eleven migrations behind — 351 against a repository at
+362 — and `test_the_in_flight_exclusion_cannot_excuse_everything` refused to run
+past ten, which is the ratchet doing what it is for. The in-flight exclusion
+excuses any guard a migration ABOVE the mark names, so a fixture eleven
+migrations back was excusing eleven migrations' worth of policies and
+constraints, including ones that had long since applied. Widening the cap would
+have bought a green test and kept the blind spot.
+
+Same console route as the 293, 294 and 343 refreshes, and the same proof, since
+this session still has no libpq DSN to production. `GUARD_SQL` was run
+unmodified and paged — four overlapping pages of 560-920 rows, ordered
+`kind, tbl, name` — and the pages reassembled locally into `normalise()` shape.
+Overlapping rows were asserted identical across pages rather than
+last-one-wins, so a page boundary cannot hide a row.
+
+The proof is production's own checksum over `GUARD_SQL`'s rows:
+
+    md5(string_agg(kind||'|'||tbl||'|'||name||'|'||detail||'|'||expr_md5,
+                   E'\n' ORDER BY kind, tbl, name))
+
+Both sides: `b24c31c3a5d62a18405c37be11d20700`, over 2,220 rows — 270 RLS
+switches, 661 policies, 1,289 constraints (was 265 / 641 / 1,244).
+
+**The diff is 280 insertions and ZERO deletions.** Every guard the 351 capture
+held is still in production, with the same permissive/restrictive flag, the
+same command, the same roles and the same expression hash. Nothing drifted and
+nothing was dropped; the fixture was only short of what migrations 352-361
+added.
+
+`applied_through_migration` moves 351 -> 361. 362 is the migration in flight in
+the PR that carries this refresh.

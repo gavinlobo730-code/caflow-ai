@@ -37,6 +37,15 @@ class StockAdjustmentIn(BaseModel):
     # CA-confirmed — only meaningful (and only ever applied) when
     # direction="decrease". CGST Act §17(5)(h).
     reverse_itc: bool = False
+    # WHICH HEADS the reversed credit was taken under. A write-off is not a
+    # supply, so nothing about it says whether the original purchase was IGST
+    # or CGST+SGST — that is a fact about the PURCHASE, and stock of one item
+    # can have come from both. Defaults to intra-state, which is the ordinary
+    # case for stock a client holds; the total reversed is the same either way
+    # and only the split on GSTR-3B Table 4(B)(1) differs. The register row
+    # records which way it went, so a CA sees it rather than finding it at the
+    # portal.
+    itc_reversal_is_interstate: bool = False
     reference_no: Optional[str] = None
     notes: Optional[str] = None
 

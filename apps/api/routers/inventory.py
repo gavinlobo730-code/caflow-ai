@@ -186,6 +186,7 @@ def adjust_stock(
             db, firm_id=firm_id or "", client_id=data.client_id, service_catalogue_id=service_catalogue_id,
             movement_date=data.adjustment_date, quantity=data.quantity, direction=data.direction,
             reverse_itc=data.reverse_itc, reference_no=reference_no,
+            itc_reversal_is_interstate=data.itc_reversal_is_interstate,
             # journal_entries.created_by FK references users(id), not auth_user_id.
             created_by=current_user.get("id"),
         )
@@ -194,7 +195,9 @@ def adjust_stock(
             actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
             new_data={
                 "direction": data.direction, "quantity": data.quantity, "reason": data.reason,
-                "reverse_itc": data.reverse_itc, "notes": data.notes,
+                "reverse_itc": data.reverse_itc,
+                "itc_reversal_is_interstate": data.itc_reversal_is_interstate,
+                "notes": data.notes,
             },
         )
         return api_response(True, movement)

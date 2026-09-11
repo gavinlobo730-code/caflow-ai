@@ -1,9 +1,9 @@
 {
- "captured_at_ist": "2026-09-10T12:55",
- "applied_through_migration": 351,
- "guards_md5": "f650e3579b016c5b263b91db5585007a",
- "rls_tables": 265,
- "policies": 641,
- "constraints": 1244,
+ "captured_at_ist": "2026-09-11T10:29",
+ "applied_through_migration": 361,
+ "guards_md5": "b24c31c3a5d62a18405c37be11d20700",
+ "rls_tables": 270,
+ "policies": 661,
+ "constraints": 1289,
  "note": "applied_through_migration is the highest migration recorded in production's schema_migrations when this snapshot was taken. Migrations above it are in flight, and test_guards_match_production_pg.py excuses any policy or constraint they NAME so that adding one does not fail its own PR. guards_md5 is md5(string_agg(kind|tbl|name|detail|expr_md5, newline ORDER BY kind, tbl, name)) over GUARD_SQL's rows, so a refresh made through a SQL console can be proved equal to a real capture. Refresh both files together."
 }
