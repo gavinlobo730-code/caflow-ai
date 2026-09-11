@@ -217,3 +217,71 @@ and treats the symptom; both are worth doing and the second is free.
 **Deliberately not investigated further mid-phase**, at the owner's direction:
 "keep this in the open questions so that once you are done with all the phases
 we can go through this together."
+
+---
+
+## F. Pages I need opened — egress is refused here
+
+Added 11 September 2026. The owner offered: *"if there are any websites that you
+can't go through and need info from them you can tell me I can go through them
+and give you images."* The full list with what is needed off each page is
+**§15 of `docs/compliance/08-government-api-access-the-verified-position.md`**;
+this is the register entry so it is not lost.
+
+### F1. The ESIC monthly-contribution Excel template — BLOCKS Track F1
+
+`esic.gov.in` → employer login → File Monthly Contribution → *Sample MC Excel
+Template*. Need the file itself, or row 1 headers + row 2 sample + sheet name,
+and the stated accepted extension.
+
+**Why it blocks:** `domain/payroll/esic.py` emits **CSV** and the portal takes an
+**Excel 97-2003 `.xls`** with every column formatted as Text `[S]`. Our file's
+contents are right and its container is wrong, so a CA who uses it gets rejected
+at the portal after doing the work. I will not rebuild a statutory file from a
+search summary.
+
+**Fallback if it stays unavailable:** have the CA upload the template they
+downloaded and write into *their* workbook, rather than assuming its shape.
+That is the better design anyway.
+
+### F2. The ESIC zero-wage reason codes — closes a named refusal
+
+Same screen. The codes, their meanings, and which require a last working day.
+This is one of the rows on `CLAUDE.md`'s "statutory data a human has to supply"
+table; the list closes it.
+
+### F3. The EPFO ECR upload screen after the Sept-2025 revamp
+
+Format instructions, the Regular / Supplementary / Revised selector, the wage
+month dropdown, the Due Deposit Balance Summary. Confirms the `.txt` / 11 field
+/ `#~#` format is genuinely unchanged and tells Track F3 what to mirror.
+
+### F4. `test-dev.tdscpc.gov.in` — real developer programme, or internal host?
+
+The only lead anywhere toward a TDS filing API. If real, §4.5 changes. If it is
+an internal test host with a public DNS name, I close the lead.
+
+### F5. ERI registration — type, fee, bank guarantee
+
+`incometax.gov.in/iec/foportal/help/eri/registration`. Email 1 of the six drafted
+in §10 exists only because I could not read this page.
+
+### F6. GSTN GSP eligibility — is there a turnover threshold?
+
+The uploaded external research claims ₹50 lakh; my searches could not corroborate
+it. Most likely single number to decide whether the GSP route is open to a firm
+this size.
+
+### F7–F13
+
+Third Party Software Utility Developer registration page; SAG Infotech's Gen
+CompLaw MCA pages (confirms mechanism B in §11); RazorpayX statutory-compliance
+docs (confirms mechanism C); greytHR's ECR page (the load-bearing quote);
+Maharashtra PT notification 28-02-2026 on Rule 11(3); Odisha PT repeal and
+Punjab Development Tax (see B12 — same question, this is how to close it);
+current MCA XBRL validation tool version.
+
+**Standing note:** if any page says something different from what
+`08-government-api-access-the-verified-position.md` says, that is the most
+valuable outcome of the exercise. Send it and the document gets corrected with a
+line saying what changed.

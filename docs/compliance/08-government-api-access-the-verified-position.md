@@ -10,6 +10,14 @@ human is legally unavoidable.**
 Read §0 before anything else. It governs how much weight every other line here
 can carry.
 
+**Added 11 September 2026, second pass.** §11 answers *"does any software
+actually file MCA, EPFO, ESIC and PT — and if so, how?"* The answer is no, and
+the way the market works around it is the useful part. §12 turns that into the
+seven-step last-mile contract and says where we stand on each. §13 is the work
+that follows — **Track F**, none of which needs a registration, a licence or a
+counterparty. §14 answers *"are you sure of this document?"* section by section.
+§15 is the list of pages I need opened, because egress is still refused here.
+
 ---
 
 ## 0. What I could and could not verify, and why it changes the reading
@@ -913,3 +921,457 @@ that charges it is the only kind worth having.
 **Send 1, 2, 3 and 5 today.** They cost nothing, they commit to nothing, and
 until they are answered every cost and eligibility line in this document is an
 estimate. Send 4 after the sandbox work, and start 6 whenever convenient.
+
+---
+
+## 11. How the competitors actually do it
+
+You asked the right question: *if we cannot file MCA, EPFO, ESIC and PT through
+our software, can anybody?* I went looking for a counterexample — searches
+deliberately phrased to find a vendor that files directly, not to confirm that
+none does. What came back is more useful than a yes or a no.
+
+### 11.1 Four mechanisms, and only one of them is an API
+
+| | Mechanism | Who does it | What actually happens | Is it an API? |
+|---|---|---|---|---|
+| **A** | **Generate-and-upload** | greytHR, Keka, Zoho Payroll, Pocket HRMS, factoHR, HROne, RelyOn Saral, and every TDS package | Software emits the exact file the portal eats. A human logs in and uploads it. | **No** |
+| **B** | **Portal-assisted upload** | Gen CompLaw (SAG Infotech), Webtel — the ROC packages | Software opens the MCA session *from inside the product*, the human supplies the login and the OTP, the DSC signs on the human's machine, the software pushes the form up and reads the status back. | **No** |
+| **C** | **Stored credentials and a robot** | RazorpayX Payroll is the clearest case | The customer types their government-portal credentials into the vendor's dashboard. The vendor's system then operates the portal *as the customer*. | **No** |
+| **D** | **A published filing API** | **Nobody, for these four** | — | — |
+
+**There is no mechanism D for MCA, EPFO, ESIC or professional tax.** Not for
+us, not for greytHR, not for Razorpay, not for anybody. The ceiling is not a
+limitation of PracticeSync. It is a property of the portals.
+
+### 11.2 The quotes, so you can weigh the evidence yourself
+
+All of these are `[S]` — search-engine summaries of vendor pages. **Direct
+fetches are still refused by the egress proxy** (I tried again this session:
+`blog.saginfotech.com` returned `EGRESS_BLOCKED`), so I have not opened a single
+one of these pages. Read them as "the vendor's own marketing says", not as
+"verified".
+
+- **greytHR** — *"You can automatically generate the ECR file with greytHR. The
+  ECR file is ready with just a click and all that you need to do is upload it
+  to EPFO Unified portal."* That sentence is the whole finding. The market
+  leader in Indian payroll describes its EPFO ceiling in the same words this
+  document uses for ours.
+- **Keka** — *"Keka allows you to generate a ready-to-upload PF ECR report for
+  easy filing… click the Download icon to export the report in Excel, PDF, or
+  Text format."*
+- **Zoho Payroll** — *"The EPF-ECR report that is necessary for filing EPF
+  returns and the ESIC report for filing ESI returns are structured in the
+  format expected by the government."* Structured in the format. Not
+  transmitted.
+- **Pocket HRMS / factoHR / HROne** — the same shape; an "ESI Return File"
+  report whose purpose is the portal's bulk upload.
+- **Gen CompLaw (SAG Infotech)** — *"allows users to directly get login on MCA
+  portal from software after that users can upload the e-form on portal"*, with
+  DSC selection per director and expiry tracking. This is mechanism B, and note
+  what it still requires: **a human login and a human OTP.** MCA V3 sends the
+  OTP to the registered mobile **and** the email, which makes unattended
+  automation structurally impossible, not merely discouraged.
+- **RazorpayX Payroll** — the marketing is unambiguous: it *"auto-files and pays
+  TDS, PF, PT and ESIC"*, with *"no manual intervention"*. The mechanism only
+  shows up in the support FAQ: *"TDS challans could be unavailable due to
+  incorrect IT credentials provided on the Payroll Dashboard, as a result,
+  Payroll is unable to fetch the challans."*
+
+  **That one sentence is the answer to "how do they do it".** The customer hands
+  over their income-tax portal credentials and the platform signs in as them.
+  I want to be precise about the limit of this evidence: it establishes stored
+  credentials **for the income-tax portal, for fetching challans**. It does not
+  prove the same mechanism for EPFO, ESIC and PT — but since no API exists for
+  those three either, there is no third possibility, and the inference is
+  strong. Grade the mechanism `[S]`, the inference to the other three `[S]`/
+  reasoned.
+
+### 11.3 Three things that make Razorpay's route unavailable to us — and wrong even if it were available
+
+This is not squeamishness. Four specific differences:
+
+1. **They are a payment aggregator; we are not.** Razorpay can actually *move
+   the money* — that is their licensed business. A large part of "auto-pays PF,
+   PT, ESI and TDS" is a payment rail we do not have and should not build. The
+   filing and the payment are being conflated in that marketing.
+2. **They serve one employer; a CA firm serves two hundred.** A single company
+   storing its own EPFO password in its own payroll tool is a decision that
+   company makes about itself. A CA firm holding two hundred clients' portal
+   credentials is a different object: one breach exposes every client at once,
+   and it is the single most attractive target in the product.
+3. **DPDP makes it the firm's problem, in writing.** A client's portal
+   credential is the client's personal data held by the firm as Data Fiduciary.
+   The obligation to secure it, to notify on breach, and to erase it on
+   withdrawal of consent all attach — on top of whatever the portal's own terms
+   of use say about sharing credentials.
+4. **The product has already decided this, for bank data.** `CLAUDE.md`:
+   *"Never screen-scrape net banking. No credential capture, no stored bank
+   logins, no third party that works that way."* A rule that bends for the EPFO
+   portal is not a rule. The same paragraph also says why AA consent approval
+   never renders in our UI and why there is no OTP field anywhere in the filing
+   demo. Mechanism C is the same mistake wearing a different hat.
+
+**So: there is no route we are missing.** There is a route we are declining,
+and one we cannot take.
+
+### 11.4 The finding that actually matters
+
+The vendors are not winning on *filing*. They cannot file either.
+
+They win on the **last mile** — the distance between "the software computed the
+number" and "the acknowledgement is on record". Every one of them has invested
+there, and that investment is invisible in a feature list: the file is
+byte-exact so the upload never bounces; the fields appear in the order the
+portal asks for them; the challan comes back into the books; the next month is
+blocked until this one is acknowledged.
+
+That is where PracticeSync has real ground to take, and it needs no
+registration, no licence, no counterparty and no money. It is entirely code.
+
+---
+
+## 12. The last-mile contract — seven steps, and filing is only the fifth
+
+For every statutory output there are seven things software can do. Filing is
+one of them, and it is the only one that is blocked.
+
+| | Step | Blocked by anyone outside us? |
+|---|---|---|
+| 1 | **Compute** the figures from the books | No |
+| 2 | **Emit the exact artefact** the portal accepts — byte-exact, right extension, right encoding | No |
+| 3 | **Pre-flight** — refuse here everything the portal would refuse there | No |
+| 4 | **Hand off in portal order** — the screen the CA works from while the portal is open in the next tab | No |
+| 5 | **File** | **Yes — and only this one** |
+| 6 | **Capture the acknowledgement** — TRN / ARN / SRN / CRN, date, amount, receipt PDF | No |
+| 7 | **Reconcile and lock** — the challan posts to the GL, the acknowledgement closes the obligation and locks the period | No |
+
+**Six of the seven are ours.** Here is where we actually stand, read off the
+code rather than remembered:
+
+| Filing | 1 Compute | 2 Artefact | 3 Pre-flight | 4 Handoff | 6 Acknowledgement | 7 Lock + GL |
+|---|---|---|---|---|---|---|
+| **GSTR-1 / 3B** | yes | yes (GSTN JSON) | partial | no | **yes** — `PATCH /gstr3b/{id}/status` writes the real ARN and the `public.filings` row | **yes** |
+| **EPFO ECR** | yes | yes — `.txt`, 11 fields, `#~#`, format re-verified 04-09-2026 | partial — `ecr_sequence` knows which months are outstanding and which return type is due | no | `public.epfo_ecr_filings` (migration 335) exists | no GL posting of the challan |
+| **ESIC** | yes | **CSV — and the portal wants `.xls`** | yes, and better than most: the file is **withheld** until the CA supplies a reason code for every zero-wage member | no | **no record at all** | no |
+| **Professional tax** | 4 of 22 states; the gap is named, not silent | **nothing** — no return, no challan | n/a | no | **no record at all** | no |
+| **MCA** | yes | XBRL instance (validation tool V5.0) | partial | no | `mca_workspace` filings carry a status and a completion | n/a |
+| **TDS 24Q/26Q** | yes | yes | yes — refuses a quarter with no §192 challan | no | challans recorded | partial |
+
+Two lines in that table are concrete defects rather than missing features, and
+both came out of this research:
+
+- **The ESIC file is the wrong type.** `domain/payroll/esic.py::to_csv` emits
+  comma-separated text. The ESIC bulk upload takes an **Excel file**, and the
+  published guidance is specific: all columns formatted as **Text**, **no
+  formulas**, saved in the older **Excel 97-2003 `.xls`** format. `[S]` A CA who
+  downloads our file and uploads it will be rejected at the portal, after doing
+  the work. Everything *inside* the file is right — this is the last inch.
+- **ESIC and PT have no filing record.** There is nowhere to put the challan
+  number, so the obligation never closes and nothing locks. EPFO has the table;
+  the other two do not.
+
+---
+
+## 13. What follows for the software — Track F
+
+These are not from the 278-finding audit and do not belong in the twelve phases
+of `2026-09-08c-the-phase-plan.md`. They are a separate track, and I have
+lettered them so they cannot collide with a phase number. **None of them needs a
+registration, a licence, a counterparty or a rupee.**
+
+Ordered by ratio of harm-removed to work.
+
+### F1 — The ESIC file the portal actually accepts · *small, and it is a live defect*
+
+Emit `.xls` (BIFF8, Excel 97-2003), every cell a **text** cell, no formulas, the
+column order the portal's own template uses. Keep the CSV as a second download
+for the CA's own checking — but the primary button must produce the thing that
+uploads.
+
+Two rules carry over from the money work and matter here: the IP number is
+**ten digits and can lead with a zero**, so it must be written as text or Excel
+eats the zero; and days are whole numbers rounded **up**, which the domain
+module already does.
+
+**Seam:** `domain/payroll/esic.py`, `routers/payroll.py::run_esic`.
+**Guard:** a test that opens the emitted workbook and asserts every cell's type
+is text and the file's magic bytes are BIFF8 — the rule, not a spelling of it.
+**⚠️ Verify the template first** — this is the top item on the screenshot list
+in §14. I do not want to rebuild the file from a search summary.
+
+### F2 — One statutory filing record, for everything · *medium; unblocks F3 and F4*
+
+Today GST has `public.filings`, EPFO has `public.epfo_ecr_filings`, MCA has its
+own workspace table, and ESIC and PT have nothing. Five shapes for one idea.
+
+One table — `public.statutory_filings` — with a row created **before** the CA
+walks to the portal, carrying: firm, client, obligation, period, the artefact's
+**SHA-256**, the amount, and a status moving `prepared → handed off → filed →
+acknowledged`. The acknowledgement carries the portal's own reference (ARN /
+TRN / SRN / CRN), the date **in IST**, and the receipt.
+
+Three properties that have to hold, and each of them is a bug that has already
+happened somewhere in this codebase:
+
+- **The hash is of the artefact that was handed over.** If the books change
+  after the handoff, the record must be able to say the filed file no longer
+  matches the books. That is the difference between a record and a decoration.
+- **The acknowledgement is what locks the period**, through
+  `journal_period_lock_reason`, exactly as a filed GSTR-3B already does. Not
+  the handoff — the acknowledgement.
+- **It never writes itself.** No scheduler, no batch, no inference from "the
+  due date passed". A human types the reference they were given.
+
+Do **not** migrate GST off `public.filings` in the same change. Add the new
+table for the four that have nothing, prove it, and converge later — moving
+the one path that currently locks periods correctly is how you break the one
+thing that works.
+
+### F3 — The handoff screen · *medium; this is the one CAs will feel*
+
+One screen per obligation, opened next to the portal. It shows, in the order
+the portal asks for them: the identity fields (establishment code, TAN, PTRC),
+the period, the totals the portal will ask you to confirm, the download button,
+and a single field for the reference that comes back.
+
+The value is not the download — they already have that. It is that the CA
+stops alt-tabbing between four screens and a spreadsheet to answer "what do I
+type in this box".
+
+**Constraint, and it is absolute:** no credential field, no OTP field, no
+embedded portal frame. Not for EPFO, not for ESIC, not for MCA. The filing-demo
+work already established this and
+`apps/web/scripts/one-filing-demo-and-the-kill-switch-reaches-it.test.ts` is the
+precedent for holding a line like this with a test rather than a paragraph.
+
+### F4 — The challan is money · *small once F2 exists*
+
+A PF, ESI, PT or TDS challan is a payment. It has to reach the general ledger,
+through `_create_journal` like everything else, dated on the payment date, with
+the challan reference as the `reference_no` so the dedupe key is the real one.
+
+Today the payroll accrual posts and the remittance does not, which means the
+statutory liability accounts never clear and the year-end shows a liability the
+client has actually paid.
+
+### F5 — Professional tax: the artefact, not the slabs · *medium; deliberately narrow*
+
+Keep refusing to write twenty states' slabs from memory — that decision stands
+and is right. But the **challan and return artefact** for the four states we do
+compute is a different thing, and it is missing entirely.
+
+Start with **Maharashtra PTRC**, because it is the largest and because we
+already know a date fact about it worth honouring: the notification of
+28-02-2026 amending Rule 11(3) moved the due date from month-end to **the
+15th** `[S]`. Karnataka Form 5A next.
+
+**Do not add PT due dates until that notification is confirmed** — §4.10 says
+why, and holding no date is better than holding a wrong one.
+
+### F6 — The never-do list, as code · *small; and it protects everything above*
+
+Three rules, currently prose in `CLAUDE.md` and this file, that should be tests:
+
+1. **No field anywhere in `apps/web` collects a government-portal password,
+   PIN, or OTP.** A grep-shaped guard over input names, labels and
+   placeholders — stated as the rule (a credential-shaped input), not as a
+   spelling of it, the way the paise guard was rewritten.
+2. **No stored portal credential column.** Nothing in `apps/api` may write a
+   column whose name says it holds a portal password or token.
+3. **Nothing transmits to a `.gov.in` host.** Today it is true by accident —
+   there is no such call. A test makes it true on purpose, and makes the day
+   somebody adds one a deliberate decision with a review attached.
+
+Rule 3 is the one that matters most, because it is the guard that survives
+everything above being built.
+
+### What Track F does not do
+
+It does not make us able to file, and no amount of code will. The four blocked
+filings stay blocked until a portal opens an API, and §4.7–4.10 is my honest
+reading that none of them is close.
+
+What Track F does is make PracticeSync the product where **the upload never
+bounces and the acknowledgement always lands in the books** — which, on the
+evidence in §11, is the only axis anyone in this market is actually competing
+on.
+
+---
+
+## 14. "Are you sure of this document?" — the honest answer, section by section
+
+No, not uniformly. And the parts I am least sure of are the parts that cost
+money, which is the worst possible distribution. So here it is broken up, because
+"how confident are you" is not one question.
+
+**Nothing in §1–§10 was contradicted by this session's research.** That is
+reassurance of a limited kind: I went looking for a counterexample to the
+"no API" verdicts and did not find one. Absence of a counterexample after
+targeted searching is real evidence. It is not proof.
+
+### What I would act on now
+
+| Claim | Why I am confident |
+|---|---|
+| **MCA, EPFO, ESIC and PT have no filing API** | Four independent search angles each session, including searches phrased to find a vendor that files directly. The strongest confirmation is indirect and therefore good: the market leaders describe their own ceiling in the same words — *"all that you need to do is upload it to EPFO Unified portal"*. If an API existed, greytHR would be using it. |
+| **e-invoice IRN and e-way bill are the only two statutory outputs software can complete end to end** | Structural, not empirical: the IRP signs, so there is no taxpayer signature to collect. That reasoning does not depend on a source. |
+| **GST filing needs a GSP; ITR filing needs an ERI** | Consistent across every source, and consistent with the architecture of both systems. |
+| **TDS statements go up as an FVU zip with a DSC, and there is no API** | Re-confirmed this session. Every description of the route is the same: RPU → FVU → upload → DSC. |
+| **Never take stored portal credentials** | A decision, not a fact. It does not need a source. |
+
+### What I would not spend a rupee on without confirming first
+
+| Claim | Why it is weak |
+|---|---|
+| **Every cost figure in the document** | Stale on its face, absent from public sources, or single-sourced. Already flagged in §0 and I am repeating it because it is the most expensive kind of wrong. |
+| **The GSP batch-5 ₹50 lakh turnover threshold** | The uploaded research's claim, which my own searches could not surface. Recorded as its claim, not adopted. |
+| **The CPC-TDS developer portal (`test-dev.tdscpc.gov.in`)** | A single lead I could not open. It may be a real developer programme or an internal test host with a public DNS name. The difference is large. |
+| **ERI registration mechanics — type, fees, bank guarantee** | Reconstructed from summaries. The shape is probably right; the numbers may not be. |
+| **The Maharashtra PT due-date change of 28-02-2026** | `[S]`. This is why §4.10 says *do not add the old dates* rather than adding new ones. |
+| **The count of twenty-two PT-levying states** | Already flagged as probably one or two too high. Benign error direction, so deliberately unchanged. |
+
+### What changed in this session
+
+- **New and useful:** §11. Nobody can file these four. The competitive position
+  is the last mile, not the API.
+- **Two concrete defects found**, both in §12 and both fixable this week: the
+  **ESIC file is CSV where the portal wants `.xls`**, and **ESIC and PT have no
+  filing record at all**.
+- **Still `[S]` throughout.** I tried a direct fetch again this session and it
+  was refused at the proxy. Nothing in this document has been promoted to `[P]`.
+
+### The one thing I want to be unmistakable
+
+This document is **reliable about which door to knock on and whose signature is
+required.** It is **weak about what anything costs and how long it takes.**
+Those are different qualities of claim, and I have tried to mark them
+differently on every line. Where you are about to commit money or a contract,
+treat this as the brief for the question, not as the answer.
+
+---
+
+## 15. What I need you to open — a working list
+
+You offered to open pages and send images. That is genuinely the binding
+constraint here, so here is a precise list rather than a vague ask. Each entry
+says **what I need off the page**, because a screenshot of the wrong part of a
+page costs us both a round trip.
+
+Ordered so that the top of the list changes code this week and the bottom
+changes a business decision later. **If you only do three, do 1, 2 and 3.**
+
+### Tier 1 — blocks Track F, which starts as soon as this lands
+
+**1. The ESIC monthly-contribution Excel template.**
+`https://www.esic.gov.in` → employer login → File Monthly Contribution → the
+**"Sample MC Excel Template"** link. A search surfaced what looks like a direct
+path — `esic.in/ESICInsurance1/App_Themes/Help/MC_Template1.xls` — but I would
+rather have the one the live portal offers today.
+
+*What I need:* **the file itself if you can attach it** (best), otherwise a
+screenshot of it open in Excel showing **row 1 headers, row 2 sample data, the
+sheet name and tab count**. Also whether the portal page states an accepted
+extension (`.xls` vs `.xlsx`) and any instruction about cell format.
+*Why:* F1 rebuilds our ESIC export to match it byte for byte. I do not want to
+rebuild a statutory file from a search summary.
+
+**2. The ESIC reason codes.**
+Same screen: the dropdown or help text listing the reasons for **zero wages**,
+with their numeric codes, and which ones require a last working day.
+*What I need:* a screenshot of the full list, codes visible.
+*Why:* `domain/payroll/esic.py` deliberately refuses to invent these and
+withholds the file until the CA supplies one. With the real list we can offer
+the CA a correct dropdown instead of a blank field — and that refusal becomes a
+feature rather than a gap. This is on the "human has to supply it" table in
+`CLAUDE.md`; you would be closing it.
+
+**3. The EPFO ECR upload screen, post-revamp.**
+`https://unifiedportal-emp.epfindia.gov.in` → ECR/Returns → ECR Upload.
+*What I need:* the screen showing the **file-format instructions** (field count,
+separator, extension), the **return-type selector** (Regular / Supplementary /
+Revised), and the wage-month dropdown. Plus, if visible, the Due Deposit Balance
+Summary showing how 7Q and 14B are presented.
+*Why:* confirms the format is genuinely unchanged (we believe 11 fields, `#~#`,
+`.txt`) and tells us exactly what F3's handoff screen must mirror.
+
+### Tier 2 — changes a money decision, not a code decision
+
+**4. `https://test-dev.tdscpc.gov.in`** — the landing page, and whatever an
+"About" or "Register" link shows.
+*What I need:* enough to tell whether this is a **real developer programme you
+can apply to** or an internal test host. One screenshot of the landing page is
+probably enough.
+*Why:* it is the only lead anywhere toward a TDS filing API. If it is real, it
+changes §4.5. If it is an internal host, I close the lead and stop mentioning it.
+
+**5. `https://www.incometax.gov.in/iec/foportal/help/eri/registration`**
+*What I need:* the **ERI types** (Type 1 vs Type 2), the **fee**, whether a
+**bank guarantee** is required and how much, and the document checklist.
+*Why:* ITR filing through the software runs entirely through this, and Email 1
+in §10 exists only because I could not read this page.
+
+**6. The GSTN GSP eligibility document** — search `gstn.org.in` for the GSP /
+eligibility page, or try
+`gstn.org.in/assets/mainDashboard/Pdf/eligibility-batch-5.pdf`.
+*What I need:* the **eligibility criteria**, especially any **turnover or net
+worth** threshold, and whether applications are currently open.
+*Why:* the uploaded research claims ₹50 lakh; I could not corroborate it. This
+is the single number most likely to decide whether the GSP route is open to a
+firm your size.
+
+**7. The Third Party Software Utility Developer registration page** on
+`incometax.gov.in` (Downloads / e-Filing utilities → the `SW########` number).
+*What I need:* the application form or the user manual PDF — the part listing
+**prerequisites and what the registration entitles you to**.
+*Why:* §6 Wave 0 says this one is self-service and available now. It is the
+cheapest real step in the whole document and I would like to be sure of it
+before you spend an afternoon on it.
+
+### Tier 3 — confirms §11, cheap to do
+
+**8.** `https://blog.saginfotech.com/roc-software-handle-mca-ver-3-forms-filing`
+and `https://saginfotech.com/GenCompanye-filer.aspx`
+*What I need:* the paragraphs describing **how a form reaches the MCA portal** —
+specifically whether the software logs in, and whether the OTP is typed by the
+user.
+*Why:* mechanism B in §11.1 rests on one summarised sentence.
+
+**9.** `https://razorpay.com/docs/payroll/statutory-compliance/` and the FAQ page.
+*What I need:* anything stating **which credentials the customer must provide**
+for PF, ESI, PT and TDS, and any wording about acting on the customer's behalf.
+*Why:* §11.3 turns on this. If Razorpay turns out to have some arrangement I
+have not imagined, I want to know before I write them off.
+
+**10.** `https://www.greythr.com` — their EPFO/ECR help page.
+*What I need:* the sentence about the ECR file and uploading to the EPFO portal.
+*Why:* it is the load-bearing quote of §11. Worth having first-hand.
+
+### Tier 4 — tidies statutory facts we already hold
+
+**11.** The Maharashtra PT notification of **28-02-2026** amending **Rule 11(3)**
+— `mahagst.gov.in`, Acts & Rules / Notifications.
+*Why:* F5 needs the real due date before it writes one down.
+
+**12.** Odisha's PT repeal (reported effective **01-04-2026**) and Punjab's
+Development Tax — the state notifications.
+*Why:* would let us correct the list of levying states in
+`domain/payroll/professional_tax.py` from twenty-two to the true number.
+
+**13.** `mca.gov.in` → MCA Services → **XBRL** → validation tool.
+*What I need:* the **current version number and its date** — we hold V5.0,
+July 2025.
+*Why:* a taxonomy change is a silent break in `domain/income_tax/xbrl_service.py`.
+
+### How to send them
+
+Whatever is easiest — a screenshot is fine, the file itself is better for item 1,
+and for a long page the section heading plus the paragraph is enough. **If a page
+is behind a login you would rather not screenshot** (items 1, 2 and 3 all need an
+employer login), say so and skip it; I will design F1 to read the template the
+CA uploads rather than assuming its shape, which is the better design anyway and
+was going to be my fallback.
+
+And if a page turns out to say something different from what is in this
+document — that is the most valuable outcome of the exercise, not a problem.
+Send it and I will correct the document and say what it changes.
