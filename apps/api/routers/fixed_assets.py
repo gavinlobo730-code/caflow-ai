@@ -221,6 +221,82 @@ _DEFAULT_WDV_RATES: dict[str, Optional[Decimal]] = {
 }
 
 
+def schedule_ii_departure(asset: dict) -> Optional[dict]:
+    """Whether this asset depreciates on a basis Schedule II does not prescribe.
+
+    WHY THIS REPORTS AND DOES NOT CORRECT (FA-02)
+
+    The stored `wdv_rate_percent` is what every charge the asset will ever
+    produce is computed from, and rows written before the rate was derived from
+    Schedule II Part C carry Income-tax Act block rates instead — Furniture at
+    10%, Intangibles at 25% — every one of them under-depreciating.
+
+    The obvious fix is a backfill migration. It is the wrong fix, and the
+    statute is why: **Schedule II Part A expressly allows a company to use a
+    different useful life or residual value**, provided the difference is
+    DISCLOSED in the accounts and justified. So a rate that departs from the
+    table is not necessarily an error — it may be a judgement somebody made and
+    has to disclose. Nothing in this schema distinguishes the two, and a
+    migration that rewrote them would silently overwrite the judgement, change
+    the depreciation charge, and move the profit.
+
+    So the departure is NAMED and the CA decides: correct it through
+    PATCH /{asset_id} (wdv_rate_percent is a Tier C field), or keep it and
+    disclose it.
+
+    CONFORMING MEANS MATCHING ANY CLASS THE CATEGORY OFFERS, not the default.
+    Schedule II gives several lives per category — a CA choosing "Plant and
+    Machinery used in manufacture" over the category's first entry has picked
+    from the table, not departed from it.
+    """
+    category = asset.get("asset_category")
+    if category in _NOT_DEPRECIABLE:
+        return None
+    classes = SCHEDULE_II_CATEGORIES.get(category or "")
+    # A category Schedule II prescribes nothing for cannot be departed FROM.
+    # Creation already refuses those without a figure (_no_statutory_basis).
+    if not classes or all(c["useful_life_years"] is None for c in classes):
+        return None
+
+    method = (asset.get("depreciation_method") or "WDV")
+    method = getattr(method, "value", method)
+    if method == "SL":
+        stored = asset.get("useful_life_years")
+        if stored is None:
+            return None
+        if any(c["useful_life_years"] == int(stored) for c in classes):
+            return None
+        field, prescribed = "useful_life_years", sorted(
+            {c["useful_life_years"] for c in classes if c["useful_life_years"]})
+    else:
+        stored = asset.get("wdv_rate_percent")
+        if stored is None:
+            return None
+        stored_d = Decimal(str(stored)).quantize(Decimal("0.01"))
+        if any(c["wdv_rate_percent"] is not None
+               and c["wdv_rate_percent"] == stored_d for c in classes):
+            return None
+        field, prescribed = "wdv_rate_percent", sorted(
+            {float(c["wdv_rate_percent"]) for c in classes
+             if c["wdv_rate_percent"] is not None})
+
+    return {
+        "kind": "depreciation_basis_departs_from_schedule_ii",
+        "asset_code": asset.get("asset_code"),
+        "asset_name": asset.get("asset_name"),
+        "asset_category": category,
+        "field": field,
+        "stored": float(stored),
+        "schedule_ii_prescribes": prescribed,
+        "what_it_means": (
+            f"This asset depreciates on a {field.replace('_', ' ')} of {stored}, "
+            f"which is not one Schedule II Part C prescribes for '{category}'. "
+            "That is ALLOWED — Part A permits a different useful life or residual "
+            "value — but it must be disclosed in the accounts and justified. "
+            "Correct it on the asset, or keep it and disclose it."),
+    }
+
+
 def _no_statutory_basis(category: str, method: str) -> str:
     needed = "a WDV rate" if method == "WDV" else "a useful life"
     return (
@@ -1614,9 +1690,10 @@ def register_integrity(
     client_id: str,
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
-    """Where the fixed-asset register and the general ledger disagree (FA-07).
+    """Where the fixed-asset register disagrees with the ledger, or with
+    Schedule II (FA-07, FA-02).
 
-    THE THREE WAYS THEY COME APART, and each is silent today:
+    THE FOUR WAYS IT COMES APART, and each is silent today:
 
       * AN ASSET WITH NO ACQUISITION JOURNAL. The register says the client owns
         a machine and no entry ever put it on the balance sheet. It arises when
@@ -1629,6 +1706,10 @@ def register_integrity(
       * AN ASSET FROM A BILL WITH NO BILL. `acquisition_mode = 'from_bill'`
         means the entry only RECLASSIFIED cost out of purchases; if the bill has
         since been deleted, nothing supports the asset.
+      * A DEPRECIATION BASIS SCHEDULE II DOES NOT PRESCRIBE (FA-02). Rows
+        written before the rate was derived from Part C carry Income-tax Act
+        block rates, which under-depreciate. See schedule_ii_departure for why
+        this is reported rather than migrated away.
 
     This REPORTS. It repairs nothing and posts nothing: every remedy is a
     judgement — repost, delete a duplicate, re-link a bill — and which one is
@@ -1643,7 +1724,8 @@ def register_integrity(
     rows = _paginate_all(lambda: db.table("fixed_assets")
                          .select("id, asset_code, asset_name, purchase_cost_paise, "
                                  "journal_entry_id, acquisition_mode, purchase_bill_id, "
-                                 "is_disposed")
+                                 "is_disposed, asset_category, depreciation_method, "
+                                 "wdv_rate_percent, useful_life_years")
                          .eq("firm_id", firm_id).eq("client_id", client_id)
                          .is_("deleted_at", "null"))
 
@@ -1660,6 +1742,13 @@ def register_integrity(
                     "This asset is in the register and no journal entry ever put "
                     "it on the balance sheet."),
             })
+        # FA-02. A disposed asset's basis is settled — the gain or loss was
+        # computed from it — so reporting a departure there is noise the CA
+        # cannot act on.
+        if not a.get("is_disposed"):
+            departure = schedule_ii_departure(a)
+            if departure:
+                findings.append(departure)
         if a.get("purchase_bill_id"):
             by_bill.setdefault(a["purchase_bill_id"], []).append(a)
 

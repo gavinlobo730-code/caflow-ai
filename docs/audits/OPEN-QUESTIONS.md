@@ -220,10 +220,38 @@ guard now enforces this permanently:
   be narrowed, only withheld — a scoped caller now gets none rather than counts
   that silently span clients they may not see.
 
-### D3. FA-02 — the last remaining critical, latent
-Needs a backfill as well as a code fix, and the right time is **while production
-still holds zero fixed assets**. After the first register is migrated in, it
-becomes a data-repair job.
+### D3. FA-02 — CLOSED 11 September 2026, and two of its premises were stale
+
+Re-checked against the code rather than the record, and most of it had already
+been overtaken:
+
+- **"No edit path (FA-10)"** — wrong now. `PATCH /{asset_id}` exists and
+  `wdv_rate_percent` is in `_TIER_C_FIELDS`, so a rate is correctable as a
+  prospective revision of an estimate (Schedule II Part C Note 7, AS 10).
+- **"It goes wrong the first time a register is migrated in"** — there is no
+  bulk import. `POST ""` is the only path that creates an asset, it uses the
+  Schedule II derived default, the Tally migration service writes no fixed
+  assets, and no frontend writes the table directly.
+- Production holds **zero** fixed assets, so there was nothing to back-fill.
+
+**What was genuinely left, and is now built:** nothing told anybody that an
+asset's stored basis disagrees with Schedule II. A row written before the rate
+was derived from Part C carries an Income-tax Act block rate — Furniture at 10%
+where Part C gives 25.89% — and under-depreciates for the asset's whole life,
+silently.
+
+**A backfill migration would have been the wrong fix**, and the statute is why:
+Schedule II **Part A** expressly permits a different useful life or residual
+value provided it is **disclosed and justified**. Nothing in the schema
+distinguishes a stale default from a deliberate judgement, so a migration would
+have overwritten the judgement, changed the depreciation charge and moved the
+profit.
+
+So it is REPORTED, as a fourth finding on `/register-integrity` — the endpoint
+that already reports and repairs nothing. The CA corrects it or discloses it.
+Conforming means matching **any** class the category offers, not the default, or
+a CA who picked Schedule II's second life would be flagged for following the
+table.
 
 ---
 
