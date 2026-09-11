@@ -40,11 +40,56 @@ def _posting_date(v: Optional[str]) -> Optional[str]:
 
 
 class AccountType(str, Enum):
+    """The five account types, spelled the way the DATABASE spells them.
+
+    `chart_of_accounts.account_type` carries
+    `CHECK (account_type IN ('Asset','Liability','Equity','Revenue','Expense'))`
+    — migration 003 — and `domain/reporting/schedule_iii.py` classifies on
+    `typ == "revenue"`. This enum said `INCOME = "Income"` and had no REVENUE
+    member at all, so the one revenue-shaped option the API accepted was the
+    one value the database refuses: `POST /api/accounting/accounts` wrote
+    "Income" verbatim and Postgres answered with a CHECK violation the CA read
+    as "could not create the account". There was NO WAY to create a revenue
+    ledger through that endpoint.
+
+    Measured on production before the fix: Asset 42, Expense 40, Liability 24,
+    Revenue 19, Equity 8, and ZERO 'Income' — which is what the constraint
+    refusing every one of them looks like from outside.
+
+    Why no test caught it: MOCK MODE HAS NO CHECK CONSTRAINT. The mock path
+    accepts "Income" happily, so the ~12,000-test suite exercised the broken
+    value and passed. `tests/test_the_api_speaks_the_database_s_account_types.py`
+    now reads the constraint out of the migration and compares, so the two
+    cannot drift again without a test saying so.
+    """
     ASSET = "Asset"
     LIABILITY = "Liability"
     EQUITY = "Equity"
-    INCOME = "Income"
+    REVENUE = "Revenue"
     EXPENSE = "Expense"
+
+    @classmethod
+    def _missing_(cls, value):
+        """Accept "Income" and fold it to "Revenue".
+
+        The same shape as `schedule_iii.CAPTION_ALIASES`: one canonical
+        spelling, and the older one honoured on the way IN so nothing that
+        already sends it starts failing. `services/coa_seed_service.py` records
+        that both spellings have been in circulation, and migration 098 queries
+        `account_type IN ('Income','Revenue')` for the same reason.
+
+        Case-folded, because a caller that sends "income" or "REVENUE" means
+        the same account type and a 422 there teaches nothing.
+        """
+        if not isinstance(value, str):
+            return None
+        folded = value.strip().lower()
+        if folded == "income":
+            return cls.REVENUE
+        for member in cls:
+            if member.value.lower() == folded:
+                return member
+        return None
 
 
 class AccountIn(BaseModel):

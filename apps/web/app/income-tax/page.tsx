@@ -54,7 +54,7 @@ import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { todayLocalISO, daysBetweenLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 
 // ---------------------------------------------------------------------------
@@ -479,7 +479,11 @@ export default function IncomeTaxPage() {
   // ---------------------------------------------------------------------------
 
   const today = todayLocalISO();
-  const currentFY = "2025-26";
+  // FROM THE CLOCK, not a literal (IT-33). This was "2025-26" and it is the
+  // heading over the ITR status card, so on 11 September 2026 the card counted
+  // THIS year's entries under LAST year's name — a wrong label on the one
+  // figure the page exists to show, wrong from 1 April with nothing to say so.
+  const currentFY = currentFinancialYearLabel();
 
   const totalDue = entries.length;
   const filed = entries.filter((e) => e.filing_status === "filed").length;

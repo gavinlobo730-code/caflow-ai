@@ -27,7 +27,14 @@ async function getFirmId(): Promise<string> {
   return data.firm_id as string;
 }
 
-const ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Income", "Expense"] as const;
+// SPELLED THE WAY THE DATABASE SPELLS THEM. chart_of_accounts' CHECK
+// (migration 003) allows 'Revenue', not 'Income', and the Schedule III
+// classifier tests `typ == "revenue"` — so picking "Income" here posted a
+// value Postgres refused, and this screen had NO way to create a revenue
+// ledger at all. The backend now folds "Income" to "Revenue" on the way in
+// (models/accounting.AccountType._missing_) so an older caller keeps working;
+// this list sends the canonical spelling.
+const ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Revenue", "Expense"] as const;
 
 /** ACC-09. chart_of_accounts has carried parent_group and sub_group since
  *  migration 057 and nothing but the CSV import ever wrote them, so this screen

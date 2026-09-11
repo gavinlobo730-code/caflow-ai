@@ -325,10 +325,26 @@ def get_schedule(
     }
 
     if _USE_MOCK:
+        # ONE SHAPE, MOCK AND LIVE (FA-09). The mock branch answered with a
+        # per-schedule shape of its own — `net_gst_payable_paise` here,
+        # `total_net_block_paise` there, `total_paise` elsewhere, and a
+        # `category` key on one line type — while the live branch always
+        # answers `line_items` + `total_paise` + `gaps`. A caller written
+        # against either was wrong about the other, and the SCREEN could not be
+        # written against both. The mock figures are kept; only the envelope is
+        # made the live one, and each schedule's own total is summed from its
+        # own lines rather than restated.
+        mock = mock_schedules.get(schedule_type, {"line_items": []})
+        lines = list(mock.get("line_items", []))
         return api_response(True, {
             "engagement_id":  engagement_id,
             "financial_year": eng.get("financial_year", ""),
-            **mock_schedules.get(schedule_type, {"schedule_type": schedule_type, "line_items": []}),
+            "schedule_type":  schedule_type,
+            "line_items":     lines,
+            "total_paise":    sum(int(l.get("amount_paise") or
+                                      l.get("net_block_paise") or 0)
+                                  for l in lines),
+            "gaps":           [],
         })
 
     from core.supabase_client import get_supabase
@@ -374,7 +390,6 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
     total_paise = 0  # integer paise — never float
 
     if account_ids:
-        # Fetch account balances from GL (posted entries in FY)
         accts_res = (
             db.table("accounts")
             .select("id, account_name, account_code, account_type")
@@ -383,25 +398,47 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
         )
         accts_map = {a["id"]: a for a in (accts_res.data or [])}
 
-        for acct_id in account_ids:
-            lines_res = (
-                db.table("journal_lines")
-                .select(
-                    "debit_paise, credit_paise, "
-                    "journal_entries!inner(client_id, is_posted, entry_date)"
-                )
-                .eq("account_id", acct_id)
-                .eq("journal_entries.client_id", client_id)
-                .eq("journal_entries.is_posted", True)
-                .gte("journal_entries.entry_date", fy_start)
-                .lte("journal_entries.entry_date", fy_end)
-                .execute()
-            )
-            debit  = sum(int(l["debit_paise"])  for l in (lines_res.data or []))
-            credit = sum(int(l["credit_paise"]) for l in (lines_res.data or []))
-            # Net balance (integer paise)
-            balance = debit - credit
+        # THE BALANCE AS AT YEAR END, NOT THE YEAR'S MOVEMENT (FA-09).
+        #
+        # This used to window journal_lines on
+        # `entry_date BETWEEN fy_start AND fy_end` and report debit − credit
+        # over that window. For a balance-sheet schedule — cash, receivables,
+        # payables, fixed assets, loans, and every one this endpoint serves —
+        # that is the year's MOVEMENT, not the balance: a client carrying
+        # ₹5,00,000 of receivables into the year and billing ₹1,00,000 in it
+        # was shown ₹1,00,000. The opening balance was simply absent.
+        #
+        # Every month up to and including the year end, so the figure is
+        # opening plus movement by construction rather than by adding two
+        # numbers that can disagree. `routers/year_end_notes.py:180-280` needs
+        # the split (it discloses opening, additions, deductions and closing
+        # separately) and computes it there; a SCHEDULE is one column, so it
+        # takes the closing figure and nothing else.
+        #
+        # READ FROM account_period_balances, the pre-aggregated monthly table
+        # (migrations 227/228) — which is also what CLAUDE.md's reporting rule
+        # requires. The loop this replaces made ONE QUERY PER ACCOUNT against
+        # journal_lines, each shipping every line of that account's year to
+        # Python: N Singapore-to-Mumbai round trips proportional to transaction
+        # volume, for a document a few rows long. This is one query whose rows
+        # are bounded by accounts × months.
+        balances_res = (
+            db.table("account_period_balances")
+            .select("account_id, debit_paise, credit_paise")
+            .eq("firm_id", firm_id)
+            .eq("client_id", client_id)
+            .in_("account_id", account_ids)
+            .lte("period_month", fy_end)
+            .execute()
+        )
+        by_account: dict = {}
+        for row in (balances_res.data or []):
+            by_account[row["account_id"]] = (
+                by_account.get(row["account_id"], 0)
+                + int(row["debit_paise"] or 0) - int(row["credit_paise"] or 0))
 
+        for acct_id in account_ids:
+            balance = by_account.get(acct_id, 0)
             acct = accts_map.get(acct_id, {})
             line_items.append({
                 "account_id":   acct_id,
@@ -417,4 +454,23 @@ def _fetch_schedule_from_db(db, eng: dict, schedule_type: str) -> dict:
         "schedule_type":  schedule_type,
         "line_items":     line_items,
         "total_paise":    total_paise,     # integer paise — never float
+        # NOTHING IS MAPPED, AND AN EMPTY SCHEDULE MUST NOT READ AS A NIL ONE.
+        #
+        # `account_group_mappings` is what says which ledgers belong on which
+        # schedule, and it has a full CRUD API — GET/POST/PUT bulk/defaults on
+        # routers/year_end_mappings.py — that NO SCREEN CALLS. Measured on
+        # production: the table holds ZERO rows, so every schedule this endpoint
+        # can return is empty for every client.
+        #
+        # An empty `line_items` with no explanation is a claim: "this client has
+        # no fixed assets". This says which it is. Named rather than raised,
+        # because a genuinely empty schedule is a legitimate answer and the
+        # endpoint cannot tell the two apart from the data alone — only from
+        # whether anything was mapped at all.
+        "gaps": ([] if account_ids else [
+            f"No ledger is mapped to the {schedule_type.replace('_', ' ')} "
+            f"schedule, so this is empty because nothing has been assigned to "
+            f"it — not because the client has none. Account group mappings are "
+            f"what assign them, and this firm has none recorded."
+        ]),
     }

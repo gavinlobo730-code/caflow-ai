@@ -7,13 +7,16 @@ import * as XLSX from "xlsx";
 import { Card, CardContent } from "@/components/ui/card";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Account } from "@/lib/types";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type FY = "2025-26" | "2026-27";
+// A financial-year LABEL, not an enumeration of two of them. The union
+// spelled two years out and went stale with the options below.
+type FY = string;
 
 interface QuarterActuals {
   q1: number; // paise
@@ -129,7 +132,7 @@ async function fetchActualsForQuarter(
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export default function BudgetPage() {
-  const [fy, setFy] = useState<FY>("2025-26");
+  const [fy, setFy] = useState<FY>(() => financialYearChoicesAround(null)[0]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [rows, setRows] = useState<BudgetRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -304,8 +307,13 @@ export default function BudgetPage() {
           onChange={e => setFy(e.target.value as FY)}
           className="text-sm border border-[#E2E8F0] px-3 py-1.5 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="2025-26">FY 2025–26</option>
-          <option value="2026-27">FY 2026–27</option>
+          {/* DERIVED FROM THE CLOCK, not two literals — the same defect as the
+              TDS returns screen (TDS-18), found by sweeping for the pattern
+              rather than the instance. Two hardcoded years go stale on 1 April
+              2027, and the default below is one of them. */}
+          {financialYearChoicesAround(null).map(y => (
+            <option key={y} value={y}>FY {y.replace("-", "–")}</option>
+          ))}
         </select>
       </div>
 

@@ -6,6 +6,7 @@ import { ChevronLeft, Lock, Unlock, Shield, AlertTriangle, KeyRound, X, Eye, Eye
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { RoleGuard } from "@/components/RoleGuard";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -35,13 +36,42 @@ async function callApi(
   return json as { success: boolean; data: unknown; error: string | null };
 }
 
-// Indian FY list — label used for DB storage
-const FY_LIST = [
-  { label: "2025-26", display: "FY 2025-26 (Apr 2025 – Mar 2026)" },
-  { label: "2024-25", display: "FY 2024-25 (Apr 2024 – Mar 2025)" },
-  { label: "2023-24", display: "FY 2023-24 (Apr 2023 – Mar 2024)" },
-  { label: "2022-23", display: "FY 2022-23 (Apr 2022 – Mar 2023)" },
-];
+/** The years this screen offers: derived from the clock, UNIONED with every
+ *  year that actually carries a lock (ACC-18).
+ *
+ *  THE DEFECT. This was four hardcoded years ending at 2025-26, so FY 2026-27 —
+ *  the current one — could not be locked at all, and any lock on a year outside
+ *  the four was INVISIBLE here and therefore un-unlockable. That stopped being
+ *  cosmetic with migration 361, which made the firm lock reach the POSTING
+ *  KERNEL: a lock the CA cannot see now refuses every entry in its year, from a
+ *  screen that shows nothing to explain it and offers no way to lift it.
+ *
+ *  The union is the half that matters. Deriving alone would still hide a lock
+ *  on a year older than the window — and the older the lock, the less likely
+ *  anyone remembers setting it.
+ */
+function fyRows(lockedYears: string[]) {
+  const derived = financialYearChoicesAround(null, FY_LOCK_CHOICE_COUNT);
+  const all = Array.from(new Set([...derived, ...lockedYears]))
+    .sort()
+    .reverse();
+  return all.map((label) => {
+    const start = Number(label.slice(0, 4));
+    return {
+      label,
+      display: `FY ${label} (Apr ${start} – Mar ${start + 1})`,
+      // A year only on this list because it is LOCKED — outside the window the
+      // screen would otherwise show. Worth marking: it is the case the CA has
+      // no other way to find.
+      beyondWindow: !derived.includes(label),
+    };
+  });
+}
+
+/** Four, as the hardcoded list offered — a lock screen reaches further back
+ *  than an ordinary FY picker, because locking is something you do to years
+ *  that are finished. */
+const FY_LOCK_CHOICE_COUNT = 4;
 
 // PIN dialog state type
 type PinDialog = { fy: string; isLocked: boolean } | null;
@@ -246,7 +276,7 @@ function LockYearContent() {
           <TableSkeleton bare rows={4} cols={3} />
         ) : (
           <div className="divide-y divide-[#F8FAFC]">
-            {FY_LIST.map((fy) => {
+            {fyRows(lockedYears).map((fy) => {
               const isLocked = lockedYears.includes(fy.label);
               const isSaving = saving === fy.label;
               return (
@@ -261,6 +291,16 @@ function LockYearContent() {
                       <p className={`text-xs mt-0.5 ${isLocked ? "text-red-600 font-medium" : "text-[#94A3B8]"}`}>
                         {isLocked ? "Locked — no edits permitted" : "Open — edits allowed"}
                       </p>
+                      {/* A year shown ONLY because it is locked. Before ACC-18
+                          this row did not exist at all: the list was four
+                          hardcoded years, so a lock outside them was invisible
+                          here and could not be lifted — while migration 361 had
+                          it refusing every posting in that year. */}
+                      {fy.beyondWindow && (
+                        <p className="text-xs mt-0.5 text-amber-700">
+                          Outside the usual range — shown because it is locked.
+                        </p>
+                      )}
                     </div>
                   </div>
                   <button
