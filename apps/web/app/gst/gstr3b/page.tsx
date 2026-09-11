@@ -444,6 +444,120 @@ export default function GSTR3BPage() {
             )}
           </section>
 
+          {/* Rule 36(4) — the working behind the credit, which the return never
+              shows. Computed in apps/api since the engine was written and
+              rendered by NOTHING until 11-09-2026: a CA whose claim had been
+              trimmed saw only the trimmed figure. s.16(2)(aa) makes the
+              supplier's filing decisive, so this is the difference between a
+              credit that is safe and one that is not. */}
+          {w.rule_36_4 && (
+            <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
+              <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                <h3 className="font-semibold text-[#1E293B] text-sm">
+                  Rule 36(4) — books against GSTR-2B
+                </h3>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  CGST Rule 36(4) with s.16(2)(aa): credit is available only where the
+                  supplier has furnished the invoice and it has reached you in GSTR-2B.
+                </p>
+              </div>
+
+              {!w.rule_36_4.compared ? (
+                /* NOT THE SAME AS "nothing was capped". No 2A is on file, so
+                   nothing was compared — and the figures alone cannot tell a
+                   CA which of the two it is. Saying so is the whole point of
+                   `compared` being a field of its own. */
+                <div className="px-5 py-4 bg-[#FFFBEB] border-b border-amber-100">
+                  <p className="text-sm text-amber-900 font-medium">
+                    No GSTR-2B on file for this period — nothing was compared.
+                  </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    The credit below is the purchase register alone. Rule 36(4) has not
+                    been applied, which is not the same as it having been applied and
+                    found nothing to trim. Upload the period&apos;s GSTR-2B on the
+                    client&apos;s GSTR-2B Recon tab to check it.
+                  </p>
+                </div>
+              ) : w.rule_36_4.cap_applied ? (
+                <div className="px-5 py-4 bg-[#FEF2F2] border-b border-red-100">
+                  <p className="text-sm text-red-900 font-medium">
+                    Credit was trimmed to the GSTR-2B figure.
+                  </p>
+                  <p className="text-xs text-red-800 mt-1">
+                    Your books claim more than suppliers have filed. The difference is
+                    not lost — it becomes available in the return for the period in
+                    which the supplier files. Chase the supplier, or check the
+                    document against the GSTR-2B Recon tab.
+                  </p>
+                </div>
+              ) : (
+                <div className="px-5 py-4 bg-[#F0FDF4] border-b border-emerald-100">
+                  <p className="text-sm text-emerald-900 font-medium">
+                    Books agree with GSTR-2B — no credit withheld.
+                  </p>
+                </div>
+              )}
+
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-[#64748B] uppercase border-b border-[#F1F5F9]">
+                    <th className="text-left px-5 py-2.5 font-medium">Measured</th>
+                    <th className="text-right px-5 py-2.5 font-medium">IGST</th>
+                    <th className="text-right px-5 py-2.5 font-medium">CGST</th>
+                    <th className="text-right px-5 py-2.5 font-medium">SGST</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F8FAFC]">
+                  <tr className="hover:bg-[#F8FAFC]">
+                    <td className="px-5 py-3 text-[#334155]">
+                      Per the purchase register
+                      <span className="block text-xs text-[#94A3B8]">
+                        Before s.17(5) and before any Table 4(B) reversal
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.igst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.cgst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.itc.sgst_paise)}</td>
+                  </tr>
+                  <tr className="hover:bg-[#F8FAFC]">
+                    <td className="px-5 py-3 text-[#334155]">
+                      Per GSTR-2B
+                      <span className="block text-xs text-[#94A3B8]">
+                        {w.rule_36_4.gstr2a_record_count} document
+                        {w.rule_36_4.gstr2a_record_count === 1 ? "" : "s"} on file
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.rule_36_4.gstr2a_igst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.rule_36_4.gstr2a_cgst_paise)}</td>
+                    <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.rule_36_4.gstr2a_sgst_paise)}</td>
+                  </tr>
+                  {/* OUTSIDE THE CAP, and the row exists because without it the
+                      table above reads as an unexplained excess. Rule 36(4)
+                      reaches only invoices the SUPPLIER must furnish under
+                      s.37(1); reverse-charge tax is self-assessed on the
+                      recipient's own s.31(3)(f) invoice, so GSTR-2B
+                      structurally cannot carry it. */}
+                  {(w.rule_36_4.self_assessed_igst_paise > 0 ||
+                    w.rule_36_4.self_assessed_cgst_paise > 0 ||
+                    w.rule_36_4.self_assessed_sgst_paise > 0) && (
+                    <tr className="hover:bg-[#F8FAFC] bg-[#FCFDFE]">
+                      <td className="px-5 py-3 text-[#475569] text-xs">
+                        Of which self-assessed — not capped
+                        <span className="block text-[#94A3B8]">
+                          Reverse charge under s.9(3)/(4). No supplier files it, so
+                          GSTR-2B cannot carry it and Rule 36(4) does not reach it.
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.rule_36_4.self_assessed_igst_paise)}</td>
+                      <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.rule_36_4.self_assessed_cgst_paise)}</td>
+                      <td className="px-5 py-3 text-right font-mono text-[#64748B] text-xs">{r(w.rule_36_4.self_assessed_sgst_paise)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </section>
+          )}
+
           {/* Table 6 — Net Tax Payable */}
           <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
             <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
