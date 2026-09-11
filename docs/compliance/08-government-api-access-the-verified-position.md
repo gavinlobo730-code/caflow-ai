@@ -622,3 +622,294 @@ The product's existing posture — prepare precisely, refuse to auto-submit, rec
 what the human did — is the correct one for six of the nine, and is the same
 posture the market leaders hold. What is missing is not architecture. It is nine
 emails.
+
+---
+
+## 10. The emails, drafted
+
+§7 lists nine open questions. They go to **six inboxes**, not nine — several
+questions belong to the same authority and are far more likely to be answered as
+one short numbered list than as three separate messages arriving in the same
+queue.
+
+### How to send these, and it matters more than the wording
+
+- **Send from a company domain**, not Gmail. A `@practicesync.in`-style address
+  is answered; a free address often is not.
+- **One authority per email. Numbered questions. Nothing open-ended.** Every
+  question below is answerable in one line by someone who knows. Do not ask them
+  to explain a process — ask them to confirm a fact or send a current document.
+- **Quote their own published material.** Each draft cites the page or document
+  the question arises from. It signals the homework is done and routes the mail
+  to the right desk.
+- **Expect silence from some.** Follow up by phone after **seven working days**,
+  quoting the email's subject line and date. Numbers are given with each draft.
+- **Replace every `[SQUARE BRACKET]`** before sending. Nothing in them is
+  invented here on purpose.
+- **Keep every reply.** The answers are the evidence base this whole document is
+  missing, and they should be filed back into
+  `docs/compliance/08-…` with the date received.
+
+> **One caution on addresses.** Every address below is `[S]` — taken from a
+> search result, not from a page I could open. If one bounces, the fallback for
+> each is given. No address here is invented; where I could not find one, the
+> draft says so instead.
+
+---
+
+### Email 1 of 6 — Income Tax Department (e-Filing) · closes questions 1, 4, 7, 9
+
+**To:** `efilingwebmanager@incometax.gov.in`
+**Fallback:** e-Filing helpline **1800 103 0025** / **1800 419 0025** /
+**+91-80-46122000**, 08:00–20:00 Mon–Fri, 09:00–18:00 Sat
+**Subject:** `Clarification sought — ERI category selection and Third Party Software Utility Developer registration`
+
+> Dear Sir / Madam,
+>
+> We are **[LEGAL ENTITY NAME]**, PAN **[PAN]**, developing an accounting and
+> compliance platform for Chartered Accountants in practice. We intend to file
+> Income Tax Returns for our clients' taxpayers through the Department's
+> systems, and we wish to register correctly at the first attempt.
+>
+> We have read the ERI registration guidance at
+> `https://www.incometax.gov.in/iec/foportal/help/eri/registration` and the
+> Third Party Software Utility Developer user manual at
+> `https://www.incometax.gov.in/iec/foportal/sites/default/files/2020-08/User_Manual_Third-Party_Utility_Provider.pdf`.
+> We would be grateful for confirmation on the following.
+>
+> 1. Our software is used by a Chartered Accountant, who files on behalf of
+>    their client. Is the correct category **ERI Type 2** (own software
+>    application filing through Departmental APIs) or **ERI Type 3** (developer
+>    of an offline utility, not acting on behalf of taxpayers)?
+> 2. Which ERI types require a **bank guarantee**, and what is the current
+>    amount? Public sources conflict on whether it attaches to Type 1 only.
+> 3. What are the **current fees** for ERI registration and renewal? The figures
+>    in circulation appear to pre-date GST and include service tax.
+> 4. Does registration as a **Third Party Software Utility Developer** issue the
+>    software provider identifier (format `SW########`) carried in the
+>    `SWCreatedBy` field of the ITR JSON schema? If not, how is that identifier
+>    obtained?
+> 5. Does the ERI production API path require **Indian static IP addresses** to
+>    be whitelisted, as the External Agency process does? If so, how many?
+> 6. The API specifications published at
+>    `https://www.incometax.gov.in/iec/foportal/api-specifications` are dated
+>    November 2021. Is a **more current specification** available to registered
+>    ERIs, and how is it obtained?
+>
+> We would be happy to provide any further detail.
+>
+> Yours faithfully,
+> **[NAME]**, **[DESIGNATION]**
+> **[LEGAL ENTITY NAME]** · **[PHONE]** · **[EMAIL]**
+
+---
+
+### Email 2 of 6 — CPC-TDS (TRACES) · closes question 2
+
+**This is the highest-value email in the set.** If the answer is yes, the
+direct-tax side changes from "generate a file, a human uploads it" to "integrate
+an API subject to empanelment".
+
+**To:** `suvidha-support@tdscpc.gov.in`
+**Fallback:** TRACES contact page at `https://contents.tdscpc.gov.in/`
+**Subject:** `Query — production availability of CPC-TDS Statement Filing APIs and Suvidha Provider registration`
+
+> Dear Sir / Madam,
+>
+> We are **[LEGAL ENTITY NAME]**, PAN **[PAN]**, a payroll and TDS compliance
+> software provider serving deductors through Chartered Accountants in practice.
+>
+> We have seen the CPC-TDS developer portal describing OpenAPI 3.0 **TDS
+> Statement Filing APIs for Forms 24Q, 26Q, 27Q and 27EQ**, covering data
+> capture, validate, submit, submit-status and error download, with organisation
+> registration, sandbox and production credentials. The only URL we can locate
+> for it is `https://test-dev.tdscpc.gov.in/`, which appears to be a development
+> host.
+>
+> We would be grateful for confirmation on the following.
+>
+> 1. Is the CPC-TDS developer portal **live in production**, and if so at what
+>    URL?
+> 2. If it is not yet live, is a **target date** available?
+> 3. What is the **Suvidha Provider / TSP** category referred to in the portal's
+>    access controls? Is there a published scheme, eligibility criteria or
+>    notification defining it?
+> 4. What is the **registration process** for an organisation wishing to obtain
+>    sandbox and then production credentials, and are there any fees?
+> 5. Is there a **published API specification** we may review before applying?
+> 6. Does this route replace the RPU/FVU preparation and TAN-login upload
+>    workflow, or run alongside it?
+>
+> Yours faithfully,
+> **[NAME]**, **[DESIGNATION]**
+> **[LEGAL ENTITY NAME]** · **[PHONE]** · **[EMAIL]**
+
+---
+
+### Email 3 of 6 — GSTN · closes question 3
+
+**To:** `info@gstn.org.in`
+**Cc:** `helpdesk@gst.gov.in`
+**Fallback:** GSTN helpdesk **0124-4688999**
+**Subject:** `Enquiry — GST Suvidha Provider empanelment status and current eligibility criteria`
+
+> Dear Sir / Madam,
+>
+> We are **[LEGAL ENTITY NAME]**, PAN **[PAN]**, GSTIN **[GSTIN]**, an Indian
+> company developing GST compliance software for Chartered Accountants in
+> practice. We are deciding between applying for GSP empanelment and operating
+> as an Application Service Provider under an existing GSP.
+>
+> We have reviewed the GSP ecosystem page at `https://www.gstn.org.in/gsp-ecosystem`
+> and the batch-5 eligibility document at
+> `https://gstn.org.in/assets/mainDashboard/Pdf/eligibility-batch-5.pdf`.
+>
+> 1. Are **applications for GSP empanelment currently open**? If the fifth batch
+>    has concluded, is a **sixth batch** planned, and is there a way to be
+>    notified?
+> 2. Is the **batch-5 eligibility document the current criteria**, and does the
+>    turnover threshold stated there still apply?
+> 3. Is there a **fee** payable by a selected GSP to GSTN — a one-time
+>    empanelment fee, an annual licence fee, or a per-transaction charge? If so,
+>    what are the current rates?
+> 4. Does GSTN **recognise or register ASPs** in any form, or is an ASP purely a
+>    commercial arrangement with a GSP with no standing before GSTN?
+> 5. Following the taxpayer advisory on **Transparency of Data Access via
+>    GSP/ASP** (September 2025), how is an ASP's name registered so that it
+>    appears correctly in the taxpayer's consent notification and consent
+>    dashboard?
+>
+> Yours faithfully,
+> **[NAME]**, **[DESIGNATION]**
+> **[LEGAL ENTITY NAME]** · **[PHONE]** · **[EMAIL]**
+
+---
+
+### Email 4 of 6 — NIC e-Invoice (IRP) · closes question 5
+
+**Send this one last, after the sandbox work**, because it is the only email
+here that is stronger with evidence attached — NIC's own process expects a test
+summary report.
+
+**To:** `support.einv.api@gov.in`
+**Fallback:** the e-invoice portal helpdesk at `https://einvoice1.gst.gov.in/`
+**Subject:** `Request for production API access — ERP category, [LEGAL ENTITY NAME]`
+
+> Dear Sir / Madam,
+>
+> We are **[LEGAL ENTITY NAME]**, PAN **[PAN]**, GSTIN **[GSTIN]**, an
+> accounting software provider serving taxpayers through Chartered Accountants
+> in practice. We have completed sandbox integration at
+> `https://einv-apisandbox.nic.in/` and wish to move to production.
+>
+> We understand Client Id and Client Secret are issued to service providers in
+> the **GSP, ERP and ECO** categories.
+>
+> 1. Is the **ERP category** the correct one for a SaaS accounting platform
+>    generating IRNs on behalf of its users' GSTINs?
+> 2. Are there **eligibility criteria** for the ERP category — turnover, net
+>    worth, minimum number of client GSTINs, or any empanelment?
+> 3. Is any **fee** payable for production credentials?
+> 4. How many **static IP addresses** may be whitelisted, and is a specific
+>    format required for the request?
+> 5. What must the **Test Summary Report** contain, and is a template available?
+> 6. What is the typical **time from submission to production credentials**?
+> 7. Please confirm the requirements arising from the advisory of 17 June 2026
+>    making **Ship-to GSTIN mandatory** in the IRN and e-Way-Bill-by-IRN APIs
+>    from 1 August 2026.
+>
+> Yours faithfully,
+> **[NAME]**, **[DESIGNATION]**
+> **[LEGAL ENTITY NAME]** · **[PHONE]** · **[EMAIL]**
+
+---
+
+### Email 5 of 6 — Protean eGov (TIN) · closes question 8
+
+**Expect a "no".** The published eligibility categories appear to require the
+applicant's *own* TDS filings to exceed 500 deductees a quarter, which a
+software provider does not. The email is worth sending because the answer is
+either a route we did not know about or a `[U]` closed for good.
+
+**To:** `tininfo@protean-tinpan.com`
+**Fallback:** **020 27218080** / **08069708080**, or the Complaints/Queries form
+at `https://www.protean-tinpan.com/`
+**Subject:** `Eligibility query — Online PAN Verification facility for a compliance software provider`
+
+> Dear Sir / Madam,
+>
+> We are **[LEGAL ENTITY NAME]**, PAN **[PAN]**, a compliance software provider
+> serving Chartered Accountants and their deductor clients. We wish to verify
+> PANs of deductees and vendors within our platform, with the deductor's
+> authorisation.
+>
+> We have read the eligibility categories published at
+> `https://tinpan.proteantech.in/services/online-pan-verification/pan-verification-register.html`.
+>
+> 1. Is there an **eligible category** for a software provider that verifies
+>    PANs **on behalf of** deductors, rather than filing its own TDS returns?
+> 2. If eligibility rests on the applicant's own deductee count exceeding 500 per
+>    quarter, does the count of **clients served** qualify in any circumstance?
+> 3. What are the **current registration charges** and the annual or
+>    per-verification charges for each mode (screen-based, file-based, API)?
+> 4. What is the **typical time** from application to issue of the eight-digit
+>    user ID, including Income Tax Department approval?
+> 5. Is an **API-based** verification mode available, and is its specification
+>    shared before registration?
+>
+> Yours faithfully,
+> **[NAME]**, **[DESIGNATION]**
+> **[LEGAL ENTITY NAME]** · **[PHONE]** · **[EMAIL]**
+
+---
+
+### Email 6 of 6 — DigiLocker / API Setu · the non-filing one worth doing
+
+**No email address confirmed.** Onboarding appears to run through the partner
+portal at `https://partners.apisetu.gov.in/signin`, which uses DigiLocker
+MeriPehchaan credentials. **Register there first**; use the text below for the
+application's free-text fields, or for a support ticket if the portal offers one.
+
+**Route:** `https://partners.apisetu.gov.in/signin` → register as a Partner
+Organisation → apply for **Requester** access
+**Reference:** `https://www.digilocker.gov.in/web/partners/`
+**Subject (if a ticket is available):** `Requester onboarding query — verified document pull for a CA compliance platform`
+
+> We are **[LEGAL ENTITY NAME]**, PAN **[PAN]**, CIN **[CIN]**, an accounting and
+> compliance platform used by Chartered Accountants in practice. We wish to
+> become a **DigiLocker Requester** so that a client can share verified copies of
+> PAN, incorporation and registration documents with their Chartered Accountant
+> during engagement onboarding, with the client's consent, instead of emailing
+> scans.
+>
+> 1. Is a **private limited company providing SaaS to Chartered Accountants**
+>    eligible to onboard as a Requester?
+> 2. What **documents** must accompany the application?
+> 3. Is there an **onboarding fee**, and are there per-transaction charges?
+> 4. What does the **testing and audit** step involve, and how long does it
+>    typically take?
+> 5. Which **document types** are available to a Requester in our use case —
+>    specifically PAN, Aadhaar (masked), and MCA incorporation documents?
+>
+> **[NAME]**, **[DESIGNATION]** · **[PHONE]** · **[EMAIL]**
+
+---
+
+### Tracking the replies
+
+| # | To | Closes | Sent | Chased | Answered | Answer |
+|---|---|---|---|---|---|---|
+| 1 | `efilingwebmanager@incometax.gov.in` | Q1, Q4, Q7, Q9 | | | | |
+| 2 | `suvidha-support@tdscpc.gov.in` | Q2 | | | | |
+| 3 | `info@gstn.org.in` | Q3 | | | | |
+| 4 | `support.einv.api@gov.in` | Q5 | | | | |
+| 5 | `tininfo@protean-tinpan.com` | Q8 | | | | |
+| 6 | API Setu partner portal | DigiLocker | | | | |
+
+**Question 6 — "all fees, everywhere" — is not a separate email.** It is asked
+inside each of the five above, because a fee question answered by the authority
+that charges it is the only kind worth having.
+
+**Send 1, 2, 3 and 5 today.** They cost nothing, they commit to nothing, and
+until they are answered every cost and eligibility line in this document is an
+estimate. Send 4 after the sandbox work, and start 6 whenever convenient.
