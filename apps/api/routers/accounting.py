@@ -792,51 +792,25 @@ def post_draft_journal(journal_id: str, current_user: dict = Depends(rbac("accou
         db, current_user["firm_id"], journal_id, actor_id=current_user.get("id"),
         actor_auth_id=current_user.get("auth_user_id")))
 
-
-def _assert_journal_scope(current_user: dict, entry_id: str) -> dict:
-    """Row-addressed by entry_id, against the legacy in-memory engine (never
-    Supabase-backed, regardless of SUPABASE_URL — see the module note above
-    create_journal_entry). ONE fixed message covers missing and hidden alike,
-    replacing the id-embedded NotFoundError text this endpoint used before
-    (the year_end.py `_assert_engagement_scope` shape)."""
-    try:
-        entry = accounting_service.get_journal_entry(entry_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Journal entry not found.")
-    if not can_access_client(current_user, entry.get("client_id")):
-        raise HTTPException(status_code=404, detail="Journal entry not found.")
-    return entry
-
-
-@router.patch("/journal/{entry_id}/post")
-def post_journal_entry(entry_id: str, current_user: dict = Depends(rbac("accounting", "approve"))):
-    """Post (approve) a journal entry — Partner only."""
-    _assert_journal_scope(current_user, entry_id)
-    try:
-        entry = accounting_service.post_journal_entry(entry_id)
-        log_event(current_user["firm_id"], "journal_entry", entry_id, "approve",
-                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
-                  new_data={"status": "posted"})
-        timeline_service.log_timeline_event(
-            client_id=entry.get("client_id", ""),
-            firm_id=current_user.get("firm_id", ""),
-            financial_year=_current_fy_long(),
-            category="accounting",
-            event_type="journal_posted",
-            title=f"Journal {entry.get('reference_no', '')} posted",
-            description="Manual journal entry posted to ledger.",
-            severity="info",
-            entity_type="journal_entry",
-            entity_id=entry_id,
-            actor_id=current_user.get("auth_user_id"),
-            actor_name=current_user.get("email"),
-        )
-        return api_response(True, entry)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ValidationError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
+# PATCH /journal/{entry_id}/post AND ITS _assert_journal_scope ARE GONE (ACC-20).
+#
+# The route ran against `accounting_service`, the legacy IN-MEMORY engine —
+# never Supabase-backed whatever SUPABASE_URL says — so in any real deployment
+# its store is empty and every request 404'd. It had been that way since it was
+# written, and nothing called it: `lib/api`'s `postJournalEntry` wrapper was
+# referenced from nowhere, and the journal editor routes deliberately to
+# `POST /journals/{journal_id}/post` with a comment saying why ("the legacy
+# PATCH /journal/{id}/post is backed by the in-memory engine and would not touch
+# this client's ledger at all").
+#
+# So this was two endpoints for one action, one of which could not perform it.
+# `POST /journals/{journal_id}/post` above is the real one: it goes through
+# journal_posting_service.post_draft, against the production ledger, FY-lock
+# enforced and audited.
+#
+# `accounting_service.post_journal_entry` is NOT deleted — it is the in-memory
+# engine's own method, and mock-mode tests exercise it directly. What is gone is
+# the HTTP route that exposed it as if it were the production path.
 
 @router.post("/journal/{entry_id}/reverse")
 def reverse_journal_entry(

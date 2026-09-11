@@ -210,34 +210,16 @@ def test_posting_opening_balances_for_an_own_client_is_allowed(deny):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# post_journal_entry (_assert_journal_scope) — PATCH /journal/{entry_id}/post,
-# the legacy in-memory engine
+# PATCH /journal/{entry_id}/post IS GONE (ACC-20) — three tests removed here
 # ══════════════════════════════════════════════════════════════════════════
-
-def test_posting_a_hidden_clients_journal_entry_is_refused(deny):
-    _entry("JE1", THEIRS, status="draft")
-    with pytest.raises(HTTPException) as exc:
-        acct.post_journal_entry("JE1", current_user=PARTNER_USER)
-    assert exc.value.status_code == 404
-    assert acct_svc.JOURNAL_INDEX["JE1"]["status"] == "draft"
-
-
-def test_posting_an_own_clients_journal_entry_is_allowed(deny):
-    _entry("JE1", MINE, status="draft")
-    resp = acct.post_journal_entry("JE1", current_user=PARTNER_USER)
-    assert resp["success"] is True
-    assert acct_svc.JOURNAL_INDEX["JE1"]["status"] == "posted"
-
-
-def test_missing_and_hidden_journal_entry_errors_match(deny):
-    _entry("JE1", THEIRS, status="draft")
-    with pytest.raises(HTTPException) as missing:
-        acct.post_journal_entry("JE-does-not-exist", current_user=PARTNER_USER)
-    with pytest.raises(HTTPException) as hidden:
-        acct.post_journal_entry("JE1", current_user=PARTNER_USER)
-    assert missing.value.status_code == hidden.value.status_code == 404
-    assert missing.value.detail == hidden.value.detail == "Journal entry not found."
-
+#
+# They guarded the client scope on a route backed by the legacy in-memory
+# engine, which 404'd in every real deployment because that store is empty
+# there, and which nothing called. The route is deleted; these went with it.
+#
+# NOT a loss of coverage on the thing that matters: posting a draft to the
+# PRODUCTION ledger goes through POST /journals/{journal_id}/post, whose own
+# scope guard (_assert_draft_scope) is exercised above.
 
 # ══════════════════════════════════════════════════════════════════════════
 # The seven reporting endpoints — client_id is checked when named
@@ -474,14 +456,56 @@ def test_live_editing_a_missing_journal_entry_is_refused(deny, monkeypatch):
     assert exc.value.status_code == 404
 
 
-def test_both_journal_scope_helpers_survive_side_by_side():
-    """The two guards in this module read different engines and take different
-    arguments — the Supabase-backed one used by GET/PATCH /journal/{id}, and
-    the legacy in-memory one used by PATCH /journal/{id}/post. Naming them the
-    same silently bound BOTH call sites to whichever came last in the file.
+def test_there_is_now_exactly_one_journal_scope_helper():
+    """THE COLLISION THIS GUARDED AGAINST CANNOT HAPPEN ANY MORE, and the
+    reason is worth keeping rather than deleting with it.
+
+    This module used to hold TWO guards of the same name reading different
+    engines and taking different arguments — the Supabase-backed one for
+    GET/PATCH /journal/{id}, and an in-memory one for PATCH /journal/{id}/post.
+    Python bound both call sites to whichever came last, so two routes raised
+    TypeError on every request while the whole suite stayed green, because
+    nothing exercised them through the router.
+
+    ACC-20 deleted the in-memory route and its guard with it, so only the
+    Supabase one remains. What this now asserts is that it STAYS the only one:
+    a second `_assert_journal_scope*` is how the collision comes back.
     """
     import inspect
     assert list(inspect.signature(acct._assert_journal_scope_db).parameters) == \
         ["db", "current_user", "entry_id"]
-    assert list(inspect.signature(acct._assert_journal_scope).parameters) == \
-        ["current_user", "entry_id"]
+    scope_guards = [n for n in dir(acct) if n.startswith("_assert_journal_scope")]
+    assert scope_guards == ["_assert_journal_scope_db"], (
+        f"more than one journal-scope guard is back: {scope_guards}. They read "
+        f"different engines and take different arguments, and one name for both "
+        f"binds every call site to whichever is defined last.")
+
+
+def test_posting_a_journal_has_exactly_one_endpoint():
+    """ACC-20. There were TWO routes for one action and only one could perform
+    it.
+
+    `PATCH /journal/{entry_id}/post` ran against the legacy IN-MEMORY engine —
+    never Supabase-backed whatever SUPABASE_URL says — so in any real
+    deployment its store is empty and every request 404'd. It had been that way
+    since it was written, and nothing called it: the journal editor routes
+    deliberately to the other one, with a comment saying why.
+
+    What remains is `POST /journals/{journal_id}/post`, which goes through
+    journal_posting_service.post_draft against the production ledger, FY-lock
+    enforced and audited.
+    """
+    import main
+
+    posting_routes = sorted(
+        f"{sorted(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}"
+        for r in main.app.routes
+        if getattr(r, "path", "").endswith("/post")
+        and "journal" in getattr(r, "path", "")
+        and getattr(r, "methods", None)
+    )
+    assert posting_routes == ["POST /api/accounting/journals/{journal_id}/post"], (
+        f"more than one way to post a journal is mounted: {posting_routes}. "
+        f"The in-memory one was deleted because it could not touch a real "
+        f"ledger — a second route here is either that one back, or a new one "
+        f"that needs the same question asked of it.")

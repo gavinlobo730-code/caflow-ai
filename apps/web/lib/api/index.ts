@@ -1380,7 +1380,6 @@ export const api = {
     scheduleIiiCaptions: () => request("/api/accounting/schedule-iii/captions"),
     journal: (params?: Record<string, string>) => request(`/api/accounting/journal${params ? "?" + new URLSearchParams(params) : ""}`),
     createJournalEntry: (data: unknown) => request("/api/accounting/journal", { method: "POST", body: JSON.stringify(data) }),
-    postJournalEntry: (id: string) => request(`/api/accounting/journal/${id}/post`, { method: "PATCH" }),
     // One entry with its lines, plus whether it may still be edited. `editable`
     // and `lock_reason` are resolved by the same database function the write
     // path enforces with (journal_period_lock_reason, migration 266), so the
