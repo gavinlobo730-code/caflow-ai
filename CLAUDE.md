@@ -421,6 +421,17 @@ ESI may err the other way — unconfirmed, and pinned by a test so a later chang
 is deliberate. Gratuity likewise. Verified 2026-09-04; see
 `docs/compliance/04-mca-epfo-esic.md`.
 
+**ESI CONTRIBUTIONS ROUND UP TO THE NEXT WHOLE RUPEE — both shares.** ESIC's
+filing manual, of the figure the portal computes: *"Employee Contribution will
+be calculated and displayed. This is rounded to next higher rupee"*; the same
+has applied to the employer's share since October 2004. `_compute_esi` floored
+to the paise until 11-09-2026, which under-remitted on every wage that is not a
+clean multiple — and the employer carries that shortfall with interest. Note it
+runs the OPPOSITE way to the GST discount rounding, which floors: there,
+flooring cannot under-declare tax; here, rounding up cannot under-deduct
+contribution. Both take the direction that is safe for the person who would
+otherwise carry the liability, which is why they differ.
+
 **Partly a gap: professional tax and the Labour Welfare Fund.** PT slabs are
 still bare literals in `routers/payroll.py`, covering **Maharashtra, Tamil Nadu,
 Karnataka and West Bengal** — four of the twenty-two states

@@ -42,6 +42,7 @@ its title and a sentence from it; I have not read a line of it.*
 | `[P]` | I opened the primary source and read it |
 | `[S-gov]` | a search engine summarised a document at an **official** URL, and the URL is recorded in §8 |
 | `[S]` | trade press, a vendor's documentation, or a professional firm's note |
+| `[O]` | **the owner opened the page and reported what it says.** Added 11 Sep 2026 — stronger than `[S]`, because it is a direct read of the primary source; it is not `[P]` only because I did not do the reading. Logged in §16 |
 | `[U]` | wanted and not found, or sources contradict each other |
 
 **No `[P]` is awarded anywhere in this document.** That is not a formality. The
@@ -1084,21 +1085,60 @@ Ordered by ratio of harm-removed to work.
 
 ### F1 — The ESIC file the portal actually accepts · *small, and it is a live defect*
 
-Emit `.xls` (BIFF8, Excel 97-2003), every cell a **text** cell, no formulas, the
-column order the portal's own template uses. Keep the CSV as a second download
-for the CA's own checking — but the primary button must produce the thing that
-uploads.
+**REVISED 11 September 2026, and the revision is the important part.** The first
+draft of this phase said: emit our own `.xls`, BIFF8, every cell text, the
+portal's column order. **That is the wrong design, and ESIC says so in its own
+words** — from the user manual for filing the monthly contribution `[S]`:
 
-Two rules carry over from the money work and matter here: the IP number is
-**ten digits and can lead with a zero**, so it must be written as text or Excel
-eats the zero; and days are whole numbers rounded **up**, which the domain
-module already does.
+> *"Download Sample MC Template from the portal — only this template should be
+> used, and refrain from using any other sheet even if prepared in similar
+> looking format."*
+
+A lookalike workbook is exactly what that sentence forbids. The manual also
+describes a workflow that is not the one we assumed: the CA downloads the
+portal's own **list of employees**, copies the **IP numbers and names** out of
+it into the MC template with paste-values, and then enters **days and wages**
+against them. The identities come from ESIC. Only the figures are ours.
+
+**So F1 becomes: fill THEIR template, never mint one.**
+
+1. The CA uploads the Sample MC Template they downloaded — and, if they have it,
+   the portal's employee list.
+2. We match our computed rows to it **by IP number**, write **days, total
+   monthly wages, reason code and last working day** into the workbook's own
+   cells, and hand the same file back. Its structure, its formats, and anything
+   hidden in it survive untouched.
+3. Anything that does not match is reported rather than written: an employee on
+   our payroll who is not on ESIC's list (registration pending, IP not yet
+   allotted) and an IP on ESIC's list we have no slip for are **different
+   problems with different fixes**, exactly like `missing_in_2b` and
+   `missing_in_books` on the GST side. Today the CA finds these by eye.
+
+This is better than the original plan in three ways, and I would now choose it
+even with the template in front of me:
+
+- it **cannot drift** when ESIC revises the template, because we never claim to
+  know its shape;
+- it does the **reconciliation** the CA currently does by hand;
+- and it needs **no source I cannot get** — the shape arrives with the file.
+
+What stays from the first draft: the IP number is ten digits and **can lead with
+a zero**, so it is written as text or Excel eats it; days are whole numbers
+rounded **up** (the domain module already does this); dates are `dd/mm/yyyy` or
+`dd-mm-yyyy` with single digits zero-padded `[S]`; and **no formulas** — values
+only.
+
+Keep the CSV as a second download for the CA's own checking. It is a working
+paper, and it should stop calling itself the return.
 
 **Seam:** `domain/payroll/esic.py`, `routers/payroll.py::run_esic`.
-**Guard:** a test that opens the emitted workbook and asserts every cell's type
-is text and the file's magic bytes are BIFF8 — the rule, not a spelling of it.
-**⚠️ Verify the template first** — this is the top item on the screenshot list
-in §14. I do not want to rebuild the file from a search summary.
+**Guard:** round-trip a fixture workbook through the filler and assert every
+cell we did not write is byte-identical to the input, and every cell we did
+write is a text cell. The rule is *we only ever add figures to somebody else's
+file*, and that is what the test should say.
+**No longer blocked on §15 item 1.** A template would be nice for a fixture; it
+is no longer needed for the design. If one arrives, it becomes the test
+fixture.
 
 ### F2 — One statutory filing record, for everything · *medium; unblocks F3 and F4*
 
@@ -1273,8 +1313,10 @@ rather have the one the live portal offers today.
 screenshot of it open in Excel showing **row 1 headers, row 2 sample data, the
 sheet name and tab count**. Also whether the portal page states an accepted
 extension (`.xls` vs `.xlsx`) and any instruction about cell format.
-*Why:* F1 rebuilds our ESIC export to match it byte for byte. I do not want to
-rebuild a statutory file from a search summary.
+*Why:* **not to copy its shape — F1 no longer does that** (see §13 F1: ESIC's
+own manual says to use their template and not a lookalike, so we fill theirs).
+A real template would serve as the **test fixture** for the filler, which is
+worth having but no longer blocks the build.
 
 **2. The ESIC reason codes.**
 Same screen: the dropdown or help text listing the reasons for **zero wages**,
@@ -1375,3 +1417,129 @@ was going to be my fallback.
 And if a page turns out to say something different from what is in this
 document — that is the most valuable outcome of the exercise, not a problem.
 Send it and I will correct the document and say what it changes.
+
+
+---
+
+## 16. Verified directly by the owner — a running log
+
+Egress is refused to me, so this is the only route to primary evidence. Each
+entry says what was opened, what it showed, and what changed as a result.
+**Graded `[O]`.**
+
+### 11 September 2026
+
+**`esic.in/ESICInsurance1/App_Themes/Help/MC_Template1.xls` → 404.** `[O]`
+That URL came out of a search snippet and is dead. Worth recording for its own
+sake: it is a small, concrete instance of the failure mode §0 warns about — a
+search engine reported a path that does not exist, and nothing short of opening
+it would have told us.
+
+**`portal.esic.gov.in/EmployerPortal/.../Portal_Loginnew.aspx`** `[O]` — the
+employer login page carries a standing notice:
+
+> *"We Are Migrating To One Unit One Identifier. Government of India plans to do
+> away with all employer codes being issued by separate labour enforcement
+> agencies such as ESIC, EPFO, O/O CIC(C) and DGMS etc by replacing them with new
+> Labour Identification Number (LIN). Your unit has already been allotted a LIN…
+> Please verify the information associated with your LIN before the current
+> employer codes are rendered useless."*
+
+**We already model this and no change is needed.** Migration 325 gives
+`client_statutory_registrations` a `lin` column alongside
+`esic_employer_code` and `epf_establishment_code`, and `routers/payroll.py`
+reads all three. Recorded so that nobody reads the notice later and starts a
+migration that already happened.
+
+Two things it does tell us, though. First, the notice is undated and has been
+live for years, so **do not treat "employer codes are rendered useless" as
+imminent** — but do not drop the codes either; keep all three, which is what we
+do. Second, whenever that convergence does land, `esic_gaps` and the ECR's
+establishment-code gap become one question, not three.
+
+**No ESIC employer login available.** `[O]` The owner is a CA firm without an
+employer registration of its own and did not have a client login to hand. That
+is a permanent constraint on §15 items 1–3, not a delay — and it is the reason
+F1 was redesigned to fill the CA's own downloaded template rather than mint
+one. **The constraint improved the design.**
+
+### The process discovery that changes how the rest of this gets researched
+
+**The egress proxy blocks `.gov.in`. It does not block mirrors.** Chasing the
+ESIC template turned up *User Manual for Filing the Monthly Contribution and
+Payment of dues* — ESIC's own 27-page manual — sitting on a vendor forum's CDN,
+and **that fetch succeeded.** It is the first genuinely primary document read in
+this whole exercise.
+
+So the method for every remaining `[U]` and `[S]` in this document is: **stop
+fetching the government URL and go looking for a mirror.** Vendor help centres,
+professional-body circulars, forum attachments and training decks carry
+enormous numbers of official PDFs verbatim. A mirror is weaker than the
+publisher's own copy — it can be stale, and the date it was mirrored is usually
+unknown — so a document obtained this way is graded `[S-gov]` and must carry
+what it is a copy OF. But it is a document rather than somebody's summary of
+one, and that is a different class of evidence.
+
+This should have been obvious three days ago. It is recorded here so the next
+open question starts with a mirror search rather than three refused fetches.
+
+### ESIC's filing manual — what it settled, and the defect it found
+
+Read in full, 27 pages `[S-gov]`. It **confirmed** what
+`domain/payroll/esic.py` already had: the six columns and their order
+(10-digit IP number, IP name, no. of days, total monthly wages, reason for zero
+wages, last working day), days as a whole number **rounded up**, all columns in
+Text format, `.xls` / Excel 97-2003, dates `dd/mm/yyyy` or `dd-mm-yyyy`
+zero-padded.
+
+It **added four things**, three of which raise the stakes on a refusal this
+product already makes:
+
+1. **"Once 0 wages given, IP will be removed from the employer's record.
+   Subsequent Months will not have this IP listed under the employer."**
+   A zero-wage row does not report a month — it takes the person OFF the
+   establishment. An employee on a full month of unpaid leave, reported as
+   zero, loses ESI coverage. This is now the strongest argument for the
+   module's refusal to invent a reason code: the guess does not merely
+   misreport, it de-registers somebody.
+2. **A last working day is required for exactly six reasons** — left service,
+   retired, out of coverage, expired, non-implemented area, retrenchment —
+   *"For other reasons, last working day must be left BLANK."* We still do not
+   hold the numeric codes (the portal surfaces them at filing time, which is
+   exactly what the module said), but we now hold which reasons are terminal.
+   **§15 item 2 is therefore half-closed**: the semantics are settled, the
+   numbers are not.
+3. **The upload is all-or-nothing** against the portal's own list of mapped
+   IPs — *"successful transaction only when all the Employees' (who are
+   currently mapped in the system) details are entered perfectly"*. A file
+   missing one person fails entirely. This makes F1's reconciliation a hard
+   requirement rather than a nicety.
+4. **The portal computes the contributions**, not us — *"IP Contribution and
+   Employer contribution calculation will be automatically done by the
+   system."* The file carries days and wages only. The module is right not to
+   emit contribution columns.
+
+And one fact that belongs beside the return rather than in it: **a submitted
+monthly contribution cannot be modified, and a supplementary can only
+INCREASE it** — *"No way contribution amount submitted during monthly
+contribution will reduce."* An over-declaration has no ordinary route back.
+That is a warning the F3 handoff screen must carry.
+
+**The defect it found.** The manual says of the figure the portal computes:
+*"Employee Contribution will be calculated and displayed. This is rounded to
+next higher rupee."* The same has applied to the employer's share since
+October 2004. `routers/payroll.py::_compute_esi` **floored to the paise** —
+`math.floor(gross × bps / 10000)` — and the paise is not a unit ESI works in.
+
+On ₹15,500 of wages the employee share is ₹116.25 exactly: we deducted and
+posted ₹116.25 while the portal raises the challan for ₹117. Short, in the same
+direction, on every employee whose wages are not a clean multiple, every month
+— and under-remitted ESI is the **employer's** liability with interest. Fixed
+in this session's commit, with the rounding in one helper both shares go
+through, twelve tests of which eight fail against the old rule, and the two
+existing tests that had pinned the defect updated with the reason stated rather
+than silently.
+
+**This is the return on opening one page.** Three days of searching produced
+`[S]`-graded prose; one mirrored manual produced a confirmed format, four new
+rules, and a live money defect.

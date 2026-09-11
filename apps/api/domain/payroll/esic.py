@@ -49,6 +49,40 @@ and the question does not arise.
 #   And the stakes went up: ESIC issued a circular in October 2025 flagging
 #   misuse of monthly filings showing zero-day workers, so zero-day rows are
 #   now under active scrutiny. Do not soften this into a guess.
+#
+#   WHAT ESIC'S OWN FILING MANUAL ADDS, read 11-09-2026. It confirms the six
+#   columns above and the round-days-up rule, and states four things this
+#   module did not know. Three of them RAISE the stakes on the refusal:
+#
+#     * "Once 0 wages given, IP will be removed from the employer's record.
+#       Subsequent Months will not have this IP listed under the employer."
+#       A zero-wage row is not a neutral statement about a month — it takes
+#       the person OFF the establishment. Someone on a full month of unpaid
+#       leave, reported as zero, loses their ESI coverage. That is the
+#       strongest argument yet for withholding the file rather than guessing:
+#       the guess does not just misreport, it de-registers somebody.
+#     * A last working day is required for exactly six reasons — "left
+#       service, Retired, Out of coverage, Expired, Non-Implemented area or
+#       Retrenchment. For other reasons, last working day must be left BLANK."
+#       We still do not hold the NUMERIC codes, which the portal surfaces at
+#       filing time; we now hold which reasons are terminal.
+#     * "Excel sheet upload will lead to successful transaction only when all
+#       the Employees' (who are currently mapped in the system) details are
+#       entered perfectly in the excel sheet." The upload is ALL-OR-NOTHING
+#       against the portal's own list of mapped IPs, so a file missing one
+#       person fails entirely rather than filing the rest. That is why Track
+#       F1 reconciles against the portal's list instead of emitting our own.
+#     * "IP Contribution and Employer contribution calculation will be
+#       automatically done by the system." The portal computes the money; the
+#       file carries days and wages only. This module is right not to emit
+#       contribution columns — do not add them.
+#
+#   Also, and it belongs with the return rather than in it: once a monthly
+#   contribution is submitted it cannot be modified, and a supplementary can
+#   only INCREASE the amount ("No way contribution amount submitted during
+#   monthly contribution will reduce"). So an over-declaration has no ordinary
+#   route back. Everything this module refuses to guess, it refuses into a
+#   one-way door.
 """
 from __future__ import annotations
 

@@ -34,7 +34,7 @@ from routers.payroll import _compute_esi, _compute_slip
 
 def _slip(**over) -> dict:
     base = dict(employee_id="e1", gross_paise=20_500_00, lop_days=0,
-                esi_employee_paise=153_75, esi_employer_paise=666_25)
+                esi_employee_paise=154_00, esi_employer_paise=667_00)
     base.update(over)
     return base
 
@@ -122,9 +122,22 @@ def test_contribution_periods_run_april_to_september_and_october_to_march(month,
 
 
 def test_below_the_ceiling_contributes_normally():
+    """UPDATED 11-09-2026: this used to assert ₹153.75 and ₹666.25 — the exact
+    percentages, carried to the paise — and in doing so it pinned a defect.
+
+    ESIC rounds both shares UP to the next whole rupee (its filing manual:
+    "Employee Contribution ... is rounded to next higher rupee"; the same has
+    applied to the employer's share since October 2004). So on ₹20,500 the
+    portal raises the challan for ₹154 and ₹667, and the paise figures this
+    once asserted were a books-to-challan shortfall on every employee whose
+    wages are not a clean multiple.
+
+    tests/test_esi_rounds_to_the_next_rupee.py is the rule; this is the one
+    case here that crosses a rupee boundary.
+    """
     got = _compute_esi(20_500_00)
-    assert got["employee"] == 153_75          # 0.75%
-    assert got["employer"] == 666_25          # 3.25%
+    assert got["employee"] == 154_00          # 0.75% = ₹153.75, up to ₹154
+    assert got["employer"] == 667_00          # 3.25% = ₹666.25, up to ₹667
 
 
 def test_a_new_joiner_above_the_ceiling_is_outside_the_scheme():
