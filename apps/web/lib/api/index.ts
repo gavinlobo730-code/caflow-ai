@@ -2138,20 +2138,6 @@ export const api = {
     runHandoff: (runId: string) =>
       request<ApiResp<StatutoryHandoff>>(`/api/payroll/runs/${runId}/handoff`),
 
-    /** ESI and professional-tax remittances recorded for a client
-     *  (migration 365). EPF has its own record with its own sequencing —
-     *  recordEcrFiled above — which is why this does not cover it.
-     *
-     *  `unlinked` is the month-end question: a remittance marked paid with no
-     *  journal entry tied to it. Without that distinction a statutory liability
-     *  nobody has paid and one that was paid but never matched to its bank line
-     *  look identical on the ledger — both sit uncleared. */
-    remittances: (clientId: string, wageMonth?: string) =>
-      request<ApiResp<{ client_id: string; remittances: Remittance[];
-                        unlinked: Remittance[] }>>(
-        `/api/payroll/clients/${clientId}/remittances`
-        + (wageMonth ? `?wage_month=${encodeURIComponent(wageMonth)}` : "")),
-
     /** Record a remittance the CA made AT THE PORTAL, after they made it.
      *  Transmits nothing. Recording the payment updates the filing rather than
      *  adding a row: filing the return and paying the challan are two entries
@@ -2165,6 +2151,27 @@ export const api = {
     }) => request<ApiResp<{ client_id: string; remittance: Remittance }>>(
       `/api/payroll/clients/${clientId}/remittances`,
       { method: "POST", body: JSON.stringify(body) }),
+
+    /** Who ESIC has mapped, against who is in this month's file (Track F, F1).
+     *
+     *  ESIC's manual makes the upload ALL OR NOTHING — "successful transaction
+     *  only when all the Employees' (who are currently mapped in the system)
+     *  details are entered perfectly". A file missing one insured person is not
+     *  partially imported; the whole thing is rejected, after the CA has
+     *  assembled it and waited.
+     *
+     *  The list is PASTED TEXT, not a file. ESIC forbids uploading any sheet but
+     *  the portal's own Excel 97-2003 template, and reading one would need
+     *  xlrd/xlwt/xlutils — two without a release since 2017, one parsing an
+     *  untrusted upload inside the service that holds every client's ledger.
+     *  A list of insurance numbers is a list of numbers.
+     *
+     *  Nothing is stored: the list is compared and discarded. */
+    esicMappedIpCheck: (runId: string, mappedIps: string) =>
+      request<ApiResp<{ run_id: string; month: string;
+                        reconciliation: EsicMappedIpCheck | null }>>(
+        `/api/payroll/runs/${runId}/esic/mapped-ips`,
+        { method: "POST", body: JSON.stringify({ mapped_ips: mappedIps }) }),
 
     /** THE MONTH-END LIST (Track F, phase F4). Every ESI / professional-tax
      *  remittance recorded as PAID with no journal entry tied to it, each with
@@ -3449,4 +3456,18 @@ export type ApprovalRequest = {
 
 export type UnmatchedRemittance = Remittance & {
   candidates: RemittanceCandidate[];
+};
+
+/** ESIC's mapped-IP list against this month's contribution file. The two
+ *  directions are DIFFERENT PROBLEMS: `missing_from_file` fails the whole
+ *  upload, `not_mapped_at_esic` is a number to check or somebody to get mapped.
+ *  `what_it_means` is composed on the server — render it. */
+export type EsicMappedIpCheck = {
+  mapped_count: number;
+  file_count: number;
+  missing_from_file: string[];
+  not_mapped_at_esic: string[];
+  matched: string[];
+  would_be_rejected: boolean;
+  what_it_means: string;
 };

@@ -43,6 +43,7 @@ from services import statutory_remittance_service as remittances
 from services.compliance_engine import (epf_deposit_due_date,
                                         esi_deposit_due_date)
 from domain.payroll.esic import build_esic_return
+from domain.payroll import esic_mapped_ips
 from domain.payroll import annexure2 as annexure2_domain
 from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
@@ -4876,6 +4877,55 @@ def run_handoff(
         "disclaimer": "CA REVIEW REQUIRED — every filing below is made by you, "
                       "on the portal. Nothing here is transmitted, and nothing "
                       "here asks for a password or an OTP.",
+    })
+
+
+class MappedIPsIn(BaseModel):
+    """The ESIC portal's own list of mapped insured persons, as pasted.
+
+    TEXT, not a file, and that is deliberate. ESIC's manual forbids uploading
+    any sheet but the portal's own template, which is Excel 97-2003 — reading
+    one would need xlrd/xlwt/xlutils, two of them without a release since 2017
+    and one of them parsing an untrusted upload inside the service that holds
+    every client's ledger. A list of insurance numbers is a list of numbers;
+    asking for it in a file format would take on that cost for no gain.
+    """
+    mapped_ips: str = ""
+
+
+@router.post("/runs/{run_id}/esic/mapped-ips")
+def esic_mapped_ip_check(
+    run_id: str,
+    body: MappedIPsIn,
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """Who ESIC has mapped, against who is in this month's contribution file.
+
+    THE RULE THIS ENFORCES IS ESIC'S OWN, and it is the reason the check is
+    worth more than a nicety. The manual: "successful transaction only when all
+    the Employees' (who are currently mapped in the system) details are entered
+    perfectly". A file missing ONE insured person is not partially imported —
+    the whole upload is rejected, after the CA has assembled it and waited.
+
+    Nothing is transmitted and nothing is stored: the pasted list is compared
+    and discarded. It is the portal's data about the client's own staff, and
+    keeping a copy would make this product the second place it lives for no
+    reason — the answer is wanted now, not next month.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This reaches no portal.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"run_id": run_id, "reconciliation": None})
+    _assert_run_scope(db, current_user, run_id)
+    _run, month, esic = _build_run_esic(db, current_user, run_id)
+    return api_response(True, {
+        "run_id": run_id,
+        "month": month,
+        "reconciliation": esic_mapped_ips.reconcile(
+            mapped_raw=body.mapped_ips,
+            file_ip_numbers=[m.ip_number for m in esic.members],
+        ).to_dict(),
     })
 
 

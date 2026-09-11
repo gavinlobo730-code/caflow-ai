@@ -7,9 +7,10 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle } from "lucide-react";
+import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -55,10 +56,20 @@ const DSC_TYPES = ["Class 2", "Class 3"];
 const DSC_PURPOSES = ["GST", "MCA", "Income Tax", "All"];
 const ISSUING_CAS = ["eMudhra", "NSDL e-Governance", "Sify Technologies", "CDAC", "MTNL TrustLine"];
 
-const TODAY = new Date();
-
+/** Whole calendar days from today to an expiry date.
+ *
+ * DELEGATES, and the reason is written on the helper: this used to be
+ * `new Date(expiryDate).getTime() - new Date().getTime()`, which mixes a
+ * DATE-ONLY string (parsed as UTC midnight) with a live local instant. In IST
+ * that makes the answer depend on the time of day rather than on the calendar —
+ * a certificate expiring today read as "1 day" before 05:30 and "0 days" after,
+ * and the badge flipped to Expired a day early. On a screen whose only job is to
+ * say how long is left, that is the whole output.
+ *
+ * `TODAY` was also captured once at MODULE LOAD, so a tab left open overnight
+ * kept counting from yesterday. todayLocalISO() is read per call. */
 function getDaysRemaining(expiryDate: string): number {
-  return Math.ceil((new Date(expiryDate).getTime() - TODAY.getTime()) / 86400000);
+  return daysBetweenLocalISO(todayLocalISO(), String(expiryDate).slice(0, 10)) ?? 0;
 }
 
 interface DSCStatus {
@@ -77,6 +88,234 @@ function getDSCStatus(expiryDate: string): DSCStatus {
 // Seed data
 // DSC records are loaded from the firm's real data; empty until added
 // (no fictional DSC holders shown to users).
+
+// ─── Renew ───────────────────────────────────────────────────────────────────
+//
+// THE ACTION THIS SCREEN EXISTED FOR AND DID NOT HAVE.
+//
+// A DSC expires every one to two years — the sentence at the top of this file
+// says so, and the whole table is sorted by how long is left. `routers/dsc.py`
+// has had POST /{id}/renew since the module was written. This screen called GET
+// and POST and nothing else, so a CA could record a certificate and then watch
+// it go red with no way to say it had been renewed. The only way out was to add
+// a SECOND record for the same holder, which the create path's own duplicate
+// guard is designed to refuse.
+//
+// RENEW IS NOT AN EDIT, and that is why it is its own endpoint rather than a
+// PATCH of expiry_date. A renewal is a NEW certificate for the same holder, on
+// the same token or a new one — so the server writes an audit row saying the
+// expiry MOVED, with the old value. Correcting a typo in a date somebody keyed
+// wrongly is the PATCH, and the two are different facts about the record.
+
+function RenewDSCModal({ record, onClose, onRenewed }: {
+  record: DSCRecord;
+  onClose: () => void;
+  onRenewed: (d: DSCRecord) => void;
+}) {
+  const { toast } = useToast();
+  const [newExpiry, setNewExpiry] = useState("");
+  const [newIssued, setNewIssued] = useState("");
+  const [tokenNo, setTokenNo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (!newExpiry) { setErr("The new expiry date is required."); return; }
+    setSaving(true); setErr(null);
+    try {
+      const res = await apiFetch(`/api/dsc/${record.id}/renew`, {
+        method: "POST",
+        body: JSON.stringify({
+          new_expiry_date: newExpiry,
+          new_issued_date: newIssued || null,
+          // Left untouched unless typed: a renewal often reuses the same USB
+          // crypto token, and sending "" would wipe the serial that identifies
+          // which physical device the certificate lives on.
+          token_no: tokenNo.trim() || null,
+        }),
+      });
+      onRenewed(res.data.dsc_record as DSCRecord);
+      toast({ title: `Renewed — ${record.holder_name}` });
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "That did not save.");
+    } finally { setSaving(false); }
+  }
+
+  const field = "w-full border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus:border-blue-400";
+  return (
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[15px] font-semibold text-[#0F172A]">Renew this DSC</p>
+            <p className="text-[11px] text-[#64748B] mt-0.5">
+              {record.holder_name} · {record.dsc_type} · expires {record.expiry_date}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-[11px] text-[#64748B] mb-0.5">
+            New expiry date <span className="text-red-500">*</span>
+          </label>
+          <input type="date" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}
+            className={field} />
+        </div>
+        <div>
+          <label className="block text-[11px] text-[#64748B] mb-0.5">
+            New issue date <span className="text-[#94A3B8]">(optional)</span>
+          </label>
+          <input type="date" value={newIssued} onChange={(e) => setNewIssued(e.target.value)}
+            className={field} />
+        </div>
+        <div>
+          <label className="block text-[11px] text-[#64748B] mb-0.5">
+            Token serial <span className="text-[#94A3B8]">(only if the device changed)</span>
+          </label>
+          <input value={tokenNo} onChange={(e) => setTokenNo(e.target.value)}
+            placeholder="leave blank to keep the current one" className={field} />
+        </div>
+
+        {/* CORRECTING A TYPO IS NOT A RENEWAL, and the server keeps them apart:
+            renew writes an audit row saying the expiry MOVED, which is a fact
+            about the certificate. A date somebody keyed wrongly never moved. */}
+        <p className="text-[10px] text-[#94A3B8] pt-1">
+          Keyed a date wrongly? Use <span className="font-medium">Correct</span> on
+          the row instead — a renewal is recorded as the expiry having moved, and
+          a typo never moved.
+        </p>
+
+        {err && <p className="text-[12px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose}
+            className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F8FAFC]">
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving}
+            className="px-3 py-1.5 text-[12px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+            {saving ? "Saving…" : "Record the renewal"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Correct ─────────────────────────────────────────────────────────────────
+//
+// A CA who keyed the expiry wrongly had NO way to fix it. `routers/dsc.py` has
+// had PATCH since the module was written; this screen called GET and POST only,
+// so the only route out of a typo was a second record for the same holder — and
+// the create path's duplicate guard is built to refuse exactly that.
+//
+// Deliberately separate from Renew: see the note in RenewDSCModal. And
+// deliberately NOT offering DELETE, which the router does have — it is a HARD
+// delete with no soft-delete column behind it, and a register of who holds
+// which signing certificate is not something to make one click destructible
+// without being asked for.
+
+function CorrectDSCModal({ record, onClose, onSaved }: {
+  record: DSCRecord;
+  onClose: () => void;
+  onSaved: (d: DSCRecord) => void;
+}) {
+  const { toast } = useToast();
+  const [holderName, setHolderName] = useState(record.holder_name ?? "");
+  const [pan, setPan] = useState(record.pan ?? "");
+  const [issuedDate, setIssuedDate] = useState((record.issued_date ?? "").slice(0, 10));
+  const [expiryDate, setExpiryDate] = useState((record.expiry_date ?? "").slice(0, 10));
+  const [notes, setNotes] = useState(record.notes ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (!holderName.trim() || !expiryDate) {
+      setErr("A holder name and an expiry date are required.");
+      return;
+    }
+    setSaving(true); setErr(null);
+    try {
+      const res = await apiFetch(`/api/dsc/${record.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          holder_name: holderName.trim(),
+          pan: pan.trim().toUpperCase() || null,
+          issued_date: issuedDate || null,
+          expiry_date: expiryDate,
+          notes: notes.trim() || null,
+        }),
+      });
+      onSaved(res.data.dsc_record as DSCRecord);
+      toast({ title: "Corrected" });
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "That did not save.");
+    } finally { setSaving(false); }
+  }
+
+  const field = "w-full border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus:border-blue-400";
+  return (
+    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-md p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[15px] font-semibold text-[#0F172A]">Correct this record</p>
+            <p className="text-[11px] text-[#64748B] mt-0.5">
+              For something keyed wrongly. To record a NEW certificate for the
+              same holder, use Renew.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#334155]">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-[11px] text-[#64748B] mb-0.5">Holder name</label>
+          <input value={holderName} onChange={(e) => setHolderName(e.target.value)} className={field} />
+        </div>
+        <div>
+          <label className="block text-[11px] text-[#64748B] mb-0.5">PAN</label>
+          <input value={pan} onChange={(e) => setPan(e.target.value)} className={field} />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[11px] text-[#64748B] mb-0.5">Issue date</label>
+            <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} className={field} />
+          </div>
+          <div>
+            <label className="block text-[11px] text-[#64748B] mb-0.5">Expiry date</label>
+            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={field} />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[11px] text-[#64748B] mb-0.5">Notes</label>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} />
+        </div>
+
+        {err && <p className="text-[12px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose}
+            className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F8FAFC]">
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving}
+            className="px-3 py-1.5 text-[12px] bg-[#1E293B] text-white rounded-lg disabled:opacity-40">
+            {saving ? "Saving…" : "Save the correction"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // ─── Add DSC Modal ────────────────────────────────────────────────────────────
 
@@ -192,6 +431,8 @@ export default function DSCTrackerPage() {
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [renewing, setRenewing] = useState<DSCRecord | null>(null);
+  const [correcting, setCorrecting] = useState<DSCRecord | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -278,7 +519,7 @@ export default function DSCTrackerPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-50">
-                  {["Name", "PAN", "Type", "Purpose", "Issuing CA", "Issue Date", "Expiry Date", "Days Remaining", "Status"].map(h => (
+                  {["Name", "PAN", "Type", "Purpose", "Issuing CA", "Issue Date", "Expiry Date", "Days Remaining", "Status", ""].map(h => (
                     <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
                   ))}
                 </tr>
@@ -308,6 +549,22 @@ export default function DSCTrackerPage() {
                       <td className="px-4 py-3">
                         <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${status.style}`}>{status.label}</span>
                       </td>
+                      {/* Always offered, not only once it goes red: a CA who has
+                          the new certificate in hand in September should not
+                          have to wait for the badge to turn amber in December
+                          before the product will let them say so. */}
+                      <td className="px-4 py-3 text-right">
+                        <button onClick={() => setRenewing(d)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] border
+                                     border-[#E2E8F0] rounded-lg text-[#334155] hover:bg-[#F8FAFC]">
+                          <RefreshCw size={11} /> Renew
+                        </button>
+                        <button onClick={() => setCorrecting(d)}
+                          className="ml-1.5 px-2 py-1 text-[11px] border border-[#E2E8F0]
+                                     rounded-lg text-[#64748B] hover:bg-[#F8FAFC]">
+                          Correct
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -319,6 +576,24 @@ export default function DSCTrackerPage() {
 
       {showModal && (
         <AddDSCModal onClose={() => setShowModal(false)} onAdded={d => setDscs(prev => [...prev, d])} />
+      )}
+
+      {renewing && (
+        <RenewDSCModal
+          record={renewing}
+          onClose={() => setRenewing(null)}
+          onRenewed={(updated) => setDscs(prev =>
+            prev.map(d => (d.id === updated.id ? updated : d)))}
+        />
+      )}
+
+      {correcting && (
+        <CorrectDSCModal
+          record={correcting}
+          onClose={() => setCorrecting(null)}
+          onSaved={(updated) => setDscs(prev =>
+            prev.map(d => (d.id === updated.id ? updated : d)))}
+        />
       )}
     </div>
   );

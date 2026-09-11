@@ -98,6 +98,14 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # separate PUT at payroll:write, because accepting a valuation
         # changes an employee's taxable salary and their Form 16.
         "/api/payroll/employees/{employee_id}/perquisites/value",
+        # The mapped-IP check compares a list the CA pasted off the ESIC
+        # portal against the members of this run's contribution file, and
+        # returns the difference. POST only because that list is too long for
+        # a query string. Nothing is transmitted and nothing is stored — the
+        # pasted list is compared and discarded — and the return it compares
+        # against is built by _build_run_esic, the same read-only assembly
+        # GET /runs/{run_id}/esic already uses.
+        "/api/payroll/runs/{run_id}/esic/mapped-ips",
         "/api/gst/validate/gstr1",
         "/api/gst/validate/gstr3b",
         # Stateless Groq passthrough over a static prompt; loads nothing, writes

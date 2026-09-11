@@ -91,12 +91,23 @@ our own software. That is the strongest argument for continuing to do so:
   tests.** No client was affected: no payroll has been finalised.
 - ==Our ESIC upload file is a CSV. The portal requires an Excel `.xls`.== The
   contents are correct; the container is not, so a CA using it would be
-  rejected at the portal after doing the work. **Track F1.**
+  rejected at the portal after doing the work. **Track F1** — and ⚠️ **this was
+  not the thing that bounces the upload.** The portal's rule is that the file
+  must carry EVERY insured person it has mapped, and one missing person rejects
+  the whole file (§6.4.4). That check is built; emitting BIFF8 is a decided NO
+  (§5.2), because it needs three parsers, two unmaintained since 2017, on a
+  `.xls`-only premise traceable to about 2011 that egress blocks us checking.
 - ==ESIC and professional tax have no filing record at all.== There is nowhere
-  to put a challan number, so the obligation never closes. **Track F2.**
-- ==No digital signature certificate is tracked anywhere.== An expired or
-  unassociated DSC is the single most common cause of a stalled MCA filing.
-  **Track F7.**
+  to put a challan number, so the obligation never closes. **Track F2** —
+  closed by migration 365.
+- ~~==No digital signature certificate is tracked anywhere.==~~ ⚠️ **FALSE when
+  written.** `public.dsc_records` has existed since migration **014**, with a
+  full router and a Settings screen, and expiry within 60 days already surfaced
+  on `/risks`. What was genuinely missing was smaller and is now built: the
+  screen could add and list but not RENEW or CORRECT, so a retyped holder name
+  stayed wrong and a renewed token became a second row beside the expired one.
+  The MCA link — which director signs which form — is still a fact nobody
+  records. **Track F7.** Verified 11-09-2026.
 
 ### How much to trust this paper
 
@@ -422,7 +433,7 @@ code rather than remembered:
 |---|---|---|---|---|---|---|
 | **GSTR-1 / 3B** | yes | yes | partial | ==no== | **yes** | **yes** |
 | **EPFO ECR** | yes | yes | partial | ==no== | record exists | ==no== |
-| **ESIC** | yes | ==CSV — portal wants `.xls`== | yes | ==no== | ==none== | ==no== |
+| **ESIC** | yes | ==CSV — portal wants `.xls`==; mapped-IP check built | yes | ==no== | remittance recorded (365) | ==no== |
 | **Professional tax** | 4 of 22 states | ==nothing== | n/a | ==no== | ==none== | ==no== |
 | **MCA** | yes | XBRL instance | partial | ==no== | status exists | n/a |
 | **TDS 24Q / 26Q** | yes | yes | yes | ==no== | challans recorded | partial |
@@ -435,11 +446,11 @@ counterparty or a rupee.== Ordered by harm removed per unit of work.
 
 | | Phase | Size | What it fixes |
 |---|---|---|---|
-| **F1** | **The ESIC file the portal accepts** | Small | A live defect. Our CSV is rejected at the portal after the CA has done the work |
+| **F1** | ~~**The ESIC file the portal accepts**~~ → **the mapped-IP reconciliation** | Small | ⚠️ **Redesigned a second time, and the template half is a decided NO.** Filling the portal's own `.xls` needs `xlrd` + `xlwt` + `xlutils` — two archived since 2017, and `xlrd` would parse an untrusted upload inside the service holding every client's ledger — on a premise (that the portal still refuses `.xlsx` in 2026) that egress blocks us from checking. What WAS built is the half that stops the bounce: the all-or-nothing check against the portal's mapped-IP list. Decided and built 11-09-2026 |
 | **F2** | **One statutory filing record, for everything** | Medium | ESIC and PT have nowhere to put a challan number, so obligations never close |
 | **F3** | **The handoff screen** | Medium | The CA alt-tabs between four screens and a spreadsheet to answer "what do I type in this box" |
 | **F4** | **The challan is money** | Small | Statutory liability accounts never clear; year-end shows a liability the client has paid |
-| **F5** | **Professional tax: the artefact** | Medium | Four states are computed and no challan or return is produced for any of them |
+| **F5** | **Professional tax: the artefact** | Medium | Four states are computed and no challan or return is produced for any of them. ⚠️ **The slab half of this was already built** — `public.firm_pt_slabs` (migration 327), three endpoints and a 460-line Settings screen let a firm record any state's slabs against the notification they read. Only the per-state RETURN remains. Verified 11-09-2026 |
 | **F6** | **The never-do list, as code** | Small | Three product rules that are prose today and should be tests |
 | **F7** | **The DSC register** | ~~Small~~ | ⚠️ **This line was wrong.** A DSC register already exists — `public.dsc_records` (migration 014), `routers/dsc.py` with a renew path, a Settings screen linked from the deadlines panel, and expiry within 60 days surfaced on `/risks`. Verified 11-09-2026. What is genuinely missing is the LINK to MCA: which director signs which form is a fact nobody records, so no "your signatory's DSC expires before this due date" warning can be honest yet |
 
@@ -458,6 +469,29 @@ reconciliation the CA does by hand today, and it needs no source we cannot get.
 
 **The constraint improved the design.** That is the argument for reading the
 portals' own material rather than summaries of it.
+
+**And then it was redesigned once more, on 11-09-2026, which is the part worth
+keeping.** "We fill the CA's template" means reading and writing BIFF8, which
+means `xlrd` + `xlwt` + `xlutils`: two with no release since 2017, and the
+reader pointed at an untrusted upload inside the service that holds every
+client's general ledger. The premise forcing that — that the portal still
+refuses `.xlsx` — traces to guidance from around 2011 (§6.4.4) and cannot be
+checked from here, because egress is blocked.
+
+So the file half is a **decided NO**, not a gap. What was built is the
+reconciliation, which is where the harm actually is: ==the upload is
+all-or-nothing against ESIC's own mapped-IP list==, so one missing insured
+person rejects the entire file after the CA has assembled it and waited, and
+nothing in this product had ever compared the two lists.
+`domain/payroll/esic_mapped_ips.py` does, keeping the two directions separate —
+mapped-but-absent fails the upload and is fixed by adding a row; present-but-
+unmapped is fixed at ESIC — because one combined figure sends the CA to the
+wrong party. Nothing is transmitted and nothing is stored.
+
+**The generalisable part is the same both times**: the constraint was found by
+reading the portal's own material, and both times it made the design smaller.
+The second reading also showed the file format was never the thing that bounces
+the upload — the missing person is.
 :::
 
 :::stop F6 — the three rules that protect everything above
