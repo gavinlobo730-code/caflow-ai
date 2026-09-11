@@ -43,7 +43,7 @@ import {
 
 import { api, request, type ApiResp, type HandoffObligation,
          type Remittance, type StatutoryHandoff as Handoff,
-         type UnmatchedRemittance } from "@/lib/api";
+         type EsicMappedIpCheck, type UnmatchedRemittance } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { todayLocalISO } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
@@ -278,6 +278,109 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
   );
 }
 
+// ─── the pre-flight ESIC does and we did not (Track F, phase F1) ────────────
+//
+// ESIC's own filing manual: "successful transaction only when all the
+// Employees' (who are currently mapped in the system) details are entered
+// perfectly". The monthly upload is ALL OR NOTHING — a file missing one insured
+// person is not partially imported, the WHOLE file is rejected, after the CA
+// has assembled it, uploaded it and waited.
+//
+// So the portal's own mapped list is the authority for who must be in the file,
+// and this compares the two before the CA goes anywhere near the upload.
+//
+// PASTED TEXT, NOT A FILE, and that is a decision rather than a shortcut.
+// ESIC forbids uploading any sheet but the portal's own template, which is
+// Excel 97-2003; reading one needs xlrd + xlwt + xlutils — two of them without
+// a release since 2017, one of them parsing an untrusted upload inside the
+// service that holds every client's ledger. A list of insurance numbers is a
+// list of numbers.
+
+function MappedIpCheck({ runId }: { runId: string }) {
+  const [open, setOpen] = useState(false);
+  const [pasted, setPasted] = useState("");
+  const [result, setResult] = useState<EsicMappedIpCheck | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function check() {
+    setBusy(true); setErr(null);
+    try {
+      const res = await api.payroll.esicMappedIpCheck(runId, pasted);
+      if (!res?.success) throw new Error(res?.error ?? "That did not check.");
+      setResult(res.data?.reconciliation ?? null);
+    } catch (e) {
+      setResult(null);
+      setErr(e instanceof Error ? e.message : "That did not check.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="border-t border-[#F1F5F9] pt-3">
+      {!open ? (
+        <button onClick={() => setOpen(true)}
+          className="text-[11px] text-blue-700 hover:underline">
+          Check against ESIC&rsquo;s mapped list first →
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[11px] text-[#475569]">
+            Paste the insured persons mapped at ESIC, from the portal&rsquo;s own
+            screen. Names alongside the numbers are fine. Nothing is stored —
+            this is compared and discarded.
+          </p>
+          <textarea value={pasted} onChange={(e) => setPasted(e.target.value)}
+            rows={4} placeholder={"3113456789 ASHA KUMARI\n3113456790 BIMAL ROY"}
+            className="w-full border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-[12px]
+                       font-mono outline-none focus:border-blue-400" />
+          <div className="flex items-center gap-2">
+            <button onClick={check} disabled={busy}
+              className="px-3 py-1.5 text-[12px] border border-[#E2E8F0] rounded-lg
+                         hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-40">
+              {busy ? "Checking…" : "Check"}
+            </button>
+            <button onClick={() => { setOpen(false); setResult(null); setPasted(""); }}
+              className="text-[11px] text-[#94A3B8] hover:text-[#334155]">
+              Close
+            </button>
+          </div>
+
+          {err && (
+            <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>
+          )}
+
+          {result && (
+            <div className={`rounded-lg px-3 py-2 border text-[11px] ${
+              result.would_be_rejected
+                ? "bg-red-50 border-red-200 text-red-800"
+                : result.not_mapped_at_esic.length
+                  ? "bg-amber-50 border-amber-200 text-amber-900"
+                  : "bg-green-50 border-green-200 text-green-800"}`}>
+              {/* Composed on the server — it carries ESIC's own rule, which a
+                  sentence written here would lose. */}
+              <p>{result.what_it_means}</p>
+              {!!result.missing_from_file.length && (
+                <p className="mt-1.5 font-mono text-[10px] break-all">
+                  Mapped, not in the file: {result.missing_from_file.join(", ")}
+                </p>
+              )}
+              {!!result.not_mapped_at_esic.length && (
+                <p className="mt-1.5 font-mono text-[10px] break-all">
+                  In the file, not mapped: {result.not_mapped_at_esic.join(", ")}
+                </p>
+              )}
+              <p className="mt-1.5 text-[10px] opacity-80">
+                {result.mapped_count} mapped at ESIC · {result.file_count} in the file
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ─── one obligation ─────────────────────────────────────────────────────────
 
 function ObligationCard({ o, clientId, runId, onChanged }: {
@@ -411,6 +514,11 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
         </table>
       </div>
 
+      {/* ESIC only: the portal checks the file against its OWN mapped list and
+          rejects the whole upload over one missing person. EPF and PT have no
+          equivalent — EPFO takes the members from the file itself. */}
+      {o.scheme === "esic" && o.artefact.available && <MappedIpCheck runId={runId} />}
+
       {/* ── 3. the file ─────────────────────────────────────────────────── */}
       <div className="border-t border-[#F1F5F9] pt-3">
         {o.artefact.available ? (
@@ -455,12 +563,89 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
                 ? " · not yet matched to a bank payment" : ""}
             </span>
           </p>
+          {/* A register you can only add to is a register that is wrong the
+              first time somebody records a challan against the wrong month.
+              RETRACT is a SOFT delete on the server — the challan number, the
+              date and the amount that left the bank are held nowhere else, so
+              a row that simply vanished would leave no trace that a liability
+              had ever been reported settled.
+
+              EPF is deliberately absent: its record is epfo_ecr_filings, which
+              carries EPFO's own month-wise sequence, and retracting a month
+              there unblocks the next one. That is a different act with a
+              different consequence and it has its own path. */}
+          {o.scheme !== "epf" && recorded.id && (
+            <Retract clientId={clientId} remittanceId={recorded.id}
+              onDone={(text) => { setNote({ kind: "ok", text }); onChanged(); }}
+              onError={(text) => setNote({ kind: "err", text })} />
+          )}
         </div>
       ) : (
         <RecordBack obligation={o} clientId={clientId} runId={runId}
           onDone={(text) => { setNote({ kind: "ok", text }); onChanged(); }}
           onError={(text) => setNote({ kind: "err", text })} />
       )}
+    </div>
+  );
+}
+
+// ─── retract one recorded in error ──────────────────────────────────────────
+//
+// Two clicks, not one, and the second one says what it destroys. Recording a
+// remittance is how PracticeSync learns a statutory liability was settled; the
+// wrong month or the wrong scheme leaves a real liability looking paid, which
+// is the failure that matters, so undoing it has to be possible. But the
+// challan number, the date and the amount are held nowhere else, so the
+// confirmation names them rather than asking "are you sure?".
+
+function Retract({ clientId, remittanceId, onDone, onError }: {
+  clientId: string; remittanceId: string;
+  onDone: (text: string) => void; onError: (text: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function go() {
+    setBusy(true);
+    try {
+      const res = await api.payroll.retractRemittance(clientId, remittanceId);
+      if (!res.success) throw new Error(res.error ?? "That did not work.");
+      onDone("Retracted. The return is no longer recorded as filed — nothing "
+             + "was transmitted, at the time or now.");
+      setConfirming(false);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "That did not work.");
+    } finally { setBusy(false); }
+  }
+
+  if (!confirming) {
+    return (
+      <button type="button" onClick={() => setConfirming(true)}
+        className="mt-2 text-[11px] text-[#64748B] hover:text-red-600 underline
+                   underline-offset-2">
+        Recorded in error? Retract
+      </button>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2
+                    space-y-2">
+      <p className="text-[11px] text-amber-900">
+        This removes PracticeSync&apos;s record that the return was filed and the
+        challan paid. It does not undo anything at the portal, and it does not
+        touch the ledger — if a bank entry paid this, that entry stays.
+      </p>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={go} disabled={busy}
+          className="text-[11px] font-semibold text-white bg-red-600 hover:bg-red-700
+                     disabled:opacity-50 rounded-md px-3 py-1.5">
+          {busy ? "Retracting…" : "Yes, retract it"}
+        </button>
+        <button type="button" onClick={() => setConfirming(false)} disabled={busy}
+          className="text-[11px] text-[#475569] hover:text-[#0F172A] px-2 py-1.5">
+          Keep it
+        </button>
+      </div>
     </div>
   );
 }

@@ -345,11 +345,11 @@ have dated the challan a day before the money moved. Caught by the existing
 
 | | Phase | State |
 |---|---|---|
-| F1 | the ESIC `.xls` the portal accepts | **blocked on an owner decision** — filling the CA's own downloaded template needs `xlrd` + `xlwt` + `xlutils`, all three unmaintained |
+| F1 | the ESIC `.xls` the portal accepts | **blocked on an owner decision** — filling the CA's own downloaded template needs `xlrd` + `xlwt` + `xlutils`, all three unmaintained |  ← SUPERSEDED, see "Track F, after this tranche"
 | F2 | a record for ESI and PT remittances | done — migration 365 |
 | F3 | the handoff screen | **done** |
 | F4 | the challan is money | **done** — as a RECONCILIATION, not a posting |
-| F5 | professional tax: the artefact | not started — and it needs the state slabs a human must supply first |
+| F5 | professional tax: the artefact | not started — and it needs the state slabs a human must supply first |  ← WRONG, the slab half was already built
 | F6 | the never-do list, as code | **half done** — the credential/OTP/frame rule is now a test. The other two rules are still prose |
 | F7 | the DSC register | not started |
 
@@ -423,11 +423,11 @@ with the same reasoning on it. Delegated, not re-implemented.
 
 | | Phase | State |
 |---|---|---|
-| F1 | the ESIC `.xls` the portal accepts | **blocked on an owner decision** — three unmaintained dependencies |
+| F1 | the ESIC `.xls` the portal accepts | **blocked on an owner decision** — three unmaintained dependencies |  ← SUPERSEDED
 | F2 | a record for ESI and PT remittances | done — migration 365 |
 | F3 | the handoff screen | done |
 | F4 | the challan is money | **done**, as a reconciliation |
-| F5 | professional tax: the artefact | not started — needs the state slabs a human must supply |
+| F5 | professional tax: the artefact | not started — needs the state slabs a human must supply |  ← WRONG, the slab half was already built
 | F6 | the never-do list, as code | **done** — all three rules |
 | F7 | the DSC register | **already built** — the plan's premise was wrong, see below |
 
@@ -525,3 +525,235 @@ filing" — and nothing connects the two. `mca_directors` exists and
 nobody holds: **which director signs which form**. That is a human decision, of
 the same shape as the MSMED classification and the DTAA rate, and it would need
 a place to record it before any warning could be honest. Scoped, not started.
+
+---
+
+## Track F7b — what the DSC screen could NOT do, and now can
+
+F7 was closed above as "already built", and the register is. **The SCREEN was
+not**, and that was an overclaim in the paragraph above rather than a fact about
+the code: `routers/dsc.py` has list, create, **patch**, **renew** and delete;
+`app/settings/dsc-tracker/page.tsx` called only the first two. So a certificate
+could be added and listed, and then never corrected or renewed — the two things
+that actually happen to a DSC. A holder whose name was typed wrong stayed wrong,
+and a renewed token was added as a SECOND row beside the expired one, which is
+the register telling a CA a client has two certificates.
+
+* **Renew** — `POST /api/dsc/{id}/renew`, which the router already implemented:
+  it supersedes the old row rather than editing it, so the history of which
+  certificate signed what survives.
+* **Correct** — `PATCH /api/dsc/{id}`, for the typo case. Deliberately separate
+  from renew, because they are different acts: a correction says the row was
+  always meant to read this way, a renewal says a new certificate exists.
+* **Delete is deliberately NOT surfaced.** `DELETE /api/dsc/{id}` is a hard
+  delete and `dsc_records` has no soft-delete column, so a click would destroy
+  the record that a certificate ever existed. Retiring a DSC is what renew
+  already does. Adding a screen button for an irreversible delete of a
+  compliance record is not a gap being left open; it is the one action that
+  should not be one click away.
+
+### A day count that was wrong, and it is a family
+
+`getDaysRemaining` read `new Date(expiryDate).getTime() - TODAY.getTime()`, with
+`TODAY` captured **at module load**. Two defects in one line:
+
+1. `new Date("2026-09-30")` is parsed as **UTC midnight**, while `new Date()` is
+   a local instant. In IST the two are 5:30 apart, so between 00:00 and 05:30
+   every such count is **one day too high** — the same window the existing
+   `a-calendar-date-is-never-read-back-in-utc` guard's header describes.
+2. A `TODAY` frozen at module load never advances. A tab left open overnight —
+   which is what a dashboard tab is — reports yesterday's day count all day.
+
+Fixed here to `daysBetweenLocalISO(todayLocalISO(), expiry)`, which
+`lib/dateMath.ts` has had all along and whose docstring names this exact
+mistake: *"never mix a date-only string with a live `new Date()` instant"*.
+
+**This is not one site.** A tree scan for a millisecond difference divided by a
+day constant finds **13 more**, in 12 files:
+
+| verdict | sites |
+|---|---|
+| wrong today — a date-only STRING against a live instant or a local-midnight Date | `engagements`, `risks` ×3, `clients/[id]/overview`, `clients/documents`, `reports` — **7** |
+| a `TODAY` frozen at module load | `mca` — **1** |
+| correct but hand-rolled (both operands built locally, or both date-only strings) | `DashboardContent`, `calendar`, `payroll`, `payroll/reports`, `accounting/loans` — **5** |
+
+Reported, not fixed here: it is the money-parser and `toISOString` lesson a third
+time — the correct helper exists, its own docstring says to use it, and nothing
+checks — so it wants the same treatment, a sweep plus a guard stating the RULE
+(nothing outside `lib/dateMath.ts` divides by a day-in-milliseconds constant),
+not a fourth paragraph of prose. Two of the five "correct" ones were only
+established by reading them; a guard removes that reading from the next person's
+job. Scoped as its own tranche so this one stays reviewable.
+
+### The same defect, one screen over — a remittance recorded in error
+
+Found by looking for callers of what F4 added: `retractRemittance` and
+`remittances` were two typed API-client methods with **no caller anywhere**. A
+typed wrapper nothing calls is the frontend twin of the unreachable endpoint
+this tranche's ratchet measures on the backend, so both were resolved rather
+than left.
+
+* **Retract is now on the handoff screen**, beside "Recorded as filed", for ESI
+  and professional tax. It closes the F7b defect one screen over: recording a
+  remittance is how PracticeSync learns a statutory liability was settled, so
+  the wrong month or the wrong scheme leaves a **real liability looking paid**,
+  and there was no way to take it back. The server's DELETE is a SOFT delete —
+  the challan number, the date and the amount that left the bank are held
+  nowhere else — and the confirmation says what it destroys and what it does
+  NOT touch: the portal, and the ledger entry that actually paid the money.
+* **EPF is deliberately excluded.** Its record is `epfo_ecr_filings`, which
+  carries EPFO's month-wise sequence, and retracting there unblocks the next
+  month. Different act, different consequence, its own path.
+* **`remittances` (the client-wide GET) was deleted, not wired.** The handoff
+  endpoint already returns the month's recorded row on each obligation, and the
+  question anyone asks of a client-wide list — what is paid and never tied back
+  — is `remittanceReconciliation`. The ROUTE stays; nothing calls the wrapper.
+
+---
+
+## Track F1 — DECIDED, and the half worth building is built
+
+F1 sat as "blocked on an owner decision" through two status tables above. The
+owner delegated the decision. **It is decided: no BIFF8 dependencies.** Three
+grounds, in the order that settles it:
+
+1. **`xlwt` and `xlutils` have had no release since 2017.** `xlrd` is
+   maintained but dropped `.xls` support's companions long ago.
+2. **`xlrd` would be parsing an UNTRUSTED UPLOAD inside the service that holds
+   every client's general ledger.** The CA's own downloaded template is a file
+   from a third party; a parser on that path is attack surface, and this is the
+   one process where that matters most.
+3. **The requirement driving it cannot be checked from here.** The manual saying
+   Excel 97-2003 is of unknown vintage and this environment's egress is blocked,
+   so whether the portal still refuses `.xlsx` in 2026 is unknown. Taking on
+   three unmaintained parsers on an unverified premise is the wrong trade in
+   that direction.
+
+### What was built instead, and why it is the half that matters
+
+ESIC's filing manual makes the monthly upload **all or nothing**:
+
+> "successful transaction only when all the Employees' (who are currently mapped
+> in the system) details are entered perfectly"
+
+A file missing ONE insured person is not partially imported — the **whole file
+is rejected**, after the CA has assembled it, uploaded it and waited. The
+portal's own list of mapped IPs is the authority for who must be in it, and
+nothing in this product had ever compared the two. That is the failure F1 set
+out to stop, and it needs no Excel writer.
+
+* **`domain/payroll/esic_mapped_ips.py`** — `normalise()` takes the DIGIT RUNS
+  out of whatever the CA pasted (the portal's screen copies as columns, as
+  newline-separated text, or with names beside the numbers), so nobody has to
+  reformat a list before the product will read it. `reconcile()` returns the two
+  directions **separately**, because they are opposite problems: `missing_from_file`
+  fails the whole upload and is fixed by adding a row with a reason code;
+  `not_mapped_at_esic` means the portal does not know that person and is fixed at
+  ESIC. One combined "differences" figure would send the CA to the wrong place.
+* **`POST /api/payroll/runs/{run_id}/esic/mapped-ips`** — compares the pasted
+  list against the members of the run's own ESIC return, built by the same
+  read-only `_build_run_esic` the download uses. **Nothing is transmitted and
+  nothing is stored**: it is the portal's data about the client's own staff, the
+  answer is wanted now rather than next month, and keeping a copy would make this
+  product the second place it lives for no reason. A test reads the module's own
+  source and asserts it names no HTTP client, no database and no file write.
+* **The ESIC panel on the handoff screen** carries it, and only that panel —
+  EPFO takes its members from the ECR itself and PT has no mapped list, so the
+  check has no meaning there.
+
+If the `.xls` requirement is ever confirmed, none of this is wasted: it compares
+people, not file formats.
+
+### Verified
+
+20 tests; seven mutations applied and reverted, each caught: both directions
+reporting one list (2 failed), `would_be_rejected` over-firing on the
+not-mapped side (2), `normalise` demanding one number per line (2), duplicates
+not collapsed (2), and three separate re-sortings of a list the CA reads against
+the screen it came from (1 each). **The ordering claim was the module's docstring
+and nothing tested it** — the re-sort mutation passed on the first run, which is
+how it was found.
+
+---
+
+## Every mounted endpoint has a way in — the second ratchet
+
+`tests/test_every_mounted_endpoint_has_a_way_in.py` walks every route FastAPI
+has mounted and every fetch the frontend makes, and fails when the unreachable
+count rises. **137 of 904 endpoints have no caller** — too many to explain in one
+sitting and too many to leave unmeasured, which is exactly the shape the
+unreadable-column budget took: a per-module `BUDGET`, a `TOTAL_BUDGET` that may
+only go DOWN, and a test that fails a budget entry left behind after its module
+reaches zero.
+
+Two things it does not claim, written into the docstring rather than discovered
+later:
+
+* **It matches PATHS, not (method, path) pairs.** `/api/dsc` was at 0 while the
+  screen made only GET and POST calls against a router with five verbs — which
+  is how F7b's gap was found, and is also the limit of what this guard proves.
+* **An endpoint with a caller is not thereby correct.** Reachability is the
+  floor, not the ceiling.
+
+Negative control: an orphan endpoint added to a router at budget — 2 failed
+(the module budget and the total).
+
+---
+
+## Track F, after this tranche
+
+| | Phase | State |
+|---|---|---|
+| F1 | the ESIC upload the portal accepts | **done, as a RECONCILIATION** — the BIFF8 template is a decided NO, not a gap |
+| F2 | a record for ESI and PT remittances | done — migration 365 |
+| F3 | the handoff screen | done |
+| F4 | the challan is money | done, as a reconciliation |
+| F5 | professional tax: the artefact | **half of it was already built** — see below |
+| F6 | the never-do list, as code | done — all three rules |
+| F7 | the DSC register | done — register already existed; the screen's renew and correct built here |
+
+### F5 re-read: the slab half is built, the artefact half is not
+
+F5 is recorded twice above as *"not started — and it needs the state slabs a
+human must supply first"*. **The slab half exists and has since migration 327.**
+
+* **`public.firm_pt_slabs`** (migration 327) — firm-scoped, per state, monthly
+  or half-yearly basis, `from_paise`/`to_paise`/`amount_paise`, a `months[]`
+  array for Maharashtra's February differential, and `notification_reference`
+  and `notification_date` **NOT NULL on purpose**: the whole argument for letting
+  a hand-entered figure drive a statutory deduction is that a named person read
+  a named notification on a named date.
+* **`GET` / `PUT` / `DELETE /api/payroll/statutory-values`** — validated, and a
+  firm slab **fills a gap without overriding a modelled state**: Maharashtra,
+  Tamil Nadu, Karnataka and West Bengal stay on the code that is pinned to the
+  state Acts by tests.
+* **`app/settings/statutory-values/page.tsx`** — 460 lines, already shipped.
+
+So what remains of F5 is only the **artefact**: the per-state return a CA files
+with the collected tax. That is not one build — the format is per state, the
+same twenty-two-way fan the slabs are, and it needs a state's actual return
+layout in hand before any of it can be written. Unstarted, and correctly so.
+
+---
+
+## The 7 September audit's "nothing does X" claims: FIVE of five checked were stale
+
+Recorded because it is now a pattern with a measurement behind it, not an
+impression. Every claim of the form *"nothing anywhere does X"* that this
+session went to build found the thing already existing, in whole or in part:
+
+| claim | what was actually there |
+|---|---|
+| FA-10 — no edit path for a fixed asset | the edit path existed |
+| the workflow repository has no join | the join existed |
+| F7 — "nothing anywhere tracks a digital signature certificate" | `dsc_records` since migration **014**, a full router, a screen, and a 60-day warning on `/risks` |
+| F5 — PT needs state slabs a human must supply first | `firm_pt_slabs`, three endpoints and a 460-line screen since migration **327** |
+| `/api/dsc` has no caller (this session's own new ratchet) | it had two — the ratchet matches paths, not verbs |
+
+**The rule this earns: read the code before building against an audit claim,
+including this session's own.** The last row is the one that makes the point —
+a guard written this week produced a stale-looking claim within hours, because
+it measured something adjacent to what it appeared to measure. Four of the five
+would have shipped a second implementation of something that already worked,
+which is the specific harm CLAUDE.md's "one implementation, or two pinned by a
+parity test" rule exists to prevent.
