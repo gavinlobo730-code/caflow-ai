@@ -176,12 +176,32 @@ added, which nobody is waiting on.
 
 ## D. Known-wrong things I have reported and deliberately not fixed
 
-### D1. `app/calendar/page.tsx` builds 14 deadlines in the browser, and two are wrong
-AOC-4 shows 29 October where §137 gives 30 October, MGT-7 shows 28 November
-where §92 gives 29 November, and all 14 assume a 30 September AGM for every
-client. Allow-listed and reported rather than fixed, because the fix is to
-delete the browser copy and read `services/compliance_engine.py` — a Phase 7
-shape, not a date edit.
+### D1. The calendar's MCA deadlines — FIXED 11 September 2026
+
+**The invented AGM was the serious half, not the off-by-one.** AOC-4 showed
+29 October where §137 gives 30 and MGT-7 showed 28 November where §92 gives 29,
+because the browser counted the AGM day itself. But it also assumed the AGM was
+**30 September for every client**, which is wrong for every company whose
+meeting was not — and a CA reading a firm-wide calendar could not tell a
+computed row from an assumed one.
+
+`mca_companies.last_agm_date` has held the real date since migration 038, whose
+own comment reads *"AGM date drives AOC-4/MGT-7 deadline"*. The browser copy
+never read it.
+
+`GET /api/mca-workspace/calendar/firm` now computes ADT-1, AOC-4 and MGT-7 from
+each company's own AGM through `compliance_engine.mca_due_date`, scoped to the
+caller's clients. **A company with no AGM date recorded is NAMED, not
+defaulted** — returned in `without_agm_date` and shown on the calendar as a
+gap, because 30 September is a plausible guess and a plausible guess on a
+statutory deadline is how a filing is missed.
+
+**Still in the browser, and still owed:** the other eleven deadlines — GST, TDS,
+ITR and DIR-3 KYC. Those are rule-based and fall out of the calendar date alone,
+so they are correct today; they nevertheless duplicate
+`services/compliance_engine.py`, which is the Phase 7 shape this entry
+originally described. The three that needed a client FACT are the ones that
+could not stay.
 
 ### D2. `/api/copilot/intelligence/*` aggregates firm-wide — FIXED 11 Sep 2026
 

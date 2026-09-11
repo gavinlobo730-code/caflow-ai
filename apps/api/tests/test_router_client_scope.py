@@ -125,6 +125,11 @@ AUDITED: dict[str, tuple[str, ...]] = {
     "/api/mca-workspace": (
         "assert_client_access", "_visible_or_none", "can_access_client",
         "_load_or_none",
+        # /calendar/firm is a LIST across the caller's clients rather than a
+        # row addressed by a named client_id, so it narrows with
+        # effective_client_ids the way the reporting endpoints do (ACC-17)
+        # instead of asserting access to one id it was handed.
+        "effective_client_ids",
     ),
     # `entities` and the two entity↔entity tables carry no client column at all
     # (migrations 059/156) — they are firm-level and EXEMPT below. Everything

@@ -1267,6 +1267,14 @@ export const api = {
     create: (body: unknown) => request("/api/reminders", { method: "POST", body: JSON.stringify(body) }),
     markSent: (id: string) => request(`/api/reminders/${id}/sent`, { method: "PATCH" }),
   },
+  mca: {
+    // ADT-1 / AOC-4 / MGT-7 across the caller's clients, counted from each
+    // company's REAL last_agm_date. The calendar built these in the browser off
+    // an assumed 30 September AGM, a day early on both — see the endpoint's
+    // docstring. A company with no AGM date recorded comes back in
+    // `without_agm_date` rather than being given a plausible one.
+    firmCalendar: () => request("/api/mca/calendar/firm"),
+  },
   accounting: {
     accounts: () => request("/api/accounting/accounts"),
     createAccount: (data: unknown) => request("/api/accounting/accounts", { method: "POST", body: JSON.stringify(data) }),
