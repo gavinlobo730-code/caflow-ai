@@ -88,7 +88,12 @@ localStorage), `PUR-15` (§43B(h) MSME tracker), `GST-11` (QRMP), `GST-10`
 
 * **E1** — Render deploys fail on a health-check timeout, DIAGNOSED. The fix
   (move the boot work out of module import into a lifespan hook) touches how a
-  live service boots and is the owner's call. `OPEN-QUESTIONS.md` §E1.
+  live service boots and is the owner's call. ~~`OPEN-QUESTIONS.md` §E1.~~
+  **FIXED 11-09-2026** — the boot work runs on a daemon thread from
+  `main._lifespan` and `/health` answers 200 with `schema: "checking"`, pinned
+  by `tests/test_health_answers_before_the_slow_boot.py`. The register was
+  rewritten the same day and its §E1 is now the ESIC reason codes; this
+  reference no longer resolves.
 * **The backend is behind `main`** until somebody clicks Manual Deploy on Render.
   Migrations apply regardless, through a separate GitHub Actions job.
 
