@@ -172,6 +172,82 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "ais_reconciliations.ais_reconciliations_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "ais_reconciliations.ais_reconciliations_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "ais_reconciliations.ais_reconciliations_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "ais_reconciliations.ais_reconciliations_record_id_fkey": {
+   "detail": "f",
+   "expr_md5": "47a93ae839c0ccc545331464c4bd4a17"
+  },
+  "ais_reconciliations.ais_reconciliations_record_id_key": {
+   "detail": "u",
+   "expr_md5": "109f53e863e3745301a90c6145b05f12"
+  },
+  "ais_reconciliations.ais_reconciliations_reviewed_by_fkey": {
+   "detail": "f",
+   "expr_md5": "7e20ed90d769f4164974d84991969c4f"
+  },
+  "ais_reconciliations.ais_reconciliations_status_check": {
+   "detail": "c",
+   "expr_md5": "a594caf20360b94844577182a75ad54e"
+  },
+  "ais_records.ais_records_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "ais_records.ais_records_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "ais_records.ais_records_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "ais_records.ais_records_source_check": {
+   "detail": "c",
+   "expr_md5": "201fe9e91f509a7b3b04742e5ff8c045"
+  },
+  "ais_records.ais_records_upload_id_fkey": {
+   "detail": "f",
+   "expr_md5": "7c0ab932f7336bf3cf4cf75304f5b297"
+  },
+  "ais_uploads.ais_uploads_assessment_year_check": {
+   "detail": "c",
+   "expr_md5": "5969c8d81bdcd12768446054e6d6f55e"
+  },
+  "ais_uploads.ais_uploads_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "ais_uploads.ais_uploads_firm_id_client_id_assessment_year_file_hash_key": {
+   "detail": "u",
+   "expr_md5": "67579d5bdefe19971f2f88d7614349d1"
+  },
+  "ais_uploads.ais_uploads_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "ais_uploads.ais_uploads_pan_check": {
+   "detail": "c",
+   "expr_md5": "3dff3cf2ca17536366bf6f086c58c0b5"
+  },
+  "ais_uploads.ais_uploads_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "ais_uploads.ais_uploads_uploaded_by_fkey": {
+   "detail": "f",
+   "expr_md5": "02128fed8f393e4e224bae1cf50db5cc"
+  },
   "approval_requests.approval_requests_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -372,6 +448,18 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "bank_reconciliations.bank_reconciliations_adjustment_is_attributed": {
+   "detail": "c",
+   "expr_md5": "b48b1e118111d978b33a91b532cef7a3"
+  },
+  "bank_reconciliations.bank_reconciliations_adjustment_is_explained": {
+   "detail": "c",
+   "expr_md5": "073cac5f5ee7e0d41ca8bbe23efe9716"
+  },
+  "bank_reconciliations.bank_reconciliations_adjustments_set_by_fkey": {
+   "detail": "f",
+   "expr_md5": "f5e472f58f8939bfe705f4e590a02d10"
+  },
   "bank_reconciliations.bank_reconciliations_bank_account_id_fkey": {
    "detail": "f",
    "expr_md5": "c0a7b302a63a88fb3f135426f4164b07"
@@ -447,6 +535,22 @@
   "bank_statements.bank_statements_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "bank_statements.bank_statements_totals_mismatch_acknowledged_by_fkey": {
+   "detail": "f",
+   "expr_md5": "72313935e4161a361543cd10b75f3b5b"
+  },
+  "bank_statements.bank_statements_totals_mismatch_is_a_mismatch": {
+   "detail": "c",
+   "expr_md5": "8d6c1aa98e6c34cb3e995f4a07194591"
+  },
+  "bank_statements.bank_statements_totals_mismatch_is_complete": {
+   "detail": "c",
+   "expr_md5": "50e0d220fcdfbff14e6a1d0a82b86156"
+  },
+  "bank_statements.bank_statements_totals_mismatch_reason_substantive": {
+   "detail": "c",
+   "expr_md5": "c0e6909d039b3e3c50ea1ad92b1103b7"
   },
   "bank_statements.bank_statements_uploaded_by_fkey": {
    "detail": "f",
@@ -2456,6 +2560,30 @@
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
   },
+  "income_tax_asset_blocks.income_tax_asset_blocks_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "income_tax_asset_blocks.income_tax_asset_blocks_created_by_fkey": {
+   "detail": "f",
+   "expr_md5": "f2ec412d6c280402cdf6c98b7739d275"
+  },
+  "income_tax_asset_blocks.income_tax_asset_blocks_firm_id_client_id_financial_year_bl_key": {
+   "detail": "u",
+   "expr_md5": "38b0dc58db90b91c5807f49551b4683d"
+  },
+  "income_tax_asset_blocks.income_tax_asset_blocks_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "income_tax_asset_blocks.income_tax_asset_blocks_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "income_tax_asset_blocks.income_tax_asset_blocks_rate_percent_check": {
+   "detail": "c",
+   "expr_md5": "fed33df98b4041b02ca513002bb84d43"
+  },
   "inventory_stock_ledger.inventory_stock_ledger_client_id_fkey": {
    "detail": "f",
    "expr_md5": "31b94b5a3625e0541829e365e9082440"
@@ -3544,6 +3672,10 @@
    "detail": "f",
    "expr_md5": "748b13c5dcdc4b31bffb01c6910ee66d"
   },
+  "purchase_bills.purchase_bills_advance_adjustment_is_within_the_bill": {
+   "detail": "c",
+   "expr_md5": "3a3ced8455469c2760bc3da523816858"
+  },
   "purchase_bills.purchase_bills_client_id_fkey": {
    "detail": "f",
    "expr_md5": "31b94b5a3625e0541829e365e9082440"
@@ -3671,6 +3803,14 @@
   "purchase_payments.purchase_payments_rate_type_check": {
    "detail": "c",
    "expr_md5": "0446e18f008cc30e8755ad00f0e1839f"
+  },
+  "purchase_payments.purchase_payments_tds_is_explained": {
+   "detail": "c",
+   "expr_md5": "3f2c9af3d461d76446a04221a8ee4792"
+  },
+  "purchase_payments.purchase_payments_tds_within_the_payment": {
+   "detail": "c",
+   "expr_md5": "6e685e1b3ee15e7b0ec9ee3090e65310"
   },
   "purchase_payments.purchase_payments_txn_currency_fkey": {
    "detail": "f",
@@ -4540,9 +4680,17 @@
    "detail": "f",
    "expr_md5": "699271836b8417a00f9ccf41e2595d71"
   },
+  "tds_deductions.tds_deductions_purchase_payment_id_fkey": {
+   "detail": "f",
+   "expr_md5": "9f894ef1064fa05dda09baa82c2f088b"
+  },
   "tds_deductions.tds_deductions_quarter_check": {
    "detail": "c",
    "expr_md5": "a9388bf35a985d2fb8e28fcc4cad6661"
+  },
+  "tds_deductions.tds_deductions_records_one_event": {
+   "detail": "c",
+   "expr_md5": "a2029eb34924fd7085a9e0b7f6d4bfbf"
   },
   "tds_deductions.tds_deductions_return_type_check": {
    "detail": "c",
@@ -4555,6 +4703,38 @@
   "tds_deductions.tds_deductions_tds_return_id_fkey": {
    "detail": "f",
    "expr_md5": "754d98d1d81fffe36c24e95ea37f151b"
+  },
+  "tds_lower_deduction_certificates.tds_ldc_ceiling_is_positive": {
+   "detail": "c",
+   "expr_md5": "61a315b4329b1f73f13c6f9d31f5f476"
+  },
+  "tds_lower_deduction_certificates.tds_ldc_period_is_a_period": {
+   "detail": "c",
+   "expr_md5": "f1b0b41b5c3a7ac3da86b4cede247af5"
+  },
+  "tds_lower_deduction_certificates.tds_ldc_rate_is_a_reduction": {
+   "detail": "c",
+   "expr_md5": "b44e3ab13d564cf29f269947c98a59d0"
+  },
+  "tds_lower_deduction_certificates.tds_lower_deduction_certificates_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "tds_lower_deduction_certificates.tds_lower_deduction_certificates_created_by_fkey": {
+   "detail": "f",
+   "expr_md5": "f2ec412d6c280402cdf6c98b7739d275"
+  },
+  "tds_lower_deduction_certificates.tds_lower_deduction_certificates_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "tds_lower_deduction_certificates.tds_lower_deduction_certificates_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "tds_lower_deduction_certificates.tds_lower_deduction_certificates_vendor_id_fkey": {
+   "detail": "f",
+   "expr_md5": "842dfa50d7788c042262452af145f7e7"
   },
   "tds_returns.tds_returns_ca_approved_by_fkey": {
    "detail": "f",
@@ -5108,6 +5288,54 @@
   },
   "ai_trigger_registry.ai_trigger_registry_firm_isolation": {
    "detail": "permissive cmd=* roles=PUBLIC",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "ais_reconciliations.ais_reconciliations_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "ais_reconciliations.ais_reconciliations_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "ais_reconciliations.ais_reconciliations_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
+  "ais_reconciliations.firm_ais_reconciliations": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "ais_records.ais_records_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "ais_records.ais_records_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "ais_records.ais_records_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
+  "ais_records.firm_ais_records": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "ais_uploads.ais_uploads_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "ais_uploads.ais_uploads_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "ais_uploads.ais_uploads_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
+  "ais_uploads.firm_ais_uploads": {
+   "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
   "approval_requests.approval_requests_read": {
@@ -6222,6 +6450,22 @@
    "detail": "RESTRICTIVE cmd=* roles=authenticated",
    "expr_md5": "15716374c1c3d602540da13b0ca0aed8"
   },
+  "income_tax_asset_blocks.firm_income_tax_asset_blocks": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "income_tax_asset_blocks.income_tax_asset_blocks_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "income_tax_asset_blocks.income_tax_asset_blocks_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "income_tax_asset_blocks.income_tax_asset_blocks_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
   "inventory_stock_ledger.firm_inventory_stock_ledger": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
@@ -7290,6 +7534,22 @@
    "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
    "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
   },
+  "tds_lower_deduction_certificates.firm_tds_ldc": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "tds_lower_deduction_certificates.tds_ldc_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "tds_lower_deduction_certificates.tds_ldc_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "tds_lower_deduction_certificates.tds_ldc_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
   "tds_returns.firm_staff_tds_returns": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
@@ -7617,6 +7877,18 @@
    "expr_md5": ""
   },
   "ai_trigger_registry": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "ais_reconciliations": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "ais_records": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "ais_uploads": {
    "detail": "on",
    "expr_md5": ""
   },
@@ -8064,6 +8336,10 @@
    "detail": "on",
    "expr_md5": ""
   },
+  "income_tax_asset_blocks": {
+   "detail": "on",
+   "expr_md5": ""
+  },
   "inventory_stock_ledger": {
    "detail": "on",
    "expr_md5": ""
@@ -8489,6 +8765,10 @@
    "expr_md5": ""
   },
   "tds_deductions": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "tds_lower_deduction_certificates": {
    "detail": "on",
    "expr_md5": ""
   },

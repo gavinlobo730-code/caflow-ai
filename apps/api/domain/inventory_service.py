@@ -1491,10 +1491,73 @@ def record_stock_adjustment(
     )
 
 
+def _register_itc_reversal(
+    db, *, firm_id: str, client_id: str, journal_entry_id: str, movement_date: str,
+    item_name: str, itc_reversed: int, gst_rate_bps: int, is_interstate: bool,
+    created_by: Optional[str] = None,
+) -> None:
+    """Declare the §17(5)(h) reversal on GSTR-3B Table 4(B)(1) (INV-06).
+
+    IT WAS POSTED AND DECLARED NOWHERE. 4(B)(1) is derived from cancelled bills
+    and blocked credit on bill lines, and the reversal register refused
+    permanent grounds outright — so the GL gave the credit back and the
+    prepared return still claimed it. Migration 362 widened the register;
+    this is what puts the row in it.
+
+    THE HEAD SPLIT IS THE CA's, AND THE DEFAULT IS STATED RATHER THAN HIDDEN.
+    A write-off is not a supply, so nothing on it says whether the credit
+    originally taken was IGST or CGST+SGST — that was a fact about the
+    PURCHASE, and stock of one item can have come from both. The default is
+    intra-state because that is the ordinary case for stock a client holds, the
+    total is right either way, and the row's own note records which way it was
+    split so a CA can see it rather than discover it against the portal.
+
+    FAIL-SOFT, like everything else on this path. A register row that cannot be
+    written must not take the stock movement down with it — the movement is the
+    fact, and the declaration can be added by hand. It is logged, not swallowed
+    silently.
+    """
+    try:
+        from services import itc_register_service
+
+        half = itc_reversed // 2
+        amounts = (
+            {"igst_paise": itc_reversed}
+            if is_interstate
+            # The odd paise goes to CGST. Splitting 3 as 2/1 rather than 1/1 is
+            # what keeps the two heads adding back to the journal, which is the
+            # figure the register checks itself against.
+            else {"cgst_paise": itc_reversed - half, "sgst_paise": half}
+        )
+        itc_register_service.record_reversal(
+            db, firm_id, client_id,
+            journal_entry_id=journal_entry_id,
+            period=f"{str(movement_date)[5:7]}{str(movement_date)[:4]}",
+            reason_code="section_17_5_h",
+            amounts=amounts,
+            notes=(
+                f"Stock write-off — {item_name}. Amount APPROXIMATED at the "
+                f"item's own rate of {gst_rate_bps / 100:g}%, not from the "
+                f"purchase invoices; split as "
+                f"{'IGST' if is_interstate else 'CGST + SGST'}. "
+                f"Verify both against the original purchases for a high-value "
+                f"write-off."
+            ),
+            actor_id=created_by,
+        )
+    except Exception as e:                                        # noqa: BLE001
+        capture_posting_failure(
+            e, operation="register_stock_writeoff_itc_reversal",
+            firm_id=firm_id, client_id=client_id,
+            journal_entry_id=journal_entry_id, itc_reversed=itc_reversed,
+        )
+
+
 def post_stock_writeoff_journal_entry(
     db, *, firm_id: str, client_id: str, movement_date: str, item_name: str,
     value_paise: int, gst_rate_bps: int, reverse_itc: bool, reference_no: str,
     source_type: Optional[str] = None, source_id: Optional[str] = None, created_by: Optional[str] = None,
+    itc_reversal_is_interstate: bool = False,
 ) -> Optional[str]:
     """Dr Stock Write-off Expense / Cr Inventory for the item's carrying
     value, plus — when reverse_itc is True — an additional Dr [same
@@ -1522,6 +1585,7 @@ def post_stock_writeoff_journal_entry(
             {"account_id": writeoff_id, "debit_paise": value_paise, "credit_paise": 0, "narration": f"Stock write-off — {item_name}"},
             {"account_id": inventory_id, "debit_paise": 0, "credit_paise": value_paise, "narration": f"Inventory reduced — {item_name}"},
         ]
+        itc_reversed = 0
         if reverse_itc and gst_rate_bps:
             itc_reversed = _round_paise(Decimal(value_paise) * gst_rate_bps / Decimal(10000))
             if itc_reversed > 0:
@@ -1529,12 +1593,20 @@ def post_stock_writeoff_journal_entry(
                 lines.append({"account_id": writeoff_id, "debit_paise": itc_reversed, "credit_paise": 0, "narration": f"ITC reversed (CGST Act §17(5)(h)) — {item_name}"})
                 lines.append({"account_id": gst_input_id, "debit_paise": 0, "credit_paise": itc_reversed, "narration": f"GST input credit reversed — {item_name}"})
 
-        return phase2_journal_service._create_journal(
+        journal_id = phase2_journal_service._create_journal(
             db=db, firm_id=firm_id, client_id=client_id, entry_date=movement_date,
             reference_no=f"{reference_no}-WOFF", narration=f"Stock write-off — {item_name}",
             entry_type="Journal", source_type=source_type, source_id=source_id, created_by=created_by,
             lines=lines,
         )
+        if reverse_itc and itc_reversed and journal_id:
+            _register_itc_reversal(
+                db, firm_id=firm_id, client_id=client_id, journal_entry_id=journal_id,
+                movement_date=movement_date, item_name=item_name,
+                itc_reversed=itc_reversed, gst_rate_bps=gst_rate_bps,
+                is_interstate=itc_reversal_is_interstate, created_by=created_by,
+            )
+        return journal_id
     except Exception as e:
         capture_posting_failure(
             e, operation="post_stock_writeoff_journal_entry",
@@ -1584,7 +1656,7 @@ def post_stock_surplus_journal_entry(
 def apply_stock_adjustment(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     quantity, direction: str, reverse_itc: bool = False, reference_no: Optional[str] = None,
-    created_by: Optional[str] = None,
+    created_by: Optional[str] = None, itc_reversal_is_interstate: bool = False,
 ) -> Optional[dict]:
     """One call per manual stock adjustment (routers/inventory.py). Fail-soft
     — never raises; a missing chart-of-accounts entry degrades the journal,
@@ -1614,6 +1686,7 @@ def apply_stock_adjustment(
                 item_name=item_name, value_paise=value_paise, gst_rate_bps=int(item.get("gst_rate_bps") or 0),
                 reverse_itc=reverse_itc, reference_no=journal_ref,
                 source_type="adjustment", source_id=movement.get("id"), created_by=created_by,
+                itc_reversal_is_interstate=itc_reversal_is_interstate,
             )
         else:
             journal_id = post_stock_surplus_journal_entry(

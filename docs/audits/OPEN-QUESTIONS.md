@@ -12,7 +12,7 @@ different actions:
   wrong number in somebody's pay or return.
 * **C. Commercial gates** — a registration or a licence. Months, not code.
 
-Last reviewed: 10 September 2026 (after Phase 12b).
+Last reviewed: 11 September 2026 (after Phase 11e).
 
 ---
 
@@ -104,6 +104,17 @@ on facts the app holds and REFUSES the rest, returning 31 July (the earlier of
 the two) with `decided: false` and a named gap. §44AB turns on the year's
 turnover, an LLP's audit on LLP Act §34(4) with Rule 24(8), a trust's on
 §12A(1)(b) — none of those figures is held against a client.
+
+### B18. Which tax head a written-off stock ITC reversal belongs to
+A §17(5)(h) write-off reverses credit that was taken on some mix of CGST/SGST
+and IGST bills, and the write-off does not know which — the inventory module
+carries no lot-to-bill link, so nothing in the books says whether the destroyed
+goods came in interstate. INV-06 splits **intra-state by default** (odd paise to
+CGST), writes the caveat into the register row's `notes`, and takes
+`itc_reversal_is_interstate` on the adjustment so the CA can say otherwise. The
+total reversed is right either way; only the head split is approximated.
+Refusing outright would leave Table 4(B)(1) empty, which was the defect. Lot-
+level tracking would settle it properly and is not built.
 
 ---
 

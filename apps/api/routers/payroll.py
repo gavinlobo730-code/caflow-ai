@@ -4413,6 +4413,43 @@ def _assemble_24q_source(db, current_user: dict, client_id: str,
         slips_by_month.setdefault(run["month"], []).extend(rows)
         emp_ids |= {r.get("employee_id") for r in rows if r.get("employee_id")}
 
+    # ── A LEAVER'S SETTLEMENT IS A DEDUCTEE ROW TOO (PAY-14) ─────────────────
+    # `record_settlement` computes §192 on the taxable part of a full and final,
+    # deposits it and posts it to TDS Payable — and this assembled the quarter
+    # from `payroll_runs` alone, so the deduction was on the challan and off the
+    # statement. The annual Annexure II DOES read `payroll_settlements`, so the
+    # two annexures disagreed by exactly the settlement TDS: Annexure II's total
+    # larger than the four quarters of Annexure I, which TRACES reads as a
+    # short-deduction default, while the employee gets no 26AS credit until the
+    # Q4 filing.
+    #
+    # Emitted as a SLIP-SHAPED row into the same month bucket rather than
+    # handled separately, so it goes through the identical PAN validation, the
+    # identical §206AA refusal and the identical challan matching. A second
+    # assembly path for the same statement is how the two annexures came to
+    # disagree in the first place.
+    settlements = (db.table("payroll_settlements")
+                   .select("employee_id, leaving_date, taxable_paise, tds_paise")
+                   .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
+                   .in_("fy", [financial_year]).execute().data) or []
+    for st in settlements:
+        leaving = str(st.get("leaving_date") or "")
+        month = leaving[:7]
+        # The quarter is decided by the date the sum was PAID, which for a full
+        # and final is the leaving date the settlement was computed on.
+        if month not in months:
+            continue
+        slips_by_month.setdefault(month, []).append({
+            "employee_id": st.get("employee_id"),
+            # §17(1) salary for the year of receipt. `taxable_paise` is what
+            # §192 was charged on, which is the figure the deductee row reports
+            # — not `gross_paise`, which includes the exempt part.
+            "gross_paise": int(st.get("taxable_paise") or 0),
+            "tds_paise": int(st.get("tds_paise") or 0),
+        })
+        if st.get("employee_id"):
+            emp_ids.add(st.get("employee_id"))
+
     employees = []
     if emp_ids:
         employees = (db.table("payroll_employees").select("id, name, pan")

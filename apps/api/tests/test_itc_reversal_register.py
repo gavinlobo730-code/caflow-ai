@@ -214,13 +214,55 @@ def test_every_reclaimable_ground_is_accepted(db, reason):
     assert _rev(db, f"je-{reason}", reason_code=reason)["reason_code"] == reason
 
 
-@pytest.mark.parametrize("reason", ["rule_42", "section_17_5", "rule_38"])
-def test_a_permanent_ground_is_refused(db, reason):
-    """Rules 38/42/43 and §17(5) are Table 4(B)(1), derived from the documents.
-    Registering one would declare the same reversal twice."""
+@pytest.mark.parametrize("reason", ["rule_42", "section_17_5_other", "rule_38",
+                                   "section_17_5_h", "rule_43"])
+def test_a_permanent_ground_is_accepted_and_lands_in_4B1(db, reason):
+    """WIDENED BY INV-06. This used to refuse every permanent ground, on the
+    reasoning that Table 4(B)(1) is derived from the documents — true of a
+    cancelled purchase, false of a stock write-off, where the supply happened,
+    the credit was taken and the goods were destroyed. There is no document to
+    derive it from, so the §17(5)(h) reversal reached no box at all."""
+    _journal(db, f"je-{reason}", credit_gst_input=9000)
+    row = _rev(db, f"je-{reason}", reason_code=reason)
+    assert row["reason_code"] == reason
+    assert not reg.is_reclaimable(reason)
+
+
+def test_a_ground_the_register_does_not_know_is_still_refused(db):
+    """A reversal with no statutory ground is a figure on a return nobody can
+    defend."""
     _journal(db, "je-1", credit_gst_input=9000)
-    with pytest.raises(ITCRegisterError, match="permanent|4\\(B\\)\\(1\\)"):
-        _rev(db, "je-1", reason_code=reason)
+    with pytest.raises(ITCRegisterError, match="not a ground"):
+        _rev(db, "je-1", reason_code="because_i_said_so")
+
+
+def test_a_permanent_reversal_cannot_be_reclaimed(db):
+    """§17(5) credit never comes back. Re-availing it in 4(D)(1) would claim
+    credit the Act denies outright — refused here, and by a trigger in
+    migration 362 for any second writer."""
+    _journal(db, "je-1", credit_gst_input=9000)
+    rev = _rev(db, "je-1", reason_code="section_17_5_h")
+    _journal(db, "je-2", debit_gst_input=9000)
+    with pytest.raises(ITCRegisterError, match="permanent"):
+        reg.record_reclaim(db, FIRM, CLIENT, journal_entry_id="je-2",
+                           period=JULY, reverses_id=rev["id"],
+                           amounts={"cgst_paise": 4500, "sgst_paise": 4500})
+
+
+def test_the_two_boxes_are_reported_apart(db):
+    """4(B)(1) is absolute; 4(B)(2) is "to be reclaimed ... on a future date".
+    Declaring a permanent reversal in 4(B)(2) leaves a balance in the
+    electronic credit reversal statement that never clears."""
+    _journal(db, "je-1", credit_gst_input=9000)
+    _rev(db, "je-1", reason_code="rule_37")
+    _journal(db, "je-2", credit_gst_input=5000)
+    _rev(db, "je-2", reason_code="section_17_5_h",
+         amounts={"cgst_paise": 2500, "sgst_paise": 2500})
+
+    out = reg.for_period(db, FIRM, CLIENT, JUNE)
+
+    assert [r["reason_code"] for r in out["reversals"]] == ["rule_37"]
+    assert [r["reason_code"] for r in out["permanent_reversals"]] == ["section_17_5_h"]
 
 
 # ── a reclaim can only take back what was reversed ───────────────────────────

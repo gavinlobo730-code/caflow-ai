@@ -19,10 +19,23 @@ THE INTEGRITY CHECK, AND WHY IT IS THE POINT
     both sides. So every row is checked against the GST Input movement on its
     own journal, and refused if it exceeds it.
 
-WHAT DOES NOT BELONG HERE
-    Permanent reversals — Rules 38, 42, 43 and §17(5). Those are Table 4(B)(1),
-    they are derived from the documents (a cancelled bill, blocked credit on a
-    line), and registering them would double-count.
+PERMANENT REVERSALS BELONG HERE TOO — BUT ONLY THE ONES WITH NO DOCUMENT
+    This once refused Rules 38, 42, 43 and §17(5) outright, on the grounds that
+    Table 4(B)(1) is derived from the documents. That is true of a cancelled
+    purchase and FALSE of a stock write-off (INV-06): the supply happened, the
+    credit was taken, and what changed is that the goods were destroyed. There
+    is no document to derive it from, so a §17(5)(h) reversal posted to the GL
+    reached no box on the return at all, and the prepared return claimed credit
+    the books had already given back.
+
+    So the register now carries both, and `reclaimable` (generated from the
+    reason, migration 362) says which box: 4(B)(2) when true, 4(B)(1) when
+    false. A permanent reversal can never be reclaimed into 4(D)(1) — refused
+    here AND by a trigger, because re-availing a §17(5) reversal is claiming
+    credit the Act permanently denies.
+
+    A CANCELLED BILL IS STILL NOT REGISTERED. `gstr3b_from_books` derives it,
+    and registering it as well would declare the same reversal twice.
 """
 from __future__ import annotations
 
@@ -35,6 +48,20 @@ PAGE = 1000
 
 RECLAIMABLE_REASONS = ("rule_37", "rule_37a", "section_16_2b",
                        "section_16_2c", "other")
+
+# Absolute in nature and not reclaimable — Circular 170/02/2022-GST. These go
+# to Table 4(B)(1) and never appear in 4(D)(1).
+PERMANENT_REASONS = ("section_17_5_h", "section_17_5_other",
+                     "rule_38", "rule_42", "rule_43")
+
+ALL_REASONS = RECLAIMABLE_REASONS + PERMANENT_REASONS
+
+
+def is_reclaimable(reason_code: str) -> bool:
+    """Which box this ground belongs in. Mirrors the generated column of
+    migration 362 — one rule, stated in SQL for the stored row and here for the
+    in-memory sources that have no generated columns."""
+    return reason_code in RECLAIMABLE_REASONS
 
 _HEADS = ("igst_paise", "cgst_paise", "sgst_paise", "cess_paise")
 
@@ -130,16 +157,20 @@ def record_reversal(db, firm_id: str, client_id: str, *, journal_entry_id: str,
                     purchase_bill_id: Optional[str] = None,
                     notes: Optional[str] = None,
                     actor_id: Optional[str] = None) -> dict:
-    """Classify a posted journal as a Table 4(B)(2) reversal.
+    """Classify a posted journal as a Table 4(B) reversal.
+
+    `reason_code` decides the box: a reclaimable ground is 4(B)(2), a permanent
+    one is 4(B)(1). Both are declared; only the reclaimable one can ever come
+    back through 4(D)(1).
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This records a decision the CA
     # has already made and posted; it files nothing.
     """
-    if reason_code not in RECLAIMABLE_REASONS:
+    if reason_code not in ALL_REASONS:
         raise ITCRegisterError(
-            f"{reason_code!r} is not a reclaimable ground. Rules 38, 42, 43 and "
-            "section 17(5) are permanent reversals — Table 4(B)(1) — and are "
-            "taken from the documents, not registered here.")
+            f"{reason_code!r} is not a ground this register knows. A reversal "
+            "with no statutory ground is a figure on a return nobody can "
+            "defend.")
     amt = _amounts(amounts)
     if _total(amt) <= 0:
         raise ITCRegisterError("A reversal of nothing is not a declaration.")
@@ -219,6 +250,15 @@ def record_reclaim(db, firm_id: str, client_id: str, *, journal_entry_id: str,
     if _existing_for_journal(db, firm_id, journal_entry_id):
         raise ITCRegisterError("That journal is already registered.")
 
+    parent = (db.table("itc_reversal_register").select("reason_code, kind")
+              .eq("firm_id", firm_id).eq("id", reverses_id).limit(1)
+              .execute().data) or []
+    if parent and not is_reclaimable(str(parent[0].get("reason_code") or "")):
+        raise ITCRegisterError(
+            f"A {parent[0].get('reason_code')} reversal is permanent — its "
+            "credit cannot be reclaimed in Table 4(D)(1). Re-availing it would "
+            "claim credit the Act denies outright.")
+
     left = outstanding_for(db, firm_id, reverses_id)
     over = [h for h in _HEADS if amt[h] > left[h]]
     if over:
@@ -258,15 +298,26 @@ def for_period(db, firm_id: str, client_id: str, period: str) -> dict:
         .eq("firm_id", firm_id).eq("client_id", client_id).eq("period", period))
     reversals = [r for r in rows if r.get("kind") == "reversal"]
     reclaims = [r for r in rows if r.get("kind") == "reclaim"]
+    # SPLIT BY BOX, not by whether the row happens to carry the generated
+    # column: the in-memory sources have no generated columns, so the reason is
+    # what decides, through the one function that mirrors migration 362.
+    permanent = [r for r in reversals
+                 if not is_reclaimable(str(r.get("reason_code") or ""))]
+    reclaimable = [r for r in reversals
+                   if is_reclaimable(str(r.get("reason_code") or ""))]
 
     def _sum(rs):
         return {h: sum(int(r.get(h) or 0) for r in rs) for h in _HEADS}
 
     return {
         "period": period,
-        "reversals": reversals,          # -> Table 4(B)(2)
-        "reclaims": reclaims,            # -> Table 4(D)(1)
-        "reversal_totals": _sum(reversals),
+        # Kept: every caller before INV-06 read `reversals` as 4(B)(2), and it
+        # still is — `permanent_reversals` is the box that had no route at all.
+        "reversals": reclaimable,               # -> Table 4(B)(2)
+        "permanent_reversals": permanent,       # -> Table 4(B)(1)
+        "reclaims": reclaims,                   # -> Table 4(D)(1)
+        "reversal_totals": _sum(reclaimable),
+        "permanent_reversal_totals": _sum(permanent),
         "reclaim_totals": _sum(reclaims),
         "ca_review_required": True,
     }
