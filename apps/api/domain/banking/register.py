@@ -228,6 +228,50 @@ def first_divergence(lines: Iterable[RegisterLine]) -> Optional[dict]:
     return None
 
 
+#: What a CA typing the figure is told. Separate from OPENING_DATE_MISSING
+#: below because they are answers to different questions: this one refuses a
+#: write and says what to type; that one explains an account that already
+#: exists and cannot be refused out of its own screen.
+OPENING_DATE_REQUIRED = (
+    "An opening balance needs the date it is the balance as at — usually the "
+    "day this client's books begin. Without it the Bank Book cannot tell which "
+    "transactions the figure already includes."
+)
+
+#: The sentence an account with a balance and no as-at date earns. One place,
+#: read by the register response and by the account list, so the CA is told the
+#: same thing wherever they meet the account.
+OPENING_DATE_MISSING = (
+    "This account has an opening balance but no date it is the balance AS AT, "
+    "so every transaction on it is being added to a figure that may already "
+    "include some of them. Set the opening balance date — usually the day the "
+    "client's books begin — and the Bank Book will exclude anything earlier."
+)
+
+
+def opening_balance_gap(opening_balance_paise, opening_balance_date) -> Optional[str]:
+    """Why this account's running balance cannot be trusted, or None.
+
+    Note 2 above is conditional on there BEING an opening date: `precedes` is
+    `opening_date and d and d < opening_date`, so with no date every row is
+    counted, including the ones the opening figure already contains. The
+    balance is then wrong by exactly their total — and note 3's self-check
+    turns against itself, because `balance_delta_paise` is computed against
+    that wrong running total, so the "first divergence" points at an innocent
+    line and the real cause is never named.
+
+    Refusing to compute is not available here: the account already exists and
+    the CA is looking at it. So the register computes what it can and SAYS
+    what it could not — the pattern the unbilled-dues and MSME disclosures
+    use, where a missing human fact is reported beside the number rather than
+    guessed at. Zero balance needs no date: nothing is double-counted by
+    adding a row to zero.
+    """
+    if int(opening_balance_paise or 0) == 0:
+        return None
+    return None if opening_balance_date else OPENING_DATE_MISSING
+
+
 def summarise(lines: list[RegisterLine], *, opening_balance_paise: int = 0) -> dict:
     """Totals for the register as a whole. Integer paise, no float."""
     counted = [l for l in lines if not l.precedes_opening]

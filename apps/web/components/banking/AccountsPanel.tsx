@@ -209,7 +209,17 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                           : "Linked")
                       : <span className="text-amber-600">Not linked</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-[#334155]">{fmt(a.opening_balance_paise)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-[#334155]">
+                    {fmt(a.opening_balance_paise)}
+                    {/* The backend's sentence, not a guess from the columns —
+                        an opening balance with no as-at date makes every
+                        balance on this account wrong by the total of whatever
+                        predates it. */}
+                    {a.opening_balance_gap && (
+                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-sans"
+                            title={a.opening_balance_gap}>no date</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => setAccountModal(a)} className="text-[#4338CA] hover:text-[#3730A3] inline-flex items-center gap-1"><Pencil size={11} /> Edit</button>
                     {a.is_active
@@ -399,6 +409,18 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
                + "125000.50 — without commas.");
       return;
     }
+    // BANK-27. An opening balance is a balance AS AT a date. Without one the
+    // Bank Book counts every transaction on the account, including the ones
+    // this figure already contains, so the running balance is wrong by their
+    // total and the check against the bank's own stated balance diverges at
+    // an innocent line. The API refuses this too — asked here so the CA is
+    // told beside the field rather than after a round trip.
+    if (openingPaise !== 0 && !openingDate) {
+      setError("An opening balance needs the date it is the balance as at — "
+               + "usually the day this client's books begin. Without it the Bank "
+               + "Book cannot tell which transactions the figure already includes.");
+      return;
+    }
     setSaving(true); setError(null);
     try {
       const res = (editing
@@ -466,8 +488,16 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Opening Balance Date</label>
+              <label className={labelCls}>
+                Opening Balance Date{openingBal && openingBal !== "0" ? " *" : ""}
+              </label>
               <input type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} className={inputCls} />
+              {openingBal && openingBal !== "0" && !openingDate && (
+                <p className="mt-1 text-[11px] text-amber-700">
+                  The date this balance is as at — usually the day the books begin.
+                  Without it the Bank Book adds transactions the figure already includes.
+                </p>
+              )}
             </div>
             {editing && (
               <div className="flex items-end pb-1">

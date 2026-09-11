@@ -184,6 +184,11 @@ export interface BankAccount {
    *  claim it is "Linked" — which is the balance-sheet line this account is. */
   ledger_account_code?: string | null;
   ledger_account_name?: string | null;
+  /** BANK-27 — why this account's running balance cannot be trusted, or null.
+   *  Computed by domain/banking/register.opening_balance_gap and carried on
+   *  both the account list and the Bank Book, so the CA meets the same
+   *  sentence wherever they meet the account. Never derived in the browser. */
+  opening_balance_gap?: string | null;
   currency: string;
   is_active: boolean;
 }

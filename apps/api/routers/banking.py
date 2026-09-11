@@ -70,6 +70,7 @@ from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
 from domain.banking import file_hash, StatementParseError
 from domain.banking.normalizer import parse_statement_detailed
 from domain.banking.tie_out import statement_check, totals_agreement
+from domain.banking.register import opening_balance_gap, OPENING_DATE_REQUIRED
 from domain.banking import vision
 from services import statement_vision
 from domain.banking.normalizer import (
@@ -397,8 +398,9 @@ def _ledger_is_disposable(db, firm_id: str, coa_account_id: str,
     return all(o.get("id") == bank_account_id for o in others)
 
 
-def _with_ledger_names(db, firm_id: str, rows: list[dict]) -> list[dict]:
-    """Stamp each bank account with the code and name of the ledger it posts to.
+def _annotate_accounts(db, firm_id: str, rows: list[dict]) -> list[dict]:
+    """Stamp each bank account with what the list has to say about it: the
+    ledger it posts to, and any setup gap that makes its figures untrustworthy.
 
     The account list used to say only "Linked", which answers the wrong question.
     Now that every bank has its own ledger, WHICH ledger is what ties the row to
@@ -420,6 +422,13 @@ def _with_ledger_names(db, firm_id: str, rows: list[dict]) -> list[dict]:
         c = coa.get(r.get("coa_account_id")) or {}
         r["ledger_account_code"] = c.get("account_code")
         r["ledger_account_name"] = c.get("account_name")
+        # BANK-27. An opening balance with no as-at date makes this account's
+        # running balance wrong by the total of everything dated before the
+        # figure was struck — see domain/banking/register.opening_balance_gap.
+        # Said on the ROW because that is where the CA fixes it; the Bank Book
+        # says the same thing beside the balance it affects.
+        r["opening_balance_gap"] = opening_balance_gap(
+            r.get("opening_balance_paise"), r.get("opening_balance_date"))
     return rows
 
 
@@ -452,7 +461,7 @@ def list_bank_accounts(
     if not include_inactive:
         q = q.eq("is_active", True)
     rows = q.order("bank_name").execute().data or []
-    return api_response(True, _with_ledger_names(db, current_user["firm_id"], rows))
+    return api_response(True, _annotate_accounts(db, current_user["firm_id"], rows))
 
 
 @router.post("/accounts")
@@ -530,6 +539,15 @@ def update_bank_account(
                 detail=f"That ledger account is already linked to {taken}. Each bank "
                        f"account needs its own ledger, or their balances merge into one "
                        f"line and neither can be reconciled.")
+    # BANK-27, on the MERGED state. BankAccountUpdateIn cannot see it: a PATCH
+    # carries only what changed, so "set a non-zero opening balance" on an
+    # account whose stored date is null looks valid field by field and lands
+    # the very pair the model refuses at creation. (`exclude_none=True` means
+    # the date cannot be CLEARED through here at all, which is why only the
+    # balance side needs merging.)
+    if opening_balance_gap(update.get("opening_balance_paise", prior.get("opening_balance_paise")),
+                           update.get("opening_balance_date") or prior.get("opening_balance_date")):
+        raise HTTPException(status_code=422, detail=OPENING_DATE_REQUIRED)
     row = (db.table("bank_accounts").update(update)
            .eq("id", account_id).eq("firm_id", firm_id).execute())
     account = (row.data or [{}])[0]

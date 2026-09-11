@@ -57,6 +57,9 @@ interface RegisterPayload {
   account: {
     id: string; bank_name: string; account_no: string; account_type: string;
     currency: string; opening_balance_paise: number; opening_balance_date: string | null;
+    /** BANK-27 — the backend's sentence for why this register's running
+     *  balance cannot be trusted, or null. Never derived here. */
+    opening_balance_gap?: string | null;
   } | null;
   lines: RegisterLine[];
   summary: RegisterSummary;
@@ -266,6 +269,25 @@ export function BankRegister({ clientId }: { clientId: string }) {
 
       {/* The self-check the bank makes possible: our running balance against the
           balance column the statement itself carried. */}
+      {/* BANK-27, and deliberately ABOVE the divergence banner. With no opening
+          date every line is added to a figure that may already contain some of
+          them, so the divergence below is a SYMPTOM of this and reading them
+          the other way round sends the CA hunting a missing transaction that
+          does not exist. */}
+      {data?.account?.opening_balance_gap && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <p className="text-xs font-semibold text-amber-900">
+            This account&apos;s opening balance has no date
+          </p>
+          <p className="text-[11px] text-amber-800 mt-1">{data.account.opening_balance_gap}</p>
+          <p className="text-[11px] text-amber-700 mt-1">
+            Set it under Bank › Entries › Accounts. Until then the balances below,
+            and any difference against the statement, may be out by the total of
+            whatever predates the opening figure.
+          </p>
+        </div>
+      )}
+
       {data?.divergence && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
           <p className="text-xs font-semibold text-amber-900">

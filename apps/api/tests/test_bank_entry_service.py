@@ -25,8 +25,9 @@ WHAT IS ASSERTED
 The posting engine is a recorder here: it has its own suite
 (test_bank_posting.py), and what this file proves is that the entry service
 calls it, with what, and never posts any other way. The FakeDB is
-test_bank_matching's, which has no trigger — so entry_state is read through
-the Python twin, exactly as the service does in mock mode.
+test_bank_matching's, which has no trigger — so entry_state and
+coded_by_a_human (migration 369) are read through the Python twin, exactly as
+the service does in mock mode.
 """
 from __future__ import annotations
 
@@ -62,6 +63,7 @@ class _TQ(_Q):
                 if (self._op == "update" and r.get("draft_error")
                         and any(k in payload for k in _ANSWER_COLS)):
                     r["draft_error"] = None
+                r["coded_by_a_human"] = E.coded_by_a_human(r)
                 r["entry_state"] = E.entry_state(r)
         return res
 
@@ -174,6 +176,7 @@ def _line(db, tid, descr, debit=59000, credit=0, **kw):
     row = _seed_txn(db, **base)
     # Seeding bypasses the fake's execute(), so the twin runs here as the
     # trigger would on INSERT. An explicit entry_state in the seed wins.
+    row.setdefault("coded_by_a_human", E.coded_by_a_human(row))
     row.setdefault("entry_state", E.entry_state(row))
     return row
 
@@ -599,6 +602,7 @@ def test_an_account_with_no_statements_reads_empty_rather_than_refusing():
            "matched_entity_type": None, "posted_journal_id": None, "posted_at": None,
            "draft_source": "rule", "draft_grade": "ready", "draft_account_id": CHARGES,
            "draft_label": "Bank Charges", "draft_error": None, "drafted_at": "2026-04-15T00:00:00Z"}
+    row["coded_by_a_human"] = E.coded_by_a_human(row)
     row["entry_state"] = E.entry_state(row)
     db.store["bank_transactions"] = [row]
 
