@@ -76,7 +76,7 @@ orphaning.
 | `05-bank-data-and-the-account-aggregator.md` | Why the FIU step may be unachievable, and why upload stays the base case. |
 | `06-data-protection-dpdp.md` | The only section with a real deadline: 13 May 2027. |
 | `07-getting-permission-to-file.md` | The playbook: what to apply for, in what order, what it costs, what each unblocks. Engineering depth, with the code seams named. |
-| `08-government-api-access-the-verified-position.md` | **Start here on any filing question.** The consolidated answer — direct / approval / partner / no-API, the full chain per filing, the other integrations, and the nine questions an email would close. Cross-checks an external research baseline against `07`. |
+| `08-government-api-access-the-verified-position.md` | **Start here on any filing question**, and it is the one document in this set written to be circulated outside engineering. §1 executive summary; §2 what we can file and what stops us; §3 eligibility, thresholds, fees and process; §4 how competitors work around the same walls; §5 Track F, the engineering response; §6 confidence and what is still open. Appendices A–D carry the filing-by-filing detail, the other integrations, six drafted enquiries and the research record. Renders to PDF with `scripts/docs/md_to_pdf.py`. |
 
 ### If you read only four things
 

@@ -225,7 +225,7 @@ we can go through this together."
 Added 11 September 2026. The owner offered: *"if there are any websites that you
 can't go through and need info from them you can tell me I can go through them
 and give you images."* The full list with what is needed off each page is
-**§15 of `docs/compliance/08-government-api-access-the-verified-position.md`**;
+**§6.4 of `docs/compliance/08-government-api-access-the-verified-position.md`**;
 this is the register entry so it is not lost.
 
 ### F1. The ESIC monthly-contribution Excel template — BLOCKS Track F1
@@ -234,15 +234,12 @@ this is the register entry so it is not lost.
 Template*. Need the file itself, or row 1 headers + row 2 sample + sheet name,
 and the stated accepted extension.
 
-**Why it blocks:** `domain/payroll/esic.py` emits **CSV** and the portal takes an
-**Excel 97-2003 `.xls`** with every column formatted as Text `[S]`. Our file's
-contents are right and its container is wrong, so a CA who uses it gets rejected
-at the portal after doing the work. I will not rebuild a statutory file from a
-search summary.
-
-**Fallback if it stays unavailable:** have the CA upload the template they
-downloaded and write into *their* workbook, rather than assuming its shape.
-That is the better design anyway.
+**PARTLY CLOSED 11-09-2026.** ESIC's own filing manual was obtained and read,
+which settled the format (`.xls`, Excel 97-2003, all columns Text, no formulas)
+and — more usefully — settled the DESIGN: the manual says to use the portal's
+template and *not* a lookalike, so Track F1 fills the CA's own downloaded
+workbook rather than minting one. A real template is now wanted only as a test
+fixture. `domain/payroll/esic.py` emitting CSV remains the live defect.
 
 ### F2. The ESIC zero-wage reason codes — closes a named refusal
 
