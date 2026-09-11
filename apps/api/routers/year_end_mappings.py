@@ -6,6 +6,7 @@ Reference: Companies Act 2013, Schedule III.
 Default mappings are auto-initialized per account_type when none exist for a firm.
 All monetary values: integer paise (BIGINT). Never float.
 """
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -18,9 +19,10 @@ from models.common import api_response
 from core.permissions import rbac
 from services.audit_service import log_event
 from services.year_end_financial_service import BS_EQUITY_LIABILITY_LINES, BS_ASSET_LINES
-from domain.reporting.schedule_iii import bs_bucket, pl_bucket
+from domain.reporting.schedule_iii import bs_bucket, classify, pl_bucket
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
+_logger = logging.getLogger("caflow.year_end_mappings")
 
 router = APIRouter(prefix="/year-end", tags=["year-end-mappings"])
 
@@ -122,13 +124,19 @@ _CAPTION_TO_SCHEDULE_LINE = {
 }
 
 
-def _schedule_line_for_account(account_type: str, account_subtype: Optional[str]) -> str:
+def _schedule_line_for_account(account_type: str, account_subtype: Optional[str],
+                               schedule_iii_mapping: Optional[str] = None) -> str:
     """Classify an account into a year-end schedule_line using the SAME
     Schedule III bucket rules as the reporting engine (single source of
     truth for the statutory caption taxonomy), keyed on the REAL
-    chart_of_accounts.account_type enum, not an invented one."""
+    chart_of_accounts.account_type enum, not an invented one.
+
+    The CA's own `schedule_iii_mapping` outranks the subtype scan (ACC-10), so
+    the year-end statements and the live Balance Sheet classify an account the
+    same way. They were already meant to share this taxonomy; without the
+    mapping they shared only half of it."""
     typ = (account_type or "").strip()
-    caption = bs_bucket(typ, account_subtype) or pl_bucket(typ, account_subtype)
+    caption, _basis = classify(typ, account_subtype, schedule_iii_mapping)
     if caption:
         line = _CAPTION_TO_SCHEDULE_LINE.get(caption)
         if line is not None:
@@ -431,9 +439,26 @@ def get_default_mappings(
 
     if existing_count == 0:
         # Auto-initialize mappings from the firm's chart of accounts
+        # ── chart_of_accounts, NOT the `accounts` VIEW ──────────────────────
+        # `public.accounts` is `SELECT * FROM chart_of_accounts`, created by
+        # migration 016. Postgres EXPANDS a view's `*` at creation time and
+        # freezes it, so the view carries the columns chart_of_accounts had in
+        # migration 016 and nothing added since — `schedule_iii_mapping` came in
+        # with migration 057 and is simply not there. Reading the view would
+        # have silently returned rows with no mapping on them, which is the
+        # defect ACC-10 is about, arriving by a different route.
+        #
+        # The view is `security_invoker = true`, so RLS applies identically
+        # either way, and this query already filters on firm_id. Nothing else
+        # changes.
         accounts_res = (
-            db.table("accounts")
-            .select("id, account_type, account_subtype, account_name")
+            db.table("chart_of_accounts")
+            # schedule_iii_mapping is the CA's own decision about where this
+            # account presents (ACC-10). Auto-initialising the year-end mappings
+            # without it would seed them from the subtype scan alone and then
+            # ignore the mapping forever, because these rows are written once
+            # and never re-derived.
+            .select("id, account_type, account_subtype, account_name, schedule_iii_mapping")
             .eq("firm_id", firm_id)
             .execute()
         )
@@ -443,7 +468,9 @@ def get_default_mappings(
         auto_records = []
         for acct in accounts:
             acct_type    = (acct.get("account_type") or "").lower()
-            schedule_line = _schedule_line_for_account(acct.get("account_type"), acct.get("account_subtype"))
+            schedule_line = _schedule_line_for_account(
+                acct.get("account_type"), acct.get("account_subtype"),
+                acct.get("schedule_iii_mapping"))
             auto_records.append({
                 "id":             str(uuid.uuid4()),
                 "firm_id":        firm_id,

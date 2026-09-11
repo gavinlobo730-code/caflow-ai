@@ -221,13 +221,19 @@ def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = 
         update["parent_group"] = (fields["parent_group"] or "").strip() or None
     if "sub_group" in fields:
         update["sub_group"] = (fields["sub_group"] or "").strip() or None
+    if "schedule_iii_mapping" in fields:
+        # ACC-10. The model has already refused anything that is not a Schedule
+        # III caption, so what arrives here is either a caption or "" meaning
+        # "clear it and go back to the subtype scan".
+        update["schedule_iii_mapping"] = fields["schedule_iii_mapping"] or None
     if not update:
         # `description` has no column on chart_of_accounts — accepting it and
         # silently dropping it is the same lie this endpoint is being fixed for.
         raise HTTPException(
             status_code=422,
-            detail=("Only name, code, is_active, parent_id, parent_group and "
-                    "sub_group can be changed on an account."))
+            detail=("Only name, code, is_active, parent_id, parent_group, "
+                    "sub_group and schedule_iii_mapping can be changed on an "
+                    "account."))
     try:
         res = (db.table("chart_of_accounts").update(update)
                .eq("id", account_id).eq("firm_id", current_user["firm_id"]).execute())

@@ -87,6 +87,35 @@ class AccountUpdateIn(BaseModel):
     parent_id: Optional[str] = None
     parent_group: Optional[str] = None
     sub_group: Optional[str] = None
+    # Where this account presents on the statutory statements (ACC-10). Until
+    # now `chart_of_accounts.schedule_iii_mapping` could only be set by the CSV
+    # importer, and the Schedule III Mapping screen told the CA to "set it
+    # during import" — which meant re-importing the whole chart of accounts to
+    # correct one line. It is an ordinary correction to a ledger, so it belongs
+    # on the ordinary correction endpoint.
+    #
+    # Validated against domain/reporting/schedule_iii.CAPTIONS rather than left
+    # free text: the column has no CHECK, and an unrecognised string is ignored
+    # by the classifier, so accepting one would be a screen that says "saved"
+    # and changes nothing — the exact complaint ACC-10 is.
+    schedule_iii_mapping: Optional[str] = None
+
+    @field_validator("schedule_iii_mapping")
+    @classmethod
+    def known_caption(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        text = v.strip()
+        if text == "":
+            # Explicitly clearing the mapping, which returns the account to the
+            # subtype scan. Stored as NULL, not "".
+            return ""
+        from domain.reporting.schedule_iii import CAPTIONS
+        if text not in CAPTIONS:
+            raise ValueError(
+                f"{text!r} is not a Schedule III caption. One of: "
+                + ", ".join(sorted(CAPTIONS)))
+        return text
 
 
 class JournalLineIn(BaseModel):

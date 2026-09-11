@@ -73,19 +73,53 @@ CAPTIONS = frozenset(BALANCE_SHEET_CAPTIONS) | frozenset(PROFIT_LOSS_CAPTIONS)
 # an "Other" line in each section precisely so nothing is unpresented — and
 # because a report can then say HOW MANY balances reached it, which is the
 # difference between a classification and a shrug.
+# NOT "Revenue from Operations" or "Reserves & Surplus". Those are the last
+# branch of their section AND the right answer for the ordinary case: every
+# sales account really is revenue from operations, and equity that is not share
+# capital really is reserves. Calling them residual would report a gap on every
+# well-classified client and teach people to ignore the count.
 RESIDUAL_CAPTIONS = frozenset({
-    "Other Current Assets", "Other Current Liabilities",
-    "Reserves & Surplus", "Other Expenses", "Revenue from Operations",
+    "Other Current Assets",
+    "Other Current Liabilities",
+    "Other Expenses",
 })
 
 
 # ── Balance Sheet grouping — Companies Act 2013, Schedule III, Part I ──────────
-def bs_bucket(account_type: str, account_subtype: str | None) -> str | None:
-    """Map an account's structured (type, subtype) to a Schedule III Balance
-    Sheet caption. Returns None for accounts that do not belong on the Balance
-    Sheet (e.g. Revenue/Expense)."""
+def bs_bucket(account_type: str, account_subtype: str | None,
+              schedule_iii_mapping: str | None = None) -> str | None:
+    """Map an account to a Schedule III Balance Sheet caption. Returns None for
+    accounts that do not belong on the Balance Sheet (e.g. Revenue/Expense).
+
+    THE CA'S OWN MAPPING WINS (ACC-10). `chart_of_accounts.schedule_iii_mapping`
+    is an explicit decision a human made about where THIS account presents, and
+    it used to be written by the CSV importer, displayed by a read-only screen,
+    and read by no computation at all — so a CA could spend an afternoon on the
+    Schedule III Mapping screen and the Balance Sheet would not move by a rupee.
+
+    The subtype scan below is the FALLBACK, and it is a keyword match on free
+    text: an account whose subtype happens not to contain the magic substring
+    lands in "Other Current Assets" with no warning. That is fine as a default
+    and indefensible as the only answer, which is why an explicit mapping now
+    outranks it and why `classify()` reports how many balances reached a
+    residual caption by default rather than by decision.
+
+    A mapping that is not a caption this module knows is IGNORED rather than
+    trusted: the column is free text with no CHECK, an importer can put anything
+    in it, and an unknown string would otherwise travel into the year-end
+    translation and land wherever that table's fallback points.
+    """
     sub = (account_subtype or "").lower()
     typ = (account_type or "").lower()
+
+    # The mapping is honoured only once the account is known to belong on this
+    # statement. Checking it first let a Revenue account carrying an
+    # "Inventories" mapping return a Balance Sheet caption — which is a mistake
+    # in the data, not an instruction, and would have put turnover on the
+    # balance sheet.
+    if typ in ("equity", "liability", "asset"):
+        if schedule_iii_mapping and schedule_iii_mapping in BALANCE_SHEET_CAPTIONS:
+            return schedule_iii_mapping
 
     if typ == "equity":
         # "Share Capital" vs "Reserves & Surplus" (Schedule III, Part I, EQ&L)
@@ -142,11 +176,17 @@ def bs_bucket(account_type: str, account_subtype: str | None) -> str | None:
 
 
 # ── Statement of P&L grouping — Companies Act 2013, Schedule III, Part II ──────
-def pl_bucket(account_type: str, account_subtype: str | None) -> str | None:
-    """Map an account's structured (type, subtype) to a Schedule III P&L caption.
-    Returns None for non-P&L accounts."""
+def pl_bucket(account_type: str, account_subtype: str | None,
+              schedule_iii_mapping: str | None = None) -> str | None:
+    """Map an account to a Schedule III P&L caption. Returns None for non-P&L
+    accounts. The CA's own `schedule_iii_mapping` wins — see bs_bucket."""
     sub = (account_subtype or "").lower()
     typ = (account_type or "").lower()
+
+    # Same rule, same reason — see bs_bucket.
+    if typ in ("revenue", "expense"):
+        if schedule_iii_mapping and schedule_iii_mapping in PROFIT_LOSS_CAPTIONS:
+            return schedule_iii_mapping
 
     if typ == "revenue":
         if "other income" in sub or "interest income" in sub or "dividend" in sub:
@@ -172,6 +212,47 @@ def pl_bucket(account_type: str, account_subtype: str | None) -> str | None:
             return "Tax Expense"
         return "Other Expenses"
     return None
+
+
+def classify(account_type: str, account_subtype: str | None,
+             schedule_iii_mapping: str | None = None) -> tuple[str | None, str]:
+    """The caption AND how it was arrived at.
+
+    Returns `(caption, basis)` where basis is one of:
+
+      * `"mapping"`  — the CA said so, on the Schedule III Mapping screen or in
+        the imported chart of accounts. The only answer with a human behind it.
+      * `"subtype"`  — a keyword in the account's free-text subtype matched.
+        Usually right, and never checked by anyone.
+      * `"residual"` — nothing matched and the account landed on one of the
+        section's "Other" lines. Schedule III HAS those lines so nothing goes
+        unpresented, but a balance that reached one by default is not the same
+        as a balance a CA put there, and a statement that cannot tell them apart
+        is a statement nobody can review.
+
+    "Revenue from Operations" and "Reserves & Surplus" are deliberately NOT
+    residual even though they are the last branch of their section: they are
+    also the right answer for the ordinary case, so reporting them as gaps
+    would flag every well-classified client and teach people to ignore the
+    count.
+
+    The basis exists so a report can SAY how many balances are on an "Other"
+    line because nobody decided. That was the missing half of ACC-10: the
+    mapping screen showed a green "37 of 53 accounts mapped" while the
+    statements ignored the mapping entirely, so the count measured nothing.
+    """
+    if schedule_iii_mapping and schedule_iii_mapping in CAPTIONS:
+        # Honoured only on the side it belongs to — an "Inventories" mapping on
+        # a Revenue account is a mistake, not an instruction.
+        caption = (bs_bucket(account_type, account_subtype, schedule_iii_mapping)
+                   or pl_bucket(account_type, account_subtype, schedule_iii_mapping))
+        if caption == schedule_iii_mapping:
+            return caption, "mapping"
+
+    caption = bs_bucket(account_type, account_subtype) or pl_bucket(account_type, account_subtype)
+    if caption is None:
+        return None, "residual"
+    return caption, ("residual" if caption in RESIDUAL_CAPTIONS else "subtype")
 
 
 def _line(label: str, paise: int, indent: bool = True,
@@ -209,17 +290,40 @@ def bucket_amounts(pl: dict, bs: dict) -> tuple[dict[str, int], dict[str, int]]:
     bs_buckets: dict[str, int] = {}
     for section in (*bs.get("assets", []), *bs.get("liabilities", []), *bs.get("equity", [])):
         for ln in section.get("lines", []):
-            cap = bs_bucket(ln.get("account_type", ""), ln.get("account_subtype"))
+            cap = _caption_of(ln, bs_bucket)
             if cap:
                 bs_buckets[cap] = bs_buckets.get(cap, 0) + ln.get("balance_paise", 0)
 
     pl_buckets: dict[str, int] = {}
     for group in _PL_GROUPS:
         for ln in pl.get(group, {}).get("lines", []):
-            cap = pl_bucket(ln.get("account_type", ""), ln.get("account_subtype"))
+            cap = _caption_of(ln, pl_bucket)
             if cap:
                 pl_buckets[cap] = pl_buckets.get(cap, 0) + ln.get("amount_paise", 0)
     return bs_buckets, pl_buckets
+
+
+def _caption_of(line: dict, fallback_bucket) -> str | None:
+    """The caption the BUILDER already put on this line, or the bucket scan if
+    the line predates it.
+
+    THIS IS THE STEP THAT MAKES THE MAPPING SCREEN MEAN SOMETHING (ACC-10).
+    `builders` resolves each account's caption through `classify`, which honours
+    `chart_of_accounts.schedule_iii_mapping`. Re-deriving it here from the
+    subtype alone would throw that away — which is exactly what happened for as
+    long as the mapping existed: it was written by the importer, shown on a
+    read-only screen, and read by nothing, so a CA could map every account and
+    the Balance Sheet would not move by a rupee.
+
+    The fallback survives because `bucket_amounts` is also handed statement
+    dicts built elsewhere (the year-end snapshots, and any caller that
+    constructs a document by hand), and a line with no caption on it is not an
+    error — it is an older shape.
+    """
+    cap = line.get("schedule_iii_caption")
+    if cap and cap in CAPTIONS:
+        return cap
+    return fallback_bucket(line.get("account_type", ""), line.get("account_subtype"))
 
 
 # ── Comparatives — Schedule III, Division I, General Instructions para 5 ─────
