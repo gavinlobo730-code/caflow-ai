@@ -25,6 +25,82 @@ export type MarkFiledResult = {
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
+/** One statutory settlement on the handoff screen, exactly as
+ *  domain/payroll/handoff.py serialises it. Every string here is composed on
+ *  the SERVER — render them, do not rebuild them: they carry statutory
+ *  reasoning (why professional tax shows no due date, why a blocked EPFO month
+ *  still offers its file) that a sentence written in the browser would lose. */
+export type HandoffField = { label: string; value: string | null; note: string | null };
+export type HandoffFigure = {
+  label: string;
+  /** money in integer paise; null when the figure is a count or is in rupees */
+  amount_paise: number | null;
+  /** whole rupees — the ECR and the ESIC return both carry rupees, because
+   *  both portals work in rupees. Not converted to paise and back: that would
+   *  put a unit change inside the number the CA is checking against the portal. */
+  rupees: number | null;
+  count: number | null;
+  note: string | null;
+};
+export type HandoffArtefact = {
+  available: boolean; filename: string | null;
+  endpoint: string | null; why_not: string | null;
+};
+export type HandoffObligation = {
+  scheme: "epf" | "esic" | "professional_tax";
+  key: string;
+  title: string;
+  authority: string;
+  portal: string;
+  portal_host: string;
+  wage_month: string;
+  period_label: string;
+  state: string | null;
+  due_date: string | null;
+  /** set only when there is NO due date, and says why there is none */
+  due_note: string | null;
+  statute: string | null;
+  identity: HandoffField[];
+  confirm: HandoffFigure[];
+  artefact: HandoffArtefact;
+  /** would be refused at the portal today — fix before uploading */
+  blocking: string[];
+  warnings: string[];
+  record_back: string | null;
+  /** where the acknowledgement is one of a fixed set — EPFO's return types,
+   *  which the server decides from what has already been filed. The form
+   *  defaults to the first, so a month that needs a Supplementary does not get
+   *  recorded as a Regular. */
+  record_options: string[];
+  recorded: Record<string, unknown> | null;
+};
+export type StatutoryHandoff = {
+  run_id: string;
+  client_id: string | null;
+  month: string | null;
+  obligations: HandoffObligation[];
+  /** professional tax withheld from somebody with no state recorded — money
+   *  taken from an employee that no authority will be paid */
+  unattributed_pt_paise?: number;
+  disclaimer?: string;
+};
+
+export type Remittance = {
+  id: string;
+  scheme: "esic" | "professional_tax";
+  wage_month: string;
+  state: string | null;
+  contribution_period: string | null;
+  challan_number: string | null;
+  challan_date: string | null;
+  amount_paise: number;
+  status: "submitted" | "paid";
+  submitted_on: string;
+  paid_on: string | null;
+  journal_entry_id: string | null;
+  notes: string | null;
+};
+
 /** GET /api/compliance/tax-audit-due-dates — both §44AB dates for one FY.
  *  `basis` names the section and the premise, and is shown rather than
  *  paraphrased: a date on a compliance screen is only as good as what a CA can
@@ -2024,6 +2100,72 @@ export const api = {
      *  contributions actually made. */
     runEcr: (runId: string) => request(`/api/payroll/runs/${runId}/ecr`),
     runEsic: (runId: string) => request(`/api/payroll/runs/${runId}/esic`),
+
+    /** THE HANDOFF (Track F, phase F3) — what a CA types, where, with the
+     *  portal open in the next tab.
+     *
+     *  Of the seven steps between correct books and a closed obligation, six
+     *  are ours; step 4 is this one and nothing did it. The CA used to open the
+     *  register for the figures, Setup for the establishment code, Outputs for
+     *  the file, three government portals and a spreadsheet to track which of
+     *  them were done.
+     *
+     *  ASSEMBLED ON THE SERVER, and this client only renders it. Which
+     *  obligations a month raises, in what order, with which warnings, is a
+     *  statutory judgement: professional tax has no due date this product will
+     *  state, ESI's period is not the wage month, and EPFO's blocking rule can
+     *  make a correct file unacceptable today. See domain/payroll/handoff.py.
+     *
+     *  It carries NO credential field and NO OTP field, and both the domain
+     *  tests and the endpoint tests assert that structurally. */
+    runHandoff: (runId: string) =>
+      request<ApiResp<StatutoryHandoff>>(`/api/payroll/runs/${runId}/handoff`),
+
+    /** ESI and professional-tax remittances recorded for a client
+     *  (migration 365). EPF has its own record with its own sequencing —
+     *  recordEcrFiled above — which is why this does not cover it.
+     *
+     *  `unlinked` is the month-end question: a remittance marked paid with no
+     *  journal entry tied to it. Without that distinction a statutory liability
+     *  nobody has paid and one that was paid but never matched to its bank line
+     *  look identical on the ledger — both sit uncleared. */
+    remittances: (clientId: string, wageMonth?: string) =>
+      request<ApiResp<{ client_id: string; remittances: Remittance[];
+                        unlinked: Remittance[] }>>(
+        `/api/payroll/clients/${clientId}/remittances`
+        + (wageMonth ? `?wage_month=${encodeURIComponent(wageMonth)}` : "")),
+
+    /** Record a remittance the CA made AT THE PORTAL, after they made it.
+     *  Transmits nothing. Recording the payment updates the filing rather than
+     *  adding a row: filing the return and paying the challan are two entries
+     *  about one remittance. */
+    recordRemittance: (clientId: string, body: {
+      scheme: "esic" | "professional_tax"; wage_month: string;
+      state?: string | null; status?: "submitted" | "paid";
+      submitted_on?: string | null; paid_on?: string | null;
+      challan_number?: string | null; challan_date?: string | null;
+      amount_paise?: number; run_id?: string | null; notes?: string | null;
+    }) => request<ApiResp<{ client_id: string; remittance: Remittance }>>(
+      `/api/payroll/clients/${clientId}/remittances`,
+      { method: "POST", body: JSON.stringify(body) }),
+
+    /** Tie a remittance to the journal entry that paid it. A LINK, never a
+     *  posting: bank_posting_service already writes Dr liability / Cr Bank when
+     *  the CA passes the bank statement line, and posting from here as well
+     *  would debit the statutory liability twice. */
+    linkRemittancePayment: (clientId: string, remittanceId: string,
+                            journalEntryId: string) =>
+      request<ApiResp<{ remittance_id: string; linked: boolean }>>(
+        `/api/payroll/clients/${clientId}/remittances/${remittanceId}/payment`,
+        { method: "PATCH",
+          body: JSON.stringify({ journal_entry_id: journalEntryId }) }),
+
+    /** Retract one recorded in error — a SOFT delete. The challan number, the
+     *  date and the amount that left the bank are held nowhere else. */
+    retractRemittance: (clientId: string, remittanceId: string) =>
+      request<ApiResp<{ remittance_id: string; retracted: boolean }>>(
+        `/api/payroll/clients/${clientId}/remittances/${remittanceId}`,
+        { method: "DELETE" }),
 
     /** The revamped ECR (EPFO circulars 26-09-2025 and 08-10-2025) enforces
      *  MONTH-WISE SEQUENCE: October cannot be filed while September is pending.
