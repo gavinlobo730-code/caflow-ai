@@ -141,6 +141,16 @@ def create_account(
             # through the API landed under "Ungrouped → General".
             "parent_group": (data.parent_group or "").strip() or None,
             "sub_group": (data.sub_group or "").strip() or None,
+            # ACC-11: written for the first time here. Only the CSV importer
+            # ever set it, so every account created through the product had
+            # none — and since the year-end statements began deriving their
+            # Schedule III line from the account, "none" means the coarse
+            # fallback: a bank account presented as Other Current Assets.
+            "account_subtype": (data.account_subtype or "").strip() or None,
+            # And the explicit override, which ACC-10 made correctable but not
+            # settable — so a CA who knew where the account belonged had to
+            # save it wrong first.
+            "schedule_iii_mapping": (data.schedule_iii_mapping or "").strip() or None,
             "is_active": data.is_active,
         }).execute()
     except Exception as e:                                      # noqa: BLE001
@@ -150,6 +160,12 @@ def create_account(
     if not res.data:
         raise HTTPException(status_code=502, detail="The account was not written.")
     return api_response(True, res.data[0])
+
+
+#: Fields AccountUpdateIn accepts that chart_of_accounts has no column for.
+#: `description` is the whole set today; accepting one and silently dropping it
+#: is the lie this endpoint was fixed for, so it is refused rather than ignored.
+_NO_COLUMN = frozenset({"description"})
 
 
 def _assert_account_scope(current_user: dict, account_id: str) -> dict:
@@ -255,6 +271,11 @@ def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = 
         update["parent_group"] = (fields["parent_group"] or "").strip() or None
     if "sub_group" in fields:
         update["sub_group"] = (fields["sub_group"] or "").strip() or None
+    if "account_subtype" in fields:
+        # ACC-11. Correctable as well as settable: every account created
+        # before this existed carries no subtype and presents under the
+        # coarse fallback until one is given.
+        update["account_subtype"] = (fields["account_subtype"] or "").strip() or None
     if "schedule_iii_mapping" in fields:
         # ACC-10. The model has already refused anything that is not a Schedule
         # III caption, so what arrives here is either a caption or "" meaning
@@ -263,11 +284,18 @@ def update_account(account_id: str, data: AccountUpdateIn, current_user: dict = 
     if not update:
         # `description` has no column on chart_of_accounts — accepting it and
         # silently dropping it is the same lie this endpoint is being fixed for.
+        # THE LIST IS BUILT FROM THE MODEL, not written out. It was a literal
+        # sentence, and test_a_field_with_no_column_is_refused_rather_than_
+        # dropped asserts the PROPERTY — that the refusal names everything the
+        # endpoint can actually change — precisely so the message stays true.
+        # It went stale the first time a field was added after that test
+        # (account_subtype, ACC-11), which is the drift the test's own comment
+        # predicted. Derived, it cannot.
+        changeable = [f for f in AccountUpdateIn.model_fields if f not in _NO_COLUMN]
         raise HTTPException(
             status_code=422,
-            detail=("Only name, code, is_active, parent_id, parent_group, "
-                    "sub_group and schedule_iii_mapping can be changed on an "
-                    "account."))
+            detail=(f"Only {', '.join(changeable[:-1])} and {changeable[-1]} "
+                    f"can be changed on an account."))
     try:
         res = (db.table("chart_of_accounts").update(update)
                .eq("id", account_id).eq("firm_id", current_user["firm_id"]).execute())

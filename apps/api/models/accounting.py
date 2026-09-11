@@ -113,6 +113,51 @@ class AccountIn(BaseModel):
     parent_group: Optional[str] = None
     sub_group: Optional[str] = None
 
+    # ACC-11. `account_subtype` is the account's own NATURE — "Bank Account",
+    # "Trade Receivables", "Plant & Machinery" — and until now only the CSV
+    # importer could set it. Everything created through the product had none.
+    #
+    # That was cosmetic once and is not any more. `domain/reporting/
+    # schedule_iii.classify` scans the subtype for the keywords that place an
+    # account on the Balance Sheet, and since the year-end statements began
+    # DERIVING their classification (domain/reporting/year_end_lines), an
+    # account with no subtype falls to DEFAULT_ACCOUNT_TYPE_MAP's coarse
+    # answer: every Asset presents as Other Current Assets, every Liability as
+    # Other Current Liabilities. A CA creating "HDFC Current Account" in the
+    # app got a bank account presented as Other Current Assets, on the balance
+    # sheet and in every year-end schedule.
+    #
+    # Free text, like `parent_group` / `sub_group` and like the column itself:
+    # it is the Indian chart's own vocabulary, the Tally import brings it in
+    # verbatim, and the classifier keyword-scans rather than matching a list.
+    # The UNAMBIGUOUS override is `schedule_iii_mapping` below, which IS
+    # validated against the caption list, because that one is a decision
+    # rather than a description.
+    account_subtype: Optional[str] = None
+
+    # Settable AT CREATION, not only as a correction. ACC-10 put this on
+    # AccountUpdateIn; leaving it off here meant a CA who knew where an account
+    # belonged had to save it wrong and then edit it.
+    schedule_iii_mapping: Optional[str] = None
+
+    @field_validator("schedule_iii_mapping")
+    @classmethod
+    def known_caption_on_create(cls, v: Optional[str]) -> Optional[str]:
+        """The same rule as AccountUpdateIn's — an unrecognised caption is
+        ignored by the classifier, so accepting one would be a screen that
+        says "saved" and changes nothing."""
+        if v is None:
+            return v
+        text = v.strip()
+        if text == "":
+            return ""
+        from domain.reporting.schedule_iii import CAPTIONS
+        if text not in CAPTIONS:
+            raise ValueError(
+                f"{text!r} is not a Schedule III caption. One of: "
+                + ", ".join(sorted(CAPTIONS)))
+        return text
+
     @field_validator("name")
     @classmethod
     def name_not_empty(cls, v: str) -> str:
@@ -132,6 +177,10 @@ class AccountUpdateIn(BaseModel):
     parent_id: Optional[str] = None
     parent_group: Optional[str] = None
     sub_group: Optional[str] = None
+    # ACC-11 — correctable, because an account created before this existed has
+    # none and presents under the coarse fallback until somebody can set one.
+    # See AccountIn.account_subtype for why that matters.
+    account_subtype: Optional[str] = None
     # Where this account presents on the statutory statements (ACC-10). Until
     # now `chart_of_accounts.schedule_iii_mapping` could only be set by the CSV
     # importer, and the Schedule III Mapping screen told the CA to "set it
