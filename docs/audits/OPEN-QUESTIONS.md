@@ -190,6 +190,14 @@ not a test failure: CI was green on every one of these commits.
 * **The daily job sweep runs in that process.** If the live image is old, the
   scheduler running the compliance sweep is old too.
 
+**One narrowing fact, from the PR events of the same morning.** Cloudflare Pages
+deployed BOTH frontend projects — `practicesync` and `practicesync-ai` —
+successfully on the same commits Render failed on (#482 head `865cc80`, #483
+head `9b0a1d8`, deploy successful on each). So this is not a repo-wide problem
+and not a bad commit: it is specific to the backend's Docker build or its boot
+on Render. That rules out the whole class of "the tree is broken" causes and
+points at the image or the container's start-up.
+
 **What cannot be answered from inside this session.** Render's build log is the
 only thing that says WHY the deploy failed, and this environment's egress is
 refused at the proxy, so it cannot be fetched. The first step is a human
