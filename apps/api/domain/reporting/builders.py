@@ -110,15 +110,53 @@ def ledger(entries_by_id: dict[str, JournalEntry], accounts: dict[str, Account],
     return out
 
 
+#: The id of the row a PERIOD trial balance needs and the ledger does not hold.
+#: Not an account — computed here, like balance_sheet's "__retained__", and for
+#: the same reason: this product deliberately posts no closing entries, so the
+#: prior years' result exists only as a derivation.
+SURPLUS_BROUGHT_FORWARD_ID = "__surplus_bf__"
+SURPLUS_BROUGHT_FORWARD_NAME = "Surplus brought forward"
+
+
 def trial_balance(lines: list[ProjectedLine], accounts: dict[str, Account],
-                  as_of_date: str | None, basis: str) -> dict:
+                  as_of_date: str | None, basis: str,
+                  *, opening_lines: list[ProjectedLine] | None = None,
+                  start_date: str | None = None) -> dict:
+    """The trial balance as at `as_of_date`.
+
+    WITHOUT `start_date` this is inception-to-date and unchanged: one net
+    closing balance per account, on its normal side.
+
+    WITH `start_date` it becomes a PERIOD trial balance — opening, the period's
+    own movement, and closing — and that is ACC-08. The inception-to-date form
+    is right for the balance sheet accounts and wrong for the Profit and Loss
+    ones: a CA who picks FY 2026-27 is asking what this year sold, and was
+    shown every year's sales added together. Nothing corrects that over time,
+    because this product never posts closing entries — `year_end_financial_
+    service` DERIVES cumulative profit into Reserves and Surplus instead, so
+    the income and expense accounts carry their whole history for ever.
+
+    WHY A SYNTHETIC ROW IS REQUIRED, and why this is not just a narrower
+    window. Balance-sheet accounts must still close cumulatively — a balance
+    IS what has accumulated — while the P&L accounts show one year. Those two
+    do not add up: without closing entries, Σ(balance-sheet net) equals the
+    cumulative profit, so listing this year's P&L beside them leaves the trial
+    balance out by exactly the PRIOR years' result. `Surplus brought forward`
+    carries that figure, and a trial balance that did not show it would either
+    not balance or would hide a real number. It is the same derivation
+    `balance_sheet` already makes for "__retained__", and it is self-correcting
+    for a firm that closes its own books by hand: such an entry moves the
+    profit out of the P&L accounts and into equity, so the derived figure falls
+    by exactly what posted equity rises by.
+    """
     totals: dict[str, dict] = {}
-    for ln in lines:
-        a = _acc(accounts, ln.account_id)
-        row = totals.get(ln.account_id)
+
+    def row_for(account_id: str) -> dict:
+        row = totals.get(account_id)
         if row is None:
+            a = _acc(accounts, account_id)
             row = {
-                "account_id": ln.account_id,
+                "account_id": account_id,
                 "account_code": a.code,
                 "account_name": a.name,
                 "account_type": a.type,
@@ -126,19 +164,58 @@ def trial_balance(lines: list[ProjectedLine], accounts: dict[str, Account],
                 "total_credit_paise": 0,
                 "net_paise": 0,
             }
-            totals[ln.account_id] = row
+            totals[account_id] = row
+        return row
+
+    for ln in lines:
+        row = row_for(ln.account_id)
         row["total_debit_paise"] += ln.debit_paise
         row["total_credit_paise"] += ln.credit_paise
 
+    periodic = start_date is not None
+    opening_net: dict[str, int] = {}
+    if periodic:
+        for ln in opening_lines or []:
+            row_for(ln.account_id)          # an account that only moved BEFORE the period
+            opening_net[ln.account_id] = (opening_net.get(ln.account_id, 0)
+                                          + ln.debit_paise - ln.credit_paise)
+
     tb_lines, grand_dr, grand_cr = [], 0, 0
     for row in totals.values():
-        net = row["total_debit_paise"] - row["total_credit_paise"]
-        row["net_paise"] = net
-        # Drop net-zero accounts — netted, not gross, so equal offsetting
-        # debit/credit turnover (e.g. a fully-reversed entry, or A/R fully
-        # transformed away in cash basis) doesn't leave a phantom balance.
-        if net == 0:
-            continue
+        period_dr = row["total_debit_paise"]
+        period_cr = row["total_credit_paise"]
+        movement = period_dr - period_cr
+
+        if not periodic:
+            net = movement
+            row["net_paise"] = net
+            # Drop net-zero accounts — netted, not gross, so equal offsetting
+            # debit/credit turnover (e.g. a fully-reversed entry, or A/R fully
+            # transformed away in cash basis) doesn't leave a phantom balance.
+            if net == 0:
+                continue
+        else:
+            a = _acc(accounts, row["account_id"])
+            is_pl = a.is_income or a.is_expense
+            # A P&L account's opening is presented as NIL: its prior movement
+            # is not lost, it is carried in the brought-forward row below,
+            # which is where a closed set of books would have put it.
+            opening = 0 if is_pl else opening_net.get(row["account_id"], 0)
+            net = opening + movement
+            row["opening_debit_paise"] = opening if opening > 0 else 0
+            row["opening_credit_paise"] = -opening if opening < 0 else 0
+            row["period_debit_paise"] = period_dr
+            row["period_credit_paise"] = period_cr
+            row["net_paise"] = net
+            # An account that moved and came back to nil is DROPPED only when
+            # nothing happened to it at all. It closes at zero, but a CA
+            # reading a period trial balance is asking what moved, and a row
+            # with ₹10,00,000 through it and a nil closing is exactly the row
+            # they want to see. (The inception-to-date form above has no
+            # turnover column to show, which is why it still drops on net.)
+            if net == 0 and period_dr == 0 and period_cr == 0:
+                continue
+
         # Trial Balance shows each account's net closing balance on its
         # normal side, never gross turnover mirrored on both columns.
         row["total_debit_paise"] = net if net > 0 else 0
@@ -146,6 +223,31 @@ def trial_balance(lines: list[ProjectedLine], accounts: dict[str, Account],
         tb_lines.append(row)
         grand_dr += row["total_debit_paise"]
         grand_cr += row["total_credit_paise"]
+
+    if periodic:
+        # Σ over the P&L accounts of their opening net is (prior expenses −
+        # prior income) — a CREDIT when the prior years made a profit, which
+        # is the side a surplus belongs on.
+        bf = sum(net for aid, net in opening_net.items()
+                 if (_acc(accounts, aid).is_income or _acc(accounts, aid).is_expense))
+        if bf != 0:
+            row = {
+                "account_id": SURPLUS_BROUGHT_FORWARD_ID,
+                "account_code": "",
+                "account_name": SURPLUS_BROUGHT_FORWARD_NAME,
+                "account_type": "Equity",
+                "opening_debit_paise": bf if bf > 0 else 0,
+                "opening_credit_paise": -bf if bf < 0 else 0,
+                "period_debit_paise": 0,
+                "period_credit_paise": 0,
+                "net_paise": bf,
+                "total_debit_paise": bf if bf > 0 else 0,
+                "total_credit_paise": -bf if bf < 0 else 0,
+            }
+            tb_lines.append(row)
+            grand_dr += row["total_debit_paise"]
+            grand_cr += row["total_credit_paise"]
+
     tb_lines.sort(key=lambda x: x["account_code"])
     diff = grand_dr - grand_cr
     out = {
@@ -156,6 +258,8 @@ def trial_balance(lines: list[ProjectedLine], accounts: dict[str, Account],
         "is_balanced": diff == 0,
         "difference_paise": diff,
     }
+    if periodic:
+        out["start_date"] = start_date
     if basis == "cash":
         out["basis"] = "cash"
     return out
