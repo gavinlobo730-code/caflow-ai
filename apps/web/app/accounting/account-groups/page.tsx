@@ -55,6 +55,11 @@ function LedgerDialog({ account, onClose, onSaved }:
     account_type: account?.account_type ?? "Asset",
     parent_group: account?.parent_group ?? "",
     sub_group:    account?.sub_group ?? "",
+    // ACC-11. Only the CSV importer ever set this, so a ledger created here
+    // had none — and since the year-end statements derive their Schedule III
+    // line from the account, none means the coarse fallback: a bank account
+    // presented as Other Current Assets.
+    account_subtype: account?.account_subtype ?? "",
     is_active:    account?.is_active ?? true,
   });
   const [saving, setSaving] = useState(false);
@@ -74,6 +79,7 @@ function LedgerDialog({ account, onClose, onSaved }:
         code: form.code.trim(),
         parent_group: form.parent_group.trim(),
         sub_group: form.sub_group.trim(),
+        account_subtype: form.account_subtype.trim(),
         is_active: form.is_active,
         ...(account ? {} : { account_type: form.account_type }),
       };
@@ -138,6 +144,29 @@ function LedgerDialog({ account, onClose, onSaved }:
                    value={form.sub_group}
                    onChange={e => setForm(f => ({ ...f, sub_group: e.target.value }))} />
           </div>
+        </div>
+
+        {/* ACC-11. Parent group and sub group above are how the CA reads their
+            own trial balance; THIS is what the statutory statements read. The
+            classifier keyword-scans it (domain/reporting/schedule_iii), so
+            "Bank Account" reaches Cash & Cash Equivalents and a blank reaches
+            the coarse fallback for the account's type. */}
+        <div>
+          <label className="block text-[11px] font-medium text-[#64748B] mb-1">
+            Nature (for the Balance Sheet)
+          </label>
+          <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs"
+                 placeholder="Bank Account, Trade Receivables, Plant &amp; Machinery…"
+                 value={form.account_subtype}
+                 onChange={e => setForm(f => ({ ...f, account_subtype: e.target.value }))} />
+          {!form.account_subtype.trim() && (
+            <p className="mt-1 text-[10px] text-amber-700">
+              Without this, the ledger presents under the generic caption for its
+              type — an Asset as Other Current Assets — on the Balance Sheet and
+              in every year-end schedule. Schedule III Mapping can override it
+              afterwards.
+            </p>
+          )}
         </div>
 
         {error && (
