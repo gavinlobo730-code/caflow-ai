@@ -220,3 +220,44 @@ means teaching the statement builders, the year-end translation and the PDF
 about it. Nothing in production is mapped to any of them, so removing them cost
 nothing — but a CA who wanted one now cannot ask for it, which is the honest
 trade and worth revisiting.
+
+
+---
+
+## Track F2 — ESIC and PT can record a remittance (migration 365)
+
+**And the plan's shape was wrong, so it changed.** F2 said "one
+`statutory_filings` record, for everything". Reading what already exists says
+otherwise:
+
+- `public.filings` is the GST/ITR record and **drives the period lock** through
+  `journal_period_lock_reason`. Migrating it would risk the one thing that works
+  to tidy the ones that do not.
+- `public.epfo_ecr_filings` (335) carries `return_type`, a submitted-vs-approved
+  state, and a sequence rule where an unapproved month **blocks the next**. That
+  is EPFO's own machinery, not a generic lifecycle, and flattening it loses it.
+- MCA filings hang off a company and an SRN, and an SRN is not a filing.
+
+So 365 closes the actual hole — **ESI and PT, which had no record at all** — in
+the shape 335 proved, rather than unifying four things that are not the same
+thing. They do share a shape: monthly, per client, settled by a challan. They
+differ in two ways the columns carry: **PT is per STATE**, so one client with
+staff in two states files twice for one month; and **ESI has a contribution
+period** (H1/H2) the portal shows the remittance under.
+
+22 `_pg` tests, because the frontend reaches ~83 tables directly over PostgREST
+where no `rbac()` runs — a rule enforced in Python is a rule the second write
+path does not have.
+
+### Still to do on Track F
+
+**F1 (the ESIC `.xls`) is blocked on a dependency decision, not on work.** The
+portal wants Excel 97-2003 (BIFF8). This backend has only `openpyxl`, which
+reads and writes `.xlsx` and cannot do BIFF8 — filling the CA's own downloaded
+template needs `xlrd` + `xlwt` + `xlutils`, all three unmaintained. Adding three
+unmaintained dependencies to a financial backend is an owner call, and it rests
+on a fact this environment cannot check: whether the portal still refuses
+`.xlsx` in 2026. The manual that says `.xls` is of unknown vintage.
+
+**F3 (the handoff screen) and F4 (the challan reaches the GL) are now
+unblocked** — 365 is the record they both needed.
