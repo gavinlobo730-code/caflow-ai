@@ -48,8 +48,19 @@ export function CompliancePanel({
     is_interstate: invoice.is_interstate,
     supply_state_code: invoice.supply_state_code,
     recipient_gstin: invoice.customers?.gstin ?? null,
-    is_reverse_charge: null,
-    gst_treatment: irn.record?.gst_treatment ?? null,
+    // THE INVOICE'S OWN FIELDS, not a hardcoded null and not the e-invoice
+    // record's separate vocabulary (SALES-19). `is_reverse_charge` was pinned
+    // to null, so the treatment summary said "not reverse charge" on every
+    // invoice including the ones that are; and the treatment came only from an
+    // IRN record, so an invoice marked zero-rated or SEZ — the fields GSTR-1 is
+    // actually built from — showed as "Regular" until somebody prepared one.
+    //
+    // `invoice.gst_treatment` is DERIVED server-side from supply_type +
+    // invoice_type + the IGST charged (apps/api/domain/gst/treatment.py). The
+    // e-invoice record's own value is kept as the fallback for the window where
+    // this frontend has redeployed ahead of the backend.
+    is_reverse_charge: invoice.is_reverse_charge ?? null,
+    gst_treatment: invoice.gst_treatment ?? irn.record?.gst_treatment ?? null,
     taxable_amount_paise: invoice.taxable_amount_paise,
     line_hsn_codes: invoice.lines.map((l) => l.hsn_sac),
     // Rule 138's consignment value is measured PER LINE, including the tax and

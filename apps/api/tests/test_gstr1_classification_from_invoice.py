@@ -287,12 +287,17 @@ def test_an_invoice_created_without_them_is_an_ordinary_taxable_sale(db):
 
 def test_reverse_charge_is_carried_through(db):
     """CGST §9(3)/(4) — the recipient is liable. Unflagged, the return says the
-    supplier owes tax somebody else pays."""
+    supplier owes tax somebody else pays.
+
+    The lines are at 0%, and that is the document being right rather than the
+    fixture being convenient: under §9(3)/(4) the supplier does NOT charge the
+    tax — Rule 46(p) has the invoice say so instead. This fixture carried 18%
+    until SALES-16, which is exactly the invoice that defect let through."""
     resp = si.create_invoice(SalesInvoiceIn(
         client_id="CLI", customer_id="CUST", invoice_no="INV-RCM",
         invoice_date="2025-06-10",
         lines=[InvoiceLineIn(description="Service", quantity=1, rate_paise=50_000_00,
-                              gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
+                              gst_rate_percent=0.0, service_catalogue_id="SVC-1")],
         is_reverse_charge=True,
     ), current_user=CALLER)
 

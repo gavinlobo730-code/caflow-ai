@@ -98,6 +98,11 @@ def _issue_invoice(db, total=100000):
         "firm_id": FIRM, "client_id": "CLI", "customer_id": "CUST1", "invoice_no": "INV-1",
         "invoice_date": "2025-06-01", "status": "draft", "total_paise": total,
         "taxable_amount_paise": total, "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0,
+        # A PLACE OF SUPPLY, because an invoice cannot be issued without one
+        # (SALES-29, CGST Rule 46(n)). These rows are seeded straight into
+        # the table rather than built by create_invoice, so they carry only
+        # what is written here — a real invoice always has this column.
+        "supply_state_code": "27",
         "paid_paise": 0, "credited_paise": 0, "is_interstate": False,
     })
     assert si.issue_invoice(inv["id"], CALLER)["success"] is True

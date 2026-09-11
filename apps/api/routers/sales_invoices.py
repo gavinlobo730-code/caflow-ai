@@ -19,6 +19,8 @@ from domain.gst import discount as gst_discount
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
+from domain.gst import supply_classification
+from domain.gst.validator import VALID_STATE_CODES
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
@@ -670,8 +672,34 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     else:
         _assert_invoice_no_available(None if _USE_MOCK else db, firm_id, client_id, invoice_no)  # type: ignore[possibly-undefined]
 
-    # Effective place of supply
-    effective_supply_state = supply_state_code or customer.get("state_code") or ""  # type: ignore[possibly-undefined]
+    # Effective place of supply. THE CUSTOMER'S GSTIN IS A THIRD SOURCE, and it
+    # is the best one where the state code is blank: CGST §25 makes the first
+    # two characters of a GSTIN the registration's state, so a registered
+    # customer always carries their own place of supply whether or not anyone
+    # filled the field in. Falling straight to "" was how an invoice reached
+    # issue with no place of supply at all (SALES-29) — and Rule 46(n) requires
+    # it on the document.
+    # FOUR SOURCES, IN THE ORDER THE STATUTE PUTS THEM, and the last is the one
+    # that makes this answerable rather than merely checked:
+    #
+    #   1. what the CA typed on the invoice;
+    #   2. the customer's recorded state;
+    #   3. the customer's GSTIN — CGST §25 makes its first two characters the
+    #      registration's state, so a REGISTERED customer always carries their
+    #      own place of supply whether or not anybody filled the field in;
+    #   4. THE CLIENT'S OWN STATE. IGST §12(2)(b)(ii): where the recipient is
+    #      unregistered and no address is on record, the place of supply is the
+    #      location of the SUPPLIER. That is the ordinary over-the-counter B2C
+    #      sale, and it is a rule rather than a guess — without it, requiring a
+    #      place of supply at issue would block billing an unregistered walk-in
+    #      customer, which is most of a retail client's day.
+    effective_supply_state = (
+        supply_state_code
+        or customer.get("state_code")  # type: ignore[possibly-undefined]
+        or (customer.get("gstin") or "")[:2]  # type: ignore[possibly-undefined]
+        or (client_state_code if not _USE_MOCK else "")  # type: ignore[possibly-undefined]
+        or ""
+    )
 
     if not _USE_MOCK:
         # CGST Act §8: Intra-state if both in same state; inter-state otherwise
@@ -855,6 +883,22 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         period_lock_service.assert_open(
             get_supabase(), firm_id or "", data.get("client_id"), data.get("invoice_date"),
             bulk_cache.get("period_lock_cache") if bulk_cache is not None else None)
+
+    # WHAT THE INVOICE DECLARES HAS TO MATCH THE TAX IT CARRIES (SALES-16).
+    # `supply_type` and `is_reverse_charge` were stored and never consulted, so
+    # a CA could tick "Exempt" — or "Reverse charge" — and leave the lines at
+    # 18%: the ledger charged the tax, and GSTR-1 declared a value-only nil
+    # supply or an rchrg=Y row telling the portal the CUSTOMER owes it. See
+    # domain/gst/supply_classification for the two statutes and why zero-rated
+    # is deliberately not among them.
+    _conflict = supply_classification.tax_conflict(
+        supply_type=data.get("supply_type"),
+        is_reverse_charge=data.get("is_reverse_charge"),
+        cgst_paise=total_cgst_paise, sgst_paise=total_sgst_paise,
+        igst_paise=total_igst_paise,
+    )
+    if _conflict:
+        raise HTTPException(status_code=422, detail=_conflict)
 
     if _USE_MOCK:
         invoice_id = str(uuid.uuid4())
@@ -1189,6 +1233,23 @@ def _eway_assessment(lines: list) -> dict:
     ]).as_dict()
 
 
+def _gst_treatment(inv: dict) -> str:
+    """The supply's treatment, DERIVED FROM THE INVOICE (SALES-19).
+
+    The Compliance panel used to read this off the e-invoice record, which is a
+    separate vocabulary captured separately — so an invoice marked zero-rated /
+    SEZ showed as "Regular" until somebody also prepared an IRN, and showed
+    whatever that record said if they prepared one disagreeing. The invoice's
+    own `supply_type` + `invoice_type` is what GSTR-1 is built from, so it is
+    what the screen is told."""
+    from domain.gst.treatment import treatment_for_invoice
+    return treatment_for_invoice(
+        supply_type=inv.get("supply_type"),
+        invoice_type=inv.get("invoice_type"),
+        igst_paise=int(inv.get("igst_paise") or 0),
+    )
+
+
 @router.get("/{invoice_id}")
 def get_invoice(
     invoice_id: str,
@@ -1203,6 +1264,7 @@ def get_invoice(
                 raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
             inv["lines"] = [ln for ln in MOCK_SALES_INVOICE_LINES if ln["invoice_id"] == invoice_id]
             inv["eway_assessment"] = _eway_assessment(inv["lines"])
+            inv["gst_treatment"] = _gst_treatment(inv)
             return api_response(True, inv)
 
         from core.supabase_client import get_supabase
@@ -1228,6 +1290,7 @@ def get_invoice(
         )
         invoice["lines"] = lines_resp.data or []
         invoice["eway_assessment"] = _eway_assessment(invoice["lines"])
+        invoice["gst_treatment"] = _gst_treatment(invoice)
         # Resolve a human "Created By" for the detail view (UX only). Prefer the
         # users table; fall back to the create event in the audit trail (covers
         # invoices created before created_by was captured). Never fatal.
@@ -1550,6 +1613,29 @@ def update_invoice(
                 ).eq("id", line_id).eq("sales_invoice_id", invoice_id).execute()
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        # THE SAME CHECK AS CREATE, ON WHAT THE INVOICE WILL HOLD (SALES-16).
+        # An edit can reach the conflict from either side — reclassify a taxable
+        # invoice as exempt, or put taxed lines on one already exempt — so the
+        # merged values are what is tested, not the request alone.
+        # Read the stored row EXPLICITLY. `inv` above is bound only inside two
+        # conditional branches — a lines-replace and a round-off toggle — so
+        # referring to it here raises NameError on every other edit, which the
+        # handler's broad `except` would then report as a generic failure.
+        _cur = (db.table("client_sales_invoices")
+                .select("supply_type, is_reverse_charge, cgst_paise, sgst_paise, igst_paise")
+                .eq("id", invoice_id).eq("firm_id", current_user.get("firm_id"))
+                .limit(1).execute().data or [{}])[0]
+        _eff = {**_cur, **data}
+        _conflict = supply_classification.tax_conflict(
+            supply_type=_eff.get("supply_type"),
+            is_reverse_charge=_eff.get("is_reverse_charge"),
+            cgst_paise=int(_eff.get("cgst_paise") or 0),
+            sgst_paise=int(_eff.get("sgst_paise") or 0),
+            igst_paise=int(_eff.get("igst_paise") or 0),
+        )
+        if _conflict:
+            raise HTTPException(status_code=422, detail=_conflict)
+
         upd_resp = db.table("client_sales_invoices").update(data).eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).execute()
         updated = upd_resp.data[0] if upd_resp.data else data
         log_event(
@@ -1622,6 +1708,29 @@ def issue_invoice(
             period_lock_service.assert_open(
                 db, current_user.get("firm_id") or "", inv.get("client_id"),
                 inv["invoice_date"])
+
+        # A PLACE OF SUPPLY, CHECKED AT ISSUE AND NOT AT DRAFT (SALES-29).
+        #
+        # `supply_state_code` fell through to "" when neither the request nor
+        # the customer carried one, was written unvalidated, and first became an
+        # error when GSTR-1 was built — domain/gst/validator rejects a place of
+        # supply outside VALID_STATE_CODES. So invoices went out all quarter and
+        # the CA met the list of errors on the 10th of the following month, by
+        # which time each one was issued, posted and sent, and correcting it is
+        # a §34 credit note rather than an edit.
+        #
+        # AT ISSUE, not at create: a draft is allowed to be incomplete — that is
+        # what a draft is — and Rule 46(n) requires the place of supply on a
+        # tax INVOICE. Issuing is the moment the document becomes one.
+        _pos = (inv.get("supply_state_code") or "").strip()
+        if _pos not in VALID_STATE_CODES:
+            raise HTTPException(status_code=422, detail=(
+                f"Cannot issue — place of supply is "
+                f"{'missing' if not _pos else f'invalid ({_pos})'}. CGST Rule 46(n) "
+                f"requires it on a tax invoice, and GSTR-1 is rejected without a "
+                f"valid 2-digit state code. Set the Supply State on the invoice, "
+                f"or record the customer's state or GSTIN and re-open the draft."
+            ))
 
         # Auto-create journal entry FIRST — CGST Act §9. If the Chart of Accounts
         # is not set up, this raises ValueError and the invoice stays a draft.
