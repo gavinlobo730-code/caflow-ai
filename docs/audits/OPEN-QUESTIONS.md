@@ -50,30 +50,48 @@ before building against any of them, including anything written this session.
 
 ### A1. Does the §80CCD(2) salary base include arrears of an earlier year?
 
-**The only genuinely open decision here, and it blocks a one-line fix.**
+**The wrong-base half is FIXED (PAY-22). The arrears question is what is left,
+and it is not blocking anything.**
 
-`routers/payroll.py` computes `(basic + da) * months_in_year` and passes it as
-`basic_plus_da_paise` (the §10(13A) HRA base) but **never passes
-`salary_for_80ccd2_paise`**, which `declarations.compute` accepts and
-`itr_engine` uses. The fallback is `req.gross_salary_paise` — which includes
-HRA and every other allowance, the exact things the **Explanation to §80CCD**
+`routers/payroll.py` now passes `salary_for_80ccd2_paise` — the recurring
+`(basic + da) * months_in_year`, the same figure §10(13A) uses. Before that it
+passed nothing, `declarations._build_request` fell back to `gross_salary_paise`,
+and the cap was computed on the allowances the **Explanation to §80CCD**
 expressly excludes ("'salary' includes dearness allowance, if the terms of
 employment so provide, but excludes all other allowances and perquisites").
 
-**So the 14% cap is computed on too large a base and §80CCD(2) is OVER-allowed,
-under-stating tax.** That is PAY-22, and it is live.
+**Two corrections to what this entry said before**, both found by reading the
+code rather than the entry:
 
-**What is not settled** is which figure to pass. The `basic_plus_da_paise`
-already computed is deliberately the RECURRING basic and DA, with arrears
-excluded — and that exclusion exists for a §10(13A) reason (last year's arrears
-must not inflate this year's HRA base) that does not obviously carry to
-§80CCD(2), whose cap is "of his salary **in the previous year**" and whose
-employer contribution may well have been made on the arrears too.
+* **The rate is 10%, not 14%.** 14% is `LIMIT_80CCD2_GOVT_PERCENT`, for a
+  Central or State Government employer; a private employer is
+  `LIMIT_80CCD2_OTHER_PERCENT` at 10.
+* **Payroll holds no employer-side NPS figure at all** — nothing anywhere
+  passes `employer_nps_paise`. So the wrong base was only reachable when an
+  EMPLOYEE declared an §80CCD(2) line, which `_apply_declaration` adds to
+  `employer_nps_80ccd2_paise`. The defect needed both halves at once, which is
+  why ~12,000 tests passed over it: every test of the engine passes the base
+  explicitly, and with no declaration the deduction is zero and the base is
+  irrelevant.
 
-**Recommendation: pass the recurring basic + DA now.** It is unambiguously
-closer to the statute than gross, and the error direction is safe — a smaller
-base means a smaller deduction means more tax, never less. The arrears question
-can then be settled without anything being wrong in the meantime.
+Measured before the fix, one employee on ₹30,00,000 gross with ₹12,00,000 basic
++ DA who declared ₹2,50,000 of employer NPS: **₹2,50,000 allowed where the
+section allows ₹1,20,000, and ₹40,560 under-withheld for the year** — on an
+obligation §192(1) makes the EMPLOYER answerable for.
+
+**What is still open:** whether an earlier year's ARREARS belong in the base.
+§80CCD(2) caps on "his salary **in the previous year**", and arrears received
+this year are salary of this year under §15 where they were not taxed earlier —
+so an employer who contributed NPS on the arrears has an argument they count.
+The figure now passed is deliberately the RECURRING one, excluding arrears,
+because that is the SMALLER base: an arrears month cannot enlarge the cap and
+under-withhold. Settling it the other way would only ever increase the
+deduction, so nothing is wrong in the meantime.
+
+**A separate gap this uncovered, not yet a finding anywhere:** payroll cannot
+record an employer NPS contribution at all. An employer who contributes gets the
+employee no §80CCD(2) relief unless the employee declares it themselves — which
+is over-withholding, the opposite direction, and invisible on the payslip.
 
 ### A2. Should the rule-based deadlines move out of the browser?
 

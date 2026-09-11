@@ -1203,6 +1203,13 @@ def _compute_slip(emp: dict, attendance: Optional[dict] = None, fy: Optional[str
         # salary. Arrears relief has its own path — §89 and Form 10E,
         # domain/payroll/arrears.py — which is where the earlier year belongs.
         basic_plus_da_paise=(basic + da) * months_in_year,
+        # The SAME figure, and deliberately so. §10(13A) and the Explanation to
+        # §80CCD both mean basic plus DA; they are one fact about the salary,
+        # read by two sections. Whether an earlier year's ARREARS belong in the
+        # §80CCD(2) base is genuinely unsettled (OPEN-QUESTIONS §A1) — this
+        # takes the recurring figure, which is the smaller one, so an arrears
+        # month cannot enlarge the cap and under-withhold.
+        salary_for_80ccd2_paise=(basic + da) * months_in_year,
         hra_received_paise=hra * months_in_year,
         # NOT `pt * months_in_year`. Professional tax is not the same amount in
         # every month of the year in two of the four states this file models —
@@ -1310,6 +1317,7 @@ def _monthly_tds(
     declaration,
     annual_gross_paise: int,
     basic_plus_da_paise: int,
+    salary_for_80ccd2_paise: int,
     hra_received_paise: int,
     professional_tax_paise: int,
     fy: Optional[str],
@@ -1361,6 +1369,22 @@ def _monthly_tds(
         # _verified_only_from_month.
         verified_only=_verified_only_from_month(month, declaration),
         professional_tax_paise=professional_tax_paise,
+        # §80CCD(2)'s cap is a percentage of SALARY, and the Explanation to
+        # §80CCD defines that as basic plus DA where the terms of employment so
+        # provide, "but excludes all other allowances and perquisites".
+        #
+        # Nothing passed it, so _build_request fell back to gross_salary_paise —
+        # which is the allowances the Explanation excludes, plus the basic. On
+        # ₹30,00,000 gross with ₹12,00,000 basic + DA and ₹2,50,000 of employer
+        # NPS declared, the 10% cap was computed on ₹30,00,000 instead of
+        # ₹12,00,000, allowing ₹2,50,000 where the section allows ₹1,20,000 and
+        # under-withholding ₹40,560 for the year, per employee.
+        #
+        # Payroll holds no employer-side NPS figure at all, so this only bites
+        # where an employee DECLARES an §80CCD(2) line — _apply_declaration adds
+        # it to employer_nps_80ccd2_paise. That it is reachable only that way is
+        # why it survived: the engine's own tests pass the base explicitly.
+        salary_for_80ccd2_paise=salary_for_80ccd2_paise,
         # Part III of the First Schedule — the OLD-regime nil band widens at 60
         # and again at 80. Nothing here supplied it before migration 333, so an
         # old-regime employee of 62 was withheld on the general ladder.
