@@ -8,6 +8,8 @@ that never existed as columns.
 """
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from typing import Optional
+
+from domain.banking.register import OPENING_DATE_REQUIRED
 from decimal import Decimal
 
 
@@ -48,6 +50,26 @@ class BankAccountIn(BaseModel):
         if v < 0:
             raise ValueError("Opening balance must be non-negative.")
         return v
+
+    @model_validator(mode="after")
+    def opening_balance_needs_a_date(self):
+        """BANK-27. An opening balance is a balance AS AT a date, and the Bank
+        Book's whole treatment of pre-opening lines is conditional on having
+        one: `precedes_opening` is false for every row when the date is null,
+        so a transaction the opening figure ALREADY contains is added to it
+        again — silently, and by exactly its own amount. The register's
+        self-check against the bank's stated balance then diverges at an
+        innocent line, because the running total it compares is the wrong one.
+
+        Refused at creation rather than warned about, because at creation
+        there is nothing to lose: the CA is typing the figure and knows the
+        date it came from. Accounts that already carry the pair report it as a
+        named gap instead (domain/banking/register.opening_balance_gap) — a
+        refusal there would lock them out of their own account.
+        """
+        if int(self.opening_balance_paise or 0) != 0 and not (self.opening_balance_date or "").strip():
+            raise ValueError(OPENING_DATE_REQUIRED)
+        return self
 
 
 class BankAccountUpdateIn(BaseModel):

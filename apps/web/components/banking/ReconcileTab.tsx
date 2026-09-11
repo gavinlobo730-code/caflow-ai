@@ -120,8 +120,21 @@ interface ReconLine {
 interface ReconReport {
   reconciliation: ReconSession; summary: ReconSummary; ties_out: boolean;
   reconciled: ReconLine[]; unreconciled: ReconLine[]; exceptions: ReconLine[];
-  counts: { reconciled: number; unreconciled: number; exceptions: number };
+  /** BANK-23 — in the period, on the statement, and not in the books. Optional
+   *  because a session completed before BANK-23 serves a frozen snapshot (F2)
+   *  that has no such key, and a certified report never recomputes. */
+  not_passed?: ReconLine[];
+  counts: { reconciled: number; unreconciled: number; exceptions: number; not_passed?: number };
 }
+
+/** The buckets that are NOT a work list on this screen. Exceptions belong to
+ *  another session; not-passed lines have no journal to reconcile, so there is
+ *  nothing here to tick — the answer is Bank › Entries. Both therefore hide the
+ *  checkboxes and the action bar, and the one place that decides it is here so
+ *  a third read-only bucket cannot be added and forgotten. */
+const READ_ONLY_VIEWS = ["exceptions", "not_passed"] as const;
+type ReconView = "unreconciled" | "reconciled" | "exceptions" | "not_passed";
+const isReadOnlyView = (v: ReconView) => (READ_ONLY_VIEWS as readonly string[]).includes(v);
 
 /**
  * A reconciliation figure as typed → integer paise, or null if it is not an
@@ -139,7 +152,13 @@ const toPaise = (s: string): number | null => paiseFromRupeeInput(s || "0");
  *  all three fields are the same kind of mistake. */
 const NOT_AN_AMOUNT = "Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas.";
 
-export function BankReconciliation({ clientId }: { clientId: string }) {
+export function BankReconciliation({ clientId, onGoToEntries }: {
+  clientId: string;
+  /** Switch the page to Entries, focused on this bank account. Optional so the
+   *  component still renders standalone; when absent the not-passed bucket
+   *  still LISTS the lines, which is the part that cannot be done elsewhere. */
+  onGoToEntries?: (bankAccountId: string) => void;
+}) {
   const [sessions, setSessions] = useState<ReconSession[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [report, setReport] = useState<ReconReport | null>(null);
@@ -147,7 +166,7 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
   const [loadingReport, setLoadingReport] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showNew, setShowNew] = useState(false);
-  const [view, setView] = useState<"unreconciled" | "reconciled" | "exceptions">("unreconciled");
+  const [view, setView] = useState<ReconView>("unreconciled");
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
@@ -343,7 +362,7 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
   // ordering rows is not accounting, so it stays in the browser. Every figure
   // shown still comes from the backend.
   const lines = (() => {
-    const rows = report ? [...report[view]] : [];
+    const rows = report ? [...(report[view] ?? [])] : [];
     const q = lineSearch.trim().toLowerCase();
     const filtered = q
       ? rows.filter((t) =>
@@ -690,7 +709,7 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
               them — hunting one ₹4,500 line in 300 rows is the actual work. */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex gap-1 bg-[#F1F5F9] p-1 rounded-lg w-fit">
-              {([["unreconciled", "Unreconciled", report.counts.unreconciled], ["reconciled", "Reconciled", report.counts.reconciled], ["exceptions", "Exceptions", report.counts.exceptions]] as const).map(([id, label, n]) => (
+              {([["unreconciled", "Unreconciled", report.counts.unreconciled], ["reconciled", "Reconciled", report.counts.reconciled], ["exceptions", "Exceptions", report.counts.exceptions], ["not_passed", "Not yet passed", report.counts.not_passed ?? 0]] as const).map(([id, label, n]) => (
                 <button key={id} onClick={() => { setView(id); setSel({}); }} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>{label} ({n})</button>
               ))}
             </div>
@@ -710,12 +729,12 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
           </div>
           {lineSearch.trim() && (
             <p className="text-[10px] text-[#94A3B8]">
-              Showing {lines.length} of {report[view].length} — filtering hides rows, it does not
+              Showing {lines.length} of {(report[view] ?? []).length} — filtering hides rows, it does not
               exclude them from the tie-out.
             </p>
           )}
 
-          {!completed && view !== "exceptions" && selectedIds.length > 0 && (
+          {!completed && !isReadOnlyView(view) && selectedIds.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               {view === "unreconciled"
                 ? <button onClick={() => act(() => api.banking.reconciliations.reconcile(selectedId, selectedIds))} disabled={busy} className="text-xs px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Reconcile {selectedIds.length} selected</button>
@@ -743,13 +762,44 @@ export function BankReconciliation({ clientId }: { clientId: string }) {
             </div>
           )}
 
+          {/* BANK-23. Shown above the list rather than as an empty state,
+              because when it is non-empty it is the ANSWER to "why doesn't this
+              tie out" — these lines are on the statement and not in the books,
+              so the reconciled book balance is short by exactly their net.
+              Nothing on this screen can fix them: there is no journal here to
+              reconcile, which is why the bucket has no checkboxes. */}
+          {view === "not_passed" && lines.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-1">
+              <p className="text-xs font-semibold text-amber-900">
+                These lines are on the statement and not yet in the books
+              </p>
+              <p className="text-[11px] text-amber-800">
+                Each one is part of the bank&apos;s balance for this period and none of
+                them is part of yours, so the difference above includes them. Pass
+                them — or set them aside — under Bank › Entries, then come back.
+                The reconciliation cannot be completed while any remain.
+              </p>
+              {onGoToEntries && report.reconciliation.bank_account_id && (
+                <button
+                  onClick={() => onGoToEntries(report.reconciliation.bank_account_id)}
+                  className="text-[11px] font-medium text-amber-900 underline underline-offset-2 hover:text-amber-700">
+                  Open Entries for this account →
+                </button>
+              )}
+            </div>
+          )}
+
           {lines.length === 0 ? (
-            <div className="bg-white rounded-xl border border-[#F1F5F9] p-8 text-center text-xs text-[#94A3B8]">No {view} transactions.</div>
+            <div className="bg-white rounded-xl border border-[#F1F5F9] p-8 text-center text-xs text-[#94A3B8]">
+              {view === "not_passed"
+                ? "Every statement line in this period is in the books."
+                : `No ${view} transactions.`}
+            </div>
           ) : (
             <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
               {lines.map((t) => (
                 <label key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#F8FAFC] cursor-pointer">
-                  {!completed && view !== "exceptions" && (
+                  {!completed && !isReadOnlyView(view) && (
                     <input type="checkbox" checked={!!sel[t.id]} onChange={(e) => setSel((m) => ({ ...m, [t.id]: e.target.checked }))} className="shrink-0" />
                   )}
                   <div className="min-w-0 flex-1">

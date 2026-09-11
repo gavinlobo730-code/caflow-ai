@@ -1051,6 +1051,7 @@ def get_cash_book(
 @router.get("/trial-balance")
 def get_trial_balance(
     as_of_date: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
     client_id: Optional[str] = Query(None),
     basis: str = Query("accrual", pattern="^(accrual|cash)$"),
     current_user: dict = Depends(rbac("accounting", "read")),
@@ -1059,11 +1060,19 @@ def get_trial_balance(
     IT Act Section 145: method of accounting.
     Cash basis is derived from real allocation links (management reporting only);
     it never affects GST returns, which remain invoice-based per the CGST Act.
+
+    `start_date` makes it a PERIOD trial balance (ACC-08): opening, the period's
+    own movement and closing, with the Profit and Loss accounts showing the
+    period alone rather than every year since the books began, and a derived
+    `Surplus brought forward` row carrying the prior years' result. Omit it and
+    the answer is inception-to-date, exactly as before. Cash basis cannot answer
+    a period and says so in `period_gap` rather than quietly widening the window.
     """
     if client_id:
         assert_client_access(current_user, client_id)
     tb = _reporting_service(current_user).trial_balance(
-        current_user["firm_id"], client_id, as_of_date, basis=basis
+        current_user["firm_id"], client_id, as_of_date, basis=basis,
+        start_date=start_date,
     )
     return api_response(True, tb)
 

@@ -38,6 +38,14 @@ export default function BankPage() {
   const { clientId } = useClientNav();
   const [tab, setTab] = useState<BankTab>("entries");
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // BANK-23. The Reconcile tab's "Not yet passed" bucket names lines that are on
+  // the statement and not in the books; the work to clear them is on Entries, so
+  // the tab state lifts just far enough for one to send the CA to the other with
+  // the right bank account already chosen. The reconciliation's own PERIOD is
+  // deliberately not carried over — Entries has no date filter to receive it,
+  // and the bucket lists the dated lines, so inventing one here would be a
+  // second filter to keep in step for no gain.
+  const [entriesFocus, setEntriesFocus] = useState<string>("");
 
   const loadAccounts = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -80,8 +88,9 @@ export default function BankPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
-        {tab === "entries"   && <EntriesTab clientId={clientId} accounts={accounts} />}
-        {tab === "reconcile" && <BankReconciliation clientId={clientId} />}
+        {tab === "entries"   && <EntriesTab clientId={clientId} accounts={accounts} focusBankAccountId={entriesFocus} />}
+        {tab === "reconcile" && <BankReconciliation clientId={clientId}
+                                  onGoToEntries={(id) => { setEntriesFocus(id); setTab("entries"); }} />}
         {tab === "rules"     && <RulesTab clientId={clientId} accounts={accounts} />}
       </div>
     </div>

@@ -46,6 +46,7 @@ from fastapi import HTTPException
 from core.db_paging import fetch_all
 from domain.banking.register import (
     build_register, first_divergence, summarise, RegisterLine,
+    opening_balance_gap,
     CLEARED_NONE, CLEARED_PENDING, CLEARED_RECONCILED,
 )
 
@@ -209,6 +210,12 @@ class BankRegisterService:
             "opening_balance_paise": opening,
             "opening_balance_date": (str(account["opening_balance_date"])[:10]
                                      if account.get("opening_balance_date") else None),
+            # BANK-27. Both register paths — the SQL function and the Python
+            # twin — come through here, because the account row is fetched in
+            # Python for both. So the gap is stated once and neither path can
+            # be the one that forgets it.
+            "opening_balance_gap": opening_balance_gap(
+                opening, account.get("opening_balance_date")),
         }
 
     # ── the database's answer ────────────────────────────────────────────────

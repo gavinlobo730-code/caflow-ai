@@ -28,6 +28,8 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from domain.accounting import journal_source as JS
+
 from services.phase2_journal_service import phase2_journal_service
 from services import period_lock_service
 from services.period_validation_service import period_validation_service
@@ -50,11 +52,16 @@ def _is_manual(entry: dict) -> bool:
 
 def _not_manual_message(entry: dict) -> str:
     """Migration 338's sentence, so the screen and the database say the same
-    thing whichever of them refuses first."""
-    what = (entry.get("source_type") or "").strip() or "source document"
-    return (f"This entry was posted automatically from a {what}. Correct the "
-            "document itself — editing its journal would leave the document "
-            "and the ledger saying different things.")
+    thing whichever of them refuses first.
+
+    The document is named in WORDS now — "a sales invoice", not "a
+    sales_invoice" — because every posting path stamps a source since the
+    journal_source sweep, and echoing a column value at a CA was only ever
+    tolerable while most entries had none to echo. `label_for` still falls back
+    to "source document" for an entry posted before its path stamped one."""
+    return (f"This entry was posted automatically from a {JS.label_for(entry.get('source_type'))}. "
+            "Correct the document itself — editing its journal would leave the "
+            "document and the ledger saying different things.")
 
 ALLOWED_ENTRY_TYPES = {
     "Journal", "Contra", "Payment", "Receipt", "Sales", "Purchase", "Opening",

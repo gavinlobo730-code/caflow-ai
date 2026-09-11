@@ -134,6 +134,36 @@ class BankEntryService:
         n = getattr(res, "count", None)
         return int(n) if n is not None else len(res.data or [])
 
+    def _trusted_sweep(self, q, trusted: dict):
+        """Narrow a READY, error-free query to the lines a trusted rule may
+        pass unprompted. `counts` and `pass_ready` both go through here, on
+        purpose: a `trusted_pending` the sweep will not pass is a number on
+        the screen that never goes down.
+
+        DRAFTED BY ONE OF THESE RULES, and NOT answered by a person since.
+        Drafting stamps draft_rule_id on the row and answering the line does
+        not clear the stamp, so without the second half the sweep picks up a
+        line whose ledger, entity and GST treatment came from a human.
+        pass_entry declines to apply the draft over them (coded_by_a_human),
+        so what posts is the CA's own coding — but it posts credited to the
+        rule's trusted_by, with source = bank_trusted_rule. The design's
+        whole ground for acting unprompted is that a named person answers for
+        it (docs/architecture/09-bank-entries.md); naming the wrong one takes
+        that ground away. And coding a line is not deciding to post it.
+
+        Filtered HERE, in the query, rather than after the fetch: pass_ready's
+        make() builds the row page AND the `remaining` count, and
+        jobs/bank_trusted_rules_job loops until remaining is 0 or a chunk does
+        nothing. A post-fetch filter would under-fill the chunk and, where the
+        first fifty rows are all human-coded, end the loop with every passable
+        line behind them unswept — a silent cap that reads as working.
+
+        coded_by_a_human is the trigger-maintained column migration 369 added:
+        the predicate entry_state's own 'ready' branch already computed, moved
+        out of the CASE so there is one of it rather than two.
+        """
+        return q.in_("draft_rule_id", list(trusted)).eq("coded_by_a_human", False)
+
     def counts(self, db, firm_id: str, client_id: str,
                bank_account_id: Optional[str] = None) -> dict:
         """One number per state, plus the two the screen acts on: `undrafted`
@@ -149,8 +179,8 @@ class BankEntryService:
             lambda count=False: base(count).in_("entry_state", list(E.OPEN_STATES)).is_("drafted_at", "null"))
         trusted = self._trusted_rules(db, firm_id, client_id)
         out["trusted_pending"] = (
-            self._count(lambda count=False: base(count).eq("entry_state", E.READY)
-                        .is_("draft_error", "null").in_("draft_rule_id", list(trusted)))
+            self._count(lambda count=False: self._trusted_sweep(
+                base(count).eq("entry_state", E.READY).is_("draft_error", "null"), trusted))
             if trusted else 0)
         return out
 
@@ -482,6 +512,14 @@ class BankEntryService:
             return _outcome(txn_id, "skipped", "Set aside — restore it first.")
         if state == E.COVERED:
             return _outcome(txn_id, "skipped", "Passes with its paying side.")
+        # A trusted rule's authority covers the rule's PROPOSAL. This line was
+        # answered by a person, so it is not the rule's to pass and not the
+        # rule's to be credited with. pass_ready already excludes these from
+        # the trusted sweep in the query (migration 369); this holds the rule
+        # for any other caller that hands over a by_rule.
+        if by_rule is not None and E.coded_by_a_human(txn):
+            return _outcome(txn_id, "skipped",
+                            "You coded this line yourself — a trusted rule does not pass it.")
 
         post_id = txn_id
         # The GST treatment for a line the CA coded themselves comes from the
@@ -622,10 +660,11 @@ class BankEntryService:
 
         Only READY lines with no standing error are picked — a line whose last
         pass failed waits for a human or a redraft rather than failing again
-        on every chunk. With only_trusted, only lines a trusted rule drafted,
-        each passed as that rule's trusted_by; the flag is read from the rule
-        NOW, so un-trusting stops the sweep at once. Deliberately not atomic
-        across lines: forty-nine good lines must not roll back for the fiftieth.
+        on every chunk. With only_trusted, only lines a trusted rule drafted
+        AND nobody has answered since, each passed as that rule's trusted_by;
+        the flag is read from the rule NOW, so un-trusting stops the sweep at
+        once. Deliberately not atomic across lines: forty-nine good lines must
+        not roll back for the fiftieth.
         """
         limit = max(1, min(int(limit), MAX_CHUNK))
         trusted = self._trusted_rules(db, firm_id, client_id) if only_trusted else {}
@@ -638,7 +677,7 @@ class BankEntryService:
             if txn_ids:
                 q = q.in_("id", list(txn_ids))
             if only_trusted:
-                q = q.in_("draft_rule_id", list(trusted))
+                q = self._trusted_sweep(q, trusted)
             return q
 
         rows = make().order("transaction_date").order("id").limit(limit).execute().data or []

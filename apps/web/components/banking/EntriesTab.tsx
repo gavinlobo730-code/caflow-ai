@@ -135,14 +135,28 @@ const REDRAFT_CHUNK = 100;
 
 type Progress = { label: string; done: number; total: number | null } | null;
 
-export function EntriesTab({ clientId, accounts }: { clientId: string; accounts: Account[] }) {
+export function EntriesTab({ clientId, accounts, focusBankAccountId }: {
+  clientId: string;
+  accounts: Account[];
+  /** BANK-23 — a bank account the Reconcile tab has sent the CA here to clear.
+   *  Applied once when it arrives, never on every render: it is a handoff, not
+   *  a lock, so the CA can change the picker straight afterwards. */
+  focusBankAccountId?: string;
+}) {
   const { toast } = useToast();
   const router = useRouter();
   const [state, setState] = useState<EntryListState>("to_do");
   const [showImport, setShowImport] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-  const [bankAccountId, setBankAccountId] = useState("");
+  const [bankAccountId, setBankAccountId] = useState(focusBankAccountId ?? "");
+
+  // The handoff from Reconcile (BANK-23). Keyed on the value, so arriving with a
+  // new account re-focuses and arriving with the same one does not fight a
+  // picker the CA has since changed. An empty string is "no handoff".
+  useEffect(() => {
+    if (focusBankAccountId) setBankAccountId(focusBankAccountId);
+  }, [focusBankAccountId]);
   const [counts, setCounts] = useState<Counts>(ZERO);
   const [rows, setRows] = useState<Entry[]>([]);
   const [total, setTotal] = useState(0);

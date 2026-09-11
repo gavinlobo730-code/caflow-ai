@@ -114,6 +114,12 @@ interface TrialRow {
   account_type: string;
   total_debit_paise: number;
   total_credit_paise: number;
+  /** ACC-08 — present only on a PERIOD trial balance (one sent with a
+   *  start_date). The closing columns above keep their meaning either way. */
+  opening_debit_paise?: number;
+  opening_credit_paise?: number;
+  period_debit_paise?: number;
+  period_credit_paise?: number;
 }
 
 // Backend trial-balance payload (authoritative totals computed server-side).
@@ -122,6 +128,12 @@ interface TBApiData {
   total_debit_paise: number;
   total_credit_paise: number;
   is_balanced: boolean;
+  /** Echoed back when the request was for a period; absent on the
+   *  inception-to-date form, which is what makes it the flag to render on. */
+  start_date?: string;
+  /** Why a period could not be honoured — cash basis. The backend's sentence;
+   *  never derived here. */
+  period_gap?: string;
 }
 
 // Aggregated balance per account (from journal lines)
@@ -1139,6 +1151,10 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
   // bookless when the report simply couldn't load (found via a real 500 on a
   // paginated fetch for a 12k-entry client; see domain/reporting/sources.py).
   const [loadFailed, setLoadFailed] = useState(false);
+  // ACC-08 — whether the payload we hold IS a period trial balance, and the
+  // backend's sentence when it could not be. Both come off the response.
+  const [periodic, setPeriodic] = useState(false);
+  const [periodGap, setPeriodGap] = useState<string | null>(null);
 
   // A trial balance is a point-in-time statement, so the picker's END date is
   // the whole of it — exactly how Balance Sheet uses the same control. Until
@@ -1156,6 +1172,13 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
     [periodMode, financialYear, customFrom, customTo, ledgerSpan],
   );
   const asOf = period.end;
+  // ACC-08. The picker has always had a START and the trial balance never sent
+  // it, so choosing a financial year only moved the as-at date: the Profit and
+  // Loss rows still carried every year since the books began, and nothing
+  // corrects that over time because this product posts no closing entries.
+  // Sending it makes this a PERIOD trial balance — opening, movement, closing,
+  // with a derived "Surplus brought forward" row carrying the prior result.
+  const periodStart = period.start;
 
   const updateBasis = (b: "accrual" | "cash") => {
     const params = new URLSearchParams(searchParams.toString());
@@ -1173,8 +1196,9 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
         // Keyed on the as-of DATE, not the financial year: two periods ending on
         // different days are different statements, and an FY key would serve the
         // first one back for the second.
-        reportKey([clientId, asOf, basis, "tb"]),
-        () => api.accounting.trialBalance({ basis, as_of_date: asOf, client_id: clientId }),
+        reportKey([clientId, periodStart, asOf, basis, "tb"]),
+        () => api.accounting.trialBalance({
+          basis, as_of_date: asOf, start_date: periodStart, client_id: clientId }),
         { force },
       )) as { success: boolean; data: TBApiData | null };
       if (res.success && res.data) {
@@ -1184,12 +1208,20 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
           credit: res.data.total_credit_paise,
           balanced: res.data.is_balanced,
         });
+        // Read from the RESPONSE, never from what we asked for: cash basis
+        // cannot answer a period and says so, and rendering opening columns
+        // over an inception-to-date payload would label a cumulative figure
+        // as a period one.
+        setPeriodic(!!res.data.start_date);
+        setPeriodGap(res.data.period_gap ?? null);
         setLoadFailed(false);
       } else {
         // res.success===false only ever comes from a backend error path — a
         // genuinely empty ledger still returns success=true with empty lines.
         setRows([]);
         setTotals({ debit: 0, credit: 0, balanced: true });
+        setPeriodic(false);
+        setPeriodGap(null);
         setLoadFailed(true);
       }
     } catch {
@@ -1202,7 +1234,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
     } finally {
       setLoading(false); setLoaded(true);
     }
-  }, [clientId, asOf, basis]);
+  }, [clientId, asOf, periodStart, basis]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1214,7 +1246,9 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <p className="text-xs font-semibold text-[#334155]">Trial Balance — as at {asOf}</p>
+        <p className="text-xs font-semibold text-[#334155]">
+          Trial Balance — {periodic ? `${periodStart} to ${asOf}` : `as at ${asOf}`}
+        </p>
         <div className="flex items-center gap-2 flex-wrap">
           <PeriodPicker
             mode={periodMode} onModeChange={setPeriodMode} financialYear={financialYear}
@@ -1236,28 +1270,67 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
           Cash basis — management reporting only (IT Act §145). GST returns remain invoice-based per CGST Act.
         </div>
       )}
+      {/* ACC-08. The backend's sentence, shown because the alternative is a
+          report that looks like the year and is not one. */}
+      {periodGap && (
+        <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs text-amber-800">
+          {periodGap}
+        </div>
+      )}
       {loading ? <TableSkeleton cols={5} rows={6} /> : loaded && rows.length > 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Code</th><th className="px-3 py-3 text-left font-semibold">Account</th><th className="px-3 py-3 text-left font-semibold">Type</th><th className="px-3 py-3 text-right font-semibold">Debit (₹)</th><th className="px-4 py-3 text-right font-semibold">Credit (₹)</th></tr></thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              {rows.map((r) => (
-                <tr key={r.account_id} className="hover:bg-[#F8FAFC] cursor-pointer" onClick={() => onDrillDown(r.account_id)}>
-                  <td className="px-4 py-2 font-mono text-[#64748B]">{r.account_code}</td>
-                  <td className="px-3 py-2 font-medium text-[#1E293B] hover:text-blue-700 hover:underline">{r.account_name}</td>
-                  <td className="px-3 py-2 text-[#94A3B8]">{r.account_type}</td>
-                  <td className="px-3 py-2 text-right font-mono text-[#334155] hover:text-blue-700 hover:underline">{r.total_debit_paise > 0 ? fmt(r.total_debit_paise) : "—"}</td>
-                  <td className="px-4 py-2 text-right font-mono text-[#334155] hover:text-blue-700 hover:underline">{r.total_credit_paise > 0 ? fmt(r.total_credit_paise) : "—"}</td>
+            <thead>
+              {periodic && (
+                <tr className="text-[#94A3B8] text-[10px]">
+                  <th colSpan={3} />
+                  <th colSpan={2} className="px-3 pt-2 text-center font-semibold">Opening</th>
+                  <th colSpan={2} className="px-3 pt-2 text-center font-semibold">This period</th>
+                  <th colSpan={2} className="px-4 pt-2 text-center font-semibold">Closing</th>
                 </tr>
-              ))}
+              )}
+              <tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <th className="px-4 py-3 text-left font-semibold">Code</th>
+                <th className="px-3 py-3 text-left font-semibold">Account</th>
+                <th className="px-3 py-3 text-left font-semibold">Type</th>
+                {periodic && <th className="px-3 py-3 text-right font-semibold">Dr (₹)</th>}
+                {periodic && <th className="px-3 py-3 text-right font-semibold">Cr (₹)</th>}
+                {periodic && <th className="px-3 py-3 text-right font-semibold">Dr (₹)</th>}
+                {periodic && <th className="px-3 py-3 text-right font-semibold">Cr (₹)</th>}
+                <th className="px-3 py-3 text-right font-semibold">{periodic ? "Dr (₹)" : "Debit (₹)"}</th>
+                <th className="px-4 py-3 text-right font-semibold">{periodic ? "Cr (₹)" : "Credit (₹)"}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
+              {rows.map((r) => {
+                // The brought-forward surplus is DERIVED, not an account, so it
+                // has no ledger to drill into — the same reason the Balance
+                // Sheet's "__retained__" row is not a link.
+                const derived = r.account_id.startsWith("__");
+                return (
+                <tr key={r.account_id}
+                    className={derived ? "bg-[#F8FAFC]" : "hover:bg-[#F8FAFC] cursor-pointer"}
+                    onClick={derived ? undefined : () => onDrillDown(r.account_id)}>
+                  <td className="px-4 py-2 font-mono text-[#64748B]">{r.account_code}</td>
+                  <td className={`px-3 py-2 font-medium text-[#1E293B] ${derived ? "italic" : "hover:text-blue-700 hover:underline"}`}>{r.account_name}</td>
+                  <td className="px-3 py-2 text-[#94A3B8]">{r.account_type}</td>
+                  {periodic && <td className="px-3 py-2 text-right font-mono text-[#94A3B8]">{(r.opening_debit_paise ?? 0) > 0 ? fmt(r.opening_debit_paise!) : "—"}</td>}
+                  {periodic && <td className="px-3 py-2 text-right font-mono text-[#94A3B8]">{(r.opening_credit_paise ?? 0) > 0 ? fmt(r.opening_credit_paise!) : "—"}</td>}
+                  {periodic && <td className="px-3 py-2 text-right font-mono text-[#64748B]">{(r.period_debit_paise ?? 0) > 0 ? fmt(r.period_debit_paise!) : "—"}</td>}
+                  {periodic && <td className="px-3 py-2 text-right font-mono text-[#64748B]">{(r.period_credit_paise ?? 0) > 0 ? fmt(r.period_credit_paise!) : "—"}</td>}
+                  <td className={`px-3 py-2 text-right font-mono text-[#334155] ${derived ? "" : "hover:text-blue-700 hover:underline"}`}>{r.total_debit_paise > 0 ? fmt(r.total_debit_paise) : "—"}</td>
+                  <td className={`px-4 py-2 text-right font-mono text-[#334155] ${derived ? "" : "hover:text-blue-700 hover:underline"}`}>{r.total_credit_paise > 0 ? fmt(r.total_credit_paise) : "—"}</td>
+                </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-[#E2E8F0] font-semibold">
-                <td colSpan={3} className="px-4 py-3 text-[#334155] text-sm">Total</td>
+                <td colSpan={periodic ? 7 : 3} className="px-4 py-3 text-[#334155] text-sm">Total</td>
                 <td className="px-3 py-3 text-right font-mono text-[#0F172A] text-sm">₹{(grandDebit/100).toFixed(2)}</td>
                 <td className="px-4 py-3 text-right font-mono text-[#0F172A] text-sm">₹{(grandCredit/100).toFixed(2)}</td>
               </tr>
-              <tr><td colSpan={5} className="px-4 pb-3">{isBalanced ? <span className="text-xs text-green-600 font-medium">✓ Trial Balance is balanced</span> : <span className="text-xs text-red-600 font-medium">✗ Out of balance by ₹{(Math.abs(grandDebit-grandCredit)/100).toFixed(2)}</span>}</td></tr>
+              <tr><td colSpan={periodic ? 9 : 5} className="px-4 pb-3">{isBalanced ? <span className="text-xs text-green-600 font-medium">✓ Trial Balance is balanced</span> : <span className="text-xs text-red-600 font-medium">✗ Out of balance by ₹{(Math.abs(grandDebit-grandCredit)/100).toFixed(2)}</span>}</td></tr>
             </tfoot>
           </table>
         </div>
@@ -3205,11 +3278,24 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     const money = (p: number) => (p / 100).toFixed(2);
 
     if (reportType === "trial") {
-      const res = (await api.accounting.trialBalance({ basis, as_of_date: end, client_id: clientId })) as
+      // ACC-08. `start` as well as `end`, because this function's own contract
+      // is that "exported figures match the screen exactly" — and the screen
+      // now asks for the financial year rather than everything up to its last
+      // day. Without it the export would keep showing every prior year's
+      // revenue under a sheet named for one year.
+      const res = (await api.accounting.trialBalance({
+        basis, as_of_date: end, start_date: start, client_id: clientId })) as
         { success: boolean; data: TBApiData | null };
       const d = res.data;
+      const periodic = !!d?.start_date;
       const rows: Record<string, string | number>[] = (d?.lines ?? []).map((l) => ({
         "Account Code": l.account_code, "Account Name": l.account_name, "Type": l.account_type,
+        ...(periodic ? {
+          "Opening Dr (₹)": money(l.opening_debit_paise ?? 0),
+          "Opening Cr (₹)": money(l.opening_credit_paise ?? 0),
+          "Period Dr (₹)": money(l.period_debit_paise ?? 0),
+          "Period Cr (₹)": money(l.period_credit_paise ?? 0),
+        } : {}),
         "Debit (₹)": money(l.total_debit_paise), "Credit (₹)": money(l.total_credit_paise),
       }));
       rows.push({

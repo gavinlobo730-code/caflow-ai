@@ -215,22 +215,77 @@ class ReportingService:
             _logger.error("passbook shadow compute failed %s: %s", ctx, e)
         return legacy_out
 
+    #: Why a cash-basis trial balance cannot be struck for a PERIOD. Named
+    #: rather than silently ignored: a caller who asked for one year and got
+    #: every year would have no way to tell.
+    CASH_PERIOD_GAP = (
+        "A cash-basis trial balance is shown inception-to-date. The cash view is "
+        "produced by transforming the whole ledger — a receipt in this period "
+        "settles an invoice raised in another, and the transformation spans both "
+        "— so it cannot be split into an opening balance and a period's movement "
+        "without counting those settlements twice. Switch to accrual for a "
+        "period trial balance."
+    )
+
     def trial_balance(self, firm_id: str, client_id: Optional[str],
-                      as_of_date: Optional[str], basis: str = "accrual") -> dict:
+                      as_of_date: Optional[str], basis: str = "accrual",
+                      start_date: Optional[str] = None) -> dict:
+        """Inception-to-date, or — with `start_date` — a period trial balance.
+
+        ACC-08. Without a start every line since the books began is summed, which
+        is right for the balance-sheet accounts and wrong for the Profit and Loss
+        ones, and stays wrong for ever because this product posts no closing
+        entries. See builders.trial_balance for what the period form does and why
+        it needs a brought-forward row.
+
+        TWO WINDOWS, ONE FETCH. The opening figures come from [inception,
+        start), the movement from [start, as_of], and on the fast path both are
+        projected from the SAME bucket read — which is what `_passbook_lines`
+        was split out of `_passbook_accrual_lines` to allow (its docstring names
+        cash flow's opening-and-closing cash as the first such caller). Adding a
+        period must not add a Mumbai round trip to a report that already has
+        one.
+        """
         as_of = as_of_date or ist_today().isoformat()
+        # Cash basis cannot answer a period — see CASH_PERIOD_GAP. Dropped to
+        # None HERE, once, so neither path below has to remember.
+        gap = self.CASH_PERIOD_GAP if (start_date and basis == "cash") else None
+        start = None if gap else start_date
+        opening_end = _day_before(start) if start else None
+
+        def with_gap(out: dict) -> dict:
+            if gap:
+                out["period_gap"] = gap
+            return out
 
         def legacy():
-            snap = self.source.snapshot(firm_id, client_id, None, as_of)
-            return builders.trial_balance(self._lines(snap, basis), snap.accounts, as_of, basis)
+            snap = self.source.snapshot(firm_id, client_id, start, as_of)
+            opening = (self.source.snapshot(firm_id, client_id, None, opening_end)
+                       if start else None)
+            # The windowed snapshot's account map can miss an account that only
+            # moved BEFORE the period; the opening one carries it.
+            accounts = dict(snap.accounts)
+            if opening:
+                accounts = {**opening.accounts, **accounts}
+            return with_gap(builders.trial_balance(
+                self._lines(snap, basis), accounts, as_of, basis,
+                opening_lines=self._lines(opening, basis) if opening else None,
+                start_date=start))
 
         if not self._passbook_applicable(basis, client_id):
             return legacy()
 
         def fast():
-            accounts, lines = self._passbook_accrual_lines(firm_id, client_id, None, as_of)
-            return builders.trial_balance(lines, accounts, as_of, "accrual")
+            accounts = self.source._accounts(firm_id, client_id)
+            buckets = self.source.fetch_buckets(firm_id, client_id)
+            lines = self._passbook_lines(firm_id, client_id, start, as_of, buckets)
+            opening_lines = (self._passbook_lines(firm_id, client_id, None, opening_end, buckets)
+                             if start else None)
+            return with_gap(builders.trial_balance(
+                lines, accounts, as_of, "accrual",
+                opening_lines=opening_lines, start_date=start))
 
-        return self._serve(("trial_balance", firm_id, client_id, as_of), fast, legacy)
+        return self._serve(("trial_balance", firm_id, client_id, as_of, start), fast, legacy)
 
     def ledger(self, firm_id: str, client_id: Optional[str], account_id: str,
                start_date: Optional[str] = None, end_date: Optional[str] = None,

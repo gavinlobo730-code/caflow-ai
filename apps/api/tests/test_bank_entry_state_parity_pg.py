@@ -17,6 +17,9 @@ WHAT ONLY POSTGRES CAN PROVE
     * draft_error is CLEARED when a human's answer changes the coding —
       UPDATE-time behaviour the Python twin has no OLD row to express.
     * has_splits follows bank_transaction_splits through its trigger.
+    * coded_by_a_human (migration 369) equals the twin on every case in the
+      same table, is recomputed on UPDATE, survives a NULL category, and
+      cannot be written by application code.
     * The three CHECKs refuse what they must: a grade without a source, a
       state outside the six, and a trusted rule without a person or a ledger.
 """
@@ -124,6 +127,47 @@ def test_the_trigger_and_the_twin_agree_on_insert(db, row, expected):
     tid = _insert(db, row)
     assert _scalar(db, f"SELECT entry_state FROM bank_transactions WHERE id='{tid}'") == expected
     assert E.entry_state(row) == expected
+
+
+# ── coded_by_a_human (migration 369) ─────────────────────────────────────────
+# The same table, asserted against the SECOND computed column. It exists so the
+# trusted-rule sweep can exclude a line the CA answered IN THE QUERY — where
+# the exclusion reaches `remaining` as well as the page — and the sweep acts
+# unprompted, so a column that disagreed with the twin would either post a
+# line nobody meant to post or spin the nightly job on a chunk it will not.
+@pytest.mark.parametrize("row,expected", STATE_TABLE)
+def test_the_column_and_the_twin_agree_on_who_coded_the_line(db, row, expected):
+    del expected                       # the state is the other test's subject
+    tid = _insert(db, row)
+    got = _scalar(db, f"SELECT coded_by_a_human::text FROM bank_transactions WHERE id='{tid}'")
+    assert got == ("true" if E.coded_by_a_human(row) else "false"), row
+
+
+def test_the_column_is_recomputed_on_update_like_the_state_is(db):
+    tid = _insert(db, {})
+    c = lambda: _scalar(db, f"SELECT coded_by_a_human::text FROM bank_transactions WHERE id='{tid}'")  # noqa: E731
+    assert c() == "false"
+    _psql(db, f"UPDATE bank_transactions SET account_id='{ACCT}' WHERE id='{tid}'")
+    assert c() == "true"
+    _psql(db, f"UPDATE bank_transactions SET account_id=NULL WHERE id='{tid}'")
+    assert c() == "false", "un-coding a line must give it back to the sweep"
+
+
+def test_a_null_category_leaves_the_column_false_rather_than_refusing_the_write(db):
+    """`category IN (...)` is NULL for a NULL category, and the column is NOT
+    NULL. Without the COALESCE in the trigger this INSERT fails outright — the
+    import path would stop, not merely mis-classify."""
+    tid = _insert(db, {"category": None})
+    assert _scalar(db, f"SELECT coded_by_a_human::text FROM bank_transactions WHERE id='{tid}'") == "false"
+
+
+def test_application_code_cannot_write_the_column_either(db):
+    tid = _insert(db, {})
+    r = _psql(db, f"UPDATE bank_transactions SET coded_by_a_human=true WHERE id='{tid}'")
+    assert r.returncode == 0, r.stderr
+    assert _scalar(db, f"SELECT coded_by_a_human::text FROM bank_transactions WHERE id='{tid}'") == "false", (
+        "the trigger must overwrite it from the row — a column the application "
+        "can set is a column the sweep can be lied to about")
 
 
 def test_the_trigger_recomputes_on_every_update(db):
