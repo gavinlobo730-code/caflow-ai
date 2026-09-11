@@ -283,6 +283,7 @@ TDS_QUARTER_END_MONTHS = {
     "Q4": (3, 31),   # Jan-Mar → 31 May
 }
 
+
 def tds_return_due_date(quarter: str, financial_year_end: int) -> date:
     """
     quarter: 'Q1', 'Q2', 'Q3', 'Q4'
@@ -294,6 +295,39 @@ def tds_return_due_date(quarter: str, financial_year_end: int) -> date:
     if quarter == "Q4":
         return date(financial_year_end, 5, 31)
     return date(financial_year_end - 1, end_month + 1 if end_month < 12 else 1, due_day)
+
+
+def tds_quarter_of_month(period_month: int) -> str:
+    """Which TDS quarter a WAGE MONTH falls in. Financial-year quarters.
+
+    Apr-Jun Q1, Jul-Sep Q2, Oct-Dec Q3, Jan-Mar Q4 — so January is Q4, whose
+    return is not due until 31 May, while the Q3 return is due on 31 January
+    itself. A calendar that shows only "the quarter this month is in" therefore
+    shows a CA a deadline five months out in the same week the real one falls,
+    which is why `tds_return_due_dates_for_fy` below returns all four rather
+    than making the caller pick.
+    """
+    if 4 <= period_month <= 6:
+        return "Q1"
+    if 7 <= period_month <= 9:
+        return "Q2"
+    if 10 <= period_month <= 12:
+        return "Q3"
+    return "Q4"
+
+
+def tds_return_due_dates_for_fy(financial_year_end: int) -> list[dict]:
+    """All four quarters' TDS return dates for one financial year, in order.
+
+    Rule 31A(2) sets ONE date per quarter whatever the form — 24Q, 26Q, 27Q —
+    and Q4 is the exception: 31 May, not the end of the month following quarter
+    end. Returned together so a calendar never has to decide which quarter to
+    show, which is the decision the browser was getting wrong.
+    """
+    return [
+        {"quarter": q, "due_date": tds_return_due_date(q, financial_year_end)}
+        for q in ("Q1", "Q2", "Q3", "Q4")
+    ]
 
 
 # ── Payroll deposit dates ────────────────────────────────────────────────────

@@ -26,6 +26,31 @@ export function toLocalISO(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** A YYYY-MM-DD calendar date as a Date anchored at LOCAL midnight.
+ *
+ * The inverse of toLocalISO, and the safe replacement for `new Date(str)` on a
+ * date-only string: that yields UTC midnight, which in IST is 05:30 on the same
+ * calendar day — so any `.getDate()`, `.toLocaleDateString()` or comparison
+ * against a locally-anchored "today" reads a date the server never sent.
+ *
+ * The server sends dates as bare YYYY-MM-DD (compliance_engine returns
+ * `date.isoformat()`), so every one of them has to come back through here.
+ * Returns null for "" or anything that is not a calendar date, rather than an
+ * Invalid Date that renders as "Invalid Date" three components later.
+ */
+export function fromLocalISO(str: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((str ?? "").trim());
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const out = new Date(y, mo - 1, d);
+  // A rolled-over date — 2026-02-31 becoming 3 March — is not the date that was
+  // sent, and silently accepting it is how a wrong day reaches a calendar.
+  if (out.getFullYear() !== y || out.getMonth() !== mo - 1 || out.getDate() !== d) {
+    return null;
+  }
+  return out;
+}
+
 /** The current LOCAL calendar date as YYYY-MM-DD — the safe replacement for
  * `new Date().toISOString().slice(0, 10)` / `.split("T")[0]`. */
 export function todayLocalISO(): string {
