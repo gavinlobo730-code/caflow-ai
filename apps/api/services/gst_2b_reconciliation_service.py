@@ -246,15 +246,6 @@ def reconcile_2b(db, *, firm_id: str, client_id: str, period: str,
     rec = reconcile(bills, _portal_documents(parsed))
     rows = _record_rows(firm_id, client_id, period, parsed, rec)
 
-    # Replace, do not accumulate. A CA re-uploads when the first download was
-    # for the wrong month, and two runs of the same 2B must not double the
-    # credit the Rule 36(4) working reads back.
-    (db.table("gstr2a_records")
-       .delete().eq("firm_id", firm_id).eq("client_id", client_id)
-       .eq("return_period", period).execute())
-    for i in range(0, len(rows), 500):
-        db.table("gstr2a_records").insert(rows[i:i + 500]).execute()
-
     problems = list(parsed.problems)
     if parsed.return_period and parsed.return_period != period:
         problems.append(
@@ -262,15 +253,18 @@ def reconcile_2b(db, *, firm_id: str, client_id: str, period: str,
             f"reconciling {period}. The documents below were matched against "
             f"{period}'s bills, which is almost certainly not what you meant.")
 
+    # Replace, do not accumulate. A CA re-uploads when the first download was
+    # for the wrong month, and two runs of the same 2B must not double the
+    # credit the Rule 36(4) working reads back.
+    #
     # THE HEADER IS WRITTEN EVEN WHEN `rows` IS EMPTY, and that is the point of
     # it: it is the only record that this period was reconciled at all, and
     # everything downstream — the Rule 36(4) cap, the Purchases column, the
     # read-back — asks it rather than inferring from the presence of document
-    # rows. Written AFTER the documents so a failed document insert leaves no
-    # header claiming a reconciliation that did not land.
-    _record_reconciliation(
-        db, firm_id=firm_id, client_id=client_id, period=period, parsed=parsed,
-        document_count=len(rows), book_bill_count=len(bills), problems=problems)
+    # rows.
+    _replace_period(db, firm_id=firm_id, client_id=client_id, period=period,
+                    rows=rows, parsed=parsed, book_bill_count=len(bills),
+                    problems=problems)
 
     return {
         "period": period,
@@ -371,10 +365,107 @@ def status_for_bills(db, *, firm_id: str, client_id: str,
     return out
 
 
+def _header_row(parsed: GSTR2BFile, document_count: int,
+                book_bill_count: int, problems: list[str]) -> dict:
+    """The one header fact, built once so both write paths write the same row."""
+    return {
+        "gstin": parsed.gstin or None,
+        "file_return_period": parsed.return_period or None,
+        "generated_on": parsed.generated_on or None,
+        "sections_seen": sorted(parsed.sections_seen),
+        "document_count": int(document_count),
+        "book_bill_count": int(book_bill_count),
+        "parsed_ok": True,
+        "problems": list(problems),
+    }
+
+
+def _replace_period(db, *, firm_id: str, client_id: str, period: str,
+                    rows: list[dict], parsed: GSTR2BFile,
+                    book_bill_count: int, problems: list[str]) -> None:
+    """Replace this period's documents AND header, atomically where possible.
+
+    WHY THE ATOMICITY MATTERS, and it is not a tidiness argument. Over PostgREST
+    this is four statements and therefore four transactions: delete documents,
+    insert documents, delete header, insert header. Anything interrupting the
+    middle — and `apps/api` runs in Singapore against Postgres in Mumbai, so
+    every one is a cross-region round trip — leaves the period with its previous
+    reconciliation DESTROYED and nothing in its place.
+
+    WHICH WAY IT GOES WRONG DEPENDS ON WHERE IT FAILS, and both directions are
+    reachable. A failure during the DOCUMENT insert destroys the documents and
+    leaves the PREVIOUS HEADER standing — it is deleted later — so
+    `was_reconciled` is true over zero documents and Rule 36(4) caps the month's
+    ITC AT NIL. A failure during the HEADER insert leaves the documents with no
+    header, so the period reads back as never reconciled, `have_2b` is false,
+    nothing caps, and the return claims credit §16(2)(aa) may withhold.
+
+    The first was MEASURED against a real Postgres: a period holding one
+    document and one header came back holding zero documents and one header
+    after a single failed insert. Both are recoverable by re-uploading and both
+    are visible on the screen — but nothing tells the CA to look, and the first
+    puts a wrong figure on a filed return.
+
+    Migration 366's `replace_gstr2b_reconciliation` does the whole replacement
+    in one transaction: it commits entirely or leaves the tables as they were.
+
+    THE FALLBACK IS NOT A SECOND IMPLEMENTATION OF A RULE. Mock mode has no
+    DATABASE_URL and the in-memory source has no SQL functions, so the
+    statement-by-statement path stays for it. Both write the same rows, from the
+    same `rows` list and the same `_header_row`; only the atomicity differs, and
+    atomicity is exactly what an in-memory double cannot offer. That is the same
+    arrangement as cash_flow_report, schedule_iii_ageing and
+    stock_position_as_at — except that those two paths compute, so they are
+    pinned by a parity test, while these two only WRITE.
+    """
+    header = _header_row(parsed, len(rows), book_bill_count, problems)
+
+    rpc = getattr(db, "rpc", None)
+    if callable(rpc):
+        try:
+            rpc("replace_gstr2b_reconciliation", {
+                "p_firm_id": firm_id,
+                "p_client_id": client_id,
+                "p_period": period,
+                # The function takes firm, client and period from its PARAMETERS
+                # and ignores whatever the payload says, so these are stripped
+                # rather than sent — a document row cannot address another firm.
+                "p_documents": [
+                    {k: v for k, v in r.items()
+                     if k not in ("firm_id", "client_id", "return_period")}
+                    for r in rows],
+                "p_header": header,
+            }).execute()
+            return
+        except Exception:
+            # A database that does not yet carry migration 366 — a local dev
+            # copy, or the window between a deploy and the migration job — must
+            # still be able to reconcile. Falling through is strictly better
+            # than refusing: it is the behaviour that shipped for months.
+            _logger.warning(
+                "caflow.gst2b: replace_gstr2b_reconciliation unavailable; "
+                "falling back to a non-atomic replace for %s %s",
+                client_id, period)
+
+    (db.table("gstr2a_records")
+       .delete().eq("firm_id", firm_id).eq("client_id", client_id)
+       .eq("return_period", period).execute())
+    for i in range(0, len(rows), 500):
+        db.table("gstr2a_records").insert(rows[i:i + 500]).execute()
+
+    # Written AFTER the documents so a failed document insert leaves no header
+    # claiming a reconciliation that did not land.
+    _record_reconciliation(
+        db, firm_id=firm_id, client_id=client_id, period=period,
+        header=header)
+
+
 def _record_reconciliation(db, *, firm_id: str, client_id: str, period: str,
-                           parsed: GSTR2BFile, document_count: int,
-                           book_bill_count: int, problems: list[str]) -> None:
+                           header: dict) -> None:
     """One row per (client, period) saying a 2B was reconciled — see migration 341.
+
+    The NON-ATOMIC path only; _replace_period prefers migration 366's RPC and
+    calls this when the database has no SQL functions (mock mode, local dev).
 
     Replace, not upsert-by-id: a re-upload for the same period supersedes the
     earlier answer completely, exactly as the document rows do. Two statements
@@ -384,18 +475,24 @@ def _record_reconciliation(db, *, firm_id: str, client_id: str, period: str,
        .delete().eq("firm_id", firm_id).eq("client_id", client_id)
        .eq("return_period", period).execute())
     now = datetime.now(timezone.utc).isoformat()
+    # WRITTEN OUT, not `**header`. tests/test_backend_inserts_supply_every_
+    # required_column_pg.py reads this payload STATICALLY to check it against
+    # the real schema, and a dict spread is opaque to it — the ratchet caught
+    # the spread the moment it was introduced. The keys are restated; the
+    # VALUES still come from the one _header_row, so the two write paths cannot
+    # disagree about what a header says.
     db.table("gstr2b_reconciliations").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "return_period": period,
-        "gstin": parsed.gstin or None,
-        "file_return_period": parsed.return_period or None,
-        "generated_on": parsed.generated_on or None,
-        "sections_seen": sorted(parsed.sections_seen),
-        "document_count": int(document_count),
-        "book_bill_count": int(book_bill_count),
-        "parsed_ok": True,
-        "problems": list(problems),
+        "gstin": header["gstin"],
+        "file_return_period": header["file_return_period"],
+        "generated_on": header["generated_on"],
+        "sections_seen": header["sections_seen"],
+        "document_count": header["document_count"],
+        "book_bill_count": header["book_bill_count"],
+        "parsed_ok": header["parsed_ok"],
+        "problems": header["problems"],
         "reconciled_at": now,
         "updated_at": now,
     }).execute()

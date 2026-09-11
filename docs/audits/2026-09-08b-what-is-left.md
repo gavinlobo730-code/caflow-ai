@@ -69,6 +69,16 @@ By subsystem, remaining only:
 
 ## 2. What the five steps broke
 
+> ⚠️ **RE-CHECKED AGAINST CODE ON 11-09-2026: SIX OF THESE SEVEN WERE ALREADY
+> DONE**, and the seventh (§2.2) was half done — its unique index carried
+> `document_type` but its replace was still four transactions, now migration
+> 366. Read each entry as a record of what WAS wrong, not as work outstanding.
+> The per-item verdicts and what closed each are in the "§2 of the
+> remaining-work list, re-checked against code" section of
+> `WHERE-WE-STOPPED.md`.
+
+### The seven, as originally written
+
 Seven items. **The mock suite is 10,389 passed / 980 skipped on `main` and
 catches none of them**, which is the argument for doing this pass at all.
 
@@ -286,12 +296,11 @@ two statutory outputs software can complete end to end.
 
 ## 8. Suggested order
 
-1. **§2.1 and §2.2 together.** Both are in the reconciliation the last tranche
-   shipped, both need a migration, and §2.2 destroys data. §2.1 is the one that
-   makes a return claim credit §16(2)(aa) withholds — the module was shipped to
-   stop exactly that.
-2. **§2.3, §2.4, §2.6** — an afternoon each. §2.6 is the only one a CA's
-   *employee* sees.
+1. ~~**§2.1 and §2.2 together.**~~ ✅ **BOTH DONE.** §2.1 was closed by
+   migration 341's `gstr2b_reconciliations` header table; §2.2's index was too,
+   and its non-atomic replace by migration 366 on 11-09-2026.
+2. ~~**§2.3, §2.4, §2.6**~~ ✅ **ALL DONE** — and §2.6 is now guarded by
+   `tests/test_no_pdf_renders_the_rupee_sign.py`, because it had shipped twice.
 3. ~~**FA-02's backfill**, while production still holds zero assets.~~
    ⚠️ **DO NOT DO THIS.** A backfill would overwrite a judgement Schedule II
    Part A expressly permits (a different useful life or residual value, if

@@ -999,3 +999,87 @@ pattern is worth naming: **a guard whose subject is code must be given code.**
 Every one of the six would have shipped a second implementation of something
 that already worked. **Read the code before building against an audit claim —
 including this session's own.**
+
+---
+
+## §2 of the remaining-work list, re-checked against code — six of seven were done
+
+`2026-09-08b-what-is-left.md` §2 lists seven defects "the last tranche
+introduced", and §8 puts two of them first in the suggested order. Checked one
+by one against `main` rather than taken on the page, which is now the rule:
+
+| | claim | state |
+|---|---|---|
+| **2.1** | nothing records that a period was reconciled — three faces, one cause | **DONE.** `gstr2b_reconciliations` (migration 341) is the header table the entry itself prescribed, with `was_reconciled` and `reconciled_periods`; `gst_return_service` derives `have_2b` from it, not from the document rows |
+| **2.2** | a credit note and a debit note with the same number wipe the period | **HALF.** Migration 341 put `document_type` into `uq_gstr2a_records_document`, so the collision is gone. **The replace was still four statements and four transactions** — fixed here, migration 366 |
+| **2.3** | the new service has no pagination | **DONE.** `read_book_bills` and `read_reconciliation` both use `_paginate_all` |
+| **2.4** | the entity computation reaches the year fallback and stamps it verified | **DONE.** `rates_verified` is false when the year was substituted, with a warning naming both years |
+| **2.5** | the payslip refusal is delivered as "Salary slip not found" | **DONE.** The remaining 404 of that wording is a genuine row-not-found |
+| **2.6** | the ₹ glyph is broken on the payslip too | **DONE** — and now GUARDED, see below |
+| **2.7** | the disposal default date is still UTC | **DONE.** The `datetime.now(timezone.utc)` left in `routers/fixed_assets.py` are `updated_at` / `deleted_at`, which are instants and correctly UTC |
+
+### 2.6 was fixed and nothing pinned it — so it could come back a third time
+
+`payslip_pdf_service`, `statement_pdf_service` and `year_end_pdf_service` emit
+`Rs.` now, and the only `₹` left in any PDF service's CODE is
+`engagement_pdf_service`'s own `.replace("₹", "Rs. ")`. But **nothing checked**,
+and this defect had already shipped TWICE — found on the fee invoice and the
+customer statement on 8 September, still live on the payslip and the year-end
+schedules on the 9th, with the tranche in between having edited one of the
+affected files without noticing.
+
+`tests/test_no_pdf_renders_the_rupee_sign.py` states the rule: no PDF service
+may put U+20B9 on a page, and the sign is legal only as **the subject of its own
+removal** — matched on the operation, so a second service needing to strip it
+does not join an exemption list. Comments and docstrings are stripped first;
+they are where the reason is written and prose cannot reach a page.
+
+Written wrong once, in the now-familiar way: **two mutations passed.** Deleting
+`engagement_pdf_service`'s strip left no ₹ in that module's code at all, so the
+absence-scan saw a clean file — and a PDF built from a CA's own template, which
+legitimately carries ₹, would print black boxes on a signed engagement letter.
+That needed a POSITIVE assertion, which it now has. The second was a `Rs.`
+check too weak to notice the currency marker being removed entirely.
+
+### 2.2's other half — a 2B replace is now one transaction (migration 366)
+
+`public.replace_gstr2b_reconciliation` replaces a period's documents **and**
+header in a single transaction, on the model of `replace_bank_transaction_splits`
+(migration 256). The service prefers it and keeps the statement-by-statement
+path for mock mode, which has no SQL functions — the two write the same rows
+from the same list; only the atomicity differs, and atomicity is exactly what an
+in-memory double cannot have.
+
+**Measured on a real Postgres, and it corrected the prose twice.**
+
+* **Which way the harm runs was written backwards.** The first draft said an
+  interrupted replace reads back as never reconciled, so nothing caps and the
+  return over-claims. Running it showed the opposite for the commonest case: a
+  period holding **(1 document, 1 header)** came back **(0 documents, 1 header)**
+  — the documents destroyed and the PREVIOUS HEADER standing, because the header
+  is deleted later. `was_reconciled` then answers TRUE over zero documents, so
+  Rule 36(4) caps the month's ITC **at nil**, and the CA is told the client may
+  claim no input credit at all. Both directions are reachable depending on where
+  it fails; the docs now say so, and each has its own test.
+* **`itc_available` is TEXT, not BOOLEAN.** The first draft cast it. It holds the
+  portal's own `itcavl` flag — `Y`, `N`, or `''` where 2B did not say — and
+  `domain/gst/gstr2b.py` types it `str` for that reason: "no answer" is a third
+  state a boolean cannot hold. Three more columns are `NOT NULL DEFAULT ''`
+  (migration 340) and needed coalescing, because `->>` yields SQL NULL for an
+  absent key. **Writing the INSERT by hand is what surfaced all four**; the
+  PostgREST path had never had to name a type.
+
+Verified: **12 tests against a real Postgres 16**, and a side-by-side
+demonstration in which the old four-statement path destroys the period on a
+failed insert (`1|1 → 0|1`) and the function leaves it untouched (`1|1 → 1|1`).
+
+**A third ratchet caught this one too, within minutes of the change.** The
+mock-mode fallback was rewritten to insert `{**header, …}`, which is opaque to
+the static scanner in `test_backend_inserts_supply_every_required_column_pg.py`
+— so both it and `test_backend_columns_exist_pg.py` failed on their budgets
+(126 unreadable payloads against 125). The failure message said what to do
+("write the payload inline, or bind it to a local dict literal, rather than
+raising this") and that is what was done: the keys are restated and the VALUES
+still come from the one `_header_row`, so the two write paths cannot disagree
+about what a header says. **The budget was not raised.** That is the third time
+today a ratchet has named a real regression on the commit that introduced it.
