@@ -428,5 +428,100 @@ with the same reasoning on it. Delegated, not re-implemented.
 | F3 | the handoff screen | done |
 | F4 | the challan is money | **done**, as a reconciliation |
 | F5 | professional tax: the artefact | not started — needs the state slabs a human must supply |
-| F6 | the never-do list, as code | **half done** — the credential/OTP/frame rule is a test; two prose rules left |
-| F7 | the DSC register | not started |
+| F6 | the never-do list, as code | **done** — all three rules |
+| F7 | the DSC register | **already built** — the plan's premise was wrong, see below |
+
+---
+
+## Track F6 — the never-do list, as code (done)
+
+Three product rules that protect the whole filing position, now tests:
+
+1. **No field anywhere collects a government-portal password, PIN or OTP** —
+   `apps/web/scripts/no-screen-takes-a-portal-credential.test.ts`, from F3.
+2. **No column anywhere stores a portal credential or token** —
+   `apps/api/tests/test_the_never_do_list.py`.
+3. **Nothing transmits to a government host** — same file.
+
+**All three were already true. That is the point.** None of these tests fixed
+anything; what they do is make the day somebody adds the first one a deliberate
+decision with a review attached, rather than a line in a large diff nobody reads
+as a policy change — which is how this class of thing actually gets in.
+
+### Rule 2 is matched on a name's SEGMENTS, not its letters
+
+`pincode`, `mapping`, `shipping_bill_no` and `is_pinned` all contain "pin". A
+guard that fires on those is one somebody silences rather than reads. Eight
+columns genuinely match the vocabulary and every one is OURS, each with its
+reason: `lock_pin` (the firm's own year-lock PIN), `token_no` (the serial
+printed on a DSC's USB crypto token — an inventory label for a physical object),
+the three invite tokens and the engagement `sign_token` (links this product
+mints), and two AI usage counters.
+
+### Rule 3's FIRST SHAPE WAS WRONG, and how is the part worth keeping
+
+It began as "no backend file may name a government host" — and **23 files failed
+it**, every module whose docstring says the ECR is uploaded at
+`unifiedportal-emp.epfindia.gov.in`. Those are the right thing to write: the
+whole product is built on telling a CA exactly where to go. An exemption list
+with 23 entries of "this is a comment" is not a policy, it is paperwork.
+
+Naming a portal is not the risk; TRANSMITTING to one is. So the rule is stated
+over the thing that can actually transmit — **the modules that can make an
+outbound request at all**. There are eleven, and a test now pins each with its
+destination:
+
+| destination | modules |
+|---|---|
+| Groq | `ai_copilot` (router + domain), `assistant`, `financial_analysis_service`, `document_intelligence_v2` |
+| Gemini | `document_intelligence_v1`, `statement_vision` |
+| Resend | `email_service` |
+| Razorpay | `payments/razorpay` |
+| our own deployed API | `scripts/smoke_api` (a smoke test, not the service) |
+| **a firm-supplied URL** | `invoice_pdf_service` — the branding logo. The only destination not fixed in code, bounded by a timeout and a byte cap |
+
+A grep for `^import httpx` found four of those eleven. The AST scan found all
+eleven, including `google.genai` imported lazily inside a function — which is
+why the check reads imports properly rather than matching line starts.
+
+A separate test asserts the opposite direction too: that naming a portal in
+prose **is** allowed and common (more than ten modules do it), and that no
+module both reaches the network and names a government host. That combination
+is the entire rule.
+
+### Verified
+
+Four mutations, each applied and reverted: a new module calling `gst.gov.in`
+(2 failed), a new module reaching the network undeclared (1), a
+`gst_portal_password` column (1), a `portal_otp` column (1).
+
+---
+
+## Track F7 — the DSC register: ALREADY BUILT, and the plan was wrong
+
+The plan says *"Nothing anywhere tracks a digital signature certificate."*
+**That is false**, and was false when it was written. What exists:
+
+- **`public.dsc_records`** (migration **014**) — holder, PAN, Class 2/3,
+  purpose, issued and expiry dates, issuer, the crypto token's serial, notes.
+- **`routers/dsc.py`** — list, create, patch, **renew**, delete, under its own
+  `dsc` RBAC resource, with a duplicate guard on (PAN, type, expiry) and a
+  refusal when `issued_date` is after `expiry_date`.
+- **`apps/web/app/settings/dsc-tracker/page.tsx`**, linked from `SettingsPanel`
+  and — the part F7's rationale actually wanted — from **`DeadlinesPanel`**, so
+  it sits beside the filing deadlines.
+- **Expiry within 60 days surfaced on `/risks`**, per holder.
+
+So F7 is closed as **already done**, not implemented again. The finding stands
+as a reminder that the 7 September audit's "nothing does X" claims are worth
+checking before building: this is the third one this session that turned out to
+be stale (FA-10's edit path, the workflow repository's join, and now F7).
+
+### The one thing F7 pointed at that is genuinely NOT built
+
+"An expired or unassociated DSC is the most common cause of a stalled MCA
+filing" — and nothing connects the two. `mca_directors` exists and
+`dsc_records` carries a PAN, so a join is possible; what is missing is the fact
+nobody holds: **which director signs which form**. That is a human decision, of
+the same shape as the MSMED classification and the DTAA rate, and it would need
+a place to record it before any warning could be honest. Scoped, not started.

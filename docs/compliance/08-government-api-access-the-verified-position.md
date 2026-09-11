@@ -441,7 +441,7 @@ counterparty or a rupee.== Ordered by harm removed per unit of work.
 | **F4** | **The challan is money** | Small | Statutory liability accounts never clear; year-end shows a liability the client has paid |
 | **F5** | **Professional tax: the artefact** | Medium | Four states are computed and no challan or return is produced for any of them |
 | **F6** | **The never-do list, as code** | Small | Three product rules that are prose today and should be tests |
-| **F7** | **The DSC register** | Small | ==Nothing anywhere tracks a digital signature certificate.== An expired or unassociated DSC is the most common cause of a stalled MCA filing |
+| **F7** | **The DSC register** | ~~Small~~ | ⚠️ **This line was wrong.** A DSC register already exists — `public.dsc_records` (migration 014), `routers/dsc.py` with a renew path, a Settings screen linked from the deadlines panel, and expiry within 60 days surfaced on `/risks`. Verified 11-09-2026. What is genuinely missing is the LINK to MCA: which director signs which form is a fact nobody records, so no "your signatory's DSC expires before this due date" warning can be honest yet |
 
 :::key F1 was redesigned mid-research, and the reason generalises
 The first draft said: emit our own `.xls`, every cell text, the portal's column
