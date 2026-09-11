@@ -184,6 +184,14 @@ ceiling, so anything routed through it escapes the §80CCE ₹1.5 lakh cap) ·
 **Phase 13b — the credit side: GST and purchases.**
 `GST-19` (the Rule 36(4) cap reaching RCM) · `PUR-04` (phantom Input GST asset).
 
+> **Found while fixing 13b, not fixed there.** The whole Rule 36(4) working —
+> book figure, 2A figure, whether the cap applied, and now the self-assessed
+> figure that sits outside it — is computed, returned by both
+> `routers/gst.py` and `gst_return_service`, and **rendered by no screen**.
+> `lib/data/gst.ts:492` reads one of the ten fields. So a CA cannot see why
+> their claim was trimmed, or that it was. That is a screen build of the same
+> shape as the others in 13c and belongs there, not inside a statutory fix.
+
 **Phase 13c — an action that fails outright.**
 `TDS-18` (save raises a CHECK violation on the screen's own default state) ·
 `ACC-18` (a firm lock outside four hardcoded years is un-unlockable) ·

@@ -653,7 +653,8 @@ class Phase2JournalService:
             # §40(a)(ia) mapping). Lines with no account fall back to the resolved
             # Purchases/Expense account. Grouping keeps one debit per distinct account.
             line_rows = (db.table("purchase_bill_lines")
-                         .select("expense_account_id, taxable_amount_paise")
+                         .select("expense_account_id, taxable_amount_paise, "
+                                 "itc_eligible, cgst_paise, sgst_paise, igst_paise")
                          .eq("bill_id", bill.get("id")).execute().data) or []
             by_account: dict = {}
             for lr in line_rows:
@@ -662,30 +663,88 @@ class Phase2JournalService:
             # Fallback: no line rows available (e.g. header-only) → single purchases debit.
             if not by_account or sum(by_account.values()) != int(bill.get("taxable_amount_paise") or 0):
                 by_account = {purchases_id: int(bill.get("taxable_amount_paise") or 0)}
+
+            # BLOCKED TAX IS A COST, NOT AN ASSET (PUR-04).
+            #
+            # CGST Act §17(5) bars the credit outright, so the tax on a blocked
+            # line will never be set off and is never recoverable — it is part
+            # of what the supply cost. ICAI's Guidance Note on Accounting for
+            # GST says so in terms: tax not eligible for input credit is added
+            # to the cost of the related goods or services.
+            #
+            # Until now the full bill tax was debited to GST Input whatever the
+            # lines said, so a bill with a blocked line left a PHANTOM ASSET on
+            # the balance sheet and a permanent, unexplainable difference
+            # between the GL and the return — `gstr3b_computer` nets §17(5) out
+            # of book ITC (it must: 4(B)(1) carries the reversal) while the
+            # ledger carried it as recoverable for ever.
+            #
+            # Allocated PER LINE to that line's own expense account, not
+            # pro-rata over the bill: eligibility is a per-line judgement, the
+            # line knows both its tax and its account, and a club membership's
+            # blocked tax belongs on the club membership rather than spread
+            # across the office supplies on the same bill.
+            #
+            # Only when the line rows are actually usable. Where the fallback
+            # above fired — header-only, or lines that do not foot to the bill —
+            # the per-line split cannot be trusted, so the blocked tax goes to
+            # the one resolved expense account; the total is right either way,
+            # and the alternative (leaving it on GST Input) is the defect.
+            blocked_total = (int(bill.get("ineligible_itc_cgst_paise") or 0)
+                             + int(bill.get("ineligible_itc_sgst_paise") or 0)
+                             + int(bill.get("ineligible_itc_igst_paise") or 0))
+            if blocked_total:
+                per_line_blocked: dict = {}
+                for lr in line_rows:
+                    if lr.get("itc_eligible", True):
+                        continue
+                    acc = lr.get("expense_account_id") or purchases_id
+                    per_line_blocked[acc] = per_line_blocked.get(acc, 0) + (
+                        int(lr.get("cgst_paise") or 0)
+                        + int(lr.get("sgst_paise") or 0)
+                        + int(lr.get("igst_paise") or 0))
+                if sum(per_line_blocked.values()) != blocked_total:
+                    # The header is the authority — it is what the return reads
+                    # (migration 240 keeps it as the lines' sum precisely so
+                    # gstr3b_from_books needs no join), so a disagreement means
+                    # the lines cannot carry the split, not that the header is
+                    # wrong.
+                    per_line_blocked = {purchases_id: blocked_total}
+                for acc, amt in per_line_blocked.items():
+                    if amt:
+                        by_account[acc] = by_account.get(acc, 0) + amt
             lines = [
                 {"account_id": acc, "debit_paise": amt, "credit_paise": 0,
                  "narration": "Purchase / expense"}
                 for acc, amt in by_account.items() if amt
             ]
 
-            if bill.get("cgst_paise", 0) > 0:
+            # Only the CREDITABLE tax reaches GST Input. The §17(5) portion is
+            # already on the expense accounts above — see the comment there.
+            creditable_cgst = (int(bill.get("cgst_paise") or 0)
+                               - int(bill.get("ineligible_itc_cgst_paise") or 0))
+            creditable_sgst = (int(bill.get("sgst_paise") or 0)
+                               - int(bill.get("ineligible_itc_sgst_paise") or 0))
+            creditable_igst = (int(bill.get("igst_paise") or 0)
+                               - int(bill.get("ineligible_itc_igst_paise") or 0))
+            if creditable_cgst > 0:
                 lines.append({
                     "account_id": gst_input_id,
-                    "debit_paise": bill["cgst_paise"],
+                    "debit_paise": creditable_cgst,
                     "credit_paise": 0,
                     "narration": "CGST input tax credit",
                 })
-            if bill.get("sgst_paise", 0) > 0:
+            if creditable_sgst > 0:
                 lines.append({
                     "account_id": gst_input_id,
-                    "debit_paise": bill["sgst_paise"],
+                    "debit_paise": creditable_sgst,
                     "credit_paise": 0,
                     "narration": "SGST input tax credit",
                 })
-            if bill.get("igst_paise", 0) > 0:
+            if creditable_igst > 0:
                 lines.append({
                     "account_id": gst_input_id,
-                    "debit_paise": bill["igst_paise"],
+                    "debit_paise": creditable_igst,
                     "credit_paise": 0,
                     "narration": "IGST input tax credit",
                 })

@@ -1032,6 +1032,17 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                 "gstr2a_igst_paise": result.itc_2a_igst,
                 "cap_applied": result.itc_capped_by_2a,
                 "compared": bool(two_a_rows),
+                # WHY THE BOOK FIGURE CAN EXCEED THE 2A WITHOUT A CAP (GST-19).
+                # Rule 36(4) reaches only invoices "the details of which are
+                # required to be furnished by the supplier under sub-section (1)
+                # of section 37"; reverse-charge tax is self-assessed on the
+                # recipient's own §31(3)(f) invoice, so no supplier furnishes it
+                # and GSTR-2B structurally cannot carry it. Without this figure
+                # the screen shows a book total above the 2A with no cap applied
+                # and no way to tell whether that is right.
+                "self_assessed_cgst_paise": result.itc_self_assessed_cgst,
+                "self_assessed_sgst_paise": result.itc_self_assessed_sgst,
+                "self_assessed_igst_paise": result.itc_self_assessed_igst,
             },
             # Table 6. Computed HERE, not in the browser: the Section 49(5)
             # cross-utilisation order is a statutory rule, and CLAUDE.md keeps
