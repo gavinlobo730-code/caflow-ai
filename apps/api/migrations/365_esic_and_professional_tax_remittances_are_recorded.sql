@@ -99,6 +99,26 @@ CREATE TABLE IF NOT EXISTS public.statutory_remittances (
   submitted_on date NOT NULL,
   paid_on      date,
 
+  -- The journal entry that actually paid it, once the bank line is passed.
+  --
+  -- A LINK, NOT A SECOND POSTING PATH, and the difference is the whole point.
+  -- The plan this comes from said "the challan is money, so it has to reach the
+  -- GL" — which would have posted Dr ESI Payable / Cr Bank from here. The bank
+  -- statement path ALREADY posts exactly that when the CA passes the payment
+  -- line against the liability account, so recording it here too would debit
+  -- the liability twice. services/bank_posting_service.post is the one path for
+  -- money movement (and public.epfo_ecr_filings, the table this is modelled on,
+  -- deliberately carries no journal reference for the same reason).
+  --
+  -- What was actually missing is the LINK. Without it there is no way to tell a
+  -- liability nobody has paid from one that was paid and never tied back, so
+  -- the statutory accounts look uncleared either way at year end. NULL means
+  -- "not yet matched to a payment", which is a question a CA can act on.
+  --
+  -- ON DELETE SET NULL: reversing the payment entry unlinks the remittance, it
+  -- does not erase the evidence that the return was filed.
+  journal_entry_id uuid REFERENCES public.journal_entries(id) ON DELETE SET NULL,
+
   notes text,
 
   recorded_by uuid REFERENCES public.users(id),

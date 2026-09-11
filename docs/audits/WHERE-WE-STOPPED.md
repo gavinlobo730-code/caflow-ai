@@ -259,5 +259,23 @@ unmaintained dependencies to a financial backend is an owner call, and it rests
 on a fact this environment cannot check: whether the portal still refuses
 `.xlsx` in 2026. The manual that says `.xls` is of unknown vintage.
 
-**F3 (the handoff screen) and F4 (the challan reaches the GL) are now
-unblocked** — 365 is the record they both needed.
+### F4's shape was wrong, and 365 carries the correction
+
+F4 said *"the challan is money — it has to reach the GL"*, meaning post
+`Dr ESI Payable / Cr Bank` when a remittance is recorded. **That would have
+double-counted.** `services/bank_posting_service.post` already posts exactly
+that entry when the CA passes the bank statement line against the liability
+account, and it is the one path for money movement. `public.epfo_ecr_filings` —
+the table 365 is modelled on — deliberately carries no journal reference for
+the same reason.
+
+What was actually missing is the **link**: without it there is no way to tell a
+liability nobody has paid from one that was paid and never tied back, so the
+statutory accounts look uncleared either way at year end. `journal_entry_id` is
+on 365, nullable, `ON DELETE SET NULL` — reversing the payment unlinks the
+remittance without erasing the evidence that the return was filed.
+
+So F4 becomes a **reconciliation**, not a posting: match a remittance to the
+entry that paid it, and report the ones that are not matched.
+
+**F3 (the handoff screen) is unblocked** — 365 is the record it needed.
