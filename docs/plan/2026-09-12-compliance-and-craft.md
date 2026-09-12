@@ -151,3 +151,54 @@ that at every point the platform is shippable: correctness first because it is
 what a CA cannot check, the safety net second because it is what makes the rest
 reversible, and the visible work last because it is the part that can be judged
 by looking.
+
+---
+
+## Decisions taken since this was written
+
+**12 September 2026, evening — the owner's answers to the two open design
+questions, plus one they raised.**
+
+### Dark mode: no. Light only.
+
+The owner's reasoning and mine agree: a CA sits in front of this for eight
+hours during a filing week, and a dark theme is the wrong default for long
+sessions of dense numeric tables. Not "later" — **not built**, so no component
+carries a second palette and no token has a dark twin. Reversing that later
+costs one pass over the token file; carrying an unused theme costs every
+component, for ever.
+
+### Density: no single answer from the field, so the layout has to stop asking.
+
+The owner cannot say whether their CAs run a large monitor or a laptop, because
+both are true. That is not an unanswered question — it is the answer, and it
+rules out picking a fixed density. The layout is therefore **fluid**, not a
+centred fixed-width column, with a comfortable/compact toggle that persists per
+user.
+
+### The white space: the owner is right, and it is a real defect, not taste.
+
+Most screens today render into a centred column with wide empty gutters, and a
+CA reading a 12-column bank statement or a trial balance is reading a cramped
+table beside two inches of nothing. **Tables get the width.** The rules the
+design system will carry:
+
+- a page is fluid to the viewport with a sane maximum (~1600px) so a 27-inch
+  monitor does not stretch a line of text to unreadable length — but a **data
+  table is exempt from that maximum** and takes the full width it has;
+- prose, forms and settings pages KEEP a measure limit (~65–75 characters),
+  because a wide paragraph is genuinely harder to read — the fix is
+  width-for-tables, not width-for-everything;
+- the gutter floor stays 16px at every viewport, so nothing touches the edge
+  on a laptop;
+- a table that still overflows scrolls in its own container, never the page.
+
+This is the same judgement in both directions: give the data the room and keep
+the reading measure. Getting it backwards — wide prose, narrow tables — is
+exactly what the product does today.
+
+### What this changes in the tracks above
+
+Nothing in the order. Track 2's token set drops the dark palette, gains a
+density scale and a two-tier width rule, and the reference module (Banking
+Entries) is now also the proof that a dense table reads well at full width.
