@@ -18,6 +18,7 @@ production run identical logic. This module is the I/O around it.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import os
 import re
@@ -135,18 +136,69 @@ def get_upload(firm_id: str, upload_id: str) -> dict | None:
     return (res.data or [None])[0]
 
 
-def parse_26as_text(raw_text: str) -> list[dict]:
+@dataclass(frozen=True)
+class SkippedLine:
+    """One line of the upload that produced no record, and why."""
+    line_no: int          # 1-based, as a text editor counts
+    text: str             # the first 120 characters, for recognition
+    reason: str
+
+
+@dataclass(frozen=True)
+class Reading26AS:
+    """What one 26AS text upload actually yielded.
+
+    `records` alone was the old return value, and returning it alone is the
+    defect (IT-24). Two paths in the loop below drop a line — a split that
+    yields fewer than five columns, and a row whose date or amount will not
+    parse — and both used to vanish: one into a bare `continue`, one into a
+    DEBUG log nobody reads. The upload was then marked successful and the
+    reconciliation ran against a register missing whatever it could not read,
+    reporting the deductor as "not in 26AS" when 26AS had it all along.
+
+    So the reading carries BOTH sides, and the caller must show the second.
     """
-    Parse Form 26AS plain text (downloaded from TRACES portal).
-    Handles standard Part A (TDS on salary), Part B (TDS other), Part C (advance/self-assessment).
-    Returns list of parsed record dicts.
+    records: list[dict]
+    skipped: list[SkippedLine]
+    data_lines_seen: int   # lines that were neither blank, a part header nor a column header
+
+    @property
+    def looks_unrecognised(self) -> bool:
+        """True when there was content and none of it parsed.
+
+        A zero-record read of a file with data in it is not an empty 26AS — it
+        is a format this parser does not know (a PDF pasted with spaces rather
+        than tabs is the common one, since the split below is tab/pipe only).
+        Reporting that as a clean zero is the false-clean result this codebase
+        keeps having to close.
+        """
+        return self.data_lines_seen > 0 and not self.records
+
+
+def read_26as_text(raw_text: str) -> Reading26AS:
+    """
+    Parse Form 26AS plain text (downloaded from the TRACES portal).
+    Handles Part A (TDS on salary), Part B (TDS other), Part C
+    (advance/self-assessment).
+
+    Returns a Reading26AS rather than a bare list, and there is deliberately NO
+    convenience wrapper that hands back only the records: a lossy view of this
+    answer is exactly what the caller reached for last time.
+
+    The column split is tab or pipe only, and that is a real limit rather than
+    an oversight — a 26AS pasted out of a PDF viewer arrives space-separated,
+    and splitting on runs of spaces would cut deductor names in half. Such a
+    file now reports every line as skipped and `looks_unrecognised`, instead
+    of returning nothing and calling it an empty year.
     """
     records: list[dict] = []
+    skipped: list[SkippedLine] = []
+    data_lines = 0
     current_part = None
     lines = raw_text.strip().splitlines()
 
-    for line in lines:
-        line = line.strip()
+    for line_no, raw_line in enumerate(lines, start=1):
+        line = raw_line.strip()
         if not line:
             continue
 
@@ -160,9 +212,17 @@ def parse_26as_text(raw_text: str) -> list[dict]:
         if any(kw in line.upper() for kw in ("SR.", "S.NO", "DEDUCTOR", "NAME OF DEDUCTOR")):
             continue
 
+        data_lines += 1
+
         # Try to parse data rows (tab/pipe delimited)
         cols = re.split(r"\t|\|", line)
         if len(cols) < 5:
+            skipped.append(SkippedLine(
+                line_no, line[:120],
+                f"only {len(cols)} tab- or pipe-separated column(s); a 26AS row "
+                f"needs at least 5. A file pasted out of a PDF viewer is "
+                f"space-separated and will not parse — export the text file "
+                f"from TRACES instead."))
             continue
 
         try:
@@ -177,21 +237,59 @@ def parse_26as_text(raw_text: str) -> list[dict]:
                 "booking_status": cols[6].strip() if len(cols) > 6 else None,
             }
             records.append(record)
-        except (ValueError, IndexError):
-            _logger.debug("Skipping unparseable line: %s", line[:80])
+        except (ValueError, IndexError) as e:
+            # Was a DEBUG log. A tax credit dropped at DEBUG level is a tax
+            # credit dropped.
+            skipped.append(SkippedLine(
+                line_no, line[:120],
+                f"the date or amount could not be read ({type(e).__name__})"))
 
-    return records
+    return Reading26AS(records=records, skipped=skipped, data_lines_seen=data_lines)
+
+
+#: What each part of Form 26AS actually holds, and whether it is a tax credit
+#: the CLIENT may claim on their return.
+#:
+#: The old map said B was "tds_other", C "advance_tax", D "self_assessment" and
+#: F "tds_other" — and NOTHING read it, so every row of every part was summed
+#: into `total_26as_paise` and matched against the client's book TDS credits.
+#: Two of those are not TDS at all and one is not the client's:
+#:
+#:   A / A1 / A2  TDS deducted FROM the client. A credit. (The regex that
+#:                finds the part header keeps only the letter, so A1 and A2
+#:                fold into A — harmless here, because all three are credits.)
+#:   B            TCS COLLECTED from the client. A genuine credit (s.206C(4))
+#:                and its own kind, not "tds_other".
+#:   C            Tax the client PAID themselves — advance and self-assessment.
+#:                Real, claimable, and NOT a TDS credit: counting it against
+#:                the TDS register makes 26AS look larger than the books by
+#:                exactly the advance tax.
+#:   D            A REFUND already received. Not a credit in any direction.
+#:   F            s.194-IA tax the client deducted as BUYER of property. Money
+#:                the client PAID OVER, not withheld from them.
+#:
+#: ⚠️ A2 (seller of property) and F (buyer) point OPPOSITE ways and the audit
+#: finding's own suggested fix lumped them together, which would drop a real
+#: s.194-IA credit. They are kept apart here. What is NOT settled without a
+#: real TRACES statement is whether this parser's part detection distinguishes
+#: A2 from A at all — it does not, and that is safe only because both are
+#: credits.
+_PART_RECORD_TYPE = {
+    "A": "tds_salary",
+    "B": "tcs_collected",
+    "C": "tax_paid_by_client",
+    "D": "refund_received",
+    "F": "tds_deducted_by_client_194ia",
+}
+
+#: The record types that are a credit the client may claim. Everything else is
+#: still parsed, still stored and still shown — it is simply not added to the
+#: 26AS side of a TDS reconciliation.
+CREDIT_RECORD_TYPES = frozenset({"tds_salary", "tds_other", "tcs_collected"})
 
 
 def _infer_record_type(part: str | None) -> str:
-    mapping = {
-        "A": "tds_salary",
-        "B": "tds_other",
-        "C": "advance_tax",
-        "D": "self_assessment",
-        "F": "tds_other",
-    }
-    return mapping.get(part or "A", "tds_other")
+    return _PART_RECORD_TYPE.get(part or "A", "tds_other")
 
 
 def _parse_date(s: str) -> str | None:
@@ -319,6 +417,23 @@ def seed_mock_books(
         int(gl_control_paise) if gl_control_paise is not None
         else sum(int(c.get("tds_paise") or 0) for c in credits)
     )
+
+
+def split_by_credit(records: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(rows that ARE a claimable credit, rows that are not).
+
+    The second list is not discarded — a Part C advance-tax payment and a Part
+    D refund are real facts about the client's year and the CA wants to see
+    them. They are simply not TDS deducted from the client, so adding them to
+    the 26AS side of a TDS reconciliation reports a variance against the book
+    register that is exactly the advance tax, every year, for every client who
+    paid any.
+    """
+    keep, aside = [], []
+    for r in records:
+        (keep if (r.get("record_type") or "tds_other") in CREDIT_RECORD_TYPES
+         else aside).append(r)
+    return keep, aside
 
 
 def _entries_from_records(records: list[dict]) -> list[_m.Form26ASEntry]:
@@ -555,10 +670,33 @@ def run_reconciliation(
     # output is a working paper for the CA to review before the return is filed.
     """
     records = _load_records(firm_id, upload_id)
-    entries = _entries_from_records(records)
+    # TDS-19. Only the parts that ARE a credit to this client go into a TDS
+    # reconciliation. Part C is tax the client paid themselves and Part D is a
+    # refund already received; both used to be summed into the 26AS side and
+    # matched against the book TDS register, so every client who paid any
+    # advance tax showed a variance of exactly that amount, every year. The
+    # rest are reported beside the result rather than dropped — see
+    # split_by_credit.
+    credit_records, other_records = split_by_credit(records)
+    entries = _entries_from_records(credit_records)
     credits = _load_book_credits(firm_id, client_id, financial_year)
     gl_control = _gl_control_paise(firm_id, client_id, financial_year)
     result, summary = summarise(entries, credits, gl_control)
+    # Reported BESIDE the summary, never inside it: `summary` is spread
+    # straight into the form_26as_reconciliations INSERT below, so a key that
+    # is not a column of that table makes the whole reconciliation fail on the
+    # live database while passing in mock mode — the exact shape of the bug
+    # migration 291 was written to repair on this same table.
+    aside = {
+        "not_a_tds_credit": [
+            {"part": r.get("part"), "record_type": r.get("record_type"),
+             "amount_paise": int(r.get("tds_deposited_paise") or 0),
+             "deductor_name": r.get("deductor_name") or ""}
+            for r in other_records
+        ],
+        "not_a_tds_credit_paise": sum(
+            int(r.get("tds_deposited_paise") or 0) for r in other_records),
+    }
 
     recon_row = {
         "firm_id": firm_id,
@@ -581,7 +719,7 @@ def run_reconciliation(
                  "created_at": datetime.now(timezone.utc).isoformat(),
                  **recon_row}
         _MOCK_RECONS[recon["id"]] = recon
-        return recon
+        return {**recon, **aside}
 
     sb = _supabase()
     _write_record_outcomes(sb, result.entry_outcomes)
@@ -594,7 +732,7 @@ def run_reconciliation(
             summary["variance_paise"], stored.get("id", ""),
             summary["unsupported_credit_paise"],
         )
-    return stored
+    return {**stored, **aside}
 
 
 def _load_records(firm_id: str, upload_id: str) -> list[dict]:

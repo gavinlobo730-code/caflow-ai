@@ -252,13 +252,13 @@ def seeded():
     svc._MOCK_BOOK_CREDITS.clear()
     svc._MOCK_GL_CONTROL.clear()
     upload = svc.create_upload("f1", "c1", "2025-26", "u1")
-    records = svc.parse_26as_text(
+    records = svc.read_26as_text(
         "PART A\n"
         "Sr.\tName of Deductor\tTAN\tDate\tAmount Paid\tTDS\tStatus\n"
         "1\tAcme Pvt Ltd\tMUMA12345B\t10/06/2025\t100000.00\t10000.00\tF\n"
         "2\tBeta Services LLP\tDELB98765C\t12/09/2025\t50000.00\t5000.00\tU\n"
         "3\tGamma Traders\tCHEG11111Z\t01/01/2026\t20000.00\t2000.00\tF\n"
-    )
+    ).records
     svc.save_parsed_records("f1", upload["id"], "c1", "2025-26", records)
     svc.seed_mock_books("f1", "c1", "2025-26", [
         {"credit_id": "r1", "tds_paise": 10_000_00, "deductor_name": "ACME PRIVATE LIMITED",

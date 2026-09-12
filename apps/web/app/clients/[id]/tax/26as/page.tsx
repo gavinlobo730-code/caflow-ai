@@ -95,7 +95,21 @@ interface Reconciliation {
   books_source: string | null;
   ai_insight_triggered: boolean;
   status: string;
+  // TDS-19. Rows of 26AS that are NOT a credit deducted from this client —
+  // Part C (tax the client paid themselves), Part D (a refund already
+  // received) and Part F (s.194-IA the client deducted as BUYER of property).
+  // They are excluded from the comparison above and reported here instead of
+  // being dropped. Absent when the reconciliation was read back from the
+  // database rather than just run: they are not columns of
+  // form_26as_reconciliations, deliberately.
+  not_a_tds_credit?: { part: string | null; record_type: string | null;
+                       amount_paise: number; deductor_name: string }[];
+  not_a_tds_credit_paise?: number;
 }
+
+/** One line of the upload the server could not turn into a record.
+ *  Shape of domain/income_tax/form26as_service.SkippedLine. */
+type SkippedLine = { line_no: number; text: string; reason: string };
 
 export default function Form26ASPage() {
   // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
@@ -113,6 +127,8 @@ export default function Form26ASPage() {
   const [rawText, setRawText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Lines the server read the file but could not turn into a record.
+  const [skipped, setSkipped] = useState<{ read: number; lines: SkippedLine[] } | null>(null);
 
   const [reconciling, setReconciling] = useState(false);
   // One action at a time: every button that starts work waits for whichever
@@ -192,8 +208,26 @@ export default function Form26ASPage() {
       });
       if (!parseRes.success) throw new Error(parseRes.error ?? "Parse failed");
 
+      // IT-24. A line the parser could not read is a tax credit the client is
+      // entitled to under IT Act s.199, and the reconciliation that runs next
+      // will report its deductor as "missing in 26AS" — sending the CA to
+      // chase somebody who filed correctly. The upload is kept (a partial read
+      // beats none) and the drawer STAYS OPEN with the lines named, because
+      // closing it is what made this invisible.
+      const parsed = parseRes.data as {
+        records_parsed?: number;
+        lines_skipped?: number;
+        skipped?: SkippedLine[];
+      };
+      if (parsed?.skipped?.length) {
+        setSkipped({ read: parsed.records_parsed ?? 0, lines: parsed.skipped });
+        await load();
+        return;
+      }
+
       setShowUpload(false);
       setRawText("");
+      setSkipped(null);
       await load();
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Failed");
@@ -308,6 +342,24 @@ export default function Form26ASPage() {
             </div>
           )}
 
+          {(recon.not_a_tds_credit?.length ?? 0) > 0 && (
+            <div className="text-[11px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2 space-y-1">
+              <p className="text-[#334155]">
+                <span className="font-semibold">{paise(recon.not_a_tds_credit_paise ?? 0)}</span>{" "}
+                on this 26AS is <span className="font-semibold">not a TDS credit</span> and is
+                left out of the comparison above — advance or self-assessment tax the client paid
+                themselves (Part C), a refund already received (Part D), or s.194-IA tax the
+                client deducted as BUYER of property (Part F).
+              </p>
+              <ul className="text-[#64748B]">
+                {recon.not_a_tds_credit!.map((r, i) => (
+                  <li key={i}>
+                    Part {r.part ?? "?"} · {r.deductor_name || "—"} · {paise(r.amount_paise)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {recon.needs_confirmation_count > 0 && (
             <div className="flex items-start gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-3">
               <AlertTriangle size={14} className="text-[#64748B] mt-px shrink-0" />
@@ -401,6 +453,34 @@ export default function Form26ASPage() {
             placeholder="Paste Form 26AS text here..."
           />
           {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+          {skipped && (
+            <div className="text-xs bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
+              <p className="font-semibold text-amber-900">
+                {skipped.read} row{skipped.read === 1 ? "" : "s"} read
+                {" · "}{skipped.lines.length} line{skipped.lines.length === 1 ? "" : "s"} could not be
+              </p>
+              <p className="text-amber-900/80">
+                Each of these is tax the deductor may have deposited. Leave them out and the
+                reconciliation reports the deductor as missing from 26AS, and the return claims
+                less credit than the portal shows (IT Act s.199).
+              </p>
+              <ul className="space-y-1.5 max-h-52 overflow-y-auto">
+                {skipped.lines.map(l => (
+                  <li key={l.line_no} className="text-amber-900/90">
+                    <span className="font-mono">line {l.line_no}:</span>{" "}
+                    <span className="font-mono opacity-80">{l.text}</span>
+                    <br />
+                    {l.reason}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => { setShowUpload(false); setRawText(""); setSkipped(null); }}
+                className="rounded-md bg-amber-900 px-3 py-1.5 text-[11px] font-semibold text-white">
+                I have read these — close
+              </button>
+            </div>
+          )}
           <div className="flex gap-2 justify-end">
             <button onClick={() => { setShowUpload(false); setRawText(""); }}
               className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>

@@ -103,6 +103,17 @@ interface ExtractionTotalsCheck {
   note: string | null;
 }
 
+/** One bill the server believes this one may be a second copy of.
+ *  Shape of domain/purchases/near_duplicate.NearDuplicate. */
+type NearDuplicate = {
+  bill_id: string;
+  bill_no: string;
+  bill_date: string | null;
+  total_paise: number;
+  reason: "same_number_different_spelling" | "same_amount_near_date";
+  detail: string;
+};
+
 /** Server line shape (from GET /api/purchase-bills/{id}). */
 export interface PurchaseBillLineDetail {
   id?: string;
@@ -255,6 +266,16 @@ export function PurchaseBillEditor({
   const nextKey = () => keyRef.current++;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // PUR-32. A bill the server thinks may already be recorded under a different
+  // number. Held HERE rather than passed to onDone, because onDone closes the
+  // editor and a warning the CA cannot read is not a warning. The bill IS
+  // saved by the time this is set — it is a check, not a refusal, and
+  // domain/purchases/near_duplicate carries the argument for that.
+  const [nearDupes, setNearDupes] = useState<NearDuplicate[] | null>(null);
+  // The same answer, asked BEFORE the save. Separate state because the two say
+  // different things: one is "you are about to book this twice", the other is
+  // "you just did". Both come from the one rule in apps/api.
+  const [dupeAhead, setDupeAhead] = useState<NearDuplicate[]>([]);
   const [attempted, setAttempted] = useState(false);
 
   // AI Upload (Extract) — create-only; re-extracting into an already-saved
@@ -381,6 +402,37 @@ export function PurchaseBillEditor({
   // the vendor is the taxable value alone. Mirrors the backend's
   // _compute_bill_lines_and_totals; the server remains authoritative.
   const vendorTotalPaise = isReverseCharge ? totals.taxable_paise : totals.grand_total_paise;
+  // ── Is this bill already recorded under another number? (PUR-32) ─────────
+  // Asked of the server, debounced, whenever the four fields it needs settle.
+  // The rule is entirely in apps/api — domain/purchases/near_duplicate — and
+  // this only carries the question and renders the answer. Never blocks: two
+  // identical bills from one supplier on one day are ordinary, so a refusal
+  // here would refuse real work.
+  const dupeProbeKey = isEdit ? "" : [clientId, vendorId, billDate,
+                                      billNo.trim(), vendorTotalPaise].join("|");
+  useEffect(() => {
+    if (!vendorId || !billDate) { setDupeAhead([]); return; }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const token = await getAuthToken();
+        const res = await apiCall("/api/purchase-bills/near-duplicates", "POST", {
+          client_id: clientId, vendor_id: vendorId,
+          bill_no: billNo.trim() || undefined, bill_date: billDate,
+          total_paise: vendorTotalPaise,
+        }, token);
+        if (cancelled) return;
+        const data = res.data as { near_duplicates?: NearDuplicate[] } | undefined;
+        setDupeAhead(res.success ? (data?.near_duplicates ?? []) : []);
+      } catch {
+        // A warning that could not be fetched is silence, never a blocked save.
+        if (!cancelled) setDupeAhead([]);
+      }
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dupeProbeKey]);
+
   const validation = validateBillEditor({ vendorId, billDate, lines, isForeign, exchangeRate });
   const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(vendorTotalPaise, rateNum) : vendorTotalPaise;
 
@@ -618,6 +670,16 @@ export function PurchaseBillEditor({
           token,
         );
         if (!result.success) throw new Error(result.error ?? "Failed to create bill");
+        const warned = (result.data as { near_duplicates?: NearDuplicate[] } | undefined)
+          ?.near_duplicates;
+        if (warned?.length) {
+          // Stay open. The bill is saved; what the CA has to do now is look at
+          // the other document, and closing the drawer takes both the warning
+          // and the context away.
+          setNearDupes(warned);
+          setSaving(false);
+          return;
+        }
       }
       const label = billNo.trim() || "Purchase bill";
       onDone(isEdit ? `${label} updated` : `${label} saved as draft`);
@@ -1160,6 +1222,57 @@ export function PurchaseBillEditor({
           {fieldErr(validation.errors.itc)}
         </section>
 
+        {!nearDupes && dupeAhead.length > 0 && (
+          <div className="text-xs bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 space-y-1.5">
+            <p className="font-semibold text-amber-900">
+              This vendor already has {dupeAhead.length === 1 ? "a bill" : "bills"} that may be the
+              same invoice.
+            </p>
+            <ul className="space-y-1.5">
+              {dupeAhead.map(d => (
+                <li key={d.bill_id} className="text-amber-900/90">
+                  <span className="font-medium">
+                    {d.bill_no || "(no number)"}
+                    {d.bill_date ? ` · ${d.bill_date}` : ""} · ₹{(d.total_paise / 100).toLocaleString("en-IN")}
+                  </span>
+                  <br />
+                  {d.detail}
+                </li>
+              ))}
+            </ul>
+            <p className="text-amber-900/70">Nothing is blocked — save anyway if this is a separate bill.</p>
+          </div>
+        )}
+        {nearDupes && (
+          <div className="text-xs bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
+            <p className="font-semibold text-amber-900">
+              Saved — but this vendor already has {nearDupes.length === 1 ? "a bill" : "bills"} that
+              may be the same invoice.
+            </p>
+            <ul className="space-y-2">
+              {nearDupes.map(d => (
+                <li key={d.bill_id} className="text-amber-900/90">
+                  <span className="font-medium">
+                    {d.bill_no || "(no number)"}
+                    {d.bill_date ? ` · ${d.bill_date}` : ""} · ₹{(d.total_paise / 100).toLocaleString("en-IN")}
+                  </span>
+                  <br />
+                  {d.detail}
+                </li>
+              ))}
+            </ul>
+            <p className="text-amber-900/70">
+              Two bills from one supplier on one day are perfectly ordinary, so nothing has been
+              blocked. If this is the same invoice twice, cancel one of them.
+            </p>
+            <button
+              type="button"
+              onClick={() => onDone(`${billNo.trim() || "Purchase bill"} saved as draft`)}
+              className="rounded-md bg-amber-900 px-3 py-1.5 text-[11px] font-semibold text-white">
+              I have checked — close
+            </button>
+          </div>
+        )}
         {error && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
       </div>
     </InvoiceWorkspaceLayout>

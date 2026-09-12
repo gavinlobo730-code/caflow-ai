@@ -13,6 +13,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
+from dataclasses import asdict
+from domain.purchases import near_duplicate
 from models.common import api_response
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
 from core.authz import assert_client_access
@@ -225,6 +227,49 @@ def create_purchase_bill(
                             document_failure_detail(e, action="create the purchase bill"))
 
 
+class NearDuplicateProbeIn(BaseModel):
+    """What the bill form knows before it saves."""
+    client_id: str
+    vendor_id: str
+    bill_no: Optional[str] = None
+    bill_date: Optional[str] = None
+    total_paise: int = 0
+
+
+@router.post("/near-duplicates")
+def probe_near_duplicates(
+    data: NearDuplicateProbeIn,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Bills of this vendor the one being typed may be a second copy of.
+
+    The same rule the create path applies, offered BEFORE the save so the CA
+    can look at the other document while the form is still open. Read-only,
+    and it never refuses anything: `domain/purchases/near_duplicate` carries
+    the argument for warning rather than blocking.
+
+    Deliberately a POST rather than a GET despite reading nothing: an invoice
+    number is a document identifier that has no business in a URL, a query
+    string or an access log, and the same reasoning already keeps
+    `/tds-preview` a POST.
+    """
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        # Nothing to compare against. An empty list would read as "checked and
+        # clean", which is a stronger claim than mock mode can make.
+        return api_response(True, {"checked": False, "near_duplicates": []})
+    try:
+        from core.supabase_client import get_supabase
+        found = _near_duplicates(
+            get_supabase(), data.client_id, data.vendor_id,
+            bill_no=data.bill_no, bill_date=data.bill_date,
+            total_paise=data.total_paise)
+        return api_response(True, {"checked": True, "near_duplicates": found})
+    except Exception as e:                                      # noqa: BLE001
+        _logger.error("probe_near_duplicates: %s", e)
+        return api_response(False, None, "Could not check for similar bills.")
+
+
 @router.post("/tds-preview")
 def preview_purchase_bill_tds(
     data: PurchaseBillIn,
@@ -347,6 +392,31 @@ def _duplicate_bill_id(db, client_id: str, vendor_id: str,
         if (r.get("bill_no") or "").strip().lower() == key:
             return r.get("id")
     return None
+
+
+def _near_duplicates(db, client_id: str, vendor_id: str, *, bill_no,
+                     bill_date, total_paise: int) -> list[dict]:
+    """Live bills of the same vendor this one may be a second copy of.
+
+    The EXACT check above refuses; this one only reports, and the difference
+    is deliberate — see domain/purchases/near_duplicate for why two identical
+    bills on one day are lawful and common. A failed lookup returns nothing:
+    a warning that could not be computed must never block a legitimate bill.
+    """
+    if db is None or not client_id or not vendor_id:
+        return []
+    try:
+        rows = (db.table("purchase_bills")
+                .select("id, bill_no, bill_date, total_paise, status, deleted_at")
+                .eq("client_id", client_id).eq("vendor_id", vendor_id)
+                .neq("status", "cancelled").is_("deleted_at", "null")
+                .order("bill_date", desc=True).limit(200)
+                .execute().data) or []
+    except Exception:                                           # noqa: BLE001
+        return []
+    return [asdict(n) for n in near_duplicate.near_duplicates(
+        bill_no=bill_no, bill_date=bill_date,
+        total_paise=int(total_paise or 0), existing=rows)]
 
 
 def _duplicate_bill_message(bill_no: str, existing_id: str) -> str:
@@ -889,6 +959,18 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             status_code=409,
             detail=_duplicate_bill_message(bill_payload.get("bill_no") or "", _dup))
 
+    # The number is DIFFERENT but the bill may not be (PUR-32). Read before
+    # the insert so the new row cannot report itself, and warn rather than
+    # refuse — two identical bills from one supplier on one day are lawful.
+    # Not in bulk: an import of 400 bills would be 400 extra reads to produce
+    # a warning nobody is looking at while a CSV uploads. The exact guard
+    # above (and the batch's own pre-fetch) still refuses a true duplicate.
+    _near = [] if bulk_cache is not None else _near_duplicates(
+        db, bill_payload.get("client_id"), bill_payload.get("vendor_id"),
+        bill_no=bill_payload.get("bill_no"),
+        bill_date=bill_payload.get("bill_date"),
+        total_paise=bill_payload.get("total_paise") or 0)
+
     bill_resp = db.table("purchase_bills").insert(bill_payload).execute()  # type: ignore[possibly-undefined]
     bill      = bill_resp.data[0] if bill_resp.data else bill_payload
     bill_id   = bill.get("id", str(uuid.uuid4()))
@@ -940,6 +1022,12 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             entity_type="purchase_bill", entity_id=bill_id,
             amount_paise=bill.get("total_paise"), actor_id=current_user.get("auth_user_id"),
         )
+    # Carried on the bill rather than raised: the CA has just saved it, and the
+    # answer to "is this the same bill twice" is a comparison only they can
+    # make. Absent (rather than []) in mock mode, where there is nothing to
+    # compare against and an empty list would read as "checked, and clean".
+    if _near:
+        bill["near_duplicates"] = _near
     return bill
 
 

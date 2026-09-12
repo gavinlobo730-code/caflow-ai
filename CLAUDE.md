@@ -1185,6 +1185,37 @@ communicated to the recipient, and **GSTR-2B is that communication**.
   rather than matched — 26AS is keyed on the PAN, and pairing two blank-PAN
   rows on section and amount is the guess §206AA exists because nobody should
   make.
+- **NOT EVERY PART OF FORM 26AS IS A CREDIT, and the client-as-DEDUCTEE
+  reconciliation used to sum all of them.** `_PART_RECORD_TYPE` in
+  `domain/income_tax/form26as_service.py` names each part and
+  `CREDIT_RECORD_TYPES` says which count: **A / A1 / A2** is TDS deducted FROM
+  the client and **B** is TCS collected from them (§206C(4)) — both credits;
+  **C** is advance and self-assessment tax the client PAID THEMSELVES, **D** is
+  a refund already received, and **F** is §194-IA tax the client deducted as
+  BUYER of property. Those three are real facts and not TDS credits, so
+  including them made 26AS exceed the book register by exactly the advance tax,
+  for every client who paid any, every year. `split_by_credit` keeps the first
+  two in the comparison and reports the rest as `not_a_tds_credit` — set aside,
+  never dropped, and rendered on the screen. Two traps. **A2 and F point
+  OPPOSITE ways** — seller and buyer of the same §194-IA — so the audit
+  finding's own fix of filtering "A2/F" together would drop a genuine credit,
+  and they are deliberately kept apart; the parser cannot in fact tell A2 from
+  A (`PART\s+([A-Z])` keeps one letter), which is safe only because all three
+  are credits. And **the extras are merged into the RETURN, never into
+  `summary`**, because `summary` is spread straight into the
+  `form_26as_reconciliations` INSERT — a key that is not a column of that table
+  fails on the live database and passes in mock mode, which is the exact shape
+  migration 291 was written to repair on this same table.
+- **What the 26AS parser could not read is NAMED, and an unreadable file is
+  refused rather than saved as an empty year.** `read_26as_text` returns a
+  `Reading26AS` carrying the records AND every skipped line with its 1-based
+  number and the reason; there is deliberately no wrapper handing back only
+  the records. The split is tab-or-pipe only, which is a real limit rather than
+  an oversight — a 26AS pasted out of a PDF viewer is space-separated and
+  splitting on runs of spaces would cut deductor names in half — so such a file
+  reports every line as skipped, `looks_unrecognised` is true, and the router
+  422s. An EMPTY 26AS is still correctly empty: `looks_unrecognised` is
+  content-with-no-records, not no-records.
 
 ## Bank data — the Account Aggregator is the only way in
 
@@ -1420,8 +1451,28 @@ where the FX gain or loss leg lands, and `_create_journal`'s balance assertion i
 exactly what an unbalanced FX leg breaks. `docs/audits/` and
 the batch completion reports are historical records, not current specs.
 
-**Three exceptions in `docs/audits/`, all from 7 September 2026, which ARE
-current and are where to start on any "what should we fix next" question:**
+**`docs/audits/findings-status.md` is where to start on any "what is left"
+question, and it is the ONLY status record that is kept up to date.** Every
+other document below is a SNAPSHOT taken on a date and never amended, which is
+why each successive pass found the one before it stale — 10% on 11 September,
+then 38-59% by subsystem on 12 September, then another nineteen by hand the
+same evening. `findings-status.json` is the record and is amended in the same
+commit that closes a finding; `findings-status.md` is it made readable, and
+`scripts/findings_status_md.py` regenerates it. **Amend the JSON in the commit
+that closes the finding** — a status only ever written by an audit is wrong by
+the time it is read.
+
+Read its four states before quoting a number: `closed` was re-read against the
+code, `closed_by_commit` was named in a merged commit and NOT re-read (usually
+fixed, occasionally only cited), `unverified` means a probe was inconclusive
+and is NOT the same as open, and `open` was re-read and is still true. Nearly
+every open item is blocked on a migration or on a statutory document a person
+has to read, and the table says which.
+
+**The rest of `docs/audits/` — the passes below, all from 7-12 September 2026 —
+are the ANALYSIS behind those verdicts. They are still worth reading for WHY a
+finding is what it is and whether its suggested fix is sound; they are no
+longer to be trusted for WHETHER it is open:**
 
 | File | What it is |
 |---|---|

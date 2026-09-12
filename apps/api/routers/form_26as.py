@@ -88,7 +88,7 @@ def parse_upload(
     Upload the raw text from TRACES portal (PDF → text extraction).
     """
     from domain.income_tax.form26as_service import (
-        parse_26as_text, save_parsed_records
+        read_26as_text, save_parsed_records
     )
     # Resolves the row, the firm AND the assigned book in one place — this
     # replaces the old inline mock/real lookup, whose mock branch skipped the
@@ -96,17 +96,38 @@ def parse_upload(
     upload = _assert_upload_scope(upload_id, current_user)
 
     try:
-        records = parse_26as_text(req.raw_text)
+        reading = read_26as_text(req.raw_text)
+        # IT-24. What the parser could NOT read travels with what it could.
+        # A dropped line is a tax credit the client is entitled to and the
+        # reconciliation will report as "missing in 26AS", sending the CA to
+        # chase a deductor who filed correctly. The upload is still saved —
+        # a partial read is better than none — but it can never again be
+        # presented as complete.
+        if reading.looks_unrecognised:
+            raise HTTPException(
+                422,
+                detail=(
+                    f"None of the {reading.data_lines_seen} data line(s) in this "
+                    f"file could be read. Form 26AS is parsed from the TAB- or "
+                    f"PIPE-separated text file TRACES exports; text pasted out "
+                    f"of a PDF viewer is separated by spaces and cannot be told "
+                    f"apart from a deductor's name. Nothing has been saved."))
         result = save_parsed_records(
             firm_id=current_user["firm_id"],
             upload_id=upload_id,
             client_id=upload["client_id"],
             financial_year=upload["financial_year"],
-            records=records,
+            records=reading.records,
         )
         return api_response(True, {
             "upload": result,
-            "records_parsed": len(records),
+            "records_parsed": len(reading.records),
+            "lines_skipped": len(reading.skipped),
+            "skipped": [
+                {"line_no": s.line_no, "text": s.text, "reason": s.reason}
+                for s in reading.skipped
+            ],
+            "reading_is_complete": not reading.skipped,
         })
     except HTTPException:
         raise
