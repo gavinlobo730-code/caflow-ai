@@ -382,6 +382,38 @@ change. The code is the authority; keep this file in step with it.
   behaves exactly as before — and `minor_head` is settable (200 = paid over by
   the deductor, 400 = against a demand; the company / non-company split is the
   MAJOR head 0020/0021, which migration 037's inline comment had backwards).
+- **§194I AND §194J EACH CHARGE TWO RATES, AND THE CLAUSE IS NOW RECORDABLE
+  WITHOUT THE RATE BEING INVENTED** (TDS-22). §194I charges rent of plant,
+  machinery or equipment at a lower rate than rent of land, buildings or
+  furniture; §194J charges fees for technical services at a lower rate than
+  professional fees. `domain/tds/section_rates.py` holds one key per section
+  plus four clause limbs — `194I(A)`, `194I(B)`, `194J(A)`, `194J(B)` — and the
+  distinction matters twice: **the (b) limbs ARE the rate the registry already
+  holds** (land/building/furniture rent, and professional fees), so selecting
+  one is complete and carries no gap, while **the (a) limbs withhold at the
+  parent's higher rate and say so** in `rate_gap`. Nothing in the module states
+  2%: an under-deduction disallows the whole expenditure under §40(a)(ia) while
+  an excess is the payee's to reclaim, so over-deducting is the direction a
+  rate nobody has read off the Finance Act may take.
+  **The clause CODES are a primary source inside this repository** — the ITD's
+  own ITR-6 AY 2026-27 schema, `domain/income_tax/schemas/ITR6_2026_Main_V1.0.json`,
+  enumerates `4-IA:194I(a)`, `4-IB:194I(b)`, `94J-A:194J(a)`, `94J-B:194J(b)` —
+  which is what removed the recorded objection that "an invented code on a
+  statutory return is worse than the over-deduction it would fix". A test
+  asserts them against that file, so a later schema version that spells them
+  differently fails rather than drifts.
+  **THE KEYS ARE UPPER CASE and that is load-bearing**: every lookup in the
+  module is `.upper().strip()`, so a lower-case key is never found and the
+  failure is SILENT — `parent_of()` falls through to returning the key
+  unchanged, the FY aggregate quietly becomes per-clause instead of the
+  section's, and the withholding drops below what §194J's proviso charges.
+  Two things must therefore never test a name and always ask `parent_of()`:
+  the FY aggregate, and challan matching (a CA types "194J"). §197 eligibility
+  asks it too — `GET /api/tds/sections` resolves the parent before checking
+  `SECTIONS_197`, because §197(1) names sections and telling a CA their
+  plant-hire payment cannot carry a certificate *because they said which kind
+  of rent it was* would be a defect created by adding the limb.
+
 - **`public.tds_section_limits` is NOT the TDS rate master and nothing may read
   it.** Migration 037 seeded it once with pre-Finance-Act-2025 thresholds and
   pre-2024 rates, and its ₹1,00,000 aggregate §194C row has never existed in

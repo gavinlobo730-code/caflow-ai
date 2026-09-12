@@ -301,7 +301,7 @@ def test_the_sections_endpoint_says_which_ones_a_certificate_can_be_recorded_aga
     exists to stop on the vendor master, and the failure a hardcoded list on
     the §197 screen actually produced before this endpoint carried the answer.
     """
-    from domain.tds.section_rates import tds_rates_for
+    from domain.tds.section_rates import parent_of, tds_rates_for
     from routers.tds import list_tds_sections
 
     out = list_tds_sections(fy="2025-26", user={"firm_id": FIRM, "role": "Partner"})
@@ -310,7 +310,15 @@ def test_the_sections_endpoint_says_which_ones_a_certificate_can_be_recorded_aga
     held = set(tds_rates_for("2025-26").sections)
     eligible = {s["section"] for s in data["sections"] if s["section_197_eligible"]}
 
-    assert eligible == (held & lower_deduction.SECTIONS_197)
+    # Resolved through parent_of, because s.197(1) names SECTIONS and the
+    # registry also holds CLAUSES of two of them — "194I(a)" and the rest. A
+    # limb is eligible exactly when its section is: telling a CA their
+    # plant-hire payment cannot carry a certificate BECAUSE they recorded
+    # which kind of rent it was would be a defect created by adding the limb.
+    expected = {s for s in held
+                if s in lower_deduction.SECTIONS_197
+                or parent_of(s, "2025-26") in lower_deduction.SECTIONS_197}
+    assert eligible == expected
     # And what is left out is NAMED, not silently absent.
     assert set(data["section_197_not_priced"]) == (lower_deduction.SECTIONS_197 - held)
     assert "195" in data["section_197_not_priced"]

@@ -49,9 +49,17 @@ def test_every_section_the_registry_computes_is_classified_one_way_or_the_other(
 
 
 def test_the_resident_only_list_quotes_the_section_it_relies_on():
-    """Each entry must carry its own citation, or the claim is unauditable."""
+    """Each entry must carry its own citation, or the claim is unauditable.
+
+    Compared case-INSENSITIVELY, and only for that reason: registry keys are
+    upper-cased because every lookup in section_rates is `.upper()`, while the
+    Act writes a clause lower — "s.194I(a)". Requiring an exact match would
+    force the citation to misquote the statute to satisfy a test, which is the
+    wrong way round.
+    """
     for code, citation in RESIDENT_ONLY_SECTIONS.items():
-        assert citation.startswith(f"s.{code}"), f"{code} does not cite itself"
+        assert citation.lower().startswith(f"s.{code}".lower()), (
+            f"{code} does not cite itself")
         assert "resident" in citation.lower(), (
             f"{code}'s citation does not show the resident limitation it is "
             f"listed for: {citation!r}")

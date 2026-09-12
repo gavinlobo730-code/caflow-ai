@@ -334,6 +334,7 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
     (defaults to the current FY)."""
     from domain.tds.lower_deduction import SECTIONS_197
     from domain.tds.residency import deduction_section_refusal
+    from domain.tds.section_rates import parent_of
     rates = tds_rates_for(fy)
     sections = [
         {
@@ -349,7 +350,21 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
             # tests/test_a_section_the_engine_cannot_answer_for_is_refused.py
             # names for the vendor master. Both facts are decided here, where
             # the registry and the statute both live.
-            "section_197_eligible": sec in SECTIONS_197,
+            # ASKED OF THE PARENT, not the key. s.197(1) names SECTIONS, and
+            # a clause key like "194I(a)" is a limb of one — telling a CA that
+            # a plant-hire payment cannot carry a lower-deduction certificate
+            # because they recorded WHICH KIND of rent it was would be a new
+            # defect created by adding the limb. parent_of() is the one place
+            # that answers this, and the registry's own rule is that nothing
+            # may decide it by testing a name.
+            "section_197_eligible": (sec in SECTIONS_197
+                                     or parent_of(sec, fy) in SECTIONS_197),
+            # The clause this key belongs to, and — where the limb's own rate
+            # is not held — the sentence saying so. A dropdown that offers
+            # "194J(a) — technical services" without saying the concessional
+            # rate is not modelled would read as a rate the software has.
+            "parent_section": parent_of(sec, fy),
+            "rate_gap": rule.rate_gap,
             # AND WHETHER A VENDOR MAY CARRY IT AT ALL.
             #
             # This list is the supplier screen's section dropdown, served

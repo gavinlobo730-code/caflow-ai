@@ -52,6 +52,20 @@ const SECTION_LABELS: Record<string, string> = {
   "194G": "Lottery Commission", "194H": "Commission/Brokerage", "194I": "Rent",
   "194J": "Professional/Technical Fees", "194K": "Mutual Fund Income",
   "194LA": "Compensation on Land Acquisition", "194Q": "Purchase of Goods",
+  // The clauses of s.194I and s.194J (TDS-22). Wording from the Income Tax
+  // Department's own ITR-6 AY 2026-27 schema, which is what the backend
+  // registry's clause keys are sourced from —
+  // apps/api/domain/income_tax/schemas/ITR6_2026_Main_V1.0.json.
+  //
+  // The (a) limbs are charged at a LOWER rate the software does not hold, so
+  // choosing one records the clause correctly on the 26Q row and still
+  // withholds at the section's higher rate. The engine says so on the bill:
+  // GET /api/tds/sections carries `rate_gap`, and the computed bill's `why`
+  // relays the same sentence. Nothing here states a percentage.
+  "194I(A)": "Rent — plant, machinery or equipment",
+  "194I(B)": "Rent — land, building, furniture or fittings",
+  "194J(A)": "Fees for technical services",
+  "194J(B)": "Professional fees or royalty",
 };
 const NONE_OPTION = { value: "", label: "None (No TDS)" };
 const OTHER_OPTION = { value: "other", label: "Other (manual rate)" };

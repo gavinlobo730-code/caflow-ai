@@ -120,7 +120,29 @@ RESIDENT_ONLY_SECTIONS: dict[str, str] = {
              "... lottery tickets' read with the resident limitation",
     "194H":  "s.194H — 'to a resident any income by way of commission or brokerage'",
     "194I":  "s.194I — 'to a resident any income by way of rent'",
+    # The clauses of s.194I and s.194J. KEYS UPPER-CASED because every lookup
+    # in this module is `.upper().strip()` — a lower-case key is never found
+    # and section_refusal() then silently allows the limb against a
+    # non-resident. The CITATIONS quote the Act in its own case, and the test
+    # that each entry cites itself compares case-insensitively for exactly
+    # that reason. The resident limitation is in the
+    # SECTION's charging words, so every limb of it inherits — but this map is
+    # deliberately keyed on what the registry holds rather than resolved
+    # through parent_of(), because the whole point of
+    # test_every_section_the_registry_computes_is_classified_one_way_or_the_other
+    # is that a new key must be READ against the Act and classified by hand. A
+    # parent lookup would classify a future limb of a section that is NOT
+    # resident-only without anybody noticing.
+    "194I(A)": "s.194I(a) — clause (a) of 's.194I — to a resident any income "
+               "by way of rent': plant, machinery or equipment",
+    "194I(B)": "s.194I(b) — clause (b) of 's.194I — to a resident any income "
+               "by way of rent': land, building, furniture or fittings",
     "194J":  "s.194J(1) — 'to a resident any sum by way of fees for professional services'",
+    "194J(A)": "s.194J(a) — clause (a) of 's.194J(1): to a resident any sum by "
+               "way of fees for professional services': technical services",
+    "194J(B)": "s.194J(b) — clause (b) of 's.194J(1): to a resident any sum by "
+               "way of fees for professional services': professional fees or "
+               "royalty",
     "194K":  "s.194K — 'to a resident any income in respect of units'",
     "194LA": "s.194LA — 'to a resident any sum ... compensation on compulsory acquisition'",
     "194Q":  "s.194Q(1) — 'to any resident ... for purchase of goods'",

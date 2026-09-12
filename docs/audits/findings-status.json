@@ -2041,10 +2041,10 @@
    ]
   },
   "TDS-22": {
-   "status": "open",
+   "status": "partial",
    "verified_on": "2026-09-12",
-   "why": "section_rates.py says so in its own comment: 'technical services / call centres are 2% \u2014 not separately modelled'. So s.194J pays 10% on a 2% limb and s.194I plant-and-machinery likewise",
-   "needs": "no migration. The probe pass warns the finding's suggested CLAUSE CODES are ones no portal accepts, and that the correct ones are in ITR6_2026_Main_V1.0.json in this repo \u2014 read those first"
+   "why": "the CLAUSE is now recordable: 194I(A)/(B) and 194J(A)/(B) are in the registry with parent_section set, the (b) limbs carry the rate the parent already holds and are complete, and the (a) limbs withhold at the parent's higher rate with a rate_gap saying so. The clause codes come from the ITD's own ITR-6 AY 2026-27 schema in this repo, which is what removed the recorded objection to adding them. GET /api/tds/sections serves the parent, the gap, and s.197 eligibility resolved on the parent",
+   "needs": "the concessional RATES themselves \u2014 s.194I(a) plant and machinery, s.194J(a) technical services \u2014 read off the Finance Act by a person. Nothing in the module states 2%, deliberately: an under-deduction disallows the whole expenditure under s.40(a)(ia) while an excess is the payee's to reclaim"
   },
   "TDS-23": {
    "status": "open",

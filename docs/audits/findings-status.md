@@ -10,18 +10,18 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 | closed | **53** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | closed_by_commit_only | **13** | named in a commit and nowhere else. The weakest state here — read these before quoting them as done. |
-| partial | **13** | part of the finding is answered, part is not. Each says which. |
-| open | **33** | re-read and still true. |
+| partial | **14** | part of the finding is answered, part is not. Each says which. |
+| open | **32** | re-read and still true. |
 | unverified | **7** | a probe was inconclusive. Treat as unknown, **not** as open. |
 | not a defect as stated | **1** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is about 53 items — 33 open, 13 partial,
+**The work left is about 53 items — 32 open, 14 partial,
 7 unverified — not 254.** The audit documents were never amended as
 tranches landed, so they still list findings fixed weeks ago.
 
-**And of the 33 open, most are not code problems.** Nearly every one needs a
+**And of the 32 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -31,7 +31,6 @@ migration; a handful need a statutory document a person has to read.
 | high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
-| high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **FA-08b** | No output tax on a fixed-asset disposal — the split half of FA-08 |
@@ -69,7 +68,6 @@ migration; a handful need a statutory document a person has to read.
 | **ACC-06** | tables for the templates, budgets and retainers |
 | **GST-11** | schema for a quarterly filing preference, plus IFF |
 | **GST-20** | a registrations table; clients.gstin is singular today |
-| **TDS-22** | no migration. The probe pass warns the finding's suggested CLAUSE CODES are ones no portal accepts, and that the correct ones are in ITR6_2026_Main_V1.0.json in this repo — read those first |
 | **BANK-11** | a match_type column, or a second pattern column — the rule row has neither |
 | **FA-08b** | a migration for the disposal's tax split, and a decision on CGST s.18(6) |
 | **FA-11** | a migration per item. One hazard the finding does not name: a shift multiplier folded into wdv_rate_percent would make schedule_ii_departure report every double-shift asset as a Part C departure, so it must be its own column |
@@ -98,6 +96,7 @@ migration; a handful need a statutory document a person has to read.
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
+| high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
 | medium | **FA-19** | Rule 43 capital-goods ITC apportionment does not exist |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
