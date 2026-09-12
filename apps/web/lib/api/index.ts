@@ -1741,7 +1741,7 @@ export const api = {
     register: (params: {
       bank_account_id: string; client_id?: string;
       date_from?: string; date_to?: string;
-      status?: "all" | "uncleared" | "pending" | "reconciled" | "unposted" | "needs_review";
+      status?: "all" | "uncleared" | "pending" | "reconciled" | "unposted";
       q?: string; sort?: "date" | "amount" | "description" | "balance" | "cleared";
       desc?: string; limit?: string; offset?: string;
     }) => request(`/api/banking/register?${new URLSearchParams(params as Record<string, string>)}`),

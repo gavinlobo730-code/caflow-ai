@@ -29,12 +29,42 @@ TABLE = "bank_statement_column_mappings"
 
 def find_mapping(db, firm_id: str, bank_account_id: str,
                  fingerprint: str) -> Optional[dict]:
-    """The saved mapping for this account and this exact header layout.
+    """The saved mapping for this exact header layout — this account first,
+    then any account of the same firm.
 
-    Returns None — never a mapping for a DIFFERENT layout. Falling back to the
-    account's other saved mapping is the one thing this must not do: it would
-    read a changed export at the old column positions and produce numbers that
-    are wrong without being obviously wrong.
+    THE LAYOUT IS NEVER WIDENED, ONLY THE ACCOUNT
+        Returns None rather than a mapping for a DIFFERENT layout. Falling back
+        to the account's other saved mapping is the one thing this must not do:
+        it would read a changed export at the old column positions and produce
+        numbers that are wrong without being obviously wrong. Every branch below
+        matches `header_fingerprint` exactly, and the fingerprint is what makes
+        reuse safe at all.
+
+    WHY THE FIRM-WIDE SECOND LOOK (BANK-26)
+        `_ADAPTERS` in the normalizer auto-detects seven layouts, four of them
+        named banks. Everything else — co-operative banks, smaller PSU exports,
+        anything a bank has re-formatted — needs a mapping drawn by hand, and
+        the lookup was scoped to ONE bank account. A firm with thirty clients
+        banking at the same co-operative drew the same mapping thirty times, and
+        drew it again for the thirty-first, because nothing it had already
+        recorded was reachable.
+
+        `bank_statement_column_mappings` already carries `firm_id` (migration
+        314) and the unique index is on `(bank_account_id, header_fingerprint)`,
+        so a firm-scoped read needs no schema change — the rows were always
+        there to find. Newest first, because the most recently confirmed
+        rendering of a layout is the one a bank's own latest export matches.
+
+        Deliberately NOT widened past the firm: a mapping is another firm's
+        working paper, and reading one would cross the tenant boundary this
+        codebase treats as its primary isolation control.
+
+        Deliberately NOT matched on bank NAME. A name is what somebody typed;
+        the fingerprint is what the file actually contains.
+
+    The returned row carries `match_scope` — "account" or "firm" — so a caller
+    can tell a CA that the mapping came from elsewhere in the practice rather
+    than presenting it as this account's own settled answer.
     """
     if not db or not bank_account_id or not fingerprint:
         return None
@@ -44,12 +74,19 @@ def find_mapping(db, firm_id: str, bank_account_id: str,
                 .eq("bank_account_id", bank_account_id)
                 .eq("header_fingerprint", fingerprint)
                 .limit(1).execute().data) or []
+        if rows:
+            return {**rows[0], "match_scope": "account"}
+        rows = (db.table("bank_statement_column_mappings").select("*")
+                .eq("firm_id", firm_id)
+                .eq("header_fingerprint", fingerprint)
+                .order("created_at", desc=True)
+                .limit(1).execute().data) or []
     except Exception as e:                                       # noqa: BLE001
         # A lookup failure must not block an import that would otherwise work
         # by detection. The caller falls back to detect_format.
         _logger.warning("column mapping lookup failed: %s", e)
         return None
-    return rows[0] if rows else None
+    return {**rows[0], "match_scope": "firm"} if rows else None
 
 
 def list_mappings(db, firm_id: str, client_id: Optional[str] = None,

@@ -22,6 +22,7 @@ from .matcher import (
     Candidate, Suggestion, rank_suggestions,
     NEAR_MATCH_BAND_BPS, NEAR_MATCH_CONFIDENCE_CAP, TDS_RATES_BPS, TDS_TOLERANCE_PAISE,
     near_match_floor_paise, detect_tds_rate_bps,
+    invoice_open_paise, bill_open_paise,
 )
 from .charge_gst import (
     ChargeSplit, split_inclusive_charge, build_charge_lines,
@@ -62,6 +63,7 @@ __all__ = [
     "NEAR_MATCH_BAND_BPS", "NEAR_MATCH_CONFIDENCE_CAP",
     "TDS_RATES_BPS", "TDS_TOLERANCE_PAISE",
     "near_match_floor_paise", "detect_tds_rate_bps",
+    "invoice_open_paise", "bill_open_paise",
     "ChargeSplit", "split_inclusive_charge", "build_charge_lines",
     "CHARGE_GST_RATES_BPS",
     "RegisterLine", "build_register", "first_divergence", "summarise_register",

@@ -20,6 +20,7 @@ from core.db_paging import fetch_all
 from domain.banking import (
     Candidate, rank_suggestions, match_rule, is_valid_category, CATEGORIES,
     NEAR_MATCH_BAND_BPS, parse_narration, describe_narration,
+    invoice_open_paise, bill_open_paise,
 )
 from domain.banking import posting_map as pmap
 from services.bank_payee_service import bank_payee_service
@@ -299,7 +300,9 @@ class BankMatchingService:
         if not bands:
             return []
         q = (db.table("client_sales_invoices")
-             .select("id, invoice_no, invoice_date, total_paise, paid_paise, customer_id, status")
+             .select("id, invoice_no, invoice_date, total_paise, paid_paise, "
+                     "credited_paise, debit_note_paise, outstanding_paise, "
+                     "customer_id, status")
              .eq("firm_id", firm_id).eq("client_id", client_id)
              .is_("deleted_at", "null"))
         rows = (self._banded(q, "total_paise", bands, "invoice")
@@ -323,17 +326,21 @@ class BankMatchingService:
             # outstanding-balance functions excluding draft/cancelled).
             if str(r.get("status")) in ("cancelled", "draft"):
                 continue
-            paid = int(r.get("paid_paise") or 0)
             total = int(r.get("total_paise") or 0)
-            if paid >= total:
-                continue  # fully paid → not open
+            # s.34 credit and debit notes move what is recoverable, so the open
+            # figure is not total - paid. invoice_open_paise reads migration
+            # 278's generated column where the row came from Postgres and
+            # transcribes the same formula where it did not.
+            open_paise = invoice_open_paise(r)
+            if open_paise <= 0:
+                continue  # fully settled → not open
             party = customers.get(r.get("customer_id"))
             out.append(Candidate(
                 entity_type="sales_invoice", entity_id=r["id"],
                 label=f"{r.get('invoice_no', '')} · {party or 'Customer'}",
                 amount_paise=total, entity_date=str(r.get("invoice_date") or "")[:10],
                 party_name=party, party_id=r.get("customer_id"),
-                outstanding_paise=total - paid,
+                outstanding_paise=open_paise,
             ))
         return out
 
@@ -349,7 +356,9 @@ class BankMatchingService:
         if not bands:
             return []
         q = (db.table("purchase_bills")
-             .select("id, bill_no, bill_date, total_paise, net_payable_paise, vendor_id, status")
+             .select("id, bill_no, bill_date, total_paise, net_payable_paise, "
+                     "paid_paise, credit_note_paise, debited_paise, outstanding_paise, "
+                     "vendor_id, status")
              .eq("firm_id", firm_id).eq("client_id", client_id)
              .is_("deleted_at", "null"))
         rows = (self._banded(q, "net_payable_paise", bands, "bill")
@@ -374,15 +383,23 @@ class BankMatchingService:
             # outstanding-balance functions excluding draft/cancelled).
             if str(r.get("status")) in ("cancelled", "paid", "draft"):
                 continue
-            party = vendors.get(r.get("vendor_id"))
             # Present the payable (what's owed), not the gross bill total.
             net_payable = int(r.get("net_payable_paise") or r.get("total_paise") or 0)
+            # This used to report net_payable AS the outstanding, and the pool
+            # never even fetched paid_paise — so a bill 90% settled offered its
+            # whole net payable as still open, and matcher.py's "+15 matches
+            # outstanding balance" fired on a figure that was not outstanding.
+            # The invoice side had always subtracted; only the bill side had not.
+            open_paise = bill_open_paise(r)
+            if open_paise <= 0:
+                continue  # fully settled → not open, whatever `status` still says
+            party = vendors.get(r.get("vendor_id"))
             out.append(Candidate(
                 entity_type="purchase_bill", entity_id=r["id"],
                 label=f"{r.get('bill_no', '')} · {party or 'Vendor'}",
                 amount_paise=net_payable, entity_date=str(r.get("bill_date") or "")[:10],
                 party_name=party, party_id=r.get("vendor_id"),
-                outstanding_paise=net_payable,
+                outstanding_paise=open_paise,
             ))
         return out
 

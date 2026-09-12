@@ -32,7 +32,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from domain.banking.matcher import Candidate
+from domain.banking.matcher import Candidate, invoice_open_paise, bill_open_paise
 from domain.banking.candidate_search import (
     search as search_candidates, describe, allowed_types, CandidateHit, MAX_RESULTS,
 )
@@ -91,6 +91,7 @@ class BankCandidateSearchService:
     def _invoices(self, db, firm_id, client_id, d_from, d_to) -> list[Candidate]:
         rows = (db.table("client_sales_invoices")
                 .select("id, invoice_no, invoice_date, total_paise, paid_paise, "
+                        "credited_paise, debit_note_paise, outstanding_paise, "
                         "customer_id, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .is_("deleted_at", "null")
@@ -104,8 +105,9 @@ class BankCandidateSearchService:
             if str(r.get("status")) in ("cancelled", "draft"):
                 continue
             total = int(r.get("total_paise") or 0)
-            paid = int(r.get("paid_paise") or 0)
-            if paid >= total:
+            # s.34 notes move what is recoverable — see invoice_open_paise.
+            open_paise = invoice_open_paise(r)
+            if open_paise <= 0:
                 continue
             party = customers.get(r.get("customer_id"))
             out.append(Candidate(
@@ -113,14 +115,15 @@ class BankCandidateSearchService:
                 label=f"{r.get('invoice_no', '')} · {party or 'Customer'}",
                 amount_paise=total, entity_date=str(r.get("invoice_date") or "")[:10],
                 party_name=party, party_id=r.get("customer_id"),
-                outstanding_paise=total - paid,
+                outstanding_paise=open_paise,
             ))
         return out
 
     def _bills(self, db, firm_id, client_id, d_from, d_to) -> list[Candidate]:
         rows = (db.table("purchase_bills")
                 .select("id, bill_no, bill_date, total_paise, net_payable_paise, "
-                        "vendor_id, status")
+                        "paid_paise, credit_note_paise, debited_paise, "
+                        "outstanding_paise, vendor_id, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .is_("deleted_at", "null")
                 .gte("bill_date", d_from).lte("bill_date", d_to)
@@ -130,16 +133,24 @@ class BankCandidateSearchService:
         for r in rows:
             if str(r.get("status")) in ("cancelled", "paid", "draft"):
                 continue
-            party = vendors.get(r.get("vendor_id"))
             # The payable (TDS-net), not the gross total — that is what actually
             # leaves the bank and what settlement relieves.
             net = int(r.get("net_payable_paise") or r.get("total_paise") or 0)
+            # The module docstring calls fully-paid a RULE, not a filter, and
+            # the invoice branch above enforces it. This one did not: it never
+            # fetched paid_paise, so a settled bill whose `status` had not been
+            # flipped was still offered, with its whole net payable presented as
+            # outstanding.
+            open_paise = bill_open_paise(r)
+            if open_paise <= 0:
+                continue
+            party = vendors.get(r.get("vendor_id"))
             out.append(Candidate(
                 entity_type="purchase_bill", entity_id=r["id"],
                 label=f"{r.get('bill_no', '')} · {party or 'Vendor'}",
                 amount_paise=net, entity_date=str(r.get("bill_date") or "")[:10],
                 party_name=party, party_id=r.get("vendor_id"),
-                outstanding_paise=net,
+                outstanding_paise=open_paise,
             ))
         return out
 

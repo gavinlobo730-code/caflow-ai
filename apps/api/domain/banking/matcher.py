@@ -85,6 +85,65 @@ class Candidate:
     outstanding_paise: Optional[int] = None
 
 
+# ── What a document still has open ───────────────────────────────────────────
+# Two services build Candidates from client_sales_invoices and purchase_bills —
+# bank_matching_service (the amount-banded automatic offer) and
+# bank_candidate_search_service (the unbanded search). Both must report the same
+# outstanding figure, so the arithmetic lives here, beside the Candidate they
+# fill in, rather than four times across the two files.
+#
+# `outstanding_paise` is a GENERATED STORED column on both tables (migration
+# 278) carrying exactly the formulas transcribed below, so the value is read
+# whenever it is present and Postgres owns the definition. The fallback is for
+# rows that never came from Postgres — mock mode and the in-memory test doubles,
+# which hold hand-built dicts. This is the pattern collections_service._open_
+# invoices already uses; the difference is that these two read the column and
+# then keep the parts, because a Candidate needs the face amount as well.
+#
+# The note terms are CGST Act s.34 — a note moves what is actually owed, so a
+# settlement must follow that and not the document's face value. WHICH WAY each
+# column moves it is not guessable from its name, which is the reason these are
+# two functions rather than one parameterised on a column:
+#
+#   client_sales_invoices.debit_note_paise  (migration 210)  ADDS to what is owed
+#   client_sales_invoices.credited_paise    (migration 140)  SUBTRACTS
+#   purchase_bills.credit_note_paise        (migration 210)  ADDS to what is owed
+#   purchase_bills.debited_paise            (migration 145)  SUBTRACTS
+#
+# Migration 210 adds the INCREASE document to both sides at once — a sales debit
+# note and a purchase credit note — so "credit note" is the subtracting column on
+# one table and the adding column on the other. Transcribed from migration 278's
+# generated expressions, which are the definition; the same reasoning
+# domain/reporting/ageing.py records for the two Schedule III tables.
+
+
+def invoice_open_paise(row: dict) -> int:
+    """Still recoverable on a sales invoice: total + debit notes - paid - credited."""
+    stored = row.get("outstanding_paise")
+    if stored is not None:
+        return int(stored)
+    return (int(row.get("total_paise") or 0)
+            + int(row.get("debit_note_paise") or 0)
+            - int(row.get("paid_paise") or 0)
+            - int(row.get("credited_paise") or 0))
+
+
+def bill_open_paise(row: dict) -> int:
+    """Still payable on a purchase bill: net payable + credit notes - paid - debited.
+
+    NET payable, not total: the money that leaves the bank for a vendor is the
+    bill net of TDS withheld, and that is what settlement relieves. Matching on
+    the gross meant a bill with any TDS never surfaced against its own payment.
+    """
+    stored = row.get("outstanding_paise")
+    if stored is not None:
+        return int(stored)
+    return (int(row.get("net_payable_paise") or row.get("total_paise") or 0)
+            + int(row.get("credit_note_paise") or 0)
+            - int(row.get("paid_paise") or 0)
+            - int(row.get("debited_paise") or 0))
+
+
 @dataclass
 class Suggestion:
     entity_type: str

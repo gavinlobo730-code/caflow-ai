@@ -71,7 +71,12 @@ interface RegisterPayload {
   offset: number;
 }
 
-type RegisterStatus = "all" | "uncleared" | "pending" | "reconciled" | "unposted" | "needs_review";
+// "needs_review" was a sixth tab here. Nothing in the product has ever set
+// bank_transactions.needs_review to true, so it answered "nothing needs
+// review" on every client, every time — a false assurance rather than an empty
+// list. The column and the server's own branch stay for the exception service
+// that would write it; the offer does not. See services/bank_register_service.py.
+type RegisterStatus = "all" | "uncleared" | "pending" | "reconciled" | "unposted";
 type RegisterSort = "date" | "amount" | "description" | "balance" | "cleared";
 
 const REGISTER_STATUSES: { id: RegisterStatus; label: string }[] = [
@@ -80,7 +85,6 @@ const REGISTER_STATUSES: { id: RegisterStatus; label: string }[] = [
   { id: "pending", label: "Cleared (C)" },
   { id: "reconciled", label: "Reconciled (R)" },
   { id: "unposted", label: "Not posted" },
-  { id: "needs_review", label: "Needs review" },
 ];
 
 const PAGE_SIZE = 100;

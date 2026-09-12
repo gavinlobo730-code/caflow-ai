@@ -66,6 +66,30 @@ _RE_UTR_ALNUM = re.compile(r"\b([A-Z]{4}[A-Z0-9]{8,18}|N\d{15})\b")
 _RE_VPA = re.compile(r"\b([a-zA-Z0-9][\w.\-]{1,60}@[a-zA-Z]{2,20})\b")
 
 _RE_IFSC = re.compile(r"\b([A-Z]{4}0[A-Z0-9]{6})\b")
+
+# ── The cheque number (BANK-28) ─────────────────────────────────────────────
+# The CHEQUE channel was recognised and the leaf number thrown away, so every
+# cheque line in the queue read "CHEQUE · <name>" with nothing to tell one
+# cheque from another — on the one instrument whose number IS how a bookkeeper
+# identifies it, and the one channel that carries no UTR.
+#
+# SIX digits: the cheque serial is the first field of the CTS-2010 MICR band and
+# is printed to that width, leading zeros included. ⚠️ [S] — written from
+# knowledge; this environment's proxy refuses every rbi.org.in fetch, so the
+# width is not confirmed against the standard here.
+#
+# THE MARKER IS REQUIRED, and that is the whole safety argument. A bare
+# six-digit run in a narration is as likely to be a date (ddmmyy), a branch
+# code or part of an account number, and this value is shown to a CA as the
+# instrument's identity. So the number must sit against a cheque word — before
+# it or after it — and anything else parses to None. A cheque number we fail to
+# read costs exactly what today costs; a wrong one is a wrong reference on a
+# voucher, which is worse than none.
+_CHEQUE_WORD = r"(?:CHQ|CHEQUE|CLG|MICR)"
+_RE_CHEQUE_AFTER = re.compile(
+    rf"\b{_CHEQUE_WORD}\b\.?\s*(?:NO\.?|NUM(?:BER)?)?\s*[:#/\-]?\s*(?<!\d)(\d{{6}})(?!\d)")
+_RE_CHEQUE_BEFORE = re.compile(
+    rf"(?<!\d)(\d{{6}})(?!\d)\s*[:#/\-]?\s*\b{_CHEQUE_WORD}\b")
 _RE_MASKED_ACCOUNT = re.compile(r"^[\dX*]{4,}$", re.I)
 _RE_HAS_LETTER = re.compile(r"[A-Za-z]")
 
@@ -111,12 +135,16 @@ class ParsedNarration:
     vpa: Optional[str] = None              # UPI id, e.g. ramesh@okhdfc
     counterparty: Optional[str] = None     # the other side's name, as printed
     ifsc: Optional[str] = None
+    # The cheque leaf number, when the narration names one against a cheque
+    # word. None on every other channel — see _RE_CHEQUE_AFTER.
+    cheque_no: Optional[str] = None
     direction: Optional[str] = None        # 'debit' | 'credit', when stated
     tokens: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def is_empty(self) -> bool:
-        return not any((self.channel, self.utr, self.vpa, self.counterparty, self.ifsc))
+        return not any((self.channel, self.utr, self.vpa, self.counterparty,
+                        self.ifsc, self.cheque_no))
 
 
 def _clean(token: str) -> str:
@@ -232,6 +260,9 @@ def parse_narration(narration: Optional[str]) -> ParsedNarration:
 
     ifsc_match = _RE_IFSC.search(raw.upper())
 
+    upper = raw.upper()
+    cheque = _RE_CHEQUE_AFTER.search(upper) or _RE_CHEQUE_BEFORE.search(upper)
+
     return ParsedNarration(
         raw=raw,
         channel=_detect_channel(raw),
@@ -239,6 +270,7 @@ def parse_narration(narration: Optional[str]) -> ParsedNarration:
         vpa=vpa,
         counterparty=_pick_counterparty(tokens, vpa),
         ifsc=ifsc_match.group(1) if ifsc_match else None,
+        cheque_no=cheque.group(1) if cheque else None,
         direction=_detect_direction(tokens),
         tokens=tuple(tokens),
     )
@@ -308,6 +340,10 @@ def describe(parsed: ParsedNarration) -> str:
         parsed.channel,
         parsed.counterparty,
         f"UTR {parsed.utr}" if parsed.utr else None,
+        # A cheque carries no UTR, so without this a cheque line's summary was
+        # the channel and a name — nothing that distinguishes one cheque from
+        # the next, which is how a bookkeeper actually finds them.
+        f"Cheque {parsed.cheque_no}" if parsed.cheque_no else None,
         parsed.vpa,
     ) if b]
     return " · ".join(bits)

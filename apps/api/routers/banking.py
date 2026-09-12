@@ -904,7 +904,12 @@ def upload_statement(
             saved = None            # unreadable file — the parse will say so
         if saved:
             mapping = saved.get("mapping")
-            mapping_source = "saved"
+            # "saved_firm" when the layout was recorded against a DIFFERENT
+            # account of this firm — same header fingerprint, someone else's
+            # client. Reported distinctly rather than as this account's own
+            # settled mapping, because the two are different claims.
+            mapping_source = ("saved" if saved.get("match_scope") != "firm"
+                              else "saved_firm")
 
     has_balances = (opening_balance_paise is not None
                     and closing_balance_paise is not None)
@@ -1101,6 +1106,8 @@ def inspect_statement_file(
              if db and bank_account_id else None)
     info["saved_mapping"] = saved.get("mapping") if saved else None
     info["saved_mapping_id"] = saved.get("id") if saved else None
+    # "account" | "firm" | None — see bank_column_mapping_service.find_mapping.
+    info["saved_mapping_scope"] = saved.get("match_scope") if saved else None
     return api_response(True, info)
 
 
@@ -1343,7 +1350,7 @@ def bank_register(
     client_id: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    status: str = Query("all", pattern="^(all|uncleared|pending|reconciled|unposted|needs_review)$"),
+    status: str = Query("all", pattern="^(all|uncleared|pending|reconciled|unposted)$"),
     q: Optional[str] = Query(None, description="Search narration, reference or category"),
     sort: str = Query("date", pattern="^(date|amount|description|balance|cleared)$"),
     desc: bool = Query(False),

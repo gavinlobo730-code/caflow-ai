@@ -385,7 +385,7 @@ def test_the_endpoints_query_patterns_match_the_service_vocabulary():
     params = br.bank_register.__annotations__
     assert set(SORTABLE) == {"date", "amount", "description", "balance", "cleared"}
     assert set(STATUS_FILTERS) == {"all", "uncleared", "pending", "reconciled",
-                                   "unposted", "needs_review"}
+                                   "unposted"}
     assert "bank_account_id" in params
 
 
