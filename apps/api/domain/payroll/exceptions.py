@@ -40,7 +40,10 @@ from __future__ import annotations
 import re
 
 from domain.payroll import age as age_domain
-from domain.payroll.professional_tax import classify_state as classify_pt_state
+from domain.payroll.professional_tax import (
+    classify_for_employee as classify_pt_for_employee,
+    classify_state as classify_pt_state,
+)
 
 PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 UAN_RE = re.compile(r"^\d{12}$")
@@ -121,7 +124,9 @@ def for_employee(emp: dict, *, fy: str | None = None,
         })
 
     if emp.get("pt_applicable"):
-        pt = classify_pt_state(emp.get("pt_state"))
+        # PAY-05: the employee-level question. A tick with no state withheld
+        # nothing and raised nothing, which is the silence this list exists for.
+        pt = classify_pt_for_employee(True, emp.get("pt_state"))
         if pt.is_gap:
             out.append({
                 "kind": "pt_state", "employee_id": emp.get("id"), "employee": who,

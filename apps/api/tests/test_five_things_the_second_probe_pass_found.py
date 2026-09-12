@@ -242,3 +242,171 @@ def test_a_null_asset_code_falls_back_to_the_id_not_to_the_string_None():
     asset = {"id": "abcdef1234567890", "asset_code": None}
     assert (asset.get("asset_code", asset["id"][:8])) is None        # the bug
     assert (asset.get("asset_code") or asset["id"][:8]) == "abcdef12"  # the fix
+
+
+# ---------------------------------------------------------------------------
+# 6. PAY-05 — professional tax ticked with no state withheld nil, forever,
+#    and raised no gap.
+#
+#    `classify_state("")` says "no state set, nothing withheld, NOT a gap", and
+#    that is the right answer to a question about a state code: PT is withheld
+#    only where somebody has said which state's law applies, and most employees
+#    in the product have no PT at all.
+#
+#    It is the wrong answer once the CA has ticked `pt_applicable`. That tick
+#    says this employee owes professional tax; leaving the state blank then
+#    withholds ₹0 every month with no gap, no exception row, and nothing on the
+#    payslip — and Article 276 leaves the EMPLOYER liable for what was not
+#    deducted. The same blank field silenced the LWF gap beside it.
+#
+#    Fixed as a SECOND function rather than by changing the first: the
+#    state-level answer is relied on elsewhere and pinned by
+#    tests/test_pt_lwf_state_coverage.py, and the two questions genuinely have
+#    different answers.
+# ---------------------------------------------------------------------------
+from domain.payroll.professional_tax import (                      # noqa: E402
+    classify_for_employee, classify_state,
+)
+
+
+def test_a_blank_state_is_still_not_a_gap_as_a_question_about_a_STATE():
+    # Unchanged, and it must stay unchanged — this is what the other callers
+    # and the existing coverage test rely on.
+    assert classify_state("").is_gap is False
+    assert classify_state(None).is_gap is False
+
+
+def test_a_blank_state_IS_a_gap_once_the_ca_has_ticked_pt():
+    result = classify_for_employee(True, "")
+    assert result.is_gap is True
+    assert result.amount_paise == 0
+    assert "no state is recorded" in result.note and "276" in result.note
+
+
+def test_an_employee_with_no_pt_is_never_a_gap_whatever_the_state_says():
+    for state in ("", None, "GJ", "MH"):
+        assert classify_for_employee(False, state).is_gap is False
+
+
+def test_a_modelled_state_is_computed_and_a_non_levying_one_is_a_real_zero():
+    assert classify_for_employee(True, "MH").is_gap is False   # computed
+    assert classify_for_employee(True, "DL").is_gap is False   # nothing due
+    assert "does not levy" in classify_for_employee(True, "DL").note
+
+
+def test_an_unmodelled_levying_state_is_still_the_gap_it_always_was():
+    gujarat = classify_for_employee(True, "GJ")
+    assert gujarat.is_gap is True and "Gujarat" in gujarat.note
+
+
+def test_the_run_reports_the_blank_state_per_employee():
+    import routers.payroll as pr
+    gaps = pr._statutory_gaps({"id": "E1", "name": "Asha",
+                               "pt_applicable": True, "pt_state": ""})
+    assert any("Asha" in g and "no state is recorded" in g for g in gaps)
+
+
+def test_the_exception_list_blocks_professional_tax_on_it():
+    from domain.payroll.exceptions import for_employee
+    rows = for_employee({"id": "E1", "name": "Asha", "pt_applicable": True,
+                         "pt_state": ""})
+    pt = [r for r in rows if r["kind"] == "pt_state"]
+    assert pt and pt[0]["blocks"] == "Professional tax"
+
+
+# ---------------------------------------------------------------------------
+# 7. IT-33 — the Income Tax hub's §211 calendar was four hardcoded strings.
+#
+#    The panel read "Advance Tax Installments — FY 2025-26" over "15 Jun 2025",
+#    "15 Sep 2025", "15 Dec 2025" and "15 Mar 2026". Every one of those dates
+#    had elapsed by the time this was written, and nothing on the page said so:
+#    the four rows all showed "Due passed", which is the same thing the panel
+#    shows in March of a year it IS right about. §211's dates have always been
+#    derived from the FY by `compliance_engine.advance_tax_due_dates`; nothing
+#    called it from the hub.
+#
+#    The dates are served beside `current_fy`, which the same endpoint already
+#    returned, rather than computed in the browser: `current_fy` is IST, and a
+#    browser west of India flips the financial year a day early on 31 March.
+# ---------------------------------------------------------------------------
+from datetime import date as _date                                 # noqa: E402
+
+from domain.income_tax.statutory_rates import current_fy           # noqa: E402
+from services.compliance_engine import advance_tax_due_dates       # noqa: E402
+
+
+def _financial_years_payload():
+    from routers.income_tax import supported_financial_years
+    return supported_financial_years(current_user={"role": "Partner"})["data"]
+
+
+def test_the_endpoint_serves_the_instalment_calendar():
+    payload = _financial_years_payload()
+    assert "current_fy_advance_tax" in payload, (
+        "The hub has no other source for §211's dates; without this it falls "
+        "back to a literal, which is what IT-33 is.")
+    assert len(payload["current_fy_advance_tax"]) == 4
+
+
+def test_the_calendar_is_for_the_year_the_same_response_names():
+    payload = _financial_years_payload()
+    fy = payload["current_fy"]                       # e.g. "2026-27"
+    start_year = int(fy[:4])
+    dates = [_date.fromisoformat(i["due_date"]) for i in payload["current_fy_advance_tax"]]
+    # §211(1): 15 Jun, 15 Sep and 15 Dec of the FY, then 15 Mar of the next
+    # calendar year — which is still the same financial year.
+    assert dates == [
+        _date(start_year, 6, 15), _date(start_year, 9, 15),
+        _date(start_year, 12, 15), _date(start_year + 1, 3, 15),
+    ]
+
+
+def test_it_is_the_engine_s_own_answer_and_not_a_second_derivation():
+    payload = _financial_years_payload()
+    assert payload["current_fy_advance_tax"] == advance_tax_due_dates(
+        int(current_fy()[:4]) + 1)
+
+
+def test_the_cumulative_percentages_are_211_s_and_are_cumulative():
+    payload = _financial_years_payload()
+    assert [i["cumulative_percentage"] for i in payload["current_fy_advance_tax"]] \
+        == [15, 45, 75, 100]
+
+
+def test_the_per_instalment_step_the_screen_derives_is_15_30_30_25():
+    # The screen renders the STEP, not the cumulative figure — the fourth
+    # instalment is 25% of the estimate, not 100% of it. Derived from the
+    # cumulative column so the two cannot disagree; pinned here because the
+    # derivation is arithmetic the screen does and the input is ours.
+    cumulative = [i["cumulative_percentage"] for i in _financial_years_payload()
+                  ["current_fy_advance_tax"]]
+    steps = [c - (0 if i == 0 else cumulative[i - 1]) for i, c in enumerate(cumulative)]
+    assert steps == [15, 30, 30, 25]
+    assert sum(steps) == 100
+
+
+def test_no_date_in_the_calendar_is_hardcoded_anywhere_in_the_hub():
+    """The literals IT-33 removed, by their exact spelling.
+
+    A guard on the SPELLING rather than the rule, deliberately: the rule
+    ("the hub must not hold a date") is unenforceable from here because the
+    page is TypeScript, and these four strings are what actually shipped.
+
+    Comments are stripped first, because the file explains what it removed by
+    quoting it — the same trap as `_strip_comments` in
+    test_direct_write_tables_are_role_guarded.py. Prose about a literal is not
+    the literal.
+    """
+    import re
+    from pathlib import Path
+    page = (Path(__file__).resolve().parents[3] / "apps" / "web" / "app"
+            / "income-tax" / "page.tsx")
+    assert page.exists(), page
+    text = page.read_text(encoding="utf-8")
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
+    for literal in ("15 Jun 2025", "15 Sep 2025", "15 Dec 2025", "15 Mar 2026",
+                    "ADVANCE_TAX_INSTALLMENTS", "FY 2025-26"):
+        assert literal not in text, (
+            f"{literal!r} is back in the Income Tax hub. §211's dates and the "
+            "financial year both come from the server (IT-33).")

@@ -47,7 +47,10 @@ from domain.payroll import esic_mapped_ips
 from domain.payroll import annexure2 as annexure2_domain
 from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
-from domain.payroll.professional_tax import classify_state as classify_pt_state
+from domain.payroll.professional_tax import (
+    classify_for_employee as classify_pt_for_employee,
+    classify_state as classify_pt_state,
+)
 from domain.payroll import identity as identity_domain
 from domain.payroll import handoff as handoff_domain
 from domain.payroll import remittance_match
@@ -437,7 +440,12 @@ def _statutory_gaps(emp: dict, pt_covered: Optional[set] = None) -> list[str]:
     gaps: list[str] = []
     if emp.get("pt_applicable"):
         state = (emp.get("pt_state") or "").strip().upper()
-        pt = classify_pt_state(emp.get("pt_state"))
+        # The EMPLOYEE-level question, not the state-level one (PAY-05). A
+        # blank state is "not a gap" as a statement about a state code and is
+        # exactly a gap once the CA has ticked pt_applicable: nothing is
+        # withheld, month after month, and Article 276 leaves the employer
+        # liable for it.
+        pt = classify_pt_for_employee(True, emp.get("pt_state"))
         # A state the FIRM has recorded usable slabs for is no longer a gap —
         # the deduction was computed, from a notification somebody read
         # (migration 327). Covered is decided once per run, because whether a

@@ -84,6 +84,42 @@ class PTResult:
         return not self.modelled and self.amount_paise == 0
 
 
+def classify_for_employee(pt_applicable, state: str | None) -> PTResult:
+    """The EMPLOYEE-level question, which is not the state-level one.
+
+    `classify_state("")` answers "no state set, nothing withheld, not a gap",
+    and that is right as a statement about a state code: PT is withheld only
+    where somebody has said which state's law applies, and most employees in
+    the product have no PT at all.
+
+    It is the wrong answer once the CA has ticked `pt_applicable` (PAY-05).
+    That tick says this employee owes professional tax; leaving the state blank
+    then means nothing is withheld, month after month, with no gap raised and
+    nothing on the payslip to show it — and Article 276 makes the EMPLOYER
+    liable for what was not deducted. A blank state beside a tick is the same
+    class of silence the module was written to end: a zero that means "not
+    computed" wearing the face of a zero that means "nothing due".
+
+    Kept as a second function rather than a change to `classify_state`, because
+    the state-level answer is relied on elsewhere and is pinned by
+    `tests/test_pt_lwf_state_coverage.py` — the two questions genuinely have
+    different answers and one function cannot give both.
+    """
+    if not pt_applicable:
+        # Not a PT employee. Whatever the state says, nothing is due and
+        # nothing is missing.
+        return PTResult(0, modelled=True, note="Professional tax does not apply to this employee.")
+    if not (state or "").strip():
+        return PTResult(
+            0, modelled=False,
+            note=("Professional tax is marked as applying to this employee, but no "
+                  "state is recorded — so nothing is withheld and nothing can be. "
+                  "Professional tax is levied by the STATE (Article 276), so which "
+                  "one decides both the slab and whether anything is due at all. "
+                  "Set the employee's professional tax state, or untick it."))
+    return classify_state(state)
+
+
 def classify_state(state: str | None) -> PTResult:
     """Decide which of the three answers a state code deserves.
 

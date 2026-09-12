@@ -137,12 +137,14 @@ const STATUS_LABELS: Record<string, string> = {
 // Advance Tax installments — IT Act Section 208
 // ---------------------------------------------------------------------------
 
-const ADVANCE_TAX_INSTALLMENTS = [
-  { label: "1st Installment", due: "15 Jun 2025", percent: 15, cumulative: "15%" },
-  { label: "2nd Installment", due: "15 Sep 2025", percent: 30, cumulative: "45%" },
-  { label: "3rd Installment", due: "15 Dec 2025", percent: 30, cumulative: "75%" },
-  { label: "4th Installment", due: "15 Mar 2026", percent: 25, cumulative: "100%" },
-];
+/** One §211 instalment, as GET /api/income-tax/financial-years returns it. */
+type AdvanceTaxInstalment = {
+  due_date: string;              // ISO, derived from the FY by the engine
+  cumulative_percentage: number; // 15 / 45 / 75 / 100
+  installment: string;
+};
+
+const ORDINALS = ["1st", "2nd", "3rd", "4th"];
 
 // ---------------------------------------------------------------------------
 // getFirmId helper (same pattern as compliance.ts)
@@ -473,6 +475,37 @@ export default function IncomeTaxPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // §211's INSTALMENT DATES, FROM THE ENGINE (IT-33). This panel carried four
+  // hardcoded strings — "15 Jun 2025" through "15 Mar 2026" — under a heading
+  // that hardcoded "FY 2025-26", so on any date in the following financial
+  // year the first panel of the module showed four elapsed instalments for the
+  // wrong year. `compliance_engine.advance_tax_due_dates` has always derived
+  // them from the FY; nothing called it from here.
+  //
+  // The FY comes with them, from the server: `current_fy` is IST
+  // (core.ist_clock), and a browser in another zone flips the financial year
+  // on 31 March.
+  const [advanceTax, setAdvanceTax] = useState<AdvanceTaxInstalment[]>([]);
+  const [advanceTaxFy, setAdvanceTaxFy] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await request("/api/income-tax/financial-years") as ApiResp<{
+          current_fy?: string;
+          current_fy_advance_tax?: AdvanceTaxInstalment[];
+        }>;
+        if (cancelled || !res.success || !res.data) return;
+        setAdvanceTax(res.data.current_fy_advance_tax ?? []);
+        setAdvanceTaxFy(res.data.current_fy ?? null);
+      } catch {
+        // The panel says the dates are unavailable rather than showing last
+        // year's — which is the whole point of taking them off the literal.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Derived stats
@@ -1032,61 +1065,66 @@ export default function IncomeTaxPage() {
           <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
               <h2 className="text-sm font-semibold text-[#0F172A]">
-                Advance Tax Installments — FY 2025-26
+                Advance Tax Installments{advanceTaxFy ? ` — FY ${advanceTaxFy}` : ""}
               </h2>
               <p className="text-xs text-[#94A3B8] mt-0.5">
                 IT Act Section 208 — applicable when tax liability ≥ ₹10,000
               </p>
             </div>
             <div className="divide-y divide-[#F8FAFC]">
-              {ADVANCE_TAX_INSTALLMENTS.map((inst) => {
-                const dueDate = inst.due.replace(/(\d+) (\w+) (\d+)/, (_, d, m, y) => {
-                  const months: Record<string, string> = {
-                    Jan: "01", Feb: "02", Mar: "03", Apr: "04",
-                    May: "05", Jun: "06", Jul: "07", Aug: "08",
-                    Sep: "09", Oct: "10", Nov: "11", Dec: "12",
-                  };
-                  return `${y}-${months[m]}-${d.padStart(2, "0")}`;
-                });
-                const isPast = dueDate < today;
-                const isUpcoming = !isPast && (daysBetweenLocalISO(today, dueDate) ?? 999) <= 30;
+              {advanceTax.length === 0 ? (
+                <p className="px-5 py-6 text-sm text-[#94A3B8]">
+                  Instalment dates unavailable — the server could not be
+                  reached. They are not shown from a stored list, because a
+                  stored list is last year&apos;s.
+                </p>
+              ) : (
+                advanceTax.map((inst, i) => {
+                  const dueDate = inst.due_date;
+                  const isPast = dueDate < today;
+                  const isUpcoming =
+                    !isPast && (daysBetweenLocalISO(today, dueDate) ?? 999) <= 30;
+                  // §211's table is CUMULATIVE — 15/45/75/100. What each
+                  // instalment adds is the step, so the fourth is 25%, not
+                  // 100%. Derived here rather than carried, so the two figures
+                  // cannot disagree.
+                  const step =
+                    inst.cumulative_percentage -
+                    (i === 0 ? 0 : advanceTax[i - 1].cumulative_percentage);
 
-                return (
-                  <div
-                    key={inst.label}
-                    className="flex items-center gap-4 px-5 py-4"
-                  >
-                    <div className="flex items-center justify-center w-10 h-10 bg-blue-50 rounded-full shrink-0">
-                      <IndianRupee className="w-5 h-5 text-blue-600" />
+                  return (
+                    <div key={dueDate} className="flex items-center gap-4 px-5 py-4">
+                      <div className="flex items-center justify-center w-10 h-10 bg-blue-50 rounded-full shrink-0">
+                        <IndianRupee className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[#0F172A]">
+                          {ORDINALS[i] ?? `${i + 1}th`} Installment
+                        </p>
+                        <p className="text-xs text-[#94A3B8] mt-0.5">
+                          Due: {formatDate(dueDate)} · Cumulative{" "}
+                          {inst.cumulative_percentage}% of estimated tax
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-semibold text-[#334155]">{step}%</p>
+                        <p className="text-xs text-[#94A3B8] mt-0.5">of estimated tax</p>
+                      </div>
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${
+                          isPast
+                            ? "bg-[#F1F5F9] text-[#64748B]"
+                            : isUpcoming
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-blue-50 text-blue-600"
+                        }`}
+                      >
+                        {isPast ? "Due passed" : isUpcoming ? "Upcoming" : "Scheduled"}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#0F172A]">
-                        {inst.label}
-                      </p>
-                      <p className="text-xs text-[#94A3B8] mt-0.5">
-                        Due: {inst.due} · Cumulative {inst.cumulative} of estimated tax
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold text-[#334155]">
-                        {inst.percent}%
-                      </p>
-                      <p className="text-xs text-[#94A3B8] mt-0.5">of estimated tax</p>
-                    </div>
-                    <span
-                      className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${
-                        isPast
-                          ? "bg-[#F1F5F9] text-[#64748B]"
-                          : isUpcoming
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-blue-50 text-blue-600"
-                      }`}
-                    >
-                      {isPast ? "Due passed" : isUpcoming ? "Upcoming" : "Scheduled"}
-                    </span>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -1096,9 +1134,9 @@ export default function IncomeTaxPage() {
                 Advance Tax Calculator
               </p>
               <p className="text-sm text-blue-700">
-                Calculate exact advance tax instalments, apply slab rates for FY
-                2026-27, and compute Section 234B/234C interest on shortfalls —
-                per client.
+                Calculate exact advance tax instalments, apply the slab rates
+                for the year, and compute Section 234B/234C interest on
+                shortfalls — per client.
               </p>
             </div>
             <Link

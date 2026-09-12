@@ -422,13 +422,28 @@ def supported_financial_years(current_user: dict = Depends(rbac("income_tax", "r
         the engine cannot compute; only the server knows which those are.
     """
     from domain.income_tax.statutory_rates import RATES_BY_FY, current_fy
+    from services.compliance_engine import advance_tax_due_dates
     years = sorted(RATES_BY_FY.keys(), reverse=True)
+    fy_now = current_fy()
     return api_response(True, {
         "financial_years": [
             {"fy": fy, "verified": RATES_BY_FY[fy].verified}
             for fy in years
         ],
-        "current_fy": current_fy(),
+        "current_fy": fy_now,
+        # THE INSTALMENT CALENDAR FOR THE YEAR THIS RESPONSE ALREADY NAMES
+        # (IT-33). The Income Tax hub carried four hardcoded strings — "15 Jun
+        # 2025" through "15 Mar 2026" — under a heading that also hardcoded
+        # "FY 2025-26", so on any date in FY 2026-27 the first panel of the
+        # module showed four elapsed instalments for the wrong year. §211's
+        # dates are derived by `compliance_engine.advance_tax_due_dates` and
+        # always were; nothing called it from here.
+        #
+        # Served beside `current_fy` rather than from a new endpoint, and from
+        # the SERVER rather than computed in the browser from `new Date()`:
+        # `current_fy` is IST (core.ist_clock), and a browser in another zone
+        # flips the financial year on 31 March.
+        "current_fy_advance_tax": advance_tax_due_dates(int(fy_now[:4]) + 1),
     })
 
 
