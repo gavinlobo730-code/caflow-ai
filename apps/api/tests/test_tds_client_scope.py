@@ -356,34 +356,22 @@ def test_building_a_return_from_another_clients_books_is_refused(fn, service,
     assert reached == [], f"{fn} read the ledger despite the refusal"
 
 
-def _compute_req(client_id, cls):
-    return cls(client_id=client_id, tan="MUMT12345A", deductor_name="D",
-               deductor_pan="ABCDE1234F", deductor_address="Addr",
-               financial_year="2025-26", quarter="Q3", deductees=[], challans=[])
-
-
-@pytest.mark.parametrize("fn,cls", [
-    ("compute_26q", "Compute26QRequest"),
-    ("compute_24q", "Compute24QRequest"),
-])
-def test_the_compute_endpoints_are_guarded_on_the_client_they_claim(fn, cls, deny):
-    """These are pure functions over caller-supplied rows TODAY — they never
-    read req.client_id. They are guarded anyway, because the field is required
-    by the request model and an exemption would go silently false the first
-    time somebody starts using it.
-    """
-    with pytest.raises(HTTPException) as e:
-        getattr(td, fn)(_compute_req(THEIRS, getattr(td, cls)), user=USER)
-    assert e.value.status_code == 404
-
-
-@pytest.mark.parametrize("fn,cls", [
-    ("compute_26q", "Compute26QRequest"),
-    ("compute_24q", "Compute24QRequest"),
-])
-def test_the_compute_endpoints_still_compute_for_your_own_client(fn, cls, deny):
-    out = getattr(td, fn)(_compute_req(MINE, getattr(td, cls)), user=USER)
-    assert out["success"] is True
+# THE TWO /compute ENDPOINTS ARE GONE, AND SO ARE THEIR FOUR SCOPE TESTS.
+#
+# They took a whole deductee list and a deductor block from the caller and ran
+# the engine over them. The tests below used to say they were guarded anyway
+# "because the field is required by the request model and an exemption would go
+# silently false the first time somebody starts using it" — which was right,
+# and the somebody was `/tds/returns`, whose browser-side assembly is what
+# TDS-29 and the invented TAN both lived in. The screen now builds from the
+# books, so the endpoints had no caller and were deleted rather than left
+# uncalled. The three from-books routes above carry the same guarantee and
+# their tests are the ones that matter.
+#
+# `test_every_mounted_endpoint_has_a_way_in.py` is what forced the decision:
+# deleting the browser wrappers pushed /api/tds one over its unreachable
+# budget, and "raise the budget" would have kept a hole open to keep a number
+# happy.
 
 
 def test_the_rate_table_is_not_client_scoped(deny):
