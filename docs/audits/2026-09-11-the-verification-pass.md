@@ -9,6 +9,15 @@ This **supersedes `2026-09-08b-what-is-left.md` as the remaining-work list.**
 That document is kept because its §2 is the record of what the previous tranche
 introduced.
 
+> **Read `2026-09-12-the-probe-pass/` before scheduling anything from here.** That
+> pass re-read 65 of these findings against `99ac94b5` and asked one question this
+> pass did not: *is the finding's own suggested FIX sound?* Two are not — ACC-23's
+> would break a self-correcting balance sheet, ACC-25's re-opens the expiring-URL
+> and stored-XSS hole the banking module was written to close. It also records five
+> materially false premises, four new cross-subsystem duplicates, one escalation
+> (GST-15 became live product behaviour in the interim), and one defect with no
+> finding at all.
+
 ---
 
 ## 1. The headline, including the prediction that was wrong

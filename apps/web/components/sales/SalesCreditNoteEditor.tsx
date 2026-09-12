@@ -103,6 +103,12 @@ export interface SalesCreditNoteDetail {
   applied_paise?: number;
   journal_entry_id?: string | null;
   created_at?: string | null;
+  /** CGST §34(2) — derived by the server on every read from the SUPPLY's own
+   * financial year, never stored (it changes the day GSTR-9 is furnished). A
+   * warning, not a bar: the note is still a lawful commercial credit, it just
+   * cannot reduce output tax. The sentence is the server's; nothing here
+   * decides when it appears. */
+  section_34_2_warning?: string | null;
   lines: SalesCreditNoteLineDetail[];
 }
 

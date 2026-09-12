@@ -145,11 +145,38 @@ export function InvoiceEditor({
     : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? duplicateSeed?.customer_id ?? "");
-  // Fully manual (Decision: no Caflow-generated numbering scheme) — the CA
-  // types it; validateInvoiceEditor checks the CGST Rule 46(b) shape and the
-  // server checks per-client uniqueness (the client can't see every other
-  // draft/issued number to check itself).
+  // SUGGESTED FROM THE FIRM'S OWN SERIES, AND STILL EDITABLE (SALES-12).
+  // GET /api/sales-invoices/next-number reads invoice_settings (migration 126)
+  // — prefix, financial year, padding, starting number — and returns the next
+  // number in the series for this client. Until 2026-09-12 those settings
+  // existed, had a settings screen, and were read by nothing: the CA typed
+  // every number from scratch and Rule 46(b)'s CONSECUTIVE limb was unguarded.
+  //
+  // Everything about the series is decided server-side. This component asks,
+  // pre-fills, and renders what comes back — the suggestion, a refusal
+  // (`format_problem`) and a warning (`sequence_warning`). It computes none of
+  // them, and must not start to.
   const [invoiceNo, setInvoiceNo] = useState(existing?.invoice_no ?? "");
+  // Once the CA edits the box, stop overwriting it. Editing is the whole point
+  // of "Automatic (Manual Override)" — a client arriving mid-year with a series
+  // already running, an import, a correction — and a suggestion that keeps
+  // reasserting itself is worse than none.
+  const numberTouched = useRef(false);
+  // The last value this component filled in by itself. A suggestion the CA has
+  // not replaced may be REPLACED AGAIN when the invoice date moves the series —
+  // 31 March and 1 April are different financial years and therefore different
+  // numbers — and without this the box would keep the March number on an April
+  // invoice, which is the exact fault SALES-24 was about, arriving by a
+  // different road.
+  const lastAutoFilled = useRef<string | null>(null);
+  const [numberSeries, setNumberSeries] = useState<{
+    suggested_number: string | null;
+    series_head: string;
+    fy_label: string;
+    gap: string | null;
+    format_problem: string | null;
+    sequence_warning: string | null;
+  } | null>(null);
   const [invoiceDate, setInvoiceDate] = useState(existing?.invoice_date ?? today);
   const [dueDate, setDueDate] = useState(existing?.due_date ?? "");
   const [referenceNo, setReferenceNo] = useState(existing?.reference_no ?? "");
@@ -258,6 +285,50 @@ export function InvoiceEditor({
     })();
     return () => { cancelled = true; };
   }, [clientId, isEdit]);
+
+  // THE NEXT NUMBER IN THE FIRM'S SERIES, and whether the one on screen is a
+  // legal, consecutive member of it. One debounced request answers both, so a
+  // CA typing gets the sequence warning at the same moment as everything else
+  // rather than only after Save.
+  //
+  // Keyed on the invoice DATE as well as the client, because the date decides
+  // the financial year and the year is part of the number (SALES-24: a March
+  // invoice keyed in April belongs to March's series). Not on `isEdit`: an
+  // issued invoice's number is frozen and a draft being edited already has
+  // one, so the suggestion is skipped and only the validation is wanted.
+  useEffect(() => {
+    if (!clientId || isLocked) return;
+    const typed = invoiceNo.trim();
+    let cancelled = false;
+    const t = setTimeout(() => {
+      (async () => {
+        try {
+          const token = await getAuthToken();
+          const p = new URLSearchParams({ client_id: clientId });
+          if (invoiceDate) p.set("invoice_date", invoiceDate);
+          if (typed) p.set("invoice_no", typed);
+          const res = await apiGet(`/api/sales-invoices/next-number?${p.toString()}`, token);
+          if (cancelled || !res.success) return;
+          const d = res.data as NonNullable<typeof numberSeries>;
+          setNumberSeries(d);
+          // Pre-fill only an untouched box on a NEW invoice. An edit already
+          // carries the number the document was issued or drafted with, and
+          // replacing it would silently renumber somebody's invoice.
+          const replaceable = !typed || typed === lastAutoFilled.current;
+          if (!isEdit && !numberTouched.current && replaceable && d.suggested_number
+              && d.suggested_number !== typed) {
+            lastAutoFilled.current = d.suggested_number;
+            setInvoiceNo(d.suggested_number);
+          }
+        } catch {
+          // Best-effort. The number stays typeable and the server refuses an
+          // illegal one on save regardless — a suggestion service that is down
+          // must not stop an invoice being raised.
+        }
+      })();
+    }, typed ? 400 : 0);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [clientId, invoiceDate, invoiceNo, isEdit, isLocked]);
 
   // Rehydrate each existing line's Product/Service picker. detailLinesToEditorLines
   // deliberately keeps only serviceCatalogueId from the server (not the full
@@ -807,11 +878,34 @@ export function InvoiceEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Invoice Number *</label>
-              <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)}
+              <input value={invoiceNo}
+                onChange={(e) => { numberTouched.current = true; setInvoiceNo(e.target.value); }}
                 disabled={isLocked}
                 placeholder="e.g. INV-0001" aria-label="Invoice number" maxLength={16}
                 className="w-full px-3 py-1.5 text-xs font-mono border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
               {fieldErr(validation.errors.invoiceNo)}
+              {/* CGST Rule 46(b), server-decided, in three registers.
+                  `gap` says the firm's own numbering settings cannot produce a
+                  legal number at all — a settings problem, not the CA's.
+                  `format_problem` is a refusal the save will repeat.
+                  `sequence_warning` is the CONSECUTIVE limb: said once, never
+                  blocking, because a gap has legitimate causes. */}
+              {!isLocked && numberSeries?.gap && (
+                <p className="mt-1 text-[10px] text-amber-700">{numberSeries.gap}</p>
+              )}
+              {!isLocked && !validation.errors.invoiceNo && numberSeries?.format_problem && (
+                <p className="mt-1 text-[10px] text-red-600">{numberSeries.format_problem}</p>
+              )}
+              {!isLocked && !numberSeries?.format_problem && numberSeries?.sequence_warning && (
+                <p className="mt-1 text-[10px] text-amber-700">{numberSeries.sequence_warning}</p>
+              )}
+              {!isLocked && !isEdit && !numberSeries?.gap && !numberSeries?.format_problem
+                && !numberSeries?.sequence_warning && numberSeries?.suggested_number && (
+                <p className="mt-1 text-[10px] text-[#94A3B8]">
+                  Next in your series ({numberSeries.series_head}…) — edit it if this
+                  client&apos;s numbering differs.
+                </p>
+              )}
               {isLocked && (
                 <p className="mt-1 text-[10px] text-[#94A3B8]">Frozen once issued.</p>
               )}

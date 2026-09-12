@@ -11,10 +11,12 @@ E-Way Bill Integration — CGST Act Section 68, Rule 138.
 """
 from __future__ import annotations
 import logging
-from typing import Optional
+from datetime import date, datetime, time, timezone
+from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
+from domain.gst import eway_validity
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
@@ -45,9 +47,16 @@ class CreateEWayBillRequest(BaseModel):
     sales_invoice_id: Optional[str] = None
     hsn_code: Optional[str] = None
     vehicle_number: Optional[str] = None
-    vehicle_type: Optional[str] = None
-    transport_mode: Optional[str] = None
-    distance_km: Optional[int] = None
+    # The two vocabularies the table's own CHECKs allow (migration 156, restated
+    # in 319). Typed rather than free text because an unlisted value used to
+    # reach Postgres and come back as a 500 with a constraint name in it, and
+    # because `vehicle_type` is now load-bearing: it is what Rule 138(10)'s
+    # 20 km Over Dimensional Cargo slab keys on.
+    vehicle_type: Optional[Literal["regular", "over_dimensional"]] = None
+    transport_mode: Optional[Literal["road", "rail", "air", "ship"]] = None
+    # Rule 138(10)'s only input. Stored since migration 156 and, until
+    # 2026-09-12, read by nothing and asked for by no screen (SALES-28).
+    distance_km: Optional[int] = Field(None, ge=0)
     transporter_id: Optional[str] = None
     transporter_name: Optional[str] = None
     provider: str = "manual"
@@ -112,6 +121,58 @@ def list_eway_bills(
     return api_response(True, _list(current_user["firm_id"], client_id, status))
 
 
+def _computed_validity(rec: dict, ewb_date: Optional[str]) -> dict:
+    """Rule 138(10)'s answer for this record, or the reason there isn't one.
+
+    THE PORTAL REMAINS AUTHORITATIVE. This is a cross-check and a pre-fill, not
+    a substitute: `source` says the date was computed and `caveat` says when the
+    computation cannot see enough. An e-way bill that has expired exposes the
+    consignment to detention and seizure under §129, so a date presented as
+    known and wrong is the failure to avoid — which is why a missing distance
+    returns a gap rather than a guess.
+    """
+    gap = eway_validity.expiry_gap(rec.get("distance_km"))
+    if gap:
+        return {"valid_upto": None, "days": None, "slab_km": None,
+                "source": None, "caveat": None, "gap": gap}
+    try:
+        generated_on = date.fromisoformat(str(ewb_date or "")[:10])
+    except ValueError:
+        return {"valid_upto": None, "days": None, "slab_km": None,
+                "source": None, "caveat": None,
+                "gap": "The e-way bill's own date is needed before its validity can be worked out."}
+    v = eway_validity.validity_for(
+        int(rec.get("distance_km") or 0),
+        datetime.combine(generated_on, time.min, tzinfo=timezone.utc),
+        vehicle_type=rec.get("vehicle_type"),
+        transport_mode=rec.get("transport_mode"))
+    return {"valid_upto": v.valid_upto.date().isoformat(), "days": v.days,
+            "slab_km": v.slab_km, "source": v.source, "caveat": v.caveat, "gap": None}
+
+
+@router.get("/records/{record_id}/validity")
+def eway_validity_for_record(
+    record_id: str,
+    ewb_date: Optional[str] = None,
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """How long this bill is valid for under Rule 138(10) — CGST Rules.
+
+    Declared above nothing that would shadow it, and read by the Record E-Way
+    Bill modal to pre-fill "Valid upto" instead of defaulting it to today, which
+    is what it did until 2026-09-12 (SALES-28): the CA re-keyed a date off the
+    portal into a box whose default was always wrong, beside a distance the
+    product had stored and never used.
+    """
+    rec = _assert_ewb_scope(current_user, record_id)
+    return api_response(True, {
+        "distance_km": rec.get("distance_km"),
+        "vehicle_type": rec.get("vehicle_type"),
+        "transport_mode": rec.get("transport_mode"),
+        **_computed_validity(rec, ewb_date),
+    })
+
+
 @router.post("/records/{record_id}/generated")
 def record_ewb_generated(
     record_id: str,
@@ -119,7 +180,7 @@ def record_ewb_generated(
     current_user: dict = Depends(rbac("gst", "approve")),
 ):
     """# CA REVIEW REQUIRED — Record EWB generated on NIC portal."""
-    _assert_ewb_scope(current_user, record_id)
+    rec = _assert_ewb_scope(current_user, record_id)
     from domain.income_tax.eway_service import record_ewb_generated as _record
     try:
         result = _record(
@@ -142,6 +203,20 @@ def record_ewb_generated(
             description=f"E-Way Bill {req.ewb_number} (valid to {req.ewb_valid_upto})",
             severity="success",
         )
+        # THE PORTAL'S DATE IS WHAT IS STORED, AND THE COMPUTED ONE IS RETURNED
+        # BESIDE IT. Rule 138(10) is arithmetic on a distance the record already
+        # holds, so a typed date that disagrees means one of the two is wrong —
+        # and both matter: a wrong distance misstates every later cross-check,
+        # a wrong date is a lorry that thinks it is covered. Reported, never
+        # enforced: NIC computes the real figure and this cannot see a leg by
+        # ship or an extension already granted.
+        computed = _computed_validity(rec, req.ewb_date)
+        result["validity_check"] = {
+            **computed,
+            "recorded_valid_upto": req.ewb_valid_upto,
+            "agrees": (computed["valid_upto"] == str(req.ewb_valid_upto)[:10]
+                       if computed["valid_upto"] else None),
+        }
         return api_response(True, result)
     except Exception as e:
         raise HTTPException(500, detail=str(e))

@@ -1,0 +1,78 @@
+{
+  "_comment": [
+    "Shared CGST Rule 46(b) invoice-number cases. Read by",
+    "apps/api/tests/test_an_invoice_number_obeys_rule_46b.py and by",
+    "apps/web/lib/invoices/invoiceNumberShape.test.ts, so the Python authority",
+    "(domain/gst/invoice_series.format_violation) and its browser mirror",
+    "(lib/invoices/gst.validateInvoiceNo) are exercised on the SAME numbers.",
+    "",
+    "The browser copy exists for keystroke feedback and nothing else — the",
+    "server refuses independently, at create, at edit and at issue. It is a",
+    "mirror in the same sense apps/web/lib/gst/gstin.ts is, and it is pinned the",
+    "same way: adding a case here adds it to both suites, and changing one",
+    "implementation without the other fails here.",
+    "",
+    "'legal' is the whole answer. The two implementations word their refusals",
+    "differently on purpose — the server names the character it found, the",
+    "browser tells a CA mid-keystroke what is allowed — so the message is NOT",
+    "pinned, only the verdict.",
+    "Both implementations TRIM before judging, and the Pydantic field validator returns the trimmed value, so a padded number is legal AND is stored clean. That is why '  INV-0001  ' is in the legal list rather than the illegal one."
+  ],
+  "legal": [
+    "INV/2026-27/001",
+    "INV-0001",
+    "1",
+    "A",
+    "DRAFT-A1B2C3D4E5",
+    "ABCDEFGHIJKLMNOP",
+    "2026-27/00001",
+    "inv/2026-27/1",
+    "---",
+    "///",
+    "0",
+    "  INV-0001  ",
+    "INV/001\n"
+  ],
+  "illegal": [
+    {
+      "number": "",
+      "why": "no number at all"
+    },
+    {
+      "number": "   ",
+      "why": "whitespace is not a number"
+    },
+    {
+      "number": "ABCDEFGHIJKLMNOPQ",
+      "why": "seventeen characters"
+    },
+    {
+      "number": "INV/2026-2027/001",
+      "why": "seventeen characters"
+    },
+    {
+      "number": "INV#001",
+      "why": "'#' is not in the permitted set"
+    },
+    {
+      "number": "INV_001",
+      "why": "underscore is not in the permitted set"
+    },
+    {
+      "number": "INV 001",
+      "why": "a space is not in the permitted set"
+    },
+    {
+      "number": "INV.001",
+      "why": "a full stop is not in the permitted set"
+    },
+    {
+      "number": "INV\\001",
+      "why": "a backslash is not the permitted slash"
+    },
+    {
+      "number": "INV/001₹",
+      "why": "a rupee glyph is not in the permitted set"
+    }
+  ]
+}

@@ -462,10 +462,25 @@ export interface EditorValidation {
 
 /** CGST Rule 46(b): a tax invoice's serial number must be a consecutive serial
  * number not exceeding sixteen characters, using only alphabets, numerals,
- * and the special characters '-' and '/'. Numbering itself is fully manual
- * (the CA types it) — this only enforces the structural shape the law
- * requires; per-client uniqueness is checked server-side (the client can't
- * see every other draft/issued number to check itself). */
+ * and the special characters '-' and '/'.
+ *
+ * A MIRROR FOR KEYSTROKE FEEDBACK, NOT THE AUTHORITY. The authority is
+ * apps/api/domain/gst/invoice_series.py, which the server calls at create, at
+ * edit and at issue, and which the Pydantic field validator delegates to — so
+ * this file deciding wrongly cannot let a bad number through, only annoy a CA.
+ * The two are held together by apps/api/tests/fixtures/invoice_number.json,
+ * read by both suites: the same arrangement lib/gst/gstin.ts has, and for the
+ * same reason.
+ *
+ * NUMBERING IS NO LONGER "fully manual" as this comment used to say. Since
+ * 2026-09-12 the firm's own Invoice Settings suggest the next number in the
+ * series (GET /api/sales-invoices/next-number), the box stays editable, and a
+ * break in the sequence WARNS. The suggestion, the warning and the refusal are
+ * all computed server-side; nothing about the series is decided here.
+ *
+ * This still only enforces the structural shape; per-client uniqueness and the
+ * consecutive limb are both checked server-side (the browser cannot see every
+ * other draft/issued number). */
 const INVOICE_NO_RE = /^[A-Za-z0-9\-/]{1,16}$/;
 
 export function validateInvoiceNo(invoiceNo: string): string | undefined {

@@ -195,13 +195,19 @@ function LoadingSkeleton() {
 // behind it — a plain in-flow div here previously rendered underneath the
 // drawer's own content, invisible to whatever the CA was actually looking
 // at when they triggered the action.
-function Toast({ msg, type }: { msg: string; type: "success" | "error" }) {
+// "warning" exists for a specific case and reads differently on purpose: an
+// action that SUCCEEDED and carries a statutory consequence. A green toast
+// would hide it and a red one would say the action failed — a credit note
+// issued outside the CGST §34(2) window is issued, and cannot reduce tax.
+function Toast({ msg, type }: { msg: string; type: "success" | "error" | "warning" }) {
   if (!msg || typeof document === "undefined") return null;
   return createPortal(
     <div
       className={`fixed top-4 right-4 z-[110] max-w-sm rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
         type === "success"
           ? "bg-green-50 border border-green-100 text-green-700"
+          : type === "warning"
+          ? "bg-amber-50 border border-amber-200 text-amber-800"
           : "bg-red-50 border border-red-100 text-red-700"
       }`}
     >
@@ -3890,7 +3896,7 @@ function CreditNotes({
   // error from selectAll, which never throws) rather than genuinely finding no
   // credit notes — otherwise a failed load reads as an empty FY (audit M17).
   const [loadFailed, setLoadFailed] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "warning" } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -3977,7 +3983,7 @@ function CreditNotes({
 
   useEffect(() => { load(); }, [load]);
 
-  function showToast(msg: string, type: "success" | "error") {
+  function showToast(msg: string, type: "success" | "error" | "warning") {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
   }
@@ -4012,7 +4018,14 @@ function CreditNotes({
       const token = await getAuthToken();
       const result = await apiCall(`/api/credit-notes/${id}/issue`, "POST", undefined, token);
       if (!result.success) throw new Error(result.error ?? "Failed to issue credit note");
-      showToast("Credit note issued", "success");
+      // CGST §34(2), decided by the server against the ORIGINAL SUPPLY's
+      // financial year. Issuing is the moment the reduction reaches the ledger
+      // and the return, so a note drafted inside the window and issued outside
+      // it is caught here. It is still issued — the section bars the tax
+      // adjustment, not the document — and the drawer keeps saying so.
+      const lateNote = (result.data as { section_34_2_warning?: string | null } | null)?.section_34_2_warning;
+      showToast(lateNote ? `Credit note issued. ${lateNote}` : "Credit note issued",
+                lateNote ? "warning" : "success");
       load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Error issuing credit note", "error");

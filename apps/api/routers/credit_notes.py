@@ -5,7 +5,7 @@ CGST Act Section 8: Intra-state → CGST+SGST; Inter-state → IGST.
 import os
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -130,6 +130,44 @@ def _compute_line_gst(
     return cgst, sgst, 0
 
 
+def _section_34_2_warning(db, firm_id: str, client_id: str, note_date: str,
+                          original_invoice: Optional[dict]) -> Optional[str]:
+    """CGST §34(2), measured against the ORIGINAL SUPPLY's financial year.
+
+    Returns the sentence to show the CA, or None. Never raises and never
+    refuses: §34(2) bars the tax adjustment, not the document, and a lookup
+    that fails must not stop a credit note being raised.
+    `domain/gst/credit_note_window.py` holds the rule and the wording.
+    """
+    from domain.gst.credit_note_window import late_credit_note
+    raw_supply = (original_invoice or {}).get("invoice_date")
+    if not raw_supply:
+        # No linked invoice, so no supply to measure against. Guessing the
+        # supply's financial year from the NOTE's date would reproduce the
+        # exact error this check exists to catch.
+        return None
+    try:
+        supply = date.fromisoformat(str(raw_supply)[:10])
+        note = date.fromisoformat(str(note_date)[:10])
+    except (TypeError, ValueError):
+        return None
+    filed_on = None
+    if db is not None:
+        try:
+            from services.gst_amendment_service import annual_returns_filed_safely
+            filed_on = annual_returns_filed_safely(db, firm_id, client_id).get(
+                ist_fy_label(supply))
+        except Exception:                                          # noqa: BLE001
+            # Fail OPEN, deliberately, and for the reason
+            # annual_returns_filed_safely already argues: this date SHORTENS the
+            # window, so a failed read that shortened it would report a
+            # correction as expired when it is not. Without it the 30 November
+            # statutory limit still applies, which is the answer the section
+            # gives when no annual return has been furnished.
+            filed_on = None
+    return late_credit_note(note, supply, filed_on)
+
+
 def _compute_lines(lines_data: list, is_interstate: bool):
     """Shared by create and PATCH — matches debit_notes.py / purchase_credit_notes.py
     / sales_debit_notes.py's own _compute_lines exactly, including "unit":
@@ -237,14 +275,18 @@ def create_credit_note(
             if data.get("sales_invoice_id"):
                 inv_resp = (
                     db.table("client_sales_invoices")
-                    .select("is_interstate")
+                    # invoice_date as well as is_interstate: §34(2)'s window runs
+                    # from the financial year of the ORIGINAL SUPPLY, so the
+                    # supply's own date is the input, not the note's.
+                    .select("is_interstate, invoice_date")
                     .eq("id", data["sales_invoice_id"])
                     .eq("firm_id", firm_id)
                     .limit(1)
                     .execute()
                 )
                 if inv_resp.data:
-                    is_interstate = inv_resp.data[0].get("is_interstate", False)
+                    original_invoice = inv_resp.data[0]
+                    is_interstate = original_invoice.get("is_interstate", False)
 
         # Compute lines (shared with the PATCH endpoint — see _compute_lines)
         computed_lines, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
@@ -264,6 +306,22 @@ def create_credit_note(
             from core.supabase_client import get_supabase
             period_lock_service.assert_open(
                 get_supabase(), firm_id or "", client_id, data["credit_note_date"])
+
+        # §34(2): CAN THIS NOTE STILL REDUCE THE TAX? A THIRD QUESTION, ABOUT A
+        # THIRD PERIOD. The two checks above both ask about the NOTE's own date
+        # — is its year locked, is its return filed. §34(2) asks about the
+        # SUPPLY's year, which is often a different one and is sometimes closed
+        # while the note's own period is wide open: a June 2025 invoice credited
+        # in January 2027 sits in an open period and outside a window that shut
+        # on 30 November 2026 (SALES-25a).
+        #
+        # A WARNING, not a refusal. §34(2) bars the tax ADJUSTMENT, not the
+        # document — a commercial credit note after the window is lawful, it
+        # simply carries no GST. `domain/gst/credit_note_window.py` carries the
+        # reasoning and the wording.
+        section_34_warning = _section_34_2_warning(
+            None if _USE_MOCK else db, firm_id or "", client_id,   # type: ignore[possibly-undefined]
+            data["credit_note_date"], original_invoice)
 
         # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from
         # today (SALES-24). A March-dated document keyed in April used to be
@@ -305,6 +363,9 @@ def create_credit_note(
                 ln["id"]             = str(uuid.uuid4())
                 ln["credit_note_id"] = cn_id
                 MOCK_CREDIT_NOTE_LINES.append(ln)
+            # Advisory, and never stored: it describes the moment the note was
+            # raised against the supply's own window, not a fact about the row.
+            cn["section_34_2_warning"] = section_34_warning
             return api_response(True, cn)
 
         cn_payload = {
@@ -339,6 +400,7 @@ def create_credit_note(
             "create", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"), new_data=cn,
         )
+        cn["section_34_2_warning"] = section_34_warning
         return api_response(True, cn)
     except HTTPException:
         raise
@@ -371,6 +433,20 @@ def get_credit_note(
         cn = resp.data[0]
         lines_resp = db.table("credit_note_lines").select("*").eq("credit_note_id", cn_id).execute()
         cn["lines"] = lines_resp.data or []
+        # §34(2), DERIVED ON EVERY READ RATHER THAN STORED. It is a function of
+        # three dates the books already hold — the supply's, the note's, and the
+        # annual return's — so a column would be a cache that goes stale the day
+        # GSTR-9 is furnished. Deriving also means the drawer keeps saying it
+        # after the toast that first said it has gone.
+        supply_row = None
+        if cn.get("sales_invoice_id"):
+            inv = (db.table("client_sales_invoices").select("invoice_date")
+                   .eq("id", cn["sales_invoice_id"])
+                   .eq("firm_id", current_user.get("firm_id")).limit(1).execute()).data
+            supply_row = inv[0] if inv else None
+        cn["section_34_2_warning"] = _section_34_2_warning(
+            db, current_user.get("firm_id") or "", cn.get("client_id") or "",
+            cn.get("credit_note_date") or "", supply_row)
         return api_response(True, cn)
     except HTTPException:
         raise
@@ -532,6 +608,10 @@ def issue_credit_note(
         # sub-ledger, the GL AR control (moved by the journal below) and the customer
         # statement reconciled: invoice net outstanding = total − paid − credited.
         prior_inv = None
+        # The supply's own date, for §34(2) below. Kept separately from
+        # `prior_inv`, which is a rollback snapshot of exactly the two columns
+        # the compensation writes back and must not grow a third.
+        supply_invoice: Optional[dict] = None
         if inv_id and cn_total > 0:
             # task #227 audit finding: CAS-guarded (mirrors receipts._adjust_invoice_paid
             # and reversal_service's rollback helpers) — a plain read-then-write here
@@ -540,7 +620,11 @@ def issue_credit_note(
             # not merely a stale-ceiling read the outstanding check alone would catch).
             for _attempt in range(6):
                 inv_resp = (db.table("client_sales_invoices")
-                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status")
+                            # invoice_date rides along free on a query that is
+                            # already made: §34(2)'s window runs from the
+                            # ORIGINAL SUPPLY's financial year, and issuing is
+                            # when the reduction actually reaches the books.
+                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status,invoice_date")
                             .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
                 if not inv_resp.data:
                     raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
@@ -571,6 +655,7 @@ def issue_credit_note(
                   .eq("credited_paise", raw_credited).execute())
                 if upd.data:
                     prior_inv = {"credited_paise": credited, "status": inv.get("status")}
+                    supply_invoice = {"invoice_date": inv.get("invoice_date")}
                     break
             else:
                 raise HTTPException(status_code=409, detail=f"Invoice {inv_id} is being updated concurrently — please retry.")
@@ -667,6 +752,12 @@ def issue_credit_note(
             _logger.error("issue_credit_note: inventory apply failed for %s: %s", cn_id, e, exc_info=True)
 
         updated_cn["journal_entry_id"] = journal_id
+        # §34(2), said again at the moment it bites. Create warns when the note
+        # is drafted; this is when the reduction reaches the ledger and the
+        # return, and a draft raised inside the window can be issued outside it.
+        # Still a warning: the section bars the tax adjustment, not the document.
+        updated_cn["section_34_2_warning"] = _section_34_2_warning(
+            db, firm_id or "", client_id, cn.get("credit_note_date") or "", supply_invoice)
         return api_response(True, updated_cn)
     except HTTPException:
         raise
