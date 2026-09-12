@@ -267,6 +267,15 @@ export default function TaxComputationPage() {
   // disallowances, brought-forward losses) as fully empty with no
   // indication anything went wrong.
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** IT-30. `POST /api/itr/snapshots/{id}/review` has existed since the
+   *  workspace was built and NOTHING called it, so every snapshot's status was
+   *  permanently "draft" — while this very panel already rendered a green tick
+   *  for "reviewed", a state it had no way to reach. A filing pins a snapshot
+   *  (`itr_filings.computation_snapshot_id`) and the transition now refuses to
+   *  move a filing out of draft while the computation it is built on has not
+   *  been checked, so the button below is what unblocks the filing workflow. */
+  const [reviewing, setReviewing] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -317,6 +326,26 @@ export default function TaxComputationPage() {
     setEntityType(((clientRow as { entity_type?: string } | null)?.entity_type) ?? null);
     setLoadError(null);
   }, [clientId, fy]);
+
+  async function markSnapshotReviewed(snapshotId: string) {
+    setReviewing(snapshotId);
+    setReviewError(null);
+    try {
+      // Through the API, not PostgREST: the endpoint is rbac("income_tax",
+      // "approve") — a review is an approval and not every role may make one —
+      // and it writes the client timeline entry. A browser write would do
+      // neither.
+      const res = await apiFetch(`/api/itr/snapshots/${snapshotId}/review`, {
+        method: "POST",
+      });
+      if (!res.success) throw new Error(res.error ?? "Could not mark the computation reviewed.");
+      await load();
+    } catch (e) {
+      setReviewError(e instanceof Error ? e.message : "Could not mark the computation reviewed.");
+    } finally {
+      setReviewing(null);
+    }
+  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -1155,6 +1184,16 @@ export default function TaxComputationPage() {
                     <p className="text-[10px] text-[#94A3B8]">{new Date(s.created_at).toLocaleDateString("en-IN")}</p>
                   </div>
                   <div className="text-right flex items-center gap-2">
+                    {s.status !== "reviewed" && (
+                      <button
+                        onClick={() => markSnapshotReviewed(s.id)}
+                        disabled={reviewing !== null}
+                        className="text-[10px] px-2 py-1 border border-[#E2E8F0] rounded-md text-[#475569] hover:bg-white disabled:opacity-50"
+                        title="A filing cannot leave draft while the computation it pins is unreviewed"
+                      >
+                        {reviewing === s.id ? "Marking…" : "Mark reviewed"}
+                      </button>
+                    )}
                     {s.status === "reviewed" && <CheckCircle size={12} className="text-green-500" />}
                     <div>
                       <p className="text-xs font-semibold text-[#1E293B]">
@@ -1167,6 +1206,11 @@ export default function TaxComputationPage() {
                   </div>
                 </div>
               ))}
+              {reviewError && (
+                <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {reviewError}
+                </p>
+              )}
             </div>
           )}
         </div>

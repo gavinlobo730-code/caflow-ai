@@ -1096,6 +1096,12 @@ function DepreciationTab({ clientId }: { clientId: string }) {
   // Per-asset refusals, keyed by asset id. These used to be swallowed by an
   // empty catch, which is how a skipped month showed as nothing happening.
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** FA-04. A WARNING, not a refusal: a first posting that starts later than
+   *  the purchase month forecloses every month in between, and that is right
+   *  for an asset brought over part-depreciated and wrong if it was acquired
+   *  here. The server says which months and what to do; this is where the CA
+   *  reads it, at the moment the choice has just been made. */
+  const [notices, setNotices] = useState<Record<string, string>>({});
   const [period, setPeriod] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -1139,11 +1145,18 @@ function DepreciationTab({ clientId }: { clientId: string }) {
     // sentence never sits under a request that has since succeeded.
     setErrors(e => Object.fromEntries(Object.entries(e).filter(([id]) => id !== assetId)));
     try {
-      const j = await request<ApiEnvelope>(`/api/fixed-assets/${assetId}/depreciate`, {
-        method: "POST",
-        body: JSON.stringify({ period }),
-      });
+      const j = await request<ApiEnvelope<{ foreclosure_notice?: string }>>(
+        `/api/fixed-assets/${assetId}/depreciate`, {
+          method: "POST",
+          body: JSON.stringify({ period }),
+        });
       if (!j.success) throw new Error(refusalMessage(j, "Failed to post depreciation."));
+      const notice = j.data?.foreclosure_notice ?? "";
+      setNotices(prev => {
+        const next = { ...prev };
+        if (notice) next[assetId] = notice; else delete next[assetId];
+        return next;
+      });
       await load();
     } catch (e: unknown) {
       // A refusal here NAMES what is wrong — a month skipped, a period locked,
@@ -1344,6 +1357,9 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                         >
                           {posting === r.asset_id ? "Posting…" : `Post ${period}`}
                         </button>
+                        {notices[r.asset_id] && (
+                          <span className="block text-[10px] text-amber-700 mt-1 max-w-xs">{notices[r.asset_id]}</span>
+                        )}
                         {errors[r.asset_id] && (
                           <span className="block text-[10px] text-red-600 mt-1 max-w-xs">{errors[r.asset_id]}</span>
                         )}

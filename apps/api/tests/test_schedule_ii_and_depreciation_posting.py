@@ -557,6 +557,57 @@ def test_the_first_ever_posting_may_start_at_any_month(monkeypatch):
     assert fa.post_depreciation("asset-1", DepreciationIn(period="2026-09"), USER)["success"] is True
 
 
+def test_a_first_posting_that_skips_months_says_what_it_forecloses(monkeypatch):
+    """FA-04, the half `test_the_first_ever_posting_may_start_at_any_month`
+    leaves open. Starting late is allowed and must be — a migrated asset's
+    first posting here is whatever month the CA takes over in — but
+    `depreciation_posted_through` only moves forward, so every month between
+    the purchase and that one becomes permanently unpostable: the single-month
+    path 409s on them, the range runner skips them for the same reason, and
+    reversal reaches the last month only.
+
+    A WARNING and not a refusal, the same shape as Rule 46(b)'s invoice-number
+    sequence gap and for the same reason: the skip has a legitimate cause."""
+    db = TypeCheckedFakeDB()
+    _seed_asset(db, purchase_date="2026-04-01")
+    monkeypatch.setattr(fa, "_db", lambda: db)
+    monkeypatch.setattr(fa.period_validation_service, "validate_posting_date", lambda *a: None)
+
+    out = fa.post_depreciation("asset-1", DepreciationIn(period="2026-08"), USER)
+    assert out["success"] is True, "starting late must still be allowed"
+    data = out["data"]
+    assert data["foreclosed_months"] == ["2026-04", "2026-05", "2026-06", "2026-07"]
+    assert "can no longer be posted" in data["foreclosure_notice"]
+    assert "reverse this entry and start at 2026-04" in data["foreclosure_notice"]
+
+
+def test_an_ordinary_first_posting_carries_no_notice(monkeypatch):
+    """Starting at the purchase month forecloses nothing, so there is nothing
+    to say — a warning on every first posting would be noise that teaches a CA
+    to ignore the one that matters."""
+    db = TypeCheckedFakeDB()
+    _seed_asset(db, purchase_date="2026-04-01")
+    monkeypatch.setattr(fa, "_db", lambda: db)
+    monkeypatch.setattr(fa.period_validation_service, "validate_posting_date", lambda *a: None)
+
+    data = fa.post_depreciation("asset-1", DepreciationIn(period="2026-04"), USER)["data"]
+    assert data["foreclosed_months"] == []
+    assert data["foreclosure_notice"] == ""
+
+
+def test_a_later_posting_carries_no_notice_either(monkeypatch):
+    """Once something is posted the gap check refuses a skip outright, so the
+    foreclosure case cannot arise and the notice must not appear."""
+    db = TypeCheckedFakeDB()
+    _seed_asset(db, purchase_date="2026-04-01")
+    monkeypatch.setattr(fa, "_db", lambda: db)
+    monkeypatch.setattr(fa.period_validation_service, "validate_posting_date", lambda *a: None)
+
+    fa.post_depreciation("asset-1", DepreciationIn(period="2026-04"), USER)
+    data = fa.post_depreciation("asset-1", DepreciationIn(period="2026-05"), USER)["data"]
+    assert data["foreclosed_months"] == []
+
+
 # ── The schedule endpoint reports a gap instead of failing ──────────────────
 
 def test_an_asset_with_no_statutory_basis_is_a_named_gap_not_a_broken_report(monkeypatch):

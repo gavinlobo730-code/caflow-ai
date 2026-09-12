@@ -608,6 +608,13 @@ def _cg_response(r) -> dict:
         "section_ref": r.section_ref,
         "note": r.note,
         "is_slab_rate_estimate": r.is_slab_rate_estimate,
+        # IT-29. A DIFFERENT fact from is_slab_rate_estimate above, which is
+        # about the RATE: this says the Cost Inflation Index itself fell back
+        # to the newest year the table holds. The screen shows the figure
+        # either way — an estimate is what a CA wants in May, before June's
+        # notification — and now says which it is.
+        "indexation_is_estimated": r.indexation_is_estimated,
+        "indexation_note": r.indexation_note,
     }
 
 
@@ -691,7 +698,16 @@ def create_capital_gains(
         "purchase_cost_paise": req.purchase_cost_paise,
         "improvement_cost_paise": req.improvement_cost_paise,
         "sale_value_paise": req.sale_value_paise,
-        "indexed_cost_paise": result.indexed_cost_paise,
+        # NULL RATHER THAN A PROVISIONAL INDEX (IT-29). `indexed_cost_paise` is
+        # nullable, and nothing recomputes a stored row: a figure written from
+        # an unnotified year's fallback index is wrong the moment the
+        # notification lands, and it is wrong in the direction that OVERSTATES
+        # the gain. An absence the CA can fill in is honest; a stale number
+        # that reads as computed is not. The response still carries the
+        # estimate and the sentence saying why, so nothing is hidden — only
+        # nothing is STORED that will silently go stale.
+        "indexed_cost_paise": (None if result.indexation_is_estimated
+                               else result.indexed_cost_paise),
         "gain_type": "LTCG" if result.is_long_term else "STCG",
         "tax_rate_percent": result.tax_rate_percent,
     }

@@ -455,11 +455,31 @@ def test_a_month_already_paid_counts_towards_the_projection(db):
 
     Asserted through the public helper rather than a private one, so it fails on
     the narrowed select and not on a rename.
-    """
-    _run(db, "2026-08")
+
+    THE RUN IS RELEASED, and that is the test's own title (PAY-04). A run
+    created by `create_run` is a DRAFT: no tax has been deducted, nothing has
+    been remitted, and crediting it in September's §192 projection would credit
+    the employee with tax nobody withheld — which under-withholds and leaves
+    the EMPLOYER liable under §192(1) with §201(1A) interest on top. The helper
+    filters on `_PAYROLL_RELEASED` now, so the fixture has to say what it
+    always meant."""
+    run, _slip = _run(db, "2026-08")
+    [r for r in db.rows("payroll_runs") if r["id"] == run["id"]][0]["status"] = "finalized"
     ytd = payroll_mod._tds_already_deducted_this_fy(
         db, FIRM, "CLI", "2026-09", "2026-27")
     _tds, months, gross = ytd["e-1"]
     assert months == 1
     assert gross == BASIC, \
         "August's gross must be visible to September's s.192 projection"
+
+
+def test_a_draft_month_does_not_count_towards_the_projection(db):
+    """PAY-04, the other half. A draft run has deducted nothing, so it is not
+    tax "already deducted this year" and must not reduce the month's
+    withholding."""
+    _run(db, "2026-08")   # left in draft
+    ytd = payroll_mod._tds_already_deducted_this_fy(
+        db, FIRM, "CLI", "2026-09", "2026-27")
+    assert ytd == {}, (
+        "a draft run credits the employee with tax nobody withheld — the "
+        "shortfall is the employer's under §192(1), with §201(1A) interest")

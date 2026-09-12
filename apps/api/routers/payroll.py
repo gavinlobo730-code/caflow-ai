@@ -516,8 +516,15 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
     """
     try:
         period = esi_contribution_period(month)
-        runs = (db.table("payroll_runs").select("id, month")
+        # RELEASED RUNS ONLY (PAY-04). A draft run has deducted nothing and
+        # remitted nothing, so its slips are not contributions and an employee
+        # on one has not "contributed earlier in this period" — the very fact
+        # this function exists to establish. Without the filter a draft that is
+        # later discarded or recomputed keeps somebody in past the ₹21,000
+        # ceiling on the strength of a deduction that never happened.
+        runs = (db.table("payroll_runs").select("id, month, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                .in_("status", list(_PAYROLL_RELEASED))
                 .execute().data) or []
         earlier = [r["id"] for r in runs
                    if r.get("month") and r["month"] < month
@@ -1043,8 +1050,18 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
     the employer's liability under §192(1) runs the other way.
     """
     try:
-        runs = (db.table("payroll_runs").select("id, month")
+        # RELEASED RUNS ONLY (PAY-04). This is "what §192 tax has ALREADY BEEN
+        # DEDUCTED this year", and a draft run has deducted none of it. Reading
+        # drafts credits the employee with tax nobody withheld, so the month's
+        # withholding comes out too SMALL — and §192(1) makes the EMPLOYER
+        # liable for the shortfall, with §201(1A) interest at 1% a month on
+        # top. The other readers of this table have filtered on
+        # `_PAYROLL_RELEASED` since migration 323 made RLS agree; these two did
+        # not, and there is no discard-and-recompute path (PAY-21), so a draft
+        # left behind is permanent.
+        runs = (db.table("payroll_runs").select("id, month, status")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                .in_("status", list(_PAYROLL_RELEASED))
                 .execute().data) or []
         earlier = [r["id"] for r in runs
                    if r.get("month") and r["month"] < month

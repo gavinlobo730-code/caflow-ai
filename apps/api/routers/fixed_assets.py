@@ -744,6 +744,29 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
             detail=f"Cannot post depreciation for {period} — asset was purchased in {purchase_month}.",
         )
 
+    # THE FIRST POSTING FORECLOSES EVERY EARLIER MONTH, AND NOTHING SAID SO
+    # (FA-04). The gap check above runs only when something has been posted, so
+    # a first posting may start at ANY month — and it must: an asset brought
+    # over from Tally mid-life already carries its accumulated depreciation and
+    # its first posting here is whatever month the CA takes over in.
+    # `test_the_first_ever_posting_may_start_at_any_month` pins that, correctly,
+    # and refusing the skip would refuse every migrated asset.
+    #
+    # What was missing is the CONSEQUENCE. `depreciation_posted_through` only
+    # moves forward, so every month between the purchase and this one becomes
+    # permanently unpostable — the single-month path 409s on them, the range
+    # runner skips them for the same reason, and reversal reaches the last
+    # month only. An asset bought in April and first depreciated in December
+    # silently loses eight months, and nobody is told at the one moment the
+    # choice is being made.
+    #
+    # A WARNING, not a refusal — the same shape as Rule 46(b)'s invoice-number
+    # sequence gap, and for the same reason: the gap has a legitimate cause and
+    # refusing would be wrong about a practice that is right.
+    foreclosed: list[str] = []
+    if not posted_month and purchase_month < period:
+        foreclosed = [purchase_month] + _months_missing_before(purchase_month, period)
+
     # task #232 audit finding: fixed_assets.py never checked the FY lock.
     entry_date = _period_end_date(period)
     period_validation_service.validate_posting_date(firm_id, entry_date)
@@ -820,6 +843,17 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
         "new_accumulated":    new_accum,
         "new_wdv":            asset["purchase_cost_paise"] - new_accum,
         "posted":             True,
+        # Empty on every ordinary posting. See the foreclosure note above.
+        "foreclosed_months":  foreclosed,
+        "foreclosure_notice": (
+            "" if not foreclosed else (
+                f"This is the first depreciation posted on this asset and it "
+                f"starts at {period}, so "
+                f"{', '.join(foreclosed)} can no longer be posted — "
+                f"depreciation-posted-through only moves forward. That is "
+                f"right for an asset brought over part-depreciated, and wrong "
+                f"if it was acquired here: in that case reverse this entry and "
+                f"start at {foreclosed[0]}.")),
     }
 
 

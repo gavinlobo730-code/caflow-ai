@@ -1216,6 +1216,14 @@ class ITREngine:
                 assessee=req.assessee_kind,  # type: ignore[arg-type]
                 claimed_specified_deduction=req.claimed_specified_deduction,
                 fy=rates.fy,
+                # IT-21. §115BAC disapplies Chapter XII-BA for the assessees it
+                # reaches, and this request has always known which regime is in
+                # force. A firm or LLP — the only assessee that reaches this
+                # branch today — is outside §115BAC, so the value changes
+                # nothing for them; it is passed so that the day an individual
+                # or HUF does reach it, the answer is right rather than
+                # silently charging a tax the section waives.
+                regime="new" if req.use_new_regime else "old",
             )
 
         if minimum is not None:
