@@ -49,6 +49,18 @@ from domain.tds.tds_computer import TDSComputer
 FYS = ("2025-26", "2026-27")
 TWO_LIMB_SECTIONS = ("194I", "194J")
 
+#: The concessional clause of each — the limb whose own rate this repository
+#: does not hold. They withhold at the parent's higher rate and say so.
+CONCESSIONAL_LIMBS = frozenset({"194I(A)", "194J(A)"})
+
+#: Every clause key in the registry, and the section it belongs to. The
+#: (b) limbs carry the rate the parent already holds, so they are complete and
+#: warn about nothing; the (a) limbs are in CONCESSIONAL_LIMBS above.
+ORDINARY_LIMBS = {
+    "194I(A)": "194I", "194I(B)": "194I",
+    "194J(A)": "194J", "194J(B)": "194J",
+}
+
 
 # ── The gap is named, and only where it is true ─────────────────────────────
 
@@ -69,7 +81,10 @@ def test_no_other_section_claims_a_limb_it_does_not_have(fy):
     """A gap on a single-limb section would be noise on every bill, and noise
     is how a real warning stops being read."""
     for section, rule in tds_rates_for(fy).sections.items():
-        if section in TWO_LIMB_SECTIONS:
+        # The bare section carries the gap (the CA has not said which limb),
+        # and so does the CONCESSIONAL limb (its own rate is not held). The
+        # ordinary limb carries none, because the rate held IS its rate.
+        if section in TWO_LIMB_SECTIONS or section in CONCESSIONAL_LIMBS:
             continue
         assert rule.rate_gap is None, f"{section} should carry no limb gap"
 
@@ -105,12 +120,16 @@ def test_a_single_limb_section_says_nothing_extra():
 
 # ── The machinery for a split that has not happened yet ─────────────────────
 
-def test_parent_of_is_the_identity_for_every_section_in_the_registry_today():
-    """No limb key exists yet, so parent_of must change nothing. Asserted so
-    that adding one is a visible, deliberate act rather than a silent one."""
+def test_parent_of_is_the_identity_for_everything_except_the_four_known_limbs():
+    """This test used to read "no limb key exists yet, so parent_of must change
+    nothing", and it fired when the four went in — which is what it was for.
+    Rewritten rather than deleted: the claim is now that these four and ONLY
+    these four are clauses, so a fifth added without reading the Act is still
+    a visible act."""
     for fy in FYS:
         for section in tds_rates_for(fy).sections:
-            assert parent_of(section, fy) == section
+            expected = ORDINARY_LIMBS.get(section, section)
+            assert parent_of(section, fy) == expected, section
 
 
 def test_parent_of_answers_the_parent_for_a_limb_key(monkeypatch):

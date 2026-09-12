@@ -75,6 +75,7 @@ memory would put a wrong number in somebody's pay or somebody's return.
 | DTAA rates per country × nature of income | the treaty text, read once per pair | §195 withholding falls back to the Act rate and over-deducts where a TRC exists |
 | the seven ITR JSON schemas for the new AY | incometax.gov.in → Downloads | ITR JSON for AY 2027-28 when it opens |
 | a vendor's MSMED classification | the supplier's Udyam registration | Schedule III payables ageing rows (i)/(iii), and §43B(h) |
+| the §194I(a) plant-and-machinery rate and the §194J(a) technical-services rate | the Finance Act, read by a person | both limbs now EXIST and can be recorded on a vendor and on the 26Q row — they simply withhold at the section's higher rate and say so, which over-deducts. Two numbers, and the whole of TDS-22 closes |
 
 **Question:** do you want me to build a small screen for each of these — a
 "statutory data" settings area where a CA pastes a state's slab table once and
@@ -98,3 +99,36 @@ Recorded so they are visible rather than buried in a diff.
    two-tier rather than "make everything wide".
 3. **No dark mode at all**, rather than "later". Carrying an unused second
    palette costs every component for ever.
+
+
+---
+
+## 5. Added overnight, 12-13 September
+
+### 5a. The §194I(a) / §194J(a) rates are two numbers away
+
+Added to the table in §3. The clause keys and their codes went in tonight,
+sourced from the Income Tax Department's own ITR-6 AY 2026-27 schema which is
+already in this repository — so a CA can now record that a payment was for
+plant hire rather than building rent, and the 26Q deductee row carries the
+right clause. What is still not held is the concessional RATE for each: the
+module refuses to state a figure nobody has checked against the Finance Act,
+so those two limbs withhold at the section's higher rate and say so on the
+screen.
+
+**Two numbers, read off the Act once, close TDS-22 completely.** Everything
+else is built.
+
+### 5b. What was NOT done overnight, and why
+
+- **Anything needing a migration.** Merging one applies it to the production
+  database with no review step in between, and you asked for no migration
+  work while you were asleep. That is most of what is left — see the "what
+  actually blocks it" column in `docs/audits/findings-status.md`.
+- **PUR-22, one payment settling several bills from the Purchases screen.**
+  It needs no migration, but the right shape is to route
+  `POST /api/purchase-payments` through `create_payment_core` so the two paths
+  to one job become one — a change to a money path that posts to the general
+  ledger. Not a change to make overnight with nobody reachable.
+- **The redesign itself.** Track 1's safety net is finished and green; Track 2
+  starts with your decision on the reference module.

@@ -152,14 +152,23 @@ def test_the_four_remaining_aggregate_sections_charge_on_the_year(section, limit
     assert prior_tds == prior_taxable * 1000 // 10000
 
 
-def test_exactly_four_sections_have_no_aggregate_and_each_has_a_reason():
+def test_only_these_sections_have_no_aggregate_and_each_has_a_reason():
     """§194I's limit is per month or part of a month, FA 2025 made §194B's per
     single transaction, §192 is a sentinel (salary is slab-based) and §206C is
     reference data no computation reads. An FY aggregate on 194I or 194B would
-    deduct where the statute does not charge."""
+    deduct where the statute does not charge.
+
+    §194I's two CLAUSES inherit its answer — the per-month limit is the
+    section's, not the clause's — while §194J's carry their parent's ₹50,000
+    aggregate. That asymmetry is the point of listing them: a limb added with
+    the wrong one silently changes when the charge starts.
+    """
     rules = tds_rates_for(FY).sections
     assert sorted(k for k, v in rules.items()
-                  if v.aggregate_threshold_paise is None) == ["192", "194B", "194I", "206C"]
+                  if v.aggregate_threshold_paise is None) == [
+        "192", "194B", "194I", "194I(A)", "194I(B)", "206C"]
+    for limb in ("194J(A)", "194J(B)"):
+        assert rules[limb].aggregate_threshold_paise == rules["194J"].aggregate_threshold_paise
 
 
 # ── the 26Q row that does not multiply out ───────────────────────────────────
