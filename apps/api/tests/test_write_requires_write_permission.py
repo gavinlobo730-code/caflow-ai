@@ -106,6 +106,14 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # against is built by _build_run_esic, the same read-only assembly
         # GET /runs/{run_id}/esic already uses.
         "/api/payroll/runs/{run_id}/esic/mapped-ips",
+        # PUR-32's preflight: reads this vendor's live bills and answers
+        # which of them the one being typed may be a second copy of. POST
+        # rather than GET because the request carries an invoice NUMBER, and a
+        # document identifier has no business in a URL, a query string or an
+        # access log — the same reason /tds-preview is a POST. It inserts
+        # nothing: the rule it applies (domain/purchases/near_duplicate) takes
+        # rows and returns findings, and never sees a database handle.
+        "/api/purchase-bills/near-duplicates",
         "/api/gst/validate/gstr1",
         "/api/gst/validate/gstr3b",
         # Stateless Groq passthrough over a static prompt; loads nothing, writes

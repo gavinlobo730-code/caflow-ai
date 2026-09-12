@@ -194,7 +194,8 @@ def test_parse_upload_allows_assigned_client(monkeypatch):
     _scope_to_mine(monkeypatch, f26)
     _patch_upload(monkeypatch, _upload(MINE))
     import domain.income_tax.form26as_service as svc
-    monkeypatch.setattr(svc, "parse_26as_text", lambda _t: [{"tan": "X"}])
+    monkeypatch.setattr(svc, "read_26as_text", lambda _t: svc.Reading26AS(
+        records=[{"tan": "X"}], skipped=[], data_lines_seen=1))
     monkeypatch.setattr(svc, "save_parsed_records", lambda **kw: {"id": "up1"})
 
     resp = f26.parse_upload("up1", _ParseReq(), USER)

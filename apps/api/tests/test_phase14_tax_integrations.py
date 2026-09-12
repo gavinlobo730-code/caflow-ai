@@ -338,20 +338,20 @@ PART C
 """
 
     def test_parse_returns_records(self):
-        from domain.income_tax.form26as_service import parse_26as_text
-        records = parse_26as_text(self.SAMPLE_26AS)
+        from domain.income_tax.form26as_service import read_26as_text
+        records = read_26as_text(self.SAMPLE_26AS).records
         assert len(records) >= 2
 
     def test_parsed_amounts_are_integer_paise(self):
-        from domain.income_tax.form26as_service import parse_26as_text
-        records = parse_26as_text(self.SAMPLE_26AS)
+        from domain.income_tax.form26as_service import read_26as_text
+        records = read_26as_text(self.SAMPLE_26AS).records
         for r in records:
             assert isinstance(r["tds_deposited_paise"], int), "TDS must be integer paise"
             assert isinstance(r["amount_credited_paise"], int), "Amount must be integer paise"
 
     def test_part_a_is_tds_salary(self):
-        from domain.income_tax.form26as_service import parse_26as_text
-        records = parse_26as_text(self.SAMPLE_26AS)
+        from domain.income_tax.form26as_service import read_26as_text
+        records = read_26as_text(self.SAMPLE_26AS).records
         part_a = [r for r in records if r.get("part") == "A"]
         assert all(r["record_type"] == "tds_salary" for r in part_a)
 
@@ -409,20 +409,20 @@ PART C
 
     def test_save_parsed_records(self):
         from domain.income_tax.form26as_service import (
-            create_upload, parse_26as_text, save_parsed_records
+            create_upload, read_26as_text, save_parsed_records
         )
         upload = create_upload("f1", "c_26as1", "2025-26", "u1")
-        records = parse_26as_text(self.SAMPLE_26AS)
+        records = read_26as_text(self.SAMPLE_26AS).records
         result = save_parsed_records("f1", upload["id"], "c_26as1", "2025-26", records)
         assert result["parse_status"] == "parsed"
         assert result["total_records"] >= 2
 
     def test_reconciliation_creates_summary(self):
         from domain.income_tax.form26as_service import (
-            create_upload, parse_26as_text, save_parsed_records, run_reconciliation
+            create_upload, read_26as_text, save_parsed_records, run_reconciliation
         )
         upload = create_upload("f1", "c_recon1", "2025-26", "u1")
-        records = parse_26as_text(self.SAMPLE_26AS)
+        records = read_26as_text(self.SAMPLE_26AS).records
         save_parsed_records("f1", upload["id"], "c_recon1", "2025-26", records)
         recon = run_reconciliation("f1", "c_recon1", upload["id"], "2025-26", "u1")
         assert recon["status"] == "completed"

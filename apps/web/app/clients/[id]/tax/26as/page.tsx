@@ -97,6 +97,10 @@ interface Reconciliation {
   status: string;
 }
 
+/** One line of the upload the server could not turn into a record.
+ *  Shape of domain/income_tax/form26as_service.SkippedLine. */
+type SkippedLine = { line_no: number; text: string; reason: string };
+
 export default function Form26ASPage() {
   // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
   // serves the pre-rendered "_placeholder" HTML for every real client URL, so
@@ -113,6 +117,8 @@ export default function Form26ASPage() {
   const [rawText, setRawText] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Lines the server read the file but could not turn into a record.
+  const [skipped, setSkipped] = useState<{ read: number; lines: SkippedLine[] } | null>(null);
 
   const [reconciling, setReconciling] = useState(false);
   // One action at a time: every button that starts work waits for whichever
@@ -192,8 +198,26 @@ export default function Form26ASPage() {
       });
       if (!parseRes.success) throw new Error(parseRes.error ?? "Parse failed");
 
+      // IT-24. A line the parser could not read is a tax credit the client is
+      // entitled to under IT Act s.199, and the reconciliation that runs next
+      // will report its deductor as "missing in 26AS" — sending the CA to
+      // chase somebody who filed correctly. The upload is kept (a partial read
+      // beats none) and the drawer STAYS OPEN with the lines named, because
+      // closing it is what made this invisible.
+      const parsed = parseRes.data as {
+        records_parsed?: number;
+        lines_skipped?: number;
+        skipped?: SkippedLine[];
+      };
+      if (parsed?.skipped?.length) {
+        setSkipped({ read: parsed.records_parsed ?? 0, lines: parsed.skipped });
+        await load();
+        return;
+      }
+
       setShowUpload(false);
       setRawText("");
+      setSkipped(null);
       await load();
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Failed");
@@ -401,6 +425,34 @@ export default function Form26ASPage() {
             placeholder="Paste Form 26AS text here..."
           />
           {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+          {skipped && (
+            <div className="text-xs bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 space-y-2">
+              <p className="font-semibold text-amber-900">
+                {skipped.read} row{skipped.read === 1 ? "" : "s"} read
+                {" · "}{skipped.lines.length} line{skipped.lines.length === 1 ? "" : "s"} could not be
+              </p>
+              <p className="text-amber-900/80">
+                Each of these is tax the deductor may have deposited. Leave them out and the
+                reconciliation reports the deductor as missing from 26AS, and the return claims
+                less credit than the portal shows (IT Act s.199).
+              </p>
+              <ul className="space-y-1.5 max-h-52 overflow-y-auto">
+                {skipped.lines.map(l => (
+                  <li key={l.line_no} className="text-amber-900/90">
+                    <span className="font-mono">line {l.line_no}:</span>{" "}
+                    <span className="font-mono opacity-80">{l.text}</span>
+                    <br />
+                    {l.reason}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => { setShowUpload(false); setRawText(""); setSkipped(null); }}
+                className="rounded-md bg-amber-900 px-3 py-1.5 text-[11px] font-semibold text-white">
+                I have read these — close
+              </button>
+            </div>
+          )}
           <div className="flex gap-2 justify-end">
             <button onClick={() => { setShowUpload(false); setRawText(""); }}
               className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>

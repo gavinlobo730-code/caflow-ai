@@ -18,6 +18,7 @@ production run identical logic. This module is the I/O around it.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import os
 import re
@@ -135,18 +136,69 @@ def get_upload(firm_id: str, upload_id: str) -> dict | None:
     return (res.data or [None])[0]
 
 
-def parse_26as_text(raw_text: str) -> list[dict]:
+@dataclass(frozen=True)
+class SkippedLine:
+    """One line of the upload that produced no record, and why."""
+    line_no: int          # 1-based, as a text editor counts
+    text: str             # the first 120 characters, for recognition
+    reason: str
+
+
+@dataclass(frozen=True)
+class Reading26AS:
+    """What one 26AS text upload actually yielded.
+
+    `records` alone was the old return value, and returning it alone is the
+    defect (IT-24). Two paths in the loop below drop a line — a split that
+    yields fewer than five columns, and a row whose date or amount will not
+    parse — and both used to vanish: one into a bare `continue`, one into a
+    DEBUG log nobody reads. The upload was then marked successful and the
+    reconciliation ran against a register missing whatever it could not read,
+    reporting the deductor as "not in 26AS" when 26AS had it all along.
+
+    So the reading carries BOTH sides, and the caller must show the second.
     """
-    Parse Form 26AS plain text (downloaded from TRACES portal).
-    Handles standard Part A (TDS on salary), Part B (TDS other), Part C (advance/self-assessment).
-    Returns list of parsed record dicts.
+    records: list[dict]
+    skipped: list[SkippedLine]
+    data_lines_seen: int   # lines that were neither blank, a part header nor a column header
+
+    @property
+    def looks_unrecognised(self) -> bool:
+        """True when there was content and none of it parsed.
+
+        A zero-record read of a file with data in it is not an empty 26AS — it
+        is a format this parser does not know (a PDF pasted with spaces rather
+        than tabs is the common one, since the split below is tab/pipe only).
+        Reporting that as a clean zero is the false-clean result this codebase
+        keeps having to close.
+        """
+        return self.data_lines_seen > 0 and not self.records
+
+
+def read_26as_text(raw_text: str) -> Reading26AS:
+    """
+    Parse Form 26AS plain text (downloaded from the TRACES portal).
+    Handles Part A (TDS on salary), Part B (TDS other), Part C
+    (advance/self-assessment).
+
+    Returns a Reading26AS rather than a bare list, and there is deliberately NO
+    convenience wrapper that hands back only the records: a lossy view of this
+    answer is exactly what the caller reached for last time.
+
+    The column split is tab or pipe only, and that is a real limit rather than
+    an oversight — a 26AS pasted out of a PDF viewer arrives space-separated,
+    and splitting on runs of spaces would cut deductor names in half. Such a
+    file now reports every line as skipped and `looks_unrecognised`, instead
+    of returning nothing and calling it an empty year.
     """
     records: list[dict] = []
+    skipped: list[SkippedLine] = []
+    data_lines = 0
     current_part = None
     lines = raw_text.strip().splitlines()
 
-    for line in lines:
-        line = line.strip()
+    for line_no, raw_line in enumerate(lines, start=1):
+        line = raw_line.strip()
         if not line:
             continue
 
@@ -160,9 +212,17 @@ def parse_26as_text(raw_text: str) -> list[dict]:
         if any(kw in line.upper() for kw in ("SR.", "S.NO", "DEDUCTOR", "NAME OF DEDUCTOR")):
             continue
 
+        data_lines += 1
+
         # Try to parse data rows (tab/pipe delimited)
         cols = re.split(r"\t|\|", line)
         if len(cols) < 5:
+            skipped.append(SkippedLine(
+                line_no, line[:120],
+                f"only {len(cols)} tab- or pipe-separated column(s); a 26AS row "
+                f"needs at least 5. A file pasted out of a PDF viewer is "
+                f"space-separated and will not parse — export the text file "
+                f"from TRACES instead."))
             continue
 
         try:
@@ -177,10 +237,14 @@ def parse_26as_text(raw_text: str) -> list[dict]:
                 "booking_status": cols[6].strip() if len(cols) > 6 else None,
             }
             records.append(record)
-        except (ValueError, IndexError):
-            _logger.debug("Skipping unparseable line: %s", line[:80])
+        except (ValueError, IndexError) as e:
+            # Was a DEBUG log. A tax credit dropped at DEBUG level is a tax
+            # credit dropped.
+            skipped.append(SkippedLine(
+                line_no, line[:120],
+                f"the date or amount could not be read ({type(e).__name__})"))
 
-    return records
+    return Reading26AS(records=records, skipped=skipped, data_lines_seen=data_lines)
 
 
 def _infer_record_type(part: str | None) -> str:

@@ -104,6 +104,208 @@
    "status": "closed",
    "verified_on": "2026-09-12",
    "why": "998211 survives only on the PRACTICE's own billing, which genuinely is that SAC; the client invoice path no longer defaults to it"
+  },
+  "PUR-32": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "the exact guard was already case- and whitespace-insensitive with migration 313's index behind it; the half that was genuinely open \u2014 a mistyped or differently-spelled number \u2014 is now domain/purchases/near_duplicate, warned at the create response and offered as a preflight the form calls before saving"
+  },
+  "IT-24": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "read_26as_text returns a Reading26AS carrying the records AND every line it could not read, with the line number and the reason; the router refuses a file that parsed nothing rather than saving it as an empty year, and the screen names the skipped lines instead of closing"
+  },
+  "TDS-20": {
+   "status": "partial",
+   "verified_on": "2026-09-12",
+   "why": "IT-24 closes the silent-drop half \u2014 an unparseable paste is now refused by name rather than read as an empty year. What remains is the finding's other half: the pipeline still accepts only pasted tab/pipe text and offers no current-year option"
+  },
+  "FA-08": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "the depreciation half is closed by a 422 that names the outstanding months; part_month_depreciation_not_charged is computed and returned. The GST-on-disposal half is a separate open item, recorded as FA-08b below"
+  },
+  "FA-08b": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no output tax on an asset disposal anywhere: journal_for_asset_disposal emits no tax line and DisposalIn has no tax field. Separated from FA-08 because the finding's depreciation half is closed and its own suggested fix for that half was unsound",
+   "needs": "a migration for the disposal's tax split, and a decision on CGST s.18(6)"
+  },
+  "GST-11": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no reference to QRMP anywhere in apps/api or apps/web (repo-wide probe, 2026-09-12)",
+   "needs": "schema for a quarterly filing preference, plus IFF"
+  },
+  "GST-20": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no additional-GSTIN or branch-registration table in any migration (repo-wide probe, 2026-09-12)",
+   "needs": "a registrations table; clients.gstin is singular today"
+  },
+  "GST-32": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no INV-01 payload builder; the only 'einvoice' matches are unrelated (repo-wide probe, 2026-09-12)",
+   "needs": "the IRP schema, and the 30-day reporting-window rule"
+  },
+  "PAY-23": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no annual bonus run \u2014 s.12 bonus is computed only inside a leaver's settlement (repo-wide probe, 2026-09-12)",
+   "needs": "a bonus register, and the state minimum wage the Act computes on"
+  },
+  "PAY-26": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "the employee portal has no reimbursement or declaration surface beyond payslips and a leave number (repo-wide probe, 2026-09-12)",
+   "needs": "schema for claims"
+  },
+  "PAY-27": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no bank advice / NEFT file builder anywhere (repo-wide probe, 2026-09-12)",
+   "needs": "each bank's own file format"
+  },
+  "TDS-16": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no FVU or RPU writer in domain/tds (repo-wide probe, 2026-09-12)",
+   "needs": "the NSDL file layout, and a correction-statement model"
+  },
+  "PUR-19": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no self-invoice (s.31(3)(f)) or payment voucher (s.31(3)(g)) path (repo-wide probe, 2026-09-12)",
+   "needs": "document series and templates"
+  },
+  "PUR-20": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no cess field on a purchase line (repo-wide probe, 2026-09-12)",
+   "needs": "cess columns on the line tables"
+  },
+  "PUR-25": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no purchase order, GRN or three-way match (repo-wide probe, 2026-09-12)",
+   "needs": "three new document types"
+  },
+  "PUR-26": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no recurring purchase bill, though recurring sales invoices are complete (repo-wide probe, 2026-09-12)",
+   "needs": "a schedule table; the sales side is the pattern to copy"
+  },
+  "SALES-21": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no quotation, proforma, sales order or delivery challan (repo-wide probe, 2026-09-12)",
+   "needs": "four new document types"
+  },
+  "INV-03": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no batch, expiry, godown, item group, alternate unit or reorder level in any migration (repo-wide probe, 2026-09-12)",
+   "needs": "substantial inventory schema"
+  },
+  "INV-08": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "physical verification is one item at a time; no count sheet or session (repo-wide probe, 2026-09-12)",
+   "needs": "a session table"
+  },
+  "GST-31": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "routers/gst_portal.py mounts five endpoints and nothing in apps/web names the prefix. Confirmed by the reachability ratchet, which budgets /api/gst-portal at 5"
+  },
+  "PUR-16": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "app/accounting/suppliers/page.tsx reads and writes public.suppliers (migration 030) over PostgREST, while every purchase path reads public.vendors. Two masters: the TDS section and credit limit a CA records on that screen reach nothing",
+   "needs": "ONE migration \u2014 vendors has 34 of the 36 columns already; only credit_limit_paise has no equivalent (payment_terms_days maps to credit_days). Repointing the screen without it would silently drop a recorded credit limit"
+  },
+  "ACC-06": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "components still hold recurring journal templates in localStorage \u2014 const LS_KEY = \"practicesync_recurring_templates\"",
+   "needs": "tables for the templates, budgets and retainers"
+  },
+  "ACC-19": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "multi_currency_platform_enabled exists in apps/api and nothing under app/settings can switch it on"
+  },
+  "GST-10": {
+   "status": "partial",
+   "verified_on": "2026-09-12",
+   "why": "gstr9_summary_from_returns computes the annual figures from the filed GSTR-1 and 3B rows and GSTR-9 is a return type on the GST screen. What is not built is a books-derived GSTR-9 and the tables that need one"
+  },
+  "GST-26": {
+   "status": "not_a_defect_as_stated",
+   "verified_on": "2026-09-12",
+   "why": "firm_hsn_library exists, so a firm's own library is built and reused. The finding's real ask \u2014 SHIPPING an HSN/SAC master \u2014 is a data-supply item like the professional-tax slabs, not code"
+  },
+  "INV-02": {
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "moving average is still the only costing method. FIFO appears in the module only as prose"
+  },
+  "PAY-24": {
+   "status": "partial",
+   "verified_on": "2026-09-12",
+   "why": "leave tables exist in the migrations; what the finding names \u2014 accrual, carry-forward and encashment against a real balance \u2014 needs a read to score"
+  },
+  "PUR-18": {
+   "status": "partial",
+   "verified_on": "2026-09-12",
+   "why": "bill_of_entry appears in the tree; whether the IGST paid to customs reaches GSTR-3B Table 4(A) needs a read"
+  },
+  "PUR-27": {
+   "status": "partial",
+   "verified_on": "2026-09-12",
+   "why": "expense_claim appears in the tree; scope of what exists needs a read"
+  },
+  "IT-11": {
+   "status": "partial",
+   "verified_on": "2026-09-12",
+   "why": "Form 3CD appears in the tree; the s.44AB applicability test is decided by compliance_obligation_service and refuses rather than guessing (see CLAUDE.md). Needs a read to score the 3CD half"
+  },
+  "IT-19": {
+   "status": "unverified",
+   "verified_on": "2026-09-12",
+   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+  },
+  "IT-22": {
+   "status": "unverified",
+   "verified_on": "2026-09-12",
+   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+  },
+  "IT-23": {
+   "status": "unverified",
+   "verified_on": "2026-09-12",
+   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+  },
+  "IT-27": {
+   "status": "unverified",
+   "verified_on": "2026-09-12",
+   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+  },
+  "IT-28": {
+   "status": "unverified",
+   "verified_on": "2026-09-12",
+   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+  },
+  "TDS-10": {
+   "status": "unverified",
+   "verified_on": "2026-09-12",
+   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+  },
+  "SALES-23": {
+   "status": "unverified",
+   "verified_on": "2026-09-12",
+   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
   }
  }
 }
