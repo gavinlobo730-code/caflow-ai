@@ -20,7 +20,7 @@ from domain.income_tax.capital_gains_engine import (
     compute_capital_gains, ASSET_TYPES, REGISTER_ASSET_TYPES, CII_BY_FY, LATEST_CII_FY,
     ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
-from domain.income_tax.assessee import assessee_kind_for_entity_type
+from domain.income_tax.assessee import AssesseeKind, assessee_kind_for_entity_type
 from domain.income_tax.advance_tax_interest_engine import (
     compute_234a_interest, compute_234b_interest, compute_234c_interest,
     installment_schedule, installment_rules, InstallmentPayment, INSTALLMENT_RULES,
@@ -983,6 +983,15 @@ def compute_234ab_interest(
 
 class Compute44ADRequest(BaseModel):
     fy: OptionalFYLabel = None
+    #: REQUIRED. §44AD's Explanation (a) names who it reaches, and this product
+    #: records the entity type on every client — so the engine decides it
+    #: rather than appending "confirm before opting in" to a result that reads
+    #: as eligible. Optional here would put the hole back: a Private Limited
+    #: company would be told a scheme it cannot use is available to it.
+    assessee_kind: AssesseeKind
+    #: §44AD reaches a RESIDENT assessee only. Defaults true, matching
+    #: ComputeITRRequest, and the screen sends what the CA answered there.
+    is_resident: bool = True
     turnover_paise: int = Field(ge=0)
     #: The split matters: the 3 crore ceiling and the 6% rate both turn on how
     #: much of the turnover came through a bank. Sending only the total gets
@@ -994,6 +1003,9 @@ class Compute44ADRequest(BaseModel):
 
 class Compute44ADARequest(BaseModel):
     fy: OptionalFYLabel = None
+    #: REQUIRED, for the same reason as §44AD's — see Compute44ADRequest.
+    assessee_kind: AssesseeKind
+    is_resident: bool = True
     gross_receipts_paise: int = Field(ge=0)
     cash_receipts_paise: int = Field(default=0, ge=0)
     declared_income_paise: Optional[int] = Field(default=None, ge=0)
@@ -1007,6 +1019,10 @@ class GoodsCarriageInput(BaseModel):
 
 
 class Compute44AERequest(BaseModel):
+    #: NO assessee_kind here, deliberately. §44AE reaches "an assessee who owns
+    #: not more than ten goods carriages" — any person, a company included — so
+    #: a kind test would refuse a transporter the section charges. See
+    #: domain/income_tax/presumptive.ELIGIBLE_PRESUMPTIVE_ASSESSEES.
     fy: OptionalFYLabel = None
     vehicles: list[GoodsCarriageInput] = Field(default_factory=list)
     declared_income_paise: Optional[int] = Field(default=None, ge=0)
@@ -1033,6 +1049,8 @@ def compute_presumptive_44ad(
     """§44AD — presumptive income of an eligible business. Persists nothing.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
     return api_response(True, _presumptive_payload(compute_44ad(
+        assessee_kind=req.assessee_kind,
+        is_resident=req.is_resident,
         turnover_paise=req.turnover_paise,
         digital_turnover_paise=req.digital_turnover_paise,
         cash_receipts_paise=req.cash_receipts_paise,
@@ -1049,6 +1067,8 @@ def compute_presumptive_44ada(
     """§44ADA — presumptive income of a specified profession. Persists nothing.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
     return api_response(True, _presumptive_payload(compute_44ada(
+        assessee_kind=req.assessee_kind,
+        is_resident=req.is_resident,
         gross_receipts_paise=req.gross_receipts_paise,
         cash_receipts_paise=req.cash_receipts_paise,
         declared_income_paise=req.declared_income_paise,

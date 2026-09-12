@@ -170,6 +170,39 @@ interface ComputeResult {
   rates_verified: boolean;
 }
 
+/** One §80G donation as the form holds it. Every field is a fact about the
+ *  DONEE, not a preference: §80G's four categories are the product of the
+ *  percentage and whether the qualifying limit applies, and §80G(5D) bars a
+ *  cash donation over ₹2,000 outright. `paidInCash` is tri-state — "" is "the
+ *  CA did not say", which the engine allows with a warning, because a zero for
+ *  "paid by cheque" and a zero for "nobody stated the mode" are not the same
+ *  answer. */
+interface DonationRow {
+  description: string;
+  amount: string;
+  pct: number;
+  subjectToLimit: boolean;
+  paidInCash: "" | "yes" | "no";
+}
+
+/** What POST /api/income-tax/presumptive/{scheme} answers. `workings` is the
+ *  point: a presumptive figure is a statutory computation on the turnover, not
+ *  a number a CA types, and it has to be checkable. */
+interface PresumptiveResult {
+  section: string;
+  eligible: boolean;
+  presumptive_income_paise: number;
+  /** What will actually be taken as the business income: the deemed figure,
+   *  or a higher one the assessee declared, or ZERO where the scheme is
+   *  refused — `PresumptiveResult` sets it to 0 when `eligible` is false, so
+   *  it must never be read without checking that flag. */
+  declared_income_paise: number;
+  turnover_limit_paise: number;
+  enhanced_limit_applied: boolean;
+  reasons: string[];
+  workings: string[];
+}
+
 interface BFLoss {
   id: string;
   assessment_year: string;
@@ -245,6 +278,46 @@ export default function TaxComputationPage() {
   const [savingsInterest80tta, setSavingsInterest80tta] = useState("");
   const [homeLoanInterest24b, setHomeLoanInterest24b] = useState("");
   const [otherDeductions, setOtherDeductions] = useState("");
+
+  // IT-05, the five the endpoint accepts and this screen still did not send.
+  //
+  // RESIDENCE IS NOT A DEDUCTION and is not gated on the regime. It decides
+  // whether an unused basic exemption may be set against a capital gain —
+  // the provisos to §111A(1), §112(1)(a)(ii) and §112A(2) reach a RESIDENT
+  // individual only — so `is_resident` defaulting to true with no control
+  // silently granted a non-resident an absorption the statute does not.
+  const [isResident, setIsResident] = useState(true);
+  // §10(13A) with Rule 2A. Old regime only: §115BAC(2)(i) withdraws it.
+  const [hraBasic, setHraBasic] = useState("");
+  const [hraReceived, setHraReceived] = useState("");
+  const [hraRent, setHraRent] = useState("");
+  const [hraMetro, setHraMetro] = useState(false);
+  // §80CCD(1B) — the assessee's own NPS, ₹50,000 over and above §80C.
+  const [nps80ccd1b, setNps80ccd1b] = useState("");
+  // §80CCD(2) — the EMPLOYER's contribution, and the one Chapter VI-A head
+  // §115BAC(2) leaves standing, so it is offered under both regimes.
+  const [employerNps, setEmployerNps] = useState("");
+  const [isGovtEmployee, setIsGovtEmployee] = useState(false);
+  const [nps80ccd2Salary, setNps80ccd2Salary] = useState("");
+  const [donations, setDonations] = useState<DonationRow[]>([]);
+
+  // IT-16. §44AD / §44ADA / §44AE. The figure is COMPUTED by the server from
+  // the turnover — 8%, 6% on the banked part, 50%, or the per-tonne rate — and
+  // it REPLACES business income and every disallowance in the computation
+  // (§44AD(2), §44ADA(3), §44AE(6) each deem the deductions already allowed).
+  // So it is not a box a CA types into: they give the turnover, the server
+  // says what the section deems, and the working comes back with it.
+  const [presumptiveScheme, setPresumptiveScheme] = useState("");
+  const [presTurnover, setPresTurnover] = useState("");
+  const [presDigital, setPresDigital] = useState("");
+  const [presCash, setPresCash] = useState("");
+  const [presGross, setPresGross] = useState("");
+  const [presDeclared, setPresDeclared] = useState("");
+  const [presVehicles, setPresVehicles] = useState<{ weight: string; months: string }[]>([]);
+  const [presResult, setPresResult] = useState<PresumptiveResult | null>(null);
+  const [presError, setPresError] = useState<string | null>(null);
+  const [presComputing, setPresComputing] = useState(false);
+
   const [isSenior, setIsSenior] = useState(false);
   const [isVerySenior, setIsVerySenior] = useState(false);
   const [computing, setComputing] = useState(false);
@@ -260,7 +333,7 @@ export default function TaxComputationPage() {
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
-  const actionInFlight = computing || savingDisall;
+  const actionInFlight = computing || savingDisall || presComputing;
 
   // Distinguishes "fetch failed" from "nothing recorded yet" — a masked
   // failure previously rendered the whole workspace (snapshots,
@@ -388,6 +461,73 @@ export default function TaxComputationPage() {
     return () => { cancelled = true; };
   }, []);
 
+  /** IT-16. Ask the server what the section deems, and keep its working.
+   *
+   *  Nothing here decides eligibility or a rate: §44AD's ceiling depends on
+   *  how much of the turnover came through a bank, §44ADA's on the cash
+   *  receipts, and §44AE's on each vehicle's gross weight and the months it
+   *  was owned. Those are the endpoint's rules — this collects the facts. */
+  async function handlePresumptive() {
+    const amounts: [string, string][] =
+      presumptiveScheme === "44ad"
+        ? [["Turnover", presTurnover], ["Digital turnover", presDigital],
+           ["Cash receipts", presCash], ["Declared income", presDeclared]]
+        : presumptiveScheme === "44ada"
+        ? [["Gross receipts", presGross], ["Cash receipts", presCash],
+           ["Declared income", presDeclared]]
+        : [["Declared income", presDeclared]];
+    const bad = amounts.find(([, v]) => paiseFromRupeeInput(v || "0") === null);
+    if (bad) {
+      setPresError(`${bad[0]} must be an amount in rupees, without commas.`);
+      return;
+    }
+    if (presumptiveScheme === "44ae" && !presVehicles.length) {
+      setPresError("Add at least one goods carriage — §44AE charges per vehicle "
+                   + "per month, so there is nothing to compute without one.");
+      return;
+    }
+    const badVehicle = presVehicles.find(
+      v => !(Number(v.weight) > 0) || !(Number(v.months) >= 0 && Number(v.months) <= 12));
+    if (badVehicle) {
+      setPresError("Every carriage needs a gross weight in kilograms and the "
+                   + "months owned, 0 to 12 — a part month counts as a whole one.");
+      return;
+    }
+    setPresComputing(true);
+    setPresError(null);
+    const toP = (v: string) => paiseFromRupeeInput(v || "0") as number;
+    const declared = presDeclared.trim() === "" ? null : toP(presDeclared);
+    // §44AD and §44ADA each name the assessee they reach and each require a
+    // resident; §44AE names no kind at all, so its request carries neither.
+    const who = { assessee_kind: assesseeKind, is_resident: isResident };
+    const body =
+      presumptiveScheme === "44ad"
+        ? { fy, ...who, turnover_paise: toP(presTurnover),
+            digital_turnover_paise: toP(presDigital),
+            cash_receipts_paise: toP(presCash), declared_income_paise: declared }
+        : presumptiveScheme === "44ada"
+        ? { fy, ...who, gross_receipts_paise: toP(presGross),
+            cash_receipts_paise: toP(presCash), declared_income_paise: declared }
+        : { fy,
+            vehicles: presVehicles.map(v => ({
+              gross_vehicle_weight_kg: Number(v.weight),
+              months_owned: Number(v.months),
+            })),
+            declared_income_paise: declared };
+    try {
+      const r = await apiFetch(`/api/income-tax/presumptive/${presumptiveScheme}`, {
+        method: "POST", body: JSON.stringify(body),
+      });
+      if (!r.success) throw new Error(r.error ?? "Could not compute the presumptive income.");
+      setPresResult(r.data as PresumptiveResult);
+    } catch (err) {
+      setPresResult(null);
+      setPresError(err instanceof Error ? err.message : "Could not compute the presumptive income.");
+    } finally {
+      setPresComputing(false);
+    }
+  }
+
   async function handleCompute() {
     // Every figure read exactly BEFORE anything is computed. These five are the
     // inputs to a tax computation: a gross salary read as ₹1 because it was
@@ -414,6 +554,17 @@ export default function TaxComputationPage() {
       ["Savings interest (80TTA)", savingsInterest80tta],
       ["Home loan interest (24b)", homeLoanInterest24b],
       ["Other deductions", otherDeductions],
+      // IT-05. In the list like the rest: toP() casts the parser's answer
+      // `as number`, so a field left out of this check reaches the server as
+      // null the moment somebody types an amount the way Indians write one.
+      ["HRA — basic salary", hraBasic],
+      ["HRA received", hraReceived],
+      ["Rent paid", hraRent],
+      ["Section 80CCD(1B) — NPS", nps80ccd1b],
+      ["Section 80CCD(2) — employer NPS", employerNps],
+      ["Salary for the 80CCD(2) ceiling", nps80ccd2Salary],
+      ...donations.map((d, i): [string, string] =>
+        [`Donation ${i + 1}${d.description ? ` (${d.description})` : ""}`, d.amount]),
     ];
     const bad = fields.find(([, v]) => paiseFromRupeeInput(v || "0") === null);
     if (bad) {
@@ -468,6 +619,44 @@ export default function TaxComputationPage() {
           savings_interest_80tta_paise: toP(savingsInterest80tta),
           home_loan_interest_24b_paise: toP(homeLoanInterest24b),
           other_deductions_paise: toP(otherDeductions),
+
+          // IT-05. Sent under BOTH regimes and left to the server to allow or
+          // withdraw: §115BAC(2) is a statutory list, and a screen that
+          // decided which of these survives would be a second copy of it.
+          is_resident: isResident,
+          hra: {
+            basic_salary_paise: toP(hraBasic),
+            hra_received_paise: toP(hraReceived),
+            rent_paid_paise: toP(hraRent),
+            is_metro: hraMetro,
+          },
+          nps_80ccd1b_paise: toP(nps80ccd1b),
+          employer_nps_80ccd2_paise: toP(employerNps),
+          is_government_employee: isGovtEmployee,
+          // Blank means "use the salary already given". §80CCD(2)'s ceiling is
+          // a percentage of BASIC + DA, which is not the gross, so a client
+          // whose gross carries allowances needs the base stated separately.
+          salary_for_80ccd2_paise:
+            nps80ccd2Salary.trim() === "" ? null : toP(nps80ccd2Salary),
+          donations_80g: donations
+            .filter(d => (paiseFromRupeeInput(d.amount || "0") ?? 0) > 0)
+            .map(d => ({
+              description: d.description,
+              amount_paise: toP(d.amount),
+              deduction_pct: d.pct,
+              subject_to_qualifying_limit: d.subjectToLimit,
+              // "" is not false. The engine treats null as "unstated" and warns,
+              // which is the honest answer where nobody recorded the mode.
+              paid_in_cash: d.paidInCash === "" ? null : d.paidInCash === "yes",
+            })),
+
+          // IT-16. Only what the server computed, never a typed figure — and
+          // only while the scheme is still selected, so clearing the picker
+          // clears the deeming with it.
+          presumptive_income_paise:
+            presumptiveScheme && presResult?.eligible
+              ? presResult.presumptive_income_paise
+              : null,
 
           // IT-10 — the losses this screen has always LOADED and never sent.
           // remaining_amount_paise, not the original: a loss already partly
@@ -749,6 +938,215 @@ export default function TaxComputationPage() {
               ))}
             </div>
 
+            {/* IT-16 — the presumptive schemes. The engine has honoured
+                `presumptive_income_paise` since IT-01 and the three endpoints
+                have existed since; no screen sent any of it, so a §44AD client
+                — the commonest small-business return in an Indian practice —
+                had to have its deemed income worked out somewhere else and
+                typed in as business income.
+
+                The picker is offered to every assessee on purpose. §44AD and
+                §44ADA name who they reach and the SERVER answers on the
+                client's recorded entity type; a list of eligible kinds in this
+                file would be a second copy of the section. */}
+            <div className="space-y-3 border-t border-[#F1F5F9] pt-3">
+              <div className="flex items-center gap-3">
+                <label className="text-[11px] font-semibold text-[#334155] whitespace-nowrap">
+                  Presumptive scheme
+                </label>
+                <select value={presumptiveScheme}
+                  onChange={e => { setPresumptiveScheme(e.target.value);
+                                   setPresResult(null); setPresError(null); }}
+                  className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+                  <option value="">None — books of account</option>
+                  <option value="44ad">§44AD — eligible business</option>
+                  <option value="44ada">§44ADA — specified profession</option>
+                  <option value="44ae">§44AE — goods carriages</option>
+                </select>
+              </div>
+
+              {presumptiveScheme && (
+                <>
+                  <p className="text-[10px] text-[#94A3B8]">
+                    A presumptive figure REPLACES the business income above and
+                    every accepted disallowance — §44AD(2), §44ADA(3) and
+                    §44AE(6) each deem the deductions already allowed.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(presumptiveScheme === "44ad"
+                      ? [
+                          { label: "Turnover (₹)", value: presTurnover, set: setPresTurnover },
+                          { label: "Of which received through a bank (₹)", value: presDigital,
+                            set: setPresDigital,
+                            hint: "6% on this part, 8% on the rest — §44AD(1) proviso" },
+                          { label: "Cash receipts (₹)", value: presCash, set: setPresCash,
+                            hint: "Within 5% of turnover raises the ceiling to ₹3 crore" },
+                        ]
+                      : presumptiveScheme === "44ada"
+                      ? [
+                          { label: "Gross receipts (₹)", value: presGross, set: setPresGross },
+                          { label: "Cash receipts (₹)", value: presCash, set: setPresCash,
+                            hint: "Within 5% raises the ceiling to ₹75 lakh" },
+                        ]
+                      : []
+                    ).map(({ label, value, set, hint }) => (
+                      <div key={label}>
+                        <label className="text-[10px] text-[#64748B] mb-1 block">{label}</label>
+                        <input type="text" inputMode="decimal" value={value}
+                          onChange={e => set(e.target.value)}
+                          className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0" />
+                        {hint && <p className="text-[10px] text-[#94A3B8] mt-0.5">{hint}</p>}
+                      </div>
+                    ))}
+                    <div>
+                      <label className="text-[10px] text-[#64748B] mb-1 block">
+                        Income declared, if higher (₹)
+                      </label>
+                      <input type="text" inputMode="decimal" value={presDeclared}
+                        onChange={e => setPresDeclared(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Blank uses the deemed figure" />
+                      <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                        Declaring LESS is refused — §44AD(5) then requires books
+                        under §44AA and an audit under §44AB.
+                      </p>
+                    </div>
+                  </div>
+
+                  {presumptiveScheme === "44ae" && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-semibold text-[#334155]">
+                          Goods carriages
+                          <span className="font-normal text-[#94A3B8]">
+                            {" "}— §44AE charges per vehicle per month
+                          </span>
+                        </p>
+                        <button type="button"
+                          onClick={() => setPresVehicles(v => [...v, { weight: "", months: "12" }])}
+                          className="text-[11px] text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                          <Plus className="w-3 h-3" /> Add carriage
+                        </button>
+                      </div>
+                      {presVehicles.map((v, i) => (
+                        <div key={i} className="grid grid-cols-12 gap-2">
+                          <input type="text" inputMode="numeric" value={v.weight}
+                            placeholder="Gross vehicle weight (kg)"
+                            onChange={e => setPresVehicles(rows => rows.map((r, j) =>
+                              j === i ? { ...r, weight: e.target.value } : r))}
+                            className="col-span-6 text-xs px-2 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                          <input type="text" inputMode="numeric" value={v.months}
+                            placeholder="Months owned"
+                            onChange={e => setPresVehicles(rows => rows.map((r, j) =>
+                              j === i ? { ...r, months: e.target.value } : r))}
+                            className="col-span-5 text-xs px-2 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                          <button type="button" aria-label="Remove carriage"
+                            onClick={() => setPresVehicles(rows => rows.filter((_, j) => j !== i))}
+                            className="col-span-1 text-[11px] text-[#94A3B8] hover:text-red-600">
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      <p className="text-[10px] text-[#94A3B8]">
+                        A part of a month counts as a whole one. Over 12,000 kg is
+                        charged per tonne of gross weight; at or under, a flat rate.
+                      </p>
+                    </div>
+                  )}
+
+                  <button type="button" onClick={handlePresumptive}
+                    disabled={actionInFlight}
+                    className="text-xs px-3 py-1.5 bg-[#0F172A] text-white rounded-lg disabled:opacity-50">
+                    {presComputing ? "Computing…" : "Compute presumptive income"}
+                  </button>
+
+                  {presError && (
+                    <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
+                      {presError}
+                    </p>
+                  )}
+
+                  {presResult && (
+                    <div className={`rounded-lg border p-3 space-y-1.5 ${
+                      presResult.eligible
+                        ? "border-[#E2E8F0] bg-[#F8FAFC]"
+                        : "border-amber-200 bg-amber-50"}`}>
+                      <p className="text-xs font-semibold text-[#0F172A]">
+                        {presResult.eligible
+                          ? `${presResult.section} — ${paise(presResult.declared_income_paise)} will be taken as the business income`
+                          : `${presResult.section} is not available`}
+                      </p>
+                      {presResult.workings.map((w, i) => (
+                        <p key={i} className="text-[10px] text-[#64748B]">{w}</p>
+                      ))}
+                      {presResult.reasons.map((r, i) => (
+                        <p key={i} className="text-[10px] text-[#92400E]">{r}</p>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* WHO THE ASSESSEE IS, under BOTH regimes.
+                Residence is not a deduction and §80CCD(2) is the one Chapter
+                VI-A head §115BAC(2) leaves standing, so neither belongs behind
+                the old-regime gate below. */}
+            {!isEntity && (
+              <div className="space-y-3 border-t border-[#F1F5F9] pt-3">
+                <p className="text-[11px] font-semibold text-[#334155]">
+                  Residence and employer NPS
+                  <span className="font-normal text-[#94A3B8]"> — both regimes</span>
+                </p>
+                <label className="flex items-start gap-1.5 text-[11px] text-[#334155]">
+                  <input type="checkbox" checked={isResident} className="mt-0.5"
+                    onChange={e => setIsResident(e.target.checked)} />
+                  <span>
+                    Resident in India
+                    <span className="block text-[10px] text-[#94A3B8]">
+                      Unused basic exemption may be set against a capital gain only
+                      for a RESIDENT individual — the provisos to §111A(1),
+                      §112(1)(a)(ii) and §112A(2). Clearing this withdraws it.
+                    </span>
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-[#64748B] mb-1 block">
+                      §80CCD(2) — employer NPS contribution (₹)
+                    </label>
+                    <input type="text" inputMode="decimal" value={employerNps}
+                      onChange={e => setEmployerNps(e.target.value)}
+                      className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0" />
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                      Allowed under the new regime too — §115BAC(2) withdraws the
+                      rest of Chapter VI-A and leaves this.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#64748B] mb-1 block">
+                      Salary for the §80CCD(2) ceiling (₹)
+                    </label>
+                    <input type="text" inputMode="decimal" value={nps80ccd2Salary}
+                      onChange={e => setNps80ccd2Salary(e.target.value)}
+                      className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Blank uses the gross salary above" />
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                      Basic + dearness allowance, not the gross.
+                    </p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-1.5 text-[11px] text-[#334155]">
+                  <input type="checkbox" checked={isGovtEmployee}
+                    onChange={e => setIsGovtEmployee(e.target.checked)} />
+                  Employed by the Central or a State Government
+                  <span className="text-[10px] text-[#94A3B8]">(a higher §80CCD(2) ceiling)</span>
+                </label>
+              </div>
+            )}
+
             {/* Chapter VI-A and §24(b). Shown only for an individual on the
                 OLD regime, because that is the only assessee they reach:
                 §115BAC(2) allows §80CCD(2) and §80JJAA and nothing else, and
@@ -794,6 +1192,128 @@ export default function TaxComputationPage() {
                       <input type="checkbox" checked={v} onChange={e => set(e.target.checked)} />
                       {label}
                     </label>
+                  ))}
+                </div>
+
+                {/* §80CCD(1B) — the assessee's OWN NPS, ₹50,000 over and above
+                    the §80C ceiling. Separate from the employer's contribution
+                    above: different sub-section, different limit, and only
+                    this one is withdrawn by §115BAC(2). */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-[#64748B] mb-1 block">
+                      §80CCD(1B) — own NPS (₹)
+                    </label>
+                    <input type="text" inputMode="decimal" value={nps80ccd1b}
+                      onChange={e => setNps80ccd1b(e.target.value)}
+                      className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0" />
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                      Ceiling ₹50,000, in addition to §80C.
+                    </p>
+                  </div>
+                </div>
+
+                {/* §10(13A) with Rule 2A. The exemption is the LEAST of three
+                    figures — the HRA received, rent less 10% of salary, and
+                    50% or 40% of salary — so all four facts are needed and the
+                    server computes it. This is the largest relief the screen
+                    was not collecting: an old-regime salaried client paying
+                    rent had it omitted entirely. */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold text-[#334155]">
+                    House rent allowance — §10(13A)
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: "Basic salary + DA (₹)", value: hraBasic, set: setHraBasic,
+                        hint: "Rule 2A reads 'salary' as basic plus dearness allowance" },
+                      { label: "HRA received (₹)", value: hraReceived, set: setHraReceived },
+                      { label: "Rent actually paid (₹)", value: hraRent, set: setHraRent },
+                    ].map(({ label, value, set, hint }) => (
+                      <div key={label}>
+                        <label className="text-[10px] text-[#64748B] mb-1 block">{label}</label>
+                        <input type="text" inputMode="decimal" value={value}
+                          onChange={e => set(e.target.value)}
+                          className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0" />
+                        {hint && <p className="text-[10px] text-[#94A3B8] mt-0.5">{hint}</p>}
+                      </div>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-1.5 text-[11px] text-[#334155]">
+                    <input type="checkbox" checked={hraMetro}
+                      onChange={e => setHraMetro(e.target.checked)} />
+                    Accommodation is in Delhi, Mumbai, Kolkata or Chennai
+                    <span className="text-[10px] text-[#94A3B8]">(50% of salary, else 40%)</span>
+                  </label>
+                </div>
+
+                {/* §80G. Two facts about the DONEE, not one: the percentage and
+                    whether the qualifying limit applies are independent, and
+                    §80G(5D) bars a cash donation over ₹2,000 outright. */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-semibold text-[#334155]">
+                      Donations — §80G
+                    </p>
+                    <button type="button"
+                      onClick={() => setDonations(d => [...d, {
+                        description: "", amount: "", pct: 50,
+                        subjectToLimit: true, paidInCash: "",
+                      }])}
+                      className="text-[11px] text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                      <Plus className="w-3 h-3" /> Add donation
+                    </button>
+                  </div>
+                  {donations.length === 0 && (
+                    <p className="text-[10px] text-[#94A3B8]">
+                      None recorded. §80G(4) caps the residual category at 10% of
+                      adjusted gross total income, so the ceiling depends on the
+                      rest of the computation and is applied last.
+                    </p>
+                  )}
+                  {donations.map((d, i) => (
+                    <div key={i} className="grid grid-cols-12 gap-2 items-start">
+                      <input type="text" value={d.description} placeholder="Donee"
+                        onChange={e => setDonations(rows => rows.map((r, j) =>
+                          j === i ? { ...r, description: e.target.value } : r))}
+                        className="col-span-4 text-xs px-2 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                      <input type="text" inputMode="decimal" value={d.amount} placeholder="Amount (₹)"
+                        onChange={e => setDonations(rows => rows.map((r, j) =>
+                          j === i ? { ...r, amount: e.target.value } : r))}
+                        className="col-span-2 text-xs px-2 py-1.5 border border-[#E2E8F0] rounded-lg" />
+                      <select value={d.pct}
+                        onChange={e => setDonations(rows => rows.map((r, j) =>
+                          j === i ? { ...r, pct: Number(e.target.value) } : r))}
+                        className="col-span-2 text-xs px-2 py-1.5 border border-[#E2E8F0] rounded-lg">
+                        <option value={50}>50%</option>
+                        <option value={100}>100%</option>
+                      </select>
+                      <select value={d.paidInCash}
+                        onChange={e => setDonations(rows => rows.map((r, j) =>
+                          j === i ? { ...r, paidInCash: e.target.value as DonationRow["paidInCash"] } : r))}
+                        className="col-span-3 text-xs px-2 py-1.5 border border-[#E2E8F0] rounded-lg">
+                        <option value="">Mode not stated</option>
+                        <option value="no">Cheque, draft or bank</option>
+                        <option value="yes">Cash</option>
+                      </select>
+                      <button type="button" aria-label="Remove donation"
+                        onClick={() => setDonations(rows => rows.filter((_, j) => j !== i))}
+                        className="col-span-1 text-[11px] text-[#94A3B8] hover:text-red-600 py-1.5">
+                        ×
+                      </button>
+                      <label className="col-span-12 flex items-center gap-1.5 text-[10px] text-[#64748B] -mt-1">
+                        <input type="checkbox" checked={d.subjectToLimit}
+                          onChange={e => setDonations(rows => rows.map((r, j) =>
+                            j === i ? { ...r, subjectToLimit: e.target.checked } : r))} />
+                        Subject to the §80G(4) qualifying limit
+                        <span className="text-[#94A3B8]">
+                          — clear it only for a fund listed in §80G(1)(i), such as the
+                          PM National Relief Fund
+                        </span>
+                      </label>
+                    </div>
                   ))}
                 </div>
               </div>

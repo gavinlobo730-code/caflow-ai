@@ -121,6 +121,53 @@ class PresumptiveResult:
     workings: tuple[str, ...]
 
 
+#: Who §44AD and §44ADA reach, in this codebase's assessee vocabulary
+#: (`domain/income_tax/assessee.AssesseeKind`).
+#:
+#: §44AD, Explanation (a): an "eligible assessee" is an individual, a Hindu
+#: undivided family or a partnership firm who is a RESIDENT, but NOT a limited
+#: liability partnership as defined in §2(1)(n) of the LLP Act 2008.
+#: §44ADA(1): "an assessee, being an individual or a partnership firm other
+#: than a limited liability partnership ... who is a resident in India".
+#: Both therefore stop in the same place, and a company is outside both.
+#:
+#: A HUF is eligible in law and is absent here because `clients.entity_type`
+#: has no value for one — this set is the intersection of the section and the
+#: kinds this product can hold, not a reading of the section.
+#:
+#: §44AE IS DELIBERATELY NOT GATED. It reaches "an assessee who owns not more
+#: than ten goods carriages" — any person, a company included — so testing the
+#: kind there would refuse a transporter the section charges.
+ELIGIBLE_PRESUMPTIVE_ASSESSEES = frozenset({"individual", "firm"})
+
+
+def _assessee_bars(section: str, assessee_kind: Optional[str],
+                   is_resident: bool) -> Optional[str]:
+    """Why this assessee cannot use §44AD/§44ADA, or None.
+
+    Answered rather than left as a caveat wherever the caller states the facts.
+    The engine used to append "available only to a resident individual, HUF or
+    partnership firm (not an LLP) — confirm before opting in" to every result
+    and decide nothing, which asks a CA to re-check something the client master
+    already records. What stays a caveat is what no record holds: whether the
+    business is a profession under §44AA(1), a commission or brokerage, or an
+    agency.
+    """
+    kind = (assessee_kind or "").strip().lower()
+    if kind and kind not in ELIGIBLE_PRESUMPTIVE_ASSESSEES:
+        return (
+            f"{section} reaches a resident individual, Hindu undivided family or "
+            f"partnership firm. This client is recorded as {kind!r}, which the "
+            f"section excludes — an LLP by name (§2(1)(n) of the LLP Act 2008 in "
+            f"§44AD's Explanation (a) and in §44ADA(1)), a company because it is "
+            f"not among the persons either section names."
+        )
+    if not is_resident:
+        return (f"{section} reaches a RESIDENT assessee only, and this one is "
+                f"recorded as non-resident.")
+    return None
+
+
 def _cash_within_threshold(cash_receipts_paise: int, total_paise: int,
                            percent: int) -> bool:
     """Whether cash receipts are within `percent` of total receipts.
@@ -141,6 +188,8 @@ def compute_44ad(
     cash_receipts_paise: int = 0,
     declared_income_paise: Optional[int] = None,
     fy: Optional[str] = None,
+    assessee_kind: Optional[str] = None,
+    is_resident: bool = True,
 ) -> PresumptiveResult:
     """§44AD — presumptive income of an eligible business.
 
@@ -214,12 +263,20 @@ def compute_44ad(
                     f"§44AD(1) permits."
                 )
 
-    # Not derivable from figures — the CA has to confirm them.
+    # Who the assessee is, where the caller said. Decided rather than left to
+    # the CA to re-confirm: the client master records the entity type.
+    bar = _assessee_bars("§44AD", assessee_kind, is_resident)
+    if bar:
+        eligible = False
+        reasons.append(bar)
+
+    # What no record holds, and so stays a caveat.
     reasons.append(
-        "§44AD is available only to a resident individual, HUF or partnership "
-        "firm (not an LLP), and not to a profession under §44AA(1), a "
-        "commission or brokerage earner, or an agency business — confirm "
-        "before opting in."
+        "§44AD does not reach a profession under §44AA(1), a commission or "
+        "brokerage earner, or an agency business — confirm before opting in."
+        + ("" if assessee_kind else
+           " It is also available only to a resident individual, HUF or "
+           "partnership firm (not an LLP), which was not stated here.")
     )
     return PresumptiveResult(
         section="44AD",
@@ -239,6 +296,8 @@ def compute_44ada(
     cash_receipts_paise: int = 0,
     declared_income_paise: Optional[int] = None,
     fy: Optional[str] = None,
+    assessee_kind: Optional[str] = None,
+    is_resident: bool = True,
 ) -> PresumptiveResult:
     """§44ADA — presumptive income of a specified profession.
 
@@ -295,9 +354,17 @@ def compute_44ada(
         else:
             declared = declared_income_paise
 
+    bar = _assessee_bars("§44ADA", assessee_kind, is_resident)
+    if bar:
+        eligible = False
+        reasons.append(bar)
+
     reasons.append(
         "§44ADA applies only to a profession referred to in §44AA(1) — confirm "
         "the client's profession qualifies before opting in."
+        + ("" if assessee_kind else
+           " It also reaches only a resident individual or partnership firm "
+           "(not an LLP), which was not stated here.")
     )
     return PresumptiveResult(
         section="44ADA",

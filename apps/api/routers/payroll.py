@@ -575,6 +575,38 @@ def _months_employed_in_fy(joining_date, fy: Optional[str]) -> int:
     return 12 - ((joined.year - fy_start_year) * 12 + joined.month - 4)
 
 
+#: What a revision can change. `payroll_salary_revisions` (migration 300)
+#: records PAY and nothing else, so everything outside this set — PF
+#: applicability, the PT state, EPS eligibility, the joining date — still comes
+#: from the master row.
+_REVISABLE_COMPONENTS = (
+    "basic_paise", "hra_percent", "da_percent", "lta_paise",
+    "medical_paise", "special_allowance_paise", "other_allowances_paise",
+)
+
+
+def _pay_in_force(emp: dict, revisions: dict) -> dict:
+    """The employee row with this month's revision merged over it.
+
+    ONE merge with two readers, because the two have already disagreed. The
+    payroll run has merged revisions since migration 300; `statutory_position`
+    read `payroll_employees` directly and never did, so a revision recorded
+    through the employee drawer moved the payslip, the PF wage base, the ECR
+    and the ledger, and left the Statutory Deductions screen projecting the
+    old pay. That is the same defect PAY-20 closed — two PF figures for one
+    employee, and no way for a CA to tell which one the challan will carry —
+    reopened through a different input.
+
+    MERGED OVER, never substituted for: a revision that omits a component
+    leaves the master's in place, which is why this is a key-wise update and
+    not a replacement.
+    """
+    rev = revisions.get(emp.get("id"))
+    if not rev:
+        return emp
+    return {**emp, **{k: rev[k] for k in _REVISABLE_COMPONENTS if k in rev}}
+
+
 def _salary_in_force(db, firm_id: str, client_id: str, month: str) -> dict:
     """{employee_id: the component set to pay them this month}.
 
@@ -2349,15 +2381,10 @@ def create_run(
         attendance = attendance_by_emp.get(str(emp["id"]))
 
         # A revision in force REPLACES the master's components for this month.
-        # Merged over the employee row rather than substituted for it, so
-        # everything a revision does not carry — PF applicability, PT state,
-        # EPS eligibility — still comes from the master.
-        rev = revisions.get(emp["id"])
-        if rev:
-            emp = {**emp, **{k: rev[k] for k in (
-                "basic_paise", "hra_percent", "da_percent", "lta_paise",
-                "medical_paise", "special_allowance_paise", "other_allowances_paise")
-                if k in rev}}
+        # Through the shared merge, so the projection on the Statutory
+        # Deductions screen cannot describe a different employee from the one
+        # this run pays.
+        emp = _pay_in_force(emp, revisions)
 
         slip = _compute_slip(emp, attendance, fy=fy, pt_month=m,
                              esi_covered_at_period_start=emp["id"] in esi_covered_earlier,
@@ -6058,6 +6085,11 @@ def statutory_position(
 
     esi_covered_earlier = _members_contributing_earlier_this_period(
         db, current_user["firm_id"], client_id, month)
+    # THE PAY THIS MONTH, not the master's current value. Without this the
+    # projection described the pay somebody was on before their revision took
+    # effect, while the run for the same month paid — and deducted on — the
+    # revised figure.
+    revisions = _salary_in_force(db, current_user["firm_id"], client_id, month)
 
     rows: list[dict] = []
     gaps: list[str] = []
@@ -6068,6 +6100,7 @@ def statutory_position(
               "gratuity_paise": 0}
 
     for emp in emps:
+        emp = _pay_in_force(emp, revisions)
         basic = int(emp.get("basic_paise") or 0)
         da = _percent_of(basic, emp.get("da_percent", 0))
         hra = _percent_of(basic, emp.get("hra_percent", 0))

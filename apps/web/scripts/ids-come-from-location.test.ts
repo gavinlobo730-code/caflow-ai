@@ -62,6 +62,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripComments } from "./stripComments.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.join(__dirname, "..");
@@ -81,49 +82,6 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 const FILES = ROOTS.flatMap((r) => walk(path.join(WEB, r)));
-
-/**
- * Strip comments so a line that only NAMES useParams (to explain why it is not
- * used) does not read as a call. Deliberately not a TypeScript parser: the
- * quote handling below keeps "//" inside a string literal from truncating a
- * real line, and the vacuity guard at the end fails loudly if this ever stops
- * seeing the code at all.
- */
-function stripComments(src: string): string {
-  let out = "";
-  let i = 0;
-  let inBlock = false;
-  let inLine = false;
-  let quote: string | null = null;
-  while (i < src.length) {
-    const c = src[i];
-    const next = src[i + 1];
-    if (inLine) {
-      if (c === "\n") { inLine = false; out += c; }
-      i++;
-      continue;
-    }
-    if (inBlock) {
-      if (c === "*" && next === "/") { inBlock = false; i += 2; continue; }
-      if (c === "\n") out += c;
-      i++;
-      continue;
-    }
-    if (quote) {
-      if (c === "\\") { out += src.slice(i, i + 2); i += 2; continue; }
-      if (c === quote) quote = null;
-      out += c;
-      i++;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") { quote = c; out += c; i++; continue; }
-    if (c === "/" && next === "/") { inLine = true; i += 2; continue; }
-    if (c === "/" && next === "*") { inBlock = true; i += 2; continue; }
-    out += c;
-    i++;
-  }
-  return out;
-}
 
 test("no page or component reads a route id from useParams()", () => {
   const offenders: string[] = [];

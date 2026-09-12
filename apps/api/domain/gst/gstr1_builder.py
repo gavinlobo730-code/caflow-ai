@@ -6,7 +6,9 @@ GSTN API Specification v1.3 (July 2023).
 Table mapping:
   4A  → B2B  (supplies to registered persons)
   4B  → B2CS (unregistered, intra-state or inter-state ≤₹2.5L)
-  4C  → B2CL (unregistered, inter-state >₹2.5L)
+  4C  → B2CL (unregistered, inter-state, above the limit in force on the
+        invoice date — ₹1,00,000 from 01-08-2024, ₹2,50,000 before it; see
+        classifier.b2cl_threshold_paise)
   9B  → CDNR (credit/debit notes to registered)
   9B  → CDNUR (credit/debit notes to unregistered)
   6A  → EXP  (exports)
