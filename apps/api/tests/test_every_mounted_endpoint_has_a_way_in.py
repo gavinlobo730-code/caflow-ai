@@ -69,7 +69,7 @@ WEB = pathlib.Path(__file__).resolve().parents[3] / "apps" / "web"
 #: that file stays the stricter check for its own module, and this one is the
 #: floor under every other.
 BUDGET: dict[str, int] = {
-    "/api/year-end": 10, "/api/task-recurring": 9, "/api/itr": 9,
+    "/api/year-end": 10, "/api/task-recurring": 9, "/api/itr": 8,
     "/api/tasks": 8, "/api/engagements": 7, "/api/relationships": 7,
     "/api/income-tax": 6, "/api/gst-portal": 5, "/api/lifecycle": 5,
     "/api/health": 4, "/api/mca-workspace": 4, "/api/sales-invoices": 4,

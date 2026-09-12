@@ -60,7 +60,7 @@ Integer paise throughout — never float in any stored or returned amount.
 from __future__ import annotations
 
 import calendar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Optional
 
@@ -148,6 +148,24 @@ def cii_for(fy: str) -> int:
     from the cost, so it is not invented here; the direction of the error is
     over-taxation, never under."""
     return CII_BY_FY.get(fy, CII_BY_FY[_NEWEST_CII_FY])
+
+
+def cii_is_notified(fy: str) -> bool:
+    """Whether the index for this FY is a REAL entry or the fallback (IT-29).
+
+    `cii_for` cannot say — it returns an int either way, and that is the whole
+    trap this module's own docstring describes in the abstract: a missing year
+    is not an error, it is a confidently wrong number. The CII for a year is
+    notified PARTWAY THROUGH that year (usually around June), so at 1 April the
+    entry legitimately does not exist yet and a sale in the first weeks of a
+    year is indexed at the PREVIOUS year's, lower, index — a smaller indexed
+    cost, a larger gain, more tax.
+
+    Over-taxation is the safe direction for an ESTIMATE shown on a screen. It
+    is not safe for a figure written into the register, which nothing
+    recomputes once the notification lands, so the caller uses this to decide
+    whether it has a number worth storing."""
+    return fy in CII_BY_FY
 
 
 def fy_for_date(d: date) -> str:
@@ -312,6 +330,13 @@ class CapitalGainsResult:
     note: str
     is_slab_rate_estimate: bool              # True where the real rate depends on the assessee's own
                                               # slab and this is shown at a flat estimate, not a statutory rate
+    # THE INDEX ITSELF WAS A FALLBACK (IT-29). A DIFFERENT fact from
+    # is_slab_rate_estimate above, which is about the RATE: this one says the
+    # CII for the purchase year or the sale year is not in the table and the
+    # newest known index was used instead. Defaulted so every positional
+    # construction in this module keeps working; set by compute_capital_gains.
+    indexation_is_estimated: bool = False
+    indexation_note: str = ""
 
 
 def compute_capital_gains(
@@ -325,7 +350,43 @@ def compute_capital_gains(
 ) -> CapitalGainsResult:
     """Section 45/48 gain, Section 2(42A) classification, and the applicable
     special tax rate — integer paise throughout, and every rate chosen by the
-    date of TRANSFER (see the module docstring's 23-07-2024 fork)."""
+    date of TRANSFER (see the module docstring's 23-07-2024 fork).
+
+    The indexation flag is stamped HERE, once, rather than on each of the eight
+    branches below: it is a property of the two DATES and nothing any branch
+    decides, so threading it through every construction would be eight chances
+    to forget it on the branch that matters (IT-29)."""
+    result = _compute_capital_gains(
+        asset_type, purchase_date, sale_date, purchase_cost_paise,
+        sale_value_paise, improvement_cost_paise, assessee_type)
+    purchase_fy = fy_for_date(purchase_date)
+    sale_fy = fy_for_date(sale_date)
+    missing = [fy for fy in (purchase_fy, sale_fy) if not cii_is_notified(fy)]
+    if not missing:
+        return result
+    return replace(
+        result,
+        indexation_is_estimated=True,
+        indexation_note=(
+            f"The Cost Inflation Index for {' and '.join(missing)} is not "
+            f"notified in this build, so {CII_BY_FY[_NEWEST_CII_FY]} — the "
+            f"index for {_NEWEST_CII_FY} — was used instead. The index for a "
+            "year is notified partway through it, usually around June, so "
+            "this indexed cost is provisional: it understates the indexed "
+            "cost and overstates the gain until the notification is "
+            "recorded."),
+    )
+
+
+def _compute_capital_gains(
+    asset_type: str,
+    purchase_date: date,
+    sale_date: date,
+    purchase_cost_paise: int,
+    sale_value_paise: int,
+    improvement_cost_paise: int = 0,
+    assessee_type: str = ASSESSEE_UNSPECIFIED,
+) -> CapitalGainsResult:
     months = holding_months(purchase_date, sale_date)
     long_term = is_long_term(asset_type, purchase_date, sale_date)
     # Transfers on or after 23-07-2024 are governed by the Finance (No. 2)
@@ -335,10 +396,13 @@ def compute_capital_gains(
     cost_paise = purchase_cost_paise + improvement_cost_paise
     gain_paise = sale_value_paise - cost_paise
 
-    cii_purchase = cii_for(fy_for_date(purchase_date))
-    cii_sale = cii_for(fy_for_date(sale_date))
+    purchase_fy = fy_for_date(purchase_date)
+    sale_fy = fy_for_date(sale_date)
+    cii_purchase = cii_for(purchase_fy)
+    cii_sale = cii_for(sale_fy)
     indexed_cost_paise = _round_paise(purchase_cost_paise * cii_sale, cii_purchase) + improvement_cost_paise
     gain_with_indexation_paise = sale_value_paise - indexed_cost_paise
+
 
     # Section 111A/112A — listed equity / equity-oriented mutual funds.
     #

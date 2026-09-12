@@ -22,7 +22,7 @@
  */
 
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Save, ChevronDown, ChevronUp } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
@@ -245,13 +245,19 @@ export default function DeductionsPage() {
   // ── Server-side computation ───────────────────────────────────────────────
   // Two calls (old/new regime) since /api/income-tax/compute takes one regime
   // at a time — same pattern as clients/[id]/tax/computation/page.tsx.
-  // Debounced: `state` changes on every keystroke in every field (including
-  // fields like a donation's description that don't affect tax at all) —
-  // without the delay each character fires two RBAC-gated backend calls.
-  useEffect(() => {
-    let cancelled = false;
-
-    const baseReq = {
+  //
+  // Debounced AND keyed on the REQUEST, not on `state` (IT-34). The effect
+  // used to depend on the whole of `state`, which changes on every keystroke
+  // in every field — so typing a donation's DESCRIPTION, which no computation
+  // reads (`Donation80G.description` is carried on the dataclass and never
+  // referenced in itr_engine.py), fired two RBAC-gated backend calls per
+  // character 400ms later. The debounce made that survivable and did not make
+  // it right: a description typed slowly is one round trip per word.
+  //
+  // The dependency is the request itself, serialised — the RULE, not a list of
+  // twenty field names that would go stale the first time a field is added.
+  const baseReq = useMemo(() => {
+    return {
       gross_salary_paise: state.grossIncomePaise,
       is_senior_citizen: state.isSeniorCitizen,
       s80c: {
@@ -288,6 +294,25 @@ export default function DeductionsPage() {
       },
       home_loan_interest_24b_paise: state.homeLoanInterestPaise,
     };
+  }, [state]);
+
+  // What the SERVER's answer actually depends on. The donation descriptions
+  // are stripped because nothing downstream reads them — see the note above —
+  // so an edit to one must not re-fire the computation. They are still SENT,
+  // because the request shape is the API's and this is a dependency key, not
+  // a payload.
+  const computeKey = useMemo(() => JSON.stringify({
+    ...baseReq,
+    donations_80g: baseReq.donations_80g.map(d => ({
+      amount_paise: d.amount_paise,
+      deduction_pct: d.deduction_pct,
+      subject_to_qualifying_limit: d.subject_to_qualifying_limit,
+      paid_in_cash: d.paid_in_cash,
+    })),
+  }), [baseReq]);
+
+  useEffect(() => {
+    let cancelled = false;
 
     const timer = setTimeout(() => {
       if (cancelled) return;
@@ -308,7 +333,10 @@ export default function DeductionsPage() {
     }, 400);
 
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [state]);
+    // `baseReq` is intentionally absent: it is rebuilt on every `state` change
+    // and `computeKey` is the part of it the server's answer depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [computeKey]);
 
   // Old regime is the only response with non-zero Chapter VI-A deductions —
   // the new regime disallows all of these except the standard deduction AND

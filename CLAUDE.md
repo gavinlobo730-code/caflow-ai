@@ -155,6 +155,71 @@ change. The code is the authority; keep this file in step with it.
   engine does NOT decide for §194Q is whether it applies: the first proviso
   binds only a buyer whose own turnover exceeded ₹10 crore in the preceding FY,
   and no client turnover figure reaches it — the CA marks the vendor.
+- **§115BAC DISAPPLIES CHAPTER XII-BA, and the AMT surcharge ladder is the
+  ASSESSEE's own.** `compute_amt` had no regime parameter (IT-21), so it could
+  not express the disapplication at all, and it passed
+  `entity_rates.firm_surcharge` — the single 12%-above-₹1-crore bracket — for
+  every non-corporate assessee (IT-07), surcharging an individual at a firm's
+  rate: at ₹6 crore of adjusted total income the individual ladder is 37% and
+  the difference is 25 percentage points of the minimum tax. Both are LATENT —
+  `itr_engine`'s only AMT caller is the firm/LLP branch — and both are fixed
+  because the branch that reaches them is one entity type away. **A FIRM OR LLP
+  IS OUTSIDE §115BAC**, which reaches only an individual, HUF, AOP, BOI or
+  artificial juridical person, so `regime="new"` cannot waive their AMT and the
+  ladder stays the firm's. The two interlock: an individual who reaches the
+  charge is on the OLD regime by construction, so the new regime's surcharge
+  cap never applies and the full ladder is theirs. ⚠️ The disapplying provision
+  is `[S]`-graded on its CITATION and not its effect — §115JEE cross-refers to
+  the §115BAC option and the Finance Act 2023 restructured §115BAC so the
+  option became the one to LEAVE the regime; which sub-section it now names
+  could not be read. The rule is written as the effect, with the sub-section
+  deliberately not guessed.
+- **An estimated Cost Inflation Index says so, and is not written into the
+  register.** The CII for a year is notified partway through it, usually around
+  June, so `cii_for` legitimately falls back for a sale in the first weeks of a
+  year — and the fallback UNDERSTATES the indexed cost and OVERSTATES the gain.
+  `cii_is_notified` is the question `cii_for` cannot answer (it returns an int
+  either way), `CapitalGainsResult.indexation_is_estimated` carries it — a
+  DIFFERENT fact from `is_slab_rate_estimate`, which is about the rate — and it
+  is stamped once at `compute_capital_gains`'s entry rather than on each of the
+  eight branches, because it is a property of the two DATES. The estimator
+  still answers, flagged. The REGISTER stores `indexed_cost_paise` as NULL
+  instead (the column is nullable): nothing recomputes a stored row, so a
+  figure taken from an unnotified year is wrong the moment the notification
+  lands, and an absence a CA can fill in beats a stale number that reads as
+  computed.
+- **A filing cannot leave draft on a computation nobody has reviewed.**
+  `POST /api/itr/snapshots/{id}/review` existed from the start and had NO
+  CALLER (IT-30), so every `tax_computation_snapshots` row was permanently
+  `draft` — while the computation screen already rendered a green tick for
+  `reviewed`, a state it had no way to reach. The screen marks one reviewed
+  now, and `itr_workflow.transition_itr_status` reads
+  `itr_filings.computation_snapshot_id` on the way OUT OF DRAFT only (re-asking
+  in review would block the review → draft step a reviewer uses to send a
+  return back). **A filing that pins NOTHING is allowed through**: the column is
+  nullable and a CA who computed outside the product has no snapshot to pin, so
+  refusing would make the pin mandatory by accident.
+- **A DRAFT payroll run has deducted nothing** (PAY-04).
+  `_tds_already_deducted_this_fy` and `_members_contributing_earlier_this_period`
+  read `payroll_runs` with no status predicate while every other reader has
+  filtered on `_PAYROLL_RELEASED` (`finalized`, `paid`) since migration 323 made
+  RLS agree. Reading a draft credits the employee with §192 tax nobody withheld,
+  so the month's withholding comes out too SMALL — and §192(1) makes the
+  EMPLOYER liable for the shortfall with §201(1A) interest — and it keeps
+  somebody in ESI past the ₹21,000 ceiling on a contribution that never
+  happened. There is no discard-and-recompute path (PAY-21), so a draft left
+  behind is permanent.
+- **A FIRST depreciation posting may start at any month and now says what that
+  forecloses** (FA-04). `depreciation_posted_through` only moves forward, so an
+  asset bought in April and first depreciated in December loses April–November
+  permanently: the single-month path 409s on them, the range runner skips them,
+  and reversal reaches the last month only. Starting late is nonetheless RIGHT
+  and test-pinned — an asset brought over from Tally mid-life already carries
+  its accumulated depreciation and its first posting here is whatever month the
+  CA takes over in, so refusing the skip would refuse every migrated asset.
+  So it WARNS: `foreclosed_months` names them and the notice says to reverse
+  and restart if the asset was acquired here. Same shape as Rule 46(b)'s
+  invoice-number sequence gap, for the same reason.
 - **The Finance (No. 2) Act 2024 forked capital gains on 23-07-2024, and it is
   the DATE OF TRANSFER that decides.** §111A 15%→20%, §112A 10%/₹1,00,000 →
   12.5%/₹1,25,000, §112 20%-with-indexation → 12.5%-without, and §2(42A)'s

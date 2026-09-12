@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
+from typing import Optional
 from uuid import uuid4
 
 _logger = logging.getLogger("caflow.itr.workflow")
@@ -102,6 +103,54 @@ def get_filing(firm_id: str, filing_id: str) -> dict | None:
     return res.data[0] if res.data else None
 
 
+def _pinned_snapshot_is_unreviewed(firm_id: str, filing: dict) -> Optional[str]:
+    """The refusal sentence, or None (IT-30).
+
+    `itr_filings.computation_snapshot_id` PINS the computation a return is
+    built on. Nothing read it. So a filing walked draft → review →
+    partner_review → ready_for_filing → filed while the computation behind it
+    sat at status "draft" for ever — which it did for every snapshot in the
+    product, because `POST /api/itr/snapshots/{id}/review` had no caller at all
+    and the only path to "reviewed" was unreachable.
+
+    A FILING THAT PINS NOTHING IS ALLOWED THROUGH, and named rather than
+    refused. `computation_snapshot_id` is nullable and always has been: a CA
+    who computed outside this product and is recording the return here has no
+    snapshot to pin, and refusing them would make the pin mandatory by
+    accident. What is refused is the case where a snapshot IS pinned and has
+    not been checked — the return is built on a computation nobody has signed
+    off, and the CA can sign it off in one click on the computation screen.
+    """
+    snapshot_id = (filing or {}).get("computation_snapshot_id")
+    if not snapshot_id:
+        return None
+    snapshot = _snapshot_status(firm_id, str(snapshot_id))
+    if snapshot is None:
+        # The pin points at a row this firm cannot see. Not this function's
+        # refusal to make — the FK and RLS are — so it does not invent one.
+        return None
+    if snapshot == "reviewed":
+        return None
+    return (
+        f"This filing is built on computation snapshot {snapshot_id}, which is "
+        f"still '{snapshot}'. Mark the computation reviewed on the Tax "
+        "Computation screen before moving the filing on — a return cannot be "
+        "reviewed while the figures behind it have not been."
+    )
+
+
+def _snapshot_status(firm_id: str, snapshot_id: str) -> Optional[str]:
+    """The pinned snapshot's status, or None where there is no such row."""
+    from domain.income_tax import computation_workspace as cw
+    if _USE_MOCK:
+        snap = cw._MOCK_SNAPSHOTS.get(snapshot_id)
+        return str(snap.get("status")) if snap else None
+    rows = (_supabase().table("tax_computation_snapshots").select("status")
+            .eq("id", snapshot_id).eq("firm_id", firm_id).limit(1)
+            .execute().data) or []
+    return str(rows[0].get("status")) if rows else None
+
+
 def transition_itr_status(
     firm_id: str,
     filing_id: str,
@@ -120,6 +169,10 @@ def transition_itr_status(
         allowed = _TRANSITIONS.get(filing["status"], [])
         if new_status not in allowed:
             raise ValueError(f"Cannot transition from '{filing['status']}' to '{new_status}'")
+        if filing["status"] == "draft":
+            unreviewed = _pinned_snapshot_is_unreviewed(firm_id, filing)
+            if unreviewed:
+                raise ValueError(unreviewed)
         filing["status"] = new_status
         filing["updated_at"] = datetime.now(timezone.utc).isoformat()
         if new_status == "review":
@@ -131,9 +184,9 @@ def transition_itr_status(
         return filing
 
     sb = _supabase()
-    existing = sb.table("itr_filings").select("status").eq("id", filing_id).eq(
-        "firm_id", firm_id
-    ).single().execute()
+    existing = sb.table("itr_filings").select(
+        "status, computation_snapshot_id"
+    ).eq("id", filing_id).eq("firm_id", firm_id).single().execute()
     if not existing.data:
         raise ValueError("Filing not found")
 
@@ -141,6 +194,14 @@ def transition_itr_status(
     allowed = _TRANSITIONS.get(current, [])
     if new_status not in allowed:
         raise ValueError(f"Cannot transition from '{current}' to '{new_status}'")
+
+    # ONLY ON THE WAY OUT OF DRAFT. Once a filing is in review the snapshot
+    # question has been answered, and re-asking it would block the
+    # review → draft step a reviewer uses to send a return back.
+    if current == "draft":
+        unreviewed = _pinned_snapshot_is_unreviewed(firm_id, existing.data)
+        if unreviewed:
+            raise ValueError(unreviewed)
 
     update: dict = {
         "status": new_status,
