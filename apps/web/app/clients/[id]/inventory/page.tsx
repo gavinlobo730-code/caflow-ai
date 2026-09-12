@@ -23,7 +23,7 @@ import { formatServicePrice } from "@/lib/catalogue/service";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 interface StockItem {
   id: string;
   name: string;
@@ -38,6 +38,17 @@ interface StockItem {
   stock_qty_units: number | null;
   avg_cost_paise: number | null;
   stock_value_paise: number | null;
+  // AS-AT MODE ONLY, and that is not an oversight (INV-04). "Last moved" is
+  // MAX(movement_date) across the item's ledger, which only
+  // public.stock_position_as_at computes — the current-position register reads
+  // each item's CHAIN HEAD, and the chain is ordered by insertion, so its
+  // movement_date is the date most recently ENTERED and not the latest date
+  // stock actually moved. A backdated purchase makes the two differ, and
+  // "days idle" computed off the wrong one is exactly the figure a CA would
+  // act on. Undefined here rather than guessed; the columns are dropped in
+  // current-position mode, the way Status is dropped in as-at mode.
+  last_movement_date?: string | null;
+  movements?: number | null;
 }
 
 interface StockLedgerLine {
@@ -72,6 +83,8 @@ interface StockPosition {
     qty_units: string;
     value_paise: number;
     avg_cost_paise: number;
+    last_movement_date: string | null;
+    movements: number;
   }[];
   total_value_paise: number;
   total_items: number;
@@ -120,6 +133,26 @@ function isUntrackedOversold(i: { stock_qty_units: number | null; avg_cost_paise
   return (i.stock_qty_units ?? 0) < 0 && !(i.avg_cost_paise ?? 0);
 }
 
+/** Whole days between a movement date and the register's own as-at date.
+ *
+ *  null when the item has never moved — a different statement from "moved a
+ *  very long time ago", and one that must not sort or export as a number.
+ *
+ *  `asAt` is required rather than defaulted to today: these columns exist only
+ *  in as-at mode, so an empty one would mean the caller has changed and the
+ *  honest answer is "cannot say", not a silently different question.
+ *
+ *  The subtraction is daysBetweenLocalISO's, not this file's. A hand-rolled
+ *  millisecond division is a calendar-day count with neither side anchored to
+ *  midnight, which is the defect the day-count sweep removed from thirteen
+ *  places; scripts/a-day-count-comes-from-the-one-helper.test.ts caught this
+ *  one being written. */
+function daysIdle(lastMoved: string | null | undefined, asAt: string): number | null {
+  if (!lastMoved || !asAt) return null;
+  const days = daysBetweenLocalISO(String(lastMoved).slice(0, 10), asAt);
+  return days === null ? null : Math.max(0, days);
+}
+
 function fmtQty(v: number | string | null | undefined): string {
   if (v == null) return "0";
   const n = typeof v === "string" ? parseFloat(v) : v;
@@ -135,6 +168,11 @@ export default function InventoryPage() {
   // render identically to an empty book: "No stock-tracked products" + ₹0 (M17).
   const [loadFailed, setLoadFailed] = useState(false);
   const [drillDown, setDrillDown] = useState<StockItem | null>(null);
+  // INV-10. Adjust Stock and Write Down to NRV lived only inside the drill-down
+  // header, so acting on a row meant opening it first — and the register is
+  // where a CA reads the whole book and decides which rows need an entry. The
+  // same two components are rendered from here; nothing about them changes.
+  const [rowAction, setRowAction] = useState<{ item: StockItem; kind: "adjust" | "writedown" } | null>(null);
   // Empty = the CURRENT position, which is what this page has always shown.
   // A date switches it to the closing-stock statement as at that date — the
   // figure that ties to the Inventories line on the balance sheet. They are
@@ -160,6 +198,8 @@ export default function InventoryPage() {
           stock_qty_units: parseFloat(r.qty_units),
           avg_cost_paise: r.avg_cost_paise,
           stock_value_paise: r.value_paise,
+          last_movement_date: r.last_movement_date,
+          movements: r.movements,
         })));
         setLoadFailed(false);
         return;
@@ -234,11 +274,64 @@ export default function InventoryPage() {
           {i.is_active ? "Active" : "Archived"}
         </span>
       ) },
+    // stopPropagation on both: the row itself opens the drill-down, and a click
+    // that opened a modal AND a panel behind it is a click that did two things.
+    { key: "actions", header: "", accessor: () => "", hideable: false, align: "right",
+      render: (i) => (
+        <span className="flex items-center justify-end gap-2 whitespace-nowrap">
+          <button
+            onClick={(e) => { e.stopPropagation(); setRowAction({ item: i, kind: "adjust" }); }}
+            className="text-[11px] text-blue-600 hover:underline">Adjust</button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setRowAction({ item: i, kind: "writedown" }); }}
+            className="text-[11px] text-blue-600 hover:underline">Write down</button>
+        </span>
+      ) },
+  ];
+
+  // INV-04. public.stock_position_as_at (migration 363) has returned
+  // MAX(movement_date) and a movement count per item since it was written, and
+  // this screen dropped both on the floor — so "which stock has not moved" was
+  // computed, shipped across the wire and thrown away every time a CA opened
+  // the dated register. Days idle is derived from the register's OWN as-at
+  // date, not from today: a register as at 31 March that measured idleness
+  // against September would describe a different year.
+  const asAtColumns: Column<StockItem>[] = [
+    { key: "last_movement_date", header: "Last Moved", accessor: (i) => i.last_movement_date ?? "", sortable: true,
+      render: (i) => <span className="text-[#64748B]">{i.last_movement_date ?? "—"}</span> },
+    { key: "days_idle", header: "Days Idle", accessor: (i) => daysIdle(i.last_movement_date, asAt) ?? -1,
+      sortable: true, align: "right",
+      exportValue: (i) => daysIdle(i.last_movement_date, asAt) ?? "",
+      render: (i) => {
+        const d = daysIdle(i.last_movement_date, asAt);
+        if (d === null) {
+          return (
+            <span className="text-[10px] text-[#94A3B8]"
+                  title="No movement on or before this date — the item has never received or issued stock in this book.">
+              never moved
+            </span>
+          );
+        }
+        // 90 days is a prompt to look, not a rule. Nothing in the Act or in
+        // Schedule III fixes a slow-moving threshold; AS 2 requires stock at
+        // the lower of cost and net realisable value on the CA's own
+        // judgement, so this colours a row and decides nothing.
+        return <span className={`font-mono ${d >= 90 ? "text-amber-700 font-semibold" : "text-[#64748B]"}`}>{d}</span>;
+      } },
   ];
 
   // The as-at register has no Status to show — the item's archived flag is a
-  // fact about today, not about the date asked for.
-  const columns = asAt ? allColumns.filter((c) => c.key !== "is_active") : allColumns;
+  // fact about today, not about the date asked for. It gains the two idleness
+  // columns in exchange, which only the dated query can answer.
+  // The as-at register also drops the row ACTIONS, and for a sharper reason
+  // than Status: both modals read `item.stock_qty_units` and
+  // `item.avg_cost_paise` and present them to the CA as what is on hand NOW
+  // ("Currently N on hand", "Current average cost is ₹X/unit"). In as-at mode
+  // those are the figures as at the chosen date, so the modal would state a
+  // historical position as the current one and take an adjustment against it.
+  const columns = asAt
+    ? [...allColumns.filter((c) => c.key !== "is_active" && c.key !== "actions"), ...asAtColumns]
+    : allColumns;
 
   const totalValue = items.reduce((s, i) => s + (i.stock_value_paise ?? 0), 0);
 
@@ -293,6 +386,23 @@ export default function InventoryPage() {
 
       {drillDown && (
         <StockLedgerDrillDown clientId={clientId} item={drillDown} onClose={() => setDrillDown(null)} onAdjusted={load} />
+      )}
+
+      {rowAction?.kind === "adjust" && (
+        <AdjustStockModal
+          clientId={clientId}
+          item={rowAction.item}
+          onClose={() => setRowAction(null)}
+          onSaved={() => { setRowAction(null); load(); }}
+        />
+      )}
+      {rowAction?.kind === "writedown" && (
+        <NrvWritedownModal
+          clientId={clientId}
+          item={rowAction.item}
+          onClose={() => setRowAction(null)}
+          onSaved={() => { setRowAction(null); load(); }}
+        />
       )}
     </div>
   );

@@ -428,8 +428,41 @@ export default function FinancialStatementsPage() {
           money={money} amountHeader={amountHeader} previousHeader={previousHeader} />
       )}
       {tab === "profit_loss" && (
-        <ProfitLossView lines={pl} money={money}
-          amountHeader={amountHeader} previousHeader={previousHeader} />
+        <>
+          {/* ACC-23's real residue. The engine has computed `closing_entry_dates`
+              all along and nothing rendered it — it appeared in this app only as
+              a type declaration in lib/api/yearEnd.ts.
+
+              It matters on exactly the screen it was missing from. A CA who
+              posts their own closing entry dates it at the year end, so it falls
+              INSIDE this year's P&L window and cancels the revenue and expenses
+              it closes: the statement below then reads nil while the Balance
+              Sheet stays correct, and nothing else says why. The figures are not
+              wrong — the balance sheet is self-correcting, which is why
+              year_end_financial_service reports the dates rather than netting
+              the entry out — but a nil P&L with no explanation is the kind of
+              thing a reader assumes is a bug in the software rather than an
+              entry in the books. */}
+          {(activeData?.closing_entry_dates?.length ?? 0) > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              <p className="font-semibold">
+                This year already carries a closing entry
+                {(activeData?.closing_entry_dates?.length ?? 0) > 1 ? " on each of these dates" : ""}:{" "}
+                {activeData?.closing_entry_dates?.join(", ")}
+              </p>
+              <p className="mt-1 leading-relaxed">
+                An entry that closes Profit &amp; Loss accounts into equity is dated at the year
+                end, so it sits inside this period and cancels the income and expenses it closes.
+                The figures below will read nil or near nil because of it. The Balance Sheet is
+                unaffected — the close moves the same amount out of the year&apos;s result and into
+                equity. Nothing here needs correcting; read the P&amp;L for a period ending the day
+                before the closing entry if you want the year&apos;s trading result.
+              </p>
+            </div>
+          )}
+          <ProfitLossView lines={pl} money={money}
+            amountHeader={amountHeader} previousHeader={previousHeader} />
+        </>
       )}
 
       <p className="text-[10px] text-[#94A3B8]">
