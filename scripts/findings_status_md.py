@@ -77,7 +77,8 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 | state | count | what it means |
 |---|---|---|
 | closed | **{c.get('closed',0)}** | re-read against the code. The defect is gone. |
-| closed_by_commit | **{c.get('closed_by_commit',0)}** | named in a merged commit on `main` and NOT re-read. Usually fixed; occasionally only cited as background. |
+| closed_by_commit | **{c.get('closed_by_commit',0)}** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
+| closed_by_commit_only | **{c.get('closed_by_commit_only',0)}** | named in a commit and nowhere else. The weakest state here — read these before quoting them as done. |
 | partial | **{c.get('partial',0)}** | part of the finding is answered, part is not. Each says which. |
 | open | **{c.get('open',0)}** | re-read and still true. |
 | unverified | **{c.get('unverified',0)}** | a probe was inconclusive. Treat as unknown, **not** as open. |
@@ -112,6 +113,13 @@ These need a code read before they can be scheduled. Do NOT treat them as open.
 ## Deferred to the redesign
 
 {table('deferred_to_the_redesign')}
+## Closed by a commit, with nothing in the code naming them
+
+The weakest evidence in this file. 88% of the commit-closed findings carry an
+in-code comment naming them and saying what they closed; these do not, so a
+promotion to `closed` should start here.
+
+{table('closed_by_commit_only')}
 ## Closed by a code read
 
 {table('closed')}

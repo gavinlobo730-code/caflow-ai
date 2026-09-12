@@ -5,7 +5,9 @@
   "not_a_defect": "the premise was false, or the suggested fix would be worse than the defect. The reason is recorded.",
   "open": "verified against the code and still true.",
   "blocked": "cannot be closed by code alone \u2014 it needs a registration, a state notification, or a figure only a person holds.",
-  "unverified": "not re-read since the date named. Treat as unknown, NOT as open."
+  "unverified": "not re-read since the date named. Treat as unknown, NOT as open.",
+  "closed_by_commit": "named in a merged commit AND in an in-code comment that says what it closed. Two independent traces; not a re-read.",
+  "closed_by_commit_only": "named in a merged commit and nowhere else. The weakest state in this file \u2014 read these before quoting them as done."
  },
  "_the_stale_problem_this_exists_to_end": "docs/audits/2026-09-11-the-verification-pass.md measured the backlog ~10% stale. Five days later docs/audits/2026-09-12-the-probe-pass/ measured the same backlog 38-59% stale by subsystem, because five tranches had landed and nothing re-scored. On 12 September a further hand-check found INV-04, INV-07, FA-03, FA-16, FA-18, PAY-17, PAY-18, PUR-30, TDS-31, GST-03 and PUR-12 all recorded open and all in fact closed. A status that is only ever written by an audit is a status that is wrong by the time it is read.",
  "verified_on": "2026-09-12",
@@ -483,49 +485,50 @@
    "needs": "apportionable-cost columns, and the same amount must flow into the inventory journal or stock_position_as_at stops tying to the control account"
   },
   "IT-15": {
-   "status": "unverified",
+   "status": "closed",
    "verified_on": "2026-09-12",
-   "why": "probe inconclusive \u2014 the AY/FY conflation in the ITR deadline tracker needs a code read"
+   "why": "routers/itr_workspace.py carries financial_year as a validated FYLabel AND assessment_year as its own field; the two are no longer one value doing both jobs"
   },
   "FA-19": {
-   "status": "unverified",
+   "status": "partial",
    "verified_on": "2026-09-12",
-   "why": "probe inconclusive \u2014 Rule 43 capital-goods ITC apportionment needs a code read"
+   "why": "rule_43 is a live reversal reason in itc_register_service, so a CA can record an apportionment. The Rule 43 COMPUTATION \u2014 the 60-month capital-goods life, the monthly common-credit share \u2014 does not exist"
   },
   "PUR-15": {
-   "status": "unverified",
+   "status": "partial",
    "verified_on": "2026-09-12",
-   "why": "probe inconclusive \u2014 the MSME s.43B(h) tracker's shape needs a code read"
+   "why": "the statutory side is answered: vendors.msme_status has no default and public.schedule_iii_ageing rows (i)/(iii) on MSMED s.2(n), with s.43B(h) cited in domain/reporting/ageing.py. What survives is the finding's other half \u2014 /accounting/msme-tracker still writes a re-keyed msme_payments side table over PostgREST"
   },
   "PUR-22": {
-   "status": "unverified",
+   "status": "open",
    "verified_on": "2026-09-12",
-   "why": "probe inconclusive \u2014 multi-bill allocation from the Purchases screen needs a code read"
+   "why": "one payment settling several bills exists \u2014 purchase_payment_service.create_payment_core takes `allocations` against purchase_payment_allocations (migration 226) \u2014 and the ROUTER the Purchases screen posts to does not: POST /api/purchase-payments reads only purchase_bill_id. So there are two paths to one job, the banking one carries allocations and the purchases one does not",
+   "needs": "no migration (226 already has the table), but it is NOT the frontend-only change an earlier reading of this called it. The right shape is to make the router route to create_payment_core with a one-element allocation for the single-bill case, unifying the two paths \u2014 a change to a money path that posts to the GL, and one to make with the owner reachable rather than overnight"
   },
   "PUR-31": {
-   "status": "unverified",
+   "status": "closed",
    "verified_on": "2026-09-12",
-   "why": "probe inconclusive \u2014 vendor payment numbering needs a code read"
+   "why": "numbering goes through services/numbering.next_sequence, which reads back the HIGHEST number in the series (max+1, not count+1) behind migration 159's UNIQUE (firm_id, payment_no), with a 23505 retry"
   },
   "SALES-18": {
-   "status": "unverified",
+   "status": "partial",
    "verified_on": "2026-09-12",
-   "why": "probe inconclusive \u2014 statutory rules in TypeScript with no backend counterpart needs a code read"
+   "why": "apps/web/lib/gst holds gstin.ts (a sanctioned keystroke mirror pinned by a shared fixture), period.ts, filingPeriod.ts and rule37Period.ts. Which of the last three carry a statutory RULE rather than date arithmetic needs a read of each"
   },
   "SALES-24": {
-   "status": "unverified",
+   "status": "closed",
    "verified_on": "2026-09-12",
-   "why": "probe inconclusive \u2014 the FY on a receipt or credit-note number needs a code read"
+   "why": "receipt_service takes the FY from ist_fy_label(receipt_date) \u2014 the document's own date, not today's"
   },
   "SALES-25": {
-   "status": "unverified",
+   "status": "closed",
    "verified_on": "2026-09-12",
-   "why": "probe inconclusive \u2014 the s.34(2) window warning and the customer credit limit needs a code read"
+   "why": "routers/credit_notes.py calls domain/gst/credit_note_window.late_credit_note, measured from the ORIGINAL SUPPLY's financial year, and warns rather than refusing (SALES-25a)"
   },
   "ACC-02": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "946da7ab Phase 11a (PUR-10): an advance to a contractor withholds (#476)",
     "0cccee56 Phase 1b, part 2 (BANK-20): a cash book, and the one rule cash has (#4",
@@ -535,7 +538,7 @@
   "ACC-03": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "946da7ab Phase 11a (PUR-10): an advance to a contractor withholds (#476)",
     "0cccee56 Phase 1b, part 2 (BANK-20): a cash book, and the one rule cash has (#4",
@@ -545,7 +548,7 @@
   "ACC-04": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497"
    ]
@@ -553,7 +556,7 @@
   "ACC-05": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "8a029200 Phase 2: a filed period is closed, and a locked one can reopen (#465)",
     "8a029200 Phase 2: a filed period is closed, and a locked one can reopen (#465)",
@@ -563,7 +566,7 @@
   "ACC-07": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul"
    ]
@@ -571,7 +574,7 @@
   "ACC-08": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497"
    ]
@@ -579,7 +582,7 @@
   "ACC-09": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "d4a0e0f7 Phase 6: you can correct a mistake \u2014 numbering, assets, statements, le"
    ]
@@ -587,7 +590,7 @@
   "ACC-10": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 5 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "6330e19b An account created in the app could not say what kind of account it is",
     "6330e19b An account created in the app could not say what kind of account it is",
@@ -597,7 +600,7 @@
   "ACC-12": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "6330e19b An account created in the app could not say what kind of account it is",
     "ba19ad40 Phase 12a (ACC-21, ACC-27, ACC-12): a posting cannot escape its client",
@@ -607,23 +610,23 @@
   "ACC-13": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "bf9e7794 The books can be read, not only posted to (#501)"
    ]
   },
   "ACC-15": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "6330e19b An account created in the app could not say what kind of account it is"
    ]
   },
   "ACC-16": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "accdbafd Three statutory rules the sales cycle stated and did not apply (#498)"
    ]
@@ -631,7 +634,7 @@
   "ACC-17": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 5 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "6330e19b An account created in the app could not say what kind of account it is",
     "ff30ebd4 Phase 12b (ACC-17, GST-09): a report is scoped to the caller, and a wi",
@@ -641,7 +644,7 @@
   "ACC-18": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "6330e19b An account created in the app could not say what kind of account it is",
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
@@ -651,7 +654,7 @@
   "ACC-20": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
    ]
@@ -659,7 +662,7 @@
   "ACC-21": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 4 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "6330e19b An account created in the app could not say what kind of account it is",
     "ba19ad40 Phase 12a (ACC-21, ACC-27, ACC-12): a posting cannot escape its client",
@@ -669,7 +672,7 @@
   "ACC-22": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497"
    ]
@@ -677,7 +680,7 @@
   "ACC-23": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "bf9e7794 The books can be read, not only posted to (#501)",
     "accdbafd Three statutory rules the sales cycle stated and did not apply (#498)"
@@ -686,15 +689,15 @@
   "ACC-24": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "bf9e7794 The books can be read, not only posted to (#501)"
    ]
   },
   "ACC-25": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "accdbafd Three statutory rules the sales cycle stated and did not apply (#498)"
    ]
@@ -702,7 +705,7 @@
   "ACC-26": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "bf9e7794 The books can be read, not only posted to (#501)",
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
@@ -711,7 +714,7 @@
   "ACC-27": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ba19ad40 Phase 12a (ACC-21, ACC-27, ACC-12): a posting cannot escape its client",
     "ba19ad40 Phase 12a (ACC-21, ACC-27, ACC-12): a posting cannot escape its client"
@@ -720,7 +723,7 @@
   "BANK-01": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul"
    ]
@@ -728,7 +731,7 @@
   "BANK-02": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 5 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "0cccee56 Phase 1b, part 2 (BANK-20): a cash book, and the one rule cash has (#4",
     "0cccee56 Phase 1b, part 2 (BANK-20): a cash book, and the one rule cash has (#4",
@@ -738,7 +741,7 @@
   "BANK-03": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "920513d6 Six bank-module reads that answered a question nobody asked (#500)",
     "920513d6 Six bank-module reads that answered a question nobody asked (#500)"
@@ -747,7 +750,7 @@
   "BANK-04": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre",
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul",
@@ -757,7 +760,7 @@
   "BANK-05": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul",
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul"
@@ -766,15 +769,15 @@
   "BANK-06": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "d4a0e0f7 Phase 6: you can correct a mistake \u2014 numbering, assets, statements, le"
    ]
   },
   "BANK-07": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul"
    ]
@@ -782,7 +785,7 @@
   "BANK-08": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul",
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul"
@@ -791,7 +794,7 @@
   "BANK-09": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul"
    ]
@@ -799,7 +802,7 @@
   "BANK-10": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ff12ca35 Four banking reads that answered about the wrong rows (#513)",
     "ff12ca35 Four banking reads that answered about the wrong rows (#513)",
@@ -809,7 +812,7 @@
   "BANK-12": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "920513d6 Six bank-module reads that answered a question nobody asked (#500)",
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
@@ -818,7 +821,7 @@
   "BANK-13": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "920513d6 Six bank-module reads that answered a question nobody asked (#500)",
     "920513d6 Six bank-module reads that answered a question nobody asked (#500)"
@@ -827,7 +830,7 @@
   "BANK-14": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ff12ca35 Four banking reads that answered about the wrong rows (#513)",
     "ff12ca35 Four banking reads that answered about the wrong rows (#513)"
@@ -836,7 +839,7 @@
   "BANK-15": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ff12ca35 Four banking reads that answered about the wrong rows (#513)",
     "ff12ca35 Four banking reads that answered about the wrong rows (#513)"
@@ -845,7 +848,7 @@
   "BANK-16": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497",
     "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497"
@@ -854,16 +857,16 @@
   "BANK-17": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "920513d6 Six bank-module reads that answered a question nobody asked (#500)"
    ]
   },
   "BANK-18": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497"
    ]
@@ -871,7 +874,7 @@
   "BANK-20": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "0cccee56 Phase 1b, part 2 (BANK-20): a cash book, and the one rule cash has (#4",
     "0cccee56 Phase 1b, part 2 (BANK-20): a cash book, and the one rule cash has (#4",
@@ -879,9 +882,9 @@
    ]
   },
   "BANK-21": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and"
    ]
@@ -889,7 +892,7 @@
   "BANK-22": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ff12ca35 Four banking reads that answered about the wrong rows (#513)",
     "ff12ca35 Four banking reads that answered about the wrong rows (#513)"
@@ -898,15 +901,15 @@
   "BANK-23": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497"
    ]
   },
   "BANK-24": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and"
    ]
@@ -914,7 +917,7 @@
   "BANK-25": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "920513d6 Six bank-module reads that answered a question nobody asked (#500)",
@@ -924,7 +927,7 @@
   "BANK-26": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "920513d6 Six bank-module reads that answered a question nobody asked (#500)"
@@ -933,7 +936,7 @@
   "BANK-27": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497",
     "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497"
@@ -942,7 +945,7 @@
   "BANK-28": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "920513d6 Six bank-module reads that answered a question nobody asked (#500)"
@@ -951,7 +954,7 @@
   "BANK-29": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
@@ -961,7 +964,7 @@
   "FA-02": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 6 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "06b837f7 An asset bought on credit was booked as if cash had left the building ",
     "b983ca9b A reducing balance that never stopped, and a register read a thousand ",
@@ -971,7 +974,7 @@
   "FA-04": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 6 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
@@ -981,7 +984,7 @@
   "FA-05": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ffb5248b The fixed-asset movement was computed for one screen and rendered on n",
     "ffb5248b The fixed-asset movement was computed for one screen and rendered on n",
@@ -991,7 +994,7 @@
   "FA-06": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre",
     "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre",
@@ -1001,7 +1004,7 @@
   "FA-07": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 8 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "06b837f7 An asset bought on credit was booked as if cash had left the building ",
     "06b837f7 An asset bought on credit was booked as if cash had left the building ",
@@ -1011,7 +1014,7 @@
   "FA-09": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 4 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
@@ -1021,7 +1024,7 @@
   "FA-10": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "91a11928 A day count comes from one helper, and the last critical was mostly al",
     "91a11928 A day count comes from one helper, and the last critical was mostly al",
@@ -1031,7 +1034,7 @@
   "FA-12": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b983ca9b A reducing balance that never stopped, and a register read a thousand ",
     "b983ca9b A reducing balance that never stopped, and a register read a thousand "
@@ -1040,7 +1043,7 @@
   "FA-13": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b983ca9b A reducing balance that never stopped, and a register read a thousand ",
     "b983ca9b A reducing balance that never stopped, and a register read a thousand ",
@@ -1050,7 +1053,7 @@
   "FA-14": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b983ca9b A reducing balance that never stopped, and a register read a thousand ",
     "b983ca9b A reducing balance that never stopped, and a register read a thousand ",
@@ -1060,7 +1063,7 @@
   "FA-15": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ffb5248b The fixed-asset movement was computed for one screen and rendered on n",
     "ffb5248b The fixed-asset movement was computed for one screen and rendered on n"
@@ -1069,7 +1072,7 @@
   "FA-17": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b983ca9b A reducing balance that never stopped, and a register read a thousand ",
     "b983ca9b A reducing balance that never stopped, and a register read a thousand "
@@ -1078,7 +1081,7 @@
   "FA-20": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "06b837f7 An asset bought on credit was booked as if cash had left the building ",
     "06b837f7 An asset bought on credit was booked as if cash had left the building "
@@ -1087,7 +1090,7 @@
   "GST-04": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "287a1616 Phase 0: the seven defects the 2B tranche introduced, and a guard per ",
     "46bd46cb Nineteen of the twenty confirmed criticals, each with a negative contr"
@@ -1096,7 +1099,7 @@
   "GST-06": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 5 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
@@ -1106,16 +1109,16 @@
   "GST-07": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
    ]
   },
   "GST-08": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
@@ -1124,7 +1127,7 @@
   "GST-09": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ff30ebd4 Phase 12b (ACC-17, GST-09): a report is scoped to the caller, and a wi",
     "ff30ebd4 Phase 12b (ACC-17, GST-09): a report is scoped to the caller, and a wi"
@@ -1133,7 +1136,7 @@
   "GST-12": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
@@ -1142,7 +1145,7 @@
   "GST-13": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ac7fe5b5 Phase 7h\u20137l: the last five screens for engines that already worked (#4",
     "ac7fe5b5 Phase 7h\u20137l: the last five screens for engines that already worked (#4"
@@ -1151,7 +1154,7 @@
   "GST-14": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "8a029200 Phase 2: a filed period is closed, and a locked one can reopen (#465)",
     "8a029200 Phase 2: a filed period is closed, and a locked one can reopen (#465)",
@@ -1161,7 +1164,7 @@
   "GST-15": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "0bbc5e86 Two spellings of the place of supply, and three fields a document carr",
     "b84b9415 One advance, one liability \u2014 and three second write paths closed (#503",
@@ -1169,9 +1172,9 @@
    ]
   },
   "GST-16": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
@@ -1180,16 +1183,16 @@
   "GST-19": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
    ]
   },
   "GST-21": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "fffd761e One invoice, two returns that disagreed about it (#502)"
    ]
@@ -1197,16 +1200,16 @@
   "GST-22": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "fffd761e One invoice, two returns that disagreed about it (#502)",
     "fffd761e One invoice, two returns that disagreed about it (#502)"
    ]
   },
   "GST-25": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "fffd761e One invoice, two returns that disagreed about it (#502)"
    ]
@@ -1214,7 +1217,7 @@
   "GST-29": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 5 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "d9792375 A shape regex is not a GSTIN, a TAN typed every quarter, and eleven mo",
@@ -1222,9 +1225,9 @@
    ]
   },
   "GST-30": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
@@ -1234,7 +1237,7 @@
   "INV-01": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "e1feec55 Phase 11f (INV-01): what the stock was worth on a date, and a balance "
    ]
@@ -1242,7 +1245,7 @@
   "INV-06": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "a8c1dacc Phase 11e (INV-06, PAY-14): a reversal the books made reaches the retu",
     "a8c1dacc Phase 11e (INV-06, PAY-14): a reversal the books made reaches the retu"
@@ -1251,7 +1254,7 @@
   "INV-09": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "bf9e7794 The books can be read, not only posted to (#501)",
     "bf9e7794 The books can be read, not only posted to (#501)",
@@ -1261,7 +1264,7 @@
   "INV-10": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "bf9e7794 The books can be read, not only posted to (#501)"
    ]
@@ -1269,7 +1272,7 @@
   "IT-01": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)"
    ]
@@ -1277,7 +1280,7 @@
   "IT-05": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)",
@@ -1287,7 +1290,7 @@
   "IT-06": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre"
    ]
@@ -1295,7 +1298,7 @@
   "IT-07": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
@@ -1305,7 +1308,7 @@
   "IT-08": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 5 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
@@ -1315,7 +1318,7 @@
   "IT-09": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre",
     "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre",
@@ -1325,7 +1328,7 @@
   "IT-10": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)",
@@ -1335,7 +1338,7 @@
   "IT-12": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre"
    ]
@@ -1343,7 +1346,7 @@
   "IT-13": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)",
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)"
@@ -1352,7 +1355,7 @@
   "IT-16": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 5 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)",
@@ -1362,7 +1365,7 @@
   "IT-17": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)",
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)"
@@ -1371,7 +1374,7 @@
   "IT-18": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "ac7fe5b5 Phase 7h\u20137l: the last five screens for engines that already worked (#4",
     "ac7fe5b5 Phase 7h\u20137l: the last five screens for engines that already worked (#4"
@@ -1380,7 +1383,7 @@
   "IT-20": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
    ]
@@ -1388,7 +1391,7 @@
   "IT-21": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 4 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
@@ -1398,7 +1401,7 @@
   "IT-26": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
    ]
@@ -1406,7 +1409,7 @@
   "IT-29": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
@@ -1416,7 +1419,7 @@
   "IT-30": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t"
@@ -1425,7 +1428,7 @@
   "IT-32": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
    ]
@@ -1433,7 +1436,7 @@
   "IT-33": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
@@ -1443,7 +1446,7 @@
   "IT-34": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t"
@@ -1452,7 +1455,7 @@
   "PAY-04": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t",
@@ -1462,7 +1465,7 @@
   "PAY-05": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
@@ -1472,7 +1475,7 @@
   "PAY-07": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
@@ -1481,7 +1484,7 @@
   "PAY-08": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 6 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
@@ -1491,7 +1494,7 @@
   "PAY-09": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "37a63ad2 Phase 11d (PUR-09, SALES-05, PAY-09): the number is already right; sto",
     "37a63ad2 Phase 11d (PUR-09, SALES-05, PAY-09): the number is already right; sto",
@@ -1501,7 +1504,7 @@
   "PAY-11": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 4 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)",
@@ -1511,7 +1514,7 @@
   "PAY-12": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
     "d4a0e0f7 Phase 6: you can correct a mistake \u2014 numbering, assets, statements, le"
@@ -1520,7 +1523,7 @@
   "PAY-14": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "a8c1dacc Phase 11e (INV-06, PAY-14): a reversal the books made reaches the retu",
     "a8c1dacc Phase 11e (INV-06, PAY-14): a reversal the books made reaches the retu"
@@ -1529,7 +1532,7 @@
   "PAY-16": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul"
    ]
@@ -1537,7 +1540,7 @@
   "PAY-19": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
    ]
@@ -1545,7 +1548,7 @@
   "PAY-20": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and"
    ]
@@ -1553,7 +1556,7 @@
   "PAY-21": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "77f9fb42 Four latent wrong answers on paths one entity type away, and a draft t"
    ]
@@ -1561,7 +1564,7 @@
   "PAY-22": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
     "5585f7bf \u00a780CCD(2) is capped on salary, not on gross pay (PAY-22) (#492)",
@@ -1571,7 +1574,7 @@
   "PAY-29": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)"
    ]
@@ -1579,7 +1582,7 @@
   "PAY-30": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
@@ -1589,7 +1592,7 @@
   "PUR-03": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "03e922a0 Phase 4a\u20134d: the four TDS answers the engine was getting wrong (#468)"
    ]
@@ -1597,7 +1600,7 @@
   "PUR-04": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
@@ -1606,7 +1609,7 @@
   "PUR-05": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
@@ -1616,7 +1619,7 @@
   "PUR-06": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "e3bcbafd Phase 11c (PUR-07 \u2261 TDS-13): a \u00a7197 certificate is a rate, a number, a",
     "1dc3d961 Phase 3: one TDS engine, and the browser copy deleted (#467)"
@@ -1625,7 +1628,7 @@
   "PUR-07": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "e3bcbafd Phase 11c (PUR-07 \u2261 TDS-13): a \u00a7197 certificate is a rate, a number, a",
     "e3bcbafd Phase 11c (PUR-07 \u2261 TDS-13): a \u00a7197 certificate is a rate, a number, a",
@@ -1635,7 +1638,7 @@
   "PUR-08": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "8a029200 Phase 2: a filed period is closed, and a locked one can reopen (#465)",
     "8a029200 Phase 2: a filed period is closed, and a locked one can reopen (#465)"
@@ -1644,7 +1647,7 @@
   "PUR-09": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 5 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "e1feec55 Phase 11f (INV-01): what the stock was worth on a date, and a balance ",
     "37a63ad2 Phase 11d (PUR-09, SALES-05, PAY-09): the number is already right; sto",
@@ -1654,7 +1657,7 @@
   "PUR-10": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 6 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "946da7ab Phase 11a (PUR-10): an advance to a contractor withholds (#476)",
     "946da7ab Phase 11a (PUR-10): an advance to a contractor withholds (#476)",
@@ -1664,7 +1667,7 @@
   "PUR-11": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "287a1616 Phase 0: the seven defects the 2B tranche introduced, and a guard per "
    ]
@@ -1672,7 +1675,7 @@
   "PUR-14": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
     "946da7ab Phase 11a (PUR-10): an advance to a contractor withholds (#476)",
@@ -1682,7 +1685,7 @@
   "PUR-17": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b84b9415 One advance, one liability \u2014 and three second write paths closed (#503"
    ]
@@ -1690,15 +1693,15 @@
   "PUR-21": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b84b9415 One advance, one liability \u2014 and three second write paths closed (#503"
    ]
   },
   "PUR-28": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "b84b9415 One advance, one liability \u2014 and three second write paths closed (#503",
     "b84b9415 One advance, one liability \u2014 and three second write paths closed (#503",
@@ -1706,9 +1709,9 @@
    ]
   },
   "SALES-03": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
@@ -1718,7 +1721,7 @@
   "SALES-04": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "d4a0e0f7 Phase 6: you can correct a mistake \u2014 numbering, assets, statements, le"
    ]
@@ -1726,7 +1729,7 @@
   "SALES-05": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "37a63ad2 Phase 11d (PUR-09, SALES-05, PAY-09): the number is already right; sto",
     "37a63ad2 Phase 11d (PUR-09, SALES-05, PAY-09): the number is already right; sto",
@@ -1734,9 +1737,9 @@
    ]
   },
   "SALES-06": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
@@ -1746,7 +1749,7 @@
   "SALES-07": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "0bbc5e86 Two spellings of the place of supply, and three fields a document carr",
     "0bbc5e86 Two spellings of the place of supply, and three fields a document carr"
@@ -1755,7 +1758,7 @@
   "SALES-08": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "946da7ab Phase 11a (PUR-10): an advance to a contractor withholds (#476)",
     "0cccee56 Phase 1b, part 2 (BANK-20): a cash book, and the one rule cash has (#4",
@@ -1763,9 +1766,9 @@
    ]
   },
   "SALES-09": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
     "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
@@ -1774,7 +1777,7 @@
   "SALES-10": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 4 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "0bbc5e86 Two spellings of the place of supply, and three fields a document carr",
     "0bbc5e86 Two spellings of the place of supply, and three fields a document carr",
@@ -1784,7 +1787,7 @@
   "SALES-11": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "3d66b5ce Phase 11g (SALES-11): a discount on the invoice, and \u00a715(3)(a) applied",
     "3d66b5ce Phase 11g (SALES-11): a discount on the invoice, and \u00a715(3)(a) applied"
@@ -1793,7 +1796,7 @@
   "SALES-12": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "accdbafd Three statutory rules the sales cycle stated and did not apply (#498)"
    ]
@@ -1801,7 +1804,7 @@
   "SALES-13": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
     "ac7fe5b5 Phase 7h\u20137l: the last five screens for engines that already worked (#4"
@@ -1810,7 +1813,7 @@
   "SALES-14": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)",
     "714c1c84 Phase 7a\u20137g: screens for engines that already worked (#472)"
@@ -1819,7 +1822,7 @@
   "SALES-15": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "b84b9415 One advance, one liability \u2014 and three second write paths closed (#503",
     "f7a26f05 Four things the sales cycle got wrong about a supply (#495)",
@@ -1829,7 +1832,7 @@
   "SALES-16": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "f7a26f05 Four things the sales cycle got wrong about a supply (#495)",
     "f7a26f05 Four things the sales cycle got wrong about a supply (#495)"
@@ -1838,7 +1841,7 @@
   "SALES-17": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
    ]
@@ -1846,7 +1849,7 @@
   "SALES-19": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "f7a26f05 Four things the sales cycle got wrong about a supply (#495)",
     "f7a26f05 Four things the sales cycle got wrong about a supply (#495)"
@@ -1855,15 +1858,15 @@
   "SALES-20": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
    ]
   },
   "SALES-22": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
    ]
@@ -1871,7 +1874,7 @@
   "SALES-26": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "f7a26f05 Four things the sales cycle got wrong about a supply (#495)",
     "f7a26f05 Four things the sales cycle got wrong about a supply (#495)"
@@ -1880,7 +1883,7 @@
   "SALES-28": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "accdbafd Three statutory rules the sales cycle stated and did not apply (#498)"
    ]
@@ -1888,7 +1891,7 @@
   "SALES-29": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "f7a26f05 Four things the sales cycle got wrong about a supply (#495)",
     "f7a26f05 Four things the sales cycle got wrong about a supply (#495)"
@@ -1897,7 +1900,7 @@
   "SALES-30": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
    ]
@@ -1905,7 +1908,7 @@
   "SALES-31": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "0bbc5e86 Two spellings of the place of supply, and three fields a document carr",
     "0bbc5e86 Two spellings of the place of supply, and three fields a document carr"
@@ -1914,7 +1917,7 @@
   "SALES-32": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "0bbc5e86 Two spellings of the place of supply, and three fields a document carr",
     "0bbc5e86 Two spellings of the place of supply, and three fields a document carr"
@@ -1923,7 +1926,7 @@
   "TDS-03": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "1dc3d961 Phase 3: one TDS engine, and the browser copy deleted (#467)"
    ]
@@ -1931,7 +1934,7 @@
   "TDS-04": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "1dc3d961 Phase 3: one TDS engine, and the browser copy deleted (#467)"
    ]
@@ -1939,7 +1942,7 @@
   "TDS-05": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "1dc3d961 Phase 3: one TDS engine, and the browser copy deleted (#467)"
    ]
@@ -1947,7 +1950,7 @@
   "TDS-06": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "8096b2ef Phase 11b (TDS-06, TDS-09): the challan a deductee sits under, and the",
     "8096b2ef Phase 11b (TDS-06, TDS-09): the challan a deductee sits under, and the",
@@ -1957,7 +1960,7 @@
   "TDS-07": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "03e922a0 Phase 4a\u20134d: the four TDS answers the engine was getting wrong (#468)"
    ]
@@ -1965,7 +1968,7 @@
   "TDS-08": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "90b9b2dc Nothing computed what being late costs, and the month's deposit was wo",
     "90b9b2dc Nothing computed what being late costs, and the month's deposit was wo"
@@ -1974,7 +1977,7 @@
   "TDS-09": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "8096b2ef Phase 11b (TDS-06, TDS-09): the challan a deductee sits under, and the",
     "8096b2ef Phase 11b (TDS-06, TDS-09): the challan a deductee sits under, and the",
@@ -1982,9 +1985,9 @@
    ]
   },
   "TDS-11": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "1dc3d961 Phase 3: one TDS engine, and the browser copy deleted (#467)",
     "c64016e8 Phase 3a (TDS-11): the TDS register carries a role rule, and the guard"
@@ -1993,7 +1996,7 @@
   "TDS-12": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 5 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "d9792375 A shape regex is not a GSTIN, a TAN typed every quarter, and eleven mo",
     "d9792375 A shape regex is not a GSTIN, a TAN typed every quarter, and eleven mo",
@@ -2003,7 +2006,7 @@
   "TDS-13": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 4 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "e3bcbafd Phase 11c (PUR-07 \u2261 TDS-13): a \u00a7197 certificate is a rate, a number, a",
     "e3bcbafd Phase 11c (PUR-07 \u2261 TDS-13): a \u00a7197 certificate is a rate, a number, a",
@@ -2013,7 +2016,7 @@
   "TDS-14": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "1dc3d961 Phase 3: one TDS engine, and the browser copy deleted (#467)"
    ]
@@ -2021,7 +2024,7 @@
   "TDS-15": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "1dc3d961 Phase 3: one TDS engine, and the browser copy deleted (#467)"
    ]
@@ -2029,7 +2032,7 @@
   "TDS-17": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "8e70dbf1 Form 140 does not have a section 194J, and the salary statement had no",
     "8e70dbf1 Form 140 does not have a section 194J, and the salary statement had no",
@@ -2039,7 +2042,7 @@
   "TDS-18": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
     "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)",
@@ -2047,9 +2050,9 @@
    ]
   },
   "TDS-19": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
    ]
@@ -2057,23 +2060,23 @@
   "TDS-21": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "c6e9ee6d One 26AS row is one deduction, and the register is not pasted in (#505"
    ]
   },
   "TDS-22": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "03e922a0 Phase 4a\u20134d: the four TDS answers the engine was getting wrong (#468)"
    ]
   },
   "TDS-23": {
-   "status": "closed_by_commit",
+   "status": "closed_by_commit_only",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
    ]
@@ -2081,7 +2084,7 @@
   "TDS-24": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
    ]
@@ -2089,7 +2092,7 @@
   "TDS-25": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
    ]
@@ -2097,7 +2100,7 @@
   "TDS-26": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 1 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "03e922a0 Phase 4a\u20134d: the four TDS answers the engine was getting wrong (#468)"
    ]
@@ -2105,7 +2108,7 @@
   "TDS-27": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "90b9b2dc Nothing computed what being late costs, and the month's deposit was wo",
     "90b9b2dc Nothing computed what being late costs, and the month's deposit was wo"
@@ -2114,7 +2117,7 @@
   "TDS-28": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 3 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "d9792375 A shape regex is not a GSTIN, a TAN typed every quarter, and eleven mo",
     "d9792375 A shape regex is not a GSTIN, a TAN typed every quarter, and eleven mo",
@@ -2124,7 +2127,7 @@
   "TDS-29": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
     "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
@@ -2133,7 +2136,7 @@
   "TDS-30": {
    "status": "closed_by_commit",
    "verified_on": null,
-   "why": "named in 2 merged commit(s) on main; NOT re-read tonight. Weaker than 'closed': a commit that names a finding usually fixed it, but sometimes only cites it as background. Promote to 'closed' with a code read.",
+   "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
    "commits": [
     "90b9b2dc Nothing computed what being late costs, and the month's deposit was wo",
     "90b9b2dc Nothing computed what being late costs, and the month's deposit was wo"
