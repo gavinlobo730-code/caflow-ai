@@ -187,6 +187,43 @@ export interface NoteToAccount {
   is_locked: boolean;
   is_auto_generated: boolean;
   updated_at: string;
+  /** The note's computed working, as the router stores it. `list_notes` has
+   *  always returned it (`select("*")`) and this type never declared it, so
+   *  the screen could not see the one thing Schedule III actually asks for:
+   *  the fixed-assets MOVEMENT (FA-05). Loosely typed on purpose — every note
+   *  type puts a different shape in here, and the movement is the only one any
+   *  screen reads. */
+  note_data?: NoteData | null;
+}
+
+/** The fixed-assets note's movement, per asset class. Schedule III Division I:
+ *  opening gross block, additions, deductions, closing; the same four for
+ *  accumulated depreciation; net block at both ends. */
+export interface FixedAssetMovementClass {
+  asset_class: string;
+  opening_gross_paise: number;
+  additions_paise: number;
+  deductions_paise: number;
+  closing_gross_paise: number;
+  opening_accum_paise: number;
+  charge_paise: number;
+  accum_on_deductions_paise: number;
+  closing_accum_paise: number;
+  opening_net_paise: number;
+  closing_net_paise: number;
+}
+
+export interface NoteData {
+  classes?: FixedAssetMovementClass[];
+  totals?: Omit<FixedAssetMovementClass, "asset_class">;
+  posted_depreciation_paise?: number | null;
+  financial_year?: string | null;
+  /** What the note cannot vouch for, in sentences. Rendered beside the
+   *  figures, never dropped: a movement shown without the sentence saying the
+   *  ledger and the register disagree is the disclosure a reader would rely on
+   *  and should not. */
+  statutory_gaps?: string[];
+  [key: string]: unknown;
 }
 
 export type ReviewStatus = "draft" | "in_review" | "approved" | "locked";

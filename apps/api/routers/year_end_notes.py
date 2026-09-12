@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from core.db_paging import fetch_all
+from domain.reporting import fixed_asset_movement as fa_movement
 from core.observability import capture_soft_failure
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -74,70 +75,21 @@ class NoteUpdateIn(BaseModel):
 # used for related_party/contingent_liabilities) — never a plausible-looking
 # fabricated number.
 
-#: The Schedule III Division I fixed-assets note is a MOVEMENT, not a snapshot:
-#: opening gross block, additions, deductions, closing; then the same four for
-#: accumulated depreciation; then net block at both ends. A note that prints
-#: only the closing figures cannot be tied to last year's, which is what the
-#: reader does with it first.
-_FA_MOVEMENT_KEYS = (
-    "opening_gross_paise", "additions_paise", "deductions_paise",
-    "closing_gross_paise", "opening_accum_paise", "charge_paise",
-    "accum_on_deductions_paise", "closing_accum_paise",
-    "closing_net_paise", "opening_net_paise",
-)
+#: The Schedule III Division I fixed-assets note is a MOVEMENT, not a snapshot,
+#: and the arithmetic now lives in `domain/reporting/fixed_asset_movement.py` —
+#: the fixed-asset module's own Reports tab needs the same answer (FA-15) and
+#: two screens needing one answer is the point at which a third implementation
+#: gets written. This module still fetches, still reads the ledger's own charge
+#: and still writes the note; it no longer knows how to add the columns up.
+_FA_MOVEMENT_KEYS = fa_movement.MOVEMENT_KEYS
+_fy_window = fa_movement.fy_window
 
 
-def _fy_window(fy_end: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    """(first day, last day) of the financial year ending on `fy_end`.
-
-    April to March (CLAUDE.md). Returns (None, None) where there is no FY end to
-    work from, and every caller below treats that as "cannot compute" rather
-    than as a zero.
-    """
-    if not fy_end or len(str(fy_end)) < 10:
-        return None, None
-    end = str(fy_end)[:10]
-    return f"{int(end[:4]) - 1}-04-01", end
-
-
-def _depreciation_charge_from_the_gl(db, firm_id: str, client_id: str,
-                                     fy_start: str, fy_end: str) -> Optional[int]:
-    """What was actually POSTED as depreciation in the year, or None.
-
-    THE POINT OF THE CHANGE (FA-05). This figure used to be
-    `sum(_annual_depreciation_for_period(a, fy_end_month))` — the THEORETICAL
-    full-year charge for every asset on the register, whatever had actually been
-    posted, and with no pro-rata for an asset bought in December. A note is a
-    disclosure of the books; a charge that need not match anything in the P&L is
-    not one. So it is read off the ledger.
-
-    Read from `account_period_balances` (migrations 227/228), which is twelve
-    pre-aggregated rows rather than every depreciation journal of the year —
-    CLAUDE.md's reporting rule, and the reason that table exists.
-
-    None means the Depreciation Expense account could not be resolved or the
-    cache had nothing for the year. The caller reports that as a GAP; a zero
-    would be a claim that nothing was charged.
-    """
-    try:
-        from services.phase2_journal_service import phase2_journal_service
-        account_id = phase2_journal_service._find_account(
-            db, firm_id, client_id, "%Depreciation Expense%")
-    except Exception:                                             # noqa: BLE001
-        return None
-    if not account_id:
-        return None
-    rows = (db.table("account_period_balances")
-            .select("debit_paise,credit_paise,period_month")
-            .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("account_id", account_id)
-            .gte("period_month", fy_start).lte("period_month", fy_end)
-            .execute().data or [])
-    if not rows:
-        return None
-    # An expense account: debits are the charge, credits are reversals of it.
-    return sum(int(r.get("debit_paise") or 0) - int(r.get("credit_paise") or 0)
-               for r in rows)
+#: Moved to domain/reporting/fixed_asset_movement.py with the movement itself
+#: (FA-15): the fixed-asset Reports tab needs the same ledger figure to state
+#: the same difference, and a router importing another router's private
+#: function is not a shared implementation, it is a shortcut to one.
+_depreciation_charge_from_the_gl = fa_movement.posted_depreciation_paise
 
 
 def _compute_fixed_assets_note_data(db, firm_id: str, client_id: str, fy_end: Optional[str]) -> dict:
@@ -188,83 +140,12 @@ def _compute_fixed_assets_note_data(db, firm_id: str, client_id: str, fy_end: Op
                  .is_("deleted_at", "null")),
         label="year_end_notes.fixed_assets")
 
-    gaps: list[str] = []
-    fy_label = None
-    if fy_start:
-        fy_label = f"{fy_start[:4]}-{fy_last[2:4]}"
-
-    by_class: dict[str, dict] = {}
-    split_known = True
-    for a in rows:
-        cls = a.get("asset_category") or "Other"
-        m = by_class.setdefault(cls, {k: 0 for k in _FA_MOVEMENT_KEYS})
-        cost = int(a.get("purchase_cost_paise") or 0)
-        accum = int(a.get("accumulated_depreciation_paise") or 0)
-        bought = str(a.get("purchase_date") or "")[:10]
-        sold = str(a.get("disposal_date") or "")[:10] if a.get("is_disposed") else ""
-
-        if not fy_start:
-            # No financial year to window on: report the register as it stands
-            # and nothing about movement, rather than dating every asset to a
-            # year nobody named.
-            m["closing_gross_paise"] += cost
-            m["closing_accum_paise"] += accum
-            continue
-
-        held_at_open = bool(bought) and bought < fy_start and (not sold or sold >= fy_start)
-        added = bool(bought) and fy_start <= bought <= fy_last
-        removed = bool(sold) and fy_start <= sold <= fy_last
-
-        charge = 0
-        if a.get("depreciation_fy") and fy_label and a["depreciation_fy"] == fy_label:
-            charge = accum - int(a.get("depreciation_fy_start_accum_paise") or 0)
-        elif accum:
-            # It has been depreciated, but not in the year this note covers —
-            # so how much of that belongs to this year is not on the row.
-            split_known = False
-
-        if held_at_open:
-            m["opening_gross_paise"] += cost
-            m["opening_accum_paise"] += accum - charge
-        if added:
-            m["additions_paise"] += cost
-        if removed:
-            m["deductions_paise"] += cost
-            m["accum_on_deductions_paise"] += accum
-        m["charge_paise"] += charge
-
-    for cls, m in by_class.items():
-        if fy_start:
-            m["closing_gross_paise"] = (m["opening_gross_paise"] + m["additions_paise"]
-                                        - m["deductions_paise"])
-            m["closing_accum_paise"] = (m["opening_accum_paise"] + m["charge_paise"]
-                                        - m["accum_on_deductions_paise"])
-        m["opening_net_paise"] = m["opening_gross_paise"] - m["opening_accum_paise"]
-        m["closing_net_paise"] = m["closing_gross_paise"] - m["closing_accum_paise"]
-
-    classes = [{"asset_class": cls, **m} for cls, m in sorted(by_class.items())]
-    totals = {k: sum(c[k] for c in classes) for k in _FA_MOVEMENT_KEYS}
+    movement = fa_movement.movement_from_rows(rows, fy_end)
+    totals = movement.totals
 
     posted = (_depreciation_charge_from_the_gl(db, firm_id, client_id, fy_start, fy_last)
               if fy_start else None)
-    if not fy_start:
-        gaps.append("No financial-year end was given, so this note shows the "
-                    "register as it stands rather than the year's movement.")
-    elif posted is None:
-        gaps.append("The depreciation actually posted for the year could not be "
-                    "read from the ledger — the Depreciation Expense account "
-                    "could not be resolved, or no entries were cached for the "
-                    "period. The charge below is the register's own record.")
-    elif posted != totals["charge_paise"]:
-        gaps.append(
-            f"The ledger carries {_rupees(posted)} of depreciation for the year "
-            f"and the register accounts for {_rupees(totals['charge_paise'])}. "
-            f"The difference of {_rupees(abs(posted - totals['charge_paise']))} "
-            f"is not explained by this note.")
-    if not split_known:
-        gaps.append("One or more assets were last depreciated in a different "
-                    "financial year, so this year's charge could not be "
-                    "attributed to their class from the register.")
+    gaps = fa_movement.movement_gaps(movement, posted)
 
     return {
         # The four the note has always carried, so nothing downstream breaks —
@@ -274,8 +155,8 @@ def _compute_fixed_assets_note_data(db, firm_id: str, client_id: str, fy_end: Op
         "net_block_paise":          totals["closing_net_paise"],
         "depreciation_charge_paise": posted if posted is not None else totals["charge_paise"],
         # And the movement, which is what Schedule III actually asks for.
-        "financial_year": fy_label,
-        "classes": classes,
+        "financial_year": movement.financial_year,
+        "classes": movement.classes,
         "totals": totals,
         "posted_depreciation_paise": posted,
         "note_type": "fixed_assets",

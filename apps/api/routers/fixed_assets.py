@@ -15,7 +15,7 @@ the only source the create form's defaults come from.
 # just locked.
 from core.ist_clock import ist_today, month_end_date
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import Optional
+from typing import Annotated, Optional
 from datetime import datetime, timezone, date
 from decimal import Decimal, ROUND_HALF_UP
 import calendar
@@ -23,9 +23,11 @@ import math
 import re
 
 from models.common import api_response
+from models.fy import FYLabel
 from models.accounting import (FixedAssetIn, FixedAssetUpdateIn, DepreciationIn,
                                DepreciationRunIn, DisposalIn)
 from core.db_paging import fetch_all
+from domain.reporting import fixed_asset_movement as fa_movement
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from services.timeline_service import timeline_service
@@ -1823,6 +1825,88 @@ def depreciation_schedule(
             "statutory_gap":          statutory_gap,
         })
     return api_response(True, schedule)
+
+
+@router.get("/movement")
+def fixed_asset_movement(
+    client_id: str = Query(...),
+    financial_year: Annotated[Optional[FYLabel], Query()] = None,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The Schedule III movement for one financial year (FA-05, FA-15).
+
+    WHAT WAS WRONG
+
+        The Reports tab took a `financialYear` and did not use it. Its only
+        fetch was `/api/fixed-assets/?include_disposed=true` — no year, and no
+        route in this file accepted one — so "Assets by Category — FY 2025-26"
+        was every asset the client has ever owned, and "No disposals this year"
+        was printed over every disposal ever recorded. It then re-derived the
+        gross block and accumulated depreciation IN THE BROWSER, which is
+        business logic in the frontend as well as the wrong figures.
+
+        Meanwhile `year_end_notes` computed the movement correctly, for the
+        note, and rendered it nowhere (FA-05).
+
+    WHY THIS DOES NOT COMPUTE IT ITSELF
+
+        `domain/reporting/fixed_asset_movement.py` is the one implementation
+        and both callers pass it rows. Building a second movement here — over
+        the same register, for the same client, in the same year — is the
+        mistake this codebase keeps recording; the note and this route would
+        then differ by whichever of them was fixed last, on a disclosure whose
+        whole purpose is to tie one year's closing to the next year's opening.
+
+    WHAT IT REFUSES
+
+        With no financial year it answers the register AS IT STANDS, closing
+        figures only, and says so in `statutory_gaps` — the same sentence the
+        note carries. The DEPRECIATION CHARGE comes off the ledger, and where
+        it cannot be read the register's own figure is returned with the gap
+        naming it rather than a zero.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    fy_end = fa_movement.fy_end_for_label(financial_year)
+    if not db:
+        empty = fa_movement.movement_from_rows([], fy_end)
+        return api_response(True, {
+            "client_id": client_id, "financial_year": empty.financial_year,
+            "classes": [], "totals": empty.totals,
+            "posted_depreciation_paise": None,
+            "statutory_gaps": fa_movement.movement_gaps(empty, None),
+        })
+
+    firm_id = current_user["firm_id"]
+    # EVERY asset, disposed included: an asset sold during the year is a
+    # DEDUCTION, and filtering it out is what made last year's closing fail to
+    # tie to this year's opening. Soft-deleted rows are excluded because
+    # migration 351 makes those rows created by mistake, never in the register.
+    rows = fetch_all(
+        lambda: (db.table("fixed_assets").select("*")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .is_("deleted_at", "null")),
+        label="fixed_assets.movement")
+
+    movement = fa_movement.movement_from_rows(rows, fy_end)
+
+    posted = None
+    if fy_end:
+        fy_start, fy_last = fa_movement.fy_window(fy_end)
+        posted = fa_movement.posted_depreciation_paise(db, firm_id, client_id,
+                                                       fy_start, fy_last)
+
+    return api_response(True, {
+        "client_id": client_id,
+        "financial_year": movement.financial_year,
+        "classes": movement.classes,
+        "totals": movement.totals,
+        # What the LEDGER carries, beside what the register accounts for. Both,
+        # never one silently chosen — see movement_gaps.
+        "posted_depreciation_paise": posted,
+        "assets_considered": len(rows),
+        "statutory_gaps": fa_movement.movement_gaps(movement, posted),
+    })
 
 
 @router.get("/categories")

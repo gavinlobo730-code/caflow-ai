@@ -170,7 +170,12 @@ def test_a_disagreement_between_the_register_and_the_ledger_is_STATED(monkeypatc
     assert got["depreciation_charge_paise"] == 40_000_00, "the LEDGER is the note"
     assert got["requires_ca_review"] is True
     gap = " ".join(got["statutory_gaps"])
-    assert "not explained by this note" in gap
+    # "not explained HERE", not "by this note": the same sentence is now
+    # rendered on the fixed-asset Reports tab, which is not a note. The
+    # movement and its caveats moved to
+    # domain/reporting/fixed_asset_movement.py so both screens say the same
+    # thing about the same register (FA-05, FA-15).
+    assert "not explained here" in gap
     assert "10,000.00" in gap
 
 

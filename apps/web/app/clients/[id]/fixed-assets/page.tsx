@@ -12,6 +12,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { fyRangeFor } from "@/lib/dates/periods";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -44,6 +45,10 @@ interface Asset {
   useful_life_years?: number;
   accumulated_depreciation_paise: number;
   is_disposed: boolean;
+  /** Set only where is_disposed. The Reports tab needs it to tell a
+   *  disposal IN THE YEAR BEING REPORTED from every disposal ever
+   *  recorded, which is what that panel used to show (FA-15). */
+  disposal_date?: string | null;
   current_wdv_paise?: number;
   status: "active" | "disposed" | "fully_depreciated";
   notes?: string;
@@ -1337,9 +1342,52 @@ function DisposalTab({ clientId }: { clientId: string }) {
 }
 
 // ── Reports Tab ─────────────────────────────────────────────────────────────
+//
+// THE FINANCIAL YEAR USED TO BE DECORATION (FA-15).
+//     This tab takes a `financialYear` and, until now, used it in two string
+//     literals: a tile subtitle and a table heading. Its only fetch was
+//     `/api/fixed-assets/?include_disposed=true` — no year, and no route in
+//     routers/fixed_assets.py accepted one — so "Assets by Category — FY
+//     2025-26" was every asset the client had ever owned and "No disposals this
+//     year." was printed over every disposal ever recorded. It then re-derived
+//     the gross block and accumulated depreciation IN THE BROWSER from the
+//     asset list, which is the frontend computing a Schedule III figure.
+//
+// WHAT IT SHOWS NOW
+//     The MOVEMENT — opening, additions, deductions, closing — from
+//     GET /api/fixed-assets/movement, which is the same
+//     domain/reporting/fixed_asset_movement.py the year-end note reads
+//     (FA-05). Schedule III Division I asks for a movement rather than a
+//     snapshot precisely so this year's opening ties to last year's closing,
+//     and a tab showing four closing figures cannot be checked against
+//     anything.
+//
+// AND THE CAVEATS COME WITH IT
+//     `statutory_gaps` is rendered, not dropped. Where the ledger's
+//     depreciation for the year differs from what the register accounts for,
+//     the server states the difference; showing the figures without the
+//     sentence is how a CA comes to trust a number the note itself qualifies.
+
+type MovementRow = {
+  asset_class: string;
+  opening_gross_paise: number; additions_paise: number; deductions_paise: number;
+  closing_gross_paise: number; opening_accum_paise: number; charge_paise: number;
+  accum_on_deductions_paise: number; closing_accum_paise: number;
+  opening_net_paise: number; closing_net_paise: number;
+};
+
+type MovementResponse = {
+  financial_year: string | null;
+  classes: MovementRow[];
+  totals: Omit<MovementRow, "asset_class">;
+  posted_depreciation_paise: number | null;
+  assets_considered?: number;
+  statutory_gaps: string[];
+};
 
 function ReportsTab({ clientId, financialYear }: { clientId: string; financialYear: string }) {
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [movement, setMovement] = useState<MovementResponse | null>(null);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed rather than genuinely finding no assets —
   // without it every figure here (Gross/Net Block, counts) reads ₹0 / 0 on a
@@ -1350,39 +1398,45 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
     setLoading(true);
     try {
-      // include_disposed=true — this report needs the disposed/fully-
-      // depreciated breakdown too, unlike the other tabs which only work
-      // with currently-held assets.
-      const j = await request<ApiEnvelope<Omit<Asset, "status">[]>>(`/api/fixed-assets/?client_id=${clientId}&include_disposed=true`);
-      if (!j.success) throw new Error(j.error ?? "Failed to load");
-      const rows = ((j.data ?? []) as Omit<Asset, "status">[]).map((a) => ({ ...a, status: computeAssetStatus(a) }));
+      // Two reads, and they answer different questions. The MOVEMENT is the
+      // year's figures and is computed on the server; the asset LIST is what
+      // names the individual disposed and fully-depreciated assets, which a
+      // per-class movement cannot.
+      const [mv, list] = await Promise.all([
+        request<ApiEnvelope<MovementResponse>>(
+          `/api/fixed-assets/movement?client_id=${clientId}&financial_year=${encodeURIComponent(financialYear)}`),
+        request<ApiEnvelope<Omit<Asset, "status">[]>>(
+          `/api/fixed-assets/?client_id=${clientId}&include_disposed=true`),
+      ]);
+      if (!mv.success) throw new Error(mv.error ?? "Failed to load the movement");
+      if (!list.success) throw new Error(list.error ?? "Failed to load");
+      setMovement(mv.data ?? null);
+      const rows = ((list.data ?? []) as Omit<Asset, "status">[]).map((a) => ({ ...a, status: computeAssetStatus(a) }));
       setAssets(rows);
       setLoadFailed(false);
     } catch {
-      setAssets([]); setLoadFailed(true);
+      setAssets([]); setMovement(null); setLoadFailed(true);
     } finally {
       // In a finally rather than after the catch: a throw from inside the catch
       // (or a `return` added inside the try later) would skip a trailing call
       // and leave this tab as a permanent skeleton.
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, financialYear]);
 
   useEffect(() => { load(); }, [load]);
 
-  const active    = assets.filter(a => a.status === "active");
-  const disposed  = assets.filter(a => a.status === "disposed");
-  const fullyDep  = assets.filter(a => a.status === "fully_depreciated");
-  const grossBlock = active.reduce((s, a) => s + a.purchase_cost_paise, 0);
-  const accumDep   = active.reduce((s, a) => s + a.accumulated_depreciation_paise, 0);
+  // The year's window, used ONLY to decide which disposals belong to the year
+  // being reported. Every rupee figure on this tab comes from the server.
+  const { start: fyStart, end: fyEnd } = fyRangeFor(financialYear);
+  const disposedThisYear = assets.filter(
+    a => a.status === "disposed" && a.disposal_date
+         && a.disposal_date >= fyStart && a.disposal_date <= fyEnd);
+  const fullyDep = assets.filter(a => a.status === "fully_depreciated");
+  const heldAtClose = assets.filter(
+    a => a.status !== "disposed" || (a.disposal_date ?? "") > fyEnd);
 
-  const byCategory = active.reduce<Record<string, { cost: number; accum: number }>>((acc, a) => {
-    const k = a.asset_category;
-    if (!acc[k]) acc[k] = { cost: 0, accum: 0 };
-    acc[k].cost  += a.purchase_cost_paise;
-    acc[k].accum += a.accumulated_depreciation_paise;
-    return acc;
-  }, {});
+  const totals = movement?.totals;
 
   // Failed load: one banner in place of every zeroed tile/table below, so the
   // report is never mistaken for a client that genuinely holds no assets (M17).
@@ -1399,66 +1453,106 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
-      {/* Summary */}
+      {/* Summary — as at the CLOSE of the year being reported, not "now". */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Active Assets",   value: active.length,  sub: "", accent: "blue" },
-          { label: "Gross Block",     value: fmt(grossBlock), sub: "", accent: "gray" },
-          { label: "Accumulated Depn",value: fmt(accumDep),  sub: "", accent: "amber" },
-          { label: "Net Block",       value: fmt(grossBlock - accumDep), sub: `FY ${financialYear}`, accent: "green" },
+          { label: "Assets Held",    value: String(heldAtClose.length), sub: `at ${fyEnd}` },
+          { label: "Gross Block",    value: fmt(totals?.closing_gross_paise ?? 0), sub: `at ${fyEnd}` },
+          { label: "Accumulated Depn", value: fmt(totals?.closing_accum_paise ?? 0), sub: `at ${fyEnd}` },
+          { label: "Net Block",      value: fmt(totals?.closing_net_paise ?? 0), sub: `FY ${financialYear}` },
         ].map(c => (
           <div key={c.label} className="bg-white rounded-xl border border-[#E2E8F0] px-4 py-4">
             <p className="text-[11px] text-[#94A3B8]">{c.label}</p>
-            <p className="text-base font-bold text-[#1E293B] mt-1 font-mono">{c.value}</p>
+            <p className="text-base font-bold text-[#1E293B] mt-1 font-mono">{loading ? "…" : c.value}</p>
             {c.sub && <p className="text-[10px] text-[#94A3B8] mt-0.5">{c.sub}</p>}
           </div>
         ))}
       </div>
 
-      {/* By Category */}
+      {/* What the server could not vouch for. Above the table deliberately. */}
+      {(movement?.statutory_gaps?.length ?? 0) > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 space-y-1">
+          <p className="text-xs font-semibold text-amber-900">What this movement does not account for</p>
+          {movement!.statutory_gaps.map((g, i) => (
+            <p key={i} className="text-xs text-amber-800">{g}</p>
+          ))}
+        </div>
+      )}
+
+      {/* The Schedule III movement */}
       <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50">
-          <p className="text-xs font-semibold text-[#334155]">Assets by Category — FY {financialYear}</p>
+          <p className="text-xs font-semibold text-[#334155]">
+            Movement in Fixed Assets — FY {movement?.financial_year ?? financialYear}
+          </p>
+          <p className="text-[10px] text-[#94A3B8] mt-0.5">
+            Schedule III, Division I — gross block and depreciation, opening to closing.
+          </p>
         </div>
         {loading ? (
-          <TableSkeleton cols={5} rows={4} bare />
+          <TableSkeleton cols={7} rows={4} bare />
+        ) : (movement?.classes.length ?? 0) === 0 ? (
+          <p className="px-5 py-8 text-xs text-[#94A3B8] text-center">
+            No assets in the register for this client.
+          </p>
         ) : (
-          <table className="w-full text-xs">
-            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
-              <th className="px-5 py-2.5 text-left font-semibold">Category</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Count</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Gross Block</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Accum Depn</th>
-              <th className="px-5 py-2.5 text-right font-semibold">Net Block</th>
-            </tr></thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
-              {Object.entries(byCategory).map(([cat, vals]) => (
-                <tr key={cat} className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-2.5 font-medium text-[#1E293B]">{cat}</td>
-                  <td className="px-3 py-2.5 text-right text-[#64748B]">{active.filter(a => a.asset_category === cat).length}</td>
-                  <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(vals.cost)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(vals.accum)}</td>
-                  <td className="px-5 py-2.5 text-right font-mono font-semibold text-[#1E293B]">{fmt(vals.cost - vals.accum)}</td>
-                </tr>
-              ))}
-              <tr className="bg-[#F8FAFC] font-semibold">
-                <td className="px-5 py-2.5 text-[#1E293B]">Total</td>
-                <td className="px-3 py-2.5 text-right text-[#1E293B]">{active.length}</td>
-                <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(grossBlock)}</td>
-                <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(accumDep)}</td>
-                <td className="px-5 py-2.5 text-right font-mono text-[#1E293B]">{fmt(grossBlock - accumDep)}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]">
+                <th className="px-5 py-2.5 text-left font-semibold">Class</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Opening Gross</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Additions</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Deductions</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Closing Gross</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Charge</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Closing Depn</th>
+                <th className="px-5 py-2.5 text-right font-semibold">Closing Net</th>
+              </tr></thead>
+              <tbody className="divide-y divide-[#F8FAFC]">
+                {(movement?.classes ?? []).map(c => (
+                  <tr key={c.asset_class} className="hover:bg-[#F8FAFC]">
+                    <td className="px-5 py-2.5 font-medium text-[#1E293B] whitespace-nowrap">{c.asset_class}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#64748B]">{fmt(c.opening_gross_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-green-700">{c.additions_paise ? fmt(c.additions_paise) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-red-700">{c.deductions_paise ? fmt(c.deductions_paise) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(c.closing_gross_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-amber-700">{c.charge_paise ? fmt(c.charge_paise) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-amber-700">{fmt(c.closing_accum_paise)}</td>
+                    <td className="px-5 py-2.5 text-right font-mono font-semibold text-[#1E293B]">{fmt(c.closing_net_paise)}</td>
+                  </tr>
+                ))}
+                {totals && (
+                  <tr className="bg-[#F8FAFC] font-semibold">
+                    <td className="px-5 py-2.5 text-[#1E293B]">Total</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.opening_gross_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.additions_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.deductions_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.closing_gross_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.charge_paise)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.closing_accum_paise)}</td>
+                    <td className="px-5 py-2.5 text-right font-mono text-[#1E293B]">{fmt(totals.closing_net_paise)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {movement?.posted_depreciation_paise != null && (
+          <div className="px-5 py-2.5 border-t border-[#F1F5F9] flex justify-between text-[11px]">
+            <span className="text-[#94A3B8]">Depreciation posted to the ledger this year</span>
+            <span className="font-mono text-[#1E293B]">{fmt(movement.posted_depreciation_paise)}</span>
+          </div>
         )}
       </div>
 
-      {/* Disposed + Fully Depreciated summary */}
+      {/* Disposed in the year + fully depreciated */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4">
-          <p className="text-xs font-semibold text-[#334155] mb-2">Disposed Assets ({disposed.length})</p>
-          {disposed.length === 0 ? <p className="text-xs text-[#94A3B8]">No disposals this year.</p> : (
-            <ul className="space-y-1">{disposed.slice(0, 5).map(a => <li key={a.id} className="text-xs text-[#64748B]">{a.asset_name}</li>)}</ul>
+          <p className="text-xs font-semibold text-[#334155] mb-2">Disposed in FY {financialYear} ({disposedThisYear.length})</p>
+          {disposedThisYear.length === 0 ? <p className="text-xs text-[#94A3B8]">No disposals in this financial year.</p> : (
+            <ul className="space-y-1">{disposedThisYear.slice(0, 5).map(a => (
+              <li key={a.id} className="text-xs text-[#64748B]">{a.asset_name}<span className="text-[#94A3B8]"> · {a.disposal_date}</span></li>
+            ))}</ul>
           )}
         </div>
         <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-4">
