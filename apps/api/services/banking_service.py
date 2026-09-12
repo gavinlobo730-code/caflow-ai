@@ -100,6 +100,60 @@ def _opening_closing_balance(rows: list[dict]) -> tuple[int, int]:
     return first_at_min["balance_paise"], last_at_max["balance_paise"]
 
 
+# ── The one unit the bank path can post in ───────────────────────────────────
+
+def assert_bank_account_is_inr(db, firm_id: str, bank_account_id: Optional[str],
+                               *, client_id: Optional[str] = None) -> None:
+    """Refuse a statement on a bank account whose currency is not INR.
+
+    WHY THIS IS A REFUSAL AND NOT A CONVERSION
+        bank_posting_service.post() calls _create_journal with no txn_currency
+        and no exchange_rate, so the kernel takes its defaults — INR at rate 1.
+        A USD statement line reading 1,000.00 is normalised to 100000 paise and
+        booked as one thousand RUPEES against the bank ledger. Nothing warns:
+        the entry balances, the register foots, and the only symptom is a bank
+        balance that is wrong by the exchange rate.
+
+        Creating the account was already gated (routers/banking.py::
+        _guard_foreign_bank_currency asks the multi-currency policy), which is
+        what made this reachable: a firm with multi-currency active can hold a
+        USD account legitimately, and nothing then stopped a statement from
+        being loaded onto it and posted in the wrong unit.
+
+    WHAT IS NOT FIXED HERE
+        Teaching the ordinary post path FX. `match_and_settle_multi` already
+        carries currency and exchange_rate through to create_receipt_core /
+        create_payment_core, so the multi-allocation route is FX-capable and
+        `post()`/`_plan()` are the ones behind — but catching them up needs a
+        rate per statement line, a decision on where the FX gain or loss leg
+        lands, and the balance assertion in _create_journal is exactly what an
+        unbalanced FX leg breaks. That is the larger BANK-03; this closes the
+        door in the meantime rather than leaving a wrong number behind it.
+
+    A statement with no linked bank account has no currency to read, and INR is
+    the column default, so there is nothing to refuse.
+    """
+    if not bank_account_id:
+        return
+    q = (db.table("bank_accounts").select("id, currency, bank_name")
+         .eq("id", bank_account_id).eq("firm_id", firm_id))
+    if client_id:
+        q = q.eq("client_id", client_id)
+    row = (q.limit(1).execute().data or [None])[0]
+    if not row:
+        return          # ownership is the caller's check, not this one
+    currency = (row.get("currency") or "INR").upper()
+    if currency == "INR":
+        return
+    raise HTTPException(
+        status_code=422,
+        detail=(f"{row.get('bank_name') or 'This bank account'} is held in {currency}, and "
+                "bank statements can only be posted in INR today — every line would be "
+                "booked to the ledger as rupees at the figure printed on the statement. "
+                "Record these transactions through a manual journal, which takes a "
+                "currency and a rate."))
+
+
 class BankingService:
     """All bank-transaction mutations. db is the Supabase client (caller-supplied)."""
 
@@ -181,6 +235,10 @@ class BankingService:
                       .limit(1).execute().data or [])
             if not _owned:
                 raise HTTPException(status_code=422, detail="Bank account is not part of this client's books.")
+            # And in a unit this path can actually post. Asked here, before a
+            # single row is written, because the alternative is a queue of
+            # lines that will each be refused at Pass.
+            assert_bank_account_is_inr(db, firm_id, bank_account_id, client_id=client_id)
 
         # 1) fingerprint every row. EVERY row is kept — see domain/banking/dedup.
         #

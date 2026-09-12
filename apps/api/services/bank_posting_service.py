@@ -25,6 +25,8 @@ from domain.banking.charge_gst import split_inclusive_charge, build_inclusive_li
 from domain.banking.splits import build_split_lines, SplitError
 from services.bank_split_service import bank_split_service
 from services.bank_transfer_service import bank_transfer_service
+from services.bank_reconciliation_service import bank_reconciliation_service
+from services.banking_service import assert_bank_account_is_inr
 
 _logger = logging.getLogger("caflow.bank_posting")
 
@@ -64,6 +66,27 @@ class BankPostingService:
         if not r.data:
             raise HTTPException(status_code=422, detail="Selected account not found for this firm.")
         return account_id
+
+    def _assert_postable_currency(self, db, firm_id: str, txn: dict) -> None:
+        """Refuse to post a line off a non-INR bank account. See
+        banking_service.assert_bank_account_is_inr for the whole reasoning.
+
+        Deliberately NOT folded into _resolve_bank, which reads the same
+        bank_accounts row: that read sits inside a try/except that falls back to
+        the firm's generic Bank ledger, so a refusal raised there would be
+        swallowed and the post would continue against the wrong account — the
+        exact failure mode that except block was narrowed to report rather than
+        hide. A guard has to be somewhere nothing catches it.
+        """
+        stmt_id = txn.get("statement_id")
+        if not stmt_id:
+            return
+        stmt = (db.table("bank_statements").select("bank_account_id")
+                .eq("id", stmt_id).eq("firm_id", firm_id)
+                .eq("client_id", txn["client_id"])
+                .limit(1).execute().data or [None])[0] or {}
+        assert_bank_account_is_inr(db, firm_id, stmt.get("bank_account_id"),
+                                   client_id=txn["client_id"])
 
     # ── account resolution ───────────────────────────────────────────────────
     def _resolve_bank(self, db, firm_id, txn, bank_account_id: Optional[str]) -> str:
@@ -556,6 +579,17 @@ class BankPostingService:
         # with the invoice/bill posting paths (this path previously skipped the check).
         period_validation_service.validate_posting_date(firm_id or "", entry_date)
 
+        # And in a unit this path can post. _create_journal below is called with
+        # no txn_currency and no exchange_rate, so it takes INR at rate 1 — a
+        # foreign statement line would be booked as rupees at its face figure.
+        # The import refuses this too (banking_service._import_core), which is
+        # where a CA is told before loading three hundred rows; this is the one
+        # that protects the ledger, and it also reaches statements imported
+        # before that refusal existed. match_and_settle_multi is deliberately
+        # NOT guarded — it carries currency and exchange_rate through to
+        # receipt/payment creation and is the path that already works.
+        self._assert_postable_currency(db, firm_id, txn)
+
         entry_type, lines, _bank_id = self._plan(
             db, firm_id, txn, bank_account_id, account_id, to_bank_account_id,
             gst_rate_bps, is_interstate)
@@ -739,6 +773,16 @@ class BankPostingService:
         if txn.get("match_status") != "posted" or not journal_id:
             raise HTTPException(status_code=409,
                                 detail="This transaction is not posted, so there is nothing to undo.")
+
+        # A line inside a COMPLETED reconciliation is certified: reversing its
+        # journal moves the balance that session's signed statement ties to,
+        # while reconciliation_id and `reconciled` stay set, so the frozen
+        # snapshot goes on claiming a balance the ledger no longer has. The
+        # definition of "completed" stays in the reconciliation service, which
+        # owns it — see assert_line_is_not_certified for why refusal rather than
+        # clearing the flag, and why only a completed session.
+        bank_reconciliation_service.assert_line_is_not_certified(db, firm_id, txn)
+
         client_id = txn["client_id"]
 
         # A multi-invoice settlement is a receipt, not a bank journal. Told apart

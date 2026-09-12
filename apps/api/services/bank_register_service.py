@@ -57,7 +57,25 @@ SORTABLE = ("date", "amount", "description", "balance", "cleared")
 _DEFAULT_SORT = "date"
 
 # Status filters, named for what a bookkeeper is actually looking for.
-STATUS_FILTERS = ("all", "uncleared", "pending", "reconciled", "unposted", "needs_review")
+#
+# "needs_review" IS NOT ONE OF THEM, and the reason is worth keeping. It was,
+# and it was a control that could not do anything: `bank_transactions.
+# needs_review` is `boolean DEFAULT false` (migration 096) and NOTHING in this
+# codebase has ever set it TRUE — bank_matching_service.match and
+# bank_posting_service.post both write it False, bank_entry_service restores its
+# prior value on undo, and no frontend path writes it at all. So the tab
+# answered "nothing needs review" every time it was opened, on every client,
+# for ever. A tab that always shows zero is not an empty list; it is a false
+# assurance, which is worse than no tab.
+#
+# The COLUMN stays, and so does migration 353's `bank_book` branch that reads
+# it: the exception service BANK-13 actually asks for is what would set the
+# flag, and deleting a dead branch out of a SQL function costs a production
+# migration for nothing. What is removed is the offer.
+# tests/test_a_filter_the_product_offers_can_match_something.py holds the rule
+# in both directions, so restoring the tab the day a writer exists is one line
+# and forgetting to is a failure.
+STATUS_FILTERS = ("all", "uncleared", "pending", "reconciled", "unposted")
 
 _logger = logging.getLogger("caflow.banking.register")
 
@@ -134,7 +152,11 @@ class BankRegisterService:
 
     # ── filtering / sorting ──────────────────────────────────────────────────
     @staticmethod
-    def _matches(line: RegisterLine, raw: dict, *, date_from, date_to, status, q) -> bool:
+    def _matches(line: RegisterLine, *, date_from, date_to, status, q) -> bool:
+        # `raw`, the underlying bank_transactions row, was a parameter until the
+        # "needs_review" filter was removed: it was the only predicate that
+        # needed anything the RegisterLine does not already carry. A register
+        # filter reads the register.
         if date_from and (not line.transaction_date or str(line.transaction_date) < date_from):
             return False
         if date_to and (not line.transaction_date or str(line.transaction_date) > date_to):
@@ -146,8 +168,6 @@ class BankRegisterService:
         if status == "reconciled" and line.cleared != CLEARED_RECONCILED:
             return False
         if status == "unposted" and line.posted_journal_id:
-            return False
-        if status == "needs_review" and not raw.get("needs_review"):
             return False
         if q:
             needle = q.strip().lower()
@@ -308,11 +328,9 @@ class BankRegisterService:
             opening_balance_date=account.get("opening_balance_date"),
             reconciliation_statuses=statuses,
         )
-        by_id = {str(t.get("id")): t for t in txns}
-
         filtered = [l for l in all_lines
-                    if self._matches(l, by_id.get(l.transaction_id, {}),
-                                     date_from=date_from, date_to=date_to, status=status, q=q)]
+                    if self._matches(l, date_from=date_from, date_to=date_to,
+                                     status=status, q=q)]
         ordered = self._sort(filtered, sort, desc)
         page = ordered[offset:offset + limit]
 

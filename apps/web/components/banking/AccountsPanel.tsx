@@ -549,6 +549,9 @@ interface StatementInspection {
   detected_fits: boolean;
   proposed_mapping: StatementMapping | null;
   saved_mapping: StatementMapping | null;
+  /** "account" when this account's own mapping matched, "firm" when the layout
+   *  was recognised from another client's account in the same practice. */
+  saved_mapping_scope: "account" | "firm" | null;
   header_fingerprint: string;
 }
 
@@ -960,10 +963,19 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
 
             {inspected && mapping && (
               <div className="space-y-3 border-t border-[#E2E8F0] pt-3">
-                <p className="text-xs text-[#475569]">
-                  This bank&apos;s layout isn&apos;t one we recognise. Tell us which column holds
-                  what — once. {account ? <>We&apos;ll remember it for <span className="font-medium">{account.bank_name}</span> and use it next time.</> : null}
-                </p>
+                {inspected.saved_mapping_scope === "firm" ? (
+                  <p className="text-xs text-[#475569]">
+                    We&apos;ve seen this exact layout before, on another account in this
+                    practice, and have filled in what was recorded then. Check it against
+                    the columns below before importing — saving it here records it for{" "}
+                    {account ? <span className="font-medium">{account.bank_name}</span> : "this account"} too.
+                  </p>
+                ) : (
+                  <p className="text-xs text-[#475569]">
+                    This bank&apos;s layout isn&apos;t one we recognise. Tell us which column holds
+                    what — once. {account ? <>We&apos;ll remember it for <span className="font-medium">{account.bank_name}</span> and use it next time.</> : null}
+                  </p>
+                )}
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   {MAPPING_FIELDS.map((f) => (

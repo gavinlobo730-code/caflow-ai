@@ -185,10 +185,14 @@ def _python_register(dsn: str, **kw) -> dict:
     all_lines = build_register(txns, opening_balance_paise=OPENING_PAISE,
                                opening_balance_date=OPENING_DATE,
                                reconciliation_statuses=statuses)
-    by_id = {str(t["id"]): t for t in txns}
+    # No underlying-row argument: `_matches` reads the RegisterLine and nothing
+    # else since the needs_review filter went (that predicate was the only one
+    # needing a column the line does not carry). This mirror has to call it the
+    # way the service does, or the parity it proves is against a signature that
+    # no longer exists.
     filtered = [l for l in all_lines if svc._matches(
-        l, by_id.get(l.transaction_id, {}), date_from=kw.get("date_from"),
-        date_to=kw.get("date_to"), status=kw.get("status", "all"), q=kw.get("q"))]
+        l, date_from=kw.get("date_from"), date_to=kw.get("date_to"),
+        status=kw.get("status", "all"), q=kw.get("q"))]
     ordered = svc._sort(filtered, kw.get("sort", "date"), kw.get("desc", False))
     limit, offset = kw.get("limit", 200), kw.get("offset", 0)
     view_opening = OPENING_PAISE
@@ -232,9 +236,13 @@ SCENARIOS: list[tuple[str, dict]] = (
     [(f"sort {s} {'desc' if d else 'asc'}", {"sort": s, "desc": d})
      for s in ("date", "amount", "description", "balance", "cleared")
      for d in (False, True)]
+    # "needs_review" was here. It is no longer a filter the product offers —
+    # nothing ever set the flag, so the tab always answered zero — and the
+    # Python predicate is gone, so there is nothing left to hold in parity.
+    # migration 353's SQL branch survives, unreachable, for the exception
+    # service that would write the flag; see services/bank_register_service.py.
     + [(f"status {s}", {"status": s})
-       for s in ("all", "uncleared", "pending", "reconciled", "unposted",
-                 "needs_review")]
+       for s in ("all", "uncleared", "pending", "reconciled", "unposted")]
     + [
         ("from April", {"date_from": "2026-04-01"}),
         ("to April", {"date_to": "2026-04-30"}),

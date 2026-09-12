@@ -54,6 +54,59 @@ class BankReconciliationService:
             raise HTTPException(status_code=409,
                                 detail="Reconciliation is completed and can no longer be edited.")
 
+    def assert_line_is_not_certified(self, db, firm_id: str, txn: dict) -> None:
+        """Refuse to disturb a bank line that a COMPLETED reconciliation certified.
+
+        WHY THIS EXISTS OUTSIDE THIS MODULE'S OWN PATHS
+            _require_mutable guards every edit route this service owns, so a
+            completed session cannot be re-reconciled, re-balanced or adjusted.
+            It guards nothing outside them, and undoing a posted bank line is
+            outside them: bank_posting_service.undo checked match_status, the
+            journal's source_type and the period lock, and never read
+            reconciliation_id at all (it still does not — it asks this).
+
+            The result was a certified reconciliation that silently stopped
+            tying. Undo reverses the journal, which moves the book balance the
+            snapshot was signed against, while `reconciliation_id` and
+            `reconciled` stay set on the row — so the completed session still
+            counts the line as cleared and its frozen snapshot still shows the
+            old balance. Nothing recomputes a completed session, so nobody finds
+            out until someone reads a reconciliation report that no longer
+            agrees with the ledger it certifies.
+
+        WHY ONLY 'completed'
+            An open or in_progress session is recomputed at completion — the
+            tie-out and the every-in-period-line-reviewed guard both run then,
+            from the rows as they are — so an undo inside one is self-correcting
+            and refusing it would only obstruct the CA. Only a completed session
+            has an answer that nothing will re-check.
+
+        WHY REFUSE RATHER THAN CLEAR THE FLAG
+            Clearing reconciliation_id would let the undo through and leave the
+            completed session's frozen snapshot describing a cleared set that no
+            longer exists — the same divergence, minus the evidence. Reopening
+            is the path this module already provides for exactly this, and it is
+            deliberately expensive: Partner-only, a substantive reason, audit
+            log, timeline entry, and the signed snapshot pushed onto
+            reopen_history rather than overwritten. The remedy is named in the
+            refusal so the CA is not left guessing.
+
+        `status` is read through _get_session, so "completed" has one definition
+        and this cannot drift from _require_mutable's.
+        """
+        recon_id = txn.get("reconciliation_id")
+        if not recon_id:
+            return
+        session = self._get_session(db, firm_id, str(recon_id))
+        if session.get("status") != "completed":
+            return
+        raise HTTPException(
+            status_code=409,
+            detail=("This line is part of a completed bank reconciliation "
+                    f"({session.get('period_start')} to {session.get('period_end')}). "
+                    "Reopen that reconciliation first — undoing the line now would "
+                    "move the balance its signed statement was certified against."))
+
     def _account_statement_ids(self, db, firm_id: str, bank_account_id: str) -> list[str]:
         res = (db.table("bank_statements").select("id")
                .eq("firm_id", firm_id).eq("bank_account_id", bank_account_id).execute())
