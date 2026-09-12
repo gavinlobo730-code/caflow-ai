@@ -25,8 +25,9 @@ import services.gst_advance_service as gst_advance_service
 import services.itc_register_service as itc_register_service
 from domain.gst.gstr3b_computer import (
     SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
-    compute_gstr3b,
+    AdvanceTaxOnReceipts, compute_gstr3b,
 )
+from core.observability import capture_soft_failure
 from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
 from domain.gst.classifier import classify_transaction, TransactionForClassification
 from domain.gst.validator import GSTValidator, InvoiceToValidate
@@ -861,8 +862,29 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
     have_2b = gst_2b_reconciliation_service.was_reconciled(
         db, firm_id=firm_id, client_id=client_id, period=period)
 
+    # GSTR-1 Table 11 — the advances 3.1(a) has to pay (GST-15). Read through
+    # the SAME function that builds the GSTR-1 rows, so the two returns cannot
+    # declare different tax on one receipt; that they could is the whole
+    # finding. Empty unless the client is marked
+    # `gst_advance_tax_applicable`, which is most clients (Notification
+    # 66/2017-CT removed the charge on advances for goods).
+    #
+    # Best-effort, and NOT silent: a Table 11 the return cannot read is an
+    # under-declaration, so the failure is reported through the same channel
+    # every other soft failure uses rather than swallowed into a zero.
+    advances = None
+    try:
+        t11 = gst_advance_service.table_11_sections(db, firm_id, client_id, period)
+        if t11.get("applicable"):
+            paise = t11.get("paise") or {}
+            advances = AdvanceTaxOnReceipts(received=paise.get("at") or {},
+                                            adjusted=paise.get("txpd") or {})
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="gstr3b.table_11_advances",
+                             firm_id=firm_id, client_id=client_id)
+
     result = compute_gstr3b(sales, purchases, gstr2a, reversals, reclaims,
-                            have_2b=have_2b)
+                            have_2b=have_2b, advances=advances)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)
@@ -906,7 +928,22 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                       + result.itc_rev_temp_igst)
     books_itc = (result.itc_book_cgst + result.itc_book_sgst + result.itc_book_igst
                  - books_reversed)
-    output_matched = books_output == gl["output_paise"]
+    # THE LEDGER HAS NO LINE FOR THE ADVANCE TAX, so the comparator must not
+    # ask it for one. §13(2) makes an advance for services taxable on receipt
+    # and 3.1(a) now declares it (GST-15) — but a receipt posts Bank Dr / Trade
+    # Receivable Cr and nothing else (`receipt_service`; the foreign path adds
+    # only an FX leg), so no output-tax movement exists for it anywhere in the
+    # GL. Comparing the declared figure against a ledger that structurally
+    # cannot carry it would mark every advance-bearing client permanently
+    # unreconciled, on a difference no entry in this product can close — the
+    # same permanent false mismatch the RCM and zero-rated notes above exist to
+    # prevent. EXCLUDED AND NAMED, never hidden: `tax_liability_paise` still
+    # carries the whole liability, and `advance_tax_excluded_paise` below says
+    # how much of it this comparison left out and why.
+    advance_output = (result.advance_igst + result.advance_cgst
+                      + result.advance_sgst)
+    ledger_comparable_output = books_output - advance_output
+    output_matched = ledger_comparable_output == gl["output_paise"]
     itc_matched = books_itc == gl["itc_paise"]
 
     # THE SAME GAP GSTR-1 HAD, and the same fix. validate_gstr3b ran only from
@@ -981,6 +1018,21 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                 # accumulated nil/exempt and dropped non-GST on the floor,
                 # while GSTR-1 declared the same invoice as `ngsup_amt`.
                 "non_gst_paise": result.outward_non_gst,
+            },
+            # OF the 3.1(a) figures above, the part that is GSTR-1 Table 11
+            # rather than an invoice: 11A received less 11B adjusted, per head
+            # (GST-15). A breakdown, never an addition — it is already inside
+            # `outward.taxable_*`. Served because a CA cross-checking 3.1(a)
+            # against the GSTR-1 they filed needs to see the piece that has no
+            # invoice behind it, and because the GL comparison below leaves it
+            # out: the receipt posts no output-tax leg, so the ledger has
+            # nothing to compare it to.
+            "advances_11": {
+                "taxable_value_paise": result.advance_taxable_value,
+                "cgst_paise": result.advance_cgst,
+                "sgst_paise": result.advance_sgst,
+                "igst_paise": result.advance_igst,
+                "rule": "CGST Act s.13(2); Notification 66/2017-Central Tax",
             },
             # Table 3.2 — OF the supplies already in 3.1(a), the inter-state
             # ones to unregistered persons, composition dealers and UIN
@@ -1090,10 +1142,16 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         },
         "reconciliation": {
             "output_gst": {
-                "books_paise": books_output,
+                "books_paise": ledger_comparable_output,
                 "ledger_paise": gl["output_paise"],
-                "difference_paise": books_output - gl["output_paise"],
+                "difference_paise": ledger_comparable_output - gl["output_paise"],
                 "matched": output_matched,
+                # The §13(2) advance tax 3.1(a) declares and the ledger has no
+                # entry for, held out of the comparison above and stated here
+                # so a CA reading "matched" knows what it was measured on. It
+                # IS in tax_liability_paise, which is the return's liability
+                # rather than the ledger's movement.
+                "advance_tax_excluded_paise": advance_output,
             },
             "itc": {
                 "books_paise": books_itc,

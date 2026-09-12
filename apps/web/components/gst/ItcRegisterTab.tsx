@@ -376,19 +376,32 @@ export default function ItcRegisterTab({ clientId }: { clientId: string }) {
             <span className="text-[#94A3B8] font-normal"> · {advances.count}</span>
           </p>
 
-          {/* NOT COMPUTED, AND THE SERVER SAYS SO IN THE PAYLOAD. An empty
-              Table 11 has two very different meanings and this is which. */}
-          {!advances.table_11_computed && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-              <p className="text-[11px] font-semibold text-amber-800">
-                Table 11 is not computed here
+          {/* WHICH KIND OF EMPTY THIS IS, AND THE SERVER SAYS SO IN THE
+              PAYLOAD. An empty Table 11 means "no advances" for a client whose
+              advances bear GST and "not switched on" for one whose do not, and
+              the two need opposite actions. Amber only for the second: the
+              banner used to be unconditional and told every CA the platform
+              does not compute Table 11 while their filed GSTR-1 carried it. */}
+          <div className={advances.table_11_computed
+            ? "rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-2.5"
+            : "rounded-lg border border-amber-200 bg-amber-50 p-2.5"}>
+            <p className={`text-[11px] font-semibold ${
+              advances.table_11_computed ? "text-[#334155]" : "text-amber-800"}`}>
+              {advances.table_11_computed
+                ? "Table 11 is computed for this client"
+                : "Table 11 is not computed for this client"}
+            </p>
+            <p className={`text-[11px] mt-0.5 max-w-[90ch] ${
+              advances.table_11_computed ? "text-[#475569]" : "text-amber-800"}`}>
+              {advances.why}
+            </p>
+            {advances.rule && (
+              <p className={`text-[10px] mt-1 ${
+                advances.table_11_computed ? "text-[#64748B]" : "text-amber-700"}`}>
+                {advances.rule}
               </p>
-              <p className="text-[11px] text-amber-800 mt-0.5 max-w-[90ch]">{advances.why}</p>
-              {advances.rule && (
-                <p className="text-[10px] text-amber-700 mt-1">{advances.rule}</p>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
           {advances.unadjusted_advances.length === 0 ? (
             <p className="text-[11px] text-[#94A3B8]">

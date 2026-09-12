@@ -5,19 +5,26 @@ WHAT WAS WRONG
     anywhere told a CA that. A client who took advances saw an empty Table 11
     and had no way to tell whether that meant "no advances" or "not computed".
 
-WHY THIS REPORTS RATHER THAN COMPUTING
-    An 11A row needs the place of supply, the inter/intra split, the RATE and
-    the tax — every one of them a property of a supply that has not happened
-    yet. `receipts` holds an amount, a customer and a date. A guessed rate on
-    an advance is a guessed tax liability on a filed return, so this names the
-    advances and stops.
+WHAT `advances_report` IS, AND IS NOT
+    It is the LIST: which receipts are sitting unadjusted and how much money
+    that is, read off `unallocated_paise`. It reads no rate and declares
+    nothing. The declared rows are `table_11_sections`, which reads the rate,
+    place of supply and inter/intra treatment recorded ON THE RECEIPT and is
+    exercised in test_an_advance_carries_what_table_11a_declares_it_at.py.
 
-    Even with a rate a blanket computation would be wrong. CGST Act §13(2)
-    makes an advance for SERVICES taxable when received; Notification
-    66/2017-Central Tax removed the charge for GOODS, where the liability
-    arises at the invoice instead (§12(2) proviso). Two clients with identical
-    receipts can owe different tax, and which is which is a fact about their
-    business rather than about their ledger.
+    The one thing this report says ABOUT the declaration is
+    `table_11_computed`, and it is the client's own
+    `gst_advance_tax_applicable` rather than a constant — an empty Table 11
+    means "no advances" for one client and "not switched on" for another, and
+    the ITC Register tab renders an amber banner on the difference. It was a
+    hardcoded False, which stopped being true the day `table_11_sections`
+    began declaring real 11A rows.
+
+    Whether an advance bears tax at all is a fact about the client's business:
+    CGST Act §13(2) makes an advance for SERVICES taxable when received, and
+    Notification 66/2017-Central Tax removed the charge for GOODS, where the
+    liability arises at the invoice instead (§12(2) proviso). Two clients with
+    identical receipts can owe different tax.
 """
 import pytest
 
@@ -116,14 +123,38 @@ def test_no_tax_figure_is_produced_anywhere(db):
         assert not (forbidden & set(a)), sorted(forbidden & set(a))
 
 
-def test_it_states_that_table_11_is_not_computed(db):
+def _flag(db, applicable):
+    db.seed("clients", {"id": CLIENT, "firm_id": FIRM,
+                        "gst_advance_tax_applicable": applicable})
+
+
+def test_it_says_table_11_is_off_for_a_client_who_has_not_switched_it_on(db):
     """An empty Table 11 is ambiguous — no advances, or nothing computing it.
     The answer has to travel with the data, not live in a docstring."""
+    _flag(db, False)
     out = _run(db)
     assert out["table_11_computed"] is False
     assert "66/2017" in out["why"], out["why"]
     assert "13(2)" in out["why"]
     assert out["ca_review_required"] is True
+
+
+def test_it_says_table_11_is_on_for_a_client_who_has(db):
+    """The half that was wrong. This field was a hardcoded False, so the screen
+    told a CA whose GSTR-1 carried real 11A rows that nothing computes them."""
+    _flag(db, True)
+    out = _run(db)
+    assert out["table_11_computed"] is True
+    assert "not computed" not in out["why"].lower(), out["why"]
+    assert "13(2)" in out["why"]
+
+
+def test_a_client_of_another_firm_does_not_switch_table_11_on(db):
+    """`advance_tax_applicable` is firm-scoped: the service-role key bypasses
+    RLS, so the app-layer firm filter is the isolation control."""
+    db.seed("clients", {"id": CLIENT, "firm_id": "FIRM-B",
+                        "gst_advance_tax_applicable": True})
+    assert _run(db)["table_11_computed"] is False
 
 
 def test_another_firms_receipt_is_not_visible(db):

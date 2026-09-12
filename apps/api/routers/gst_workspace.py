@@ -1334,22 +1334,27 @@ def gstr1_advances(
 ):
     """Advances received against no invoice — GSTR-1 Table 11.
 
-    Table 11A declares an advance on which tax is payable and no invoice has
-    been issued. A row needs the place of supply and the RATE of a supply that
-    has not happened yet; a receipt in this system records an amount, a
-    customer and a date. So this NAMES the advances and computes no tax —
-    inventing a rate would invent a liability on a filed return.
+    The LIST of receipts still unadjusted at the period end, so a CA preparing
+    the return can see what is sitting there. The declared Table 11A/11B rows
+    are a different question and a different function
+    (`gst_advance_service.table_11_sections`, merged into the GSTR-1 payload
+    and paid by GSTR-3B Table 3.1(a)); this endpoint reads no rate at all.
 
-    Which advances are even taxable is a fact about the client's business:
-    CGST Act §13(2) makes an advance for SERVICES taxable on receipt, and
-    Notification 66/2017-Central Tax removed the charge for GOODS, where the
-    liability arises at the invoice instead.
+    Whether Table 11 applies is a fact about the client's business: CGST Act
+    §13(2) makes an advance for SERVICES taxable on receipt, and Notification
+    66/2017-Central Tax removed the charge for GOODS, where the liability
+    arises at the invoice instead. So the payload's `table_11_computed`
+    carries the client's own setting rather than a constant — an empty Table
+    11 means "no advances" for one client and "not switched on" for another.
 
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This reports; it computes no
-    # tax, writes nothing and files nothing.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This reports; it writes nothing
+    # and files nothing.
     """
     assert_client_access(current_user, client_id)
     if _USE_MOCK:
+        # Mock mode has no clients table to read the flag from, so the honest
+        # answer is the off one — not a leftover of the constant this field
+        # used to be on the real path.
         return api_response(True, {
             "period": period, "unadjusted_advances": [], "count": 0,
             "total_unadjusted_paise": 0, "table_11_computed": False,
