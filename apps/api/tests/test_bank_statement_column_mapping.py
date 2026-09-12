@@ -298,8 +298,11 @@ def test_inspect_refuses_a_corrupt_pdf_cleanly():
 
 def _upload(path, *, content=KOTAK_CSV, name="kotak.csv", **form):
     files = {"file": (name, content, "text/csv")}
+    # bank_account_id is REQUIRED on /upload since BANK-22 and is what
+    # /inspect looks a saved mapping up by, so every caller sends it — which
+    # is what the screen has always done.
     return client.post(path, headers=HEADERS, files=files,
-                       data={"client_id": "client-001", **form})
+                       data={"client_id": "client-001", "bank_account_id": "ba-1", **form})
 
 
 def test_the_inspect_endpoint_gives_a_ca_something_to_map():
@@ -355,7 +358,7 @@ def test_upload_without_a_mapping_still_reports_how_it_read_the_columns():
             b"01/04/2025,UPI-RAMESH,01/04/2025,000000,5000.00,,95000.00\n")
     res = client.post("/api/banking/statements/upload", headers=HEADERS,
                       files={"file": ("hdfc.csv", hdfc, "text/csv")},
-                      data={"client_id": "client-001"})
+                      data={"client_id": "client-001", "bank_account_id": "ba-1"})
     assert res.status_code == 200, res.text
     assert res.json()["data"]["column_source"] == "detected"
 

@@ -102,7 +102,15 @@ class StatementImportIn(BaseModel):
     client_id: str
     bank_name: str
     account_number: Optional[str] = None
-    bank_account_id: Optional[str] = None
+    #: REQUIRED (BANK-22). A statement with no bank account is a statement
+    #: nothing downstream can place: `bank_posting_service._resolve_bank` has no
+    #: ledger to post its lines to, `bank_reconciliation_service` has no account
+    #: to reconcile, the bank register has no column to run a balance down, and
+    #: `bank_column_mapping_service.find_mapping` returns None without one, so
+    #: the CA re-maps the same layout every month. `bank_name` and
+    #: `account_number` are free text about a bank; this is the row that IS the
+    #: account. Ownership is checked in `banking_service._import_core`.
+    bank_account_id: str
     rows: list[StatementImportRow]
 
     @field_validator("rows")
@@ -111,6 +119,14 @@ class StatementImportIn(BaseModel):
         if not v:
             raise ValueError("No transactions provided.")
         return v
+
+    @field_validator("bank_account_id")
+    @classmethod
+    def bank_account_is_named(cls, v: str) -> str:
+        # A required `str` still accepts "". Same reason the field is required.
+        if not (v or "").strip():
+            raise ValueError("Choose the bank account this statement belongs to.")
+        return v.strip()
 
 
 class TransactionAccountIn(BaseModel):

@@ -111,13 +111,24 @@ def _db():
     db.store["chart_of_accounts"] = [
         {"id": i, "firm_id": FIRM, "client_id": None, "account_name": n,
          "system_account_key": sk, "is_active": True} for (i, n, sk) in ACCOUNTS]
+    # Every stored bank line belongs to a statement, and — since BANK-22 — every
+    # statement to a bank account with a GL ledger of its own. `_txn` links to
+    # these, so the posting path resolves the bank leg the way production does.
+    # Before BANK-22 these rows were absent and the resolution fell through to
+    # the firm's generic Bank ledger, which happens to be the same account here
+    # — a fixture that could not tell the two apart.
+    db.store["bank_accounts"] = [
+        {"id": "ba-1", "firm_id": FIRM, "client_id": CLIENT,
+         "coa_account_id": "acc-bank", "currency": "INR", "bank_name": "HDFC Bank"}]
+    db.store["bank_statements"] = [
+        {"id": "st-1", "firm_id": FIRM, "client_id": CLIENT, "bank_account_id": "ba-1"}]
     return db
 
 
 def _txn(db, *, credit=0, debit=0, category=None, matched_type=None, matched_id=None, **kw):
     row = dict(id="t1", firm_id=FIRM, client_id=CLIENT, transaction_date="2026-06-10",
                description="TEST", debit_paise=debit, credit_paise=credit,
-               category=category, account_id=None,
+               category=category, account_id=None, statement_id="st-1",
                matched_entity_type=matched_type, matched_entity_id=matched_id,
                match_status="matched" if matched_id else "unmatched",
                posted_journal_id=None, posted_at=None)

@@ -305,7 +305,15 @@ class BankMatchingService:
                      "customer_id, status")
              .eq("firm_id", firm_id).eq("client_id", client_id)
              .is_("deleted_at", "null"))
-        rows = (self._banded(q, "total_paise", bands, "invoice")
+        # BANDED ON WHAT IS STILL OPEN, not on the face value (BANK-10).
+        # `outstanding_paise` is migration 278's generated column — total plus
+        # debit notes less paid less credited, so it already carries the §34
+        # notes and cannot drift from its parts. Banding on `total_paise` meant
+        # a ₹5,00,000 invoice with ₹4,90,000 already received was only ever
+        # offered against a ₹5,00,000 bank credit, and the ₹10,000 that
+        # actually arrived matched nothing at all — the partly-settled document
+        # is exactly the one a CA is trying to close.
+        rows = (self._banded(q, "outstanding_paise", bands, "invoice")
                 .limit(self._pool_limit(bands)).execute().data or [])
         self._warn_if_truncated(rows, bands, "invoice")
         return rows
@@ -319,8 +327,6 @@ class BankMatchingService:
     def _invoices_from(self, rows, customers, amount) -> list[Candidate]:
         out = []
         for r in rows:
-            if not self._in_band(int(r.get("total_paise") or 0), amount):
-                continue
             # A draft invoice was never issued — no AR journal exists for a bank
             # transaction to settle against (task #222: same pattern as the
             # outstanding-balance functions excluding draft/cancelled).
@@ -334,6 +340,13 @@ class BankMatchingService:
             open_paise = invoice_open_paise(r)
             if open_paise <= 0:
                 continue  # fully settled → not open
+            # THE SAME FIGURE THE QUERY BANDED ON (BANK-10). This re-test used
+            # `total_paise`, so a row the widened pool correctly returned was
+            # then thrown away in memory for being the wrong size — the band
+            # moved and its mirror did not, which is the one way this pair can
+            # be wrong without either half looking wrong.
+            if not self._in_band(open_paise, amount):
+                continue
             party = customers.get(r.get("customer_id"))
             out.append(Candidate(
                 entity_type="sales_invoice", entity_id=r["id"],
@@ -361,7 +374,14 @@ class BankMatchingService:
                      "vendor_id, status")
              .eq("firm_id", firm_id).eq("client_id", client_id)
              .is_("deleted_at", "null"))
-        rows = (self._banded(q, "net_payable_paise", bands, "bill")
+        # BANDED ON WHAT IS STILL OPEN (BANK-10). Migration 278's
+        # `outstanding_paise` on this table is built on `net_payable_paise` —
+        # net payable plus credit notes less paid less debited — so it is
+        # already net of withheld TDS AND net of what has been paid. Banding on
+        # `net_payable_paise` alone fixed the TDS half and left the part-payment
+        # half: a bill 90% settled was only ever offered against its whole net
+        # payable.
+        rows = (self._banded(q, "outstanding_paise", bands, "bill")
                 .limit(self._pool_limit(bands)).execute().data or [])
         self._warn_if_truncated(rows, bands, "bill")
         return rows
@@ -375,9 +395,6 @@ class BankMatchingService:
     def _bills_from(self, rows, vendors, amount) -> list[Candidate]:
         out = []
         for r in rows:
-            if not self._in_band(
-                    int(r.get("net_payable_paise") or r.get("total_paise") or 0), amount):
-                continue
             # A draft bill was never received — no AP journal exists for a bank
             # transaction to settle against (task #222: same pattern as the
             # outstanding-balance functions excluding draft/cancelled).
@@ -393,6 +410,10 @@ class BankMatchingService:
             open_paise = bill_open_paise(r)
             if open_paise <= 0:
                 continue  # fully settled → not open, whatever `status` still says
+            # The same figure the query banded on (BANK-10) — see the invoice
+            # side for why the two must not diverge.
+            if not self._in_band(open_paise, amount):
+                continue
             party = vendors.get(r.get("vendor_id"))
             out.append(Candidate(
                 entity_type="purchase_bill", entity_id=r["id"],

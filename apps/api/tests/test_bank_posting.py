@@ -511,6 +511,10 @@ def test_deleted_transaction_404():
 # transaction's own firm+client, mirroring _validate_account's scoping.
 
 def test_resolve_bank_ignores_cross_client_statement_link():
+    """The other client's ledger must not be used — and since BANK-22 the
+    answer is a REFUSAL rather than the firm's generic Bank account. Posting
+    somewhere plausible was the whole defect: it balances, it foots, and the
+    account it belongs to never reconciles."""
     db = _db_with_accounts()
     _seed_txn(db, credit=100000, category="Customer Payment", statement_id="stmt-1")
     # A statement with the same id exists, but belongs to a different client —
@@ -519,11 +523,11 @@ def test_resolve_bank_ignores_cross_client_statement_link():
         {"id": "stmt-1", "firm_id": FIRM, "client_id": "client-2", "bank_account_id": "ba-other"})
     db.store.setdefault("bank_accounts", []).append(
         {"id": "ba-other", "firm_id": FIRM, "client_id": "client-2", "coa_account_id": "acc-wrong"})
-    res = bank_posting_service.post(db, FIRM, "t1", actor_id="u1")  # no bank_account_id passed
-    lines = _lines_for(db, res["posted_journal_id"])
-    dr = next(l for l in lines if l["debit_paise"])
-    assert dr["account_id"] != "acc-wrong"
-    assert dr["account_id"] == "acc-bank"   # falls back to the firm's master Bank account
+    with pytest.raises(HTTPException) as e:
+        bank_posting_service.post(db, FIRM, "t1", actor_id="u1")  # no bank_account_id passed
+    assert e.value.status_code == 422
+    assert "not linked to a bank account" in str(e.value.detail)
+    assert not db.store.get("journal_lines"), "nothing may be posted to a guessed ledger"
 
 
 def test_resolve_bank_uses_same_client_statement_link():
