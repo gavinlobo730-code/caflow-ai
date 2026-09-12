@@ -208,7 +208,9 @@ export function AddEmployeeModal({
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="pf" checked={form.pf_applicable} onChange={e => setForm(f => ({ ...f, pf_applicable: e.target.checked }))} />
-            <label htmlFor="pf" className="text-sm text-[#334155]">PF Applicable (12% of basic)</label>
+            {/* The base is the s.2(88) wage aggregate, not basic — see the note on
+                the same label in app/payroll/page.tsx. */}
+            <label htmlFor="pf" className="text-sm text-[#334155]">PF Applicable (12% of PF wages)</label>
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="esi" checked={form.esi_applicable} onChange={e => setForm(f => ({ ...f, esi_applicable: e.target.checked }))} />

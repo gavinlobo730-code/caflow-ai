@@ -430,7 +430,15 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
               <td className="py-1 text-right font-medium">{fmtRs(slip.gross_paise)}</td>
             </tr>
             <tr>
-              <td className="py-1 text-[#475569]">PF Deduction (12% of Basic)</td>
+              {/* NOT "12% of Basic". The figure beside this is 12% of the
+                  Code on Social Security 2020 s.2(88) wage base (migration
+                  334, domain/payroll/wage_base.py): the listed exclusions are
+                  capped at half of total remuneration and the excess is deemed
+                  wages, so on ₹10,000 basic with ₹18,000 HRA the base is
+                  ₹14,000 and the deduction is ₹1,680, not ₹1,200. A label
+                  naming a base the number is not computed on is the thing a CA
+                  would reconcile against and fail. */}
+              <td className="py-1 text-[#475569]">PF Deduction (12% of PF wages)</td>
               <td className="py-1 text-right text-red-600">- {fmtRs(slip.pf_employee_paise)}</td>
             </tr>
             <tr>
