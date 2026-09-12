@@ -65,6 +65,30 @@ class EmployeeIn(BaseModel):
     bank_account_no: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
+    #: EPS 1995 membership. FALSE only where para 6 of the scheme, as amended
+    #: by GSR 609(E) w.e.f. 01-09-2014, excludes the member: they joined EPF on
+    #: or after that date with pay AT JOINING above the wage ceiling. Not
+    #: derivable — the master holds pay today, and the test is pay then.
+    #:
+    #: SETTABLE FROM NOWHERE UNTIL NOW (PAY-12 residual). Migration 295 added
+    #: the column with `DEFAULT true` and `routers/payroll.py` reads it as
+    #: `emp.get("eps_eligible", True)` at four sites — but it was on neither
+    #: model, in no CSV column and on no form, so every employee was EPS-
+    #: eligible forever. For a member GSR 609(E) excludes, that diverts 8.33%
+    #: of the employer's contribution to EPS ON THE ECR, which is a statutory
+    #: return, and nothing in the product could correct it.
+    eps_eligible: bool = True
+    #: Whether the Payment of Gratuity Act 1972 reaches this employee's
+    #: establishment — §1(3), and §1(3A), which keeps it applying once it has.
+    #: Not derived from headcount: today's count is not the count on the
+    #: qualifying date.
+    #:
+    #: Same hole, same shape (migration 298). It decides WHICH limb of IT Act
+    #: §10(10) computes the exemption — clause (ii) for a covered employee,
+    #: clause (iii) for one who is not, and they are a different formula with a
+    #: different divisor — so a wrong value changes money actually paid to a
+    #: leaver.
+    gratuity_act_covered: bool = True
 
     @field_validator("name")
     @classmethod
@@ -171,6 +195,30 @@ class EmployeeUpdateIn(BaseModel):
     uan: Optional[str] = None
     esi_number: Optional[str] = None
     status: Optional[str] = None
+    #: EPS 1995 membership. FALSE only where para 6 of the scheme, as amended
+    #: by GSR 609(E) w.e.f. 01-09-2014, excludes the member: they joined EPF on
+    #: or after that date with pay AT JOINING above the wage ceiling. Not
+    #: derivable — the master holds pay today, and the test is pay then.
+    #:
+    #: SETTABLE FROM NOWHERE UNTIL NOW (PAY-12 residual). Migration 295 added
+    #: the column with `DEFAULT true` and `routers/payroll.py` reads it as
+    #: `emp.get("eps_eligible", True)` at four sites — but it was on neither
+    #: model, in no CSV column and on no form, so every employee was EPS-
+    #: eligible forever. For a member GSR 609(E) excludes, that diverts 8.33%
+    #: of the employer's contribution to EPS ON THE ECR, which is a statutory
+    #: return, and nothing in the product could correct it.
+    eps_eligible: Optional[bool] = None
+    #: Whether the Payment of Gratuity Act 1972 reaches this employee's
+    #: establishment — §1(3), and §1(3A), which keeps it applying once it has.
+    #: Not derived from headcount: today's count is not the count on the
+    #: qualifying date.
+    #:
+    #: Same hole, same shape (migration 298). It decides WHICH limb of IT Act
+    #: §10(10) computes the exemption — clause (ii) for a covered employee,
+    #: clause (iii) for one who is not, and they are a different formula with a
+    #: different divisor — so a wrong value changes money actually paid to a
+    #: leaver.
+    gratuity_act_covered: Optional[bool] = None
     # THE DATE OF JOINING, which this model did not carry (PAY-12).
     #
     # components/payroll/AddEmployeeModal.tsx has always sent joining_date on

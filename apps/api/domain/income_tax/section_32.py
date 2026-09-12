@@ -14,9 +14,10 @@ that are not two rates for one calculation:
     no per-asset life at all, and no per-asset written-down value.
 
 The difference between them is usually the largest single line in the
-book-to-tax bridge, and `domain/income_tax/book_to_tax_bridge.py` has said in
-its own docstring since it was written that "NOTHING IN THIS CODEBASE
-IMPLEMENTS THE SECOND ONE". This is the second one.
+book-to-tax bridge, and `domain/income_tax/book_to_tax_bridge.py` said in its
+own docstring, from the day it was written until 12 September 2026, that
+"NOTHING IN THIS CODEBASE IMPLEMENTS THE SECOND ONE". This is the second one,
+and that docstring now says so.
 
 WHAT §32 ACTUALLY SAYS, IN THE ORDER IT SAYS IT
 

@@ -97,9 +97,6 @@ NOT_YET: dict[str, str] = {
     "routers/sales_invoices.py:repost_journal":
         "Posts a journal at the INVOICE's own date, so it can land in a filed "
         "period even though the request is made today.",
-    "routers/fixed_assets.py:create_asset":
-        "Posts the acquisition journal at the asset's purchase date, which may "
-        "sit inside a filed GSTR-3B whose ITC the asset's tax belongs to.",
     "routers/fixed_assets.py:dispose_asset":
         "Posts at the disposal date; a disposal is a supply and reaches GSTR-1.",
     "routers/inventory.py:adjust_stock":

@@ -638,6 +638,32 @@ def create_asset(
 
     client_id = data.client_id
 
+    # AND THE CLIENT'S OWN LOCK, WHICH THIS PATH ALONE WAS NOT ASKING
+    # (12 September probe pass §2.3, no finding).
+    #
+    # `validate_posting_date` is firm-FY only and takes no client_id, so it
+    # cannot see a filed return. `correct_asset` and `delete_asset` both call
+    # `period_lock_service.assert_open` on this same date and have since they
+    # were written — so a CA could CREATE a June asset after June's GSTR-3B
+    # was filed and then be refused when they tried to fix it. Create-but-not-
+    # correct is the one asymmetry that cannot be right whichever way the rule
+    # should fall.
+    #
+    # It falls this way, `lock_reason` and not `closure_reason`, because an
+    # acquisition can carry input tax: `phase2_journal_service` debits
+    # `%GST Input%` from `itc_claimable_paise`, and that figure feeds GSTR-3B
+    # Table 4(A). CLAUDE.md's carve-out is for the POSTING KERNEL — a June
+    # receipt or a June depreciation charge must not be stopped on the 11th of
+    # July — and names the documents that FEED a return as exactly the place
+    # the filed-return branch is asked. A capitalised purchase is one.
+    #
+    # The check is unconditional rather than gated on `itc_claimable_paise`,
+    # matching the two paths that already do it: a CA who records the ITC a
+    # moment after the asset would otherwise walk through the open door, and a
+    # rule that depends on the order two fields are filled in is not a rule.
+    period_lock_service.assert_open(db, current_user["firm_id"], client_id,
+                                    data.purchase_date)
+
     # ── FA-07: the facts that decide the credit leg ─────────────────────────
     # A bill may be capitalised ONCE. Migration 343's partial unique index is
     # the real guarantee; this check exists so the CA gets a sentence rather

@@ -1148,6 +1148,18 @@ function DisposalTab({ clientId }: { clientId: string }) {
   const [disposalDate, setDisposalDate] = useState(todayLocalISO());
   const [disposing, setDisposing] = useState(false);
   const [error, setError] = useState("");
+  // WHAT THE DISPOSAL DID NOT CHARGE, which the server has always said and no
+  // screen ever showed. The engine posts WHOLE months (Schedule II Note 3
+  // makes the purchase month the single pro-rated exception), so the days
+  // between the last month end and the disposal date carry no depreciation
+  // and the gain is that much larger. `dispose` returns
+  // `part_month_depreciation_not_charged` precisely so the CA is told —
+  // `grep -rn part_month apps/web` returned nothing, so the figure was
+  // computed, sent, and dropped on the floor. That is how FA-08 survived: the
+  // WDV looked right.
+  const [lastDisposal, setLastDisposal] = useState<{
+    asset: string; gainLoss: number; partMonthUncharged: boolean;
+  } | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
@@ -1185,7 +1197,10 @@ function DisposalTab({ clientId }: { clientId: string }) {
       // "Failed" where the server had named the months of depreciation still
       // to post. `request` throws with errorMessage(res), which reads either
       // shape, so the non-2xx case is handled before this line.
-      const j = await request<ApiEnvelope>(`/api/fixed-assets/${selected.id}/dispose`, {
+      const j = await request<ApiEnvelope<{
+        gain_loss_paise: number;
+        part_month_depreciation_not_charged: boolean;
+      }>>(`/api/fixed-assets/${selected.id}/dispose`, {
         method: "PATCH",
         body: JSON.stringify({
           disposal_date:         disposalDate,
@@ -1193,6 +1208,11 @@ function DisposalTab({ clientId }: { clientId: string }) {
         }),
       });
       if (!j.success) throw new Error(j.error ?? "Failed");
+      setLastDisposal({
+        asset: `${selected.asset_code} ${selected.asset_name}`.trim(),
+        gainLoss: Number(j.data?.gain_loss_paise ?? 0),
+        partMonthUncharged: Boolean(j.data?.part_month_depreciation_not_charged),
+      });
       setSelected(null); setProceeds(""); await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to dispose asset");
@@ -1202,6 +1222,23 @@ function DisposalTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4 max-w-3xl mx-auto">
+      {lastDisposal && (
+        <div className="bg-white border border-[#E2E8F0] rounded-xl px-4 py-3 space-y-1">
+          <p className="text-xs font-semibold text-[#0F172A]">
+            {lastDisposal.asset} disposed —{" "}
+            {lastDisposal.gainLoss >= 0 ? "gain" : "loss"}{" "}
+            {fmt(Math.abs(lastDisposal.gainLoss))}
+          </p>
+          {lastDisposal.partMonthUncharged && (
+            <p className="text-[11px] text-amber-700">
+              Part-month depreciation was NOT charged. Depreciation posts whole
+              months — Schedule II Note 3 makes the purchase month the only
+              pro-rated one — so the days between the last month end and the
+              disposal date carry none, and this gain is that much larger.
+            </p>
+          )}
+        </div>
+      )}
       <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 flex gap-2">
         <AlertCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
         <div>

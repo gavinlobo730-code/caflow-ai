@@ -127,6 +127,37 @@ interface ComputeResult {
     credit_expires_after_ay: number | null;
     reasons: string[];
   };
+  /** The capital-gains working, section by section.
+   *
+   *  The engine has computed `basic_exemption_absorbed_paise` and a per-bucket
+   *  explanation since IT-08, documented as existing "so a CA can see WHICH
+   *  gain the exemption was set against" — and a grep across the routers and
+   *  the whole frontend found no reader. So this screen showed ₹20,800 of tax
+   *  on a ₹5,00,000 STCG and nothing about the ₹4,00,000 that vanished.
+   *
+   *  The allocation is a CHOICE: the provisos to §111A(1), §112(1)(a)(ii) and
+   *  §112A(2) fix no order between the three, and the engine takes the highest
+   *  rate first because that is most beneficial to the assessee. A reader is
+   *  entitled to check that, and cannot from a total. */
+  capital_gains?: {
+    lines: {
+      section: string;
+      gross_paise: number;
+      exempt_paise: number;
+      absorbed_paise: number;
+      charged_paise: number;
+      rate_percent: number;
+      tax_paise: number;
+    }[];
+    tax_paise: number;
+    basic_exemption_absorbed_paise: number;
+    basic_exemption_absorption: string[];
+  };
+  /** §10 income, echoed. The field on this form was live, sent, accepted and
+   *  then read by nothing — the tax is right without it (§10 income is not
+   *  part of total income) but a CA typed a figure that changed nothing and
+   *  nothing said so. */
+  exempt_income?: { reported_paise: number; note: string };
   // The year whose rates were ACTUALLY applied, and whether they are
   // confirmed against the Finance Act. The backend has always returned both;
   // this screen used to discard them, which is how a computation at another
@@ -886,6 +917,51 @@ export default function TaxComputationPage() {
                     ))}
                   </div>
                 ) : null}
+                {/* IT-08's own working, which used to stop inside the engine.
+                    Only the rows that carry a figure are listed: three zero
+                    rows on a return with no capital gains is noise, and the
+                    absorption line below states the total whether or not a
+                    row shows it. */}
+                {computeResult.capital_gains?.lines?.some(
+                  l => l.gross_paise > 0) ? (
+                  <div className="mt-3 border-t border-[#F1F5F9] pt-2 space-y-1.5">
+                    <p className="text-[10px] font-semibold text-[#334155]">
+                      Capital gains — {paise(computeResult.capital_gains.tax_paise)} tax
+                    </p>
+                    {computeResult.capital_gains.lines
+                      .filter(l => l.gross_paise > 0)
+                      .map((l, i) => (
+                        <p key={i} className="text-[10px] text-[#1E293B]">
+                          <span className="font-mono">{l.section}</span> —{" "}
+                          {paise(l.gross_paise)} gain
+                          {l.exempt_paise > 0 ? `, less ${paise(l.exempt_paise)} exempt` : ""}
+                          {l.absorbed_paise > 0
+                            ? `, less ${paise(l.absorbed_paise)} basic exemption`
+                            : ""}
+                          , {paise(l.charged_paise)} charged at {l.rate_percent}% ={" "}
+                          {paise(l.tax_paise)}
+                        </p>
+                      ))}
+                    {computeResult.capital_gains.basic_exemption_absorption.map((w, i) => (
+                      <p key={i} className="text-[10px] text-[#64748B] pl-3">{w}</p>
+                    ))}
+                    {computeResult.capital_gains.basic_exemption_absorbed_paise > 0 && (
+                      <p className="text-[10px] text-[#94A3B8] pl-3">
+                        The order is the engine&apos;s choice — the provisos to §111A(1),
+                        §112(1)(a)(ii) and §112A(2) fix none, so the exemption is set
+                        against the highest-rate gain first.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+                {/* Received, not taxable — said rather than left to be inferred
+                    from a figure that does not appear anywhere in the result. */}
+                {(computeResult.exempt_income?.reported_paise ?? 0) > 0 && (
+                  <p className="mt-2 text-[10px] text-[#64748B]">
+                    Exempt income {paise(computeResult.exempt_income!.reported_paise)} —{" "}
+                    {computeResult.exempt_income!.note}
+                  </p>
+                )}
                 {/* IT-10. Which section reached which head, per loss — and a
                     loss that found no home shown as such, with the reason. A
                     zero beside "set off" and a loss simply missing from the
