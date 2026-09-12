@@ -47,10 +47,15 @@ def test_create_challan(client):
     assert resp.status_code == 200
     data = resp.json()["data"]
     # tds_challans has no amount_paise column (migration 037) — the amount is
-    # booked as tds_paise/total_paise (no surcharge/interest/penalty on this
-    # quick-create form, so both equal the full amount).
+    # the TOTAL and lands on total_paise. The surcharge, interest and penalty
+    # heads are optional (TDS-08/TDS-30) and this request sends none, so the
+    # tax is the whole of it: sending nothing extra keeps exactly the old
+    # behaviour, which is what made the split safe to add.
     assert data["tds_paise"] == 500000
     assert data["total_paise"] == 500000
+    assert data["interest_paise"] == 0
+    assert data["penalty_paise"] == 0
+    assert data["minor_head"] == "200"
     assert data["payment_date"] == "2025-07-07"
     assert data["bsr_code"] == "1234567"
     assert data["status"] == "deposited"

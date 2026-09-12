@@ -72,6 +72,7 @@ import { useToast } from "@/components/ui/use-toast";
 // resolved server-side — CLAUDE.md: zero business logic in the frontend.
 import {
   listTdsSections, previewTdsDeduction, createTdsDeduction, createTdsChallan,
+  fetchDepositDue, type DepositDueWorksheet,
 } from "@/lib/data/tds";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 
@@ -442,6 +443,159 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
   );
 }
 
+// ─── What is due for deposit ─────────────────────────────────────────────────
+//
+// TDS-30. On the 5th of the month the CA has to work out, per client and per
+// section, how much tax was deducted last month and is due by the 7th. Every
+// deduction was already a row in tds_deductions and nothing added them up, so
+// they exported to Excel — the workflow this product exists to replace.
+//
+// Every figure here is the server's. The month is the only input, and the
+// month defaults to the LAST COMPLETED one because that is the month whose
+// deposit is coming due; picking the current month on the 5th would show a
+// liability that is not payable until the 7th of NEXT month.
+
+function lastCompletedMonth(): string {
+  // Derived from the clock, never listed. IST is not needed for a month
+  // boundary the user can change with one click, and the server stamps the
+  // as-at date it actually computed against.
+  const now = new Date();
+  const y = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const m = now.getMonth() === 0 ? 12 : now.getMonth();  // getMonth() is 0-based
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+function DepositDuePanel({ clientId }: { clientId: string }) {
+  const [month, setMonth] = useState(lastCompletedMonth());
+  const [state, setState] = useState<
+    | { phase: "idle" }
+    | { phase: "loading" }
+    | { phase: "error"; message: string }
+    | { phase: "ok"; sheet: DepositDueWorksheet }
+  >({ phase: "idle" });
+
+  useEffect(() => {
+    if (!clientId) { setState({ phase: "idle" }); return; }
+    let live = true;
+    setState({ phase: "loading" });
+    fetchDepositDue(clientId, month)
+      .then(sheet => { if (live) setState({ phase: "ok", sheet }); })
+      .catch(e => {
+        // An empty worksheet and a failed one must not look the same: a CA who
+        // reads "nothing due" off a request that never landed does not pay.
+        if (live) setState({ phase: "error", message: e instanceof Error ? e.message : "Could not work out what is due." });
+      });
+    return () => { live = false; };
+  }, [clientId, month]);
+
+  return (
+    <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-sm font-semibold text-[#0F172A]">Due for deposit</h2>
+          <p className="text-xs text-[#94A3B8] mt-0.5">
+            Rule 30(2) — the 7th of the following month, except March, which is 30 April
+          </p>
+        </div>
+        <label className="text-xs text-[#475569] flex items-center gap-2">
+          Deduction month
+          <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+            className="border border-[#E2E8F0] rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </label>
+      </div>
+
+      {state.phase === "loading" && (
+        <p className="px-5 py-8 text-center text-xs text-[#94A3B8]">Working it out…</p>
+      )}
+      {state.phase === "idle" && (
+        <p className="px-5 py-8 text-center text-xs text-[#94A3B8]">Pick a client to see what is due.</p>
+      )}
+      {state.phase === "error" && (
+        <p className="mx-5 my-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {state.message} — this is a failed check, not a clear month.
+        </p>
+      )}
+
+      {state.phase === "ok" && (
+        <>
+          <div className="px-5 py-3 border-b border-gray-50 flex flex-wrap gap-x-6 gap-y-1 text-xs text-[#475569]">
+            <span>Due <span className="font-medium text-[#0F172A]">{state.sheet.due_date}</span></span>
+            <span>Computed as at {state.sheet.as_at}</span>
+          </div>
+          {state.sheet.sections.length === 0 ? (
+            <p className="px-5 py-8 text-center text-xs text-[#94A3B8]">
+              No deductions recorded for {state.sheet.month}. {state.sheet.covers}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-50">
+                    {["Section", "Deductees", "Tax deducted", "Deposited", "Still to deposit", "s.201(1A) interest", "Payable now"].map(h => (
+                      <th key={h} className="text-left text-xs font-medium text-[#94A3B8] px-4 py-3">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F8FAFC]">
+                  {state.sheet.sections.map(row => (
+                    <tr key={row.section} className="hover:bg-[#F8FAFC]/50">
+                      <td className="px-4 py-3 text-xs font-mono text-blue-700">{row.section}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{row.deductee_count}</td>
+                      <td className="px-4 py-3 text-xs text-[#0F172A]">{formatPaise(row.tax_paise)}</td>
+                      <td className="px-4 py-3 text-xs text-[#475569]">{formatPaise(row.deposited_paise)}</td>
+                      <td className="px-4 py-3 text-xs font-medium text-[#0F172A]">{formatPaise(row.outstanding_paise)}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {row.interest_paise > 0
+                          ? <span className="text-red-700 font-medium">{formatPaise(row.interest_paise)}</span>
+                          : <span className="text-[#94A3B8]">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-semibold text-[#0F172A]">{formatPaise(row.payable_paise)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-[#E2E8F0] bg-[#F8FAFC]">
+                    <td className="px-4 py-3 text-xs font-medium text-[#0F172A]">Total</td>
+                    <td className="px-4 py-3 text-xs text-[#475569]">{state.sheet.totals.deductee_count}</td>
+                    <td className="px-4 py-3 text-xs text-[#0F172A]">{formatPaise(state.sheet.totals.tax_paise)}</td>
+                    <td className="px-4 py-3 text-xs text-[#475569]">{formatPaise(state.sheet.totals.deposited_paise)}</td>
+                    <td className="px-4 py-3 text-xs font-medium text-[#0F172A]">{formatPaise(state.sheet.totals.outstanding_paise)}</td>
+                    <td className="px-4 py-3 text-xs font-medium text-red-700">{formatPaise(state.sheet.totals.interest_paise)}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-[#0F172A]">{formatPaise(state.sheet.totals.payable_paise)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {state.sheet.totals.late_row_count > 0 && (
+            <p className="mx-5 my-3 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              {state.sheet.totals.late_row_count} deduction{state.sheet.totals.late_row_count === 1 ? " is" : "s are"} past
+              the Rule 30(2) date. IT Act s.201(1A)(ii) charges 1.5% for every month or part of a month
+              <strong> from the date of deduction</strong>, not from the due date — so a deposit one day late
+              across a month boundary carries two months of interest. Pay the interest on the same challan,
+              under its own head.
+            </p>
+          )}
+
+          {/* The scope note is on EVERY worksheet, not only an empty one: a
+              total that looks like "the month's TDS" and is only part of it is
+              the thing this panel must not be read as. */}
+          <p className="mx-5 mb-4 text-[11px] text-[#94A3B8]">{state.sheet.covers}</p>
+
+          {state.sheet.statutory_gaps.map(g => (
+            <p key={g.kind} className="mx-5 mb-3 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              {g.message}
+              {g.deductees.length > 0 && <span className="block mt-1 text-[11px] text-amber-700">{g.deductees.join(", ")}</span>}
+            </p>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+
 // ─── Add Challan Modal ───────────────────────────────────────────────────────
 
 function AddChallanModal({ clientId, onClose, onAdded }: {
@@ -457,6 +611,15 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
   const [period, setPeriod] = useState("Q1");
   const [section, setSection] = useState("194J");
   const [fy, setFy] = useState("2025-26");
+  // THE SPLIT (TDS-08/TDS-30). A challan that pays s.201(1A) interest or a
+  // s.234E fee is not all tax, and until these fields existed the whole amount
+  // was booked as TDS — so the section read as over-deposited and the deductee
+  // annexure could not foot. Blank means zero, which is the old behaviour, so
+  // a CA who has nothing extra to record types nothing extra.
+  const [surchargeRupees, setSurchargeRupees] = useState("");
+  const [interestRupees, setInterestRupees] = useState("");
+  const [penaltyRupees, setPenaltyRupees] = useState("");
+  const [minorHead, setMinorHead] = useState<"200" | "400">("200");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -465,6 +628,21 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
     const amtPaise = paiseFromRupeeInput(amtRupees || "0");
     if (amtPaise === null) {
       setError("Amount must be in rupees, e.g. 125000 or 125000.50 — without commas.");
+      return;
+    }
+    const surchargePaise = paiseFromRupeeInput(surchargeRupees || "0");
+    const interestPaise = paiseFromRupeeInput(interestRupees || "0");
+    const penaltyPaise = paiseFromRupeeInput(penaltyRupees || "0");
+    if (surchargePaise === null || interestPaise === null || penaltyPaise === null) {
+      setError("Surcharge, interest and penalty must be rupee amounts — e.g. 3600 or 3600.50, without commas.");
+      return;
+    }
+    // The server refuses this too, with the arithmetic spelled out. Saying it
+    // here as well is not a second rule: it is the same rule said before the
+    // round trip, so the CA sees which figure to change while it is still on
+    // the screen.
+    if (surchargePaise + interestPaise + penaltyPaise > amtPaise) {
+      setError("Surcharge, interest and penalty together come to more than the total. The Amount is what left the bank — tax plus those three — not the tax on its own.");
       return;
     }
     // IT WRITES SOMETHING NOW. This modal used to call onAdded() with a row
@@ -487,6 +665,10 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
         section,
         financial_year: fy,
         quarter: period,
+        surcharge_paise: surchargePaise,
+        interest_paise: interestPaise,
+        penalty_paise: penaltyPaise,
+        minor_head: minorHead,
       });
       onAdded(saved);
       onClose();
@@ -522,6 +704,42 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
           <div>
             <label className="text-xs font-medium text-[#334155] block mb-1">Amount (₹)</label>
             <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={amtRupees} onChange={e => { setAmtRupees(e.target.value); setError(null); }} />
+            <p className="text-[10px] text-[#94A3B8] mt-1">
+              The TOTAL that left the bank. Tax is whatever is left after the three below.
+            </p>
+          </div>
+          {/* THE HEADS THE CHALLAN ACTUALLY HAS. Migration 037 gave
+              tds_challans a surcharge, interest and penalty column in 2025 and
+              nothing ever wrote to any of them, so every deposit was recorded
+              as pure tax. */}
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs font-medium text-[#334155] block mb-1">Surcharge (₹)</label>
+              <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={surchargeRupees} onChange={e => { setSurchargeRupees(e.target.value); setError(null); }} placeholder="0" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[#334155] block mb-1" title="IT Act s.201(1A)">Interest (₹)</label>
+              <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={interestRupees} onChange={e => { setInterestRupees(e.target.value); setError(null); }} placeholder="0" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[#334155] block mb-1" title="IT Act s.234E / s.271H">Fee (₹)</label>
+              <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={penaltyRupees} onChange={e => { setPenaltyRupees(e.target.value); setError(null); }} placeholder="0" />
+            </div>
+          </div>
+          <p className="text-[10px] text-[#94A3B8] -mt-1">
+            Interest is IT Act s.201(1A); fee is the s.234E ₹200-a-day late-filing
+            charge. Leave them blank if the deposit is only tax. The Deposit Due
+            panel works both out for you.
+          </p>
+          <div>
+            <label className="text-xs font-medium text-[#334155] block mb-1">Minor Head</label>
+            {/* 200 vs 400 is who initiated the payment, NOT company vs
+                non-company — that is the challan's major head (0020/0021) and
+                migration 037's inline comment had it the other way round. */}
+            <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={minorHead} onChange={e => setMinorHead(e.target.value === "400" ? "400" : "200")}>
+              <option value="200">200 — TDS payable by the deductor</option>
+              <option value="400">400 — TDS regular assessment (against a demand)</option>
+            </select>
           </div>
           {/* Without this the refusal above would be silent, which is worse
               than the coercion it replaced: the CA would press Add and nothing
@@ -842,6 +1060,8 @@ export default function TDSPage() {
 
       {/* Tab: Challans */}
       {activeTab === 1 && (
+        <div className="space-y-4">
+        <DepositDuePanel clientId={selectedClientId} />
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
             <div>
@@ -889,6 +1109,7 @@ export default function TDSPage() {
               </table>
             </div>
           )}
+        </div>
         </div>
       )}
 

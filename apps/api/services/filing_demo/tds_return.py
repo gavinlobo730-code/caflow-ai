@@ -23,14 +23,11 @@ Read-only end to end — this module performs no write of any kind.
 """
 from __future__ import annotations
 
+from core.ist_clock import ist_today
+from domain.tds import interest as tds_interest
 from domain.tds import vocabulary
 
-from datetime import date
-
 from services.filing_demo import common
-
-# ₹200 per day of default — IT Act §234E, in integer paise.
-_S234E_FEE_PER_DAY_PAISE = 200_00
 
 
 def _inr(paise: int) -> str:
@@ -217,14 +214,24 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
         "correction statement (tracked on TRACES) — the original filing "
         "stands.")
     if due is not None and deducted > 0:
-        days_late = (date.today() - due).days
-        if days_late > 0:
-            fee = min(days_late * _S234E_FEE_PER_DAY_PAISE, deducted)
+        # §234E is computed by domain/tds/interest.py, not here. It used to be
+        # a `min(days * 200_00, deducted)` local to this demo — the only place
+        # in the product that knew the fee at all (TDS-08) — and the demo is
+        # the wrong home for a statutory figure a CA has to pay. The lateness
+        # is measured in IST: `date.today()` is UTC in this container, so a
+        # statement due today read as one day late for the first five and a
+        # half hours of every Indian day.
+        fee = tds_interest.fee_234e(
+            due_date=due, filed_on=ist_today(), tax_deductible_paise=deducted)
+        if fee.applies:
+            cap_note = (" capped at the TDS amount," if fee.fee_paise < fee.uncapped_paise
+                        else "")
             warning += (
                 f" This statement is past its Rule 31A due date "
                 f"({due.isoformat()}): the late-filing fee under IT Act "
-                f"§234E is ₹200 per day — {_inr(fee)} here, capped at the "
-                "TDS amount — payable before the statement is filed.")
+                f"§234E is ₹200 per day — {_inr(fee.fee_paise)} for "
+                f"{fee.days_late} day(s),{cap_note} payable before the "
+                "statement is filed.")
 
     stages += [
         common.warning_stage(warning),

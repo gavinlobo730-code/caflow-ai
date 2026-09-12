@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import uuid
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -25,8 +25,10 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from models.fy import FYLabel
-from core.ist_clock import fy_bounds
+from core.db_paging import fetch_all
+from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
+from domain.tds import deposit_due as deposit_due_rules
 
 router = APIRouter(prefix="/api/tds-workspace", tags=["tds_workspace"])
 _logger = logging.getLogger("caflow.tds_workspace")
@@ -149,14 +151,55 @@ def _tds_quarter_end(quarter: str, fy: str) -> str:
 # ── Request Models ─────────────────────────────────────────────────────────────
 
 class CreateChallanRequest(BaseModel):
+    """One challan 281 deposit.
+
+    `amount_paise` is the TOTAL that left the bank — the figure printed on the
+    counterfoil — and the three component fields say how much of it was not
+    tax. Tax is the remainder, so a request that sends none of them behaves
+    exactly as this endpoint always did (`tds_paise == total_paise`), which is
+    what made the split safe to add: no existing caller changes meaning.
+
+    Until this, the whole amount was booked as pure TDS (TDS-08/TDS-30), so a
+    challan that was part §201(1A) interest went into the books as tax and the
+    next reconciliation reported the section as over-deposited — while
+    `interest_paise` and `penalty_paise` sat unused on the table since
+    migration 037.
+    """
     client_id: str
     bsr_code: str = Field(..., description="7-digit BSR code of bank branch")
     challan_date: str = Field(..., description="YYYY-MM-DD")
-    amount_paise: int = Field(..., description="Integer paise only")
+    amount_paise: int = Field(..., ge=0,
+                              description="TOTAL paid, integer paise — tax plus "
+                                          "surcharge, interest and penalty")
     challan_no: str
     section: str = Field(..., description="e.g. 194A, 192, 194Q")
     financial_year: FYLabel = Field(..., description="e.g. 2025-26")
     quarter: str = Field(..., description="Q1, Q2, Q3, Q4")
+    surcharge_paise: int = Field(default=0, ge=0, description="Integer paise")
+    #: IT Act §201(1A) — 1% a month or part from the date tax was deductible to
+    #: the date deducted, 1.5% from the date deducted to the date paid over.
+    #: domain/tds/interest.py computes it; this records what was actually paid.
+    interest_paise: int = Field(default=0, ge=0, description="§201(1A), integer paise")
+    #: §234E's ₹200-a-day late-filing fee, and any §271H penalty, go here.
+    penalty_paise: int = Field(default=0, ge=0, description="§234E/§271H, integer paise")
+    #: Challan 281's minor head. 200 is tax the deductor pays over of their own
+    #: motion; 400 is a deposit against a demand raised on regular assessment.
+    #: The column has existed since migration 037 with a '200' default and no
+    #: way to send anything else, so a 400 could not be recorded at all.
+    minor_head: Literal["200", "400"] = Field(
+        default="200",
+        description="200 = TDS payable by the deductor; 400 = regular assessment")
+
+    @field_validator("minor_head")
+    @classmethod
+    def _known_minor_head(cls, v: str) -> str:
+        return (v or "200").strip()
+
+    def tds_paise(self) -> int:
+        """What of the total is TAX. Never negative — the components are
+        validated against the total before this is called."""
+        return (self.amount_paise - self.surcharge_paise
+                - self.interest_paise - self.penalty_paise)
 
 
 class CreateDeductionRequest(BaseModel):
@@ -715,6 +758,68 @@ def delete_deduction(
         return api_response(False, None, "Could not delete the deduction.")
 
 
+# ── What is due for deposit this month ───────────────────────────────────────
+#
+# TDS-30. Every deduction is already a row in tds_deductions and nothing added
+# them up, so on the 5th of the month the CA exported to Excel to work out what
+# to pay by the 7th. domain/tds/deposit_due.py is the rule; this endpoint is the
+# read. The interest it carries is domain/tds/interest.py's §201(1A)(ii), and
+# the due date is services/compliance_engine.py's Rule 30(2) — neither is
+# restated here.
+
+
+@router.get("/deposit-due")
+def deposit_due(
+    client_id: str = Query(...),
+    month: str = Query(..., description="YYYY-MM — the month tax was DEDUCTED in"),
+    current_user: dict = Depends(rbac("tds", "read")),
+):
+    """The challan-281 worksheet for one deduction month. Rule 30(2)."""
+    assert_client_access(current_user, client_id)
+    try:
+        firm_id = current_user["firm_id"]
+        try:
+            year, mon = (int(part) for part in month.split("-", 1))
+            month_start = date(year, mon, 1)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=422,
+                detail=(f"{month!r} is not a month. Expected YYYY-MM — the "
+                        "month the tax was DEDUCTED in, which is what Rule "
+                        "30(2)'s seventh-of-the-following-month runs from."))
+        month_end = date(year + (mon == 12), (mon % 12) + 1, 1) - timedelta(days=1)
+
+        from services.compliance_engine import tds_deposit_due_date
+        due = tds_deposit_due_date(year, mon)
+
+        if _USE_MOCK:
+            rows = [d for d in _MOCK_DEDUCTIONS.values()
+                    if d.get("client_id") == client_id
+                    and month_start.isoformat() <= str(d.get("transaction_date") or "")[:10]
+                    <= month_end.isoformat()]
+        else:
+            from core.supabase_client import get_supabase
+            sb = get_supabase()
+            rows = fetch_all(
+                lambda: (sb.table("tds_deductions")
+                         .select("id, section, transaction_date, challan_date, "
+                                 "status, deductee_name, payment_amount_paise, "
+                                 "tds_paise, surcharge_paise, cess_paise")
+                         .eq("firm_id", firm_id).eq("client_id", client_id)
+                         .gte("transaction_date", month_start.isoformat())
+                         .lte("transaction_date", month_end.isoformat())),
+                label="tds.deposit_due")
+
+        sheet = deposit_due_rules.build(
+            rows, month=f"{year:04d}-{mon:02d}", due_date=due, as_at=ist_today())
+        return api_response(True, {"client_id": client_id, **sheet.as_dict()})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.exception("caflow.tds.deposit_due failed")
+        return api_response(False, None, str(e))
+
+
 @router.get("/challans")
 def list_challans(
     client_id: str = Query(...),
@@ -759,6 +864,19 @@ def create_challan(
     try:
         assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
+        # The components are part OF the total, not additions to it — the
+        # counterfoil shows one figure. A request whose components exceed it
+        # would store a negative tax, which every downstream sum would then
+        # quietly absorb, so it is refused with the arithmetic spelled out.
+        if body.tds_paise() < 0:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"The surcharge, interest and penalty on this challan come "
+                    f"to {body.surcharge_paise + body.interest_paise + body.penalty_paise} "
+                    f"paise, more than the {body.amount_paise} paise total. "
+                    "amount_paise is what left the bank — tax plus the three "
+                    "components — not the tax alone."))
         # Period validation — prevent posting to locked financial years (migration 020)
         period_validation_service.validate_posting_date(firm_id or "", body.challan_date)
         record = {
@@ -771,8 +889,18 @@ def create_challan(
             # surcharge/interest/penalty breakout on this quick-create form
             # the full amount is booked as pure TDS (tds_paise == total_paise).
             "payment_date": body.challan_date,
-            "tds_paise": body.amount_paise,
+            # THE SPLIT, which used to be "the whole amount is tax". A challan
+            # that paid §201(1A) interest or a §234E fee booked all of it as
+            # TDS, so the section read as over-deposited and the deductee
+            # annexure could not foot. tds_paise is the REMAINDER precisely so
+            # a caller sending none of the three components gets exactly the
+            # old behaviour.
+            "tds_paise": body.tds_paise(),
+            "surcharge_paise": body.surcharge_paise,
+            "interest_paise": body.interest_paise,
+            "penalty_paise": body.penalty_paise,
             "total_paise": body.amount_paise,
+            "minor_head": body.minor_head,
             "challan_no": body.challan_no,
             "section": body.section,
             "financial_year": body.financial_year,
