@@ -151,11 +151,28 @@ def _tds_obligations(financial_year: str,
                      has_non_resident_vendors: bool = False) -> list[dict]:
     """The TDS statements one client owes for one FY.
 
-    26Q ALWAYS, and 27Q ONLY IF THE CLIENT PAYS A NON-RESIDENT. Rule 31A(4)
-    splits the quarterly statement by the payee's residence: (a) 26Q for
-    non-salary payments to residents, (b) 27Q for payments to non-residents.
-    They are separate returns filed separately, on the same due dates —
-    Rule 31A(2) sets one date per quarter regardless of form.
+    24Q AND 26Q ALWAYS, and 27Q ONLY IF THE CLIENT PAYS A NON-RESIDENT.
+    Rule 31A(4) splits the quarterly statement three ways: 24Q for salary
+    (§192), (a) 26Q for non-salary payments to residents, (b) 27Q for payments
+    to non-residents. They are separate returns filed separately, on the same
+    due dates — Rule 31A(2) sets one date per quarter regardless of form.
+
+    24Q WAS ABSENT, AND A DOCSTRING SAID IT WAS HERE (TDS-12). This function
+    emitted 26Q and 27Q only, while `_payroll_obligations` declined to emit the
+    salary statement on the ground that "it is already emitted by
+    _tds_obligations" — load-bearing misinformation, and the salary return
+    Rule 31A puts a quarterly deadline on appeared on no calendar at all. The
+    monthly §192 DEPOSIT was there (`TDS_SALARY_DEPOSIT`); the quarterly
+    STATEMENT was not, and they are different obligations with different dates
+    and different penalties (§234E runs on the statement).
+
+    Unconditional, like 26Q rather than like 27Q. 26Q is emitted for every TDS
+    engagement without first asking whether the client has any resident
+    deduction, because a TDS engagement IS the statement of that; 24Q is the
+    same shape — a business with employees is the ordinary case, not the rare
+    one 27Q's condition exists for. Gating it on `payroll_employees` would also
+    be the wrong fact: a firm can file 24Q for a client whose payroll it does
+    not run.
 
     Generating 27Q unconditionally would put four deadlines a year in the
     calendar of every client that has never paid a foreign supplier, which is
@@ -185,12 +202,20 @@ def _tds_obligations(financial_year: str,
     # 26Q/27Q up to FY 2025-26, 140/144 from FY 2026-27 — because a reminder
     # naming a form the portal no longer accepts sends them to the wrong place.
     vocab = vocabulary.vocabulary_for(financial_year)
+    salary_form = vocab.statement(vocabulary.SALARY)
     resident_form = vocab.statement(vocabulary.RESIDENT_NON_SALARY)
     non_resident_form = vocab.statement(vocabulary.NON_RESIDENT)
 
     out = []
     for q, (ps, pe) in quarters.items():
         due = ce.tds_return_due_date(q, fye)
+        # "TDS24Q" is the stable kind code, like the two below: it is an
+        # internal key that generated rows and the (obligation_type,
+        # period_start) dedup carry, and 24Q shares its period_start with 26Q,
+        # so it HAS to be its own type rather than a second 26Q row.
+        out.append(_spec("TDS24Q", "TDS",
+                         f"TDS {salary_form} {q} FY {financial_year}",
+                         ps, pe, due))
         out.append(_spec("TDS26Q", "TDS",
                          f"TDS {resident_form} {q} FY {financial_year}",
                          ps, pe, due))
@@ -298,11 +323,17 @@ def _payroll_obligations(financial_year: str) -> list[dict]:
     there is no single rule, so inventing one would put a wrong date in a CA's
     calendar. A missing date is a gap somebody notices; a wrong one is trusted.
 
-    THE 24Q RETURN IS NOT HERE EITHER — it is already emitted by
-    _tds_obligations, quarterly, for a TDS engagement. Emitting it again from
-    the payroll side would put the same deadline in the calendar twice for the
-    clients where a firm runs both, and the dedup key is
-    (obligation_type, period_start), which would not catch it.
+    THE 24Q RETURN IS NOT HERE EITHER — it is emitted by `_tds_obligations`,
+    quarterly, for a TDS engagement. Emitting it again from the payroll side
+    would put the same deadline in the calendar twice for the clients where a
+    firm runs both, and the dedup key is (obligation_type, period_start),
+    which would not catch it.
+
+    That sentence stood here while `_tds_obligations` emitted 26Q and 27Q and
+    nothing else, so the quarterly salary statement was on no calendar at all
+    and the docstring was the reason nobody looked (TDS-12). It is true now.
+    What IS here is the monthly §192 DEPOSIT, which is a different obligation
+    with a different date and a different penalty.
     """
     out: list[dict] = []
     for (y, m) in fy_months(financial_year):

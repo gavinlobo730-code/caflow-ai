@@ -70,7 +70,12 @@ _NO_FILING_ROW_REASON = {
               "different rule from the period lock. Recording it here would "
               "freeze a whole financial year's books."),
     "ITR":    "An income-tax return is not a GST period; the GST period lock does not apply.",
+    # All three quarterly statements, because the calendar generates all three
+    # (TDS-12 added 24Q) and this map exists to say it PER TYPE — a generic
+    # sentence about GST returns is a worse answer than the specific one.
+    "TDS24Q": "A TDS return is not a GST period; the GST period lock does not apply.",
     "TDS26Q": "A TDS return is not a GST period; the GST period lock does not apply.",
+    "TDS27Q": "A TDS return is not a GST period; the GST period lock does not apply.",
 }
 _NO_FILING_ROW_DEFAULT = (
     "public.filings records GST returns of supplies (GSTR-1 and GSTR-3B). "

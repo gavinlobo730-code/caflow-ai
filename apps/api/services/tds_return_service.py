@@ -256,6 +256,50 @@ def _deposited_challans(db, firm_id: str, client_id: str, fy: str, quarter: str)
             .eq("financial_year", fy).eq("quarter", quarter))
 
 
+def _section_labels(fy: str, sections) -> tuple[dict[str, str], list[str]]:
+    """{stored 1961 code -> the code the PERIOD's own Act names}, and the gaps.
+
+    THE FORM NUMBER WAS TRANSLATED AND THE SECTIONS WERE NOT (TDS-17). A FY
+    2026-27 26Q came back as `"form": "140"` — right, because the Income-tax
+    Act 2025 renumbered the statements — with every deductee line still citing
+    `194J`, which that Act does not contain. `domain/tds/vocabulary.py:312`
+    says in as many words that it exists to prevent exactly this.
+
+    TRANSLATED AT THE EMISSION DICT, NOWHERE ELSE. `d.section` is the stored
+    ROUTING key: it came off `tds_deductions.tds_section`, it groups the
+    challan match (`challan_mapping.parent_of`), and it is what
+    `section_rates` is keyed on. Rekeying any of those is the thing CLAUDE.md
+    forbids — and it would break the challan match outright, because a challan
+    records what somebody typed and says "194J" in every period.
+
+    The 1961 code travels WITH the label as `section_1961` on each deductee,
+    because §393(1) has no reverse: the whole 194-series collapses into it, so
+    a reader given only the label cannot get back to the section that produced
+    it. Anything reading the payload back to route or reconcile must use that
+    field. (`lib/data/tds.ts` writes the payload into `tds_returns.fvu_json`,
+    so both land in a JSONB snapshot; the routing keys beside the labels are
+    what keep it usable.)
+
+    A section the 2025 Act has no recorded code for is NOT guessed: the stored
+    code is kept and the omission is named in `statutory_gaps`, beside the
+    payment-code gap the vocabulary already reports.
+    """
+    vocab = _vocabulary.vocabulary_for(fy)
+    labels: dict[str, str] = {}
+    gaps: list[str] = []
+    seen = {str(c or "").strip() for c in sections}
+    for code in sorted(c for c in seen if c):
+        try:
+            labels[code] = vocab.section(code)
+        except _vocabulary.VocabularyError:
+            labels[code] = code
+            gaps.append(
+                f"No {vocab.act_name} section code is recorded for {code}. The "
+                f"line is shown under its Income-tax Act 1961 section; check it "
+                f"against the notified correspondence before filing.")
+    return labels, gaps
+
+
 def tds_26q_from_books(
     db, firm_id: str, client_id: str, fy: str, quarter: str,
     tan: str, deductor_name: str, deductor_pan: str, deductor_address: str,
@@ -357,6 +401,7 @@ def tds_26q_from_books(
         deductor_address=deductor_address, financial_year=fy, quarter=quarter,
         deductees=deductees, challans=[dict(c) for c in challans],
     )
+    _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees])
 
     tds_payable_id = _find_account_by_exact_name(db, firm_id, client_id, "TDS Payable")
     journal_ids = [e["journal_entry_id"] for e in events if e.get("journal_entry_id")]
@@ -370,7 +415,8 @@ def tds_26q_from_books(
         # belated or revised one filed today. See domain/tds/vocabulary.py.
         "form": _vocabulary.statement_form(_vocabulary.RESIDENT_NON_SALARY, fy_label=fy),
         "act": _vocabulary.vocabulary_for(fy).act_name,
-        "statutory_gaps": [g.note for g in _vocabulary.vocabulary_for(fy).gaps()],
+        "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
+                           + _sec_gaps),
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
@@ -384,7 +430,11 @@ def tds_26q_from_books(
         "deductees": [
             {
                 "deductee_name": d.deductee_name, "deductee_pan": d.deductee_pan,
-                "section": d.section, "nature_of_payment": d.nature_of_payment,
+                # The section the PERIOD's own Act names, with the stored 1961
+                # routing key beside it — see _section_labels (TDS-17).
+                "section": _sec_labels.get(d.section, d.section),
+                "section_1961": d.section,
+                "nature_of_payment": d.nature_of_payment,
                 "payment_date": d.payment_date, "payment_amount_paise": d.payment_amount_paise,
                 "tds_rate_pct": d.tds_rate_pct, "tds_deducted_paise": d.tds_deducted_paise,
                 "tds_deposited_paise": d.tds_deposited_paise, "challan_no": d.challan_no,
@@ -558,6 +608,7 @@ def tds_27q_from_books(
         deductor_address=deductor_address, financial_year=fy, quarter=quarter,
         deductees=deductees, challans=[dict(c) for c in challans],
     )
+    _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees])
 
     # THE SAME CONTROL ACCOUNT AS 26Q, and that is not an oversight. §195 tax
     # credits "TDS Payable" like every §194-series deduction — one liability,
@@ -578,7 +629,8 @@ def tds_27q_from_books(
         # belated or revised one filed today. See domain/tds/vocabulary.py.
         "form": _vocabulary.statement_form(_vocabulary.NON_RESIDENT, fy_label=fy),
         "act": _vocabulary.vocabulary_for(fy).act_name,
-        "statutory_gaps": [g.note for g in _vocabulary.vocabulary_for(fy).gaps()],
+        "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
+                           + _sec_gaps),
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
@@ -595,7 +647,11 @@ def tds_27q_from_books(
         "deductees": [
             {
                 "deductee_name": d.deductee_name, "deductee_pan": d.deductee_pan,
-                "section": d.section, "nature_of_payment": d.nature_of_payment,
+                # The section the PERIOD's own Act names, with the stored 1961
+                # routing key beside it — see _section_labels (TDS-17).
+                "section": _sec_labels.get(d.section, d.section),
+                "section_1961": d.section,
+                "nature_of_payment": d.nature_of_payment,
                 "payment_date": d.payment_date, "payment_amount_paise": d.payment_amount_paise,
                 "tds_rate_pct": d.tds_rate_pct, "tds_deducted_paise": d.tds_deducted_paise,
                 "tds_deposited_paise": d.tds_deposited_paise, "challan_no": d.challan_no,
@@ -696,6 +752,7 @@ def tds_24q_from_books(
         deductor_address=deductor_address, financial_year=fy, quarter=quarter,
         deductees=deductees, challans=[dict(c) for c in challans],
     )
+    _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees])
 
     tds_salary_id = _find_account_by_exact_name(db, firm_id, client_id, "TDS Payable - Salary")
     journal_ids = [r["journal_entry_id"] for r in runs if r.get("journal_entry_id")]
@@ -714,7 +771,8 @@ def tds_24q_from_books(
         # leaves the employees of that month showing 'U' in their 26AS, and
         # they are the people most likely to ask about it.
         "challan_gaps": mapping.gaps,
-        "statutory_gaps": [g.note for g in _vocabulary.vocabulary_for(fy).gaps()],
+        "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
+                           + _sec_gaps),
         "source": "finalized_payroll_runs",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
@@ -728,7 +786,11 @@ def tds_24q_from_books(
         "deductees": [
             {
                 "deductee_name": d.deductee_name, "deductee_pan": d.deductee_pan,
-                "section": d.section, "nature_of_payment": d.nature_of_payment,
+                # The section the PERIOD's own Act names, with the stored 1961
+                # routing key beside it — see _section_labels (TDS-17).
+                "section": _sec_labels.get(d.section, d.section),
+                "section_1961": d.section,
+                "nature_of_payment": d.nature_of_payment,
                 "payment_date": d.payment_date, "payment_amount_paise": d.payment_amount_paise,
                 "tds_rate_pct": d.tds_rate_pct, "tds_deducted_paise": d.tds_deducted_paise,
                 "tds_deposited_paise": d.tds_deposited_paise, "challan_no": d.challan_no,
