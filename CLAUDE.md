@@ -101,6 +101,22 @@ change. The code is the authority; keep this file in step with it.
   so before it every account id in the database satisfied it. A `chart_of_accounts`
   row with `client_id IS NULL` is a firm-level account and is allowed on any of that
   firm's entries.
+- **What a document still has OPEN is `outstanding_paise`, and the note columns'
+  signs are not guessable from their names.** Migration 278 put it on
+  `client_sales_invoices` and `purchase_bills` as `GENERATED ALWAYS ... STORED`
+  precisely so the formula lives once, in the schema — read the column, do not
+  re-subtract. `total - paid` is a DIFFERENT figure: it omits the CGST §34 note
+  terms, and **migration 210 added the INCREASE document to both sides at
+  once**, so `credit_note_paise` ADDS on `purchase_bills` while `credited_paise`
+  SUBTRACTS on `client_sales_invoices` (`debit_note_paise` adds on invoices,
+  `debited_paise` subtracts on bills). Four places in the bank module computed
+  this and two had it wrong; both bank paths now go through
+  `domain/banking/matcher.invoice_open_paise` / `bill_open_paise`, which read the
+  column where the row came from Postgres and transcribe 278's expression where
+  it did not (mock mode, the in-memory doubles). A settlement candidate carries
+  BOTH figures — `amount_paise` is the document's face value, `outstanding_paise`
+  what is left — because `FindMatchModal` renders "· ₹X open" only when the two
+  differ.
 - `created_by` / `posted_by` FK to `public.users.id` (the internal user id), **not** the
   Supabase auth id.
 - Money crosses the API as raw integer `*_paise`. The frontend formats to ₹. Rupee
@@ -1076,7 +1092,17 @@ ready" is chunked and resumable; a `proposed` draft is never passed in bulk. A
 rule a Manager+ marks **trusted** passes its lines with no click, as
 `created_by = trusted_by` — the one place the product acts unprompted, an owner
 decision of 2026-09-03 that reversed the earlier "draft only" rule. The
-posting path is still only `bank_posting_service.post`. `docs/audits/` and
+posting path is still only `bank_posting_service.post`, and **that path is
+INR-only and refuses rather than converting** — it calls `_create_journal` with
+no `txn_currency`, so the kernel takes INR at rate 1 and a USD line reading
+1,000.00 would be booked as one thousand RUPEES: balanced, footing, and wrong by
+the exchange rate. Both the import (`banking_service._import_core`) and the post
+refuse a non-INR `bank_accounts.currency`. `match_and_settle_multi` is
+deliberately NOT guarded — it carries currency and exchange_rate through to
+receipt/payment creation and is the path that already works; teaching
+`post()`/`_plan()` the same needs a rate per statement line and a decision on
+where the FX gain or loss leg lands, and `_create_journal`'s balance assertion is
+exactly what an unbalanced FX leg breaks. `docs/audits/` and
 the batch completion reports are historical records, not current specs.
 
 **Three exceptions in `docs/audits/`, all from 7 September 2026, which ARE
