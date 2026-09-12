@@ -68,6 +68,14 @@ IMMUTABLE_ON_UPDATE: dict[tuple[str, str], str] = {
     # Identity. Changing one of these does not correct the record, it makes it
     # a different record — and the row it would collide with may already exist.
     ("BankAccountUpdateIn", "account_no"): "the account number IS the account",
+    ("FixedAssetUpdateIn", "asset_code"): (
+        "the code IS the asset, to the ledger: FA-ACQ-{code} is the acquisition "
+        "journal's reference and FA-DEPN-{code}-{period} every month's, and the "
+        "reversal paths look an entry up by rebuilding that string. Renaming an "
+        "asset after a posting orphans every reference already written — which "
+        "is why migration 351 keeps the code on a soft-deleted row too. A "
+        "wrongly typed code is corrected by deleting the asset (which reverses "
+        "the acquisition) and re-entering it"),
     ("FirmHsnLibraryUpdateIn", "hsn_code"): "the code IS the entry",
 
     # Type, once anything has been posted against it.

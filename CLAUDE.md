@@ -653,6 +653,26 @@ Recorded so nobody goes looking:
   under-depreciating. An asset's own stored `wdv_rate_percent` still wins over
   the default whenever it has one.
 
+  **AND A REDUCING BALANCE HAS TO BE TOLD WHERE TO STOP.** A WDV charge
+  approaches its floor and never reaches it, so with the column's default
+  `salvage_value_paise = 0` an asset was depreciated for ever — and the derived
+  rates above sharpened that, because a rate derived from the life lands the
+  asset exactly on its residual at the end of the life, so the overshoot begins
+  precisely when the asset is fully depreciated. `_wdv_residual_at_end_of_life`
+  is the terminal, and it is derived from the ROW'S OWN rate and life by
+  running the same yearly chain the charges run — not from a 5%-of-cost
+  constant (which would be a different asset's arithmetic wherever the CA
+  recorded their own rate) and not from the closed form `cost × (1 −
+  rate/100)^life` (which is a paise below where the flooring actually lands, so
+  the asset takes a ₹0.01 charge in the year after it finished). The floor is
+  `max(stored salvage, that residual)` — a salvage the CA deliberately recorded
+  above the residual still wins. A row with **no useful life** keeps exactly the
+  behaviour it has, because there is nothing to derive from; `register-integrity`
+  reports those as `wdv_asset_has_no_stopping_point` rather than writing a life
+  in, since a life is a Part C judgement about that asset and guessing one moves
+  the profit. Straight line already terminates and is untouched, trailing paisa
+  included.
+
 ## Code rules — always follow
 
 - Never hardcode API keys — always use .env files
@@ -849,6 +869,23 @@ document, so its answer genuinely is a row set; migration 278 made
 the query, and what crosses the wire is what is OWED rather than everything ever
 billed. Both obey the rule. Which shape a report needs is decided by the size of
 its ANSWER, not by the table it reads.
+
+**A read that IS a row set has its own rule, and it is one line: page it.**
+PostgREST caps a response at ~1000 rows (`db-max-rows`) and reports nothing
+when it does, so a truncated read is indistinguishable from a complete one and
+every figure computed from it is confidently wrong. `core/db_paging.fetch_all`
+is the one helper — keyset, never OFFSET, stopping on a short page — and it is
+the one to import; eleven modules still carry a private `_paginate_all` copy,
+and adding a twelfth is the thing not to do. Two guards state the rule rather
+than a spelling of it: `tests/test_paginated_selects_carry_their_key.py` fails a
+paged query whose `.select()` omits the cursor column (which works perfectly
+until the thousandth row and then cannot advance), and it scans `fetch_all`
+alongside the private copies — it did not, so for a while a call site MOVED OUT
+of the rule by moving to the shared helper. Two traps at the call site:
+`fetch_all` imposes its own `ORDER BY id`, so an ordering the endpoint wants is
+applied to the rows it got BACK, never inside the paged query; and sort keys are
+coalesced, because a nullable column such as `fixed_assets.asset_code` raises
+`TypeError` in Python where the database sorted it happily.
 
 **Closing stock as at a date is the same shape, and it also carries a rule about
 WHICH COLUMN answers a dated question.** `public.stock_position_as_at`
