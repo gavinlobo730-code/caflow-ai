@@ -147,8 +147,119 @@ def test_return_approval_requires_manager_role(client):
     assert r_mgr.json()["data"]["status"] == "ca_approved"
 
 
+def _seed_register(**over):
+    """A row in the client's own TDS register.
+
+    The register is READ by the reconciliation now (TDS-21); it used to be
+    pasted into the request beside the 26AS extract, which is why this test
+    supplied both sides and never touched the database.
+    """
+    from routers.tds_workspace import _MOCK_DEDUCTIONS
+    import uuid as _uuid
+    row = {"id": str(_uuid.uuid4()), "firm_id": "firm-1", "client_id": _CLIENT_ID,
+           "deductee_name": "Vendor", "deductee_pan": "ABCDE1234F",
+           "section": "194C", "tds_paise": 10000,
+           "transaction_date": "2025-06-10", "financial_year": "2025-26"}
+    row.update(over)
+    _MOCK_DEDUCTIONS[row["id"]] = row
+    return row
+
+
+def test_the_reconciliation_finds_a_deduction_the_api_created(client):
+    """The whole chain, not a seeded shortcut (TDS-21).
+
+    A deduction recorded through POST /deductions must be the one the
+    reconciliation reads. The register used to arrive in the request instead,
+    so nothing anywhere asserted that the two halves of the product agree about
+    what a deduction is.
+    """
+    made = client.post("/api/tds-workspace/deductions", headers=_HEADERS, json={
+        "client_id": _CLIENT_ID, "deductee_name": "Sharma & Co",
+        "deductee_pan": "ABCDE1234F", "section": "194J",
+        "payment_amount_paise": 5_00_000_00, "transaction_date": "2025-06-10",
+    })
+    assert made.json()["success"] is True, made.json()
+    tds_paise = made.json()["data"]["tds_paise"]
+    assert tds_paise > 0, "the engine withheld nothing — the rest proves nothing"
+
+    resp = client.post("/api/tds-workspace/form26as/upload", headers=_HEADERS, json={
+        "client_id": _CLIENT_ID, "financial_year": "2025-26",
+        "raw_data": {"tds_entries": [
+            {"pan": "ABCDE1234F", "section": "194J", "amount_paise": tds_paise}]},
+    })
+    summary = resp.json()["data"]["reconciliation_result"]["summary"]
+    assert summary["total_book"] == 1, (
+        "the register was not read — the reconciliation is looking at nothing")
+    assert summary["matched_count"] == 1
+    assert summary["missing_count"] == 0 and summary["missing_in_books_count"] == 0
+
+
+def test_a_register_row_with_no_financial_year_is_still_found(client):
+    """The fallback guards no live path — all three writers set the column —
+    and it stays because of the direction it fails in. A row this filter drops
+    does not raise: it makes the register look SHORTER than it is, and a
+    reconciliation over a short register reports a CLEAN result."""
+    _seed_register(deductee_pan="ABCDE1234F", section="194C", tds_paise=10000,
+                   financial_year=None, transaction_date="2025-06-10")
+    resp = client.post("/api/tds-workspace/form26as/upload", headers=_HEADERS, json={
+        "client_id": _CLIENT_ID, "financial_year": "2025-26",
+        "raw_data": {"tds_entries": [
+            {"pan": "ABCDE1234F", "section": "194C", "amount_paise": 10000}]},
+    })
+    summary = resp.json()["data"]["reconciliation_result"]["summary"]
+    assert summary["total_book"] == 1, "the row vanished from the register"
+    assert summary["matched_count"] == 1
+
+
+def test_a_row_dated_outside_the_year_is_not_in_it(client):
+    """The fallback must not become "everything matches everything"."""
+    _seed_register(deductee_pan="ABCDE1234F", section="194C", tds_paise=10000,
+                   financial_year=None, transaction_date="2024-06-10")
+    resp = client.post("/api/tds-workspace/form26as/upload", headers=_HEADERS, json={
+        "client_id": _CLIENT_ID, "financial_year": "2025-26",
+        "raw_data": {"tds_entries": [
+            {"pan": "ABCDE1234F", "section": "194C", "amount_paise": 10000}]},
+    })
+    summary = resp.json()["data"]["reconciliation_result"]["summary"]
+    assert summary["total_book"] == 0
+    assert summary["missing_in_books_count"] == 1
+
+
+def test_a_book_side_in_the_request_is_ignored_and_said_so(client):
+    """An older caller still pasting `book_deductions` must not silently get a
+    different answer than it asked for."""
+    _seed_register(deductee_pan="ABCDE1234F", section="194C", tds_paise=10000)
+    resp = client.post("/api/tds-workspace/form26as/upload", headers=_HEADERS, json={
+        "client_id": _CLIENT_ID, "financial_year": "2025-26",
+        "raw_data": {
+            "tds_entries": [{"pan": "ABCDE1234F", "section": "194C", "amount_paise": 10000}],
+            "book_deductions": [{"deductee_pan": "ZZZZZ9999Z", "section": "194I",
+                                 "amount_paise": 99999}],
+        },
+    })
+    result = resp.json()["data"]["reconciliation_result"]
+    assert result["summary"]["matched_count"] == 1, "the pasted side was used"
+    assert result["summary"]["total_book"] == 1
+    assert "book_deductions" in result["ignored_request_keys"]
+
+
+def test_a_portal_row_the_register_lacks_reaches_the_response(client):
+    """The bucket that did not exist. Nothing reported a 26AS row the client's
+    own register has no deduction for."""
+    resp = client.post("/api/tds-workspace/form26as/upload", headers=_HEADERS, json={
+        "client_id": _CLIENT_ID, "financial_year": "2025-26",
+        "raw_data": {"tds_entries": [
+            {"pan": "ABCDE1234F", "section": "194C", "amount_paise": 10000}]},
+    })
+    result = resp.json()["data"]["reconciliation_result"]
+    assert result["summary"]["missing_in_books_count"] == 1
+    assert result["missing_in_books"][0]["key"] == ["ABCDE1234F", "194C"]
+
+
 def test_form26as_reconciliation(client):
     """IT Act s.285BB — 26AS reconciliation: 2 deductions, 1 mismatch."""
+    _seed_register(deductee_pan="ABCDE1234F", section="194C", tds_paise=10000)
+    _seed_register(deductee_pan="FGHIJ5678K", section="194I", tds_paise=25000)
     body = {
         "client_id": _CLIENT_ID,
         "financial_year": "2025-26",
@@ -156,10 +267,6 @@ def test_form26as_reconciliation(client):
             "tds_entries": [
                 {"pan": "ABCDE1234F", "section": "194C", "amount_paise": 10000},
                 {"pan": "FGHIJ5678K", "section": "194I", "amount_paise": 20000},
-            ],
-            "book_deductions": [
-                {"deductee_pan": "ABCDE1234F", "section": "194C", "amount_paise": 10000},
-                {"deductee_pan": "FGHIJ5678K", "section": "194I", "amount_paise": 25000},  # mismatch
             ],
         },
     }

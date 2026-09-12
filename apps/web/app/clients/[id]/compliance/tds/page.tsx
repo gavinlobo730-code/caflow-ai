@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+// The year picker comes from the clock, never a literal list (CLAUDE.md).
+import { financialYearChoicesAround } from "@/lib/dates/periods";
+import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { Badge } from "@/components/ui/badge";
@@ -690,17 +693,23 @@ function ReturnsTab({ clientId }: { clientId: string }) {
 // ── 26AS Reconciliation ────────────────────────────────────────────────────
 
 function Form26ASTab({ clientId }: { clientId: string }) {
-  const [fy, setFy] = useState("");
+  const [fy, setFy] = useState(currentFinancialYearLabel());
   const [jsonText, setJsonText] = useState("");
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // THE PORTAL SIDE ONLY (TDS-21). This textarea used to say "paste 26AS JSON
+  // with 'tds_entries' and 'book_deductions' arrays" — it asked the CA to hand
+  // over the register the reconciliation is checking, which the platform holds
+  // in tds_deductions. The server reads it now; sending a book side is ignored
+  // and the response says so.
   async function upload() {
     setLoading(true);
     setError(null);
     try {
-      const raw_data = JSON.parse(jsonText);
+      const parsed = JSON.parse(jsonText);
+      const raw_data = Array.isArray(parsed) ? { tds_entries: parsed } : parsed;
       const resp = await apiFetch("/api/tds-workspace/form26as/upload", {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, financial_year: fy, raw_data }),
@@ -708,20 +717,63 @@ function Form26ASTab({ clientId }: { clientId: string }) {
       if (resp.success) setResult(resp.data);
       else setError(resp.error ?? "Upload failed");
     } catch {
-      setError("Invalid JSON. Please paste valid Form 26AS JSON.");
+      setError("Invalid JSON. Paste the 26AS entries as a JSON array or object.");
     } finally {
       setLoading(false);
     }
   }
 
+  const recon = (result?.reconciliation_result ?? null) as Record<string, unknown> | null;
+  const summary = (recon?.summary ?? {}) as Record<string, number>;
+  const bucket = (k: string) => (recon?.[k] ?? []) as Record<string, unknown>[];
+
+  function Rows({ title, tone, rows }: {
+    title: string; tone: string; rows: Record<string, unknown>[];
+  }) {
+    if (rows.length === 0) return null;
+    return (
+      <div className="space-y-1">
+        <p className={`text-xs font-medium ${tone}`}>{title} · {rows.length}</p>
+        {rows.map((m, i) => (
+          <div key={i} className="text-xs text-[#334155] border rounded p-2">
+            <span className="font-mono">
+              PAN {(m.key as string[])?.[0] || "—"} §{(m.key as string[])?.[1]}
+            </span>
+            {" — "}
+            Register: {rupees(m.book_paise as number)}, 26AS: {rupees(m.form26as_paise as number)}
+            {(m.diff_paise as number) ? `, Diff: ${rupees(m.diff_paise as number)}` : ""}
+            {m.reason ? (
+              <p className="text-[11px] text-[#64748B] mt-0.5">{m.reason as string}</p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <h3 className="font-medium">Form 26AS Reconciliation</h3>
+      <p className="text-xs text-[#64748B] max-w-[80ch]">
+        The TDS this client withheld from its own vendors, as the portal shows it
+        against this firm&apos;s register. Paste the 26AS entries only — the register
+        is read from the client&apos;s own TDS deductions for the year, not from what
+        you paste. IT Act s.285BB with Rule 114-I.
+      </p>
       <div className="space-y-3">
-        <input placeholder="Financial Year (e.g. 2025-26)" value={fy}
-          onChange={(e) => setFy(e.target.value)}
-          className="w-full border rounded px-3 py-1.5 text-sm" />
-        <textarea placeholder='Paste 26AS JSON with "tds_entries" and "book_deductions" arrays'
+        <select value={fy} onChange={(e) => setFy(e.target.value)}
+          className="w-full border rounded px-3 py-1.5 text-sm">
+          {financialYearChoicesAround(null).map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+        {/* NO SPECIMEN PAN, even as a placeholder. A screen must not carry a
+            statutory identifier it could send —
+            scripts/no-screen-invents-a-statutory-identifier.test.ts holds that
+            line, and it cannot tell a placeholder from a default. The shape is
+            described instead. */}
+        <textarea
+          placeholder={'[{"pan": "<deductee PAN>", "section": "194C", "amount_paise": 10000}]'}
           value={jsonText} onChange={(e) => setJsonText(e.target.value)}
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
         {error && <p className="text-red-600 text-sm">{error}</p>}
@@ -731,30 +783,33 @@ function Form26ASTab({ clientId }: { clientId: string }) {
         </button>
       </div>
 
-      {result && (
-        <div className="border rounded p-4 space-y-2">
+      {recon && (
+        <div className="border rounded p-4 space-y-3">
           <p className="font-medium text-sm">Reconciliation Result</p>
-          {(() => {
-            const recon = result.reconciliation_result as Record<string, unknown>;
-            const summary = recon?.summary as Record<string, number>;
-            const mismatched = recon?.mismatched as Record<string, unknown>[];
-            return (
-              <div className="space-y-2 text-sm">
-                <div className="flex gap-4">
-                  <span className="text-green-700">✓ Matched: {summary?.matched_count ?? 0}</span>
-                  <span className="text-amber-600">⚠ Mismatched: {summary?.mismatch_count ?? 0}</span>
-                  <span className="text-red-600">✗ Missing: {summary?.missing_count ?? 0}</span>
-                </div>
-                {(mismatched?.length ?? 0) > 0 && mismatched.map((m, i) => (
-                  <div key={i} className="text-xs text-[#334155] border rounded p-2">
-                    PAN: {(m.key as string[])?.[0]} §{(m.key as string[])?.[1]} —
-                    Book: {rupees(m.book_paise as number)}, 26AS: {rupees(m.form26as_paise as number)},
-                    Diff: {rupees(m.diff_paise as number)}
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="text-green-700">✓ Matched: {summary.matched_count ?? 0}</span>
+            <span className="text-amber-600">⚠ Amount differs: {summary.mismatch_count ?? 0}</span>
+            <span className="text-red-600">✗ Not in the register: {summary.missing_in_books_count ?? 0}</span>
+            <span className="text-red-600">✗ Not in 26AS: {summary.missing_count ?? 0}</span>
+            {(summary.no_pan_count ?? 0) > 0 && (
+              <span className="text-[#64748B]">No PAN: {summary.no_pan_count}</span>
+            )}
+          </div>
+          <p className="text-xs text-[#64748B]">
+            26AS {rupees(summary.total_26as_paise ?? 0)} against a register of{" "}
+            {rupees(summary.total_books_paise ?? 0)}
+            {(summary.net_variance_paise ?? 0) !== 0
+              ? ` — the portal shows ${rupees(Math.abs(summary.net_variance_paise ?? 0))} ${
+                  (summary.net_variance_paise ?? 0) > 0 ? "more" : "less"}`
+              : " — they agree"}.
+          </p>
+          <Rows title="Amount differs" tone="text-amber-700" rows={bucket("mismatched")} />
+          <Rows title="On the portal, not in the register" tone="text-red-700"
+            rows={bucket("missing_in_books")} />
+          <Rows title="In the register, not on the portal" tone="text-red-700"
+            rows={bucket("missing_in_26as")} />
+          <Rows title="No deductee PAN — cannot be looked up" tone="text-[#64748B]"
+            rows={bucket("no_pan")} />
         </div>
       )}
     </div>
