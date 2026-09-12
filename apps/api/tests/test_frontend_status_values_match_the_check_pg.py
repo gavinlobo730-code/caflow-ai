@@ -81,7 +81,12 @@ KNOWN: dict[str, set[str]] = {
     "app/client-portal/page.tsx": {"overdue", "posted"},
     "app/clients/[id]/accounting/page.tsx": {"failed"},
     "app/clients/[id]/lifecycle/page.tsx": {"done", "skipped"},
-    "app/clients/[id]/purchases/page.tsx": {"resident"},
+    # "resident" left this list on 2026-09-12, and it was never a report worth
+    # having: line 1217 declares
+    #     residential_status: "resident" | "non_resident" | null;
+    # which is a TYPE ANNOTATION on a DIFFERENT FIELD — `status:` matched the
+    # tail of `residential_status:`. Two heuristic misfires in one line. The
+    # first is fixed in _WRITE below; the second is recorded as a limitation.
     # "active" and "archived" left this list on 2026-09-09, and the reason is
     # worth keeping: they were never a real report. They are
     # recurring_invoice_templates.status values, and the scanner attributed
@@ -100,7 +105,45 @@ KNOWN: dict[str, set[str]] = {
 _SKIP_DIRS = {"node_modules", ".next", "out", ".vercel"}
 _FROM = re.compile(r'\.from\("([a-z_0-9]+)"\)')
 _COMPARE = re.compile(r'\.status\s*(?:===|!==)\s*"([^"]+)"')
-_WRITE = re.compile(r'status:\s*"([^"]+)"')
+#: `status: "submitted"` in an OBJECT LITERAL — a value the browser sends.
+#:
+#: THE NEGATIVE LOOKAHEAD IS THE WHOLE OF IT, AND IT MATTERS. Without it this
+#: also matches a TypeScript TYPE ANNOTATION:
+#:
+#:     status: "deposited" | "matched" | "unmatched";
+#:
+#: which is a DECLARATION of what a column holds, not a write of anything. In
+#: TypeScript an object-literal property can be terminated by neither `;` nor
+#: `|`, so a closing quote followed by either is a type position, never a value
+#: position.
+#:
+#: 36 such annotations exist across apps/web against 53 real writes, and every
+#: one of them was being counted. They passed only because the file declaring a
+#: table's shape usually also READS that table, so the value was in the allowed
+#: union anyway — a coincidence, not a check. `lib/data/tds.ts` is where it
+#: stopped being one on 12-09-2026: `RecordedChallan` accurately declares
+#: `tds_challans`' three CHECK values, and deleting that file's browser-side
+#: `.from("tds_challans")` read (the one that fed the TDS-29 assembly) left the
+#: annotation with no table to be measured against. The type is right, the
+#: deletion is right, and the guard was reading a declaration as a write.
+#:
+#: What this deliberately still catches: every `status: "x",`, `status: "x" }`
+#: and `status: "x")` — the shapes that actually cross the wire.
+#:
+#: ⚠️ KNOWN LIMITATION, LEFT ALONE ON PURPOSE. There is no left boundary, so
+#: `status:` also matches the tail of `filing_status:`, `match_status:` and
+#: `import_status:` — six files today — and their values are then measured
+#: against the CHECK on a column called `status`, which is not the column they
+#: write. They pass by coincidence: `filed`, `pending` and `matched` happen to
+#: appear in some `status` CHECK in the union.
+#:
+#: A left boundary alone would be WORSE than the current state: it would stop
+#: measuring those six against anything at all, when what they need is to be
+#: measured against their OWN column's CHECK. Doing that properly means the
+#: fixture keying every `*_status` column, not just `status`, and `_reports`
+#: pairing each write with the right one. That is a real improvement and a
+#: separate change; naming it here beats a half-fix that reads like a fix.
+_WRITE = re.compile(r'status:\s*"([^"]+)"(?!\s*[;|])')
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
