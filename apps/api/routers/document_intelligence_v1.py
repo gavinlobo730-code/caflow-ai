@@ -15,6 +15,7 @@ from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
 from services.internal_client_service import assert_partner_for_internal_id
+from domain.extraction_totals import check_totals
 
 _logger = logging.getLogger("caflow.doc_intelligence_v1")
 _GROQ_KEY = os.environ.get("GROQ_API_KEY", "")
@@ -123,9 +124,15 @@ def extract_invoice(
         data = {"document_url": document_url} if document_url else None
         return JSONResponse(status_code=status_code, content=api_response(False, data, error))
 
+    # Does the reading add up? The five header figures are the model's reading
+    # of five printed numbers whose relationship the document itself asserts,
+    # and nothing checked it (PUR-21). Warns, never refuses — see
+    # domain/extraction_totals.py for the tolerance and why.
+    totals = check_totals(extracted)
     return api_response(True, {
         "extracted": extracted,
-        "confidence": _estimate_confidence(extracted),
+        "confidence": _estimate_confidence(extracted, totals),
+        "totals_check": totals,
         "requires_review": True,  # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         "client_id": client_id,
         "document_url": document_url,
@@ -272,10 +279,21 @@ def _gemini_extract_image(content: bytes, content_type: str) -> dict:
     return _parse_extraction_json(response.text)
 
 
-def _estimate_confidence(extracted: dict) -> str:
-    """Simple heuristic confidence score based on fields populated.
-    R2.8/F19: extracted is always a real Groq result here — the mock
-    fallback has been removed, so there is no `_is_mock` branch anymore."""
+def _estimate_confidence(extracted: dict, totals: Optional[dict] = None) -> str:
+    """Heuristic confidence in the reading.
+
+    R2.8/F19: extracted is always a real Groq result here — the mock fallback
+    has been removed, so there is no `_is_mock` branch anymore.
+
+    FIELD PRESENCE IS NOT EVIDENCE OF A CORRECT READING, and until PUR-21 it
+    was the only input: five fields populated scored "high" whether or not
+    they added up. A header that fails its own arithmetic is the one piece of
+    evidence available that a figure has been misread, so it caps the answer at
+    "low" — the CA is being told how much to trust these numbers, and the
+    honest answer when they contradict each other is: not much.
+    """
+    if totals is not None and totals.get("checked") and not totals.get("agrees"):
+        return "low"
     score = 0
     if extracted.get("vendor_name"):
         score += 2
