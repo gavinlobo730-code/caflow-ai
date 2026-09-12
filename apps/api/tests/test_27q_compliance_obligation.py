@@ -27,10 +27,15 @@ FY = "2025-26"
 
 # ── What is generated ────────────────────────────────────────────────────────
 
-def test_a_client_with_no_non_resident_vendor_gets_only_26q():
-    """The unchanged case, which is nearly every Indian practice."""
+def test_a_client_with_no_non_resident_vendor_gets_no_27q():
+    """The unchanged case, which is nearly every Indian practice.
+
+    24Q joined the unconditional set with TDS-12 — the quarterly SALARY
+    statement was on no calendar at all while a docstring said it was. What
+    this test is about is unchanged: 27Q, and only 27Q, is conditional."""
     specs = ob._tds_obligations(FY, has_non_resident_vendors=False)
-    assert [s["obligation_type"] for s in specs] == ["TDS26Q"] * 4
+    assert sorted(s["obligation_type"] for s in specs) == \
+        ["TDS24Q"] * 4 + ["TDS26Q"] * 4
 
 
 def test_the_default_is_no_27q():
@@ -40,7 +45,8 @@ def test_the_default_is_no_27q():
 
 def test_a_client_that_pays_a_non_resident_gets_both_statements():
     specs = ob._tds_obligations(FY, has_non_resident_vendors=True)
-    assert len(specs) == 8
+    assert len(specs) == 12
+    assert sum(1 for s in specs if s["obligation_type"] == "TDS24Q") == 4
     assert sum(1 for s in specs if s["obligation_type"] == "TDS26Q") == 4
     assert sum(1 for s in specs if s["obligation_type"] == "TDS27Q") == 4
 
@@ -64,7 +70,7 @@ def test_27q_shares_26q_s_due_date_quarter_by_quarter():
         by_period.setdefault(s["period_start"], set()).add(s["due_date"])
     assert len(by_period) == 4, "four quarters"
     for period, dues in by_period.items():
-        assert len(dues) == 1, f"26Q and 27Q disagree on the due date for {period}"
+        assert len(dues) == 1, f"the three statements disagree on the due date for {period}"
 
 
 def test_q4_is_31_may_for_27q_too():
@@ -101,7 +107,8 @@ def test_both_statements_are_filed_under_the_tds_compliance_type():
 
 def test_a_tds_engagement_carries_the_flag_through():
     plain = ob.obligations_for_service("TDS Compliance", FY)
-    assert [s["obligation_type"] for s in plain] == ["TDS26Q"] * 4
+    assert sorted(s["obligation_type"] for s in plain) == \
+        ["TDS24Q"] * 4 + ["TDS26Q"] * 4
 
     with_nr = ob.obligations_for_service("TDS Compliance", FY,
                                          client_has_non_resident_vendors=True)
@@ -239,7 +246,7 @@ def _generated_types(client="CL-27Q"):
 
 def test_a_tds_engagement_with_no_foreign_supplier_generates_four_records(_clean):
     ob.generate_for_engagement("F1", _tds_engagement(), FY)
-    assert _generated_types() == ["TDS26Q"] * 4
+    assert _generated_types() == ["TDS24Q"] * 4 + ["TDS26Q"] * 4
 
 
 def test_a_tds_engagement_with_a_foreign_supplier_generates_eight(_clean, monkeypatch):
@@ -250,7 +257,7 @@ def test_a_tds_engagement_with_a_foreign_supplier_generates_eight(_clean, monkey
          "country_of_residence": "CH"},
     ])
     ob.generate_for_engagement("F1", _tds_engagement(), FY)
-    assert _generated_types() == ["TDS26Q"] * 4 + ["TDS27Q"] * 4
+    assert _generated_types() == ["TDS24Q"] * 4 + ["TDS26Q"] * 4 + ["TDS27Q"] * 4
 
 
 def test_generation_stays_idempotent_with_both_statements(_clean, monkeypatch):
@@ -264,10 +271,10 @@ def test_generation_stays_idempotent_with_both_statements(_clean, monkeypatch):
     ])
     eng = _tds_engagement()
     first = ob.generate_for_engagement("F1", eng, FY)
-    assert first["generated"] == 8 and first["skipped"] == 0
+    assert first["generated"] == 12 and first["skipped"] == 0
     again = ob.generate_for_engagement("F1", eng, FY)
-    assert again["generated"] == 0 and again["skipped"] == 8
-    assert len(_generated_types()) == 8
+    assert again["generated"] == 0 and again["skipped"] == 12
+    assert len(_generated_types()) == 12
 
 
 def test_marking_a_vendor_non_resident_later_adds_27q_on_the_next_run(_clean, monkeypatch):
@@ -277,12 +284,12 @@ def test_marking_a_vendor_non_resident_later_adds_27q_on_the_next_run(_clean, mo
     from routers import vendors as vr
     eng = _tds_engagement()
     ob.generate_for_engagement("F1", eng, FY)
-    assert _generated_types() == ["TDS26Q"] * 4
+    assert _generated_types() == ["TDS24Q"] * 4 + ["TDS26Q"] * 4
 
     monkeypatch.setattr(vr, "MOCK_VENDORS", [
         {"id": "v1", "firm_id": "F1", "client_id": "CL-27Q",
          "residential_status": "non_resident"},
     ])
     res = ob.generate_for_engagement("F1", eng, FY)
-    assert res["generated"] == 4 and res["skipped"] == 4
-    assert _generated_types() == ["TDS26Q"] * 4 + ["TDS27Q"] * 4
+    assert res["generated"] == 4 and res["skipped"] == 8
+    assert _generated_types() == ["TDS24Q"] * 4 + ["TDS26Q"] * 4 + ["TDS27Q"] * 4

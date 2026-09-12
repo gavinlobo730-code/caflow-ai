@@ -25,7 +25,19 @@ export type TDSQuarter = "Q1" | "Q2" | "Q3" | "Q4";
 export interface TDSDeductee {
   deductee_name: string;
   deductee_pan: string;
+  /** The section code for the PERIOD, not a routing key — the same rule as
+   *  `form` above. `"194J"` up to 31-03-2026 and `"393(1)"` from FY 2026-27,
+   *  because the Income-tax Act 2025 collapsed the whole 194-series into it.
+   *  The form number was already translated and this was not, so a FY 2026-27
+   *  26Q came back as Form 140 with every line citing a section that Act does
+   *  not contain (TDS-17). Display this; never store it, never route on it. */
   section: string;
+  /** The stored 1961 code that produced the label above. §393(1) HAS NO
+   *  REVERSE — the whole 194-series collapses into it — so anything reading
+   *  this payload back to route, match a challan or look up a rate must use
+   *  this field. Optional only because a payload saved before TDS-17 has no
+   *  such key. */
+  section_1961?: string;
   nature_of_payment: string;
   payment_date: string;
   payment_amount_paise: number;

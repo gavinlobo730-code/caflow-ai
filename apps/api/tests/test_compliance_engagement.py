@@ -84,7 +84,12 @@ def test_gst_obligations_count_and_due_dates():
 
 def test_tds_itr_advance_roc_audit_obligations():
     tds = ob.obligations_for_service("TDS Compliance", FY)
-    assert len(tds) == 4 and all(s["obligation_type"] == "TDS26Q" for s in tds)
+    # 24Q and 26Q, four quarters each (TDS-12 added the salary statement, which
+    # Rule 31A(4) puts on the same four dates). 27Q is the conditional one and
+    # this client has no non-resident vendor.
+    assert len(tds) == 8
+    assert sorted(s["obligation_type"] for s in tds) == \
+        ["TDS24Q"] * 4 + ["TDS26Q"] * 4
     assert next(s for s in tds if "Q1" in s["period_label"])["due_date"] == "2025-07-31"
 
     itr = ob.obligations_for_service("Income Tax Return", FY)
