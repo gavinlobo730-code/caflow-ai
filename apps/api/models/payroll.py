@@ -9,6 +9,7 @@ from typing import Optional
 import re
 
 from core.validators import validate_pan
+from domain.payroll import identity as identity_domain
 from models.fy import FYLabel
 
 
@@ -96,6 +97,46 @@ class EmployeeIn(BaseModel):
         if not v.strip():
             raise ValueError("Employee name cannot be blank.")
         return v.strip()
+
+    # ── The two employee identifiers whose shape is settled (PAY-30) ────────
+    #
+    # `EmployeeIn(uan="NOTANUMBER", bank_ifsc="bad")` was accepted and stored.
+    # Both patterns already existed twice — `domain/payroll/employee_import.py`
+    # refuses a whole FILE on either, and `domain/payroll/ecr.py` refuses a
+    # member at file build — so the API was the one door with no check, and a
+    # UAN typed on the form wedged the ECR months later, at the moment the CA
+    # was trying to file. Imported from `domain.payroll.identity`, which is now
+    # the one home for both.
+    #
+    # THE ESIC NUMBER IS DELIBERATELY NOT CHECKED. Nothing in this codebase
+    # validates its format anywhere; `domain/payroll/exceptions.py` checks
+    # presence and stops. A length written from memory here would refuse
+    # legitimate numbers for every client, which is the wrong direction of
+    # error — the same judgement the codebase makes about the EPF
+    # establishment code, the LIN and the state PT slabs.
+    @field_validator("uan")
+    @classmethod
+    def uan_format(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip()
+        if not text:
+            return None
+        if not identity_domain.UAN_RE.match(text):
+            raise ValueError(
+                "UAN must be exactly 12 digits — the EPFO's own format, and "
+                "what the ECR refuses at file build.")
+        return text
+
+    @field_validator("bank_ifsc")
+    @classmethod
+    def ifsc_format(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip().upper()
+        if not text:
+            return None
+        if not identity_domain.IFSC_RE.match(text):
+            raise ValueError(
+                "IFSC must be four letters, then 0, then six letters or "
+                "digits — e.g. HDFC0001234 (RBI's format).")
+        return text
 
     @field_validator("aadhaar_last4")
     @classmethod
@@ -257,6 +298,34 @@ class EmployeeUpdateIn(BaseModel):
         if v is not None and (v < 0 or v > 100):
             raise ValueError("Percent fields must be between 0 and 100.")
         return v
+
+    # The same two shapes as EmployeeIn, on the UPDATE path too. A field you
+    # can create is a field you can correct, and a validator only at the create
+    # door is one PATCH away from being no validator at all — which is what
+    # tests/test_a_field_you_can_create_is_a_field_you_can_correct.py is for.
+    @field_validator("uan")
+    @classmethod
+    def uan_format(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip()
+        if not text:
+            return None
+        if not identity_domain.UAN_RE.match(text):
+            raise ValueError(
+                "UAN must be exactly 12 digits — the EPFO's own format, and "
+                "what the ECR refuses at file build.")
+        return text
+
+    @field_validator("bank_ifsc")
+    @classmethod
+    def ifsc_format(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip().upper()
+        if not text:
+            return None
+        if not identity_domain.IFSC_RE.match(text):
+            raise ValueError(
+                "IFSC must be four letters, then 0, then six letters or "
+                "digits — e.g. HDFC0001234 (RBI's format).")
+        return text
 
     @field_validator("name")
     @classmethod

@@ -89,7 +89,10 @@ import re
 from dataclasses import dataclass, field
 
 DELIMITER = "#~#"
-UAN_RE = re.compile(r"^\d{12}$")
+# One copy, in domain/payroll/identity.py (PAY-30) — this module enforces it
+# at file build and models/payroll.py now enforces it at the create door,
+# so two places must not each carry their own idea of the shape.
+from domain.payroll.identity import UAN_RE                  # noqa: F401
 
 
 def sanitise_name(raw: str) -> str:

@@ -69,9 +69,13 @@ from typing import Optional
 
 from core.validators import validate_pan
 
-UAN_RE = re.compile(r"^\d{12}$")
-# RBI's format: four letters (bank), '0' reserved, six alphanumerics (branch).
-IFSC_RE = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
+# ONE COPY, in domain/payroll/identity.py (PAY-30). Both patterns lived here
+# and again in ecr.py, and the API validated neither — so a UAN typed on the
+# form or sent over the API was stored unchecked and wedged the ECR months
+# later. Re-exported under their old names because this module's callers and
+# tests use them.
+from domain.payroll.identity import IFSC_RE, UAN_RE            # noqa: E402,F401
+
 AADHAAR_RE = re.compile(r"^\d{12}$")
 
 #: (column, whether the file must carry it). The header a CA is given.

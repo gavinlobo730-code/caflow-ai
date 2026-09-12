@@ -325,17 +325,40 @@ class TestTDSValidator:
         rate = TDSValidator.applicable_rate("194J", has_pan=True, base_rate=10.0)
         assert rate == 10.0
 
+    # §206AB now takes the FY it is asked about (TDS-24). The three cases below
+    # are the ones that always held, with a year the section reached; the two
+    # after them are the post-omission twin. Kept rather than deleted, because
+    # §206AB governs a period up to 31-03-2025 indefinitely — a belated or
+    # revised return filed today is still that period's law, the same "fork,
+    # not migration" shape as the TDS vocabulary.
     def test_206ab_non_filer_doubled(self):
         # IT Act Section 206AB: non-filer → max(base*2, 5%)
-        rate = TDSValidator.is_higher_rate_applicable("ABCDE1234F", is_non_filer=True, base_rate=10.0)
+        rate = TDSValidator.is_higher_rate_applicable(
+            "ABCDE1234F", is_non_filer=True, base_rate=10.0, fy="2024-25")
         assert rate == 20.0
 
     def test_206ab_non_filer_minimum_5pct(self):
-        rate = TDSValidator.is_higher_rate_applicable("ABCDE1234F", is_non_filer=True, base_rate=1.0)
+        rate = TDSValidator.is_higher_rate_applicable(
+            "ABCDE1234F", is_non_filer=True, base_rate=1.0, fy="2024-25")
         assert rate == 5.0
 
     def test_206ab_filer_no_change(self):
-        rate = TDSValidator.is_higher_rate_applicable("ABCDE1234F", is_non_filer=False, base_rate=10.0)
+        rate = TDSValidator.is_higher_rate_applicable(
+            "ABCDE1234F", is_non_filer=False, base_rate=10.0, fy="2024-25")
+        assert rate == 10.0
+
+    def test_206ab_does_not_reach_a_year_after_the_omission(self):
+        """Finance Act 2025 omitted §206AB w.e.f. 01-04-2025."""
+        rate = TDSValidator.is_higher_rate_applicable(
+            "ABCDE1234F", is_non_filer=True, base_rate=10.0, fy="2025-26")
+        assert rate == 10.0
+
+    def test_the_default_is_current_law_and_that_is_the_safe_direction(self):
+        """No FY means today, and today the section is omitted. Under-claiming
+        a higher rate is the direction that does not apply a charge the statute
+        no longer imposes."""
+        rate = TDSValidator.is_higher_rate_applicable(
+            "ABCDE1234F", is_non_filer=True, base_rate=10.0)
         assert rate == 10.0
 
 

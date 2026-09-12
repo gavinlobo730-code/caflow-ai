@@ -2024,7 +2024,10 @@ function Vendors({ clientId }: { clientId: string }) {
                   </p>
                 )}
                 <p className="text-xs text-amber-700">
-                  Complete Form 15CA/15CB under Rule 37BB before remitting. Rates here are the
+                  Complete Form 15CA/15CB under Rule 37BB before remitting, then record the
+                  acknowledgement on the BILL — 15CA is per remittance, so a vendor paid four
+                  times in a year needs four of them, and the field is in the bill editor rather
+                  than here. Rates here are the
                   Act side only and have not been confirmed line by line against the Finance
                   Act — check them for the year you are withholding in. Where a treaty rate is
                   recorded it is applied as a CEILING on the whole tax: no surcharge and no cess

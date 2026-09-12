@@ -4,7 +4,16 @@ TDS Computation Engine — 24Q and 26Q return generation.
 IT Act Section 192  — TDS on salary (Form 24Q)
 IT Act Section 194  — TDS on non-salary payments (Form 26Q)
 IT Act Section 203  — TDS certificates (Form 16 / 16A)
-IT Act Section 206AB — Higher TDS for non-filers (doubled rate or 5%)
+IT Act Section 206AA — the 20% floor where no PAN is on file, which THIS
+                       module applies (resolve_tds).
+
+Section 206AB is NOT here, and the header advertised it for a long time. Two
+things are wrong with that line: nothing in this module ever applied it — the
+only implementation is `tds_validator.is_higher_rate_applicable`, which has no
+production caller at all — and the Finance Act 2025 OMITTED the section with
+effect from 01-04-2025, so it does not reach a payment made today. A header
+naming a rule the module does not apply is how a reader concludes the
+withholding already accounts for it.
 
 All amounts in integer paise. Never floating point — IT Act Section 145A.
 
