@@ -1420,8 +1420,28 @@ where the FX gain or loss leg lands, and `_create_journal`'s balance assertion i
 exactly what an unbalanced FX leg breaks. `docs/audits/` and
 the batch completion reports are historical records, not current specs.
 
-**Three exceptions in `docs/audits/`, all from 7 September 2026, which ARE
-current and are where to start on any "what should we fix next" question:**
+**`docs/audits/findings-status.md` is where to start on any "what is left"
+question, and it is the ONLY status record that is kept up to date.** Every
+other document below is a SNAPSHOT taken on a date and never amended, which is
+why each successive pass found the one before it stale — 10% on 11 September,
+then 38-59% by subsystem on 12 September, then another nineteen by hand the
+same evening. `findings-status.json` is the record and is amended in the same
+commit that closes a finding; `findings-status.md` is it made readable, and
+`scripts/findings_status_md.py` regenerates it. **Amend the JSON in the commit
+that closes the finding** — a status only ever written by an audit is wrong by
+the time it is read.
+
+Read its four states before quoting a number: `closed` was re-read against the
+code, `closed_by_commit` was named in a merged commit and NOT re-read (usually
+fixed, occasionally only cited), `unverified` means a probe was inconclusive
+and is NOT the same as open, and `open` was re-read and is still true. Nearly
+every open item is blocked on a migration or on a statutory document a person
+has to read, and the table says which.
+
+**The rest of `docs/audits/` — the passes below, all from 7-12 September 2026 —
+are the ANALYSIS behind those verdicts. They are still worth reading for WHY a
+finding is what it is and whether its suggested fix is sound; they are no
+longer to be trusted for WHETHER it is open:**
 
 | File | What it is |
 |---|---|
