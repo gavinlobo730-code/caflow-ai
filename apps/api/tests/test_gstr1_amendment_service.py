@@ -19,7 +19,7 @@ from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 
 FIRM = "FIRM-A"
 CLIENT = "CLI"
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 CALLER = {"firm_id": FIRM, "id": "u1", "auth_user_id": "auth",
           "email": "ca@f.test", "role": "Partner"}
 
@@ -33,7 +33,7 @@ def db(monkeypatch):
     d.seed("clients", {"id": CLIENT, "firm_id": FIRM, "gstin": GSTIN,
                        "financial_year_start": "2025-04-01", "state_code": "27"})
     d.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT, "name": "Acme",
-                         "gstin": "27BBBBB1111B1Z5", "state_code": "27", "is_active": True})
+                         "gstin": "27BBBBB1111B1ZN", "state_code": "27", "is_active": True})
     seed_standard_coa(d, FIRM, CLIENT)
     return d
 
@@ -171,7 +171,7 @@ def test_an_invoice_edited_after_its_period_was_filed_becomes_an_amendment(db):
     assert out["counts"]["amendments"] == 1
     assert out["source_periods"] == ["062025"]
     b2ba = out["sections"]["b2ba"]
-    assert b2ba[0]["ctin"] == "27BBBBB1111B1Z5"
+    assert b2ba[0]["ctin"] == "27BBBBB1111B1ZN"
     assert b2ba[0]["inv"][0]["oinum"] == "INV-1"
     assert b2ba[0]["inv"][0]["itms"][0]["itm_det"]["txval"] == 1500.0
 

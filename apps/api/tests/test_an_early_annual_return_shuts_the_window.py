@@ -42,7 +42,7 @@ from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 FIRM = "FIRM-A"
 CLIENT = "CLI"
 OTHER = "CLI-2"
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ def db(monkeypatch):
         d.seed("clients", {"id": cid, "firm_id": FIRM, "gstin": GSTIN,
                            "financial_year_start": "2025-04-01", "state_code": "27"})
     d.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT, "name": "Acme",
-                         "gstin": "27BBBBB1111B1Z5", "state_code": "27", "is_active": True})
+                         "gstin": "27BBBBB1111B1ZN", "state_code": "27", "is_active": True})
     seed_standard_coa(d, FIRM, CLIENT)
     return d
 

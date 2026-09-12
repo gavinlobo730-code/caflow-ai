@@ -315,7 +315,7 @@ export default function SettingsPage() {
     }
     if (form.gstin && !validateGSTIN(form.gstin)) {
       // CGST Act Section 25 — GSTIN format validation
-      newErrors.gstin = "Invalid GSTIN format (e.g. 27AABCU9603R1ZX)";
+      newErrors.gstin = "Invalid GSTIN format (e.g. 27AABCU9603R1ZN)";
     }
     if (form.pan && !validatePAN(form.pan)) {
       // IT Act Section 139A — PAN format validation
@@ -475,7 +475,7 @@ export default function SettingsPage() {
                 form={form}
                 onChange={handleChange}
                 errors={errors}
-                placeholder="e.g. 27AABCU9603R1ZX"
+                placeholder="e.g. 27AABCU9603R1ZN"
                 hint="15-char GST Identification Number (CGST Act §25)"
                 maxLength={15}
               />

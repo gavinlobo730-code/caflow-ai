@@ -150,9 +150,9 @@ def test_convert_with_invalid_pan_returns_422_friendly_and_no_insert():
 
 def test_convert_with_valid_gstin_succeeds():
     db = _base_db()
-    res = _convert(db, gstin="27AAAAA0000A1Z5")
+    res = _convert(db, gstin="27AAAAA0000A1Z2")
     assert res["success"] is True
-    assert _client_insert(db)["gstin"] == "27AAAAA0000A1Z5"
+    assert _client_insert(db)["gstin"] == "27AAAAA0000A1Z2"
 
 
 def test_convert_with_invalid_gstin_returns_422():
@@ -173,7 +173,7 @@ def test_convert_without_gstin_succeeds():
 
 def test_pan_and_gstin_together_valid():
     db = _base_db()
-    res = _convert(db, pan="ABCDE1234F", gstin="27AAAAA0000A1Z5")
+    res = _convert(db, pan="ABCDE1234F", gstin="27AAAAA0000A1Z2")
     assert res["success"] is True
 
 

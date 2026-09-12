@@ -446,7 +446,7 @@ class TestTallyMigration:
         <NAME>ABC Enterprises</NAME>
         <PARENT>Sundry Debtors</PARENT>
         <OPENINGBALANCE>1000000</OPENINGBALANCE>
-        <GSTREGISTRATIONNUMBER>27AABCU9603R1ZX</GSTREGISTRATIONNUMBER>
+        <GSTREGISTRATIONNUMBER>27AABCU9603R1ZN</GSTREGISTRATIONNUMBER>
       </LEDGER>
       <VOUCHER>
         <VOUCHERTYPENAME>Journal</VOUCHERTYPENAME>
@@ -660,17 +660,17 @@ class TestGSTPortal:
         from domain.gst.portal_service import create_sync_job
         job = create_sync_job(
             firm_id="f1", client_id="c1",
-            gstin="27AABCU9603R1ZX",
+            gstin="27AABCU9603R1ZN",
             triggered_by="u1",
         )
         assert job["status"] == "pending"
-        assert job["gstin"] == "27AABCU9603R1ZX"
+        assert job["gstin"] == "27AABCU9603R1ZN"
 
     def test_save_manual_snapshot(self):
         from domain.gst.portal_service import save_manual_snapshot, list_snapshots
         snap = save_manual_snapshot(
             firm_id="f1", client_id="c_gst",
-            gstin="27AABCU9603R1ZX",
+            gstin="27AABCU9603R1ZN",
             snapshot_type="filing_status",
             data={"gstr1": "filed", "gstr3b": "pending"},
             financial_year="2025-26",
@@ -683,7 +683,7 @@ class TestGSTPortal:
     def test_provider_interface(self):
         from domain.gst.portal_service import get_provider
         provider = get_provider("manual")
-        profile = provider.fetch_profile("27AABCU9603R1ZX")
+        profile = provider.fetch_profile("27AABCU9603R1ZN")
         assert "gstin" in profile
 
     def test_read_only_no_filing(self):

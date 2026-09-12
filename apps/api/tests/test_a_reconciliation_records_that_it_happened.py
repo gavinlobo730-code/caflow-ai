@@ -19,7 +19,7 @@ from domain.gst.gstr2b import parse_gstr2b
 from domain.gst.gstr3b_computer import _apply_rule_36_4_cap
 from services import gst_2b_reconciliation_service as svc
 
-GSTIN_A = "27AAAAA0000A1Z5"
+GSTIN_A = "27AAAAA0000A1Z2"
 FIRM, CLIENT, PERIOD = "firm-1", "client-1", "082026"
 
 

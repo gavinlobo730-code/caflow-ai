@@ -50,7 +50,7 @@ import pytest
 from domain.gst.classifier import GSTInvoiceCategory
 from domain.gst.gstr1_builder import InvoiceForGSTR1, InvoiceLine, build_gstr1
 
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 PERIOD = "042026"
 
 

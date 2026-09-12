@@ -47,7 +47,7 @@ from tests.e2e_harness import FakeDB, wire_e2e
 
 FIRM, CLIENT = "FIRM-A", "CLI"
 PERIOD = "062025"
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 
 
 # ── The model accepts them, and checks what it can ──────────────────────────
@@ -133,7 +133,7 @@ def db(monkeypatch):
     wire_e2e(monkeypatch, d, [svc, grs])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     d.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT,
-                         "name": "Acme", "gstin": "27BBBBB1111B1Z5",
+                         "name": "Acme", "gstin": "27BBBBB1111B1ZN",
                          "state_code": "27", "is_active": True})
     return d
 

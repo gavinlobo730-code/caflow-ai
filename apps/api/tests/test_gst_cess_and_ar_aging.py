@@ -10,7 +10,7 @@ from services import collections_service as cs
 def _b2b_invoice(cess):
     return InvoiceForGSTR1(
         id="i1", transaction_type="sales_invoice", reference_no="INV-1",
-        transaction_date="2025-06-10", party_gstin="27BBBBB1111B1Z5", party_name="Acme",
+        transaction_date="2025-06-10", party_gstin="27BBBBB1111B1ZN", party_name="Acme",
         place_of_supply="27", is_interstate=False,
         taxable_amount_paise=1_00_000_00, cgst_paise=9_000_00, sgst_paise=9_000_00,
         igst_paise=0, cess_paise=cess, is_reverse_charge=False, invoice_type="Regular",
@@ -20,7 +20,7 @@ def _b2b_invoice(cess):
 
 
 def test_m12_gstr1_b2b_val_includes_cess():
-    out = build_gstr1([_b2b_invoice(cess=5_000_00)], "27AAAAA0000A1Z5", "062025", 0)
+    out = build_gstr1([_b2b_invoice(cess=5_000_00)], "27AAAAA0000A1Z2", "062025", 0)
     b2b = out.payload["b2b"]
     val = b2b[0]["inv"][0]["val"]
     # taxable 1,00,000 + cgst 9,000 + sgst 9,000 + cess 5,000 = 1,23,000
@@ -28,7 +28,7 @@ def test_m12_gstr1_b2b_val_includes_cess():
 
 
 def test_m12_val_without_cess_unchanged():
-    out = build_gstr1([_b2b_invoice(cess=0)], "27AAAAA0000A1Z5", "062025", 0)
+    out = build_gstr1([_b2b_invoice(cess=0)], "27AAAAA0000A1Z2", "062025", 0)
     assert out.payload["b2b"][0]["inv"][0]["val"] == 1_18_000.00
 
 

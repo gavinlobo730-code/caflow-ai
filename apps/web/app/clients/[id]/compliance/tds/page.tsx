@@ -359,6 +359,52 @@ function ReturnsTab({ clientId }: { clientId: string }) {
     return_type: "26Q", quarter: "Q1", financial_year: "",
     tan: "", deductor_name: "", deductor_pan: "", deductor_address: "",
   });
+  /** THE DEDUCTOR BLOCK, READ RATHER THAN RE-TYPED (TDS-28).
+   *
+   *  `client_statutory_identity.tan` exists (migration 325, created for
+   *  exactly this) and the client carries its own PAN, legal name and postal
+   *  address. The server has read all four since the block stopped being
+   *  invented — `domain/tds/deductor.resolve` — and nothing SERVED them, so
+   *  these four boxes opened blank and the CA typed the TAN, the legal name
+   *  and the PAN every quarter, for every client. A figure the system holds
+   *  and asks for anyway is a figure that will eventually be typed
+   *  differently, and a quarter filed under a mistyped TAN is filed against
+   *  somebody else's account.
+   *
+   *  Still EDITABLE: `_deductor_for` lets a caller-supplied value win, and a
+   *  client whose registered details are mid-change needs that. What changes
+   *  is that the CA corrects a figure instead of recalling one. */
+  const [deductorGaps, setDeductorGaps] = useState<{ code: string; message: string }[]>([]);
+  const [deductorLoading, setDeductorLoading] = useState(false);
+
+  const loadDeductor = useCallback(async () => {
+    setDeductorLoading(true);
+    try {
+      const r = await apiFetch(`/api/tds/deductor?client_id=${clientId}`);
+      if (!r.success) throw new Error(r.error ?? "");
+      const d = r.data as {
+        resolved: boolean; tan: string; deductor_name: string;
+        deductor_pan: string; deductor_address: string;
+        statutory_gaps: { code: string; message: string }[];
+      };
+      setDeductorGaps(d.statutory_gaps ?? []);
+      // Only where the CA has not already typed over it: reopening the panel
+      // must not discard a correction they made a moment ago.
+      setComputeForm(f => ({
+        ...f,
+        tan: f.tan || d.tan || "",
+        deductor_name: f.deductor_name || d.deductor_name || "",
+        deductor_pan: f.deductor_pan || d.deductor_pan || "",
+        deductor_address: f.deductor_address || d.deductor_address || "",
+      }));
+    } catch {
+      // A failed read is not "no TAN recorded" — leave the boxes as they are
+      // and let the server's own refusal say what is missing at Compute.
+      setDeductorGaps([]);
+    } finally {
+      setDeductorLoading(false);
+    }
+  }, [clientId]);
   const [computing, setComputing] = useState(false);
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
@@ -462,7 +508,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Returns</h3>
         <div className="flex gap-2">
-          <button onClick={() => setShowCompute(true)}
+          <button onClick={() => { setShowCompute(true); loadDeductor(); }}
             className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
             Compute from Books
           </button>
@@ -509,6 +555,18 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               onChange={(e) => setComputeForm((f) => ({ ...f, deductor_address: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm col-span-2" />
           </div>
+          {deductorLoading && (
+            <p className="text-xs text-[#94A3B8]">Reading the deductor details on file…</p>
+          )}
+          {deductorGaps.length > 0 && (
+            <div className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 space-y-1">
+              <p className="font-medium">
+                The deductor block is not complete on file, so these boxes could not be
+                pre-filled. Record it once against the client and every quarter reads it.
+              </p>
+              {deductorGaps.map(g => <p key={g.code}>{g.message}</p>)}
+            </div>
+          )}
           {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <button onClick={computeFromBooks}

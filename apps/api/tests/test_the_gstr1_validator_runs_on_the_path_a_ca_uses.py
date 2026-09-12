@@ -36,7 +36,7 @@ import services.gst_return_service as grs
 from tests.e2e_harness import FakeDB, wire_e2e
 
 FIRM = "FIRM-A"
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 PERIOD = "062025"
 
 
@@ -49,7 +49,7 @@ def db(monkeypatch):
     d.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": GSTIN,
                        "financial_year_start": "2025-04-01", "state_code": "27"})
     d.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": "CLI",
-                         "name": "Acme", "gstin": "27BBBBB1111B1Z5",
+                         "name": "Acme", "gstin": "27BBBBB1111B1ZN",
                          "state_code": "27", "is_active": True})
     return d
 

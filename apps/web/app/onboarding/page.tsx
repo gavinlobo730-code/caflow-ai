@@ -523,7 +523,7 @@ export default function OnboardingPage() {
     // IT Act Section 139A — PAN validation
     if (firmForm.pan && !validatePAN(firmForm.pan)) errs.pan = "Invalid PAN (e.g. AABCU9603R)";
     // CGST Act Section 25 — GSTIN validation
-    if (firmForm.gstin && !validateGSTIN(firmForm.gstin)) errs.gstin = "Invalid GSTIN (e.g. 27AABCU9603R1ZX)";
+    if (firmForm.gstin && !validateGSTIN(firmForm.gstin)) errs.gstin = "Invalid GSTIN (e.g. 27AABCU9603R1ZN)";
     if (firmForm.pincode && !/^[1-9][0-9]{5}$/.test(firmForm.pincode)) errs.pincode = "Pincode must be 6 digits starting with a non-zero digit";
     setFirmErrors(errs);
     return Object.keys(errs).length === 0;
@@ -760,7 +760,7 @@ export default function OnboardingPage() {
                 form={firmForm}
                 setForm={setFirmForm}
                 errors={firmErrors}
-                placeholder="e.g. 27AABCU9603R1ZX"
+                placeholder="e.g. 27AABCU9603R1ZN"
                 hint="CGST Act §25 — 15-char GSTIN"
                 maxLength={15}
               />

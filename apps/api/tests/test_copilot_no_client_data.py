@@ -31,7 +31,7 @@ def clients_with_obvious_names(monkeypatch):
     """Client names chosen to be unmistakable if they leak into the prompt."""
     rows = [
         {"id": "c1", "client_name": "ZZTOPSECRETCLIENTALPHA", "firm_id": FIRM,
-         "gstin": "27AAAAA0000A1Z5", "pan": "AAAAA0000A"},
+         "gstin": "27AAAAA0000A1Z2", "pan": "AAAAA0000A"},
         {"id": "c2", "client_name": "ZZTOPSECRETCLIENTBETA", "firm_id": FIRM,
          "gstin": "29BBBBB1111B1Z5", "pan": "BBBBB1111B"},
     ]
@@ -52,7 +52,7 @@ def test_firm_context_contains_no_gstin_or_pan(clients_with_obvious_names):
     failure says which kind of leak reappeared."""
     context = cp._build_firm_context(FIRM, USER)
 
-    for forbidden in ("27AAAAA0000A1Z5", "29BBBBB1111B1Z5", "AAAAA0000A", "BBBBB1111B"):
+    for forbidden in ("27AAAAA0000A1Z2", "29BBBBB1111B1Z5", "AAAAA0000A", "BBBBB1111B"):
         assert forbidden not in context, f"{forbidden} reached the model prompt"
 
 

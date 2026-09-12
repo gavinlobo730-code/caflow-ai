@@ -97,7 +97,7 @@ def test_h7_gstn_txval_is_taxable_value_not_tax():
     cgst = sgst = 9_000_00
     r = compute_gstr3b([_sale(L, cgst=cgst, sgst=sgst)], [], [])
     assert r.outward_taxable_value == L       # internal computation stays in paise
-    payload = r.as_gstn_payload("27AAAAA0000A1Z5", "062025")
+    payload = r.as_gstn_payload("27AAAAA0000A1Z2", "062025")
     osup = payload["sup_details"]["osup_det"]
     # GSTN GSTR-3B JSON is in WHOLE RUPEES (F16 + CGST Act §170): the payload
     # converts paise -> whole rupees, so txval is the taxable VALUE (not the tax).
@@ -122,7 +122,7 @@ def test_f16_gstn_payload_amounts_are_rupees_not_paise():
         rcm_igst=10_000_00, rcm_cgst=5_000_00, rcm_sgst=5_000_00,
         itc_igst=90_000_00, itc_cgst=20_000_00, itc_sgst=20_000_00, itc_cess=1_000_00,
     )
-    p = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")
+    p = r.as_gstn_payload("27AAAAA0000A1Z2", "062026")
 
     osup = p["sup_details"]["osup_det"]
     assert osup["txval"] == 10_00_000.00 and osup["txval"] != r.outward_taxable_value
@@ -168,7 +168,7 @@ def test_f16_gstr3b_rounds_to_whole_rupees_section_170():
         outward_taxable_cgst=45_000_49,      # ₹45,000.49  -> rounds DOWN to 45,000
         outward_taxable_sgst=45_000_50,      # ₹45,000.50  -> half rounds UP to 45,001
     )
-    osup = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["sup_details"]["osup_det"]
+    osup = r.as_gstn_payload("27AAAAA0000A1Z2", "062026")["sup_details"]["osup_det"]
     assert osup["txval"] == 123457            # whole rupee, half-up
     assert osup["txval"] != 123456.78         # not 2-decimal (GSTR-1 style)
     assert osup["txval"] != 1_23_456_78       # not paise (the F16 bug)
@@ -212,7 +212,7 @@ def test_a_zero_rated_export_on_payment_of_tax_declares_its_igst():
     assert r.liability_igst == K18
     assert r.net_igst == K18
 
-    osup_zero = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["sup_details"]["osup_zero"]
+    osup_zero = r.as_gstn_payload("27AAAAA0000A1Z2", "062026")["sup_details"]["osup_zero"]
     assert osup_zero["txval"] == L // 100
     assert osup_zero["iamt"] == K18 // 100
     # A zero-rated supply is inter-state (IGST Act §7(5)) — no central or
@@ -227,6 +227,6 @@ def test_a_zero_rated_export_under_lut_still_declares_no_tax():
     assert r.outward_zero_rated_igst == 0
     assert r.liability_igst == 0
 
-    osup_zero = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["sup_details"]["osup_zero"]
+    osup_zero = r.as_gstn_payload("27AAAAA0000A1Z2", "062026")["sup_details"]["osup_zero"]
     assert osup_zero["txval"] == L // 100
     assert osup_zero["iamt"] == 0

@@ -41,7 +41,7 @@ from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from tests.e2e_harness import FakeDB, wire_e2e
 
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 PERIOD = "052025"
 FIRM, CLIENT = "firm-1", "client-1"
 USER = {"id": "u1", "firm_id": FIRM, "auth_user_id": "u1",

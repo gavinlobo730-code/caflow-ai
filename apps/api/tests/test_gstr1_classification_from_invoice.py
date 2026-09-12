@@ -39,7 +39,7 @@ from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u1", "auth_user_id": "auth",
           "email": "ca@f.test", "role": "Partner"}
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def db(monkeypatch):
     d.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": GSTIN,
                        "financial_year_start": "2025-04-01", "state_code": "27"})
     d.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": "CLI", "name": "Acme",
-                         "gstin": "27BBBBB1111B1Z5", "state_code": "27", "is_active": True})
+                         "gstin": "27BBBBB1111B1ZN", "state_code": "27", "is_active": True})
     d.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
                                 "name": "Materials", "kind": "good"})
     seed_standard_coa(d, FIRM, "CLI")
@@ -67,7 +67,7 @@ def _category(**invoice_fields) -> str:
     }
     txn = TransactionForClassification(
         id=row["id"], transaction_type="sales_invoice",
-        party_gstin=row.get("party_gstin", "27BBBBB1111B1Z5"),
+        party_gstin=row.get("party_gstin", "27BBBBB1111B1ZN"),
         is_interstate=bool(row["is_interstate"]),
         taxable_amount_paise=int(row["taxable_amount_paise"]),
         supply_type=row["supply_type"], invoice_type=row["invoice_type"],
@@ -203,7 +203,7 @@ def test_an_sez_invoice_is_declared_in_6b_against_the_recipients_gstin(db):
     assert _inv_typ(payload, "INV-REG") == "R"
     # The whole reason it belongs here: the recipient's GSTIN survives.
     ctins = {g["ctin"] for g in payload["b2b"]}
-    assert ctins == {"27BBBBB1111B1Z5"}
+    assert ctins == {"27BBBBB1111B1ZN"}
 
 
 def test_an_sez_supply_with_payment_is_declared_as_such(db):

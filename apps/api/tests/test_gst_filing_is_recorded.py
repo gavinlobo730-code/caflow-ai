@@ -34,7 +34,7 @@ FIRM = "firm-1"
 CLIENT = "client-1"
 USER = {"id": "u1", "firm_id": FIRM, "auth_user_id": "u1",
         "email": "ca@f.test", "role": "Partner"}
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 PERIOD = "062026"          # June 2026
 
 

@@ -49,8 +49,8 @@ from domain.gst.classifier import (GSTInvoiceCategory, TransactionForClassificat
                                    classify_transaction)
 from domain.gst.gstr1_builder import (InvoiceForGSTR1, InvoiceLine, build_gstr1)
 
-GSTIN = "27AAAAA0000A1Z5"
-BUYER = "27BBBBB1111B1Z5"
+GSTIN = "27AAAAA0000A1Z2"
+BUYER = "27BBBBB1111B1ZN"
 PERIOD = "052025"
 
 

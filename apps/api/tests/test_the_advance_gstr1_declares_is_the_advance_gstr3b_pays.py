@@ -63,7 +63,7 @@ def db(monkeypatch):
     d = E._setup(monkeypatch)
     E.wire_e2e(monkeypatch, d, [grs, adv])
     d.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT,
-                         "name": "Acme", "gstin": "27BBBBB1111B1Z5",
+                         "name": "Acme", "gstin": "27BBBBB1111B1ZN",
                          "state_code": "27", "is_active": True})
     return d
 

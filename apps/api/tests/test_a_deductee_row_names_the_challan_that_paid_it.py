@@ -46,7 +46,7 @@ def _setup(monkeypatch):
     db = FakeDB()
     wire_e2e(monkeypatch, db, [pb, payroll_mod])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
-    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5"})
+    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z2"})
     db.seed("vendors", {
         "id": "VEND1", "firm_id": FIRM, "client_id": "CLI", "name": "Sharma Consulting Pvt Ltd",
         "state_code": "27", "gstin": "27CCCCC2222C1Z5", "pan": "AAACS1234C",

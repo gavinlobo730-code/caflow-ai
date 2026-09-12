@@ -30,7 +30,7 @@ const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
   { key: "entity_type",  label: "Entity Type",    required: true,  hint: "Proprietorship | Partnership | LLP | Private Limited | Public Limited | Trust | Society | Individual" },
   { key: "pan",          label: "PAN",            required: true,  hint: "e.g. AABCU9603R — 10 chars" },
-  { key: "gstin",        label: "GSTIN",          required: false, hint: "e.g. 27AABCU9603R1ZX — 15 chars" },
+  { key: "gstin",        label: "GSTIN",          required: false, hint: "e.g. 27AABCU9603R1ZN — 15 chars" },
   { key: "mobile",       label: "Mobile",         required: false, hint: "e.g. 9876543210" },
   { key: "email",        label: "Email",          required: false, hint: "e.g. client@example.com" },
   { key: "city",         label: "City",           required: false, hint: "e.g. Mumbai" },

@@ -35,7 +35,7 @@ def test_a_client_with_no_non_resident_vendor_gets_no_27q():
     this test is about is unchanged: 27Q, and only 27Q, is conditional."""
     specs = ob._tds_obligations(FY, has_non_resident_vendors=False)
     assert sorted(s["obligation_type"] for s in specs) == \
-        ["TDS24Q"] * 4 + ["TDS26Q"] * 4
+        ["TDS24Q"] * 4 + ["TDS26Q"] * 4 + ["TDS_NON_SALARY_DEPOSIT"] * 12
 
 
 def test_the_default_is_no_27q():
@@ -45,7 +45,11 @@ def test_the_default_is_no_27q():
 
 def test_a_client_that_pays_a_non_resident_gets_both_statements():
     specs = ob._tds_obligations(FY, has_non_resident_vendors=True)
-    assert len(specs) == 12
+    # Twelve quarterly statements plus the twelve monthly Rule 30(2) deposits
+    # TDS-12's second half added — a different obligation with a different
+    # date and a different penalty.
+    assert len(specs) == 24
+    assert sum(1 for s in specs if s["obligation_type"] == "TDS_NON_SALARY_DEPOSIT") == 12
     assert sum(1 for s in specs if s["obligation_type"] == "TDS24Q") == 4
     assert sum(1 for s in specs if s["obligation_type"] == "TDS26Q") == 4
     assert sum(1 for s in specs if s["obligation_type"] == "TDS27Q") == 4
@@ -64,7 +68,11 @@ def test_27q_never_replaces_26q():
 def test_27q_shares_26q_s_due_date_quarter_by_quarter():
     """Rule 31A(2) gives one due date per quarter regardless of form. Two
     separate date computations would eventually drift; this pins them equal."""
-    specs = ob._tds_obligations(FY, has_non_resident_vendors=True)
+    # The STATEMENTS only. The monthly Rule 30(2) deposits share this
+    # function and have twelve periods of their own on twelve different dates,
+    # which is the whole point of them being a separate obligation.
+    specs = [x for x in ob._tds_obligations(FY, has_non_resident_vendors=True)
+             if x["obligation_type"].startswith("TDS2")]
     by_period: dict[str, set] = {}
     for s in specs:
         by_period.setdefault(s["period_start"], set()).add(s["due_date"])
@@ -77,7 +85,8 @@ def test_q4_is_31_may_for_27q_too():
     """The exception worth pinning: Q4 is NOT the end of the month following
     quarter end. services/compliance_engine.tds_return_due_date is the
     authority, and 27Q must inherit it rather than re-derive it."""
-    specs = ob._tds_obligations(FY, has_non_resident_vendors=True)
+    specs = [x for x in ob._tds_obligations(FY, has_non_resident_vendors=True)
+             if x["obligation_type"].startswith("TDS2")]
     q4 = [s for s in specs if s["period_start"] == "2026-01-01"]
     assert {s["due_date"] for s in q4} == {"2026-05-31"}
 
@@ -108,7 +117,7 @@ def test_both_statements_are_filed_under_the_tds_compliance_type():
 def test_a_tds_engagement_carries_the_flag_through():
     plain = ob.obligations_for_service("TDS Compliance", FY)
     assert sorted(s["obligation_type"] for s in plain) == \
-        ["TDS24Q"] * 4 + ["TDS26Q"] * 4
+        ["TDS24Q"] * 4 + ["TDS26Q"] * 4 + ["TDS_NON_SALARY_DEPOSIT"] * 12
 
     with_nr = ob.obligations_for_service("TDS Compliance", FY,
                                          client_has_non_resident_vendors=True)
@@ -246,7 +255,8 @@ def _generated_types(client="CL-27Q"):
 
 def test_a_tds_engagement_with_no_foreign_supplier_generates_four_records(_clean):
     ob.generate_for_engagement("F1", _tds_engagement(), FY)
-    assert _generated_types() == ["TDS24Q"] * 4 + ["TDS26Q"] * 4
+    assert _generated_types() == (["TDS24Q"] * 4 + ["TDS26Q"] * 4
+                                  + ["TDS_NON_SALARY_DEPOSIT"] * 12)
 
 
 def test_a_tds_engagement_with_a_foreign_supplier_generates_eight(_clean, monkeypatch):
@@ -257,7 +267,8 @@ def test_a_tds_engagement_with_a_foreign_supplier_generates_eight(_clean, monkey
          "country_of_residence": "CH"},
     ])
     ob.generate_for_engagement("F1", _tds_engagement(), FY)
-    assert _generated_types() == ["TDS24Q"] * 4 + ["TDS26Q"] * 4 + ["TDS27Q"] * 4
+    assert _generated_types() == (["TDS24Q"] * 4 + ["TDS26Q"] * 4 + ["TDS27Q"] * 4
+                                  + ["TDS_NON_SALARY_DEPOSIT"] * 12)
 
 
 def test_generation_stays_idempotent_with_both_statements(_clean, monkeypatch):
@@ -271,10 +282,11 @@ def test_generation_stays_idempotent_with_both_statements(_clean, monkeypatch):
     ])
     eng = _tds_engagement()
     first = ob.generate_for_engagement("F1", eng, FY)
-    assert first["generated"] == 12 and first["skipped"] == 0
+    # Twelve quarterly statements and twelve monthly Rule 30(2) deposits.
+    assert first["generated"] == 24 and first["skipped"] == 0
     again = ob.generate_for_engagement("F1", eng, FY)
-    assert again["generated"] == 0 and again["skipped"] == 12
-    assert len(_generated_types()) == 12
+    assert again["generated"] == 0 and again["skipped"] == 24
+    assert len(_generated_types()) == 24
 
 
 def test_marking_a_vendor_non_resident_later_adds_27q_on_the_next_run(_clean, monkeypatch):
@@ -284,12 +296,14 @@ def test_marking_a_vendor_non_resident_later_adds_27q_on_the_next_run(_clean, mo
     from routers import vendors as vr
     eng = _tds_engagement()
     ob.generate_for_engagement("F1", eng, FY)
-    assert _generated_types() == ["TDS24Q"] * 4 + ["TDS26Q"] * 4
+    assert _generated_types() == (["TDS24Q"] * 4 + ["TDS26Q"] * 4
+                                  + ["TDS_NON_SALARY_DEPOSIT"] * 12)
 
     monkeypatch.setattr(vr, "MOCK_VENDORS", [
         {"id": "v1", "firm_id": "F1", "client_id": "CL-27Q",
          "residential_status": "non_resident"},
     ])
     res = ob.generate_for_engagement("F1", eng, FY)
-    assert res["generated"] == 4 and res["skipped"] == 8
-    assert _generated_types() == ["TDS24Q"] * 4 + ["TDS26Q"] * 4 + ["TDS27Q"] * 4
+    assert res["generated"] == 4 and res["skipped"] == 20
+    assert _generated_types() == (["TDS24Q"] * 4 + ["TDS26Q"] * 4 + ["TDS27Q"] * 4
+                                  + ["TDS_NON_SALARY_DEPOSIT"] * 12)

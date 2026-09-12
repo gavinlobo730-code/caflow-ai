@@ -43,10 +43,10 @@ from services.invoice_pdf_service import (
 
 
 FIRM = {"id": "F1", "name": "Gupta & Associates, Chartered Accountants",
-        "gstin": "27AAAAA0000A1Z5", "address": "12 MG Road, Pune 411001"}
+        "gstin": "27AAAAA0000A1Z2", "address": "12 MG Road, Pune 411001"}
 CLIENT = {"id": "C1", "client_name": "Acme Manufacturing",
           "legal_name": "Acme Manufacturing Private Limited",
-          "gstin": "27BBBBB1111B1Z5", "address_line1": "9 Industrial Estate",
+          "gstin": "27BBBBB1111B1ZN", "address_line1": "9 Industrial Estate",
           "city": "Pune", "state": "Maharashtra", "pincode": "411018",
           "state_code": "27"}
 CUSTOMER = {"id": "CU1", "name": "Zeta Traders", "gstin": "29CCCCC2222C1Z5"}

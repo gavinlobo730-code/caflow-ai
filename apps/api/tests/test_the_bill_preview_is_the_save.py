@@ -35,7 +35,7 @@ def _setup(monkeypatch):
     db = FakeDB()
     wire_e2e(monkeypatch, db, [pb])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
-    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5"})
+    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z2"})
     seed_standard_coa(db, FIRM, "CLI")
     db.seed("service_catalogue", {"id": "SVC-1", "firm_id": FIRM, "client_id": "CLI",
                                   "name": "Services", "kind": "service"})

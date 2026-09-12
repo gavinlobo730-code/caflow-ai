@@ -17,7 +17,7 @@ const row = (o: Record<string, string>) => o;
 // ── Customers ────────────────────────────────────────────────────────────────
 test("customers: rupees → paise, GSTIN derives state code, defaults credit_days", () => {
   const { records, errors } = buildCustomers([
-    row({ name: "Acme Pvt Ltd", gstin: "27AABCU9603R1ZX", opening_balance: "1500.50" }),
+    row({ name: "Acme Pvt Ltd", gstin: "27AABCU9603R1ZN", opening_balance: "1500.50" }),
   ], "client-1");
   assert.equal(errors.length, 0);
   assert.equal(records[0].opening_balance_paise, 150050);

@@ -37,7 +37,7 @@ def _setup(monkeypatch, clients=("CLI",)):
     wire_e2e(monkeypatch, db, [si, cn, dn, pb, pcn, sdn, ve])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     for c in clients:
-        db.seed("clients", {"id": c, "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5",
+        db.seed("clients", {"id": c, "firm_id": FIRM, "gstin": "27AAAAA0000A1Z2",
                             "financial_year_start": "2025-04-01"})
         db.seed("customers", {"id": f"CUST-{c}", "firm_id": FIRM, "client_id": c, "name": "Acme",
                               "is_active": True, "opening_balance_paise": 0})

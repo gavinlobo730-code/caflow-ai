@@ -223,6 +223,36 @@ def _tds_obligations(financial_year: str,
             out.append(_spec("TDS27Q", "TDS",
                              f"TDS {non_resident_form} {q} FY {financial_year}",
                              ps, pe, due))
+
+    # ── THE MONTHLY DEPOSIT, WHICH IS NOT THE QUARTERLY STATEMENT (TDS-12) ──
+    #
+    # Rule 30(2) binds every deductor other than an office of the government:
+    # tax deducted in a month is paid over by the SEVENTH of the following
+    # month, except March, which is 30 April. `compliance_engine
+    # .tds_deposit_due_date` has computed that since the payroll module was
+    # built and was called from ONE place — `payroll_deposit_due_dates` — so
+    # the calendar carried a monthly deposit for SALARY and nothing at all for
+    # the §194 series. A TDS engagement whose client pays contractors and
+    # professionals owed twelve deposits a year and was reminded of four
+    # statements.
+    #
+    # ITS OWN OBLIGATION TYPE, not a second TDS_SALARY_DEPOSIT row. They are
+    # two deposits: different section codes on the challan, different
+    # registers behind them, and one is generated for a PAYROLL engagement
+    # while this is generated for a TDS one. A client where the firm does both
+    # genuinely owes both, and the dedup key is (obligation_type,
+    # period_start) — sharing a type would silently drop one.
+    #
+    # §201(1A)(ii) charges 1.5% for every month or part of a month FROM THE
+    # DATE OF DEDUCTION, not from this date, so one day late across a month
+    # boundary costs two months. `domain/tds/interest.py` computes it and
+    # `GET /api/tds-workspace/deposit-due` shows what is owed.
+    for (y, m) in fy_months(financial_year):
+        out.append(_spec(
+            "TDS_NON_SALARY_DEPOSIT", "TDS",
+            f"TDS deposit (non-salary) {month_name[m]} {y}",
+            date(y, m, 1), ce.last_day_of_month(y, m),
+            ce.tds_deposit_due_date(y, m)))
     return out
 
 

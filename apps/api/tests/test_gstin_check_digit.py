@@ -189,7 +189,7 @@ def test_every_check_digit_the_algorithm_produces_validates():
 # refactor cannot quietly drop the check back to a shape test.
 
 import pytest as _pytest
-from fastapi import HTTPException
+from pydantic import ValidationError
 
 CLIENT = "11111111-1111-1111-1111-111111111111"
 FIRM = "22222222-2222-2222-2222-222222222222"
@@ -208,13 +208,20 @@ def _scoped(monkeypatch):
 
 
 def test_a_customer_with_a_transposed_gstin_is_refused(_scoped):
-    from routers.customers import create_customer
+    """REFUSED AT THE MODEL SINCE GST-29's SECOND HALF, one layer earlier than
+    this used to assert. `core.validators.validate_gstin` now delegates to
+    `domain/gst/gstin.problem_with` — the same one implementation the router's
+    own guard uses — so `CustomerIn` will not construct with a transposed
+    GSTIN at all, and FastAPI turns that into the same 422.
+
+    The router's guard stays and is defence in depth, honestly labelled: the
+    bulk path builds `CustomerIn(**item)` inside a per-item `try`, so the model
+    refusal there is collected as one row's error rather than 422-ing the
+    batch, which is that endpoint's own design."""
     from models.parties import CustomerIn
-    with _pytest.raises(HTTPException) as e:
-        create_customer(CustomerIn(client_id=CLIENT, name="Acme", gstin=TRANSPOSED),
-                        {"firm_id": FIRM, "role": "Partner"})
-    assert e.value.status_code == 422
-    assert "check digit" in str(e.value.detail)
+    with _pytest.raises(ValidationError) as e:
+        CustomerIn(client_id=CLIENT, name="Acme", gstin=TRANSPOSED)
+    assert "check digit" in str(e.value)
 
 
 def test_a_customer_with_a_real_gstin_gets_past_the_check(_scoped):
@@ -228,13 +235,11 @@ def test_a_customer_with_a_real_gstin_gets_past_the_check(_scoped):
 
 
 def test_a_vendor_with_a_transposed_gstin_is_refused(_scoped):
-    from routers.vendors import create_vendor
+    """See the customer case above: the refusal moved to the model."""
     from models.parties import VendorIn
-    with _pytest.raises(HTTPException) as e:
-        create_vendor(VendorIn(client_id=CLIENT, name="Supplier", gstin=TRANSPOSED),
-                      {"firm_id": FIRM, "role": "Partner"})
-    assert e.value.status_code == 422
-    assert "check digit" in str(e.value.detail)
+    with _pytest.raises(ValidationError) as e:
+        VendorIn(client_id=CLIENT, name="Supplier", gstin=TRANSPOSED)
+    assert "check digit" in str(e.value)
 
 
 def test_the_shape_validator_is_deliberately_left_alone():

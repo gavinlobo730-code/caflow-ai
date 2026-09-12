@@ -102,7 +102,7 @@ test("PAN search matches case-insensitively and partially", () => {
 });
 
 test("GSTIN search works", () => {
-  const clients = [mk({ gstin: "27AABCU9603R1ZX" }), mk({ gstin: "29ZZZZZ1111Z1ZX" })];
+  const clients = [mk({ gstin: "27AABCU9603R1ZN" }), mk({ gstin: "29ZZZZZ1111Z1ZX" })];
   assert.equal(filterClients(clients, "27aabcu").length, 1);
 });
 

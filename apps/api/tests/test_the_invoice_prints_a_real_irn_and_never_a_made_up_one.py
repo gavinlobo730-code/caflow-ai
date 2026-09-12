@@ -109,9 +109,9 @@ def _invoice(**over):
     return inv
 
 
-SUPPLIER = {"name": "Acme Pvt Ltd", "gstin": "27AAAAA0000A1Z5", "pan": "AAAAA0000A",
+SUPPLIER = {"name": "Acme Pvt Ltd", "gstin": "27AAAAA0000A1Z2", "pan": "AAAAA0000A",
             "address": "1 Road, Mumbai"}
-RECIPIENT = {"name": "Buyer Ltd", "gstin": "27BBBBB1111B1Z5", "address": "2 Road"}
+RECIPIENT = {"name": "Buyer Ltd", "gstin": "27BBBBB1111B1ZN", "address": "2 Road"}
 
 
 def test_the_pdf_renders_with_an_irn():

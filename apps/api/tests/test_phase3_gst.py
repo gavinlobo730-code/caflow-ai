@@ -33,7 +33,7 @@ def test_save_gstr1(client):
     resp = client.post("/api/gst-workspace/gstr1", json={
         "client_id": _CLIENT_ID,
         "period": "042025",
-        "gstin": "27AABCU9603R1ZX",
+        "gstin": "27AABCU9603R1ZN",
         "total_taxable_paise": 100000,
         "total_igst_paise": 0,
         "total_cgst_paise": 9000,
@@ -52,7 +52,7 @@ def test_gstr1_status_transition(client):
     resp = client.post("/api/gst-workspace/gstr1", json={
         "client_id": _CLIENT_ID,
         "period": "042025",
-        "gstin": "27AABCU9603R1ZX",
+        "gstin": "27AABCU9603R1ZN",
     }, headers=_HEADERS)
     return_id = resp.json()["data"]["id"]
 
@@ -77,7 +77,7 @@ def test_gstr3b_save_and_retrieve(client):
     resp = client.post("/api/gst-workspace/gstr3b", json={
         "client_id": _CLIENT_ID,
         "period": "042025",
-        "gstin": "27AABCU9603R1ZX",
+        "gstin": "27AABCU9603R1ZN",
         "tax_liability_paise": 18000,
         "itc_claimed_paise": 5000,
         "net_tax_paise": 13000,
@@ -110,7 +110,7 @@ def test_save_gstr1_propagates_locked_period_rejection(client, monkeypatch):
     monkeypatch.setattr(gw.period_validation_service, "validate_posting_date", _locked)
 
     resp = client.post("/api/gst-workspace/gstr1", json={
-        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZN",
     }, headers=_HEADERS)
     assert resp.status_code == 422
     assert "locked" in resp.json()["detail"].lower()
@@ -125,7 +125,7 @@ def test_save_gstr3b_propagates_locked_period_rejection(client, monkeypatch):
     monkeypatch.setattr(gw.period_validation_service, "validate_posting_date", _locked)
 
     resp = client.post("/api/gst-workspace/gstr3b", json={
-        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZN",
     }, headers=_HEADERS)
     assert resp.status_code == 422
     assert "locked" in resp.json()["detail"].lower()
@@ -140,7 +140,7 @@ def test_gstr1_approval_requires_manager_role(client):
     manager_headers = {"X-User-Email": "mgr@test.com", "X-User-Role": "manager", "X-Firm-ID": "firm-1"}
 
     resp = client.post("/api/gst-workspace/gstr1", json={
-        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZN",
     }, headers=exec_headers)
     return_id = resp.json()["data"]["id"]
 
@@ -163,7 +163,7 @@ def test_gstr3b_approval_requires_manager_role(client):
     manager_headers = {"X-User-Email": "mgr@test.com", "X-User-Role": "manager", "X-Firm-ID": "firm-1"}
 
     resp = client.post("/api/gst-workspace/gstr3b", json={
-        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZN",
     }, headers=exec_headers)
     return_id = resp.json()["data"]["id"]
 
@@ -183,11 +183,11 @@ def test_gstr3b_approval_requires_manager_role(client):
 def test_filing_history_only_submitted(client):
     # Save two returns — one draft, one submitted
     r1 = client.post("/api/gst-workspace/gstr1", json={
-        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZN",
     }, headers=_HEADERS).json()["data"]["id"]
 
     r2 = client.post("/api/gst-workspace/gstr1", json={
-        "client_id": _CLIENT_ID, "period": "052025", "gstin": "27AABCU9603R1ZX",
+        "client_id": _CLIENT_ID, "period": "052025", "gstin": "27AABCU9603R1ZN",
     }, headers=_HEADERS).json()["data"]["id"]
 
     # Submit r2
@@ -210,13 +210,13 @@ def test_save_gstr9_requires_and_stores_gstin(client):
     resp = client.post("/api/gst-workspace/gstr9", json={
         "client_id": _CLIENT_ID,
         "financial_year": "2025-26",
-        "gstin": "27AABCU9603R1ZX",
+        "gstin": "27AABCU9603R1ZN",
         "total_taxable_paise": 500000000,
         "total_tax_paise": 90000000,
     }, headers=_HEADERS)
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert data["gstin"] == "27AABCU9603R1ZX"
+    assert data["gstin"] == "27AABCU9603R1ZN"
     assert data["return_type"] == "gstr9"
     assert data["financial_year"] == "2025-26"
 

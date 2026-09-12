@@ -515,7 +515,7 @@ class TestValidators:
 
     def test_valid_gstin(self):
         from core.validators import validate_gstin
-        assert validate_gstin("27AAAAA0000A1Z5") is None
+        assert validate_gstin("27AAAAA0000A1Z2") is None
 
     def test_invalid_gstin_format(self):
         from core.validators import validate_gstin
@@ -570,7 +570,7 @@ class TestValidators:
     def test_collect_errors_empty_on_valid(self):
         from core.validators import collect_errors, validate_gstin, validate_pan
         errors = collect_errors(
-            gstin=(validate_gstin, "27AAAAA0000A1Z5"),
+            gstin=(validate_gstin, "27AAAAA0000A1Z2"),
             pan=(validate_pan, "ABCDE1234F"),
         )
         assert errors == []

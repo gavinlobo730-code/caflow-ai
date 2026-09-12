@@ -41,7 +41,7 @@ from domain.gst.gstr3b_computer import (
     ITCReversal, PurchaseTransaction, SalesTransaction, compute_gstr3b,
 )
 
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 PERIOD = "042026"
 
 

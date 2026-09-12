@@ -69,7 +69,7 @@ def test_it_is_its_own_obligation_type():
     period_start with 26Q, so a second row under TDS26Q would be swallowed."""
     specs = ob._tds_obligations(FY)
     by_period: dict[str, set] = {}
-    for s in specs:
+    for s in [x for x in specs if x["obligation_type"].startswith("TDS2")]:
         by_period.setdefault(s["period_start"], set()).add(s["obligation_type"])
     assert len(by_period) == 4
     for period, kinds in by_period.items():
@@ -88,7 +88,12 @@ def test_it_is_not_conditional():
 def test_it_shares_the_quarter_s_one_due_date():
     """Rule 31A(2) sets one date per quarter regardless of form. Two date
     computations would eventually drift."""
-    specs = ob._tds_obligations(FY, has_non_resident_vendors=True)
+    # The STATEMENTS only. The monthly Rule 30(2) deposits ride in the same
+    # function and have their own twelve periods on twelve different dates —
+    # which is what makes them a separate obligation rather than a fifth
+    # statement (TDS-12).
+    specs = [x for x in ob._tds_obligations(FY, has_non_resident_vendors=True)
+             if x["obligation_type"].startswith("TDS2")]
     for period in {s["period_start"] for s in specs}:
         dues = {s["due_date"] for s in specs if s["period_start"] == period}
         assert len(dues) == 1, (period, dues)

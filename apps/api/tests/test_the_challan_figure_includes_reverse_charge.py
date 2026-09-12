@@ -132,7 +132,7 @@ def test_the_save_request_accepts_the_cash_figure():
         "out, are different facts")
     # Defaulted rather than required — a caller that has not been updated must
     # not start failing.
-    body = SaveGSTR3BRequest(client_id="c", period="042026", gstin="27AAAAA0000A1Z5",
+    body = SaveGSTR3BRequest(client_id="c", period="042026", gstin="27AAAAA0000A1Z2",
                              net_tax_paise=1_79_500)
     assert body.cash_payable_paise == 0
     assert body.rcm_cash_paise == 0

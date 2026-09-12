@@ -141,7 +141,7 @@ def test_table_4a_still_sums_after_the_carve_out():
     r = compute_gstr3b([SalesTransaction("invoice", 1000000, 0, 90000, 90000, 0, "taxable", False)],
                        [_b2b(cgst=45000, sgst=45000), _rcm(cgst=9000, sgst=9000)],
                        [GSTR2ARecord(1000, 1000, 0)])
-    t4 = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["itc_elg"]
+    t4 = r.as_gstn_payload("27AAAAA0000A1Z2", "062026")["itc_elg"]
     for head in ("iamt", "camt", "samt", "csamt"):
         assert (sum(x[head] for x in t4["itc_avl"])
                 - sum(x[head] for x in t4["itc_rev"])) == t4["itc_net"][head], head

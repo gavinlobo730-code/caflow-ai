@@ -17,7 +17,7 @@ from services.invoice_pdf_service import _compute_tax_splits
 
 _FIRM = {
     "name": "Test CA Firm",
-    "gstin": "27AAAAA0000A1Z5",  # state code 27 = Maharashtra
+    "gstin": "27AAAAA0000A1Z2",  # state code 27 = Maharashtra
 }
 
 _INVOICE_BASE = {

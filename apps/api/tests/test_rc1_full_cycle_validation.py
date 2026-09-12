@@ -38,7 +38,7 @@ from tests.e2e_harness import (
 
 FIRM = "FIRM-RC1"
 CALLER = {"firm_id": FIRM, "id": "u", "auth_user_id": "auth", "email": "ca@rc1.test", "role": "Partner"}
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 
 # System-key → account nature, for the balance-sheet identity check.
 _ASSET = {"ar", "bank", "gst_input", "tds_receivable"}
@@ -52,7 +52,7 @@ def _setup(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": GSTIN, "financial_year_start": "2025-04-01"})
     db.seed("customers", {"id": "CUST1", "firm_id": FIRM, "client_id": "CLI", "name": "Acme Ltd",
-                          "gstin": "27BBBBB1111B1Z5", "state_code": "27", "is_active": True,
+                          "gstin": "27BBBBB1111B1ZN", "state_code": "27", "is_active": True,
                           "opening_balance_paise": 0})
     db.seed("vendors", {"id": "VEND1", "firm_id": FIRM, "client_id": "CLI", "name": "Supplier Co",
                         "gstin": "27CCCCC2222C1Z5", "state_code": "27", "tds_applicable": False,

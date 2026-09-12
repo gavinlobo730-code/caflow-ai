@@ -11,9 +11,12 @@ from typing import Optional
 
 # ── Regex patterns ─────────────────────────────────────────────────────────────
 
-_GSTIN_RE = re.compile(
-    r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$"
-)
+# NO GSTIN REGEX HERE ANY MORE (GST-29). A shape regex accepts
+# `27AAPFU0939F1ZX` — one character off the real `…1ZV` — and a valid-shaped
+# wrong GSTIN is worse than an obviously wrong one: §16(2)(aa) sends the credit
+# to whoever it names. `validate_gstin` below delegates to
+# `domain/gst/gstin.problem_with`, which computes the check digit, and leaving
+# the pattern here would be an invitation to use it again.
 _PAN_RE   = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]{1}$")
 _TAN_RE   = re.compile(r"^[A-Z]{4}[0-9]{5}[A-Z]{1}$")
 _CIN_RE   = re.compile(
@@ -35,17 +38,22 @@ _VALID_STATE_CODES = {
 
 def validate_gstin(value: Optional[str]) -> Optional[str]:
     """Return None if valid, error message string if invalid.
-    CGST Act §25: GSTIN format: 2-digit state + PAN(10) + entity + Z + check.
-    Returns an error when value is None/empty — GSTIN is required.
+
+    CGST Act §25. Delegates to `domain/gst/gstin.problem_with`, the one
+    implementation that computes the CHECK DIGIT (GST-29). This was a shape
+    regex plus a state-code lookup, so `27AAPFU0939F1ZX` — one character off
+    the real `…1ZV` — passed, and `routers/gst_workspace.py` accepted it on the
+    three paths that record a return.
+
+    The REQUIRED-on-empty behaviour is this function's own and is kept:
+    `problem_with` treats a blank GSTIN as "unregistered", which is the right
+    answer where a customer may have no registration and the wrong one where a
+    return is being filed.
     """
     if not value:
         return "GSTIN is required. CGST Act §25: every registered person must have a valid GSTIN."
-    v = value.strip().upper()
-    if not _GSTIN_RE.match(v):
-        return "GSTIN format is invalid. Expected: 2-digit state + PAN + 1 entity + Z + 1 check (e.g. 27AAAAA0000A1Z5)."
-    if v[:2] not in _VALID_STATE_CODES:
-        return f"GSTIN state code '{v[:2]}' is not a valid Indian state code."
-    return None
+    from domain.gst.gstin import problem_with
+    return problem_with(value)
 
 
 def validate_pan(value: Optional[str]) -> Optional[str]:

@@ -85,7 +85,7 @@ def db(pg_template):
 def _doc(number: str, *, doc_type: str = "INV", bill_id: str | None = None) -> dict:
     return {
         "section": "b2b", "document_type": doc_type,
-        "supplier_gstin": "27AAAAA0000A1Z5", "supplier_name": "A Supplier",
+        "supplier_gstin": "27AAAAA0000A1Z2", "supplier_name": "A Supplier",
         "supplier_trade_name": "A Supplier",
         "invoice_number": number, "invoice_date": "2026-06-10",
         "taxable_value_paise": 100000, "igst_paise": 18000,
@@ -101,7 +101,7 @@ def _doc(number: str, *, doc_type: str = "INV", bill_id: str | None = None) -> d
 
 
 def _header(**over) -> dict:
-    h = {"gstin": "27AAAAA0000A1Z5", "file_return_period": PERIOD,
+    h = {"gstin": "27AAAAA0000A1Z2", "file_return_period": PERIOD,
          "generated_on": "14-07-2026", "sections_seen": ["b2b"],
          "document_count": 0, "book_bill_count": 0,
          "parsed_ok": True, "problems": []}
