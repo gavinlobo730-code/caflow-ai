@@ -515,6 +515,76 @@ def check_orphan_money_journals(db, firm_id: str, client_id: str, entries) -> li
     )]
 
 
+def check_fixed_asset_register(db, firm_id: str, client_id: str, entries) -> list[dict]:
+    """The fixed-asset register against the ledger, and against Schedule II.
+
+    WHY IT IS HERE AND NOT ONLY BEHIND A BUTTON (FA-20)
+
+        `GET /api/fixed-assets/register-integrity` has run these checks since
+        FA-02, and only when a CA opened the Reports tab and pressed Re-check.
+        The nightly sweep and "Verify Books" — the two things that tell a CA
+        their books are wrong without being asked — said nothing whatever about
+        fixed assets. An asset with no acquisition journal is a machine on the
+        register that never reached the balance sheet, which is the same class
+        of defect as `check_missing_cogs_journals`, and it sat outside the
+        engine that exists to find exactly that.
+
+    ONE RULE, TWO CALLERS
+
+        `domain.fixed_assets.integrity.register_findings` is the rule; this
+        function and the endpoint both fetch and call it. Writing a second copy
+        here — over the same register, for the same client — is how the sweep
+        and the screen come to disagree about a client's assets, and the copy
+        that stops being updated is always the one nobody is looking at.
+
+    SEVERITY IS DECIDED HERE, not in the domain, because it is a statement
+    about this engine's own vocabulary rather than about Schedule II. The two
+    that mean money is MISSING from the ledger are critical; the two Schedule II
+    ones are warnings, because Part A expressly permits a different life or
+    residual provided it is disclosed — they are a prompt to correct or
+    disclose, not an assertion that the books are wrong.
+    """
+    # The DOMAIN, never the router: a service importing a router to reach a
+    # statutory rule is the wrong direction and one refactor from a cycle.
+    from domain.fixed_assets import integrity as fa_integrity
+
+    rows = _paginate_all(lambda: (
+        db.table("fixed_assets").select(fa_integrity.COLUMNS)
+        .eq("firm_id", firm_id).eq("client_id", client_id)
+        .is_("deleted_at", "null")
+    ))
+    if not rows:
+        return []
+
+    bill_ids = sorted({r["purchase_bill_id"] for r in rows if r.get("purchase_bill_id")})
+    live: set = set()
+    for i in range(0, len(bill_ids), 200):
+        got = (db.table("purchase_bills").select("id")
+               .eq("firm_id", firm_id).in_("id", bill_ids[i:i + 200])
+               .execute().data) or []
+        live.update(str(b["id"]) for b in got)
+
+    severity = {
+        "no_acquisition_journal": "critical",
+        "bill_capitalised_more_than_once": "critical",
+        "capitalised_from_a_bill_that_is_gone": "critical",
+        "depreciation_basis_departs_from_schedule_ii": "warning",
+        "wdv_asset_has_no_stopping_point": "warning",
+    }
+    out: list[dict] = []
+    for f in fa_integrity.register_findings(rows, live_bill_ids=live):
+        kind = f["kind"]
+        subject = f.get("asset_code") or f.get("purchase_bill_id") or "an asset"
+        out.append(_finding(
+            f"fixed_asset_register.{kind}",
+            severity.get(kind, "warning"),
+            f"{subject}: {f['what_it_means']}",
+            amount_paise=f.get("amount_paise"),
+            **{k: v for k, v in f.items() if k not in ("kind", "what_it_means", "amount_paise")},
+        ))
+    return out
+
+
 _CHECKS = [
     check_trial_balance,
     check_missing_cogs_journals,
@@ -524,6 +594,7 @@ _CHECKS = [
     check_ap_subledger_vs_gl,
     check_bank_reconciliation_discrepancies,
     check_orphan_money_journals,
+    check_fixed_asset_register,
 ]
 
 

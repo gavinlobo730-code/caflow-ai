@@ -13,6 +13,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { fyRangeFor } from "@/lib/dates/periods";
+import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -632,7 +633,30 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     wdv_rate_percent:      "",
     useful_life_years:     "",
     notes:                 "",
+    // ── FA-07: how it was acquired, and from whom ───────────────────────────
+    // The backend has carried all of this since migration 343 — the model
+    // refuses `from_bill` without a bill, `credit` without a vendor and tax
+    // without an ITC answer, and the posting kernel writes a DIFFERENT credit
+    // leg for each mode. No screen collected any of it, so every asset created
+    // from the product defaulted to `paid` with no bank account, and a machine
+    // bought on credit was booked as if cash had left the building.
+    acquisition_mode:      "paid" as "paid" | "credit" | "from_bill",
+    vendor_id:             "",
+    purchase_bill_id:      "",
+    bank_account_id:       "",
+    payment_mode:          "bank",
+    igst_paise:            "",
+    cgst_paise:            "",
+    sgst_paise:            "",
+    // "" = not answered. The model REFUSES tax with no answer here, because
+    // whether CGST Act §17(5) blocks the credit changes both the balance sheet
+    // and the depreciable cost — blocked tax is capitalised and depreciates.
+    itc_eligible:          "" as "" | "yes" | "no",
+    itc_blocked_reason:    "",
   });
+  const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
+  const [vendorBills, setVendorBills] = useState<{ id: string; bill_no: string | null; our_reference: string | null; bill_date: string | null }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -671,6 +695,42 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 
   useEffect(() => { loadCategories(); }, [loadCategories]);
 
+  // The counterparties the acquisition can name. Read straight from PostgREST
+  // like every other picker on this screen; RLS is the access control on that
+  // path (CLAUDE.md, "The frontend's second data path").
+  useEffect(() => {
+    if (!clientId || clientId === "_placeholder") return;
+    (async () => {
+      const sb = getSupabaseClient();
+      const [v, b] = await Promise.all([
+        sb.from("vendors").select("id, name")
+          .eq("client_id", clientId).eq("is_active", true).order("name"),
+        sb.from("bank_accounts").select("id, bank_name, account_no")
+          .eq("client_id", clientId).eq("is_active", true).order("bank_name"),
+      ]);
+      setVendors((v.data as { id: string; name: string }[]) ?? []);
+      setBankAccounts((b.data as { id: string; bank_name: string; account_no: string }[]) ?? []);
+    })();
+  }, [clientId]);
+
+  // The bills THIS vendor has open. Scoped to the vendor because capitalising
+  // somebody else's bill would reclassify cost out of a purchase the client
+  // never made, and a flat list of every bill is how that happens.
+  useEffect(() => {
+    if (form.acquisition_mode !== "from_bill" || !form.vendor_id) { setVendorBills([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await getSupabaseClient()
+        .from("purchase_bills")
+        .select("id, bill_no, our_reference, bill_date")
+        .eq("client_id", clientId).eq("vendor_id", form.vendor_id)
+        .in("status", ["received", "partially_paid", "paid"])
+        .order("bill_date", { ascending: false }).order("id");
+      if (!cancelled) setVendorBills((data as typeof vendorBills) ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [clientId, form.acquisition_mode, form.vendor_id]);
+
   const selected = categories.find(c => c.category === form.asset_category);
   const selectedClass = selected?.classes[form.schedule_ii_class];
 
@@ -686,6 +746,15 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                + "125000.50 — without commas.");
       return;
     }
+    // The one parser, for the tax too (CLAUDE.md). Blank means nil, not NaN.
+    const igst = paiseFromRupeeInput(form.igst_paise || "0");
+    const cgst = paiseFromRupeeInput(form.cgst_paise || "0");
+    const sgst = paiseFromRupeeInput(form.sgst_paise || "0");
+    if (igst === null || cgst === null || sgst === null) {
+      setError("GST amounts must be in rupees, e.g. 18000 or 18000.50 — without commas.");
+      return;
+    }
+    const taxTotal = igst + cgst + sgst;
     setSaving(true); setError("");
     try {
       const body = {
@@ -709,6 +778,27 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         wdv_rate_percent:      form.wdv_rate_percent.trim()  === "" ? undefined : Number(form.wdv_rate_percent),
         useful_life_years:     form.useful_life_years.trim() === "" ? undefined : Number(form.useful_life_years),
         notes:                 form.notes || undefined,
+        // ── FA-07 ───────────────────────────────────────────────────────────
+        // The mode decides the CREDIT leg, so it is always sent. The
+        // counterparty fields are sent only where the mode names one: a
+        // vendor_id riding along on a `paid` asset is a fact the entry does
+        // not use and the register would then carry a payee for something
+        // nobody is owed.
+        acquisition_mode:      form.acquisition_mode,
+        vendor_id:             form.acquisition_mode === "paid" ? undefined : (form.vendor_id || undefined),
+        purchase_bill_id:      form.acquisition_mode === "from_bill" ? (form.purchase_bill_id || undefined) : undefined,
+        bank_account_id:       form.acquisition_mode === "paid" && !isCashMode(form.payment_mode)
+                                 ? (form.bank_account_id || undefined) : undefined,
+        payment_mode:          form.acquisition_mode === "paid" ? form.payment_mode : undefined,
+        igst_paise:            igst,
+        cgst_paise:            cgst,
+        sgst_paise:            sgst,
+        // Sent only when there IS tax. The model refuses tax with no answer,
+        // and sending an answer with no tax asserts a §17(5) judgement about
+        // nothing.
+        itc_eligible:          taxTotal > 0 && form.itc_eligible ? form.itc_eligible === "yes" : undefined,
+        itc_blocked_reason:    taxTotal > 0 && form.itc_eligible === "no"
+                                 ? (form.itc_blocked_reason || undefined) : undefined,
       };
       if (body.wdv_rate_percent !== undefined && !Number.isFinite(body.wdv_rate_percent)) {
         setError("The WDV rate must be a percentage, e.g. 12.5."); return;  // the finally below lowers `saving`
@@ -820,6 +910,151 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
               <p className="text-[10px] text-[#94A3B8] mt-1">{scheduleIINote(selected, selectedClass, "SL")}</p>
             </Field>
           )}
+
+          {/* ── How it was acquired, and from whom (FA-07) ─────────────────
+              The mode decides the CREDIT leg of the acquisition entry, and
+              they are three different entries:
+
+                paid      Dr asset / Cr the account the money actually left
+                credit    Dr asset / Cr Trade Payables — the vendor IS owed
+                from_bill Dr asset / Cr Purchases — a RECLASSIFICATION of a
+                          bill that already posted, touching neither the
+                          payable nor any cash
+
+              Defaulting every asset to `paid` was not a neutral default: a
+              machine bought on credit went in as if cash had left the
+              building, and one already on a purchase bill went in TWICE. */}
+          <div className="border-t border-[#F1F5F9] pt-4 space-y-3">
+            <p className="text-[11px] font-semibold text-[#334155]">How was it acquired?</p>
+            <div className="space-y-1.5">
+              {([
+                ["paid",      "Paid for now", "Credits the bank or cash account the money left."],
+                ["credit",    "On credit from a vendor", "Credits Trade Payables — the vendor is owed."],
+                ["from_bill", "Already on a purchase bill", "Moves the cost out of purchases. Nothing else is posted."],
+              ] as const).map(([mode, label, why]) => (
+                <label key={mode} className="flex gap-2 items-start cursor-pointer">
+                  <input
+                    type="radio" name="acq_mode" value={mode} className="mt-0.5"
+                    checked={form.acquisition_mode === mode}
+                    onChange={() => setForm(f => ({ ...f, acquisition_mode: mode }))}
+                  />
+                  <span>
+                    <span className="text-[#1E293B] font-medium">{label}</span>
+                    <span className="block text-[10px] text-[#94A3B8]">{why}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {form.acquisition_mode === "paid" && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Payment Mode">
+                  <select className={INPUT} value={form.payment_mode}
+                          onChange={e => setForm(f => ({ ...f, payment_mode: e.target.value }))}>
+                    {PAYMENT_MODES.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}
+                  </select>
+                </Field>
+                {/* Hidden for cash: it did not come out of a bank, and offering
+                    an account is what makes a CA pick one and mis-post it. */}
+                {!isCashMode(form.payment_mode) && (
+                  <Field label="Paid from">
+                    <select className={INPUT} value={form.bank_account_id}
+                            onChange={e => setForm(f => ({ ...f, bank_account_id: e.target.value }))}>
+                      <option value="">Select an account…</option>
+                      {bankAccounts.map(b => (
+                        <option key={b.id} value={b.id}>{b.bank_name} · {b.account_no}</option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+              </div>
+            )}
+
+            {form.acquisition_mode !== "paid" && (
+              <Field label="Vendor *">
+                <select className={INPUT} value={form.vendor_id}
+                        onChange={e => setForm(f => ({ ...f, vendor_id: e.target.value, purchase_bill_id: "" }))}>
+                  <option value="">Select a vendor…</option>
+                  {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </select>
+              </Field>
+            )}
+
+            {form.acquisition_mode === "from_bill" && (
+              <Field label="Purchase Bill *">
+                <select className={INPUT} value={form.purchase_bill_id}
+                        disabled={!form.vendor_id}
+                        onChange={e => setForm(f => ({ ...f, purchase_bill_id: e.target.value }))}>
+                  <option value="">{form.vendor_id ? "Select a bill…" : "Pick the vendor first"}</option>
+                  {vendorBills.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.bill_no || b.our_reference || b.id.slice(0, 8)}
+                      {b.bill_date ? ` · ${b.bill_date}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-[#94A3B8] mt-1">
+                  A bill can be capitalised once. Its cost moves out of purchases
+                  into this asset; the payable is untouched.
+                </p>
+              </Field>
+            )}
+          </div>
+
+          {/* ── GST on the acquisition, and whether it can be claimed ───────
+              CGST Act §17(5) bars the credit on some purchases — a motor
+              vehicle for personal carriage among them. The tax is still paid,
+              so it is CAPITALISED into the asset's cost and DEPRECIATES rather
+              than being claimed. That is why the question has to be answered
+              rather than defaulted: it changes the balance sheet and every
+              depreciation charge the asset will ever take. */}
+          <div className="border-t border-[#F1F5F9] pt-4 space-y-3">
+            <p className="text-[11px] font-semibold text-[#334155]">GST on the purchase</p>
+            <div className="grid grid-cols-3 gap-2">
+              <Field label="IGST (₹)">
+                <input type="number" className={INPUT} value={form.igst_paise} placeholder="0"
+                       onChange={e => setForm(f => ({ ...f, igst_paise: e.target.value }))} />
+              </Field>
+              <Field label="CGST (₹)">
+                <input type="number" className={INPUT} value={form.cgst_paise} placeholder="0"
+                       onChange={e => setForm(f => ({ ...f, cgst_paise: e.target.value }))} />
+              </Field>
+              <Field label="SGST (₹)">
+                <input type="number" className={INPUT} value={form.sgst_paise} placeholder="0"
+                       onChange={e => setForm(f => ({ ...f, sgst_paise: e.target.value }))} />
+              </Field>
+            </div>
+            {(Number(form.igst_paise || 0) + Number(form.cgst_paise || 0)
+              + Number(form.sgst_paise || 0)) > 0 && (
+              <>
+                <Field label="Is the input credit available? *">
+                  <div className="space-y-1.5">
+                    {([
+                      ["yes", "Yes — claim it", "The tax goes to GST Input and is not depreciated."],
+                      ["no",  "No — blocked under §17(5)", "The tax is added to the asset's cost and depreciates."],
+                    ] as const).map(([v, label, why]) => (
+                      <label key={v} className="flex gap-2 items-start cursor-pointer">
+                        <input type="radio" name="itc_eligible" value={v} className="mt-0.5"
+                               checked={form.itc_eligible === v}
+                               onChange={() => setForm(f => ({ ...f, itc_eligible: v }))} />
+                        <span>
+                          <span className="text-[#1E293B] font-medium">{label}</span>
+                          <span className="block text-[10px] text-[#94A3B8]">{why}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </Field>
+                {form.itc_eligible === "no" && (
+                  <Field label="Why is it blocked?">
+                    <input className={INPUT} value={form.itc_blocked_reason}
+                           placeholder="e.g. motor vehicle — §17(5)(a)"
+                           onChange={e => setForm(f => ({ ...f, itc_blocked_reason: e.target.value }))} />
+                  </Field>
+                )}
+              </>
+            )}
+          </div>
 
           <Field label="Notes">
             <textarea className={`${INPUT} h-16 resize-none`} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />

@@ -653,6 +653,18 @@ Recorded so nobody goes looking:
   under-depreciating. An asset's own stored `wdv_rate_percent` still wins over
   the default whenever it has one.
 
+  **Schedule II Part C and the rules over it live in
+  `domain/fixed_assets/`** (`schedule_ii.py` for the table,
+  `integrity.py` for the five register checks), not in the router. Three
+  callers read them — the categories endpoint the Add Asset drawer pre-fills
+  from, `GET /register-integrity`, and `reconciliation_service`'s nightly sweep
+  — and a service importing a router to reach a statutory table is the wrong
+  direction and one refactor from a cycle. `routers/fixed_assets.py`
+  re-exports the old names so existing imports still work.
+  `integrity.COLUMNS` is the projection BOTH fetchers use: a column added to
+  one query and not the other makes that one quietly answer "clean" on a
+  finding it could not see.
+
   **AND A REDUCING BALANCE HAS TO BE TOLD WHERE TO STOP.** A WDV charge
   approaches its floor and never reaches it, so with the column's default
   `salvage_value_paise = 0` an asset was depreciated for ever — and the derived

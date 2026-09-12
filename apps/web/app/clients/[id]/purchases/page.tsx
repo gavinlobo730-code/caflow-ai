@@ -1,5 +1,6 @@
 "use client";
 
+import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw } from "lucide-react";
@@ -2395,7 +2396,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
     { key: "vendor", label: "Vendor", type: "select", accessor: (p) => p.vendors?.name ?? "",
       options: vendors.map((v) => ({ value: v.name, label: v.name })) },
     { key: "payment_mode", label: "Mode", type: "select", accessor: (p) => p.payment_mode,
-      options: ["bank", "cash", "cheque", "upi", "neft", "rtgs"].map((m) => ({ value: m, label: m })) },
+      options: PAYMENT_MODES.map((m) => ({ value: m, label: m })) },
   ], [vendors]);
 
   return (
@@ -2501,7 +2502,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Mode</label>
               <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {["bank", "cash", "cheque", "upi", "neft", "rtgs"].map((m) => <option key={m}>{m}</option>)}
+                {PAYMENT_MODES.map((m) => <option key={m}>{m}</option>)}
               </select>
             </div>
             <div>

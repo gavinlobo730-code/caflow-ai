@@ -1,5 +1,6 @@
 "use client";
 
+import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { pruneSelection } from "@/lib/table/pruneSelection";
 import { createPortal } from "react-dom";
@@ -172,7 +173,6 @@ function isOverdueForUi(inv: SalesInvoice): boolean {
  */
 
 // CGST Act Schedule — all notified rates
-const PAYMENT_MODES = ["bank", "cash", "cheque", "upi", "neft", "rtgs"];
 
 function LoadingSkeleton() {
   return (

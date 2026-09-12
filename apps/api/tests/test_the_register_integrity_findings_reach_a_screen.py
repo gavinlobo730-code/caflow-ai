@@ -47,8 +47,17 @@ def _strip_line_comments(ts: str) -> str:
 
 
 def _router_kinds() -> set[str]:
-    """Every `"kind": "..."` literal the router emits."""
-    src = ROUTER.read_text()
+    """Every `"kind": "..."` literal the register-integrity answer can carry.
+
+    Read from the ROUTER and from `domain/fixed_assets/integrity.py`, because
+    FA-20 moved the rule into the domain so the nightly reconciliation sweep
+    could run the same checks — and a scanner left pointing at the router alone
+    would have found nothing and passed every assertion in this file
+    vacuously, which is the state the guard below exists to refuse.
+    """
+    src = ROUTER.read_text() + (
+        ROUTER.resolve().parents[1] / "domain" / "fixed_assets" / "integrity.py"
+    ).read_text()
     return set(re.findall(r'"kind":\s*"([a-z0-9_]+)"', src))
 
 
