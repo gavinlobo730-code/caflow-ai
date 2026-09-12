@@ -13,6 +13,11 @@
 /.next/
 /out/
 
+# scripts/smoke-walk.mjs --shots: the visual baseline. Deliberately not
+# committed — they are 159 screenshots that are SUPPOSED to change with every
+# design pass, so versioning them would be 30MB of churn saying nothing.
+/.smoke/
+
 # production
 /build
 
