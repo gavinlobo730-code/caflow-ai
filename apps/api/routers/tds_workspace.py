@@ -25,6 +25,8 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from models.fy import FYLabel
+from core.ist_clock import fy_bounds
+from domain.tds import deductor_26as as D26
 
 router = APIRouter(prefix="/api/tds-workspace", tags=["tds_workspace"])
 _logger = logging.getLogger("caflow.tds_workspace")
@@ -1099,71 +1101,197 @@ def create_certificate(
         return api_response(False, None, str(e))
 
 
+def _register_rows_for_fy(firm_id: str, client_id: str, fy: str) -> list[dict]:
+    """The client's own TDS register for one financial year.
+
+    Firm- AND client-scoped: the service-role key bypasses RLS, so the
+    app-layer filter is the isolation control (CLAUDE.md).
+
+    `financial_year` is migration 263's column, backfilled from
+    `transaction_date` for every row that existed when it landed, and set by
+    all three writers today (`tds_register_service.sync_for_bill` on the bill
+    and the advance paths, and `create_deduction` here). So the fallback below
+    guards no live path — and it stays, because of the DIRECTION it fails in.
+    A row this filter drops does not raise; it makes the register look shorter
+    than it is, and a reconciliation over a short register reports a CLEAN
+    result. A row with no `financial_year` is therefore placed by its own
+    `transaction_date`, which is NOT NULL on this table.
+    """
+    if _USE_MOCK:
+        rows = [d for d in _MOCK_DEDUCTIONS.values()
+                if d.get("client_id") == client_id and d.get("firm_id") == firm_id]
+    else:
+        from core.supabase_client import get_supabase
+        rows = _paginate_deductions(get_supabase(), firm_id, client_id)
+    start, end = fy_bounds(fy)
+    out = []
+    for r in rows:
+        row_fy = (r.get("financial_year") or "").strip()
+        if row_fy:
+            if row_fy == fy:
+                out.append(r)
+            continue
+        on = str(r.get("transaction_date") or "")[:10]
+        if on and str(start) <= on <= str(end):
+            out.append(r)
+    return out
+
+
+def _paginate_deductions(db, firm_id: str, client_id: str) -> list[dict]:
+    """Every register row for the client, a page at a time.
+
+    PostgREST caps a response; a client with a year of contractor bills passes
+    the default limit easily, and a truncated register is the same false clean
+    result as a filtered one.
+    """
+    out: list[dict] = []
+    page, size = 0, 1000
+    while True:
+        chunk = (db.table("tds_deductions")
+                 .select("id, deductee_pan, deductee_name, section, tds_paise, "
+                         "transaction_date, financial_year")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .order("id").range(page * size, page * size + size - 1)
+                 .execute().data) or []
+        out.extend(chunk)
+        if len(chunk) < size:
+            return out
+        page += 1
+
+
+def _o26(o) -> dict:
+    """A 26AS-side outcome as the screen reads it. `key` is kept as the [PAN,
+    section] pair the tab already renders."""
+    return {
+        "key": [o.deductee_pan, o.section],
+        "status": o.status,
+        "entry_id": o.entry_id,
+        "deduction_id": o.matched_deduction_id,
+        "form26as_paise": o.form26as_paise,
+        "book_paise": o.book_paise,
+        "diff_paise": abs(o.diff_paise),
+        # Signed, because "the portal shows more" and "the register shows more"
+        # are opposite problems and the absolute value above cannot say which.
+        "net_diff_paise": o.diff_paise,
+        "reason": o.reason,
+    }
+
+
+def _d26(o) -> dict:
+    return {
+        "key": [o.deductee_pan, o.section],
+        "status": o.status,
+        "deduction_id": o.deduction_id,
+        "book_paise": o.book_paise,
+        "form26as_paise": 0,
+        "diff_paise": o.book_paise,
+        "net_diff_paise": -o.book_paise,
+        "reason": o.reason,
+    }
+
+
 @router.post("/form26as/upload")
 def upload_form26as(
     body: Form26ASUploadRequest,
     current_user: dict = Depends(rbac("tds", "compute")),
 ):
     """
-    Save a Form 26AS extract the caller has already paired with its book side,
-    and record the comparison. IT Act s.285BB with Rule 114-I (s.203AA, cited
-    here until now, was omitted by the Finance Act 2020 w.e.f. 01-06-2020).
-
-    Both sides arrive in `raw_data` — `tds_entries` and `book_deductions` — and
-    are matched on (PAN, section) plus amount. NOTHING is read from the
-    database: despite what this docstring said, it does not reconcile against
-    `tds_deductions`, and it never has.
+    Reconcile a Form 26AS extract against the client's own TDS register.
+    IT Act s.285BB with Rule 114-I (s.203AA, cited here until now, was omitted
+    by the Finance Act 2020 w.e.f. 01-06-2020).
 
     This is the CLIENT-AS-DEDUCTOR direction — a self-check on the TDS the
-    client withheld from its own vendors, which appears in each vendor's 26AS.
-    The client's OWN 26AS, listing tax others withheld from it, is reconciled by
-    domain/income_tax/form26as_service.py, which reads both sides itself.
+    client withheld from its own vendors, which appears in each vendor's 26AS
+    under this client's TAN. The client's OWN 26AS, listing tax others withheld
+    from IT, is reconciled by domain/income_tax/form26as_service.py.
+
+    THE BOOK SIDE IS READ HERE, NOT ASKED FOR (TDS-21). Both sides used to
+    arrive in `raw_data` — `tds_entries` AND `book_deductions` — and the tab
+    was a textarea telling the CA to paste both. Asking a screen to supply the
+    register it is reconciling is asking it to supply the answer, which is the
+    same defect the GSTR-2B reconciliation had and shed (CLAUDE.md). This now
+    reads `tds_deductions` for the financial year itself; a `book_deductions`
+    key still sent by an older caller is IGNORED and said so in
+    `ignored_request_keys`, because silently answering a different question
+    than the caller asked is worse than the original bug.
+
+    The matching is `domain/tds/deductor_26as.reconcile` — one-to-one on
+    (deductee PAN, section), exact amount before variance, every pass
+    consuming, and BOTH leftovers reported. It used to be a dict comprehension
+    that kept one 26AS row per identity, matched it against any number of book
+    rows, and never reported a portal row the register was missing at all.
     """
     try:
         assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
         raw = body.raw_data
-        # Reconcile 26AS TDS entries against book deductions
-        form26as_entries = raw.get("tds_entries", [])  # [{pan, section, amount_paise, deductor_tan}]
-        book_deductions = raw.get("book_deductions", [])
+        entries = [
+            D26.PortalEntry(
+                entry_id=str(e.get("entry_id") or e.get("id") or f"e{i}"),
+                deductee_pan=str(e.get("pan") or e.get("deductee_pan") or ""),
+                section=str(e.get("section") or ""),
+                tds_paise=int(e.get("amount_paise") or e.get("tds_paise") or 0),
+                deductee_name=str(e.get("deductee_name") or e.get("name") or ""),
+                transaction_date=(str(e.get("transaction_date"))[:10]
+                                  if e.get("transaction_date") else None),
+            )
+            for i, e in enumerate(raw.get("tds_entries") or [])
+        ]
 
-        matched = []
-        mismatched = []
-        missing_in_26as = []
+        book_rows = _register_rows_for_fy(firm_id, body.client_id, body.financial_year)
+        deductions = [
+            D26.BookDeduction(
+                deduction_id=str(r.get("id") or ""),
+                deductee_pan=str(r.get("deductee_pan") or ""),
+                section=str(r.get("section") or ""),
+                tds_paise=int(r.get("tds_paise") or 0),
+                deductee_name=str(r.get("deductee_name") or ""),
+                transaction_date=(str(r.get("transaction_date"))[:10]
+                                  if r.get("transaction_date") else None),
+            )
+            for r in book_rows
+        ]
 
-        form26as_keys = {
-            (e.get("pan", ""), e.get("section", "")): e for e in form26as_entries
-        }
-
-        for book_ded in book_deductions:
-            key = (book_ded.get("deductee_pan", ""), book_ded.get("section", ""))
-            if key in form26as_keys:
-                f26_entry = form26as_keys[key]
-                # Amounts must agree exactly; integer paise, never float
-                book_amt = book_ded.get("amount_paise", 0)
-                f26_amt = f26_entry.get("amount_paise", 0)
-                if book_amt == f26_amt:
-                    matched.append({"key": key, "status": "matched"})
-                else:
-                    mismatched.append({
-                        "key": key, "status": "amount_mismatch",
-                        "book_paise": book_amt, "form26as_paise": f26_amt,
-                        "diff_paise": abs(book_amt - f26_amt),
-                    })
-            else:
-                missing_in_26as.append({"key": key, "status": "missing_in_26as"})
-
+        result = D26.reconcile(entries, deductions)
         reconciliation_result = {
-            "matched": matched,
-            "mismatched": mismatched,
-            "missing_in_26as": missing_in_26as,
+            "source": "tds_deductions",
+            "matched": [_o26(o) for o in result.entry_outcomes
+                        if o.status == D26.STATUS_MATCHED],
+            "mismatched": [_o26(o) for o in result.entry_outcomes
+                           if o.status == D26.STATUS_VARIANCE],
+            # The portal shows it and the register does not — the direction the
+            # dict comprehension could not express at all.
+            "missing_in_books": [_o26(o) for o in result.entry_outcomes
+                                 if o.status == D26.STATUS_MISSING_IN_BOOKS],
+            # The register carries it and the portal does not show it.
+            "missing_in_26as": [_d26(o) for o in result.deduction_outcomes
+                                if o.status == D26.STATUS_MISSING_IN_26AS],
+            "no_pan": [_d26(o) for o in result.deduction_outcomes
+                       if o.status == D26.STATUS_NO_PAN],
             "summary": {
-                "total_book": len(book_deductions),
-                "matched_count": len(matched),
-                "mismatch_count": len(mismatched),
-                "missing_count": len(missing_in_26as),
+                "total_26as": len(entries),
+                "total_book": len(deductions),
+                "matched_count": result.matched_count,
+                "mismatch_count": result.mismatch_count,
+                "missing_in_books_count": result.missing_in_books_count,
+                # Kept under its original name as well: the tab reads
+                # `missing_count`, and renaming it here would blank the figure
+                # on a frontend that has not redeployed yet.
+                "missing_count": result.missing_in_26as_count,
+                "missing_in_26as_count": result.missing_in_26as_count,
+                "no_pan_count": result.no_pan_count,
+                "total_26as_paise": result.total_26as_paise,
+                "total_books_paise": result.total_books_paise,
+                "net_variance_paise": result.net_variance_paise,
             },
         }
+        if "book_deductions" in raw:
+            reconciliation_result["ignored_request_keys"] = {
+                "book_deductions": (
+                    "The register is read from tds_deductions for this "
+                    "financial year. A book side supplied by the caller is not "
+                    "used — see TDS-21."),
+            }
 
         # form_26as_uploads' shape diverged between migration 052 and the live
         # database (see migration 291): 052 declares created_by and no

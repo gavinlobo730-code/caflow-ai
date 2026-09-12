@@ -907,6 +907,27 @@ communicated to the recipient, and **GSTR-2B is that communication**.
 - **Not built:** invoice-wise Rule 36(4). The reconciliation now knows per
   document whether 2B allows the credit; `gstr3b_computer` still caps in
   aggregate.
+- **The 26AS reconciliation is the same rule and had the same defect
+  (TDS-21).** `POST /tds-workspace/form26as/upload` asked the caller for BOTH
+  sides — `raw_data.tds_entries` AND `raw_data.book_deductions` — with the tab
+  a textarea saying so, while the register sits in `tds_deductions`. It reads
+  the register itself now; a `book_deductions` key still sent is ignored and
+  named in `ignored_request_keys`. **`domain/tds/deductor_26as.py` is the
+  matcher and is deliberately NOT
+  `domain/income_tax/form26as_matcher.py`**: that one is the
+  client-as-DEDUCTEE direction, keyed on the DEDUCTOR's TAN or name, and this
+  is client-as-DEDUCTOR, keyed on the DEDUCTEE's PAN and section. Reusing it
+  would put a deductee's PAN in a field named `deductor_tan` and emit outcome
+  sentences about the wrong party. What both share is the discipline —
+  exact-amount pass before any variance pass, every pass CONSUMES, and totals
+  over the FULL population on each side — and that is stated in each. The old
+  code was a `{(pan, section): entry}` dict comprehension: it kept one 26AS row
+  per identity, matched it against any number of book rows, and had **no
+  26AS-side leftover bucket at all**, so a portal row the register was missing
+  was never reported. A deduction with no deductee PAN is its own named bucket
+  rather than matched — 26AS is keyed on the PAN, and pairing two blank-PAN
+  rows on section and amount is the guess §206AA exists because nobody should
+  make.
 
 ## Bank data — the Account Aggregator is the only way in
 
