@@ -354,8 +354,11 @@ _PROPERTY_SECTIONS = frozenset({"194IA", "194-IA", "194IB", "194-IB"})
 #:     there is no collection tracking and no 27EQ builder.
 #:
 #: Refused here rather than removed from the registry: the rate is real
-#: reference data and `domain/tds/vocabulary.py` maps 206C→394 for the 2026
-#: Act. What is refused is recording it against a payee.
+#: HISTORIC reference data — §206C(1H) ceased to operate from 01-04-2025 and
+#: the registry entry says so in its own `rate_gap` (SALES-32), but a belated
+#: or revised 27EQ for FY 2024-25 is still filed at 0.1% — and
+#: `domain/tds/vocabulary.py` maps 206C→394 for the 2026 Act. What is refused
+#: is recording it against a payee.
 SECTION_206C_TCS = "206C"
 
 

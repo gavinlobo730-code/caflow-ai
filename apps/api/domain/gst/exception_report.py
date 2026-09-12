@@ -118,6 +118,20 @@ def _doc_key(kind: str, doc_no: Any) -> str:
     return f"{kind}:{str(doc_no or '').strip().upper()}"
 
 
+def _shipping_bill(doc: dict) -> dict:
+    """Table 6A's three customs particulars, as the payload spells them.
+
+    Returned even when every value is blank: the portal accepts an export
+    declared before the shipping bill is available and the details furnished
+    later by amendment, so "" is a real recorded state and not a missing key.
+    """
+    return {
+        "sbpcode": str(doc.get("sbpcode") or ""),
+        "sbnum": str(doc.get("sbnum") or ""),
+        "sbdt": str(doc.get("sbdt") or ""),
+    }
+
+
 def index_documents(payload: Optional[dict]) -> dict:
     """Every document-identified entry in a GSTR-1 payload, by key.
 
@@ -151,6 +165,16 @@ def index_documents(payload: Optional[dict]) -> dict:
                     # reclassification report went blind to it.
                     "inv_typ": (doc.get("inv_typ") or "") if section == "b2b" else "",
                     "counterparty": counterparty,
+                    # THE SHIPPING BILL TRAVELS WITH AN EXPORT (SALES-10).
+                    # Table 6A's sbpcode/sbnum/sbdt are particulars of the
+                    # document, not of its value, and the §37(3) amendment
+                    # re-declares the whole entry — so an amendment built
+                    # without them replaces a filed export that HAD a shipping
+                    # bill with one that does not, which is how a refund under
+                    # CGST Rule 96 stops matching at customs. The main builder
+                    # has emitted them since migration 349; only the amendment
+                    # path was still writing three empty strings.
+                    "shipping_bill": _shipping_bill(doc) if section == "exp" else None,
                     **_item_totals(doc.get("itms")),
                 }
 
@@ -266,6 +290,9 @@ def compare_payloads(filed: Optional[dict], books: Optional[dict]) -> dict:
                 "filed_inv_typ": was.get("inv_typ", ""),
                 "books_inv_typ": now.get("inv_typ", ""),
                 "delta": _delta(now, was),
+                # The BOOKS side: an amendment declares the corrected
+                # particulars, and the shipping bill is one of them.
+                "shipping_bill": now.get("shipping_bill") or was.get("shipping_bill"),
                 "declare_in": _amendment_table(was["kind"]),
             })
             # A reclassified document is reported once, under the heading that
@@ -282,6 +309,7 @@ def compare_payloads(filed: Optional[dict], books: Optional[dict]) -> dict:
                 "filed": {h: was[h] for h in _HEADS},
                 "books": {h: now[h] for h in _HEADS},
                 "delta": delta,
+                "shipping_bill": now.get("shipping_bill") or was.get("shipping_bill"),
                 "declare_in": _amendment_table(was["kind"]),
             })
 

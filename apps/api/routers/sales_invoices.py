@@ -19,6 +19,7 @@ from domain.gst import discount as gst_discount
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
+from domain.gst import place_of_supply
 from domain.gst import supply_classification
 from domain.gst.validator import VALID_STATE_CODES
 from services.period_validation_service import period_validation_service
@@ -700,13 +701,18 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     firm_id    = current_user.get("firm_id")
     client_id  = data["client_id"]
     invoice_no = data["invoice_no"]  # shape already validated by SalesInvoiceIn
-    supply_state_code = data.get("supply_state_code", "")
+    # ONE STATED PLACE OF SUPPLY, from either spelling of the field.
+    # `SalesInvoiceIn` declares `supply_state_code` AND `place_of_supply` and
+    # refuses a request whose two disagree, so the `or` here cannot silently
+    # pick a side. Until SALES-31 the real branch read only the first and the
+    # mock branch read both, which is a divergence a test suite structurally
+    # cannot see.
+    supply_state_code = (data.get("supply_state_code")
+                         or data.get("place_of_supply") or "")
 
     customer: dict = {}
     if _USE_MOCK:
-        # In mock mode use is_inter_state flag or derive from place_of_supply vs "27" (Mumbai)
-        place = data.get("place_of_supply") or data.get("supply_state_code") or ""
-        is_interstate = data.get("is_inter_state", False) or (bool(place) and place != "27")
+        # Mock mode has no clients table; the fixture firm sits in Maharashtra.
         client_state_code = "27"
     else:
         from core.supabase_client import get_supabase
@@ -810,18 +816,25 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     #      sale, and it is a rule rather than a guess — without it, requiring a
     #      place of supply at issue would block billing an unregistered walk-in
     #      customer, which is most of a retail client's day.
-    effective_supply_state = (
-        supply_state_code
-        or customer.get("state_code")  # type: ignore[possibly-undefined]
-        or (customer.get("gstin") or "")[:2]  # type: ignore[possibly-undefined]
-        or (client_state_code if not _USE_MOCK else "")  # type: ignore[possibly-undefined]
-        or ""
+    #
+    # The chain is `domain/gst/place_of_supply.recipient_place_of_supply` and
+    # BOTH branches call it — it used to be this expression inline, with the
+    # mock branch answering the same question its own way six lines earlier.
+    effective_supply_state, _pos_source = place_of_supply.recipient_place_of_supply(
+        stated=supply_state_code,
+        customer=customer,
+        supplier_state=client_state_code,
     )
 
-    if not _USE_MOCK:
-        # CGST Act §8: Intra-state if both in same state; inter-state otherwise
-        # (In mock mode is_interstate was already determined above from request flags)
-        is_interstate = bool(client_state_code and effective_supply_state and client_state_code != effective_supply_state)
+    # CGST Act §8: intra-state if both in the same state, inter-state otherwise.
+    # `is_inter_state` on the request is honoured as an override where it is
+    # explicitly true, which is what the mock branch has always done and what
+    # an export (place of supply 96) relies on.
+    is_interstate = bool(
+        data.get("is_inter_state", False)
+        or (client_state_code and effective_supply_state
+            and client_state_code != effective_supply_state)
+    )
 
     # ── Multi-Currency (Phase 3): resolve + freeze the document currency ──────
     # INR / feature-off → identity (behaviour unchanged). For a foreign currency

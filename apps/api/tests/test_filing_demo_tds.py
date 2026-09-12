@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from datetime import date
 
+from core.ist_clock import ist_today
+
 import pytest
 
 from services.compliance_engine import tds_return_due_date
@@ -258,7 +260,11 @@ def test_234e_fee_matches_the_single_authority():
     # the fee is days × ₹200, uncapped at this deducted amount.
     out = _build(_db_with_return(financial_year="2023-24", quarter="Q4"))
     due = tds_return_due_date("Q4", 2024)
-    fee = min((date.today() - due).days * 200_00, 4_50_000_00)
+    # IST, because the demo now measures lateness with `ist_today()`. It used
+    # `date.today()` — UTC in this container — so a statement due today read as
+    # one day late for the first five and a half hours of every Indian day, and
+    # this test agreed with it because it made the same mistake.
+    fee = min((ist_today() - due).days * 200_00, 4_50_000_00)
     text = _stage(out, "warning")["text"]
     assert "§234E" in text
     assert due.isoformat() in text

@@ -305,7 +305,31 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     "194Q":  TDSSectionRule(50_00_000_00, 10, 10,
                             aggregate_threshold_paise=50_00_000_00,
                             charge_on_excess_only=True),
-    # TCS on sale of goods, Section 206C(1H) — unchanged, 0.1%.
+    # TCS on sale of goods, Section 206C(1H) — 0.1%, AND IT CEASED TO OPERATE
+    # FROM 01-04-2025, so it does not charge in either year this registry
+    # holds. This comment said "unchanged, 0.1%" until SALES-32, which is a
+    # Finance Act behind: the seller no longer collects on receipts above
+    # ₹50 lakh and the BUYER continues to deduct under §194Q, so the overlap
+    # the two sections used to have is resolved in §194Q's favour. Form 27EQ
+    # reporting and Form 27D certificates for this item fall away with it.
+    #
+    # ⚠️ `[S+]`, and the EFFECT is cited rather than the mechanism, on purpose.
+    # Most sources say the sub-section was omitted; one practitioner reads the
+    # Finance Act 2025 as inserting a proviso that makes it inapplicable while
+    # leaving the text in the Act. Practically identical from 01-04-2025 and
+    # textually different, and egress is refused here so the enacted Act
+    # cannot be read — see docs/audits/2026-09-07-market-research/
+    # income-tax-tds-primary.md §6.5, which records the disagreement.
+    #
+    # The ENTRY STAYS, at its historic rate. It is the rate that applied up to
+    # 31-03-2025 and a belated or revised 27EQ for FY 2024-25 is filed at it —
+    # the same fork shape as the TDS vocabulary and §206AB. The cessation is
+    # reachable from code as `SECTION_206C_1H_CEASED_FROM_FY` below, NOT as a
+    # `rate_gap`: that field means "this LIMB's own rate is not held and the
+    # parent's is used instead", and
+    # tests/test_a_section_with_two_limbs_says_which_one_it_priced.py holds it
+    # to exactly that. Two different facts, two different fields.
+    #
     # R3.1: NOT wired to any computation anywhere in this codebase — confirmed
     # zero readers (tds_computer.py has no 27EQ/TCS path at all, only 24Q/26Q
     # TDS). This entry is reference data only; do not assume TCS is an
@@ -325,6 +349,26 @@ TDS_RATES_BY_FY: dict[str, FYTDSRates] = {
     "2025-26": _FY_2025_26,
     "2026-27": _FY_2026_27,
 }
+
+#: THE FIRST FINANCIAL YEAR §206C(1H) DOES NOT REACH (SALES-32).
+#:
+#: TCS on the sale of goods ceased to operate from 01-04-2025: the seller no
+#: longer collects 0.1% on receipts above ₹50 lakh and the BUYER deducts under
+#: §194Q instead, so the overlap the two sections used to have is resolved in
+#: §194Q's favour. Form 27EQ reporting and Form 27D certificates for this item
+#: fall away with it. The `"206C"` rate above is the HISTORIC one, kept because
+#: a belated or revised 27EQ for FY 2024-25 is still filed at it — the same
+#: fork shape as the TDS vocabulary and §206AB.
+#:
+#: ⚠️ `[S+]`, and the EFFECT rather than the mechanism. Most sources say the
+#: sub-section was omitted; one reads the Finance Act 2025 as inserting a
+#: proviso that makes it inapplicable while leaving the text in the Act.
+#: Practically identical from 01-04-2025 and textually different, and egress
+#: is refused here so the enacted Act cannot be read — see
+#: docs/audits/2026-09-07-market-research/income-tax-tds-primary.md §6.5.
+#: Named rather than buried in a branch so confirming it is a one-line change,
+#: exactly as `tds_validator.SECTION_206AB_OMITTED_FROM_FY` is.
+SECTION_206C_1H_CEASED_FROM_FY = "2025-26"
 
 LATEST_VERIFIED_TDS_FY = "2025-26"
 

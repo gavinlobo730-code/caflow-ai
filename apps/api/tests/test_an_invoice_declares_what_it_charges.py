@@ -154,25 +154,53 @@ def test_the_place_of_supply_has_four_sources_ending_in_the_suppliers_own_state(
     The GSTIN is the third source and it is free: CGST §25 makes the first two
     characters of a GSTIN the registration's state, so a REGISTERED customer
     always carries their own place of supply whether or not the field was
-    filled in."""
-    import inspect
-    import re
-    import routers.sales_invoices as si
+    filled in.
 
-    src = inspect.getsource(si)
-    src = re.sub(r"#[^\n]*", "", src)
-    src = re.sub(r'"""[\s\S]*?"""', "", src)
-    # Sliced to the expression's own closing paren — `block.index(")")` finds
-    # the one inside `customer.get("state_code")` and truncates the block
-    # before the two sources that matter.
-    block = src[src.index("effective_supply_state = ("):]
-    block = block[:block.index("\n    )") + 6]
-    assert 'customer.get("state_code")' in block, block
-    assert 'customer.get("gstin")' in block, (
+    BEHAVIOURAL since SALES-31. This used to scan `routers/sales_invoices.py`
+    for the inline expression, which could not tell a chain that is present
+    from a chain that is correct — and could not see at all that the mock
+    branch six lines above answered the same question differently. The chain
+    is `domain/gst/place_of_supply.recipient_place_of_supply` now and both
+    branches call it, so each source can simply be asked for."""
+    from domain.gst import place_of_supply as pos
+
+    stated = pos.recipient_place_of_supply(
+        stated="29", customer={"state_code": "27", "gstin": "24AABCU9603R1ZM"},
+        supplier_state="27")
+    assert stated == ("29", pos.SOURCE_STATED), (
+        "a place of supply written on the invoice is the document's own "
+        "particular under CGST Rule 46(n) and outranks anything derived")
+
+    from_state = pos.recipient_place_of_supply(
+        stated=None, customer={"state_code": "27"}, supplier_state="24")
+    assert from_state == ("27", pos.SOURCE_CUSTOMER_STATE)
+
+    from_gstin = pos.recipient_place_of_supply(
+        stated=None, customer={"gstin": "29AABCU9603R1ZM"}, supplier_state="24")
+    assert from_gstin == ("29", pos.SOURCE_CUSTOMER_GSTIN), (
         "the customer's GSTIN is no longer read as a place of supply — CGST "
         "§25 puts the state in its first two characters, and it is the source "
         "that needs nobody to have filled a field in")
-    assert "client_state_code" in block, (
+
+    # THE PREFIX, not a validity check. That fixture GSTIN has a wrong check
+    # digit and still names Karnataka, which is the point: the question is
+    # which state, not whether the registration number is well-formed, and
+    # falling through to the supplier's state on a bad check digit would
+    # silently turn an inter-state supply intra-state. A GARBAGE prefix is
+    # still refused, so nothing becomes a state that is not one.
+    assert pos.recipient_place_of_supply(
+        stated=None, customer={"gstin": "ZZAABCU9603R1ZM"},
+        supplier_state="24") == ("24", pos.SOURCE_SUPPLIER_STATE)
+
+    walk_in = pos.recipient_place_of_supply(
+        stated=None, customer={}, supplier_state="24")
+    assert walk_in == ("24", pos.SOURCE_SUPPLIER_STATE), (
         "the supplier's own state is no longer the last resort, so an "
         "unregistered walk-in customer with no address on record cannot be "
         "billed at all — IGST §12(2)(b)(ii) says that case has an answer")
+
+    unknowable = pos.recipient_place_of_supply(
+        stated=None, customer={}, supplier_state=None)
+    assert unknowable == ("", pos.SOURCE_UNKNOWN), (
+        "clients.gstin is nullable, so 'nobody knows' is a real state of the "
+        "data and must not be dressed up as a state code")
