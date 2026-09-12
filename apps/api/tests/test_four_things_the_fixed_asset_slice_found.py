@@ -201,12 +201,21 @@ def test_the_no_stopping_point_check_does_not_cry_wolf(why, row):
 
 def test_a_disposed_asset_is_not_reported():
     """Its basis is settled — the gain or loss was computed from it — so a
-    finding there is noise the CA cannot act on. Same rule as FA-02's."""
-    src = inspect.getsource(fa.register_integrity)
-    body = src[src.index("for a in rows:"):]
-    assert "_wdv_with_no_stopping_point(a)" in body
-    guard = body[:body.index("_wdv_with_no_stopping_point(a)")]
-    assert 'if not a.get("is_disposed")' in guard
+    finding there is noise the CA cannot act on. Same rule as FA-02's.
+
+    Behavioural since FA-20 moved the rule into
+    `domain/fixed_assets/integrity.py`. It used to scan the endpoint's source
+    for the guard clause, which could not tell a guard that is present from a
+    guard that is correct.
+    """
+    from domain.fixed_assets import integrity
+
+    no_terminal = _asset(useful_life_years=None, journal_entry_id="j1", id="a1")
+    kinds = {f["kind"] for f in integrity.register_findings(
+        [no_terminal], live_bill_ids=set())}
+    assert "wdv_asset_has_no_stopping_point" in kinds
+    assert integrity.register_findings(
+        [{**no_terminal, "is_disposed": True}], live_bill_ids=set()) == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════

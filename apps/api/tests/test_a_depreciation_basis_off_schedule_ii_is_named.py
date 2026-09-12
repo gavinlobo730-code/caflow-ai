@@ -131,33 +131,45 @@ def test_the_method_decides_which_field_is_judged():
 def test_the_register_integrity_endpoint_actually_calls_it():
     """A check nothing calls is a check that does not exist.
 
-    register-integrity short-circuits in mock mode (no database), so the call
-    itself cannot be exercised here — and that is exactly the failure worth
-    guarding: a function written, reviewed, merged and never reached.
+    The call moved with the rule (FA-20): `register_integrity` now calls
+    `domain.fixed_assets.integrity.register_findings`, which is what calls this
+    check — and `services/reconciliation_service` calls the same function, so
+    the nightly sweep reports FA-02 too. Both halves are asserted, because the
+    endpoint calling an assembler that has quietly stopped calling the check is
+    the same defect one level down.
     """
     import inspect
 
+    from domain.fixed_assets import integrity
     from routers import fixed_assets
 
-    src = inspect.getsource(fixed_assets.register_integrity)
-    assert "schedule_ii_departure(" in src, (
-        "register-integrity must call the check, or FA-02 is reported nowhere")
+    assert "register_findings(" in inspect.getsource(fixed_assets.register_integrity)
+    assert "schedule_ii_departure(" in inspect.getsource(integrity.register_findings), (
+        "register_findings must call the check, or FA-02 is reported nowhere")
 
-    # And it must fetch what the check reads. The endpoint selects an explicit
-    # column list; a departure cannot be judged from columns that were not asked
-    # for, and the check would silently return None for every asset.
+    # And the endpoint must fetch what the check reads. A departure cannot be
+    # judged from columns that were not asked for, and the check would silently
+    # return None for every asset.
     for column in ("asset_category", "depreciation_method",
                    "wdv_rate_percent", "useful_life_years"):
-        assert column in src, f"the select list must include {column}"
+        assert column in fixed_assets._INTEGRITY_COLUMNS, (
+            f"the select list must include {column}")
 
 
 def test_a_disposed_asset_is_not_reported():
     """Its basis is settled — the gain or loss was computed from it — so a
-    departure there is noise the CA cannot act on. Asserted on the endpoint's
-    source for the same reason as above."""
-    import inspect
+    departure there is noise the CA cannot act on.
 
-    from routers import fixed_assets
+    Behavioural now that the rule is a pure function (FA-20). It used to scan
+    the endpoint's source for the guard clause, which is the weaker statement:
+    it could not tell a guard that is present from a guard that is correct.
+    """
+    from domain.fixed_assets import integrity
 
-    src = inspect.getsource(fixed_assets.register_integrity)
-    assert 'if not a.get("is_disposed"):' in src
+    off_schedule = _asset(wdv_rate_percent=10.00)
+    assert integrity.register_findings(
+        [{**off_schedule, "id": "a1", "journal_entry_id": "j1", "is_disposed": False}],
+        live_bill_ids=set()), "the live asset must still be reported"
+    assert integrity.register_findings(
+        [{**off_schedule, "id": "a1", "journal_entry_id": "j1", "is_disposed": True}],
+        live_bill_ids=set()) == [], "a disposed asset's basis is settled"

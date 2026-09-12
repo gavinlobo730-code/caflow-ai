@@ -12,6 +12,9 @@
  */
 
 import { paiseFromRupeeInput, bpsFromPercentInput, parseQuantity } from "../money/rupeeInput.ts";
+// Relative, not "@/…": the node test runner resolves no tsconfig paths and
+// imports this module directly — see the sibling import above.
+import { PAYMENT_MODES } from "../payments/modes.ts";
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -505,7 +508,6 @@ export function buildPurchaseBills(
 
 // ── Receipts → POST /api/receipts/ ──────────────────────────────────────────
 
-const PAYMENT_MODES = ["bank", "cash", "cheque", "upi", "neft", "rtgs"];
 
 export interface BuiltReceipt {
   client_id: string;
@@ -544,7 +546,10 @@ export function buildReceipts(
     if (!customerId) { errors.push(`Row ${rowNo}: unknown customer "${customerName}" — create the customer first`); return; }
     if (!DATE_RE.test(receiptDate)) { errors.push(`Row ${rowNo}: receipt_date must be YYYY-MM-DD`); return; }
     if (!Number.isFinite(num(r.amount)) || amountPaise <= 0) { errors.push(`Row ${rowNo}: amount (₹) must be greater than zero`); return; }
-    if (!PAYMENT_MODES.includes(mode)) { errors.push(`Row ${rowNo}: payment_mode must be one of ${PAYMENT_MODES.join(", ")}`); return; }
+    // `includes` on a readonly tuple narrows its argument to the union, and
+    // `mode` is a string off a spreadsheet — the widening is the point of the
+    // check, not a type hole to tighten.
+    if (!(PAYMENT_MODES as readonly string[]).includes(mode)) { errors.push(`Row ${rowNo}: payment_mode must be one of ${PAYMENT_MODES.join(", ")}`); return; }
 
     records.push({
       client_id: clientId,
