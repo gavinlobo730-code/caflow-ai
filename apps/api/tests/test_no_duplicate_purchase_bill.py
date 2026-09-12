@@ -177,12 +177,23 @@ def test_the_ordinary_create_path_checks_before_inserting():
 
 def test_the_ai_extraction_draft_checks_too():
     """An upload retried after a timeout is exactly how the same invoice
-    arrives twice."""
+    arrives twice.
+
+    This used to scan for a `_duplicate_bill_id(` call above the endpoint's own
+    `db.table("purchase_bills").insert` — the hand-built second write path. It
+    no longer has one (PUR-17): the endpoint resolves the vendor and calls
+    `_create_purchase_bill_core`, whose duplicate check the test above pins.
+    The rule now asserted is the reason that check reaches it — one create
+    path, and no insert of its own.
+    """
     import inspect
-    from routers import purchase_bills as m
-    src = inspect.getsource(m)
-    i = src.index('pb_resp = db.table("purchase_bills").insert')
-    assert "_duplicate_bill_id(" in src[i - 800:i]
+    from routers.purchase_bills import create_bill_from_document
+    src = inspect.getsource(create_bill_from_document)
+    assert "_create_purchase_bill_core(" in src, (
+        "the AI extraction path builds the bill itself again — it will drift "
+        "from the core exactly as it did before, and the first thing it loses "
+        "is this duplicate check")
+    assert '.insert(' not in src, src
 
 
 def test_the_bulk_guard_ignores_cancelled_bills_like_the_index_does():

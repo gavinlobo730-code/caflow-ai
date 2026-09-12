@@ -107,6 +107,20 @@ export interface GSTR3BWorking {
      *  the row reads 0 rather than blank, which is the correct declaration. */
     non_gst_paise?: number;
   };
+  /** OF the 3.1(a) figures above, the part that is GSTR-1 Table 11 rather
+   *  than an invoice: 11A received less 11B adjusted, per head. A breakdown,
+   *  never an addition — it is already inside outward.taxable_*. CGST s.13(2)
+   *  makes an advance for SERVICES taxable when received, before any invoice
+   *  exists; Notification 66/2017-Central Tax removed the charge for goods.
+   *  Optional for the same reason as non_gst_paise: a return saved before
+   *  GST-15 has no such key, and GSTR-3B paid none of it. */
+  advances_11?: {
+    taxable_value_paise: number;
+    cgst_paise: number;
+    sgst_paise: number;
+    igst_paise: number;
+    rule?: string;
+  };
   /** Table 3.2 — OF the supplies already in 3.1(a), the inter-state ones made
    *  to unregistered persons, composition dealers and UIN holders, keyed by
    *  2-digit place-of-supply state code. A breakdown, never an addition: the

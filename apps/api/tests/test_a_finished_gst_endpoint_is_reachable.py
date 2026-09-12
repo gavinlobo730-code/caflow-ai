@@ -182,15 +182,77 @@ def test_only_reclaimable_reasons_are_offered():
     assert offered == set(RECLAIMABLE_REASONS), offered
 
 
-def test_table_11_is_never_reported_as_computed():
-    """A row needs the place of supply and the tax RATE of a supply that has
-    not happened yet, and a receipt records an amount, a customer and a date.
-    Inventing a rate would invent a liability on a filed return, so the report
-    NAMES the advances and says in the payload that it computes no tax."""
+def test_table_11_computed_is_the_clients_own_flag_not_a_constant():
+    """It WAS a constant, and the constant went stale under it.
+
+    `advances_report` returned `"table_11_computed": False` unconditionally,
+    and the ITC Register tab renders an amber banner on exactly that field. By
+    the time `table_11_sections` was declaring real 11A rows into the GSTR-1
+    payload, the screen was telling every CA the platform does not compute
+    Table 11 while their filed return carried it.
+
+    Asserted as the RULE — the value is read from `advance_tax_applicable`, the
+    one reader of `clients.gst_advance_tax_applicable` — rather than as either
+    literal, because either literal is a constant and a constant is what was
+    wrong. The behaviour itself is exercised in
+    tests/test_gstr1_advances_are_surfaced.py, both ways round.
+    """
     import inspect
-    src = inspect.getsource(gw.gstr1_advances)
-    assert '"table_11_computed": False' in src
     from services import gst_advance_service
     body = inspect.getsource(gst_advance_service.advances_report)
-    assert '"table_11_computed": False' in body
-    assert "table_11_computed\": True" not in body
+    assert '"table_11_computed": computed' in body, body
+    assert "computed = advance_tax_applicable(db, firm_id, client_id)" in body
+    assert '"table_11_computed": False' not in body
+    assert '"table_11_computed": True' not in body
+
+    # The one reader is firm-scoped. The service-role key bypasses RLS, so a
+    # read keyed on a bare uuid is not an isolation control (CLAUDE.md).
+    reader = inspect.getsource(gst_advance_service.advance_tax_applicable)
+    assert '.eq("firm_id", firm_id)' in reader, reader
+
+    # The mock branch keeps a literal, and that is correct there — mock mode
+    # has no clients table to read. It must stay the OFF one: a mock that
+    # claimed Table 11 was computed would be inventing a client setting.
+    src = inspect.getsource(gw.gstr1_advances)
+    assert '"table_11_computed": False' in src
+    assert '"table_11_computed": True' not in src
+
+
+def test_the_screen_states_which_kind_of_empty_table_11_it_is_showing():
+    """The banner is the whole reason the field exists, and it was one-sided.
+
+    `{!advances.table_11_computed && (` rendered an amber "Table 11 is not
+    computed here" and rendered NOTHING otherwise — so the only two states a CA
+    ever saw were a false warning and silence. It must speak in both
+    directions, off the server's field, and only the OFF one may be amber: an
+    amber banner on a working feature is a warning about nothing.
+    """
+    tab = (WEB / "components" / "gst" / "ItcRegisterTab.tsx").read_text()
+    code = re.sub(r"/\*.*?\*/", "", tab, flags=re.S)
+    code = re.sub(r"^\s*//.*$", "", code, flags=re.M)
+
+    # Scoped to the Table 11 panel: the tab is long and carries amber elsewhere
+    # for reasons of its own, so a whole-file scan would assert nothing here and
+    # break on an unrelated edit there.
+    start = code.index("Advances against no invoice")
+    end = code.index("No unadjusted advances in", start)
+    panel = code[start:end]
+
+    assert "{!advances.table_11_computed && (" not in panel, (
+        "the banner is one-sided again — a CA whose Table 11 IS computed sees "
+        "nothing at all about it")
+    assert "advances.table_11_computed" in panel, (
+        "the screen must render the server's answer, not decide for itself")
+    assert "{advances.why}" in panel, (
+        "the sentence explaining which kind of empty this is comes from the "
+        "server; a copy in the screen is a second thing to keep in step")
+    assert "Table 11 is computed for this client" in panel
+    assert "Table 11 is not computed for this client" in panel
+    # Amber is the WARNING colour and belongs to the off branch only. Every
+    # amber token in this panel has to be on the false arm of a ternary the
+    # field itself chooses — an amber banner on a working feature is a warning
+    # about nothing, which is what this whole test is here to have removed.
+    for line in panel.splitlines():
+        if "amber" in line:
+            assert "table_11_computed ?" in line or ': "text-amber' in line \
+                or ': "rounded-lg border border-amber' in line, line

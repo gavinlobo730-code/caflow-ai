@@ -176,6 +176,12 @@ export default function GSTR3BPage() {
   }
 
   const w = result?.working;
+  // Is there a Table 11 part in 3.1(a) at all? Every head, because a period can
+  // legitimately carry tax with a nil net value (11A at one rate adjusted by
+  // 11B at another) and the note is worth showing whenever any of it is there.
+  const a11 = w?.advances_11;
+  const adv11 = (a11?.taxable_value_paise ?? 0) || (a11?.igst_paise ?? 0)
+    || (a11?.cgst_paise ?? 0) || (a11?.sgst_paise ?? 0);
   const statusCfg = filingStatus ? STATUS_CONFIG[filingStatus] : null;
 
   return (
@@ -324,7 +330,23 @@ export default function GSTR3BPage() {
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
                 <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">(a) Taxable supplies (B2B + B2C + B2CL)</td>
+                  <td className="px-5 py-3 text-[#334155]">
+                    (a) Taxable supplies (B2B + B2C + B2CL)
+                    {/* OF ROW (a), the part with no invoice behind it (GST-15):
+                        GSTR-1 Table 11A received less 11B adjusted. A note under
+                        the row, not a row of its own — it is already inside the
+                        figures on this line, and a separate row would read as an
+                        addition. Shown only when there is one: most clients have
+                        no Table 11 at all (Notification 66/2017-Central Tax). */}
+                    {adv11 !== 0 && (
+                      <span className="block text-[10px] text-[#64748B] mt-0.5">
+                        Includes {r(w.advances_11?.taxable_value_paise ?? 0)} of advances —
+                        GSTR-1 Table 11A less 11B, taxable on receipt under CGST s.13(2).
+                        Declared and payable here, but not in the general ledger: a receipt
+                        posts no output-tax leg, so the books-to-ledger check excludes it.
+                      </span>
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.outward.taxable_value_paise)}</td>
                   <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.outward.taxable_igst_paise)}</td>
                   <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.outward.taxable_cgst_paise)}</td>

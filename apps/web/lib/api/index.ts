@@ -383,9 +383,11 @@ export type GSTR1Advances = {
   }>;
   count: number;
   total_unadjusted_paise: number;
-  /** ALWAYS false, and stated in the payload rather than only in a docstring:
-   *  a CA reading an empty Table 11 needs to know whether it is empty because
-   *  there were no advances or because nothing computes it. */
+  /** Whether Table 11 is computed FOR THIS CLIENT — the client's own
+   *  `gst_advance_tax_applicable`, not a constant. A CA reading an empty
+   *  Table 11 needs to know whether it is empty because there were no
+   *  advances or because tax on advances is not switched on. It was hardcoded
+   *  false long after `table_11_sections` began declaring real 11A rows. */
   table_11_computed: boolean;
   why?: string;
   rule?: string;

@@ -258,6 +258,28 @@ change. The code is the authority; keep this file in step with it.
   same return is not. `domain/gst/gstr3b_computer.py` carries the circular's
   wording and is the authority; the pre-2022 layout looks plausible and gets the
   tax right, which is why it survived so long.
+- **GSTR-3B Table 3.1(a) carries GSTR-1 TABLE 11, and the ledger cannot.**
+  §13(2) puts the time of supply for SERVICES at the earlier of invoice or
+  payment, so tax on an advance received for services falls due on receipt,
+  before any invoice exists; Notification 66/2017-Central Tax removed the
+  charge for GOODS (§12(2) proviso), which is why the whole of Table 11 is
+  gated on the client's own `gst_advance_tax_applicable` and why it is off by
+  default. `gst_advance_service.table_11_sections` builds the GSTR-1 rows AND
+  totals the same buckets in paise for 3.1(a) — one `split_inclusive_charge`
+  per bucket, because two independent computations of one figure is how the
+  two returns came to disagree: 3B had no advances input at all, so a client
+  with the flag on filed a GSTR-1 declaring a liability and a GSTR-3B that
+  discharged none of it (GST-15). **11A less 11B, and both halves are
+  required** — the invoice that consumes an earlier period's advance is in
+  this period's sales and carries its whole value again, so 11A alone would
+  replace an under-declaration with a double charge. The net is deliberately
+  NOT clamped. **It is not in Table 3.2**: a receipt records no recipient
+  class, so a 3.2 bucket would assert a fact the books do not hold. And it is
+  **declared but not posted** — a receipt journal is Bank Dr / Trade
+  Receivable Cr with no output-tax leg — so `gst_return_service` holds it out
+  of the books-to-ledger comparison and NAMES the amount
+  (`advance_tax_excluded_paise`) rather than reporting every advance-bearing
+  client as permanently unreconciled.
 - **GSTR-3B Table 6 — the set-off has FOUR steps, and the total is not the
   challan.** §49(5)(a) spends IGST credit on IGST and then, with Rule 88A, on
   CGST and SGST; §49(5)(b) then lets CGST credit pay CGST **and then IGST**, and
@@ -652,6 +674,21 @@ PostgREST. That is why:
   policies (migrations 260/261) exist for exactly this, and
   `tests/test_direct_write_tables_are_role_guarded.py` tracks which tables are still
   unguarded.
+- **`core.authz`'s ASSIGNMENT scoping never runs there either, and the policy that
+  replaces it stopped being applied in 2024.** Migration 084 gave every `client_id`
+  table a RESTRICTIVE `<table>_assignment_scope` policy — a Partner short-circuits to
+  TRUE, everyone else needs a `user_client_assignments` row — with a one-shot `DO`
+  loop that HAS NEVER RUN AGAIN. Six tables created since are read straight from the
+  browser and had firm-wide access only until migration 370: `bank_accounts` (093),
+  `debit_notes` (145), `purchase_credit_notes` / `sales_debit_notes` (210),
+  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). About 44
+  more are still in that state and are deliberately NOT fixed — nothing reaches them
+  from the browser — so the durable half is the rule, asserted:
+  `tests/test_a_table_the_browser_reads_is_assignment_scoped_pg.py`. **Do not "fix" it
+  by re-running 084's loop**: migration 262 replaced the payroll policies with
+  per-command ones so the EMPLOYEE PORTAL can read a payslip, and a portal principal —
+  a portal user, an employee — has no `users` row, so `can_access_client` denies them
+  their own record.
 - **Renaming or dropping a column can break the frontend while backend CI stays green.**
   `tests/test_frontend_columns_exist_pg.py` parses those select lists and checks them
   against the real schema. Run it when you touch a migration.

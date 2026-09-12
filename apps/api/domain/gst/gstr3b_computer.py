@@ -124,6 +124,62 @@ class ITCReversal:
     reason: str = ""
 
 
+@dataclass(frozen=True)
+class AdvanceTaxOnReceipts:
+    """GSTR-1 Table 11, in paise, for one period — the input 3.1(a) was missing.
+
+    WHY 3.1(a) HAS TO CARRY THIS (GST-15)
+        CGST Act §13(2) puts the time of supply for SERVICES at the earlier of
+        invoice or payment, so tax on an advance for services falls due when it
+        is received — before any invoice exists. GSTR-1 declares it in Table
+        11A, and `services/gst_advance_service.table_11_sections` has computed
+        real 11A rows all along. GSTR-3B had no advances input at all, so it
+        never paid them: a client with `gst_advance_tax_applicable` ticked
+        filed a GSTR-1 declaring a liability and a GSTR-3B that discharged
+        none of it.
+
+        Notification 66/2017-Central Tax removed the charge for GOODS (the
+        proviso to §12(2) puts that liability at the invoice), which is why the
+        default is no Table 11 and why the client flag exists.
+
+    WHY 11B IS SUBTRACTED, AND WHY OMITTING IT WOULD BE WORSE THAN THE BUG
+        `received` is 11A — advances taken this period and not yet invoiced.
+        `adjusted` is 11B — advances taken in an EARLIER period, whose tax that
+        period's 3.1(a) already paid, now settled against an invoice raised in
+        THIS one. That invoice is in `sales` and contributes its whole value to
+        3.1(a) again, so without the subtraction the same rupee is taxed twice.
+        Adding 11A without 11B would replace an under-declaration with a
+        double charge, which is the worse error of the two.
+
+    ⚠️ [S] on the form instruction that 3.1(a) is where advances belong and is
+    reported net of adjustments. Written from knowledge — this environment's
+    proxy refuses every `.gov.in`, so the GSTN instruction could not be
+    fetched. What IS verifiable here is the internal contradiction the
+    netting removes: the two returns declared different tax on one receipt.
+
+    The figures come from `table_11_sections`'s own buckets through the same
+    `split_inclusive_charge`, so they cannot disagree with the GSTR-1 rows.
+    """
+    received: dict = field(default_factory=dict)     # Table 11A
+    adjusted: dict = field(default_factory=dict)     # Table 11B
+
+    @staticmethod
+    def _head(bucket: dict, key: str) -> int:
+        return int((bucket or {}).get(key) or 0)
+
+    def net(self, key: str) -> int:
+        """11A less 11B for one head, in paise. May be negative, and that is
+        not clamped: an adjustment larger than the period's own advances is a
+        real fact about the books, and a silent floor would hide it behind a
+        3.1(a) that looks ordinary."""
+        return self._head(self.received, key) - self._head(self.adjusted, key)
+
+    @property
+    def is_empty(self) -> bool:
+        return not any(self.net(k) for k in
+                       ("taxable_paise", "igst_paise", "cgst_paise", "sgst_paise"))
+
+
 @dataclass
 class GSTR3BResult:
     """Computed GSTR-3B values — all amounts in paise."""
@@ -164,6 +220,16 @@ class GSTR3BResult:
     # definition, so nothing was underpaid — what was wrong is the disclosure,
     # and the mismatch is the kind a portal comparison surfaces months later.
     outward_non_gst: int = 0         # non-GST outward supply value
+
+    # Of the 3.1(a) figures above, the part that came from GSTR-1 Table 11
+    # rather than from an invoice — 11A received less 11B adjusted, per head.
+    # Carried separately so the CA can see it and check it against the GSTR-1
+    # they filed; a figure folded into a total with no account of itself is
+    # what made GST-15 invisible for as long as it was.
+    advance_taxable_value: int = 0
+    advance_igst: int = 0
+    advance_cgst: int = 0
+    advance_sgst: int = 0
 
     # Table 3.2 of the FORM (not of this dataclass's old numbering): of the
     # supplies declared in 3.1(a), the inter-state ones made to unregistered
@@ -744,6 +810,7 @@ def compute_gstr3b(
     reversals: Sequence[ITCReversal] = (),
     reclaims: Sequence[ITCReversal] = (),
     have_2b: Optional[bool] = None,
+    advances: Optional[AdvanceTaxOnReceipts] = None,
 ) -> GSTR3BResult:
     """Compute GSTR-3B figures from transaction data.
 
@@ -751,6 +818,10 @@ def compute_gstr3b(
         sales: Posted sales invoices and credit/debit notes for the period.
         purchases: Posted purchase invoices for the period.
         gstr2a_records: Supplier-filed records from GSTR-2A for the period.
+        advances: GSTR-1 Table 11's two figures for this period, in paise —
+            what GSTR-1 declares on advances, which 3.1(a) has to pay. None,
+            the default, is a client with no Table 11 at all, which is most of
+            them (Notification 66/2017-CT). See AdvanceTaxOnReceipts.
 
     Returns:
         GSTR3BResult with all table values computed in paise.
@@ -760,6 +831,10 @@ def compute_gstr3b(
     # ── Table 3.1: Outward supplies ──────────────────────────────────────────
     # GSTR-3B instructions: report NET values — credit notes reduce output tax.
     # txval is the taxable VALUE (H7 fix — previously the payload summed tax heads).
+    #
+    # 3.1(a) is invoices PLUS Table 11 (GST-15) — see AdvanceTaxOnReceipts. The
+    # advance part is applied after the loop, because it is not a transaction:
+    # it is the period's own 11A less 11B, already netted.
     for s in sales:
         sign = -1 if s.transaction_type == "credit_note" else 1
         if s.supply_type in ("nil_rated", "exempt"):
@@ -800,6 +875,28 @@ def compute_gstr3b(
                                             {"txval": 0, "iamt": 0})
                     row["txval"] += sign * s.taxable_amount_paise
                     row["iamt"] += sign * s.igst_paise
+
+    # ── 3.1(a) also carries GSTR-1 Table 11 (GST-15) ─────────────────────────
+    # 11A received less 11B adjusted, per head. Applied here rather than inside
+    # the loop because it is not a transaction — it is the period's own netted
+    # figure, computed by gst_advance_service from the same buckets that build
+    # the GSTR-1 rows. See AdvanceTaxOnReceipts for why both halves are needed
+    # and why the net is not clamped.
+    #
+    # NOT in Table 3.2. That table is "of the supplies shown in 3.1(a)" made
+    # inter-state to unregistered persons, composition dealers and UIN holders
+    # — a per-recipient-class breakdown. An advance has no recipient class
+    # recorded (`receipts` holds an amount, a customer and a date), so putting
+    # it in a 3.2 bucket would be asserting a fact the books do not hold.
+    if advances is not None and not advances.is_empty:
+        result.advance_taxable_value = advances.net("taxable_paise")
+        result.advance_igst = advances.net("igst_paise")
+        result.advance_cgst = advances.net("cgst_paise")
+        result.advance_sgst = advances.net("sgst_paise")
+        result.outward_taxable_value += result.advance_taxable_value
+        result.outward_taxable_igst += result.advance_igst
+        result.outward_taxable_cgst += result.advance_cgst
+        result.outward_taxable_sgst += result.advance_sgst
 
     # ── Table 3.2: Reverse charge INWARD supplies ────────────────────────────
     # C5 fix: RCM liability arises on INWARD supplies (purchases), not on sales.

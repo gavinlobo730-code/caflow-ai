@@ -80,6 +80,27 @@ interface ExtractedInvoice {
   invoice_no?: string;
   invoice_date?: string;
   line_items?: { description?: string; hsn_sac?: string; quantity?: number; rate_paise?: number; gst_rate_bps?: number }[];
+  taxable_amount_paise?: number;
+  cgst_paise?: number;
+  sgst_paise?: number;
+  igst_paise?: number;
+  total_paise?: number;
+}
+
+/** `totals_check` from POST /api/document-intelligence-v1/extract-invoice.
+ *  The arithmetic is the server's (domain/extraction_totals.py) — the
+ *  tolerance is a rule about CGST s.170's round-off, not a display choice, and
+ *  this screen renders the verdict rather than reaching one. */
+interface ExtractionTotalsCheck {
+  /** False when the document's own total could not be read — an unread figure
+   *  is not a disagreement. */
+  checked: boolean;
+  sum_of_parts_paise: number;
+  total_paise: number;
+  difference_paise: number;
+  agrees: boolean;
+  tolerance_paise: number;
+  note: string | null;
 }
 
 /** Server line shape (from GET /api/purchase-bills/{id}). */
@@ -241,6 +262,10 @@ export function PurchaseBillEditor({
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
+  // The server's arithmetic check on the extraction's own five header figures
+  // (PUR-21). Computed in apps/api — domain/extraction_totals.py — because the
+  // tolerance is a rule about CGST s.170's round-off, not a display choice.
+  const [aiTotals, setAiTotals] = useState<ExtractionTotalsCheck | null>(null);
   // Storage PATH of the uploaded invoice (not a browser-openable URL — the
   // "Documents" bucket is private) — set on any upload attempt, whether or
   // not AI extraction itself succeeds, so the original file is retained as
@@ -460,6 +485,7 @@ export function PurchaseBillEditor({
     if (!uploadFile) return;
     setExtracting(true);
     setAiExtracted(null);
+    setAiTotals(null);
     setError(null);
     try {
       const formData = new FormData();
@@ -478,6 +504,7 @@ export function PurchaseBillEditor({
       if (json.success && json.data?.extracted) {
         const ex = json.data.extracted as ExtractedInvoice;
         setAiExtracted(ex as unknown as Record<string, unknown>);
+        setAiTotals((json.data.totals_check as ExtractionTotalsCheck | undefined) ?? null);
         if (ex.invoice_no) setBillNo(ex.invoice_no);
         if (ex.invoice_date) setBillDate(ex.invoice_date);
         // Match the extracted vendor — GSTIN first (exact, authoritative),
@@ -749,6 +776,65 @@ export function PurchaseBillEditor({
             {aiExtracted && (
               <div className="mt-1 text-[10px] text-amber-700 bg-amber-100 rounded px-2 py-1.5">
                 ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
+              </div>
+            )}
+            {/* WHAT THE DOCUMENT SAID, BESIDE WHAT THIS BILL WILL SAVE (PUR-21).
+                The five header figures were read, coerced to integers and never
+                looked at again: nothing checked that they add up, and nothing
+                showed them to the CA, so a misread digit reached the draft with
+                a "high" confidence badge on it. Both comparisons WARN and
+                neither blocks — an invoice's own round-off line legitimately
+                moves the total by up to 50 paise (CGST s.170), and refusing a
+                save over that would stop a CA saving a correct bill. */}
+            {aiExtracted && (
+              <div className="mt-1 rounded border border-amber-200 bg-white px-2 py-1.5 space-y-1">
+                <p className="text-[10px] font-medium text-[#475569]">Read from the document</p>
+                <div className="grid grid-cols-5 gap-1 text-[10px] text-[#64748B]">
+                  {([
+                    ["Taxable", "taxable_amount_paise"],
+                    ["CGST", "cgst_paise"],
+                    ["SGST", "sgst_paise"],
+                    ["IGST", "igst_paise"],
+                    ["Total", "total_paise"],
+                  ] as const).map(([label, key]) => (
+                    <div key={key}>
+                      <span className="block text-[9px] uppercase tracking-wide text-[#94A3B8]">{label}</span>
+                      <span className="font-mono text-[#334155]">
+                        {fmt(Number(aiExtracted[key] ?? 0))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {aiTotals?.checked && !aiTotals.agrees && (
+                  <p className="flex items-start gap-1 text-[10px] text-red-700 bg-red-50 rounded px-1.5 py-1">
+                    <AlertTriangle size={11} className="mt-px flex-shrink-0" />
+                    <span>
+                      These do not add up — off by {fmt(Math.abs(aiTotals.difference_paise))}.{" "}
+                      {aiTotals.note}
+                    </span>
+                  </p>
+                )}
+                {aiTotals && !aiTotals.checked && (
+                  <p className="text-[10px] text-[#94A3B8]">{aiTotals.note}</p>
+                )}
+                {/* And against the lines actually going to be saved, once they
+                    compute anything: previewBillTotals skips a line with no
+                    Product/Service, and an extracted line has none until the CA
+                    links one — so before that this would read "computes 0" on
+                    every scan, which is true and useless. */}
+                {totals.grand_total_paise > 0
+                  && Number(aiExtracted.total_paise ?? 0) > 0
+                  && Math.abs(totals.grand_total_paise - Number(aiExtracted.total_paise ?? 0)) > 100 && (
+                  <p className="flex items-start gap-1 text-[10px] text-amber-800 bg-amber-50 rounded px-1.5 py-1">
+                    <AlertTriangle size={11} className="mt-px flex-shrink-0" />
+                    <span>
+                      The lines below come to {fmtAmt(totals.grand_total_paise)} against the{" "}
+                      {fmt(Number(aiExtracted.total_paise ?? 0))} read from the document.
+                      Check the quantities, rates and GST rates before saving — the
+                      bill is saved from the LINES.
+                    </span>
+                  </p>
+                )}
               </div>
             )}
             {documentUrl && (
