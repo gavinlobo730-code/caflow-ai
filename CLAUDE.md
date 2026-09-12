@@ -811,6 +811,30 @@ statement went back to guessing from the subtype.
   line-code vocabulary would be a second place to say the same thing, which is
   the mistake this file keeps having to record.
 
+- **The fixed-assets note is a MOVEMENT, and there is one of it.**
+  `domain/reporting/fixed_asset_movement.py` computes opening gross block,
+  additions, deductions, closing, the same four for accumulated depreciation,
+  and net block at both ends — per asset class, from already-fetched rows, with
+  no database handle. Three callers read it and none re-derives it: the
+  year-end note (`routers/year_end_notes.py`), `GET
+  /api/fixed-assets/movement`, and both year-end PDFs. Its rules are worth
+  knowing before touching any of them. **Every asset, disposed included** — an
+  asset sold during the year is a DEDUCTION, and filtering it out is what made
+  last year's closing fail to tie to this year's opening; only a soft-deleted
+  row is excluded, because migration 351 makes that a row created by mistake.
+  **The CHARGE comes off the ledger** (`account_period_balances`, twelve
+  pre-aggregated rows) and the per-class split from the register's own
+  `accumulated_depreciation_paise − depreciation_fy_start_accum_paise`, which
+  speaks only for the asset's CURRENT depreciation FY — so an earlier year
+  reports `split_known = False` rather than a split that silently omits an
+  asset, and **where the two disagree the difference is STATED**
+  (`movement_gaps`), never absorbed. **With no financial year it reports the
+  register AS IT STANDS**, closing figures only, and says so: a movement with
+  no period is not a conservative answer, it is a wrong one. The caveats are
+  rendered wherever the figures are — the Reports tab, the notes screen and
+  both PDFs — because a movement shown without the sentence saying the ledger
+  and the register disagree is exactly the disclosure a reader would rely on.
+
 ## Reporting scope — "all clients" means the caller's clients
 
 A reporting endpoint called with no `client_id` means "all clients", and that is

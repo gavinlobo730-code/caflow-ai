@@ -8,6 +8,7 @@ Display conversion: paise // 100 → rupees (integer division, never float).
 Indian number format: 1,23,456 (lakh/crore grouping).
 """
 from io import BytesIO
+from typing import Optional
 from datetime import datetime
 
 from reportlab.lib import colors
@@ -475,6 +476,74 @@ def generate_financial_statements_pdf(engagement_data: dict, statements_data: di
     return buf.getvalue()
 
 
+def _movement_table(note_data: dict) -> Optional[Table]:
+    """The Schedule III fixed-assets MOVEMENT, as a table (FA-05).
+
+    WHY THIS EXISTS AT ALL
+
+        The generic renderer below emits every top-level `note_data` key that
+        ends in `_paise` AND is an `int`. `classes` is a list and `totals` is a
+        dict, so the movement the note computes — opening gross, additions,
+        deductions, closing, and the same four for depreciation, per asset
+        class — was dropped on the floor and the PDF printed the same four
+        closing figures it always had. A figure the engine gets right and no
+        document shows is not a fixed defect (CLAUDE.md), and the movement is
+        the whole point of the disclosure: it is what lets a reader tie this
+        year's opening to last year's closing.
+
+    Returns None for any note that carries no movement, which is every note but
+    this one.
+    """
+    classes = note_data.get("classes")
+    totals = note_data.get("totals")
+    if not isinstance(classes, list) or not classes or not isinstance(totals, dict):
+        return None
+    head = ["Class", "Opening", "Additions", "Deductions", "Closing",
+            "Depn charge", "Closing depn", "Net block"]
+    rows = [head]
+    for c in classes:
+        rows.append([
+            str(c.get("asset_class", "—"))[:22],
+            _rs(c.get("opening_gross_paise", 0)),
+            _rs(c.get("additions_paise", 0)),
+            _rs(c.get("deductions_paise", 0)),
+            _rs(c.get("closing_gross_paise", 0)),
+            _rs(c.get("charge_paise", 0)),
+            _rs(c.get("closing_accum_paise", 0)),
+            _rs(c.get("closing_net_paise", 0)),
+        ])
+    rows.append([
+        "Total",
+        _rs(totals.get("opening_gross_paise", 0)),
+        _rs(totals.get("additions_paise", 0)),
+        _rs(totals.get("deductions_paise", 0)),
+        _rs(totals.get("closing_gross_paise", 0)),
+        _rs(totals.get("charge_paise", 0)),
+        _rs(totals.get("closing_accum_paise", 0)),
+        _rs(totals.get("closing_net_paise", 0)),
+    ])
+    width = PAGE_W - 70 * mm
+    tbl = Table(rows, colWidths=[width * 0.20] + [width * 0.1143] * 7)
+    tbl.setStyle(_table_style(has_total_row=True))
+    return tbl
+
+
+def _note_qualifications(note_data: dict, st: dict) -> list:
+    """The sentences saying what a note cannot vouch for.
+
+    `statutory_gaps` is a LIST, so the generic `_paise`-and-int renderer never
+    saw it either — and a movement printed without the sentence stating that
+    the ledger and the register disagree is exactly the disclosure a reader
+    would rely on and should not.
+    """
+    gaps = note_data.get("statutory_gaps")
+    if not isinstance(gaps, list) or not gaps:
+        return []
+    out = [Paragraph("What this note does not account for:", st["note"])]
+    out.extend(Paragraph(f"\u2022 {g}", st["note"]) for g in gaps if isinstance(g, str))
+    return out
+
+
 def generate_notes_pdf(engagement_data: dict, notes_data: list) -> bytes:
     """
     Generate Notes to Accounts PDF.
@@ -521,6 +590,12 @@ def generate_notes_pdf(engagement_data: dict, notes_data: list) -> bytes:
             )
             tbl.setStyle(_table_style(has_total_row=False))
             elements.append(tbl)
+
+        movement = _movement_table(note_data)                     # FA-05
+        if movement is not None:
+            elements.append(Spacer(1, 3 * mm))
+            elements.append(movement)
+        elements.extend(_note_qualifications(note_data, st))
 
         elements.append(Spacer(1, 6 * mm))
 
@@ -578,6 +653,15 @@ def generate_complete_pack_pdf(
     for note in sorted(notes_data, key=lambda n: n.get("sequence_no", 99)):
         elements.append(Paragraph(note.get("title", ""), st["section"]))
         elements.append(Paragraph(note.get("content", ""), st["body"]))
+        # The same movement and the same caveats as the notes-only PDF (FA-05).
+        # Two renderers of one note is how the pack and the note come to
+        # disagree about the same client's fixed assets.
+        note_data = note.get("note_data", {}) or {}
+        movement = _movement_table(note_data)
+        if movement is not None:
+            elements.append(Spacer(1, 3 * mm))
+            elements.append(movement)
+        elements.extend(_note_qualifications(note_data, st))
         elements.append(Spacer(1, 4 * mm))
     elements.append(PageBreak())
 

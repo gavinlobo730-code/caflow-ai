@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Sparkles, Lock, Unlock, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
-import { yearEndApi, type NoteToAccount } from "@/lib/api/yearEnd";
+import { yearEndApi, type NoteToAccount, type NoteData } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
@@ -218,7 +218,16 @@ export default function NotesPage() {
                 <div className="border-t border-[#F8FAFC] px-4 py-3 space-y-3">
                   {noteType(note) === "auto" ? (
                     // Auto-generated notes: display as formatted read-only view
-                    <AutoNoteContent content={note.content} locked={note.is_locked} />
+                    <>
+                      <AutoNoteContent content={note.content} locked={note.is_locked} />
+                      {/* FA-05. The movement is what Schedule III Division I
+                          asks for — opening, additions, deductions, closing —
+                          and the router has always computed it into
+                          `note_data`. The screen rendered `note.content` and
+                          nothing else, so the CA rebuilt the schedule by hand
+                          from a note that already held it. */}
+                      <FixedAssetMovement data={note.note_data} />
+                    </>
                   ) : (
                     // Manual notes: editable textarea
                     <div className="space-y-2">
@@ -303,6 +312,75 @@ export default function NotesPage() {
 }
 
 // ── Auto-generated note renderer ───────────────────────────────────────────
+
+function rs(paise: number | undefined): string {
+  return `₹${((paise ?? 0) / 100).toLocaleString("en-IN", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** The Schedule III fixed-assets movement, where the note carries one.
+ *
+ *  Renders nothing at all for every other note type — this is the only
+ *  `note_data` shape any screen reads, and a component that guessed at the
+ *  others would print a different table for each of six notes. */
+function FixedAssetMovement({ data }: { data?: NoteData | null }) {
+  const classes = data?.classes;
+  const totals = data?.totals;
+  if (!classes?.length || !totals) return null;
+  const gaps = data?.statutory_gaps ?? [];
+
+  return (
+    <div className="space-y-2">
+      <div className="overflow-x-auto rounded-lg border border-[#E2E8F0]">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="bg-[#F8FAFC] text-[#64748B]">
+              <th className="px-3 py-2 text-left font-semibold">Class</th>
+              <th className="px-2 py-2 text-right font-semibold">Opening</th>
+              <th className="px-2 py-2 text-right font-semibold">Additions</th>
+              <th className="px-2 py-2 text-right font-semibold">Deductions</th>
+              <th className="px-2 py-2 text-right font-semibold">Closing</th>
+              <th className="px-2 py-2 text-right font-semibold">Charge</th>
+              <th className="px-2 py-2 text-right font-semibold">Closing depn</th>
+              <th className="px-3 py-2 text-right font-semibold">Net block</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#F1F5F9]">
+            {classes.map((c) => (
+              <tr key={c.asset_class}>
+                <td className="px-3 py-1.5 text-[#1E293B] whitespace-nowrap">{c.asset_class}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.opening_gross_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.additions_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.deductions_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-[#1E293B]">{rs(c.closing_gross_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.charge_paise)}</td>
+                <td className="px-2 py-1.5 text-right font-mono text-[#64748B]">{rs(c.closing_accum_paise)}</td>
+                <td className="px-3 py-1.5 text-right font-mono font-semibold text-[#1E293B]">{rs(c.closing_net_paise)}</td>
+              </tr>
+            ))}
+            <tr className="bg-[#F8FAFC] font-semibold text-[#1E293B]">
+              <td className="px-3 py-1.5">Total</td>
+              <td className="px-2 py-1.5 text-right font-mono">{rs(totals.opening_gross_paise)}</td>
+              <td className="px-2 py-1.5 text-right font-mono">{rs(totals.additions_paise)}</td>
+              <td className="px-2 py-1.5 text-right font-mono">{rs(totals.deductions_paise)}</td>
+              <td className="px-2 py-1.5 text-right font-mono">{rs(totals.closing_gross_paise)}</td>
+              <td className="px-2 py-1.5 text-right font-mono">{rs(totals.charge_paise)}</td>
+              <td className="px-2 py-1.5 text-right font-mono">{rs(totals.closing_accum_paise)}</td>
+              <td className="px-3 py-1.5 text-right font-mono">{rs(totals.closing_net_paise)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {gaps.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
+          <p className="text-[11px] font-semibold text-amber-900">What this note does not account for</p>
+          {gaps.map((g, i) => <p key={i} className="text-[11px] text-amber-800">{g}</p>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function AutoNoteContent({ content, locked }: { content: string | null; locked: boolean }) {
   if (!content) {
