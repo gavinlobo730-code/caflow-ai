@@ -136,6 +136,13 @@ def test_an_all_clear_is_distinguishable_from_a_failed_check():
     assert "checked" in code, "the screen must show how many assets were checked"
 
     integrity = code[code.index("register-integrity"):] if "register-integrity" in code else ""
-    assert any(re.search(r'status:\s*"error"', body) for body in _catch_bodies(integrity)), (
+    # The discriminant's NAME is the screen's own choice — this panel calls it
+    # `phase`, because "loading | error | ok" is where the fetch has got to and
+    # not the state of any record, and spelling it `status` made
+    # test_frontend_status_values_match_the_check_pg read those three as
+    # database status values. What this guard is about is the VALUE: the catch
+    # has to set an error state rather than an empty one.
+    assert any(re.search(r'\b(?:phase|status):\s*"error"', body)
+               for body in _catch_bodies(integrity)), (
         "a failed load must render as a failure, not as an empty — and therefore "
         "clean-looking — result. No catch on this panel sets an error state.")

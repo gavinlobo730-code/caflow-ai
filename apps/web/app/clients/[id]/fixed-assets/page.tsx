@@ -51,7 +51,18 @@ interface Asset {
    *  recorded, which is what that panel used to show (FA-15). */
   disposal_date?: string | null;
   current_wdv_paise?: number;
-  status: "active" | "disposed" | "fully_depreciated";
+  /** DERIVED IN THE BROWSER, and not a column — which is why it is not called
+   *  `status`. `fixed_assets` has no status; this is computed from
+   *  `is_disposed` and how far the accumulated depreciation has got.
+   *
+   *  The rename came from a guard: `test_frontend_status_values_match_the_check_pg`
+   *  reads every status literal a screen uses and checks it against the CHECK
+   *  constraints of the tables that screen reads. This page only started
+   *  reading `purchase_bills` (for the FA-07 bill picker), and the moment it
+   *  did, "disposed" and "fully_depreciated" began failing against that
+   *  table's CHECK — correctly, because a reader cannot tell a browser label
+   *  from a column value when both are spelled `status`. */
+  lifecycle: "active" | "disposed" | "fully_depreciated";
   notes?: string;
   /** IT Act §32, not Schedule II — a different system, per BLOCK. Read here so
    *  the correction drawer shows what is already recorded rather than a blank
@@ -64,7 +75,7 @@ interface Asset {
 // fixed_assets.py never computes one either, only current_wdv_paise. Derive
 // the display status the same way the backend's own "fully depreciated"
 // check does (_compute_annual_depreciation: wdv_now <= salvage).
-function computeAssetStatus(a: Pick<Asset, "is_disposed" | "purchase_cost_paise" | "accumulated_depreciation_paise" | "salvage_value_paise">): Asset["status"] {
+function assetLifecycle(a: Pick<Asset, "is_disposed" | "purchase_cost_paise" | "accumulated_depreciation_paise" | "salvage_value_paise">): Asset["lifecycle"] {
   if (a.is_disposed) return "disposed";
   const wdv = a.purchase_cost_paise - a.accumulated_depreciation_paise;
   return wdv <= a.salvage_value_paise ? "fully_depreciated" : "active";
@@ -282,10 +293,10 @@ function RegisterTab({ clientId }: { clientId: string }) {
         .order("id"));
       // A non-null PostgREST error is a real failure, not an empty register.
       if (error) throw error;
-      const rows = ((data as Omit<Asset, "current_wdv_paise" | "status">[]) ?? []).map((a) => ({
+      const rows = ((data as Omit<Asset, "current_wdv_paise" | "lifecycle">[]) ?? []).map((a) => ({
         ...a,
         current_wdv_paise: a.purchase_cost_paise - a.accumulated_depreciation_paise,
-        status: computeAssetStatus(a),
+        lifecycle: assetLifecycle(a),
       }));
       setAssets(rows);
       setLoadFailed(false);
@@ -301,7 +312,7 @@ function RegisterTab({ clientId }: { clientId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const STATUS_BADGE: Record<string, string> = {
+  const LIFECYCLE_BADGE: Record<string, string> = {
     active:             "bg-green-100 text-green-700",
     disposed:           "bg-red-100 text-red-700",
     fully_depreciated:  "bg-gray-100 text-gray-600",
@@ -398,8 +409,8 @@ function RegisterTab({ clientId }: { clientId: string }) {
                         : `SL ${a.useful_life_years}yr`}
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_BADGE[a.status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
-                        {a.status.replace("_", " ")}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${LIFECYCLE_BADGE[a.lifecycle] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>
+                        {a.lifecycle.replace("_", " ")}
                       </span>
                     </td>
                     {/* FA-10. Until this the register was final the moment it
@@ -1640,13 +1651,13 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
       const [mv, list] = await Promise.all([
         request<ApiEnvelope<MovementResponse>>(
           `/api/fixed-assets/movement?client_id=${clientId}&financial_year=${encodeURIComponent(financialYear)}`),
-        request<ApiEnvelope<Omit<Asset, "status">[]>>(
+        request<ApiEnvelope<Omit<Asset, "lifecycle">[]>>(
           `/api/fixed-assets/?client_id=${clientId}&include_disposed=true`),
       ]);
       if (!mv.success) throw new Error(mv.error ?? "Failed to load the movement");
       if (!list.success) throw new Error(list.error ?? "Failed to load");
       setMovement(mv.data ?? null);
-      const rows = ((list.data ?? []) as Omit<Asset, "status">[]).map((a) => ({ ...a, status: computeAssetStatus(a) }));
+      const rows = ((list.data ?? []) as Omit<Asset, "lifecycle">[]).map((a) => ({ ...a, lifecycle: assetLifecycle(a) }));
       setAssets(rows);
       setLoadFailed(false);
     } catch {
@@ -1665,11 +1676,11 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
   // being reported. Every rupee figure on this tab comes from the server.
   const { start: fyStart, end: fyEnd } = fyRangeFor(financialYear);
   const disposedThisYear = assets.filter(
-    a => a.status === "disposed" && a.disposal_date
+    a => a.lifecycle === "disposed" && a.disposal_date
          && a.disposal_date >= fyStart && a.disposal_date <= fyEnd);
-  const fullyDep = assets.filter(a => a.status === "fully_depreciated");
+  const fullyDep = assets.filter(a => a.lifecycle === "fully_depreciated");
   const heldAtClose = assets.filter(
-    a => a.status !== "disposed" || (a.disposal_date ?? "") > fyEnd);
+    a => a.lifecycle !== "disposed" || (a.disposal_date ?? "") > fyEnd);
 
   const totals = movement?.totals;
 
@@ -1847,26 +1858,30 @@ const FINDING_TITLE: Record<string, string> = {
 
 function RegisterIntegrity({ clientId }: { clientId: string }) {
   const [state, setState] = useState<
-    { status: "loading" } |
-    { status: "error"; message: string } |
-    { status: "ok"; checked: number; findings: IntegrityFinding[] }
-  >({ status: "loading" });
+    // `phase`, not `status`: this is where the FETCH has got to, not the state
+    // of any record. Spelling it `status` made the guard above read "loading",
+    // "error" and "ok" as database status values, which is exactly the
+    // confusion it exists to catch.
+    { phase: "loading" } |
+    { phase: "error"; message: string } |
+    { phase: "ok"; checked: number; findings: IntegrityFinding[] }
+  >({ phase: "loading" });
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
-    setState({ status: "loading" });
+    setState({ phase: "loading" });
     try {
       const j = await request<ApiEnvelope<{ checked: number; findings: IntegrityFinding[] }>>(
         `/api/fixed-assets/register-integrity?client_id=${clientId}`);
       if (!j.success) throw new Error(j.error ?? "Failed to load");
       const d = j.data ?? { checked: 0, findings: [] };
-      setState({ status: "ok", checked: d.checked ?? 0, findings: d.findings ?? [] });
+      setState({ phase: "ok", checked: d.checked ?? 0, findings: d.findings ?? [] });
     } catch (e) {
       // An "all clear" and a failed load must not look the same. The endpoint
       // returns `checked` for exactly this reason — "no findings" over nothing
       // checked is a different statement — and a swallowed error here would
       // undo that on the screen.
-      setState({ status: "error", message: e instanceof Error ? e.message : "Could not check the register." });
+      setState({ phase: "error", message: e instanceof Error ? e.message : "Could not check the register." });
     }
   }, [clientId]);
 
@@ -1887,23 +1902,23 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
         </button>
       </div>
 
-      {state.status === "loading" && (
+      {state.phase === "loading" && (
         <p className="text-xs text-[#94A3B8]">Checking…</p>
       )}
 
-      {state.status === "error" && (
+      {state.phase === "error" && (
         <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           {state.message} — this is a failed check, not a clean register.
         </p>
       )}
 
-      {state.status === "ok" && state.findings.length === 0 && (
+      {state.phase === "ok" && state.findings.length === 0 && (
         <p className="text-xs text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
           {state.checked} asset{state.checked === 1 ? "" : "s"} checked, nothing to report.
         </p>
       )}
 
-      {state.status === "ok" && state.findings.length > 0 && (
+      {state.phase === "ok" && state.findings.length > 0 && (
         <>
           <p className="text-[11px] text-[#64748B]">
             {state.findings.length} to look at, of {state.checked} asset
