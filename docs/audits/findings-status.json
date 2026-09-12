@@ -446,9 +446,10 @@
       "needs": "a match_type column, or a second pattern column — the rule row has neither"
     },
     "IT-31": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "itr_engine has no 26AS or TDS-credit input; the credit on the return is a figure the CA re-types"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "domain/income_tax/claimable_credit.py computes what the return may claim, GET /api/form-26as/claimable serves it off the latest parsed statement, the reconciliation response carries the same derivation, and the client computation screen prefills an EMPTY TDS box from it and states the variance where the CA has typed something else. Rule 37BA(1) is why the figure comes off 26AS and not the books — which also answers the salaried-client case the verification named, since a s.192 credit has no books counterpart at all.",
+      "four_figures_not_one": "TDS (Schedule TDS), TCS (Schedule TCS, s.206C(4)), tax the client paid itself (26AS Part C, its own line) and a refund already received (Part D, not a credit). Anything not booked FINAL at TRACES is excluded and named: claiming an unmatched credit is what produces a s.143(1) demand."
     },
     "GST-24": {
       "status": "open",
