@@ -25,6 +25,9 @@ from typing import Optional
 from fastapi import HTTPException
 
 from services.statement_currency import attach_currency_outstanding, summarize_by_currency
+from domain.reporting.party_advances import (
+    AdvanceInput, aging_bucket as _aging_bucket, empty_buckets, unapplied_advances,
+)
 
 _logger = logging.getLogger("caflow.customer_statement")
 
@@ -65,18 +68,6 @@ def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _aging_bucket(days_overdue: int) -> str:
-    if days_overdue <= 0:
-        return "not_due"
-    if days_overdue <= 30:
-        return "0-30"
-    if days_overdue <= 60:
-        return "31-60"
-    if days_overdue <= 90:
-        return "61-90"
-    return "90+"
 
 
 def _ccy_view(row: dict, base_paise: int, txn_amount) -> dict:
@@ -333,7 +324,7 @@ class CustomerStatementService:
         cnames = {c["id"]: c.get("name") for c in _paginate_all(lambda: db.table("customers").select("id, name")
                   .eq("firm_id", firm_id).eq("client_id", client_id))}
 
-        buckets = {"not_due": 0, "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
+        buckets = empty_buckets()
         rows, total = [], 0
         ccy_entries: list[tuple] = []
         for inv in invs:
@@ -375,13 +366,83 @@ class CustomerStatementService:
             ccy_entries.append((cur, outstanding, foreign_out))
             rows.append(row)
 
+        # ── UNAPPLIED CUSTOMER ADVANCES (the AR half of PUR-24) ─────────────
+        # Money taken from a customer that no invoice has absorbed. The
+        # finding named the AP side; the defect is symmetric and the customer
+        # STATEMENT already credits every receipt, so the same two figures
+        # disagreed here for the same reason.
+        #
+        # Its own section, never folded into `buckets`: a customer advance is
+        # a LIABILITY, and adding it to the receivables ageing would misstate
+        # the Schedule III receivables note this report feeds.
+        advances = self._unapplied_advances(db, firm_id, client_id, cnames, today)
+
         out = {"as_of": today.isoformat(), "buckets": buckets,
-               "total_outstanding_paise": total, "invoices": rows}
+               "total_outstanding_paise": total, "invoices": rows,
+               "advances": advances.advances,
+               "advance_buckets": advances.buckets,
+               "total_advances_paise": advances.total_paise,
+               # What ties to the Trade Receivables control account.
+               "net_receivable_paise": total - advances.total_paise,
+               "advance_gaps": advances.gaps}
+        # Advances stay out of ccy_entries — see the AP mirror for why.
         base_cur, by_ccy = summarize_by_currency(ccy_entries)
         if by_ccy is not None:
             out["base_currency"] = base_cur
             out["by_currency"] = by_ccy
         return out
+
+    def _unapplied_advances(self, db, firm_id: str, client_id: str,
+                            cnames: dict, today) -> "object":
+        """Customer receipts with an unapplied balance, aged.
+
+        THE SETTLEMENT IS CASH PLUS THE TAX THE CUSTOMER WITHHELD. IT Act §198
+        deems tax deducted to be income received and §199 gives the deductee
+        credit for it, so a ₹1,00,000 invoice paid ₹90,000 net of ₹10,000
+        §194J is settled in full — `receipt_service` writes
+        `unallocated_paise = (amount + tds) − Σ allocated` for exactly that
+        reason. Passing `amount_paise` alone as the settlement here would make
+        the cross-check below report a ₹10,000 discrepancy on every receipt
+        that carried withholding.
+        """
+        rcpts = _paginate_all(lambda: db.table("receipts")
+                 .select("id, receipt_no, receipt_date, customer_id, amount_paise, tds_paise, "
+                         "unallocated_paise, is_reversed, txn_currency")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .gt("unallocated_paise", 0))
+        rcpts = [r for r in rcpts if not r.get("is_reversed")]
+        if not rcpts:
+            return unapplied_advances([], today=today, document_label="receipt")
+
+        allocated: dict[str, int] = {}
+        seen_bridge: set[str] = set()
+        ids = [r["id"] for r in rcpts if r.get("id")]
+        for i in range(0, len(ids), 200):
+            chunk = ids[i:i + 200]
+            for a in _paginate_all(lambda chunk=chunk: db.table("receipt_allocations")
+                    .select("id, receipt_id, allocated_paise, is_voided")
+                    .in_("receipt_id", chunk)):
+                if a.get("is_voided"):
+                    continue
+                rid = a.get("receipt_id")
+                seen_bridge.add(rid)
+                allocated[rid] = allocated.get(rid, 0) + int(a.get("allocated_paise") or 0)
+
+        return unapplied_advances([
+            AdvanceInput(
+                document_id=r.get("id"),
+                document_no=r.get("receipt_no"),
+                party_id=r.get("customer_id"),
+                party_name=cnames.get(r.get("customer_id")),
+                document_date=r.get("receipt_date"),
+                settlement_paise=int(r.get("amount_paise") or 0) + int(r.get("tds_paise") or 0),
+                unallocated_paise=int(r.get("unallocated_paise") or 0),
+                allocated_paise=(allocated.get(r.get("id"), 0)
+                                 if r.get("id") in seen_bridge else None),
+                currency=(r.get("txn_currency") or "INR"),
+            )
+            for r in rcpts
+        ], today=today, document_label="receipt")
 
     # ── email delivery tracking (mirrors invoice_deliveries) ───────────────────
     def record_delivery(self, db, firm_id, client_id, customer_id, start, end,

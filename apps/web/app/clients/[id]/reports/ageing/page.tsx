@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   api, type ApiResp, type AgeingSchedule, type AgeingTable, type AgeingDocument,
-  type AgeingClassifyBody,
+  type AgeingAdvance, type AgeingClassifyBody,
 } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -172,6 +172,11 @@ export default function ClientAgeingSchedulePage() {
   const [schedule, setSchedule] = useState<AgeingSchedule | null>(null);
   const [invoices, setInvoices] = useState<AgeingDocument[] | null>(null);
   const [bills, setBills] = useState<AgeingDocument[] | null>(null);
+  // The advances section (PUR-24), kept beside the rows rather than folded
+  // into them: an advance is not an open document and must never enter the
+  // buckets. Held per side because the two reconcile to different accounts.
+  const [arAdvances, setArAdvances] = useState<AdvanceSection | null>(null);
+  const [apAdvances, setApAdvances] = useState<AdvanceSection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -204,6 +209,20 @@ export default function ClientAgeingSchedulePage() {
       ]);
       setInvoices(ar.success ? ar.data.invoices ?? [] : []);
       setBills(ap.success ? ap.data.bills ?? [] : []);
+      setArAdvances(ar.success ? {
+        advances: ar.data.advances ?? [],
+        total_advances_paise: ar.data.total_advances_paise ?? 0,
+        total_outstanding_paise: ar.data.total_outstanding_paise ?? 0,
+        net_paise: ar.data.net_receivable_paise ?? ar.data.total_outstanding_paise ?? 0,
+        gaps: ar.data.advance_gaps ?? [],
+      } : null);
+      setApAdvances(ap.success ? {
+        advances: ap.data.advances ?? [],
+        total_advances_paise: ap.data.total_advances_paise ?? 0,
+        total_outstanding_paise: ap.data.total_outstanding_paise ?? 0,
+        net_paise: ap.data.net_payable_paise ?? ap.data.total_outstanding_paise ?? 0,
+        gaps: ap.data.advance_gaps ?? [],
+      } : null);
       if (!ar.success) setDetailError(ar.error ?? "Could not load the open invoices");
       else if (!ap.success) setDetailError(ap.error ?? "Could not load the open bills");
     } catch (e) {
@@ -327,11 +346,11 @@ export default function ClientAgeingSchedulePage() {
           <input
             type="date"
             value={asOf}
-            onChange={(e) => { setAsOf(e.target.value); setInvoices(null); setBills(null); }}
+            onChange={(e) => { setAsOf(e.target.value); setInvoices(null); setBills(null); setArAdvances(null); setApAdvances(null); }}
             className="text-[11px] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5 text-[#334155]"
           />
           <button
-            onClick={() => { setInvoices(null); setBills(null); load(); }}
+            onClick={() => { setInvoices(null); setBills(null); setArAdvances(null); setApAdvances(null); load(); }}
             className="flex items-center gap-1.5 text-[11px] text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] rounded-lg px-2.5 py-1.5"
           >
             <RefreshCw size={12} /> Refresh
@@ -475,13 +494,19 @@ export default function ClientAgeingSchedulePage() {
           )}
 
           {(tab === "receivables" || tab === "payables") && (
-            <DocumentList
-              kind={tab}
-              rows={(tab === "receivables" ? invoices : bills) ?? null}
-              saving={saving}
-              onClassify={classify}
-              clientId={clientId}
-            />
+            <>
+              <AdvancesPanel
+                kind={tab}
+                section={tab === "receivables" ? arAdvances : apAdvances}
+              />
+              <DocumentList
+                kind={tab}
+                rows={(tab === "receivables" ? invoices : bills) ?? null}
+                saving={saving}
+                onClassify={classify}
+                clientId={clientId}
+              />
+            </>
           )}
 
           {tab === "unbilled" && (
@@ -570,6 +595,125 @@ function MsmeSelect({ value, busy, onChange }: {
         ? <Loader2 size={11} className="animate-spin absolute right-2 text-[#94A3B8]" />
         : <ChevronDown size={11} className="absolute right-2 text-[#94A3B8] pointer-events-none" />}
     </div>
+  );
+}
+
+/** What the ageing report owes its control account. Held per side because the
+ *  two reconcile to different accounts and mean opposite things. */
+type AdvanceSection = {
+  advances: AgeingAdvance[];
+  total_advances_paise: number;
+  total_outstanding_paise: number;
+  /** Documents outstanding less the advances — the tie-up figure, computed
+   *  server-side (CLAUDE.md: zero business logic in the frontend). */
+  net_paise: number;
+  gaps: string[];
+};
+
+/**
+ * MONEY THAT HAS MOVED WITH NO DOCUMENT TO SIT AGAINST (PUR-24).
+ *
+ * A payment made to a supplier before the bill arrives, or a receipt taken
+ * from a customer before the invoice is raised, is real cash that the journal
+ * has already put through Trade Payables or Trade Receivables. The ageing
+ * listed open documents only, so it could not be tied to the control account
+ * and legitimately disagreed with the party statement — which debits or
+ * credits every payment and receipt.
+ *
+ * Shown ABOVE the documents and never inside them. A supplier advance is an
+ * ASSET and a customer advance a LIABILITY, so folding either into the buckets
+ * would misstate the very Schedule III note this screen builds; the reconciling
+ * line is the whole point of the panel.
+ */
+function AdvancesPanel({ kind, section }: {
+  kind: "receivables" | "payables";
+  section: AdvanceSection | null;
+}) {
+  if (section === null) return null;
+  const isAr = kind === "receivables";
+  const control = isAr ? "Trade Receivables" : "Trade Payables";
+  const noun = isAr ? "customer advance" : "supplier advance";
+
+  return (
+    <section className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden mb-5">
+      <div className="px-4 py-3 border-b border-gray-50">
+        <p className="text-xs font-semibold text-[#334155]">
+          {isAr ? "Advances received" : "Advances paid"} — on account
+        </p>
+        <p className="text-[10px] text-[#94A3B8] mt-0.5">
+          {section.advances.length === 0
+            ? `No ${noun} is outstanding, so the documents below are the whole of ${control}.`
+            : `A ${noun} has no document to age against. It is listed here, outside the `
+              + `buckets — ${isAr ? "an advance received is a liability" : "an advance paid is an asset"}, `
+              + `and adding it to the ${isAr ? "receivables" : "payables"} note would misstate it.`}
+        </p>
+      </div>
+
+      {section.gaps.length > 0 && (
+        <div className="px-4 py-3 bg-amber-50/60 border-b border-amber-100 space-y-1.5">
+          {section.gaps.map((g, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <AlertTriangle size={12} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-[10px] text-amber-900">{g}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {section.advances.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="border-b border-[#E2E8F0] text-left text-[#64748B]">
+                <th className="font-medium px-4 py-2">{isAr ? "Receipt" : "Payment"}</th>
+                <th className="font-medium px-3 py-2">{isAr ? "Customer" : "Vendor"}</th>
+                <th className="font-medium px-3 py-2">Date</th>
+                <th className="font-medium px-3 py-2 text-right">Unapplied</th>
+                <th className="font-medium px-3 py-2 text-right">Days old</th>
+                <th className="font-medium px-4 py-2">Bucket</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {section.advances.map((a) => (
+                <tr key={a.document_id} className="hover:bg-[#F8FAFC]">
+                  <td className="px-4 py-2 text-[#334155]">
+                    {a.document_no || "—"}
+                    {a.txn_currency && (
+                      <span className="ml-1.5 text-[9px] text-[#94A3B8]">{a.txn_currency}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-[#64748B] truncate max-w-[180px]">
+                    {a.party_name || "—"}
+                  </td>
+                  <td className="px-3 py-2 text-[#64748B]">{a.document_date || "—"}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-[#1E293B]">
+                    {formatPaise(a.unapplied_paise)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-[#64748B]">{a.days_old}</td>
+                  <td className="px-4 py-2 text-[#94A3B8]">{a.aging_bucket}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* THE TIE-UP. Three lines, in the order a CA checks them. */}
+      <div className="px-4 py-3 border-t border-[#F1F5F9] bg-[#F8FAFC] space-y-1">
+        <div className="flex justify-between text-[11px] text-[#64748B]">
+          <span>{isAr ? "Open invoices" : "Open bills"}</span>
+          <span className="tabular-nums">{formatPaise(section.total_outstanding_paise)}</span>
+        </div>
+        <div className="flex justify-between text-[11px] text-[#64748B]">
+          <span>Less advances on account</span>
+          <span className="tabular-nums">({formatPaise(section.total_advances_paise)})</span>
+        </div>
+        <div className="flex justify-between text-[11px] font-semibold text-[#1E293B] pt-1 border-t border-[#E2E8F0]">
+          <span>{control}</span>
+          <span className="tabular-nums">{formatPaise(section.net_paise)}</span>
+        </div>
+      </div>
+    </section>
   );
 }
 

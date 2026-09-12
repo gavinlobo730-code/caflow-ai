@@ -20,6 +20,7 @@ from typing import Optional
 
 from services.internal_client_service import get_internal_client_id
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
+from domain.reporting.party_advances import aging_bucket as _shared_aging_bucket
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.collections")
@@ -85,16 +86,11 @@ def reference_due_date(inv: dict, credit_days: int = DEFAULT_CREDIT_DAYS) -> Opt
     return None
 
 
-def aging_bucket(days_overdue: int) -> str:
-    if days_overdue <= 0:
-        return "not_due"
-    if days_overdue <= 30:
-        return "0-30"
-    if days_overdue <= 60:
-        return "31-60"
-    if days_overdue <= 90:
-        return "61-90"
-    return "90+"
+# One implementation, in domain/reporting/party_advances — this module, the
+# customer statement and the vendor statement each carried an identical private
+# copy, which is three places for one rule to drift in. Re-exported under the
+# name this module has always used so its callers are unchanged.
+aging_bucket = _shared_aging_bucket
 
 
 def assess_invoice(inv: dict, today: Optional[date] = None,
