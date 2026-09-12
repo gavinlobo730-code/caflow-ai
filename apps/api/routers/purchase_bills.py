@@ -810,6 +810,12 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "is_reverse_charge":     is_reverse_charge,
             "net_payable_paise":     net_payable_paise,
             "status":                "draft",
+            # Provenance, carried THROUGH rather than decided here: the
+            # Purchases page badges a bill with `is_ai_extracted` and the
+            # extraction blob is what a CA compares the typed figures against.
+            # Absent on every ordinary create, which is the column's default.
+            "is_ai_extracted":       bool(data.get("is_ai_extracted", False)),
+            "ai_extraction_data":    data.get("ai_extraction_data"),
             "notes":                 data.get("notes", ""),
             "document_url":          data.get("document_url"),
             # Rule 37BB paperwork, recorded not filed — see PurchaseBillIn.
@@ -858,6 +864,8 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "is_reverse_charge":     is_reverse_charge,
         "net_payable_paise":     net_payable_paise,
         "status":                "draft",
+        "is_ai_extracted":       bool(data.get("is_ai_extracted", False)),
+        "ai_extraction_data":    data.get("ai_extraction_data"),
         "notes":                 data.get("notes", ""),
         "document_url":          data.get("document_url"),
         # Rule 37BB paperwork, recorded not filed — see PurchaseBillIn.
@@ -1833,16 +1841,108 @@ def cancel_purchase_bill(
         return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
 
 
+def _match_extracted_vendor(db, firm_id: str, client_id: str, extracted: dict):
+    """The vendor an extracted invoice names, by GSTIN and then by name.
+
+    GSTIN first because it identifies a registration; the name is a fallback
+    for an unregistered supplier and is deliberately an `ilike` contains — a
+    scanned bill rarely reproduces a legal name exactly. Firm- AND
+    client-scoped: the service-role key bypasses RLS, and a vendor belonging
+    to another client of the same firm carries the wrong TDS section, PAN and
+    state code.
+
+    Returns None when neither matches. The caller REFUSES on that; it used to
+    carry the None through to the insert, against a NOT NULL column.
+    """
+    gstin = (extracted.get("gstin") or extracted.get("vendor_gstin") or "").strip()
+    name = (extracted.get("vendor_name") or "").strip()
+    if gstin:
+        rows = (db.table("vendors").select("id")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("gstin", gstin).limit(1).execute().data) or []
+        if rows:
+            return rows[0]["id"]
+    if name:
+        rows = (db.table("vendors").select("id")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .ilike("name", f"%{name}%").limit(1).execute().data) or []
+        if rows:
+            return rows[0]["id"]
+    return None
+
+
+def _lines_from_extraction(extracted: dict) -> list[dict]:
+    """The extracted line items in `PurchaseBillLineIn`'s shape.
+
+    The rate and the quantity are what carry over; the AMOUNTS do not, because
+    `_compute_bill_lines_and_totals` derives them and is the one place that may
+    (CLAUDE.md: computation lives in apps/api, once). An extracted taxable
+    amount that disagrees with rate x quantity is a fact about the extraction,
+    and it survives in `ai_extraction_data` for the CA to compare against.
+
+    `gst_rate_bps` is the model's own reading of the rate; the core takes a
+    percentage, so it is divided rather than re-derived from the tax heads —
+    deriving it would turn two extracted figures into a third that neither the
+    document nor the model ever stated.
+    """
+    out: list[dict] = []
+    for ln in extracted.get("line_items") or []:
+        out.append({
+            "description": str(ln.get("description") or "").strip() or "As per supplier invoice",
+            "hsn_sac": ln.get("hsn_sac") or None,
+            "quantity": float(ln.get("quantity") or 1),
+            "unit": ln.get("unit") or None,
+            "rate_paise": int(ln.get("rate_paise") or 0),
+            "gst_rate_percent": float(int(ln.get("gst_rate_bps") or 0)) / 100.0,
+            # No product-catalogue awareness in an extraction, and none
+            # invented: the CA links a Product/Service in the draft's editor.
+            "service_catalogue_id": None,
+        })
+    return out
+
+
 @router.post("/from-document")
 def create_bill_from_document(
     data: BillFromDocumentIn,
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
-    """
-    Create a draft purchase bill from AI-extracted document data.
+    """Create a DRAFT purchase bill from AI-extracted document data.
+
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    Human must call /receive to post the bill — never auto-posted.
-    Status is always 'draft' regardless of extraction confidence.
+    Always 'draft' whatever the extraction confidence. A human calls /receive
+    to post it; nothing here reaches the general ledger.
+
+    ONE CREATE PATH (PUR-17). This used to build the bill row and its lines by
+    hand and insert them itself, and it had drifted a long way from
+    `_create_purchase_bill_core`:
+
+      * a failed vendor match left `vendor_id = None` and inserted it against
+        a NOT NULL column (migration 050), so the CA got
+        "Unable to complete purchase bill operation" and no reason;
+      * the lines went in with all three GST heads hard ZERO while the header
+        carried the extracted tax, so the bill did not foot to its own lines;
+      * `is_interstate`, `total_gst_paise` and the s.17(5) `ineligible_itc_*`
+        columns were never set, so the bill classified wrongly in GSTR-3B and
+        its blocked credit read as claimable;
+      * TDS was a hard zero under a comment saying it "requires CA review",
+        which the ordinary create path does not do and CLAUDE.md forbids —
+        the rate is the engine's, and the bill is a draft either way; and
+      * neither the financial-year lock nor the filed-return lock was checked,
+        so an extraction could book a bill into a period a return had closed.
+
+    Now it resolves the vendor, maps the extraction into the core's own input
+    shape and calls the core. What the extraction cannot supply is REFUSED and
+    named rather than filled in: no vendor match and no line items are both
+    422s that say what to do.
+
+    ONE DIVERGENCE SURVIVES, DELIBERATELY. The core is handed plain dicts, not
+    `PurchaseBillLineIn`, so the model's "Product/Service is required on every
+    line" validator does not run — an extraction has no product-catalogue
+    awareness and inventing a link would be worse than leaving it. A line with
+    no `service_catalogue_id` simply moves no stock
+    (`inventory_service.apply_purchase_to_inventory` skips it and returns), and
+    the CA links the item in the draft's line editor before /receive. Do not
+    "tidy" these into the model: it would refuse every extracted bill.
     """
     assert_client_access(current_user, data.client_id)
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
@@ -1856,128 +1956,50 @@ def create_bill_from_document(
         if not extracted_data:
             raise HTTPException(status_code=422, detail="extracted_data is required")
 
-        vendor_id = None
-
         if _USE_MOCK:
-            # Try to match vendor by GSTIN or name
-            vendor_gstin = extracted_data.get("gstin") or extracted_data.get("vendor_gstin")
-            vendor_name  = extracted_data.get("vendor_name", "")
-            for v in []:  # mock vendor list
-                if vendor_gstin and v.get("gstin") == vendor_gstin:
-                    vendor_id = v["id"]
-                    break
-                if vendor_name and vendor_name.lower() in str(v.get("name", "")).lower():
-                    vendor_id = v["id"]
-                    break
+            from routers.vendors import MOCK_VENDORS
+            gstin = (extracted_data.get("gstin")
+                     or extracted_data.get("vendor_gstin") or "").strip()
+            name = (extracted_data.get("vendor_name") or "").strip().lower()
+            vendor_id = next(
+                (v["id"] for v in MOCK_VENDORS
+                 if (gstin and v.get("gstin") == gstin)
+                 or (name and name in str(v.get("name", "")).lower())), None)
         else:
             from core.supabase_client import get_supabase
-            db = get_supabase()
-            vendor_gstin = extracted_data.get("gstin") or extracted_data.get("vendor_gstin")
-            vendor_name  = extracted_data.get("vendor_name", "")
+            vendor_id = _match_extracted_vendor(
+                get_supabase(), firm_id or "", client_id, extracted_data)
 
-            if vendor_gstin:
-                v_resp = (
-                    db.table("vendors")
-                    .select("id")
-                    .eq("firm_id", firm_id)
-                    .eq("client_id", client_id)
-                    .eq("gstin", vendor_gstin)
-                    .limit(1)
-                    .execute()
-                )
-                if v_resp.data:
-                    vendor_id = v_resp.data[0]["id"]
+        if not vendor_id:
+            raise HTTPException(status_code=422, detail=(
+                "No vendor on this client's books matches the supplier on this "
+                "document. Add the supplier as a vendor and upload again, or "
+                "enter the bill directly. A bill cannot be booked without one: "
+                "the vendor carries the TDS section, PAN and state code the "
+                "bill is computed from."))
 
-            if not vendor_id and vendor_name:
-                v_resp = (
-                    db.table("vendors")
-                    .select("id")
-                    .eq("firm_id", firm_id)
-                    .eq("client_id", client_id)
-                    .ilike("name", f"%{vendor_name}%")
-                    .limit(1)
-                    .execute()
-                )
-                if v_resp.data:
-                    vendor_id = v_resp.data[0]["id"]
+        lines = _lines_from_extraction(extracted_data)
+        if not lines:
+            raise HTTPException(status_code=422, detail=(
+                "No line items were read from this document. A purchase bill "
+                "needs at least one line — GST is charged per line at the "
+                "line's own rate. Enter the bill directly, or re-upload a "
+                "clearer scan."))
 
-        bill_id    = str(uuid.uuid4())
-        now_iso    = datetime.now(timezone.utc).isoformat()
-        bill_draft = {
-            "id":                   bill_id,
-            "firm_id":              firm_id,
-            "client_id":            client_id,
-            "vendor_id":            vendor_id,
-            "bill_no":              extracted_data.get("invoice_no", ""),
-            "bill_date":            extracted_data.get("invoice_date", ""),
-            "taxable_amount_paise": int(extracted_data.get("taxable_amount_paise", 0)),
-            "cgst_paise":           int(extracted_data.get("cgst_paise", 0)),
-            "sgst_paise":           int(extracted_data.get("sgst_paise", 0)),
-            "igst_paise":           int(extracted_data.get("igst_paise", 0)),
-            "total_paise":          int(extracted_data.get("total_paise", 0)),
-            "tds_paise":            0,  # TDS requires CA review before application
-            "net_payable_paise":    int(extracted_data.get("total_paise", 0)),
-            "is_ai_extracted":      True,
-            "ai_extraction_data":   extracted_data,
-            "status":               "draft",  # NEVER auto-receive — CA REVIEW REQUIRED
-            "created_at":           now_iso,
-        }
+        bill = _create_purchase_bill_core({
+            "client_id":          client_id,
+            "vendor_id":          vendor_id,
+            "bill_no":            extracted_data.get("invoice_no", ""),
+            "bill_date":          extracted_data.get("invoice_date", ""),
+            "lines":              lines,
+            "is_ai_extracted":    True,
+            "ai_extraction_data": extracted_data,
+        }, current_user)
 
-        if _USE_MOCK:
-            MOCK_PURCHASE_BILLS.append(bill_draft)
-            return api_response(True, {**bill_draft, "requires_review": True})
-
-        # The extracted invoice is a supplier document like any other — an
-        # upload retried after a timeout is exactly how the same one arrives
-        # twice.
-        _dup = _duplicate_bill_id(db, bill_draft.get("client_id"),
-                                  bill_draft.get("vendor_id"),
-                                  bill_draft.get("bill_no"))
-        if _dup:
-            raise HTTPException(
-                status_code=409,
-                detail=_duplicate_bill_message(bill_draft.get("bill_no") or "", _dup))
-
-        pb_resp = db.table("purchase_bills").insert(bill_draft).execute()  # type: ignore[possibly-undefined]
-        bill    = pb_resp.data[0] if pb_resp.data else bill_draft
-
-        # Insert line items if provided
-        line_items = extracted_data.get("line_items", [])
-        if line_items:
-            line_payloads = [
-                {
-                    "bill_id":              bill.get("id", bill_id),
-                    "description":          ln.get("description", ""),
-                    "hsn_sac":              ln.get("hsn_sac", ""),
-                    "rate_paise":           int(ln.get("rate_paise", 0)),
-                    "unit":                 ln.get("unit") or "NOS",
-                    "gst_rate_bps":         int(ln.get("gst_rate_bps", 0)),
-                    "quantity":             ln.get("quantity", 1),
-                    "taxable_amount_paise": int(ln.get("taxable_amount_paise", 0)),
-                    "cgst_paise":           0,
-                    "sgst_paise":           0,
-                    "igst_paise":           0,
-                    # GST components are 0 above (draft, pending CA review), so the
-                    # line total is the taxable amount — NOT rate_paise alone, which
-                    # ignores quantity (previously understated multi-quantity lines).
-                    "line_total_paise":     int(ln.get("taxable_amount_paise", 0)),
-                    # AI extraction has no product-catalogue awareness — the CA
-                    # links a Product/Service later via the draft's line editor.
-                }
-                for ln in line_items
-            ]
-            db.table("purchase_bill_lines").insert(line_payloads).execute()  # type: ignore[possibly-undefined]
-
+        # Separate audit event for document_extraction — tracks AI extraction
+        # usage. The core writes the ordinary "create" event already.
         log_event(
-            firm_id or "", "purchase_bill", bill.get("id", bill_id),
-            "create", actor_id=current_user.get("auth_user_id"),
-            actor_email=current_user.get("email"),
-            new_data=bill,
-            metadata={"source": "ai_extraction", "requires_review": True},
-        )
-        # Separate audit event for document_extraction action — tracks AI extraction usage
-        log_event(
-            firm_id or "", "purchase_bill", bill.get("id", bill_id),
+            firm_id or "", "purchase_bill", bill.get("id"),
             "document_extraction", actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"),
             metadata={

@@ -371,16 +371,27 @@ def test_open_payables_folds_credit_note_paise():
 # =============================================================================
 
 def test_create_bill_from_document_line_total_uses_taxable_amount_not_rate(monkeypatch):
+    """The original claim, now through the one create path (PUR-17).
+
+    This test used to pass `extracted_data` naming no supplier at all, so
+    `vendor_id` stayed None and FakeDB inserted a NULL that real Postgres
+    refuses (migration 050: NOT NULL). The endpoint now resolves the vendor
+    and 422s when it cannot, so the fixture names one — the test was
+    exercising a bill that could not exist in production.
+    """
     si, pb, cn, dn, cu, ve, pp, db = _setup(monkeypatch)
+    ve.create_vendor(VendorIn(client_id="CLI-A", name="Widget Supplies",
+                              state_code="27"), CALLER)
     result = pb.create_bill_from_document(BillFromDocumentIn(
         client_id="CLI-A",
         extracted_data={
             "invoice_no": "AI-1", "invoice_date": "2026-06-01",
+            "vendor_name": "Widget Supplies",
             "taxable_amount_paise": 300000, "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0,
             "total_paise": 300000,
             "line_items": [
                 {"description": "Widget", "hsn_sac": "1234", "rate_paise": 100000,
-                 "quantity": 3, "taxable_amount_paise": 300000},
+                 "quantity": 3, "gst_rate_bps": 0, "taxable_amount_paise": 300000},
             ],
         },
     ), CALLER)
