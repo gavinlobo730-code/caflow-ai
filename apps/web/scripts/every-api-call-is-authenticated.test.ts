@@ -39,6 +39,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "./stripComments.ts";
 
 const ROOT = path.join(import.meta.dirname, "..");
 const SKIP_DIRS = new Set(["node_modules", ".next", "out", ".vercel", "scripts"]);
@@ -68,12 +69,6 @@ interface Call { file: string; line: number; text: string }
  *
  *  `//` is only treated as a comment when it is not preceded by a colon, so a
  *  `https://` inside a string survives. */
-function stripComments(src: string): string {
-  const blank = (m: string) => m.replace(/[^\n]/g, " ");
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, blank)
-    .replace(/(^|[^:])\/\/[^\n]*/g, (_m, pre) => pre + blank(_m.slice(pre.length)));
-}
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
