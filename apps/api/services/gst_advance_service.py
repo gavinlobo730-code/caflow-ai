@@ -123,6 +123,25 @@ def _table_11_rows(buckets: dict) -> list[dict]:
     return list(by_pos.values())
 
 
+def _missing_phrase(rate, pos, treatment) -> str:
+    """"it has no GST rate and no place of supply recorded" — the list of what
+    is absent, in one sentence, whichever combination it is. Written out rather
+    than assembled inline because there are now three of them and eight
+    combinations, and the inline version had already lost the Oxford comma."""
+    missing = []
+    if rate is None:
+        missing.append("no GST rate")
+    if not pos:
+        missing.append("no place of supply")
+    if treatment is None:
+        missing.append("no inter-state or intra-state treatment")
+    if not missing:                                    # pragma: no cover
+        return "it is not declarable"
+    if len(missing) == 1:
+        return f"it has {missing[0]} recorded"
+    return f"it has {', '.join(missing[:-1])} and {missing[-1]} recorded"
+
+
 def table_11_sections(db, firm_id: str, client_id: str, period: str) -> dict:
     """GSTR-1 Tables 11A (`at`) and 11B (`txpd`), or empty when not applicable.
 
@@ -155,7 +174,15 @@ def table_11_sections(db, firm_id: str, client_id: str, period: str) -> dict:
         # No rate or no place of supply means the advance cannot be declared.
         # It still appears in advances_report(), so it is visible rather than
         # dropped — but a guessed rate is a guessed liability.
-        if rate is None or not pos:
+        # `is_interstate` is a THIRD thing that can be missing, and it used to
+        # read as False — intra-state — for a row that had never been decided.
+        # Nothing in IGST §§7-8 makes "unknown" mean "same state", and the
+        # default put CGST and SGST in Table 11A on an inter-state advance as
+        # readily as the browser's old rule put IGST on a local one. Undecided
+        # belongs in this list, beside a missing rate, for the same reason: the
+        # split is the row, not a presentation of it.
+        treatment = r.get("is_interstate")
+        if rate is None or not pos or treatment is None:
             # Declared nowhere, and SAID SO. This used to `continue` in silence
             # under a comment explaining that a guessed rate is a guessed
             # liability — which is right — but the advance then vanished from
@@ -165,17 +192,16 @@ def table_11_sections(db, firm_id: str, client_id: str, period: str) -> dict:
                 "kind": "TABLE_11A",
                 "reference_no": str(r.get("id") or ""),
                 "reason": (
-                    "This advance is not declared in Table 11A: it has "
-                    + ("no GST rate" if rate is None else "")
-                    + (" and " if rate is None and not pos else "")
-                    + ("no place of supply" if not pos else "")
-                    + " recorded. CGST s.13(2) charges tax on an advance for "
-                    "services when it is received, and the rate and the place "
-                    "of supply are what the row is declared at — neither can "
-                    "be guessed without guessing the liability."),
+                    "This advance is not declared in Table 11A: "
+                    + _missing_phrase(rate, pos, treatment)
+                    + ". CGST s.13(2) charges tax on an advance for "
+                    "services when it is received, and the rate, the place of "
+                    "supply and whether the supply is inter-state are what the "
+                    "row is declared at — none can be guessed without guessing "
+                    "the liability."),
             })
             continue
-        key = (str(pos), bool(r.get("is_interstate")), int(rate))
+        key = (str(pos), bool(treatment), int(rate))
         mine = allocs.get(r["id"], [])
         amount = int(r.get("amount_paise") or 0)
         adjusted_by_end = sum(a for a, ts in mine if ts[:10] <= end)

@@ -93,6 +93,7 @@ def _paise_to_rupee_str(paise: int) -> str:
 # The move also fixed the crore group: it was read by a three-digit renderer,
 # so an invoice over ₹999 crore read "Ten Hundred Crore" and one over ₹20,000
 # crore raised IndexError out of the PDF builder.
+from domain.branding import image_source  # noqa: E402
 from domain.reporting.amount_words import amount_in_words  # noqa: E402,F401
 
 
@@ -289,6 +290,9 @@ def _accent_colour(value: Optional[str]):
 # invoice — one that never renders is not.
 _IMAGE_TIMEOUT_SECONDS = 3.0
 _MAX_IMAGE_BYTES = 2_000_000
+#: How many redirects to follow by hand. Three is more than a storage bucket or
+#: a CDN needs and few enough that a loop cannot burn the request budget.
+_MAX_IMAGE_REDIRECTS = 3
 
 
 def _remote_image(url: Optional[str], *, max_width_mm: float, max_height_mm: float):
@@ -299,12 +303,40 @@ def _remote_image(url: Optional[str], *, max_width_mm: float, max_height_mm: flo
     scheme, a slow host, an oversized file, an unreadable image — is None.
     """
     text = str(url or "").strip()
-    if not text.startswith(("http://", "https://")):
+    problem = image_source.refusal(text)
+    if problem:
+        # A SERVER-SIDE FETCH OF A URL A USER TYPED, so where it points is a
+        # decision and not a detail. `domain/branding/image_source.py` refuses a
+        # private, loopback, link-local or metadata address, by literal and by
+        # what the name resolves to; this used to fetch anything beginning
+        # http(s), from a Singapore host inside a provider network.
+        logger.warning("caflow.invoice_pdf: branding image refused — %s", problem)
         return None
     try:
         import httpx
-        with httpx.Client(timeout=_IMAGE_TIMEOUT_SECONDS, follow_redirects=True) as client:
+        # REDIRECTS ARE FOLLOWED BY HAND, one hop at a time, re-asking the rule
+        # before each. `follow_redirects=True` performs the next request before
+        # anything can inspect where it went — which is the whole vector: a
+        # perfectly public URL that 302s to 169.254.169.254.
+        with httpx.Client(timeout=_IMAGE_TIMEOUT_SECONDS, follow_redirects=False) as client:
             res = client.get(text)
+            for _hop in range(_MAX_IMAGE_REDIRECTS):
+                if res.status_code not in (301, 302, 303, 307, 308):
+                    break
+                nxt = str(res.headers.get("location") or "").strip()
+                if not nxt:
+                    return None
+                nxt = str(res.url.join(nxt))
+                hop_problem = image_source.refusal(nxt)
+                if hop_problem:
+                    logger.warning(
+                        "caflow.invoice_pdf: branding image redirect refused — %s",
+                        hop_problem)
+                    return None
+                res = client.get(nxt)
+            else:
+                logger.warning("caflow.invoice_pdf: branding image redirected too many times")
+                return None
         res.raise_for_status()
         blob = res.content
         if not blob or len(blob) > _MAX_IMAGE_BYTES:
