@@ -83,6 +83,18 @@ change. The code is the authority; keep this file in step with it.
   every June receipt, payment, bank entry, depreciation charge and payroll accrual from
   the 11th onwards. `services/period_lock_service.py` holds the Python twins, pinned to
   the SQL by `tests/test_period_lock_reason_parity_pg.py`.
+  **A FIXED ASSET is one of those documents.** `create_asset` asked only
+  `period_validation_service.validate_posting_date` — firm-FY, no client_id, so
+  it cannot see a filed return — while `correct_asset` and `delete_asset` both
+  called `assert_open` and always had. A CA could create a June asset after
+  June's GSTR-3B was filed and then be refused when they tried to fix it, and
+  create-but-not-correct cannot be right whichever way the rule should fall.
+  It falls on `assert_open` because the acquisition journal debits `%GST Input%`
+  from `itc_claimable_paise`, which feeds Table 4(A) — a capitalised purchase
+  IS a document that feeds a return. Unconditional rather than gated on whether
+  ITC was recorded: a rule that depends on the order two fields are filled in
+  is not a rule. Depreciation's own refusal is separate, deliberate and
+  test-pinned; that one is an owner decision to re-take, not a bug to swap.
 - **A journal line's account belongs to the entry's own firm and client**, enforced by a
   statement-level trigger on `journal_lines` (migration 360) rather than inside each
   posting function — `account_id` carries only a global FK to `chart_of_accounts(id)`,
@@ -143,6 +155,44 @@ change. The code is the authority; keep this file in step with it.
   fork**, so `statutory_rates.FYTaxRates` (one CG rate set per FY) cannot
   represent that year — it holds only post-fork years today, and adding 2024-25
   needs pre/post buckets, as the ITR form itself splits them.
+- **§206C IS IN THE TDS REGISTRY AND A VENDOR MAY NEVER CARRY IT.** TCS is tax
+  COLLECTED by a seller from a buyer and reported on **Form 27EQ**; the
+  registry entry exists as reference data and says so in its own comment
+  ("do not assume TCS is an implemented feature because a rate exists here").
+  Nothing refused it until 12-09-2026 and the supplier screen's section
+  dropdown is served straight from the registry, so a vendor could be marked
+  §206C and every bill from them withheld 0.1% of the WHOLE amount — the
+  entry's threshold is ZERO — with the row stamped 26Q, because
+  `residency.return_type_for` routes on RESIDENCY and never sees the section.
+  Three things wrong at once: on a bill you are PAYING there is nothing to
+  collect, 26Q is the wrong return, and no TCS path computes it.
+  `deduction_section_refusal` is the one place that decides this (§192 is the
+  other refusal), and `GET /api/tds/sections` serves its answer as
+  `vendor_eligible` so a screen cannot keep a second exclusion list.
+- **`tds_deductions.return_type` and `tds_returns.return_type` store the 1961-Act
+  ROUTING KEY permanently — 24Q/26Q/27Q/27EQ — on both sides of the 2026 fork.**
+  `vocabulary.statement_form` returns the number the PERIOD's own Act uses (140
+  for a FY 2026-27 26Q) and that is a DISPLAY value. Writing it into the column
+  hits migration 037's CHECK, which is what the firm-level TDS screen did from
+  1 April 2026 onwards, surfacing as "Failed to save TDS return" with no reason.
+  `CreateReturnRequest.return_type` is a `Literal` of the four so it cannot come
+  back. Translate at the boundary, never rekey a store.
+- **A TDS statement's deductor block is READ, never defaulted** —
+  `domain/tds/deductor.py`, from `client_statutory_identity.tan` (migration 325,
+  created for exactly this) and the client's own PAN, legal name and postal
+  address. A caller-supplied value wins where one is given and is validated on
+  the way through; where neither exists the build is REFUSED with one sentence
+  per missing identifier. The firm-level screen used to invent
+  `"MUMB00000A"` / `"AAAAA0000A"`, both well-formed, so every validator passed
+  and a quarter saved under a TAN belonging to nobody — a return filed against
+  somebody else's account, with §200/§201 exposure staying on the real deductor.
+- **§206AB was omitted by the Finance Act 2025 w.e.f. 01-04-2025, so
+  `tds_validator.is_higher_rate_applicable` takes an FY** and answers the
+  ordinary rate for a later year. Not deleted: §206AB governs a period up to
+  31-03-2025 indefinitely, including a belated or revised return filed today —
+  the same fork shape as the TDS vocabulary. Omitting the FY means current law.
+  ⚠️ The omission is `[S]`-graded — egress is refused at this environment's
+  proxy — so it is a named constant, `SECTION_206AB_OMITTED_FROM_FY`.
 - **A capital LOSS does not relieve other income** (§71(3), §74), and **§80G has
   a ceiling** (§80G(4): 10% of adjusted gross total income, where adjusted GTI
   is GTI less the capital-gains buckets and less every other Chapter VI-A
@@ -1039,7 +1089,7 @@ current and are where to start on any "what should we fix next" question:**
 | `2026-09-07-a-plus-roadmap.md` | what each of the 14 modules needs to reach A+, defined as five testable properties, in a seven-stage order that starts by proving correctness |
 | `2026-09-08c-the-phase-plan.md` | **the plan being worked to.** All 254 remaining items in twelve phases grouped by FIX SHAPE rather than by module, so each phase teaches one pattern and ends with one guard test. Every critical and high is assigned; two duplicate pairs are named (PUR-07≡TDS-13, IT-09≡FA-06) |
 | `2026-09-11-the-verification-pass.md` | **the current remaining-work list. Start here.** All 163 medium/low findings re-checked against the code by nine read-only agents: 131 still open, 15 partial, 17 closed — so the backlog is ~10% stale, not the ~73% a spot-check had suggested. §2 is the part that matters: **seven findings whose severity went UP** because Phase 7 built the screens that had been holding them latent, and nothing re-scored them. §3 carries two live defects with no finding at all. §6 is the build order |
-| `2026-09-12-the-probe-pass/` | **read this before scheduling any of the above.** 65 of those findings re-read against `99ac94b5`, asking the one question the 11 September pass did not: *is the finding's own suggested FIX sound?* Two are not — **ACC-23** would break a balance sheet that is currently self-correcting and test-pinned, **ACC-25** re-opens the expiring-signed-URL and stored-XSS hole `domain/banking/attachments.py` exists to close. §2 lists blockers the findings omit (ACC-16's backfill is refused outright by migration 251's immutability trigger), §3 five materially false premises (PUR-28's fix might DROP the four live policies it claims are absent), §4 one escalation, §5 four new duplicate pairs, §7 a defect with no finding at all |
+| `2026-09-12-the-probe-pass/` | **read this before scheduling any of the above.** All 213 findings re-read against the code by nine read-only agents — one slice file per subsystem — asking the one question the 11 September pass did not: *is the finding's own suggested FIX sound?* **It was not, thirteen times.** Two would break working, test-pinned behaviour (**ACC-23** a balance sheet that is currently self-correcting, **ACC-25** the expiring-signed-URL and stored-XSS hole `domain/banking/attachments.py` exists to close); eleven more would break something smaller (**SALES-13** prints the CA practice's UPI ID on the client's own outward invoice, **TDS-23** turns a visible 422 into a silently mis-routed 26Q row, **TDS-19** drops a genuine §194-IA credit, **FA-14**'s `is None` divides by zero). Also five materially false premises (PUR-28's fix might DROP the four live policies it claims are absent), and **sixteen defects with no finding at all**. **Stale rates far above the 10% the 11 September pass measured** — sales 59%, payroll 53%, fixed assets 50%, TDS 44% — so the finding JSONs are no longer a usable work list on their own and these ten slice files are |
 | `2026-09-08b-what-is-left.md` | the previous remaining-work list, re-scored against `9fbe40d`. **Superseded by the 11 September pass** — its severities predate the screens Phase 7 shipped. Kept because its §2 is the record of what the last tranche introduced |
 
 `docs/audits/2026-09-07-market-research/` holds the statutory re-check behind
@@ -1272,6 +1322,30 @@ called.
   deliberately NOT in `models.client.validate_gstin`, which guards a Pydantic
   field that 512 invented fixture GSTINs across 95 files flow through.
 
+- **A UAN and an IFSC are format-checked at every door; an ESIC number is
+  not, and that is a decision.** Both patterns live once, in
+  `domain/payroll/identity.py` — `UAN_RE` (12 digits, EPFO's own format) and
+  `IFSC_RE` (RBI's four letters, `0`, six alphanumerics). They already existed
+  in `employee_import.py` (which refuses a whole file) and `ecr.py` (which
+  refuses a member at file build); what had no check was the API, so a UAN
+  typed on the form was stored and wedged the ECR months later, at the moment
+  the CA was trying to file. `EmployeeIn` and `EmployeeUpdateIn` both validate
+  now — a validator only at the create door is one PATCH from being none.
+  **`esi_number` stays a presence check**: nothing in this codebase validates
+  its format anywhere, no length is confirmable here, and a pattern written
+  from memory would refuse legitimate numbers for every client. Same judgement
+  as the EPF establishment code, the LIN and the state PT slabs.
+- **A YEAR PICKER IS DERIVED FROM THE CLOCK, NEVER LISTED** —
+  `lib/dates/periods.financialYearChoicesAround` for a financial year and
+  `assessmentYearChoicesAround` for an assessment year, the second DERIVED FROM
+  the first (IT Act §2(9) with §3: AY = FY + 1) rather than parsing the date
+  again. Two functions each working out "the current year" are two controls
+  that can describe different periods.
+  `scripts/a-financial-year-choice-comes-from-the-clock.test.ts` is the guard,
+  and its own history is the lesson: it forbade `<option value="2025-26">` and
+  nothing else, so twelve more screens spelled the same defect as
+  `const FY_OPTIONS = ["2025-26", …]` and **eight of them ended at a year
+  already past**. It now matches the array form too, and strips comments first.
 - **A financial-year label is a TYPE, not a `str`.** Annotate every route
   parameter and request-model field that takes one `FYLabel` (or
   `OptionalFYLabel`) from `apps/api/models/fy.py`;
