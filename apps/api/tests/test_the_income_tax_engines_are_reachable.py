@@ -134,9 +134,10 @@ def test_44ad_reaches_the_engine_and_the_digital_split_changes_the_answer():
     """The split is not cosmetic: the ceiling and the rate both turn on how
     much came through a bank."""
     cash = it.compute_presumptive_44ad(it.Compute44ADRequest(
-        fy="2025-26", turnover_paise=50_00_000_00), CALLER)["data"]
+        fy="2025-26", assessee_kind="individual",
+        turnover_paise=50_00_000_00), CALLER)["data"]
     digital = it.compute_presumptive_44ad(it.Compute44ADRequest(
-        fy="2025-26", turnover_paise=50_00_000_00,
+        fy="2025-26", assessee_kind="individual", turnover_paise=50_00_000_00,
         digital_turnover_paise=50_00_000_00), CALLER)["data"]
     assert cash["section"] == "44AD"
     assert digital["presumptive_income_paise"] < cash["presumptive_income_paise"]
@@ -145,7 +146,8 @@ def test_44ad_reaches_the_engine_and_the_digital_split_changes_the_answer():
 
 def test_44ada_reaches_the_engine():
     res = it.compute_presumptive_44ada(it.Compute44ADARequest(
-        fy="2025-26", gross_receipts_paise=40_00_000_00), CALLER)
+        fy="2025-26", assessee_kind="individual",
+        gross_receipts_paise=40_00_000_00), CALLER)
     assert res["success"] is True
     assert res["data"]["section"] == "44ADA"
     assert res["data"]["presumptive_income_paise"] == 20_00_000_00     # 50%
@@ -163,7 +165,8 @@ def test_44ae_charges_a_heavy_vehicle_by_its_weight():
 
 def test_a_turnover_over_the_ceiling_is_refused_with_the_reason():
     res = it.compute_presumptive_44ad(it.Compute44ADRequest(
-        fy="2025-26", turnover_paise=5_00_00_000_00), CALLER)
+        fy="2025-26", assessee_kind="individual",
+        turnover_paise=5_00_00_000_00), CALLER)
     assert res["data"]["eligible"] is False
     assert res["data"]["reasons"], "an ineligible scheme must say why"
 
