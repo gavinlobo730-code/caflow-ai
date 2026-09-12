@@ -7,7 +7,7 @@ import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loade
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
-import { registerNotesFrom, paymentNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
+import { registerNotesFrom, topLevelNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
 import { DebitNoteViewDrawer } from "@/components/purchases/DebitNoteViewDrawer";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
 import { writeDebitNoteDuplicateSeed } from "@/lib/purchases/debitNoteDuplicateSeed";
@@ -2318,7 +2318,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
       const withheld = Number(paid?.tds_paise ?? 0);
       // The SAME renderer the bill path uses (lib/purchases/registerNotes), so a
       // gap cannot be worded one way on a bill and another on an advance.
-      const gapText = paymentNotesFrom(result.data).map((n) => n.text).join(" ");
+      const gapText = topLevelNotesFrom(result.data).map((n) => n.text).join(" ");
       setMsg({
         type: "ok",
         text: withheld > 0
@@ -2587,6 +2587,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange }: { client
   // error, not the "No debit notes" empty state that a genuinely empty FY shows.
   const [loadFailed, setLoadFailed] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -2692,6 +2693,11 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange }: { client
       const result = await apiCall(`/api/debit-notes/${id}/issue`, "POST", undefined, token);
       if (!result.success) throw new Error(result.error ?? "Failed to issue debit note");
       setMsg({ type: "ok", text: "Debit note issued." });
+      // PUR-23 ≡ TDS-32 — the note is issued and posted; what the server sends
+      // back is what the 26Q deductee row now disagrees with. Its own panel,
+      // not the toast, because a statutory warning a CA dismisses in passing
+      // is one they never acted on.
+      setRegisterNotes(dedupeRegisterNotes(topLevelNotesFrom(result.data)));
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Error issuing debit note" });
@@ -2867,6 +2873,34 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange }: { client
         </div>
       )}
 
+      {/* PUR-23 ≡ TDS-32 — the note is issued, its journal is posted, and the
+          26Q deductee row now reports a credit that has moved. NOT an error:
+          §194 charges the aggregate credited while §199 gives the deductee
+          credit for tax already paid over, and which of the two applies turns
+          on when the challan went — a fact the books do not hold, so the
+          software states the divergence and adjusts no figure. The wording is
+          the backend's, so this cannot be phrased differently here. */}
+      {registerNotes.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">
+                Issued. The TDS register has something to settle before the quarter is filed:
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {registerNotes.map((n, i) => (
+                  <li key={i} className="text-xs text-amber-800">
+                    {n.vendor ? <span className="font-medium">{n.vendor}: </span> : null}{n.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <button onClick={() => setRegisterNotes([])} className="text-amber-700"><X size={13} /></button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-[#334155]">
           {debitNotes.length} debit note{debitNotes.length !== 1 ? "s" : ""} in FY {financialYear}
@@ -3030,6 +3064,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange }:
   // error, not the "No credit notes" empty state that a genuinely empty FY shows.
   const [loadFailed, setLoadFailed] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -3132,6 +3167,9 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange }:
       const result = await apiCall(`/api/purchase-credit-notes/${id}/issue`, "POST", undefined, token);
       if (!result.success) throw new Error(result.error ?? "Failed to issue credit note");
       setMsg({ type: "ok", text: "Credit note issued." });
+      // The mirror of the debit-note path. A §34(3) note INCREASES what was
+      // credited, so the deduction may be SHORT — the §201(1A) direction.
+      setRegisterNotes(dedupeRegisterNotes(topLevelNotesFrom(result.data)));
       load();
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Error issuing credit note" });
@@ -3296,6 +3334,34 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange }:
           {msg.type === "ok" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
           {msg.text}
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
+        </div>
+      )}
+
+      {/* PUR-23 ≡ TDS-32 — the note is issued, its journal is posted, and the
+          26Q deductee row now reports a credit that has moved. NOT an error:
+          §194 charges the aggregate credited while §199 gives the deductee
+          credit for tax already paid over, and which of the two applies turns
+          on when the challan went — a fact the books do not hold, so the
+          software states the divergence and adjusts no figure. The wording is
+          the backend's, so this cannot be phrased differently here. */}
+      {registerNotes.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={14} className="text-amber-700 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">
+                Issued. The TDS register has something to settle before the quarter is filed:
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {registerNotes.map((n, i) => (
+                  <li key={i} className="text-xs text-amber-800">
+                    {n.vendor ? <span className="font-medium">{n.vendor}: </span> : null}{n.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <button onClick={() => setRegisterNotes([])} className="text-amber-700"><X size={13} /></button>
+          </div>
         </div>
       )}
 

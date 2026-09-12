@@ -26,6 +26,7 @@ from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
+from services import tds_register_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
 
@@ -577,6 +578,42 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             )
         except Exception as e:
             _logger.error("issue_debit_note: inventory apply failed for %s: %s", dn_id, e, exc_info=True)
+
+        # THE TDS REGISTER, WHICH NOTHING REVISITED ON THIS TRANSITION
+        # (PUR-23 ≡ TDS-32). `tds_register_service.sync_for_bill` says in its
+        # own docstring that it runs "on every transition rather than only on
+        # create", and issuing a note was the transition it was never called
+        # on — so a purchase return against a bill that had already withheld left the
+        # 26Q deductee row reporting the pre-note credit, and the vendor's
+        # 26AS showed income they did not earn.
+        #
+        # The sync CHANGES NO FIGURE. `payment_amount_paise` stays the bill's
+        # own taxable value and `tds_paise` stays what was deducted, because
+        # the statute leaves two lawful answers and the books record neither
+        # of the facts that pick between them — see
+        # domain/tds/purchase_return. What it produces is the gap, which is
+        # what reaches the CA.
+        #
+        # Runs AFTER issuance has committed and never raises into this path:
+        # a note that posted correctly must not be rolled back because a
+        # register row could not be re-read.
+        try:
+            if bill_id:
+                _b = (db.table("purchase_bills").select("*")
+                      .eq("id", bill_id).eq("firm_id", firm_id)
+                      .eq("client_id", client_id).limit(1).execute().data or [])
+                if _b:
+                    _v = (db.table("vendors").select("*")
+                          .eq("id", _b[0].get("vendor_id")).eq("firm_id", firm_id)
+                          .limit(1).execute().data or [{}])[0]
+                    _reg = tds_register_service.sync_for_bill(
+                        db, firm_id or "", client_id, _b[0], _v)
+                    if _reg.get("statutory_gaps"):
+                        updated = {**updated,
+                                   "statutory_gaps": _reg["statutory_gaps"],
+                                   "gap_details": _reg.get("gap_details")}
+        except Exception as e:
+            _logger.error("issue_debit_note: TDS register resync failed for %s: %s", dn_id, e)
 
         updated["journal_entry_id"] = journal_id
         return api_response(True, updated)

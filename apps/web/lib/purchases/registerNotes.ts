@@ -69,14 +69,20 @@ export function registerNotesFrom(data: unknown): RegisterNote[] {
   return notesFrom(reg);
 }
 
-/** The notes in one `POST /api/purchase-payments` response.
+/** The notes at the TOP LEVEL of a response, rather than under `tds_register`.
  *
- *  The payment path reports the SAME vocabulary — services/tds_register_service
- *  .sync_for_payment calls the same describe_gaps — but at the top level of the
- *  payment rather than under `tds_register`, because a payment has no second
- *  document to nest it under. One renderer either way, so a gap cannot be worded
- *  one way on a bill and another on an advance. */
-export function paymentNotesFrom(data: unknown): RegisterNote[] {
+ *  Three paths report the same vocabulary this way — a vendor PAYMENT (whose
+ *  advance is a charging event in its own right), and issuing a purchase
+ *  DEBIT or CREDIT note (PUR-23 ≡ TDS-32, where the note has moved a credit
+ *  the tax was already withheld on). None of the three has a second document
+ *  to nest the gaps under, so `services/tds_register_service` puts them on the
+ *  document itself.
+ *
+ *  Named for the SHAPE and not for the payment path, because it stopped being
+ *  the payment path's alone: a helper named after one of its three callers is
+ *  how the fourth ends up with a hand-rolled copy and a gap worded differently
+ *  on one screen. One renderer, so one wording. */
+export function topLevelNotesFrom(data: unknown): RegisterNote[] {
   if (!data || typeof data !== "object") return [];
   return notesFrom(data as RegisterResult);
 }

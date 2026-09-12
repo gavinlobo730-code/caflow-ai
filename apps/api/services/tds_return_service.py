@@ -43,15 +43,24 @@ Reading only `purchase_bills` left a real deduction in the ledger and in the
 register but off the statement — and then the reconciliation failed, because
 the GL movement included it.
 
-Known simplification: purchase debit/credit notes never adjust tds_paise in
-this codebase (confirmed — routers/debit_notes.py and
-routers/purchase_credit_notes.py never touch it), so a purchase return after
-TDS was already deducted and deposited is not modelled here either; this
-mirrors the existing system's own scope, not a gap introduced by this file.
+A PURCHASE RETURN AFTER THE TAX WAS WITHHELD IS REPORTED, NOT ADJUSTED. The
+FIGURES still do not move — a note changes neither `payment_amount_paise` nor
+`tds_paise` — because §194's charge on "the aggregate of the sums credited or
+paid" and §199's credit to the deductee for tax already paid over point in
+opposite directions, and which applies turns on when the challan went, which
+the books do not record. What changed (PUR-23 ≡ TDS-32) is that it is no
+longer SILENT: `_credit_moved_gaps` names every bill in the quarter whose
+credit a note has moved since the deduction, in `statutory_gaps`, so the CA
+assembling the return sees it before the vendor's 26AS shows income they did
+not earn. `domain/tds/purchase_return.py` is the rule; both note routers now
+resync the register on issue, which its own docstring always claimed happened
+"on every transition".
 
 Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 """
 from __future__ import annotations
+
+import logging
 
 from domain.tds import vocabulary as _vocabulary
 
@@ -62,6 +71,9 @@ from domain.tds.tds_computer import (
 )
 from domain.tds.section_rates import quarter_dates
 from domain.tds.residency import is_non_resident
+from domain.tds.purchase_return import credit_moved_after_deduction
+
+_logger = logging.getLogger("caflow.tds_return")
 
 _computer = TDSComputer()
 
@@ -300,6 +312,67 @@ def _section_labels(fy: str, sections) -> tuple[dict[str, str], list[str]]:
     return labels, gaps
 
 
+def _credit_moved_gaps(db, firm_id: str, events: list[dict]) -> list[str]:
+    """A purchase return, or a §34(3) undercharge note, against a bill in this
+    quarter that already withheld (PUR-23 ≡ TDS-32).
+
+    The module docstring used to end "purchase debit/credit notes never adjust
+    tds_paise in this codebase ... so a purchase return after TDS was already
+    deducted and deposited is not modelled here either". That is still true of
+    the FIGURES and deliberately so — domain/tds/purchase_return sets out why
+    the statute leaves two lawful answers and the books hold neither of the
+    facts that pick between them. What was not acceptable is that it was also
+    SILENT: the deductee row reported a credit that had been partly reversed,
+    the vendor's 26AS showed income they did not earn, and the CA assembling
+    the quarter had no way to know.
+
+    Read by BILL ID rather than by date. The note that matters most is the one
+    raised in a LATER quarter against this quarter's bill, and a date-ranged
+    query is exactly the one that misses it. What crosses the wire is
+    proportional to the notes, not to the ledger.
+
+    An advance carries no notes — a note is raised against a BILL — so only
+    bill events are asked about.
+    """
+    bills = {e["id"]: e for e in events
+             if e.get("kind") == "bill" and int(e.get("tds_paise") or 0) > 0}
+    if not bills:
+        return []
+    ids = list(bills)
+    returned: dict[str, int] = {}
+    increased: dict[str, int] = {}
+    for table, bucket in (("debit_notes", returned), ("purchase_credit_notes", increased)):
+        for i in range(0, len(ids), 200):
+            chunk = ids[i:i + 200]
+            try:
+                rows = _paginate_all(lambda table=table, chunk=chunk: db.table(table)
+                        .select("id, purchase_bill_id, taxable_amount_paise, status, deleted_at")
+                        .eq("firm_id", firm_id).in_("purchase_bill_id", chunk))
+            except Exception as e:                              # noqa: BLE001
+                # A gap that cannot be measured is reported as absent rather
+                # than failing the whole return build. The quarter still
+                # assembles; what is lost is one warning, and the log says so.
+                _logger.error("could not read %s against this quarter's bills: %s", table, e)
+                continue
+            for r in rows:
+                if (r.get("status") or "") != "issued" or r.get("deleted_at"):
+                    continue
+                k = r.get("purchase_bill_id")
+                bucket[k] = bucket.get(k, 0) + int(r.get("taxable_amount_paise") or 0)
+
+    out: list[str] = []
+    for bill_id, e in bills.items():
+        moved = credit_moved_after_deduction(
+            bill_no=e.get("doc_no"), section=e.get("section"),
+            credited_paise=int(e.get("base_paise") or 0),
+            tds_paise=int(e.get("tds_paise") or 0),
+            returned_taxable_paise=returned.get(bill_id, 0),
+            increased_taxable_paise=increased.get(bill_id, 0))
+        if moved:
+            out.append(moved.sentence)
+    return sorted(out)
+
+
 def tds_26q_from_books(
     db, firm_id: str, client_id: str, fy: str, quarter: str,
     tan: str, deductor_name: str, deductor_pan: str, deductor_address: str,
@@ -416,7 +489,7 @@ def tds_26q_from_books(
         "form": _vocabulary.statement_form(_vocabulary.RESIDENT_NON_SALARY, fy_label=fy),
         "act": _vocabulary.vocabulary_for(fy).act_name,
         "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
-                           + _sec_gaps),
+                           + _sec_gaps + _credit_moved_gaps(db, firm_id, events)),
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
@@ -630,7 +703,7 @@ def tds_27q_from_books(
         "form": _vocabulary.statement_form(_vocabulary.NON_RESIDENT, fy_label=fy),
         "act": _vocabulary.vocabulary_for(fy).act_name,
         "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
-                           + _sec_gaps),
+                           + _sec_gaps + _credit_moved_gaps(db, firm_id, events)),
         "source": "posted_purchase_bills_and_advances",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
@@ -772,6 +845,9 @@ def tds_24q_from_books(
         # they are the people most likely to ask about it.
         "challan_gaps": mapping.gaps,
         "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
+                           # NOT _credit_moved_gaps: 24Q is SALARY (§192), built
+                           # from payroll runs. A purchase note cannot reach it,
+                           # and this builder has no bill events to ask about.
                            + _sec_gaps),
         "source": "finalized_payroll_runs",
         "tan": payload.tan,

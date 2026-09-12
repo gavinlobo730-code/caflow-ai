@@ -206,6 +206,13 @@ GAP_TDS_IS_A_FY_CATCH_UP = "tds_is_a_fy_catch_up"
 # actually paid. Reported rather than guessed at, and rather than left silent:
 # under-deducting under §195 disallows the WHOLE expenditure (§40(a)(i)).
 GAP_FOREIGN_ADVANCE_NOT_WITHHELD = "foreign_advance_not_withheld"
+# A purchase return, or a supplier's §34(3) undercharge correction, has moved
+# a credit the tax was already withheld on. The deductee row still reports the
+# original amount. The RULE is domain/tds/purchase_return.py — which also
+# writes the per-bill sentence, because the figures are what make it useful;
+# the code and the generic message live here with the rest of the register's
+# vocabulary so one screen cannot phrase a gap differently from another.
+GAP_CREDIT_MOVED_AFTER_DEDUCTION = "tds_credit_moved_after_deduction"
 
 # What each code MEANS, for the CA who has to act on it. A bare
 # "no_pe_declaration_undated" on a screen is a code, not a prompt: it says
@@ -255,6 +262,15 @@ GAP_MESSAGES: dict[str, str] = {
         "India, but the declaration has no date or nobody recorded who "
         "obtained it. s.201(1) makes a deductor who fails to deduct an assessee "
         "in default — record the date and the reference on the vendor.",
+    GAP_CREDIT_MOVED_AFTER_DEDUCTION:
+        "A note has changed what was credited to this payee since the tax was "
+        "deducted, and the deductee row still reports the original amount. The "
+        "section charges the aggregate of the sums credited or paid, while tax "
+        "already deducted and paid over is the deductee's under s.199 — so a "
+        "note in the same quarter and before the challan normally reduces the "
+        "deduction, and one after it leaves an excess deposit to set against a "
+        "later liability. The software adjusts neither: it does not record when "
+        "the challan went. Decide which applies before the quarter is filed.",
     GAP_FORM_15CA_NOT_RECORDED:
         "No Form 15CA acknowledgement is recorded against this remittance. "
         "Rule 37BB with s.195(6) wants it before the money leaves, and Part D "

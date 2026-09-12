@@ -7,20 +7,20 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **63** | re-read against the code. The defect is gone. |
-| closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
+| closed | **66** | re-read against the code. The defect is gone. |
+| closed_by_commit | **159** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | partial | **14** | part of the finding is answered, part is not. Each says which. |
-| open | **40** | re-read and still true. |
-| not a defect as stated | **3** | the premise is false, or the suggested fix would be worse than the defect. |
+| open | **35** | re-read and still true. |
+| not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 54 items — 40 open and 14 partial — not 254.**
+**The work left is 49 items — 35 open and 14 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 40 open, most are not code problems.** Nearly every one needs a
+**And of the 35 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -29,7 +29,6 @@ migration; a handful need a statutory document a person has to read.
 |---|---|---|
 | high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
-| high | **GST-16** | The GSTR-1 validator never runs on the path a CA actually uses |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
 | medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
@@ -56,17 +55,13 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PUR-19** | Reverse-charge bills produce no self-invoice (§31(3)(f)) and no payment voucher (§31(3)(g)) |
 | medium | **PUR-20** | GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client |
 | medium | **PUR-22** | One payment settling several bills is not reachable from the Purchases screen — the multi-bill a |
-| medium | **PUR-23** | Issuing a debit note (purchase return) does not resync the TDS register, so 26Q keeps reporting  |
-| medium | **PUR-24** | AP ageing lists only bills, so unallocated vendor advances are invisible and the ageing total do |
 | medium | **PUR-25** | No purchase orders, goods receipt notes or three-way matching |
 | medium | **PUR-26** | No recurring purchase bills, though recurring sales invoices are fully built |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
 | medium | **TDS-23** | Eight commonly-used TDS sections are absent from the registry, including §194T on payments to pa |
-| medium | **TDS-32** | Purchase debit and credit notes never reverse TDS, so a return after deduction leaves the regist |
 | low | **ACC-16** | Journal lines have no ordering column, so a voucher's Dr/Cr lines display in arbitrary order and |
 | low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
-| low | **GST-31** | The GST portal integration router is complete, honest and reachable from no screen |
 
 ### What actually blocks each of them
 
@@ -74,7 +69,6 @@ migration; a handful need a statutory document a person has to read.
 |---|---|
 | **ACC-06** | tables for the templates, budgets and retainers |
 | **GST-11** | schema for a quarterly filing preference, plus IFF |
-| **GST-16** | no migration — this is wiring, and worth doing early |
 | **GST-20** | a registrations table; clients.gstin is singular today |
 | **IT-19** | somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) — a migration |
 | **BANK-11** | a match_type column, or a second pattern column — the rule row has neither |
@@ -131,6 +125,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **GST-26** | No HSN/SAC master is shipped — every firm builds its own library from nothing |
 | medium | **SALES-22** | No HSN/SAC master is exposed — every firm builds its code library from zero before it can raise  |
 | medium | **TDS-10** | TCS (§206C(1H)/(1F)/(1G), Form 27EQ, Form 27D) does not exist — only a rate row nobody reads |
+| low | **GST-31** | The GST portal integration router is complete, honest and reachable from no screen |
 
 ## Deferred to the redesign
 
@@ -194,6 +189,8 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PAY-17** | Annual professional tax for §16(iii) is estimated as this month's PT × 12 — six times the year's |
 | medium | **PAY-18** | `logger` is undefined in the /employee-exceptions error path — a failed declarations read raises |
 | medium | **PUR-12** | The reconciliation screen tells the CA that ITC is restricted to 105% of GSTR-2A — a cushion rep |
+| medium | **PUR-23** | Issuing a debit note (purchase return) does not resync the TDS register, so 26Q keeps reporting  |
+| medium | **PUR-24** | AP ageing lists only bills, so unallocated vendor advances are invisible and the ageing total do |
 | medium | **PUR-28** | Client-assignment scope is enforced on every purchase API endpoint and on none of the Purchases  |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **SALES-24** | Receipt and credit-note numbers take their financial year from today's date, not the document da |
@@ -201,6 +198,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **SALES-27** | A line with no HSN/SAC silently prints 998211 — the CA-services SAC — on any invoice, including  |
 | medium | **TDS-19** | The 26AS parser mislabels Part B (TCS) as TDS and Part D (refunds) as self-assessment tax, and n |
 | medium | **TDS-20** | The 26AS pipeline accepts only pasted tab/pipe-delimited text and offers no current-year option  |
+| medium | **TDS-32** | Purchase debit and credit notes never reverse TDS, so a return after deduction leaves the regist |
 | low | **PUR-29** | Reverse charge and §17(5) eligibility have no test coverage on the purchase-bill compute path at |
 | low | **PUR-30** | A dead _TDS_DEFAULT_BPS table at the top of purchase_bills.py carries a §194H rate that is 2.5x  |
 | low | **PUR-31** | Vendor payment numbering is count+1, so a deleted or compensated payment guarantees a collision  |
