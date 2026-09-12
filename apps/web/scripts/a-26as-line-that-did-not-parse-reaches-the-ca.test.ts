@@ -44,6 +44,21 @@ test("the CA can close it, and closing clears the state", () => {
   assert.match(button, /setShowUpload\(false\)/);
 });
 
+test("the rows that are not a TDS credit are shown, not just excluded", () => {
+  // TDS-19. Part C (tax the client paid), Part D (a refund) and Part F
+  // (s.194-IA as buyer) are left out of the 26AS-versus-books comparison
+  // because they are not credits deducted from this client. Excluding them
+  // and saying nothing would replace one wrong number with a missing fact.
+  // The RENDER, not the type declaration. A first version matched the
+  // identifier anywhere and passed with the whole panel behind `{false &&`.
+  assert.match(code, /recon\.not_a_tds_credit\?\.length/,
+    "the panel is not conditioned on the server's answer");
+  assert.match(code, /recon\.not_a_tds_credit!\.map/,
+    "the rows set aside are not listed");
+  assert.match(code, /paise\(recon\.not_a_tds_credit_paise/,
+    "the total set aside is what a CA checks against the portal");
+});
+
 test("the screen does not re-implement the parser", () => {
   // House rule: zero business logic in the frontend. Splitting the pasted text
   // in the browser is how the backend parser came to be bypassed elsewhere.

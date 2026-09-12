@@ -95,6 +95,16 @@ interface Reconciliation {
   books_source: string | null;
   ai_insight_triggered: boolean;
   status: string;
+  // TDS-19. Rows of 26AS that are NOT a credit deducted from this client —
+  // Part C (tax the client paid themselves), Part D (a refund already
+  // received) and Part F (s.194-IA the client deducted as BUYER of property).
+  // They are excluded from the comparison above and reported here instead of
+  // being dropped. Absent when the reconciliation was read back from the
+  // database rather than just run: they are not columns of
+  // form_26as_reconciliations, deliberately.
+  not_a_tds_credit?: { part: string | null; record_type: string | null;
+                       amount_paise: number; deductor_name: string }[];
+  not_a_tds_credit_paise?: number;
 }
 
 /** One line of the upload the server could not turn into a record.
@@ -332,6 +342,24 @@ export default function Form26ASPage() {
             </div>
           )}
 
+          {(recon.not_a_tds_credit?.length ?? 0) > 0 && (
+            <div className="text-[11px] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2 space-y-1">
+              <p className="text-[#334155]">
+                <span className="font-semibold">{paise(recon.not_a_tds_credit_paise ?? 0)}</span>{" "}
+                on this 26AS is <span className="font-semibold">not a TDS credit</span> and is
+                left out of the comparison above — advance or self-assessment tax the client paid
+                themselves (Part C), a refund already received (Part D), or s.194-IA tax the
+                client deducted as BUYER of property (Part F).
+              </p>
+              <ul className="text-[#64748B]">
+                {recon.not_a_tds_credit!.map((r, i) => (
+                  <li key={i}>
+                    Part {r.part ?? "?"} · {r.deductor_name || "—"} · {paise(r.amount_paise)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {recon.needs_confirmation_count > 0 && (
             <div className="flex items-start gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-3">
               <AlertTriangle size={14} className="text-[#64748B] mt-px shrink-0" />

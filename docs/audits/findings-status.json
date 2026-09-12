@@ -118,9 +118,9 @@
    "why": "read_26as_text returns a Reading26AS carrying the records AND every line it could not read, with the line number and the reason; the router refuses a file that parsed nothing rather than saving it as an empty year, and the screen names the skipped lines instead of closing"
   },
   "TDS-20": {
-   "status": "partial",
+   "status": "closed",
    "verified_on": "2026-09-12",
-   "why": "IT-24 closes the silent-drop half \u2014 an unparseable paste is now refused by name rather than read as an empty year. What remains is the finding's other half: the pipeline still accepts only pasted tab/pipe text and offers no current-year option"
+   "why": "both halves. The FY picker is financialYearChoicesAround(null), derived from the clock; and the parser now names every line it could not read rather than dropping it, with an unparseable file refused instead of read as an empty year (IT-24)"
   },
   "FA-08": {
    "status": "closed",
@@ -1190,12 +1190,9 @@
    ]
   },
   "GST-21": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "fffd761e One invoice, two returns that disagreed about it (#502)"
-   ]
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no s.50 interest and no s.47 late fee anywhere in domain/gst"
   },
   "GST-22": {
    "status": "closed_by_commit",
@@ -1699,24 +1696,14 @@
    ]
   },
   "PUR-28": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "b84b9415 One advance, one liability \u2014 and three second write paths closed (#503",
-    "b84b9415 One advance, one liability \u2014 and three second write paths closed (#503",
-    "accdbafd Three statutory rules the sales cycle stated and did not apply (#498)"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "migration 370 adds the assignment-scope policy to the six browser-read tables, with tests/test_a_table_the_browser_reads_is_assignment_scoped_pg.py holding the rule"
   },
   "SALES-03": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "invoice_pdf_service prints the reverse-charge line from the document's own flag"
   },
   "SALES-04": {
    "status": "closed_by_commit",
@@ -1737,14 +1724,9 @@
    ]
   },
   "SALES-06": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "the state list in domain/gst/validator.py runs through 30+ and CLAUDE.md records the two deliberately different lists (96 for a place of supply, absent for a GSTIN)"
   },
   "SALES-07": {
    "status": "closed_by_commit",
@@ -1766,13 +1748,9 @@
    ]
   },
   "SALES-09": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "gst_advance_service.table_11_sections builds Table 11A/11B and totals the same buckets for 3B 3.1(a) \u2014 GST-15's work"
   },
   "SALES-10": {
    "status": "closed_by_commit",
@@ -2050,12 +2028,9 @@
    ]
   },
   "TDS-19": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "_PART_RECORD_TYPE names each part of 26AS for what it is and CREDIT_RECORD_TYPES says which are a credit to the client; split_by_credit keeps Parts A and B in the reconciliation and sets C (tax the client paid), D (a refund) and F (s.194-IA as buyer) aside, reported rather than dropped. The finding's own suggested fix \u2014 filtering 'A2/F' together \u2014 is deliberately NOT taken: A2 is the client as seller and F as buyer, and lumping them drops a real credit"
   },
   "TDS-21": {
    "status": "closed_by_commit",
@@ -2066,20 +2041,16 @@
    ]
   },
   "TDS-22": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "03e922a0 Phase 4a\u20134d: the four TDS answers the engine was getting wrong (#468)"
-   ]
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "section_rates.py says so in its own comment: 'technical services / call centres are 2% \u2014 not separately modelled'. So s.194J pays 10% on a 2% limb and s.194I plant-and-machinery likewise",
+   "needs": "no migration. The probe pass warns the finding's suggested CLAUSE CODES are ones no portal accepts, and that the correct ones are in ITR6_2026_Main_V1.0.json in this repo \u2014 read those first"
   },
   "TDS-23": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
-   ]
+   "status": "open",
+   "verified_on": "2026-09-12",
+   "why": "no s.194T in section_rates.py, and seven more sections absent",
+   "needs": "the probe pass's warning stands: adding 194-IA/194-IB/194M to the registry turns a visible 422 into a silently mis-routed 26Q row, against two pinning tests and a documented refusal. Whatever is added needs the routing decided at the same time"
   },
   "TDS-24": {
    "status": "closed_by_commit",

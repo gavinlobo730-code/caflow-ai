@@ -7,21 +7,21 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **47** | re-read against the code. The defect is gone. |
+| closed | **53** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| closed_by_commit_only | **21** | named in a commit and nowhere else. The weakest state here — read these before quoting them as done. |
-| partial | **14** | part of the finding is answered, part is not. Each says which. |
-| open | **30** | re-read and still true. |
+| closed_by_commit_only | **13** | named in a commit and nowhere else. The weakest state here — read these before quoting them as done. |
+| partial | **13** | part of the finding is answered, part is not. Each says which. |
+| open | **33** | re-read and still true. |
 | unverified | **7** | a probe was inconclusive. Treat as unknown, **not** as open. |
 | not a defect as stated | **1** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is about 51 items — 30 open, 14 partial,
+**The work left is about 53 items — 33 open, 13 partial,
 7 unverified — not 254.** The audit documents were never amended as
 tranches landed, so they still list findings fixed weeks ago.
 
-**And of the 30 open, most are not code problems.** Nearly every one needs a
+**And of the 33 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -31,10 +31,12 @@ migration; a handful need a statutory document a person has to read.
 | high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
+| high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **FA-08b** | No output tax on a fixed-asset disposal — the split half of FA-08 |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
+| medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
 | medium | **INV-02** | Moving average is the only costing method — no FIFO and no standard cost |
@@ -56,6 +58,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PUR-26** | No recurring purchase bills, though recurring sales invoices are fully built |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
+| medium | **TDS-23** | Eight commonly-used TDS sections are absent from the registry, including §194T on payments to pa |
 | medium | **TDS-32** | Purchase debit and credit notes never reverse TDS, so a return after deduction leaves the regist |
 | low | **GST-31** | The GST portal integration router is complete, honest and reachable from no screen |
 
@@ -66,6 +69,7 @@ migration; a handful need a statutory document a person has to read.
 | **ACC-06** | tables for the templates, budgets and retainers |
 | **GST-11** | schema for a quarterly filing preference, plus IFF |
 | **GST-20** | a registrations table; clients.gstin is singular today |
+| **TDS-22** | no migration. The probe pass warns the finding's suggested CLAUSE CODES are ones no portal accepts, and that the correct ones are in ITR6_2026_Main_V1.0.json in this repo — read those first |
 | **BANK-11** | a match_type column, or a second pattern column — the rule row has neither |
 | **FA-08b** | a migration for the disposal's tax split, and a decision on CGST s.18(6) |
 | **FA-11** | a migration per item. One hazard the finding does not name: a shift multiplier folded into wdv_rate_percent would make schedule_ii_departure report every double-shift asset as a Part C departure, so it must be its own column |
@@ -85,6 +89,7 @@ migration; a handful need a statutory document a person has to read.
 | **PUR-26** | a schedule table; the sales side is the pattern to copy |
 | **SALES-21** | four new document types |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |
+| **TDS-23** | the probe pass's warning stands: adding 194-IA/194-IB/194M to the registry turns a visible 422 into a silently mis-routed 26Q row, against two pinning tests and a documented refusal. Whatever is added needs the routing decided at the same time |
 
 ## Partial
 
@@ -101,7 +106,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PAY-24** | Leave is half-built: balances are invented in TypeScript as 12/12/15, nothing accrues or carries |
 | medium | **PUR-18** | Import of goods has no path — no Bill of Entry, so the IGST paid to customs cannot be recorded a |
 | medium | **PUR-27** | No expense claim or petty cash module — every small expense needs a vendor and a purchase bill |
-| medium | **TDS-20** | The 26AS pipeline accepts only pasted tab/pipe-delimited text and offers no current-year option  |
 | low | **GST-23** | GSTR-1 has no way to record the real ARN and filing date from the client workspace, so its perio |
 | low | **SALES-18** | Statutory rules live in TypeScript with no backend counterpart, against the house rule "zero bus |
 
@@ -142,22 +146,14 @@ promotion to `closed` should start here.
 | high | **BANK-07** | The Bank Book fetches every transaction on the account and computes the running balance in Pytho |
 | high | **GST-08** | GSTR-1 Table 7 (B2CS) uses a blended rate inferred from the whole invoice, producing rates that  |
 | high | **GST-16** | The GSTR-1 validator never runs on the path a CA actually uses |
-| high | **SALES-03** | Invoice PDF always states "tax payable on reverse charge basis: No", and never prints the place  |
-| high | **SALES-06** | Goa, Puducherry, Ladakh, Dadra & Nagar Haveli and Daman & Diu, Lakshadweep and Andaman & Nicobar |
-| high | **SALES-09** | GSTR-1 Table 11A/11B (tax on advances, §13(2)) is unreachable — the three columns it needs are n |
 | high | **TDS-11** | tds_deductions and tds_returns are written directly from the browser with no role check, and the |
-| high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-15** | A discarded draft journal can be resurrected and posted, because post_draft never selects delete |
 | medium | **BANK-18** | The import module's most important refusals reach the CA as raw JSON: "API error 422: {\"detail\ |
 | medium | **BANK-21** | Credit-card accounts are not supported at all |
 | medium | **BANK-24** | Bank-charge input tax credit is posted with no supplier GSTIN or invoice reference, so it can ne |
-| medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
 | medium | **GST-30** | A test encodes the assumption behind the reverse-charge underpayment, so the suite cannot catch  |
-| medium | **PUR-28** | Client-assignment scope is enforced on every purchase API endpoint and on none of the Purchases  |
 | medium | **SALES-22** | No HSN/SAC master is exposed — every firm builds its code library from zero before it can raise  |
-| medium | **TDS-19** | The 26AS parser mislabels Part B (TCS) as TDS and Part D (refunds) as self-assessment tax, and n |
-| medium | **TDS-23** | Eight commonly-used TDS sections are absent from the registry, including §194T on payments to pa |
 | low | **ACC-16** | Journal lines have no ordering column, so a voucher's Dr/Cr lines display in arbitrary order and |
 | low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 
@@ -189,6 +185,9 @@ promotion to `closed` should start here.
 | high | **PAY-03** | The payslip PDF is headed with the CA FIRM's name, not the client company that actually employs  |
 | high | **PAY-06** | The §10(13A) HRA salary base is annualised as this month × 12 regardless of how many months the  |
 | high | **PUR-13** | §194Q deducts 0.1% on the whole purchase value instead of on the value exceeding ₹50 lakh, and h |
+| high | **SALES-03** | Invoice PDF always states "tax payable on reverse charge basis: No", and never prints the place  |
+| high | **SALES-06** | Goa, Puducherry, Ladakh, Dadra & Nagar Haveli and Daman & Diu, Lakshadweep and Andaman & Nicobar |
+| high | **SALES-09** | GSTR-1 Table 11A/11B (tax on advances, §13(2)) is unreachable — the three columns it needs are n |
 | medium | **ACC-11** | POST /api/accounting/accounts cannot set account_subtype, so every account a CA creates lands in |
 | medium | **BANK-19** | Two banking screens parse typed rupees outside lib/money/rupeeInput, against the "one parser, an |
 | medium | **FA-16** | 'Post All for Period' is N sequential requests with every error swallowed |
@@ -204,9 +203,12 @@ promotion to `closed` should start here.
 | medium | **PAY-17** | Annual professional tax for §16(iii) is estimated as this month's PT × 12 — six times the year's |
 | medium | **PAY-18** | `logger` is undefined in the /employee-exceptions error path — a failed declarations read raises |
 | medium | **PUR-12** | The reconciliation screen tells the CA that ITC is restricted to 105% of GSTR-2A — a cushion rep |
+| medium | **PUR-28** | Client-assignment scope is enforced on every purchase API endpoint and on none of the Purchases  |
 | medium | **SALES-24** | Receipt and credit-note numbers take their financial year from today's date, not the document da |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-27** | A line with no HSN/SAC silently prints 998211 — the CA-services SAC — on any invoice, including  |
+| medium | **TDS-19** | The 26AS parser mislabels Part B (TCS) as TDS and Part D (refunds) as self-assessment tax, and n |
+| medium | **TDS-20** | The 26AS pipeline accepts only pasted tab/pipe-delimited text and offers no current-year option  |
 | low | **PUR-29** | Reverse charge and §17(5) eligibility have no test coverage on the purchase-bill compute path at |
 | low | **PUR-30** | A dead _TDS_DEFAULT_BPS table at the top of purchase_bills.py carries a §194H rate that is 2.5x  |
 | low | **PUR-31** | Vendor payment numbering is count+1, so a deleted or compensated payment guarantees a collision  |
