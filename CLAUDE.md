@@ -674,6 +674,21 @@ PostgREST. That is why:
   policies (migrations 260/261) exist for exactly this, and
   `tests/test_direct_write_tables_are_role_guarded.py` tracks which tables are still
   unguarded.
+- **`core.authz`'s ASSIGNMENT scoping never runs there either, and the policy that
+  replaces it stopped being applied in 2024.** Migration 084 gave every `client_id`
+  table a RESTRICTIVE `<table>_assignment_scope` policy — a Partner short-circuits to
+  TRUE, everyone else needs a `user_client_assignments` row — with a one-shot `DO`
+  loop that HAS NEVER RUN AGAIN. Six tables created since are read straight from the
+  browser and had firm-wide access only until migration 370: `bank_accounts` (093),
+  `debit_notes` (145), `purchase_credit_notes` / `sales_debit_notes` (210),
+  `gstr2b_reconciliations` (341), `tds_lower_deduction_certificates` (359). About 44
+  more are still in that state and are deliberately NOT fixed — nothing reaches them
+  from the browser — so the durable half is the rule, asserted:
+  `tests/test_a_table_the_browser_reads_is_assignment_scoped_pg.py`. **Do not "fix" it
+  by re-running 084's loop**: migration 262 replaced the payroll policies with
+  per-command ones so the EMPLOYEE PORTAL can read a payslip, and a portal principal —
+  a portal user, an employee — has no `users` row, so `can_access_client` denies them
+  their own record.
 - **Renaming or dropping a column can break the frontend while backend CI stays green.**
   `tests/test_frontend_columns_exist_pg.py` parses those select lists and checks them
   against the real schema. Run it when you touch a migration.
