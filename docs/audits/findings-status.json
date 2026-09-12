@@ -277,39 +277,42 @@
    "why": "Form 3CD appears in the tree; the s.44AB applicability test is decided by compliance_obligation_service and refuses rather than guessing (see CLAUDE.md). Needs a read to score the 3CD half"
   },
   "IT-19": {
-   "status": "unverified",
-   "verified_on": "2026-09-12",
-   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+   "status": "open",
+   "verified_on": "2026-09-13",
+   "why": "no s.54 / 54F / 54EC / 54B reinvestment exemption in capital_gains_engine",
+   "needs": "somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) \u2014 a migration"
   },
   "IT-22": {
-   "status": "unverified",
-   "verified_on": "2026-09-12",
-   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "capital_gains_engine implements the Budget 2024 grandfather clause for property LTCG, and CLAUDE.md records that the fifth proviso to s.112(1) is WITHHELD where its conditions are not established rather than granted by default"
   },
   "IT-23": {
-   "status": "unverified",
-   "verified_on": "2026-09-12",
-   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+   "status": "open",
+   "verified_on": "2026-09-13",
+   "why": "no revised (s.139(5)) or updated (s.139(8A)) return path in itr_workflow or the workspace router",
+   "needs": "a status and a pointer to the original acknowledgement \u2014 a migration"
   },
   "IT-27": {
-   "status": "unverified",
-   "verified_on": "2026-09-12",
-   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "domain/income_tax/regime_election.py carries Form 10-IEA and Rule 21AGA, and CLAUDE.md records the three-way separation of the s.192 intimation, the s.115BAC(6) election and the Rule 26C statement"
   },
   "IT-28": {
-   "status": "unverified",
-   "verified_on": "2026-09-12",
-   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "s.50AA is named in capital_gains_engine alongside s.115BBH"
   },
   "TDS-10": {
-   "status": "unverified",
-   "verified_on": "2026-09-12",
-   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+   "status": "not_a_defect_as_stated",
+   "verified_on": "2026-09-13",
+   "why": "TCS is a REFUSAL, by design: residency.py records that s.206C is not reachable from a purchase bill and deduction_section_refusal enforces it (SALES-32). Building TCS is a feature request, not a defect \u2014 CLAUDE.md carries the whole argument, including that s.206C(1H) ceased to operate from 01-04-2025",
+   "needs": "an owner decision that the product should COLLECT tax on a client's sales at all, then Form 27EQ / 27D"
   },
   "SALES-23": {
-   "status": "unverified",
-   "verified_on": "2026-09-12",
-   "why": "a presence probe found the subject matter in the tree, which rules the finding IN or OUT of nothing. Needs a code read"
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "services/collections_service.py sends a collections reminder for overdue invoices; the finding's own text says the AUTOMATIC run was removed deliberately"
   },
   "ACC-01": {
    "status": "closed",
@@ -616,20 +619,15 @@
    ]
   },
   "ACC-15": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "6330e19b An account created in the app could not say what kind of account it is"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "journal_posting_service refuses a deleted entry with a 409 before posting, so a discarded draft cannot be resurrected"
   },
   "ACC-16": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "accdbafd Three statutory rules the sales cycle stated and did not apply (#498)"
-   ]
+   "status": "open",
+   "verified_on": "2026-09-13",
+   "why": "no line-ordering column on journal_lines in any migration, so a voucher's Dr/Cr lines display in arbitrary order",
+   "needs": "a migration adding the column, plus a backfill \u2014 and the probe pass warns migration 251's immutability trigger REFUSES that backfill outright, which the finding does not mention"
   },
   "ACC-17": {
    "status": "closed_by_commit",
@@ -695,12 +693,10 @@
    ]
   },
   "ACC-25": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "accdbafd Three statutory rules the sales cycle stated and did not apply (#498)"
-   ]
+   "status": "open",
+   "verified_on": "2026-09-13",
+   "why": "the journal editor sends no attachments, though the kernel, the model and the database all take them",
+   "needs": "no migration. But the probe pass is emphatic that the finding's suggested {name, url} payload is the expiring-signed-URL and stored-XSS hole domain/banking/attachments.py was written to close \u2014 reuse that module, do not re-invent the payload"
   },
   "ACC-26": {
    "status": "closed_by_commit",
@@ -775,12 +771,9 @@
    ]
   },
   "BANK-07": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "2da560bc Phase 8: the wire carries the answer \u2014 and Phase 9a\u20139c: the bank modul"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "migration 353 carries the bank_book branch and services/bank_register_service reads it; the running balance is not computed in Python over every transaction"
   },
   "BANK-08": {
    "status": "closed_by_commit",
@@ -864,12 +857,9 @@
    ]
   },
   "BANK-18": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "lib/api/index.ts errorMessage() reads `detail` out of a FastAPI refusal (string, validation array, or {message, problems}) and only falls back to the raw body when it is not JSON. Its own docstring names the defect it closed"
   },
   "BANK-20": {
    "status": "closed_by_commit",
@@ -882,12 +872,10 @@
    ]
   },
   "BANK-21": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "b8160f39 Six figures the tax computation accepts and its screen never sent, and"
-   ]
+   "status": "open",
+   "verified_on": "2026-09-13",
+   "why": "no credit-card account type in any migration",
+   "needs": "a migration; a card is a liability account whose statement signs are the mirror of a bank's"
   },
   "BANK-22": {
    "status": "closed_by_commit",
@@ -907,12 +895,10 @@
    ]
   },
   "BANK-24": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "b8160f39 Six figures the tax computation accepts and its screen never sent, and"
-   ]
+   "status": "open",
+   "verified_on": "2026-09-13",
+   "why": "domain/banking/charge_gst.py records no supplier GSTIN or invoice reference against a bank charge, so the ITC cannot be matched to GSTR-2B",
+   "needs": "a migration for the two fields"
   },
   "BANK-25": {
    "status": "closed_by_commit",
@@ -1116,13 +1102,9 @@
    ]
   },
   "GST-08": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "gstr1_builder's B2CS table is 'grouped by rate, place of supply, AND supply type (INTER/INTRA)' \u2014 per LINE rate, not a rate inferred from the whole invoice"
   },
   "GST-09": {
    "status": "closed_by_commit",
@@ -1172,13 +1154,10 @@
    ]
   },
   "GST-16": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)",
-    "5c0d8b44 Phase 5: a GSTR-1 the portal accepts (#469)"
-   ]
+   "status": "open",
+   "verified_on": "2026-09-13",
+   "why": "nothing in gst_return_service runs the GSTR-1 validator on the path a CA uses; the exception report is built but the validator is not invoked there",
+   "needs": "no migration \u2014 this is wiring, and worth doing early"
   },
   "GST-19": {
    "status": "closed_by_commit",
@@ -1204,12 +1183,10 @@
    ]
   },
   "GST-25": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "fffd761e One invoice, two returns that disagreed about it (#502)"
-   ]
+   "status": "open",
+   "verified_on": "2026-09-13",
+   "why": "services/filing_demo/gstr9.py is a walk-through, not a computation. Composition (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1) and GSTR-9C are absent",
+   "needs": "schema per return type"
   },
   "GST-29": {
    "status": "closed_by_commit",
@@ -1222,14 +1199,9 @@
    ]
   },
   "GST-30": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
-    "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
-    "b8160f39 Six figures the tax computation accepts and its screen never sent, and"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "the reverse-charge assumption the finding says a test encodes is gone: gstr3b_computer holds s.2(82)'s exclusion of RCM from output tax and the tests exercise it both ways"
   },
   "INV-01": {
    "status": "closed_by_commit",
@@ -1842,12 +1814,9 @@
    ]
   },
   "SALES-22": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro"
-   ]
+   "status": "not_a_defect_as_stated",
+   "verified_on": "2026-09-13",
+   "why": "routers/firm_hsn_library.py exists, so a firm builds and reuses its own HSN/SAC library. The finding's real ask \u2014 SHIPPING a master \u2014 is a data-supply item like the professional-tax slabs, and is the same item as GST-26"
   },
   "SALES-26": {
    "status": "closed_by_commit",
@@ -1963,13 +1932,9 @@
    ]
   },
   "TDS-11": {
-   "status": "closed_by_commit_only",
-   "verified_on": null,
-   "why": "named in a merged commit on `main` and NOT re-read, and NOT named anywhere in the code either \u2014 the weakest evidence in this file. 88% of the commit-closed findings carry an in-code comment naming them and saying what they closed; these 21 do not, so read these first when promoting.",
-   "commits": [
-    "1dc3d961 Phase 3: one TDS engine, and the browser copy deleted (#467)",
-    "c64016e8 Phase 3a (TDS-11): the TDS register carries a role rule, and the guard"
-   ]
+   "status": "closed",
+   "verified_on": "2026-09-13",
+   "why": "apps/web/lib/data/tds.ts contains no .insert/.update/.upsert at all \u2014 the browser no longer writes tds_deductions or tds_challans, so rbac() is not bypassed"
   },
   "TDS-12": {
    "status": "closed_by_commit",
