@@ -209,6 +209,52 @@ change. The code is the authority; keep this file in step with it.
   the same fork shape as the TDS vocabulary. Omitting the FY means current law.
   ⚠️ The omission is `[S]`-graded — egress is refused at this environment's
   proxy — so it is a named constant, `SECTION_206AB_OMITTED_FROM_FY`.
+- **What being late costs is `domain/tds/interest.py`, and "month or part of a
+  month" is NOT the same arithmetic there as in §234A.** §201(1A) has two
+  limbs, two rates and two clocks: (i) 1% per month or part from the date tax
+  was DEDUCTIBLE to the date DEDUCTED, (ii) 1.5% from the date DEDUCTED to the
+  date PAID OVER. Limb (ii)'s clock starts at the deduction, not the Rule 30(2)
+  due date — so tax deducted 25 June and deposited 8 July is one day late and
+  carries TWO months, 3%. The Rule 30(2) date decides only WHETHER there is a
+  default. §234E is the odd one: ₹200 a DAY, capped at the statement's own tax,
+  payable before the statement can be delivered (§234E(4)) — counting it in
+  months makes it thirty times too small, and it used to live only inside
+  `services/filing_demo/tds_return.py`, which transmits nothing. ⚠️ The
+  month convention is `[S]`-graded: §234A counts a PERIOD (anniversary to
+  anniversary, which is what
+  `advance_tax_interest_engine._months_or_part` does and is right there),
+  while §201(1A) is administered on CALENDAR months — 30 June to 1 July is two.
+  Egress is refused here so neither could be confirmed, and the calendar count
+  is never smaller, so the error direction cannot understate a deductor's
+  exposure. Two refusals: tax **never deducted** has no end date for limb (i)
+  (the proviso to §201(1) runs it to the date the PAYEE filed), and an unpaid
+  deduction with no as-at date gets a sentence rather than a figure.
+- **What is due for deposit this month is `domain/tds/deposit_due.py`, and it
+  is the NON-SALARY side only.** `GET /api/tds-workspace/deposit-due` groups
+  `tds_deductions` by section for one DEDUCTION month into a challan-281
+  worksheet, with §201(1A)(ii) computed per ROW (two deductions in one month
+  are days apart, so a section-level clock charges both or neither) and the
+  due date from `compliance_engine.tds_deposit_due_date` — Rule 30(2) binds
+  every non-government deductor, salary and not, and there is deliberately no
+  second copy of the seventh-and-March arithmetic. §192 tax is computed in
+  payroll and never reaches `tds_deductions`, so every worksheet SAYS so; a
+  §192 row found in the register is named as a gap. `tds_challans` finally
+  carries the split — `amount_paise` is the TOTAL and tax is the remainder
+  after surcharge, interest and penalty, so a request sending none of the three
+  behaves exactly as before — and `minor_head` is settable (200 = paid over by
+  the deductor, 400 = against a demand; the company / non-company split is the
+  MAJOR head 0020/0021, which migration 037's inline comment had backwards).
+- **`public.tds_section_limits` is NOT the TDS rate master and nothing may read
+  it.** Migration 037 seeded it once with pre-Finance-Act-2025 thresholds and
+  pre-2024 rates, and its ₹1,00,000 aggregate §194C row has never existed in
+  any database (`section` is the primary key, both 194C rows went in under
+  `ON CONFLICT DO NOTHING`). It is the one table whose name reads like the
+  authority. Migration 371 makes it say so in the database and
+  `tests/test_the_dead_tds_rate_master_has_no_readers.py` holds the other half.
+  Do NOT correct the figures in place — `domain/tds/section_rates.py` is the
+  FY-versioned authority and a second one in SQL is what the posting-kernel
+  rule exists to prevent. A DROP is the right end state and needs the
+  production-fixture refresh in `docs/schema-drift.md`.
 - **A capital LOSS does not relieve other income** (§71(3), §74), and **§80G has
   a ceiling** (§80G(4): 10% of adjusted gross total income, where adjusted GTI
   is GTI less the capital-gains buckets and less every other Chapter VI-A

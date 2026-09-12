@@ -368,13 +368,19 @@ def esi_deposit_due_date(period_year: int, period_month: int) -> date:
 
 
 def tds_deposit_due_date(period_year: int, period_month: int) -> date:
-    """Salary TDS for a wage month — Rule 30(2).
+    """TDS deducted in a month — Rule 30(2). Salary and non-salary alike.
 
     The seventh of the following month, EXCEPT March: tax deducted in March is
     due by 30 April, not 7 April. That single exception is the one most often
     missed, and §201(1A)(ii) charges 1.5% a month on a late deposit from the
     date of DEDUCTION, so being three weeks late on March costs two months of
     interest, not one.
+
+    Rule 30(2) binds every deductor other than an office of the government, so
+    it is NOT a salary rule and the docstring used to say it was. The
+    non-salary caller is `domain/tds/deposit_due.py`, which runs the same date
+    over the deduction register; there is deliberately no second copy of the
+    seventh-and-March arithmetic.
     """
     if period_month == 3:
         month, day = TDS_MARCH_DEPOSIT_MONTH_DAY

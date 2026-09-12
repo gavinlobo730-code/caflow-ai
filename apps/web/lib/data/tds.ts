@@ -407,11 +407,73 @@ export interface CreateChallanInput {
   client_id: string;
   bsr_code: string;
   challan_date: string;      // YYYY-MM-DD
+  /** The TOTAL that left the bank — the figure on the counterfoil. The three
+   *  component fields below say how much of it was not tax; the server takes
+   *  tax as the remainder, so omitting them is the old "all of it is TDS"
+   *  behaviour rather than a different one. */
   amount_paise: number;
   challan_no: string;
   section: string;
   financial_year: string;
   quarter: string;           // 'Q1'..'Q4'
+  surcharge_paise?: number;
+  /** IT Act s.201(1A) interest paid on this challan. */
+  interest_paise?: number;
+  /** The s.234E late-filing fee, and any s.271H penalty. */
+  penalty_paise?: number;
+  /** Challan 281 minor head: 200 = paid over by the deductor, 400 = against a
+   *  demand raised on regular assessment. Migration 037 defaulted it to '200'
+   *  and nothing could send anything else. */
+  minor_head?: "200" | "400";
+}
+
+/** The challan-281 worksheet for one DEDUCTION month — GET
+ *  /api/tds-workspace/deposit-due. Rule 30(2) sets the due date; s.201(1A)(ii)
+ *  the interest. Every figure is the server's; the browser formats and nothing
+ *  else. */
+export interface DepositDueSection {
+  section: string;
+  deductee_count: number;
+  taxable_paise: number;
+  tax_paise: number;
+  deposited_paise: number;
+  outstanding_paise: number;
+  interest_paise: number;
+  payable_paise: number;
+  late_row_count: number;
+  earliest_deduction_date: string | null;
+  latest_deduction_date: string | null;
+}
+
+export interface DepositDueWorksheet {
+  client_id: string;
+  month: string;
+  due_date: string;
+  due_date_rule: string;
+  as_at: string;
+  sections: DepositDueSection[];
+  totals: {
+    deductee_count: number;
+    taxable_paise: number;
+    tax_paise: number;
+    deposited_paise: number;
+    outstanding_paise: number;
+    interest_paise: number;
+    payable_paise: number;
+    late_row_count: number;
+  };
+  covers: string;
+  statutory_gaps: { kind: string; message: string; deductees: string[] }[];
+}
+
+export async function fetchDepositDue(
+  clientId: string, month: string,
+): Promise<DepositDueWorksheet> {
+  const resp = await authedFetch<DepositDueWorksheet>(
+    `/api/tds-workspace/deposit-due?client_id=${encodeURIComponent(clientId)}` +
+    `&month=${encodeURIComponent(month)}`);
+  if (!resp.success) throw new Error(resp.error ?? "Could not work out what is due");
+  return resp.data;
 }
 
 /** Record an ITNS 281 deposit. IT Act s.200(1).
@@ -435,7 +497,12 @@ export interface RecordedChallan {
   challan_no: string;
   payment_date: string;
   total_paise: number;
+  /** The TAX part only — total less surcharge, interest and penalty. */
   tds_paise: number;
+  surcharge_paise?: number;
+  interest_paise?: number;
+  penalty_paise?: number;
+  minor_head?: string;
   financial_year: string;
   quarter: string;
   section: string | null;
