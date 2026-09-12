@@ -18,12 +18,23 @@ _logger = logging.getLogger("caflow.numbering")
 def draft_placeholder_invoice_no() -> str:
     """A unique, obviously-not-real invoice number for sales invoices created
     by an UNATTENDED process (recurring-invoice generation, billing-schedule
-    generation) — no CA is present to type the real one. Sales invoice
-    numbering is otherwise fully manual (Decision: no Caflow-generated
-    scheme; see routers/sales_invoices.py), so this is deliberately NOT a
-    plausible-looking series — "DRAFT-" makes it obvious at a glance that the
-    CA must replace it with the client's real invoice number before Issue.
-    Fits CGST Rule 46(b)'s 16-character cap exactly (6 + 10).
+    generation) — no CA is present to type the real one.
+
+    IT STAYS A PLACEHOLDER EVEN THOUGH THERE IS NOW A SERIES. Until 2026-09-12
+    the reason was that sales numbering had no scheme at all; SALES-12 gave it
+    one (`services/sales_numbering_service.py` reads the firm's own
+    `invoice_settings` and suggests the next number). That does not make it
+    right to spend a number here. An unattended draft may never be issued, and
+    a number taken by a draft that is later deleted leaves a permanent gap in
+    the middle of the series — max+1 never hands it out again, by design, see
+    sequence_after below. A gap is a standard GSTR-1 scrutiny query, so the
+    background job must not create one on the CA's behalf.
+
+    So this is deliberately NOT a plausible-looking series — "DRAFT-" makes it
+    obvious at a glance that the CA must replace it with the real number before
+    Issue, and the suggestion the form offers at that moment comes from the
+    firm's own series. Fits CGST Rule 46(b)'s 16-character cap exactly (6 + 10),
+    and its character set: letters, digits and a hyphen.
     """
     return f"DRAFT-{uuid.uuid4().hex[:10].upper()}"
 

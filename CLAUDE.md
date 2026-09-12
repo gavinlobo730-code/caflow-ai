@@ -228,6 +228,64 @@ change. The code is the authority; keep this file in step with it.
   that cannot under-declare — and the pro-rata split uses largest-remainder so
   the parts sum to the whole exactly. `apps/web/lib/money/gstLine.ts` mirrors
   all of it and `shared/gst-parity-vectors.json` pins the two.
+- **A TAX INVOICE'S NUMBER IS A STATUTORY FIELD WITH FOUR LIMBS, and the product
+  used to enforce two.** CGST Rule 46(b) requires "a CONSECUTIVE SERIAL NUMBER not
+  exceeding SIXTEEN CHARACTERS ... containing alphabets or numerals or special
+  characters hyphen or dash and slash ... UNIQUE FOR A FINANCIAL YEAR".
+  `domain/gst/invoice_series.py` is the authority for all four.
+  **Length and the character set REFUSE** — at create, at edit, at bulk import and
+  at issue; no legitimate series needs seventeen characters or a `#`, and both the
+  GSTR-1 schema and the IRP reject them anyway. **A break in the SEQUENCE only
+  WARNS**, because a gap has legitimate causes — a client arriving mid-year with a
+  series already running, a cancelled invoice, or a second series, which the rule
+  expressly allows ("one or multiple series"). **Uniqueness is enforced stricter
+  than the rule** — per client full stop, not per FY (migrations 151/209).
+  **Numbering is no longer "fully manual"**: that decision was recorded in three
+  places and is reversed as of 2026-09-12 (SALES-12). `invoice_settings`
+  (migration 126) has always held the firm's prefix, FY flag, padding and starting
+  number; nothing read them. `services/sales_numbering_service.py` now does, and
+  `GET /api/sales-invoices/next-number` suggests the next number for the form to
+  pre-fill. The box stays editable and what is written is still whatever the
+  request carries — Tally's "Automatic (Manual Override)", which is the mode a
+  practice actually runs. **The rule has exactly two implementations**, the Python
+  authority and `apps/web/lib/invoices/gst.ts`'s keystroke mirror, pinned by
+  `tests/fixtures/invoice_number.json` which both suites read; `models/invoices.py`
+  delegates rather than carrying a third. **A series with the FY switched OFF does
+  not restart each April** — the client-wide unique index would reject the
+  collision — so the sequence keeps climbing, and that falls out of matching on the
+  series head rather than being special-cased.
+- **§34(2)'s window is measured from the ORIGINAL SUPPLY's financial year, not the
+  note's own period, and the two diverge constantly.** A June 2025 invoice credited
+  in January 2027 sits in a wide-open period — January 2027's GSTR-1 is not filed —
+  and outside a window that shut on 30 November 2026.
+  `routers/credit_notes.py` asked only about the note's own date (is its year
+  locked, is its return filed); both are right and both are about the wrong period,
+  so a note that can never lawfully reduce output tax was accepted and posted
+  (SALES-25a). `domain/gst/credit_note_window.py` is the rule and **it WARNS rather
+  than refusing**: §34(2) bars the tax ADJUSTMENT, not the document, so a
+  post-window commercial credit note is lawful and simply carries no GST. Derived
+  on every read rather than stored — it is a function of three dates and would go
+  stale the day GSTR-9 is furnished. **§34(3) debit notes have NO such window**:
+  §34(4) requires declaration in the month of issue and sets no outer limit. Do not
+  add one.
+- **An e-way bill's validity is arithmetic on the distance, and the distance is a
+  field nobody used to ask for.** Rule 138(10) as amended by Notification
+  94/2020-CT: one day per **200 km or part thereof**, or per **20 km** for Over
+  Dimensional Cargo — and "one day" is **midnight** of the day following
+  generation, per the Explanation, not a rolling 24 hours, so a bill raised at
+  23:55 has five minutes of its first day left. `domain/gst/eway_validity.py`
+  computes it; the Prepare screen now asks for distance, vehicle type and transport
+  mode; `GET /api/eway-bill/records/{id}/validity` pre-fills the expiry, which used
+  to default to TODAY. **The portal stays authoritative** — every answer carries
+  `source`, a recorded date that disagrees is reported and never refused, and a
+  missing distance returns a named gap rather than a guess. ⚠️ **The slabs are
+  `[S]`-graded**, written from knowledge because this environment's proxy refuses
+  every `.gov.in`; the pre-2021 slab was 100 km, so a misreading fails generous.
+  Two deliberate refusals: the **20 km slab keys only on `vehicle_type =
+  'over_dimensional'`** (the value the CHECK actually allows), and a
+  `transport_mode = 'ship'` row takes the ordinary slab with a caveat, because the
+  row cannot distinguish a multimodal ship LEG from a movement wholly by ship and
+  the generous reading is the one that shows an expired bill as live.
 - **Correction window** (CGST §37(3), §39(9), §16(4)): 30 November following the FY, **or
   the date GSTR-9 was furnished, whichever is EARLIER**. Filing the annual return early
   shuts the window early. `compliance_engine.correction_window_closes()` is the function
@@ -981,6 +1039,7 @@ current and are where to start on any "what should we fix next" question:**
 | `2026-09-07-a-plus-roadmap.md` | what each of the 14 modules needs to reach A+, defined as five testable properties, in a seven-stage order that starts by proving correctness |
 | `2026-09-08c-the-phase-plan.md` | **the plan being worked to.** All 254 remaining items in twelve phases grouped by FIX SHAPE rather than by module, so each phase teaches one pattern and ends with one guard test. Every critical and high is assigned; two duplicate pairs are named (PUR-07≡TDS-13, IT-09≡FA-06) |
 | `2026-09-11-the-verification-pass.md` | **the current remaining-work list. Start here.** All 163 medium/low findings re-checked against the code by nine read-only agents: 131 still open, 15 partial, 17 closed — so the backlog is ~10% stale, not the ~73% a spot-check had suggested. §2 is the part that matters: **seven findings whose severity went UP** because Phase 7 built the screens that had been holding them latent, and nothing re-scored them. §3 carries two live defects with no finding at all. §6 is the build order |
+| `2026-09-12-the-probe-pass/` | **read this before scheduling any of the above.** 65 of those findings re-read against `99ac94b5`, asking the one question the 11 September pass did not: *is the finding's own suggested FIX sound?* Two are not — **ACC-23** would break a balance sheet that is currently self-correcting and test-pinned, **ACC-25** re-opens the expiring-signed-URL and stored-XSS hole `domain/banking/attachments.py` exists to close. §2 lists blockers the findings omit (ACC-16's backfill is refused outright by migration 251's immutability trigger), §3 five materially false premises (PUR-28's fix might DROP the four live policies it claims are absent), §4 one escalation, §5 four new duplicate pairs, §7 a defect with no finding at all |
 | `2026-09-08b-what-is-left.md` | the previous remaining-work list, re-scored against `9fbe40d`. **Superseded by the 11 September pass** — its severities predate the screens Phase 7 shipped. Kept because its §2 is the record of what the last tranche introduced |
 
 `docs/audits/2026-09-07-market-research/` holds the statutory re-check behind

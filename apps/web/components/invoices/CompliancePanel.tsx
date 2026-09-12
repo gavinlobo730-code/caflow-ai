@@ -8,12 +8,12 @@
  * record, generates the IRN/EWB on the IRP/NIC portal, then records the result —
  * every mutation is an explicit, confirmed action. Accounting/posting untouched.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ShieldCheck, FileCheck2, Truck, AlertTriangle, Loader2, QrCode, XCircle,
 } from "lucide-react";
 import { Modal as ModalShell } from "@/components/ui/modal";
-import { apiCall, getAuthToken, fmt, type InvoiceDetail } from "@/lib/invoices/shared";
+import { apiCall, apiGet, getAuthToken, fmt, type InvoiceDetail } from "@/lib/invoices/shared";
 import { todayLocalISO } from "@/lib/dateMath";
 import {
   gstTreatment, treatmentLabel, validatePlaceOfSupply,
@@ -129,13 +129,20 @@ export function CompliancePanel({
     }, "IRN cancellation recorded");
   }
 
-  async function prepareEway(f: { dispatch_from: string; ship_to: string; goods_description: string; hsn_code: string }) {
+  async function prepareEway(f: { dispatch_from: string; ship_to: string; goods_description: string; hsn_code: string; distance_km: string; vehicle_type: string; transport_mode: string }) {
     await run(async (token) => {
       const r = await apiCall("/api/eway-bill/records", "POST", {
         client_id: clientId, invoice_number: invoice.invoice_no, sales_invoice_id: invoice.id,
         dispatch_from: f.dispatch_from.trim(), ship_to: f.ship_to.trim(),
         goods_description: f.goods_description.trim() || "Goods per invoice",
         taxable_value_paise: invoice.taxable_amount_paise, hsn_code: f.hsn_code.trim() || undefined,
+        // Rule 138(10)'s inputs. Stored since migration 156 and, until
+        // 2026-09-12, asked for by no screen — so the validity the product held
+        // was whatever somebody re-keyed off the portal, with the one figure
+        // that determines it sitting empty beside it (SALES-28).
+        distance_km: f.distance_km.trim() ? Number(f.distance_km.trim()) : undefined,
+        vehicle_type: f.vehicle_type || undefined,
+        transport_mode: f.transport_mode || undefined,
       }, token);
       if (!r.success) throw new Error(r.error ?? "Could not prepare the E-Way Bill record");
     }, "E-Way Bill record prepared — generate it on the NIC portal, then record it");
@@ -235,7 +242,7 @@ export function CompliancePanel({
       {modal === "recordIrn" && <RecordIrnModal busy={busy} onClose={() => setModal(null)} onSubmit={recordIrn} />}
       {modal === "cancelIrn" && <CancelModal title="Cancel IRN" busy={busy} onClose={() => setModal(null)} onSubmit={cancelIrn} note="Cancel the IRN on the IRP portal first, then record it here." />}
       {modal === "prepEway" && <PrepareEwayModal busy={busy} invoice={invoice} onClose={() => setModal(null)} onSubmit={prepareEway} />}
-      {modal === "recordEway" && <RecordEwayModal busy={busy} onClose={() => setModal(null)} onSubmit={recordEway} />}
+      {modal === "recordEway" && <RecordEwayModal busy={busy} recordId={eway.record?.id ?? ""} onClose={() => setModal(null)} onSubmit={recordEway} />}
       {modal === "cancelEway" && <CancelModal title="Cancel E-Way Bill" busy={busy} onClose={() => setModal(null)} onSubmit={cancelEway} note="Cancel the E-Way Bill on the NIC portal first, then record it here." />}
     </section>
   );
@@ -345,11 +352,17 @@ function RecordIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: (
   );
 }
 
-function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean; invoice: InvoiceDetail; onClose: () => void; onSubmit: (f: { dispatch_from: string; ship_to: string; goods_description: string; hsn_code: string }) => void }) {
+function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean; invoice: InvoiceDetail; onClose: () => void; onSubmit: (f: { dispatch_from: string; ship_to: string; goods_description: string; hsn_code: string; distance_km: string; vehicle_type: string; transport_mode: string }) => void }) {
   const [from, setFrom] = useState(invoice.supply_state_code ?? "");
   const [to, setTo] = useState("");
   const [goods, setGoods] = useState("");
   const [hsn, setHsn] = useState(invoice.lines[0]?.hsn_sac ?? "");
+  // Rule 138(10)'s inputs. Distance is optional here on purpose — without it
+  // the server refuses to compute a validity and says so, which is better than
+  // blocking a record the CA can still generate on the portal.
+  const [distance, setDistance] = useState("");
+  const [vehicleType, setVehicleType] = useState("regular");
+  const [transportMode, setTransportMode] = useState("road");
   const ok = from.trim() && to.trim();
   return (
     <ModalShell title="Prepare E-Way Bill" note={`Taxable value ${fmt(invoice.taxable_amount_paise)}. This creates the record; you generate the EWB on the NIC portal.`} onClose={onClose}>
@@ -359,21 +372,96 @@ function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean;
       </div>
       <L label="Goods description"><input value={goods} onChange={(e) => setGoods(e.target.value)} placeholder="Goods per invoice" className={inputCls} /></L>
       <L label="HSN (optional)"><input value={hsn} onChange={(e) => setHsn(e.target.value)} className={inputCls} /></L>
-      <Actions onClose={onClose} onSubmit={() => ok && onSubmit({ dispatch_from: from, ship_to: to, goods_description: goods, hsn_code: hsn })} busy={busy} disabled={!ok} label="Prepare record" />
+      <div className="grid grid-cols-3 gap-2">
+        <L label="Distance (km)">
+          <input value={distance} inputMode="numeric"
+            onChange={(e) => setDistance(e.target.value.replace(/[^0-9]/g, ""))}
+            placeholder="e.g. 480" className={inputCls} />
+        </L>
+        <L label="Vehicle type">
+          <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} className={inputCls}>
+            <option value="regular">Regular</option>
+            <option value="over_dimensional">Over Dimensional Cargo</option>
+          </select>
+        </L>
+        <L label="Transport mode">
+          <select value={transportMode} onChange={(e) => setTransportMode(e.target.value)} className={inputCls}>
+            <option value="road">Road</option>
+            <option value="rail">Rail</option>
+            <option value="air">Air</option>
+            <option value="ship">Ship</option>
+          </select>
+        </L>
+      </div>
+      <p className="text-[10px] text-[#94A3B8]">
+        Distance decides how long the bill is valid — one day per 200 km, or per 20 km
+        for Over Dimensional Cargo (CGST Rule 138(10)). Leave it blank and the expiry
+        has to be read off the portal.
+      </p>
+      <Actions onClose={onClose} onSubmit={() => ok && onSubmit({ dispatch_from: from, ship_to: to, goods_description: goods, hsn_code: hsn, distance_km: distance, vehicle_type: vehicleType, transport_mode: transportMode })} busy={busy} disabled={!ok} label="Prepare record" />
     </ModalShell>
   );
 }
 
-function RecordEwayModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: () => void; onSubmit: (f: { ewb_number: string; ewb_date: string; ewb_valid_upto: string }) => void }) {
+function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean; recordId: string; onClose: () => void; onSubmit: (f: { ewb_number: string; ewb_date: string; ewb_valid_upto: string }) => void }) {
   const today = todayLocalISO();
   const [num, setNum] = useState(""); const [date, setDate] = useState(today); const [valid, setValid] = useState(today);
+  // WHAT RULE 138(10) SAYS THIS BILL IS VALID UNTIL, from the distance recorded
+  // when the record was prepared. "Valid upto" used to default to TODAY, which
+  // is wrong for every bill that has ever existed — a bill is valid for at
+  // least one day past its date — so the CA re-keyed the portal's date into a
+  // box whose default was a trap (SALES-28).
+  //
+  // The server computes it; this renders it. It is a PRE-FILL and a
+  // cross-check, never a substitute: the portal is authoritative, and the
+  // `source`/`caveat` strings say so at the point of display.
+  const [computed, setComputed] = useState<{ valid_upto: string | null; days: number | null;
+    slab_km: number | null; source: string | null; caveat: string | null; gap: string | null } | null>(null);
+  const [validTouched, setValidTouched] = useState(false);
+  useEffect(() => {
+    if (!recordId || !date) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        const r = await apiGet(`/api/eway-bill/records/${recordId}/validity?ewb_date=${encodeURIComponent(date)}`, token);
+        if (cancelled || !r.success) return;
+        const d = r.data as NonNullable<typeof computed>;
+        setComputed(d);
+        if (d.valid_upto && !validTouched) setValid(d.valid_upto);
+      } catch {
+        // Best-effort: the CA can always type the portal's own date.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [recordId, date, validTouched]);
+  const disagrees = Boolean(computed?.valid_upto && valid && computed.valid_upto !== valid);
   return (
     <ModalShell title="Record E-Way Bill" note="Enter the EWB details from the NIC portal." onClose={onClose}>
       <L label="E-Way Bill number"><input value={num} onChange={(e) => setNum(e.target.value)} placeholder="12-digit EWB no." className={inputCls} /></L>
       <div className="grid grid-cols-2 gap-2">
         <L label="EWB date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></L>
-        <L label="Valid upto"><input type="date" value={valid} onChange={(e) => setValid(e.target.value)} className={inputCls} /></L>
+        <L label="Valid upto">
+          <input type="date" value={valid}
+            onChange={(e) => { setValidTouched(true); setValid(e.target.value); }}
+            className={inputCls} />
+        </L>
       </div>
+      {computed?.gap && <p className="text-[10px] text-amber-700">{computed.gap}</p>}
+      {computed?.valid_upto && (
+        <p className="text-[10px] text-[#94A3B8]">
+          {computed.days} day{computed.days === 1 ? "" : "s"} at one per {computed.slab_km} km — {computed.source}.
+          The portal&apos;s own date is what counts; correct this if it differs.
+        </p>
+      )}
+      {computed?.caveat && <p className="text-[10px] text-amber-700">{computed.caveat}</p>}
+      {disagrees && (
+        <p className="text-[10px] text-amber-700">
+          This differs from the {computed?.valid_upto} that Rule 138(10) gives for the recorded
+          distance. Recording the portal&apos;s date is right — but check the distance too, since
+          it is what every later expiry warning is worked out from.
+        </p>
+      )}
       <Actions onClose={onClose} onSubmit={() => num.trim() && onSubmit({ ewb_number: num, ewb_date: date, ewb_valid_upto: valid })} busy={busy} disabled={!num.trim()} label="Record E-Way Bill" />
     </ModalShell>
   );

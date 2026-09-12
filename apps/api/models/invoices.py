@@ -4,29 +4,37 @@ CGST Act §31: Tax invoice mandatory fields.
 CGST §8: CGST+SGST (intra-state), IGST (inter-state).
 All monetary values in integer paise.
 """
-import re
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from typing import Optional, Any
 from decimal import Decimal
 
 # CGST Rule 46(b): a tax invoice's serial number must be a consecutive serial
 # number not exceeding sixteen characters, using only alphabets, numerals, and
-# the special characters '-' and '/'. Caflow leaves the numbering SCHEME
-# entirely to the CA (Decision: sales invoice numbers are fully manual, never
-# auto-generated) — this only enforces the structural shape the law requires.
+# the special characters '-' and '/'.
+#
+# THE RULE IS NOT WRITTEN HERE. It lives in domain/gst/invoice_series.py, which
+# this delegates to, because there used to be three copies of the same regex —
+# this one, the router's, and the browser's — and a rule with three spellings
+# has three chances to drift. Two remain and they are pinned to each other by
+# tests/fixtures/invoice_number.json, the same arrangement GSTIN has.
+#
+# What this layer adds is NORMALISATION: it returns the trimmed value, so a
+# number that arrives padded is stored clean rather than merely accepted.
+#
+# The numbering SCHEME is no longer entirely the CA's to remember. Since
+# 2026-09-12 (SALES-12) the firm's own invoice_settings suggest the next number
+# and services/sales_numbering_service.py serves it; what is written is still
+# whatever the request carries, so this validator's job is unchanged.
 # Per-client uniqueness is checked separately in routers/sales_invoices.py,
 # which needs DB access this pure model layer doesn't have.
-_INVOICE_NO_RE = re.compile(r"^[A-Za-z0-9\-/]{1,16}$")
 
 
 def _validate_invoice_no_shape(v: str) -> str:
+    from domain.gst.invoice_series import format_violation
     v = (v or "").strip()
-    if not v:
-        raise ValueError("Invoice number is required.")
-    if not _INVOICE_NO_RE.match(v):
-        raise ValueError(
-            "Invoice number must be 1-16 characters using only letters, digits, '-' or '/' (CGST Rule 46(b))."
-        )
+    problem = format_violation(v)
+    if problem:
+        raise ValueError(problem)
     return v
 
 

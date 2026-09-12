@@ -27,6 +27,8 @@ from services.timeline_service import timeline_service
 from services.internal_client_service import is_internal_client, assert_partner_for_internal_id, is_partner
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core.ist_clock import ist_fy_label
+from domain.gst import invoice_series
+from services import sales_numbering_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.sales_invoices")
@@ -119,20 +121,46 @@ def _assert_batch_scope(current_user: dict, client_ids) -> None:
 
 
 
+def _assert_invoice_no_legal(invoice_no: str) -> None:
+    """Refuse a number CGST Rule 46(b) does not permit — over sixteen
+    characters, or carrying a character outside letters, digits, hyphen and
+    slash. `domain/gst/invoice_series.py` is the rule and carries the reasoning.
+
+    A REFUSAL, unlike a break in the sequence, which only warns: these two are
+    not judgement calls, no legitimate series needs them, and both are rejected
+    downstream by machines the CA cannot argue with — the GSTR-1 schema caps the
+    document number at sixteen characters and the IRP rejects a malformed one
+    outright. Refusing here costs an edit; not refusing costs a return.
+    """
+    problem = invoice_series.format_violation(invoice_no)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
+
+
 def _assert_invoice_no_available(
     db, firm_id: str, client_id: str, invoice_no: str, exclude_id: Optional[str] = None,
 ) -> None:
-    """Reject a duplicate invoice number for this client. Numbering is fully
-    manual (the CA types it — no Caflow-generated scheme), so a collision is a
-    genuine user mistake, not a numbering race: fail fast with a clear message
-    rather than the graceful-retry-with-a-different-number pattern
-    services/numbering.py uses for auto-generated document numbers.
+    """Reject a duplicate invoice number for this client, and one Rule 46(b)
+    does not allow at all.
+
+    Numbering is SUGGESTED and manually overridable — `services/
+    sales_numbering_service.py` reads the firm's own `invoice_settings` and
+    pre-fills the next number in the series, and what is written is still
+    whatever the request body carries. So a collision remains a genuine user
+    mistake, not a numbering race: fail fast with a clear message rather than
+    the graceful-retry-with-a-different-number pattern services/numbering.py
+    uses for auto-generated document numbers, which would silently override
+    what the CA typed.
+    (Until 2026-09-12 numbering here was fully manual with no scheme at all.
+    That was legal but left Rule 46(b)'s CONSECUTIVE limb unguarded and the
+    firm's own Invoice Settings unread — SALES-12.)
     CGST Rule 46(b) requires uniqueness only within a financial year; Caflow
     enforces the stricter "unique for this client, full stop" — a partial
     unique index on (firm_id, client_id, invoice_no) WHERE deleted_at IS NULL
     (migration 151 added the constraint; migration 209 made it partial once
     soft-delete existed, so a deleted invoice's number is free to reuse).
     """
+    _assert_invoice_no_legal(invoice_no)
     # deleted_at IS NULL — a soft-deleted invoice (e.g. an abandoned draft the
     # CA deleted) is invisible everywhere in the UI, but without this filter
     # its invoice_no stayed permanently blocked: the CA deletes draft "00002",
@@ -344,6 +372,61 @@ def get_outstanding(
     except Exception as e:
         _logger.error("get_outstanding: %s", e)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
+
+
+@router.get("/next-number")
+def next_invoice_number(
+    client_id: str,
+    invoice_date: Optional[str] = None,
+    invoice_no: Optional[str] = None,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The next number in this client's series, for the invoice form to pre-fill.
+
+    CGST Rule 46(b): a consecutive serial number, at most sixteen characters,
+    from the permitted character set, unique for the financial year. The firm's
+    own `invoice_settings` (migration 126) say what the series looks like;
+    `services/sales_numbering_service.py` reads them and this is the one route
+    that serves the answer. The number stays EDITABLE — what gets written is
+    whatever the create request carries, exactly as before.
+
+    Declared above `/{invoice_id}`: FastAPI matches in declaration order, so a
+    literal path segment placed after a parameterised one is never reached.
+
+    `invoice_date` decides the financial year, not the clock — SALES-24. A
+    March invoice keyed in April belongs to March's series.
+
+    Passing `invoice_no` also asks the second question, which is the one the
+    form asks on blur: is this number legal, and is it the next one? A
+    `format_problem` is a refusal the create call will repeat; a `gap` is a
+    warning the CA may accept.
+    """
+    assert_client_access(current_user, client_id)
+    firm_id = current_user.get("firm_id") or ""
+    if _USE_MOCK:
+        db = None
+        existing = [inv.get("invoice_no") or "" for inv in MOCK_SALES_INVOICES
+                    if inv.get("firm_id") == firm_id and inv.get("client_id") == client_id
+                    and not inv.get("deleted_at")]
+    else:
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+        existing = None
+    try:
+        answer = sales_numbering_service.suggest(
+            db, firm_id, client_id, invoice_date=invoice_date, existing=existing)
+    except ValueError as e:
+        # An unparseable invoice_date. The FY cannot be decided, so neither can
+        # the series — say so rather than silently answering for today, which is
+        # the exact substitution SALES-24 was about.
+        raise HTTPException(status_code=422, detail=f"Invalid invoice date: {e}")
+    typed = (invoice_no or "").strip()
+    answer["format_problem"] = invoice_series.format_violation(typed) if typed else None
+    answer["sequence_warning"] = (
+        sales_numbering_service.gap_notice(
+            db, firm_id, client_id, typed, invoice_date=invoice_date, existing=existing)
+        if typed and not answer["format_problem"] else None)
+    return api_response(True, answer)
 
 
 @router.get("/hsn-suggestions")
@@ -666,11 +749,45 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         client_state_code = _get_state_code_from_gstin(client_rec.get("gstin")) or ""
 
     if bulk_cache is not None:
+        # Rule 46(b) applies to an imported number exactly as it does to a typed
+        # one. DEFENCE IN DEPTH, honestly labelled: `SalesInvoiceIn`'s field
+        # validator has already refused an illegal number on both routes into
+        # this function today, and delegates to the same module this does. What
+        # this adds is that bulk deliberately does NOT call
+        # `_assert_invoice_no_available` — so without it the two paths would
+        # differ in which guards they name, and the next hand-built caller of
+        # `_create_invoice_core` (there is precedent: the recurring generator
+        # builds its own row) would inherit the shorter list.
+        _assert_invoice_no_legal(invoice_no)
         if invoice_no in bulk_cache["existing_invoice_nos"]:
             raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
         bulk_cache["existing_invoice_nos"].add(invoice_no)
     else:
         _assert_invoice_no_available(None if _USE_MOCK else db, firm_id, client_id, invoice_no)  # type: ignore[possibly-undefined]
+
+    # RULE 46(b)'s CONSECUTIVE LIMB, SAID ONCE, AT THE MOMENT THE NUMBER IS
+    # CHOSEN. A warning and not a refusal — `domain/gst/invoice_series.py`
+    # records why, and the short version is that a gap has legitimate causes (a
+    # series carried over mid-year, a cancelled invoice, a second series Rule
+    # 46(b) expressly allows) and refusing would make the product wrong about
+    # practices that are right.
+    #
+    # Computed BEFORE the insert, because afterwards this invoice's own number
+    # is the highest in the series and there is no longer a gap to see.
+    #
+    # NOT in bulk mode, and that is the same call the HSN/audit/timeline writes
+    # below make: it would be one query per imported row, and an import is
+    # precisely the case where a gap is expected — warning on every line of a
+    # CSV is noise that teaches a CA to ignore the warning that matters.
+    numbering_warning = None
+    if bulk_cache is None:
+        numbering_warning = sales_numbering_service.gap_notice(
+            None if _USE_MOCK else db, firm_id or "", client_id, invoice_no,  # type: ignore[possibly-undefined]
+            invoice_date=data.get("invoice_date"),
+            existing=[inv.get("invoice_no") or "" for inv in MOCK_SALES_INVOICES
+                      if inv.get("firm_id") == firm_id and inv.get("client_id") == client_id
+                      and not inv.get("deleted_at")] if _USE_MOCK else None,
+        )
 
     # Effective place of supply. THE CUSTOMER'S GSTIN IS A THIRD SOURCE, and it
     # is the best one where the state code is blank: CGST §25 makes the first
@@ -953,6 +1070,9 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             ln["id"] = str(uuid.uuid4())
             ln["invoice_id"] = invoice_id
             MOCK_SALES_INVOICE_LINES.append(ln)
+        # Advisory only, and never stored: there is no column for it and there
+        # should not be. It describes the moment the number was chosen.
+        invoice["numbering_warning"] = numbering_warning
         return invoice
 
     invoice_payload = {
@@ -1067,6 +1187,8 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             entity_type="sales_invoice", entity_id=invoice_id,
             amount_paise=invoice.get("total_paise"), actor_id=current_user.get("auth_user_id"),
         )
+    # Advisory only, and never stored — see the mock branch above.
+    invoice["numbering_warning"] = numbering_warning
     return invoice
 
 
@@ -1674,6 +1796,7 @@ def issue_invoice(
                 if inv["id"] == invoice_id:
                     if inv.get("status") != "draft":
                         raise HTTPException(status_code=422, detail="Only draft invoices can be issued")
+                    _assert_invoice_no_legal(inv.get("invoice_no") or "")
                     # Post journal FIRST — failure keeps the invoice a draft.
                     try:
                         jid = phase2_journal_service.journal_for_sales_invoice(
@@ -1722,6 +1845,14 @@ def issue_invoice(
         # AT ISSUE, not at create: a draft is allowed to be incomplete — that is
         # what a draft is — and Rule 46(n) requires the place of supply on a
         # tax INVOICE. Issuing is the moment the document becomes one.
+        # A NUMBER RULE 46(b) ALLOWS, CHECKED AT ISSUE AS WELL AS AT CREATE.
+        # Create and edit both refuse one now, so this catches only the drafts
+        # that pre-date that (SALES-12) and anything a future write path forgets
+        # — which is the point of a backstop. Issuing is the moment the document
+        # becomes a tax invoice, and it is the last moment the number can be
+        # corrected without a §34 credit note.
+        _assert_invoice_no_legal(inv.get("invoice_no") or "")
+
         _pos = (inv.get("supply_state_code") or "").strip()
         if _pos not in VALID_STATE_CODES:
             raise HTTPException(status_code=422, detail=(

@@ -175,6 +175,17 @@ export function SalesCreditNoteViewDrawer({
               <DetailRow label="Reason" value={cn.reason ?? "—"} />
               <DetailRow label="Notes" value={cn.notes ?? "—"} />
             </div>
+
+            {/* CGST §34(2), measured against the ORIGINAL SUPPLY's financial
+                year — the server derives it on every read, so it keeps saying
+                so long after the toast that first said it has gone. Amber, not
+                red: the note is a lawful commercial credit; what it cannot do
+                is reduce output tax. */}
+            {cn.section_34_2_warning && (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-800">
+                {cn.section_34_2_warning}
+              </p>
+            )}
           </section>
 
           {/* ── Action bar (status-gated) ───────────────────────────────── */}
