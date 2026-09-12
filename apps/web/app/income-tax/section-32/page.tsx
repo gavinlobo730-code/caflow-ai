@@ -38,8 +38,14 @@ import { formatPaise } from "@/lib/services/formatting";
 import { request } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
-const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
+// FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
+// past, so the current financial year could not be selected at all — broken on
+// 1 April with nothing saying so. `financialYearChoicesAround` is the one
+// helper (lib/dates/periods.ts); see
+// scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
+const FY_OPTIONS = financialYearChoicesAround(null);
 
 interface ApiEnvelope<T = unknown> { success: boolean; data?: T; error?: string | null }
 

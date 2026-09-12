@@ -329,6 +329,35 @@ SECTION_192_SALARY = "192"
 #: s.194M later is a one-line change beside the reason rather than a new branch.
 _PROPERTY_SECTIONS = frozenset({"194IA", "194-IA", "194IB", "194-IB"})
 
+#: TCS, which is not a deduction and does not belong on a vendor.
+#:
+#: §206C is in the registry — its own comment says why, and says what it is:
+#: "reference data only; do not assume TCS is an implemented feature because a
+#: rate exists here". Nothing refused it at the vendor master, so a CA could
+#: pick it off the supplier screen's section list (which is served straight
+#: from the registry) and every bill from that vendor would withhold 0.1% of
+#: the whole amount — the entry's threshold is ZERO, so it fires on the first
+#: rupee — and the row would be stamped 26Q by `return_type_for`, which routes
+#: on residency and never sees the section.
+#:
+#: Three things are wrong with that at once, and they are the same three the
+#: docstring below already sets out for §194-IA:
+#:
+#:   * DIRECTION. §206C(1H) is collected BY A SELLER FROM A BUYER. A client
+#:     paying a vendor collects nothing; if the VENDOR collects TCS from our
+#:     client, it is the vendor's own liability and appears on the vendor's
+#:     27EQ, never on ours.
+#:   * STATEMENT. TCS is reported on 27EQ. `tds_deductions.return_type` CHECKs
+#:     ('24Q','26Q','27Q','27EQ'), so 26Q is accepted and simply wrong — the
+#:     one failure mode the CHECK cannot catch.
+#:   * NOTHING COMPUTES IT. The registry entry is unread by any TCS path;
+#:     there is no collection tracking and no 27EQ builder.
+#:
+#: Refused here rather than removed from the registry: the rate is real
+#: reference data and `domain/tds/vocabulary.py` maps 206C→394 for the 2026
+#: Act. What is refused is recording it against a payee.
+SECTION_206C_TCS = "206C"
+
 
 def deduction_section_refusal(section: Optional[str],
                               fy: Optional[str] = None) -> Optional[str]:
@@ -391,13 +420,26 @@ def deduction_section_refusal(section: Optional[str],
             "this vendor the section that fits what they actually supply."
         )
 
+    if code == SECTION_206C_TCS:
+        return (
+            "Section 206C is tax COLLECTED at source, and it cannot be "
+            "recorded against a vendor. It is collected by a seller from a "
+            "buyer and reported on Form 27EQ — so on a bill you are paying "
+            "there is nothing to collect, and a figure withheld here would be "
+            "0.1% of every rupee (the section carries no threshold) reported "
+            "on Form 26Q, which is not where TCS goes. If your client COLLECTS "
+            "tax on its sales, that is a separate obligation this software "
+            "does not yet compute."
+        )
+
     if code in tds_rates_for(fy).sections:
         return None
 
-    # s.192 is excluded from the suggestion for the same reason it is refused
-    # two branches above: offering it here would answer one refusal with
-    # another, on the one section whose failure is silent.
-    known = ", ".join(sorted(set(tds_rates_for(fy).sections) - {SECTION_192_SALARY}))
+    # s.192 and s.206C are excluded from the suggestion for the same reason
+    # they are refused above: offering either would answer one refusal with
+    # another. s.192's failure is silent and s.206C's is on the wrong return.
+    known = ", ".join(sorted(set(tds_rates_for(fy).sections)
+                             - {SECTION_192_SALARY, SECTION_206C_TCS}))
     why = (
         f"This software holds no rate or threshold for section {code}, so it "
         f"cannot work out what to withhold on a bill for this vendor. The "

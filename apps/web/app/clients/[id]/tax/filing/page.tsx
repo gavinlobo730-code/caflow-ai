@@ -6,6 +6,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
+import { assessmentYearChoicesAround, financialYearChoicesAround } from "@/lib/dates/periods";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -41,8 +42,16 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const ITR_FORMS = ["ITR-3", "ITR-5", "ITR-6", "ITR-7"];
-const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
-const AY_OPTIONS = ["2026-27", "2025-26", "2024-25"];
+// FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
+// past, so the current financial year could not be selected at all — broken on
+// 1 April with nothing saying so. `financialYearChoicesAround` is the one
+// helper (lib/dates/periods.ts); see
+// scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
+const FY_OPTIONS = financialYearChoicesAround(null);
+// FROM THE CLOCK, NOT A LITERAL — the same rule as the financial-year list,
+// derived from it so the two cannot disagree about which year is current
+// (IT Act §2(9): the AY is the FY plus one).
+const AY_OPTIONS = assessmentYearChoicesAround(null);
 
 interface Filing {
   id: string;

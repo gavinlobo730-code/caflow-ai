@@ -32,8 +32,14 @@ import {
 } from "@/lib/data/income-tax";
 import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
-const FY_OPTIONS = ["2026-27", "2025-26", "2024-25"];
+// FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
+// past, so the current financial year could not be selected at all — broken on
+// 1 April with nothing saying so. `financialYearChoicesAround` is the one
+// helper (lib/dates/periods.ts); see
+// scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
+const FY_OPTIONS = financialYearChoicesAround(null);
 const INSTALLMENT_LABELS: Record<number, string> = {
   1: "1st Installment (15 Jun)",
   2: "2nd Installment (15 Sep)",

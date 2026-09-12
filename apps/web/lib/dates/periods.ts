@@ -161,6 +161,42 @@ export function financialYearChoicesAround(
  * from being set independently, which is the bug class this whole change is
  * about: two controls, each individually correct, describing different periods.
  */
+/**
+ * The assessment year for a financial year: IT Act §2(9) with §3, one year on.
+ *
+ * FY 2026-27 is assessed in AY 2027-28. Written as a shift of the FY rather
+ * than as its own arithmetic, because the two labels have the same shape and a
+ * second parser is how they come to disagree.
+ */
+export function assessmentYearFor(financialYear: string): string {
+  return shiftFY(financialYear, 1);
+}
+
+/**
+ * The assessment years a picker offers, newest first.
+ *
+ * THE SAME LITERAL PROBLEM AS THE FINANCIAL-YEAR LIST, AND IT WAS EVERYWHERE.
+ * `financialYearChoicesAround` was written for one screen and the guard beside
+ * it only forbade the `<option value="2025-26">` SPELLING, so ten more pages
+ * kept a `const FY_OPTIONS = ["2025-26", …]` array and two kept an
+ * `AY_OPTIONS` one. Eight of the twelve ended at 2025-26, which meant that
+ * from 1 April 2026 the current year could not be selected on the year-end
+ * screens, the tax-audit screen, the §32 screen, the Tally migration screen,
+ * the documents screen or the 26AS reconciliation.
+ *
+ * Derived from the FY list so the two can never disagree about which year is
+ * current: an AY picker that offers 2027-28 while the FY picker stops at
+ * 2025-26 is two controls describing different periods, which is the bug class
+ * this whole module exists to end.
+ */
+export function assessmentYearChoicesAround(
+  month?: string | null,
+  count: number = FY_CHOICE_COUNT,
+  today: Date = new Date(),
+): string[] {
+  return financialYearChoicesAround(month, count, today).map(assessmentYearFor);
+}
+
 export function encodePeriodChoice(mode: PeriodMode, financialYear: string): string {
   if (mode === "this_fy") return `fy:${financialYear}`;
   if (mode === "last_fy") return `fy:${shiftFY(financialYear, -1)}`;

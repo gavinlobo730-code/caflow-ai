@@ -24,6 +24,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
+import { assessmentYearChoicesAround } from "@/lib/dates/periods";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,10 @@ interface ITNotice {
 
 const NOTICE_TYPES = ["143(1)", "143(2)", "144", "148", "148A", "156", "245", "271", "271A", "272A", "276"] as const;
 const STATUS_OPTIONS: NoticeStatus[] = ["pending", "responded", "closed", "appeal"];
-const ASSESSMENT_YEARS = ["2026-27", "2025-26", "2024-25", "2023-24", "2022-23", "2021-22"];
+// FROM THE CLOCK, NOT A LITERAL — the same rule as the financial-year list,
+// derived from it so the two cannot disagree about which year is current
+// (IT Act §2(9): the AY is the FY plus one).
+const ASSESSMENT_YEARS = assessmentYearChoicesAround(null, 6);
 const STORAGE_BUCKET = "Documents";
 
 function statusBadge(status: NoticeStatus) {

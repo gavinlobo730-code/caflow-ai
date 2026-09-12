@@ -242,6 +242,30 @@ test("a TDS period is a financial year AND a quarter, never one of them", () => 
     "QUARTER_LABELS, which is what it is for");
 });
 
+test("the section dropdown offers only what the save will accept", () => {
+  // §206C is TCS — collected by a SELLER from a BUYER and reported on Form
+  // 27EQ. It sits in the rate registry as reference data, and
+  // `GET /api/tds/sections` serves the registry, so the supplier screen
+  // offered it. Nothing refused it, so a CA could mark a vendor §206C and
+  // every bill from that vendor withheld 0.1% of the WHOLE amount — the
+  // entry's threshold is zero, so it fires on the first rupee — with the row
+  // stamped 26Q by `return_type_for`, which routes on residency and never
+  // sees the section. On a bill you are PAYING there is nothing to collect at
+  // all.
+  //
+  // The server decides eligibility (`vendor_eligible`, from the one function
+  // `domain/tds/residency.deduction_section_refusal`). What is pinned here is
+  // that the screen ASKS — a browser-side exclusion list is how the Schedule
+  // III captions drifted in both directions at once.
+  const page = code(path.join(WEB, "app/accounting/suppliers/page.tsx"));
+  assert.match(page, /vendor_eligible/,
+    "the supplier screen must filter its TDS section list on the server's " +
+    "own vendor_eligible flag");
+  assert.doesNotMatch(page, /"206C"|'206C'/,
+    "a browser-side exclusion list is a second place to decide this, and it " +
+    "will drift from the first");
+});
+
 test("the purchase-bill editor asks the server what this bill withholds", () => {
   // TDS-14. The editor showed `estimateForeignTds(base, vendor.tds_rate_bps)` —
   // a bare rate × base — and subtracted it as "Net payable", while the save

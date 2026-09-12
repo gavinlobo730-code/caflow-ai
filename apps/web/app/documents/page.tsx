@@ -18,6 +18,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useToast } from "@/components/ui/use-toast";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import type { Client } from "@/lib/types";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -57,7 +58,12 @@ const FILTER_TYPES = [
   { value: "OTHER", label: "Other" },
 ] as const;
 
-const FINANCIAL_YEARS = ["2023-24", "2024-25", "2025-26"] as const;
+// FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
+// past, so the current financial year could not be selected at all — broken on
+// 1 April with nothing saying so. `financialYearChoicesAround` is the one
+// helper (lib/dates/periods.ts); see
+// scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
+const FINANCIAL_YEARS = financialYearChoicesAround(null);
 type FinancialYear = (typeof FINANCIAL_YEARS)[number];
 
 const STORAGE_BUCKET = "Documents";

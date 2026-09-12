@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { assessmentYearChoicesAround } from "@/lib/dates/periods";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -13,7 +14,10 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // picker offer FY 2023-24 and FY 2024-25, which the engine has no rates for
 // and silently computed at the current year's instead.
 interface SupportedFY { fy: string; verified: boolean }
-const AY_OPTIONS = ["2026-27", "2025-26", "2024-25"];
+// FROM THE CLOCK, NOT A LITERAL — the same rule as the financial-year list,
+// derived from it so the two cannot disagree about which year is current
+// (IT Act §2(9): the AY is the FY plus one).
+const AY_OPTIONS = assessmentYearChoicesAround(null);
 const SECTION_OPTIONS = ["40A(3)", "43B_pf", "43B_gst", "43B_bonus", "43B_leave", "other"];
 
 /** What a snapshot's `regime` means, in words.

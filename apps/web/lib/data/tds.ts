@@ -229,6 +229,20 @@ export interface TDSSection {
   aggregate_threshold_paise: number | null;
   rate_individual_pct: number;
   rate_company_pct: number;
+  /** Whether a VENDOR may be marked with this section.
+   *
+   *  Decided by `domain/tds/residency.deduction_section_refusal`, the one
+   *  function that decides it, and not by the screen keeping its own
+   *  exclusion list — which is how the Schedule III caption list drifted in
+   *  both directions at once.
+   *
+   *  False for §192 (salary; a bill would deduct nothing and say nothing) and
+   *  for §206C (TCS; collected by a seller from a buyer and reported on 27EQ,
+   *  so on a bill you are PAYING there is nothing to collect). Optional so a
+   *  frontend deployed ahead of the backend keeps working — `?? true` is the
+   *  behaviour that existed before the flag. */
+  vendor_eligible?: boolean;
+  section_197_eligible?: boolean;
 }
 
 export interface TDSAmountResult {

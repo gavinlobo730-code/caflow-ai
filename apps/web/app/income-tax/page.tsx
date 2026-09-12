@@ -56,6 +56,7 @@ import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,7 +92,12 @@ type ITRForm = (typeof ITR_FORMS)[number];
  * it reports on had finished. The backend computes from the period, so the date
  * and the period now agree; the label is corrected to match them.
  */
-const FINANCIAL_YEARS = ["2024-25", "2025-26", "2026-27"] as const;
+// FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
+// past, so the current financial year could not be selected at all — broken on
+// 1 April with nothing saying so. `financialYearChoicesAround` is the one
+// helper (lib/dates/periods.ts); see
+// scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
+const FINANCIAL_YEARS = financialYearChoicesAround(null);
 type FY = (typeof FINANCIAL_YEARS)[number];
 
 const FY_PERIOD: Record<FY, { start: string; end: string }> = {

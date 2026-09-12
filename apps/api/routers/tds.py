@@ -282,6 +282,7 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
     """List all TDS sections with thresholds and rates for the given FY
     (defaults to the current FY)."""
     from domain.tds.lower_deduction import SECTIONS_197
+    from domain.tds.residency import deduction_section_refusal
     rates = tds_rates_for(fy)
     sections = [
         {
@@ -298,6 +299,21 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
             # names for the vendor master. Both facts are decided here, where
             # the registry and the statute both live.
             "section_197_eligible": sec in SECTIONS_197,
+            # AND WHETHER A VENDOR MAY CARRY IT AT ALL.
+            #
+            # This list is the supplier screen's section dropdown, served
+            # straight from the registry — so it offered §192 and §206C, both
+            # of which `residency.deduction_section_refusal` rejects at the
+            # save. A dropdown whose options the save refuses is a dead
+            # control, and §206C's was worse than dead: nothing refused it
+            # until now, so picking it withheld 0.1% of every rupee (its
+            # threshold is zero) and stamped the row 26Q, which is not where
+            # TCS is reported.
+            #
+            # Decided HERE, from the one function that decides it, rather than
+            # by the screen keeping its own exclusion list — which is how the
+            # Schedule III caption list drifted in both directions at once.
+            "vendor_eligible": deduction_section_refusal(sec) is None,
         }
         for sec, rule in rates.sections.items()
     ]
