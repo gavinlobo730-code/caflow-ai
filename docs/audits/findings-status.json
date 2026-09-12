@@ -1,0 +1,109 @@
+{
+ "_what_this_is": "The one place that says whether a finding from the 7 September 2026 audit is still open. Every other status record in docs/audits/ is a SNAPSHOT taken on a date and never updated; this one is amended in the same commit that closes a finding. Read _how_to_read before using it.",
+ "_how_to_read": {
+  "closed": "verified against the code, by a human read, on verified_on. The defect is gone.",
+  "not_a_defect": "the premise was false, or the suggested fix would be worse than the defect. The reason is recorded.",
+  "open": "verified against the code and still true.",
+  "blocked": "cannot be closed by code alone \u2014 it needs a registration, a state notification, or a figure only a person holds.",
+  "unverified": "not re-read since the date named. Treat as unknown, NOT as open."
+ },
+ "_the_stale_problem_this_exists_to_end": "docs/audits/2026-09-11-the-verification-pass.md measured the backlog ~10% stale. Five days later docs/audits/2026-09-12-the-probe-pass/ measured the same backlog 38-59% stale by subsystem, because five tranches had landed and nothing re-scored. On 12 September a further hand-check found INV-04, INV-07, FA-03, FA-16, FA-18, PAY-17, PAY-18, PUR-30, TDS-31, GST-03 and PUR-12 all recorded open and all in fact closed. A status that is only ever written by an audit is a status that is wrong by the time it is read.",
+ "verified_on": "2026-09-12",
+ "findings": {
+  "INV-04": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "the register carries last_movement_date and a derived Days idle, in as-at mode; daysIdle() in the inventory screen"
+  },
+  "INV-07": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "_last_ledger_rows filters the query to the items still wanted and terminates on an empty page; its docstring records the old unbounded walk"
+  },
+  "FA-03": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "no annual-depreciation arithmetic remains anywhere in apps/web"
+  },
+  "FA-16": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "runDepreciation() is one server-side range run, chunked and resumed, with the error surfaced (setRunError)"
+  },
+  "FA-18": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "the fixed-assets screen calls GET /api/fixed-assets/depreciation-schedule"
+  },
+  "FA-01": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "depreciation_posted_through is written through _month_label, never a raw YYYY-MM into a DATE column"
+  },
+  "PAY-17": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "_annual_pt_paise sums the year month by month; the docstring carries the Tamil Nadu and Maharashtra arithmetic"
+  },
+  "PAY-18": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "_logger is a module-level logger in routers/payroll.py and the except path uses it"
+  },
+  "PUR-30": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "_TDS_DEFAULT_BPS is deleted; a comment records where it was and why"
+  },
+  "TDS-31": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "duplicate of PUR-30, same deletion"
+  },
+  "GST-03": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "the 105% claim survives only as a comment recording that Notification 40/2021-CT withdrew it"
+  },
+  "PUR-12": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "duplicate of GST-03"
+  },
+  "GST-01": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "gstr3b_computer carries cash_payable_paise and the reverse-charge branch; CGST 2(82) excludes RCM from output tax"
+  },
+  "GST-02": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "outward_zero_rated_igst is a separate Table 3.1(b) figure, cited to IGST Act 16(3)"
+  },
+  "GST-05": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "the four-step set-off is implemented and cited to 49(5), 49A, 49B and Rule 88A"
+  },
+  "IT-14": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "holding_months counts the 2(42A) period to the day immediately preceding transfer"
+  },
+  "GST-17": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "_required_hsn_digits is computed and applied in the GSTR-1 build"
+  },
+  "GST-18": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "Table 13 carries the twelve document natures with doc_num fixed in GSTN's order"
+  },
+  "SALES-27": {
+   "status": "closed",
+   "verified_on": "2026-09-12",
+   "why": "998211 survives only on the PRACTICE's own billing, which genuinely is that SAC; the client invoice path no longer defaults to it"
+  }
+ }
+}

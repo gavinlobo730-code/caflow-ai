@@ -10,7 +10,9 @@
     "pages:build": "npm run generate:redirects && npm run generate:known-routes && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --experimental-strip-types --test"
+    "test": "node --experimental-strip-types --test",
+    "smoke:build": "NEXT_PUBLIC_API_URL=http://127.0.0.1:4319/__api NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:4319/__supabase NEXT_PUBLIC_SUPABASE_ANON_KEY=smoke-anon-key npm run build",
+    "smoke": "node scripts/smoke-walk.mjs"
   },
   "dependencies": {
     "@radix-ui/react-scroll-area": "^1.2.10",
