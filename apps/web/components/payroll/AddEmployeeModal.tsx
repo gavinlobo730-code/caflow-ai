@@ -40,6 +40,15 @@ export function AddEmployeeModal({
     pf_applicable: employee?.pf_applicable ?? false,
     esi_applicable: employee?.esi_applicable ?? false,
     pt_state: employee?.pt_applicable ? (employee.pt_state ?? "NONE") : "NONE",
+    // TWO EXCEPTIONS THAT COULD NOT BE RECORDED FROM ANYWHERE (PAY-12).
+    // Both columns are `NOT NULL DEFAULT true` (migrations 295 and 298), both
+    // are read by the engine, and neither was on a model, in the CSV or on a
+    // form — so every employee was EPS-eligible and Gratuity-Act-covered
+    // forever. Defaulting TRUE here matches the column, so an existing
+    // employee's saved value is what shows and a new one starts at the
+    // ordinary case.
+    eps_eligible: employee?.eps_eligible ?? true,
+    gratuity_act_covered: employee?.gratuity_act_covered ?? true,
     // The identifiers three FINISHED statutory outputs need and no screen
     // collected. domain/payroll/ecr.py refuses a member whose UAN is absent or
     // not 12 digits; esic.py needs the IP number; the s.192 projection needs
@@ -108,6 +117,8 @@ export function AddEmployeeModal({
         // Professional Tax — state-specific slab, computed server-side (R2.10).
         pt_applicable: form.pt_state !== "NONE",
         pt_state: form.pt_state === "NONE" ? null : form.pt_state,
+        eps_eligible: form.eps_eligible,
+        gratuity_act_covered: form.gratuity_act_covered,
         uan: form.uan.trim() || null,
         esi_number: form.esi_number.trim() || null,
         joining_date: form.joining_date || null,
@@ -208,6 +219,39 @@ export function AddEmployeeModal({
             <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.pt_state} onChange={e => setForm(f => ({ ...f, pt_state: e.target.value }))}>
               {PT_STATES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
             </select>
+          </div>
+          {/* The two statutory exceptions. Worded as the EXCEPTION (unticking
+              is the unusual case) because both columns default true and both
+              tests turn on a fact the master cannot hold: EPS on pay AT
+              JOINING, the Gratuity Act on the headcount when it first
+              applied. */}
+          <div className="col-span-2 flex items-start gap-2">
+            <input type="checkbox" id="eps" className="mt-0.5"
+              checked={form.eps_eligible}
+              onChange={e => setForm(f => ({ ...f, eps_eligible: e.target.checked }))} />
+            <label htmlFor="eps" className="text-sm text-[#334155]">
+              EPS 1995 member
+              <span className="block text-[11px] text-[#94A3B8]">
+                Untick only where para 6 of the scheme (GSR 609(E), from
+                01-09-2014) excludes them — first joined EPF on or after that
+                date with pay above the wage ceiling. When ticked, 8.33% of the
+                employer&apos;s contribution is diverted to EPS on the ECR.
+              </span>
+            </label>
+          </div>
+          <div className="col-span-2 flex items-start gap-2">
+            <input type="checkbox" id="gratuity" className="mt-0.5"
+              checked={form.gratuity_act_covered}
+              onChange={e => setForm(f => ({ ...f, gratuity_act_covered: e.target.checked }))} />
+            <label htmlFor="gratuity" className="text-sm text-[#334155]">
+              Payment of Gratuity Act 1972 applies
+              <span className="block text-[11px] text-[#94A3B8]">
+                §1(3), and §1(3A) which keeps it applying once it has. It
+                decides which limb of IT Act §10(10) exempts a leaver&apos;s
+                gratuity — clause (ii) when covered, clause (iii) when not,
+                and they are different formulae.
+              </span>
+            </label>
           </div>
 
           {/* Statutory identifiers. Each hint says what is NOT POSSIBLE without

@@ -5,6 +5,7 @@ import { Plus, Loader2, AlertTriangle, Database, CheckCircle, XCircle } from "lu
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { Can } from "@/components/Can";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -36,7 +37,12 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const IMPORT_TYPES = ["ledgers", "journals", "customers", "vendors", "opening_balances", "masters"];
-const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
+// FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
+// past, so the current financial year could not be selected at all — broken on
+// 1 April with nothing saying so. `financialYearChoicesAround` is the one
+// helper (lib/dates/periods.ts); see
+// scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
+const FY_OPTIONS = financialYearChoicesAround(null);
 
 interface MigrationJob {
   id: string;

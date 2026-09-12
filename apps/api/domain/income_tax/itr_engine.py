@@ -457,6 +457,37 @@ class ITRComputeResult:
     #: check. One string per bucket that absorbed anything.
     basic_exemption_absorption: list = field(default_factory=list)
 
+    #: THE CAPITAL-GAINS WORKING, ROW BY ROW — and the reason it is here is
+    #: that until now it was not anywhere. The two fields above were computed,
+    #: documented as existing "so a CA can see WHICH gain the exemption was set
+    #: against", and then read by nothing: `grep -rn basic_exemption
+    #: apps/api/routers apps/web` returned nothing at all. So a CA saw ₹20,800
+    #: of tax on a ₹5,00,000 STCG with no account of the ₹4,00,000 that
+    #: vanished, and could not check the highest-rate-first allocation the
+    #: engine made on their behalf. CLAUDE.md: a figure the computer gets right
+    #: and no screen shows is not a fixed bug.
+    #:
+    #: One row per special-rate section, always all three, so a zero row is
+    #: visibly zero rather than absent. Keys: section, gross_paise,
+    #: exempt_paise (§112A's annual exemption, nil on the other two),
+    #: absorbed_paise, charged_paise, rate_percent, tax_paise.
+    capital_gains_lines: list = field(default_factory=list)
+    #: §§111A + 112A + 112 together, before surcharge and cess — the figure
+    #: that is added to the slab tax AFTER the §87A rebate, never inside it.
+    capital_gains_tax_paise: int = 0
+
+    #: What the caller sent as §10 exempt income, echoed back.
+    #:
+    #: The engine does not use it and must not: §10 income does not enter total
+    #: income, so the TAX is right without it. But `ITRComputeRequest` has
+    #: declared the field since the beginning, the client Tax Computation tab
+    #: renders an "Exempt Income (₹)" input, the router accepts it and passes
+    #: it in — and `compute()` never read it, so a CA typed a figure into a
+    #: live field, it changed nothing, and nothing said so. Echoing it is the
+    #: honest half of the fix: the figure IS reportable (Schedule EI), it is
+    #: simply not taxable, and a screen can now say which.
+    exempt_income_reported_paise: int = 0
+
     # Payable
     tds_and_advance_paise: int = 0
     net_payable_paise: int = 0  # negative = refund
@@ -881,6 +912,30 @@ class ITREngine:
         # IT Act Section 112: LTCG on any other asset
         ltcg_other_tax = charged[2] * rates.ltcg_112_other_rate_bps // 10000
 
+        # THE WORKING, KEPT RATHER THAN DISCARDED. Every figure below already
+        # existed as a local; nothing here recomputes anything, which is the
+        # point — a second derivation for display is how the display and the
+        # tax come to disagree. `gross - exempt - absorbed == charged` on every
+        # row by construction, and a test asserts it.
+        result.capital_gains_lines = [
+            {"section": "§111A (STCG on equity)",
+             "gross_paise": stcg, "exempt_paise": 0,
+             "absorbed_paise": stcg - charged[0], "charged_paise": charged[0],
+             "rate_percent": rates.stcg_111a_rate_bps / 100, "tax_paise": stcg_tax},
+            {"section": "§112A (LTCG on equity)",
+             "gross_paise": ltcg,
+             "exempt_paise": min(ltcg, rates.ltcg_112a_exemption_paise),
+             "absorbed_paise": ltcg_112a_taxable - charged[1],
+             "charged_paise": charged[1],
+             "rate_percent": rates.ltcg_112a_rate_bps / 100, "tax_paise": ltcg_tax},
+            {"section": "§112 (LTCG on other assets)",
+             "gross_paise": ltcg_other, "exempt_paise": 0,
+             "absorbed_paise": ltcg_other - charged[2], "charged_paise": charged[2],
+             "rate_percent": rates.ltcg_112_other_rate_bps / 100,
+             "tax_paise": ltcg_other_tax},
+        ]
+        result.exempt_income_reported_paise = max(0, req.exempt_income_paise)
+
         # 6. Rebate u/s 87A — reduces slab tax only, never special-rate CG tax.
         # Pre-existing, deliberately conservative position: the CBDT's own ITR
         # utility has historically disallowed an 87A rebate claim against
@@ -897,6 +952,7 @@ class ITREngine:
         result.rebate_87a_paise = rebate
         ordinary_tax_after_rebate = max(0, tax - rebate)
         capital_gains_tax = stcg_tax + ltcg_tax + ltcg_other_tax  # Sections 111A + 112A + 112
+        result.capital_gains_tax_paise = capital_gains_tax
         result.tax_before_cess_paise = ordinary_tax_after_rebate + capital_gains_tax
 
         # 7. Surcharge (IT Act Section 2(29C)). F17 fixes:

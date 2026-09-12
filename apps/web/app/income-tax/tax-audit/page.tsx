@@ -27,6 +27,7 @@ import {
 } from "@/lib/income-tax/taxAuditThresholds";
 import { api, type TaxAuditDueDates } from "@/lib/api";
 import type { Client } from "@/lib/types";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,7 +51,12 @@ interface TaxAudit {
 }
 
 const STATUS_OPTIONS: AuditStatus[] = ["not_started", "in_progress", "completed", "filed"];
-const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
+// FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
+// past, so the current financial year could not be selected at all — broken on
+// 1 April with nothing saying so. `financialYearChoicesAround` is the one
+// helper (lib/dates/periods.ts); see
+// scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
+const FY_OPTIONS = financialYearChoicesAround(null);
 
 /** An ISO date as an Indian compliance screen prints it: 30 Sep 2026. */
 function fmtDate(iso: string): string {

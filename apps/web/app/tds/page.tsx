@@ -31,15 +31,32 @@ import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 
+// THREE COLUMNS WERE REQUIRED AND THEN DISCARDED (12 September probe pass §2.4).
+//
+// `tds_rate`, `fy` and `quarter` were all `required: true`, so the import
+// refused a file that omitted any of them — and none of the three reached the
+// payload: `createTdsDeduction` has no field for any of them, and never had.
+// The server derives all three, from better sources than a spreadsheet:
+//
+//   * the RATE comes from the engine (`domain/tds/section_rates.py`), with
+//     the section's threshold, the year's aggregate and the §206AA floor
+//     applied. Taking it from a spreadsheet column is the defect
+//     `scripts/tds-is-computed-by-the-engine-not-the-browser.test.ts` already
+//     forbids in the row parser; offering the column invited it back at the
+//     mapping step;
+//   * the FY and the QUARTER come from `transaction_date`. A CA who typed a
+//     quarter contradicting their own date got the date's, silently.
+//
+// So a CA was made to fill three columns to be allowed to import, and then
+// told nothing when their values were ignored. Removed rather than made
+// optional: an optional column that is still discarded is the same lie in a
+// quieter voice.
 const TDS_IMPORT_COLUMNS = [
   { key: "party_name",      label: "Party Name",       required: true,  hint: "Name of deductee e.g. ABC Consulting" },
   { key: "party_pan",       label: "Party PAN",        required: true,  hint: "e.g. AABCU9603R" },
-  { key: "section",         label: "TDS Section",      required: true,  hint: "e.g. 194C | 194J | 194A | 192" },
+  { key: "section",         label: "TDS Section",      required: true,  hint: "e.g. 194C | 194J | 194A — the rate, threshold and §206AA floor are applied by the engine, not read from the file" },
   { key: "gross_amount_rs", label: "Gross Amount (₹)", required: true,  hint: "e.g. 100000 (in rupees)" },
-  { key: "tds_rate",        label: "TDS Rate %",       required: true,  hint: "e.g. 10 (for 10%)" },
-  { key: "payment_date",    label: "Payment Date",     required: true,  hint: "YYYY-MM-DD e.g. 2025-05-15" },
-  { key: "fy",              label: "Financial Year",   required: true,  hint: "e.g. 2025-26" },
-  { key: "quarter",         label: "Quarter",          required: true,  hint: "Q1 (Apr-Jun) | Q2 (Jul-Sep) | Q3 (Oct-Dec) | Q4 (Jan-Mar)" },
+  { key: "payment_date",    label: "Payment Date",     required: true,  hint: "YYYY-MM-DD e.g. 2025-05-15 — the financial year and the quarter are taken from this date" },
   { key: "challan_no",      label: "Challan No",       required: false, hint: "BSR code + serial e.g. 0510001-12345" },
 ];
 
@@ -56,6 +73,7 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   listTdsSections, previewTdsDeduction, createTdsDeduction, createTdsChallan,
 } from "@/lib/data/tds";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
 // ─── TDS section labels ──────────────────────────────────────────────────────
 //
@@ -97,7 +115,12 @@ const QUARTERS = ["Q1", "Q2", "Q3", "Q4"] as const;
 const QUARTER_LABEL: Record<string, string> = {
   Q1: "Q1 (Apr-Jun)", Q2: "Q2 (Jul-Sep)", Q3: "Q3 (Oct-Dec)", Q4: "Q4 (Jan-Mar)",
 };
-const FY_LIST = ["2023-24", "2024-25", "2025-26", "2026-27"];
+// FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
+// past, so the current financial year could not be selected at all — broken on
+// 1 April with nothing saying so. `financialYearChoicesAround` is the one
+// helper (lib/dates/periods.ts); see
+// scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
+const FY_LIST = financialYearChoicesAround(null);
 
 // Keyed by the values the CHECK constraints actually store (migration 037),
 // lower case. The capitalised keys this held were unreachable: nothing in the

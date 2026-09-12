@@ -47,7 +47,10 @@ from domain.payroll import esic_mapped_ips
 from domain.payroll import annexure2 as annexure2_domain
 from domain.payroll.annexure2 import build_annexure_ii
 from domain.payroll.lwf import classify_state as classify_lwf_state
-from domain.payroll.professional_tax import classify_state as classify_pt_state
+from domain.payroll.professional_tax import (
+    classify_for_employee as classify_pt_for_employee,
+    classify_state as classify_pt_state,
+)
 from domain.payroll import identity as identity_domain
 from domain.payroll import handoff as handoff_domain
 from domain.payroll import remittance_match
@@ -437,7 +440,12 @@ def _statutory_gaps(emp: dict, pt_covered: Optional[set] = None) -> list[str]:
     gaps: list[str] = []
     if emp.get("pt_applicable"):
         state = (emp.get("pt_state") or "").strip().upper()
-        pt = classify_pt_state(emp.get("pt_state"))
+        # The EMPLOYEE-level question, not the state-level one (PAY-05). A
+        # blank state is "not a gap" as a statement about a state code and is
+        # exactly a gap once the CA has ticked pt_applicable: nothing is
+        # withheld, month after month, and Article 276 leaves the employer
+        # liable for it.
+        pt = classify_pt_for_employee(True, emp.get("pt_state"))
         # A state the FIRM has recorded usable slabs for is no longer a gap —
         # the deduction was computed, from a notification somebody read
         # (migration 327). Covered is decided once per run, because whether a
@@ -703,31 +711,42 @@ def _undo_loan_recoveries(db, firm_id: str, client_id: str, run_id: str,
     try:
         rows = (db.table("payroll_loan_recoveries").select("*")
                 .eq("firm_id", firm_id).eq("run_id", run_id)
-                .eq("kind", "recovered").execute().data) or []
+                .execute().data) or []
     except Exception:                                           # noqa: BLE001
         _logger.exception("could not read loan recoveries for run %s", run_id)
         return ["This run's loan recoveries could not be read, so no loan "
                 "balance was restored. Check each borrower's outstanding "
                 "before re-finalising — it may be one instalment too low."]
 
-    already = set()
-    try:
-        for r in ((db.table("payroll_loan_recoveries").select("run_id, loan_id")
-                   .eq("firm_id", firm_id).eq("run_id", run_id)
-                   .eq("kind", "reversed").execute().data) or []):
-            already.add(r["loan_id"])
-    except Exception:                                           # noqa: BLE001
-        _logger.exception("could not read prior reversals for run %s", run_id)
-
     if rows:
+        # THE NET, PER LOAN, ACROSS EVERY CYCLE — not "skip any loan this run
+        # has reversed once".
+        #
+        # The first version read the `recovered` rows and the `reversed` rows
+        # separately and skipped a loan whose id appeared in the second set. It
+        # was right for one correction cycle and wrong for the second, which is
+        # the cycle a CA reaches by doing exactly what this function exists to
+        # support: finalise, reverse, correct, finalise, spot something else,
+        # reverse again. By then there are TWO recovered rows and one reversed
+        # row, and an id-keyed skip drops BOTH — the loan is written down twice
+        # and given back once. That is PAY-08's own arithmetic, one cycle later.
+        #
+        # `amount_paise` is already signed by `_record_loan_movement` (positive
+        # recovers, negative gives back, enforced by migration 367's CHECK), so
+        # the whole question is a sum. A positive net is what this run has taken
+        # and not yet returned; zero or negative means it is square and there is
+        # nothing to do. This is the invariant migration 367's own test names —
+        # the balance reconstructs from the history — rather than a second rule
+        # sitting beside it.
+        net: dict[str, int] = {}
         for row in rows:
-            # A run reversed twice must not give the money back twice — the
-            # same shape as the defect being fixed, in the other direction.
-            if row["loan_id"] in already:
-                continue
-            _restore_one_loan(db, firm_id, client_id, row["loan_id"],
-                              abs(int(row["amount_paise"] or 0)), run_id,
-                              created_by)
+            loan_id = row.get("loan_id")
+            if loan_id:
+                net[loan_id] = net.get(loan_id, 0) + int(row.get("amount_paise") or 0)
+        for loan_id, outstanding in net.items():
+            if outstanding > 0:
+                _restore_one_loan(db, firm_id, client_id, loan_id,
+                                  outstanding, run_id, created_by)
         return notes
 
     # ── Fallback: a run finalised before migration 367 ──────────────────────

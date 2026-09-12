@@ -4,9 +4,21 @@ import { useEffect, useState, useCallback } from "react";
 import { Upload, RefreshCw, Loader2, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const FY_OPTIONS = ["2025-26", "2024-25", "2023-24"];
+// FROM THE CLOCK, NOT A LITERAL (TDS-20's first half).
+//
+// This was `["2025-26", "2024-25", "2023-24"]`, so on 12 September 2026 — a
+// date inside FY 2026-27 — the CURRENT financial year could not be selected at
+// all, and the default was last year's. A 26AS reconciliation is something a CA
+// runs against the year they are working on; a picker that cannot express it is
+// broken on 1 April with nothing saying so.
+//
+// `financialYearChoicesAround(null)` is the same helper the TDS returns screen
+// uses, anchored on today and reaching back far enough for a belated or revised
+// year.
+const FY_OPTIONS = financialYearChoicesAround(null);
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");

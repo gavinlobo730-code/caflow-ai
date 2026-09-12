@@ -60,6 +60,42 @@ def _is_missing_rpc_function(err: Exception) -> bool:
 
 
 
+def _advance_treatment(db, firm_id: str, client_id: str, data: dict) -> tuple:
+    """(gst_rate_bps, place_of_supply, is_interstate) for a GSTR-1 Table 11A row.
+
+    THE SPLIT IS DERIVED HERE, NOT TAKEN FROM THE REQUEST. The receipt form
+    computed `advancePos !== clientStateCode` in the browser and this service
+    stored the answer verbatim — a statutory rule (IGST §§7-8) on the wrong
+    side of the wire, and wrong outright for a client whose `state_code` is
+    NULL, where every advance came out inter-state and put IGST in Table 11A
+    against CGST and SGST due.
+
+    `domain/gst/place_of_supply.py` is the rule and may answer None; None is
+    stored as None, because `gst_advance_service` already names an advance it
+    cannot declare and an undecided treatment belongs in that list rather than
+    in a default. The invoice path derives the same fact the same way.
+    """
+    from domain.gst.place_of_supply import is_interstate as _is_interstate
+    rate = data.get("gst_rate_bps")
+    pos = data.get("place_of_supply")
+    client = None
+    try:
+        rows = (db.table("clients").select("gstin, state_code")
+                .eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+        client = rows[0] if rows else None
+    except Exception as exc:                                       # noqa: BLE001
+        # A read that fails must not stop a receipt being recorded. The
+        # treatment is then undecided, which is the honest answer and the one
+        # the advances report already reports — but it is REPORTED rather than
+        # swallowed, because an advance that quietly stops being declarable is
+        # exactly the class of silent truth-loss capture_soft_failure exists
+        # for: the receipt still saves and Table 11A quietly loses a row.
+        capture_soft_failure(exc, operation="advance_treatment_client_lookup",
+                             firm_id=firm_id, client_id=client_id)
+        client = None
+    return rate, pos, _is_interstate(client, pos)
+
+
 def _next_receipt_seq(db, firm_id: str, client_id: str, fy: str) -> int:
     from services.numbering import next_sequence
     return next_sequence(db, "receipts", f"RCPT-{fy}-",
@@ -204,6 +240,8 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         rate_overridden=overridden, currency_policy=CurrencyPolicy(active=True, functional_currency="INR"),
     )
 
+    _adv_rate, _adv_pos, _adv_interstate = _advance_treatment(
+        db, firm_id, client_id, data)
     receipt_payload = {
         "id": receipt_id,
         "firm_id": firm_id, "client_id": client_id, "customer_id": data["customer_id"],
@@ -214,9 +252,9 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         # GSTR-1 Table 11A — see the note on the other receipt payload. A
         # foreign-currency advance can bear tax under s.13(2) exactly as a
         # rupee one can, so this path carries them too.
-        "gst_rate_bps": data.get("gst_rate_bps"),
-        "place_of_supply": data.get("place_of_supply"),
-        "is_interstate": data.get("is_interstate"),
+        "gst_rate_bps": _adv_rate,
+        "place_of_supply": _adv_pos,
+        "is_interstate": _adv_interstate,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "txn_currency": ccy, "exchange_rate": str(R1), "txn_amount": total_foreign,
         "rate_source": r1_source, "rate_type": "booking", "rate_date": str(data["receipt_date"])[:10],
@@ -375,7 +413,7 @@ def _compensate_failed_settlement(
             journal_id, receipt_id, firm_id, client_id, attempted_invoice_ids,
         )
     except Exception as e:
-        from core.observability import capture_posting_failure
+        from core.observability import capture_soft_failure, capture_posting_failure
         capture_posting_failure(
             e, operation="receipt_service._compensate_failed_settlement",
             firm_id=firm_id, client_id=client_id, receipt_id=receipt_id, journal_id=journal_id,
@@ -646,6 +684,8 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     receipt_no = f"RCPT-{fy}-{seq:04d}"
 
     receipt_id = str(uuid.uuid4())
+    _adv_rate, _adv_pos, _adv_interstate = _advance_treatment(
+        db, firm_id, client_id, data)
     receipt_payload = {
         "id":                receipt_id,   # pre-generated so the GL journal, the receipt row and its allocations share one id
         "firm_id":           firm_id,
@@ -669,9 +709,9 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         # and nothing wrote them, so Table 11 could never be anything but
         # empty. Same shape as bank_account_id above. NULL where the CA has not
         # supplied them, which is the state the advances report already names.
-        "gst_rate_bps":      data.get("gst_rate_bps"),
-        "place_of_supply":   data.get("place_of_supply"),
-        "is_interstate":     data.get("is_interstate"),
+        "gst_rate_bps":      _adv_rate,
+        "place_of_supply":   _adv_pos,
+        "is_interstate":     _adv_interstate,
         "created_at":        datetime.now(timezone.utc).isoformat(),
         **_ccy_cols,
     }

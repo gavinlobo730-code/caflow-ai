@@ -54,6 +54,12 @@ class StockAdjustmentIn(BaseModel):
     def positive(cls, v: float) -> float:
         if v <= 0:
             raise ValueError("Adjustment quantity must be positive.")
+        # Three decimals, because that is what NUMERIC(10,3) keeps and the money
+        # is computed from what was TYPED — see domain/quantity.py (INV-09).
+        from domain.quantity import quantity_violation
+        problem = quantity_violation(v)
+        if problem:
+            raise ValueError(problem)
         return v
 
     @field_validator("direction")

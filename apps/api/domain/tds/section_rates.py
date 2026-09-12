@@ -367,11 +367,70 @@ def rate_gap_for(section: str, fy: str | None = None) -> str | None:
 
 def tds_rates_for(fy: str | None = None) -> FYTDSRates:
     """Rates for the given FY ("2025-26"), defaulting to the current FY, falling
-    back to the latest verified year for FYs not seeded yet."""
+    back to the latest verified year for FYs not seeded yet.
+
+    THE FALLBACK IS NOT SYMMETRIC, AND THE ASYMMETRY IS THE WHOLE POINT.
+    For a year AFTER the last one held, last year's figures are the best
+    available estimate and the Finance Act usually leaves most of them alone.
+    For a year BEFORE it, they are simply the wrong law — and since Finance Act
+    2025 RAISED most thresholds, applying today's to an earlier year makes the
+    engine answer "nothing due" where tax was due. §194J at ₹40,000 in FY
+    2024-25 comes back nil against that year's ₹30,000 threshold.
+
+    Under-deduction is the direction that costs: §40(a)(ia) disallows 30% of
+    the expenditure (the whole of it for a non-resident under §40(a)(i)), and
+    it surfaces at assessment rather than at entry.
+
+    So the substitution stays — refusing outright would make a late-entered
+    prior-year bill unbookable — and `rates_are_verified` below is how a caller
+    learns it happened. `services/tds_register_service.py` raises it as a named
+    gap, the same way it already does for §195.
+    """
     fy = fy or current_fy()
     if fy in TDS_RATES_BY_FY:
         return TDS_RATES_BY_FY[fy]
     return TDS_RATES_BY_FY[LATEST_VERIFIED_TDS_FY]
+
+
+def rates_are_verified(fy: str | None = None) -> bool:
+    """Whether this year's figures were confirmed against its own Finance Act.
+
+    False both for a year the registry does not hold at all — where
+    `tds_rates_for` silently substituted another year's — and for one held but
+    carried forward unverified (FY 2026-27 today). Deliberately the same
+    signature and the same meaning as `section_195_rates.rates_are_verified`,
+    because a caller should not have to remember which side of the resident /
+    non-resident line it is on to ask the same question.
+
+    A caller CANNOT accidentally ask about the year that was substituted: this
+    reads the map directly rather than going through `tds_rates_for`.
+    """
+    entry = TDS_RATES_BY_FY.get(fy or current_fy())
+    return bool(entry and entry.verified)
+
+
+def fy_rate_gap(fy: str | None = None) -> str | None:
+    """The sentence naming what could not be confirmed for this year, or None.
+
+    Two different sentences, because they are two different problems and a CA
+    can act on only one of them. A year the registry has never heard of is a
+    substitution and the numbers may be wrong in either direction; a year held
+    but unverified is this year's own table, carried forward and not yet read
+    against the Act.
+    """
+    key = fy or current_fy()
+    entry = TDS_RATES_BY_FY.get(key)
+    if entry is None:
+        return (f"TDS rates and thresholds for FY {key} are not held. This was "
+                f"computed at FY {LATEST_VERIFIED_TDS_FY}'s figures, which are not "
+                f"that year's law — Finance Act 2025 raised most thresholds, so an "
+                f"earlier year is likely UNDER-deducted. Check the deduction "
+                f"against that year's Finance Act before the return is filed.")
+    if not entry.verified:
+        return (f"TDS rates for FY {key} were carried forward from FY "
+                f"{LATEST_VERIFIED_TDS_FY} and have not been read against that "
+                f"year's Finance Act. Confirm before filing.")
+    return None
 
 
 # ── Quarterly return calendar (IT Rules, Rule 31A) ───────────────────────────

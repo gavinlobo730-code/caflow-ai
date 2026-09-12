@@ -3612,15 +3612,27 @@ function ReceiptForm({
           allocations: allocationsList.length > 0 ? allocationsList : undefined,
           currency: isForeign ? currency : undefined,
           exchange_rate: isForeign ? exchangeRate : undefined,
-          // Table 11A. Sent only for a client whose advances bear tax; the
-          // inter/intra split is DERIVED from the place of supply against the
-          // client's own state rather than asked as a third question, because
-          // it is not an independent fact (IGST Act ss.7, 8).
+          // Table 11A. Sent only for a client whose advances bear tax. The
+          // inter/intra split is NOT sent: it is derived, and it is derived on
+          // the SERVER (domain/gst/place_of_supply.py), because IGST Act ss.7
+          // and 8 are a statutory rule and this codebase keeps those out of the
+          // browser.
+          //
+          // It used to be computed here as `advancePos !== clientStateCode`,
+          // and the comment that stood in this place said the split was derived
+          // "rather than asked as a third question" — which was the right
+          // instinct on the wrong side of the wire. `clients.state_code` is
+          // nullable, so for a client with none recorded that comparison was
+          // true for every place of supply and EVERY advance was declared
+          // inter-state: IGST in Table 11A where CGST and SGST were due, on a
+          // return the CA files. The server can see the client's GSTIN, which
+          // carries the state under CGST s.25, and refuses to decide when it
+          // cannot — an advance whose treatment is undecided is named in the
+          // advances report rather than defaulted.
           ...(advanceTaxApplicable && advanceRate !== "" && advancePos
             ? {
                 gst_rate_bps: bpsFromPercentInput(advanceRate),
                 place_of_supply: advancePos,
-                is_interstate: advancePos !== clientStateCode,
               }
             : {}),
         },
@@ -3760,12 +3772,20 @@ function ReceiptForm({
                 placeholder="— Select —"
                 ariaLabel="Place of supply for the advance"
               />
-              <p className="mt-1 text-[10px] text-[#94A3B8]">
-                {advancePos && clientStateCode
-                  ? (advancePos === clientStateCode
-                      ? "Intra-state — CGST + SGST."
-                      : "Inter-state — IGST.")
-                  : "Decides CGST+SGST against IGST."}
+              {/* A PREVIEW of what the server will conclude, never the stored
+                  answer — that is derived in domain/gst/place_of_supply.py from
+                  the client's own GSTIN. Shown so a CA is not surprised, and
+                  honest about the one case where nobody can decide. */}
+              <p className={`mt-1 text-[10px] ${advancePos && !clientStateCode ? "text-amber-700" : "text-[#94A3B8]"}`}>
+                {!advancePos
+                  ? "Decides CGST+SGST against IGST."
+                  : clientStateCode
+                    ? (advancePos === clientStateCode
+                        ? "Intra-state — CGST + SGST."
+                        : "Inter-state — IGST.")
+                    : "This client has no state recorded, so whether the advance is "
+                      + "inter-state cannot be decided (IGST Act ss.7, 8) and Table 11A "
+                      + "will report it undeclared. Record the client's GSTIN or state."}
               </p>
             </div>
           </div>

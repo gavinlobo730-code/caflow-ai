@@ -69,9 +69,13 @@ from typing import Optional
 
 from core.validators import validate_pan
 
-UAN_RE = re.compile(r"^\d{12}$")
-# RBI's format: four letters (bank), '0' reserved, six alphanumerics (branch).
-IFSC_RE = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
+# ONE COPY, in domain/payroll/identity.py (PAY-30). Both patterns lived here
+# and again in ecr.py, and the API validated neither — so a UAN typed on the
+# form or sent over the API was stored unchecked and wedged the ECR months
+# later. Re-exported under their old names because this module's callers and
+# tests use them.
+from domain.payroll.identity import IFSC_RE, UAN_RE            # noqa: E402,F401
+
 AADHAAR_RE = re.compile(r"^\d{12}$")
 
 #: (column, whether the file must carry it). The header a CA is given.
@@ -98,6 +102,20 @@ COLUMNS: list[tuple[str, bool]] = [
     ("esi_applicable", False),
     ("pt_applicable", False),
     ("pt_state", False),
+    # BOTH DEFAULT TRUE AND BOTH USED TO BE UNSETTABLE (PAY-12 residual).
+    # Migration 295 added `eps_eligible` and 298 `gratuity_act_covered`, each
+    # `NOT NULL DEFAULT true` and each deliberately NOT derived — the EPS test
+    # is pay AT JOINING and the master holds pay today; the Gratuity Act test
+    # is headcount on the qualifying date and not today's. The columns were
+    # read at six sites and written by nothing, so the exception could not be
+    # recorded from anywhere in the product.
+    #
+    # An employer with a member GSR 609(E) excludes therefore diverted 8.33%
+    # to EPS on the ECR — a statutory return — and an employee outside the
+    # Gratuity Act had their §10(10) exemption computed on clause (ii)'s
+    # formula instead of clause (iii)'s, which is money paid.
+    ("eps_eligible", False),
+    ("gratuity_act_covered", False),
     ("bank_account_no", False),
     ("bank_ifsc", False),
     ("bank_name", False),
@@ -329,7 +347,13 @@ def validate(rows: list[dict], *, existing_by_code: dict) -> ImportResult:
         flags: dict[str, bool] = {}
         for column, field_name, default in (("pf_applicable", "pf_applicable", True),
                                             ("esi_applicable", "esi_applicable", True),
-                                            ("pt_applicable", "pt_applicable", False)):
+                                            ("pt_applicable", "pt_applicable", False),
+                                            # The DB default for both, so a
+                                            # file that omits the column means
+                                            # what it has always meant.
+                                            ("eps_eligible", "eps_eligible", True),
+                                            ("gratuity_act_covered",
+                                             "gratuity_act_covered", True)):
             value, err = _bool(row, column, default)
             if err:
                 problems.append(f"Row {n}: {err}")

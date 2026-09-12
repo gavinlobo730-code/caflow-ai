@@ -1349,7 +1349,21 @@ class Phase2JournalService:
                 return self._create_journal(
                     db=db, firm_id=firm_id, client_id=client_id,
                     entry_date=asset["purchase_date"],
-                    reference_no=f"FA-CAP-{asset.get('asset_code', asset['id'][:8])}{reference_suffix}",
+                    # `or`, NOT `dict.get`'s default. A default substitutes only
+                    # when the KEY IS ABSENT, and `asset_code` is a nullable
+                    # column — so a row carrying NULL produced the literal
+                    # reference "FA-CAP-None". Two consequences, and the second
+                    # is the serious one: the reversal paths in
+                    # routers/fixed_assets.py build the lookup with `or` and so
+                    # never found it; and "FA-DEPN-None-{period}" is the SAME
+                    # reference for every code-less asset of a client in that
+                    # month, which this kernel dedupes on
+                    # (client_id, reference_no, entry_date) — so the second
+                    # asset's charge silently never reached the GL while its
+                    # register row moved. Reachable only for rows predating
+                    # migration 351's code generator; fixed in all four places
+                    # because one spelling of a rule is how the other three drift.
+                    reference_no=f"FA-CAP-{(asset.get('asset_code') or asset['id'][:8])}{reference_suffix}",
                     narration=(f"Capitalised from purchase bill: {asset['asset_name']}"),
                     entry_type="Journal",
                     lines=[
@@ -1390,7 +1404,7 @@ class Phase2JournalService:
             return self._create_journal(
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=asset["purchase_date"],
-                reference_no=f"FA-ACQ-{asset.get('asset_code', asset['id'][:8])}{reference_suffix}",
+                reference_no=f"FA-ACQ-{(asset.get('asset_code') or asset['id'][:8])}{reference_suffix}",
                 narration=f"Asset acquisition: {asset['asset_name']}",
                 entry_type="Journal",
                 lines=lines,
@@ -1436,7 +1450,7 @@ class Phase2JournalService:
             return self._create_journal(
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=entry_date,
-                reference_no=f"FA-DEPN-{asset.get('asset_code', asset['id'][:8])}-{period}",
+                reference_no=f"FA-DEPN-{(asset.get('asset_code') or asset['id'][:8])}-{period}",
                 narration=f"Depreciation on {asset['asset_name']} for {period}",
                 entry_type="Journal",
                 lines=[
@@ -1524,7 +1538,7 @@ class Phase2JournalService:
             return self._create_journal(
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=asset.get("disposal_date", str(datetime.now(timezone.utc).date())),
-                reference_no=f"FA-DISP-{asset.get('asset_code', asset['id'][:8])}",
+                reference_no=f"FA-DISP-{(asset.get('asset_code') or asset['id'][:8])}",
                 narration=f"Asset disposal: {asset['asset_name']}",
                 entry_type="Journal",
                 lines=lines,

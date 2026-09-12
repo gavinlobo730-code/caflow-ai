@@ -59,9 +59,21 @@ from models.parties import VendorIn, VendorUpdateIn
 # The statements tds_deductions.return_type will accept — migration 014's CHECK.
 FILEABLE_STATEMENTS = {"24Q", "26Q", "27Q", "27EQ"}
 
-# The one registry key a VENDOR may never carry. Not a list of exclusions: it
-# is the only entry section_rates.py's own docstring calls a sentinel.
-VENDOR_INELIGIBLE = {SECTION_192_SALARY}
+# The registry keys a VENDOR may never carry. There were two reasons to be in
+# this set and only one of them was known:
+#
+#   §192 is the SENTINEL the registry docstring names — present, rateable at
+#   0%, and therefore silent rather than merely missing.
+#
+#   §206C is not a deduction at all. It is tax COLLECTED by a seller from a
+#   buyer, reported on Form 27EQ, and its registry entry says in its own
+#   comment that it is "reference data only". Nothing refused it until
+#   12-09-2026, and the supplier screen's section dropdown is served straight
+#   from the registry — so a vendor could be marked §206C and every bill from
+#   them withheld 0.1% of the whole amount (the entry's threshold is ZERO) and
+#   was stamped 26Q by return_type_for, which routes on residency and never
+#   sees the section.
+VENDOR_INELIGIBLE = {SECTION_192_SALARY, "206C"}
 
 FYS = ("2025-26", "2026-27")
 
@@ -83,17 +95,126 @@ def test_every_registry_section_a_vendor_may_carry_is_accepted(fy):
         VendorIn(client_id="c", name="V", tds_applicable=True, tds_section=section)
 
 
+#: Sections the Act charges that are NOT reported on a quarterly statement,
+#: and the form each actually goes on. Rule 31A(4A): each is a
+#: challan-cum-statement filed within thirty days of the month end, by a
+#: deductor with no TAN.
+#:
+#: `return_type_for` routes on RESIDENCY and never sees the section, so a
+#: registry row for any of these would be stamped 26Q — a value migration
+#: 014's CHECK accepts and which is simply the wrong return. That is the one
+#: failure a CHECK cannot catch, and it is why the refusal lives at the vendor
+#: master instead.
+NOT_A_QUARTERLY_STATEMENT = {
+    "194IA": "26QB", "194-IA": "26QB",
+    "194IB": "26QC", "194-IB": "26QC",
+    "194M": "26QD",
+}
+
+#: And the one that is not a DEDUCTION at all. §206C is tax COLLECTED by a
+#: seller from a buyer, reported on 27EQ. It sits in the registry as reference
+#: data — its own comment says so — and a vendor may never carry it.
+NOT_A_DEDUCTION = {"206C"}
+
+
 @pytest.mark.parametrize("fy", FYS)
 def test_every_registry_section_resolves_to_a_fileable_statement(fy):
     """A section the engine can rate but cannot FILE is the trap that adding
-    s.194IA would spring. Walk the registry: every key must produce a
-    statement tds_deductions.return_type accepts, for both residencies."""
-    for section in sorted(_vendor_eligible(fy)):
-        for residency in ("resident", "non_resident", None):
-            statement = return_type_for(residency)
-            assert statement in FILEABLE_STATEMENTS, (
-                f"{section} on a {residency} payee routes to {statement!r}, "
-                f"which migration 014's CHECK does not accept")
+    s.194IA would spring.
+
+    THIS TEST COULD NOT FAIL, AND THAT IS WHY IT IS REWRITTEN. It looped over
+    the registry and then called `return_type_for(residency)` — whose signature
+    is `return_type_for(residential_status)` and which never sees `section` at
+    all. Every iteration asserted the same thing about the same two constants,
+    so the property in the docstring was not being tested by the body: a
+    §194-IA row WOULD have routed to "26Q", "26Q" IS in FILEABLE_STATEMENTS,
+    and the test would have passed while reporting a property deduction on a
+    statement it does not belong on. The trap was caught only incidentally, by
+    the hardcoded list two tests below.
+
+    The routing rule is still asserted — it is true and worth pinning — but it
+    is stated as what it is, a fact about RESIDENCY, and the section-level trap
+    is asked separately and directly below.
+    """
+    for residency in ("resident", "non_resident", None):
+        statement = return_type_for(residency)
+        assert statement in FILEABLE_STATEMENTS, (
+            f"a {residency} payee routes to {statement!r}, which migration "
+            f"014's CHECK does not accept")
+    # And the routing genuinely ignores the section, which is the premise the
+    # test below rests on. If this ever stops being true, that test is the one
+    # to revisit rather than delete.
+    import inspect
+    assert "section" not in inspect.signature(return_type_for).parameters
+
+
+@pytest.mark.parametrize("fy", FYS)
+def test_no_registry_section_would_be_stamped_the_wrong_statement(fy):
+    """The property the test above claimed to check, asked of the SECTION.
+
+    `return_type_for` cannot tell a §194-IA row from a §194J one, so the only
+    thing standing between a mis-routed return and a CA is that these sections
+    are not in the registry a vendor picks from. Assert that directly.
+    """
+    registry = set(tds_rates_for(fy).sections)
+    property_sections = registry & set(NOT_A_QUARTERLY_STATEMENT)
+    assert not property_sections, (
+        "these are in the registry and are NOT reported on a quarterly "
+        "statement — Rule 31A(4A) puts each on its own challan-cum-statement, "
+        "and return_type_for would stamp them 26Q, which the CHECK accepts: "
+        + ", ".join(f"{s} belongs on {NOT_A_QUARTERLY_STATEMENT[s]}"
+                    for s in sorted(property_sections)))
+
+
+@pytest.mark.parametrize("fy", FYS)
+def test_a_section_that_is_not_a_deduction_cannot_be_put_on_a_vendor(fy):
+    """§206C, and the hole it was.
+
+    TCS is COLLECTED by a seller from a buyer and reported on 27EQ. Its
+    registry entry is reference data — the entry's own comment says "do not
+    assume TCS is an implemented feature because a rate exists here" — but
+    nothing refused it at the vendor master, and the supplier screen's section
+    dropdown is served straight from the registry.
+
+    So a CA could mark a vendor §206C, and then every bill from that vendor
+    withheld 0.1% of the WHOLE amount — the entry's threshold is zero, so it
+    fires on the first rupee — and the row was stamped 26Q. Three things wrong
+    at once: nothing to collect on a bill you are paying, the wrong return, and
+    no TCS path to compute it.
+    """
+    for section in sorted(NOT_A_DEDUCTION):
+        if section not in tds_rates_for(fy).sections:
+            continue                       # not held: nothing to refuse
+        message = deduction_section_refusal(section, fy)
+        assert message, (
+            f"{section} is in the registry and a vendor can be marked with it. "
+            "It is not a deduction — it is collected by a seller from a buyer "
+            "and reported on 27EQ.")
+        assert "27EQ" in message, "the CA must be told where TCS actually goes"
+        with pytest.raises(Exception):
+            VendorIn(client_id="c", name="V", tds_applicable=True,
+                     tds_section=section)
+
+
+@pytest.mark.parametrize("fy", FYS)
+def test_the_section_list_a_screen_is_served_offers_only_what_the_save_accepts(fy):
+    """A dropdown whose options the save refuses is a dead control, and
+    §206C's was worse than dead — nothing refused it, so the option worked and
+    produced a wrong deduction on the wrong return.
+
+    Decided by the endpoint from `deduction_section_refusal`, so the screen
+    cannot keep its own exclusion list and drift from it.
+    """
+    from routers.tds import list_tds_sections
+    served = list_tds_sections(
+        fy=fy, user={"id": "u", "firm_id": "F", "role": "Partner"})["data"]
+    for row in served["sections"]:
+        assert row["vendor_eligible"] == (
+            deduction_section_refusal(row["section"], fy) is None), row["section"]
+    offered = {r["section"] for r in served["sections"] if r["vendor_eligible"]}
+    assert SECTION_192_SALARY not in offered
+    assert NOT_A_DEDUCTION.isdisjoint(offered)
+    assert "194J" in offered, "the ordinary sections must still be offered"
 
 
 @pytest.mark.parametrize("fy", FYS)

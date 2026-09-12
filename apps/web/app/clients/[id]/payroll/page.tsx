@@ -273,7 +273,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [form, setForm] = useState({ name: "", employee_code: "", date_of_birth: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+  const [form, setForm] = useState({ name: "", employee_code: "", date_of_birth: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false, pt_state: "" });
   const [aadhaarError, setAadhaarError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -363,6 +363,13 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
       setSaveError("HRA % must be a plain percentage, e.g. 40 or 40.5 — without commas.");
       return;
     }
+    if (form.pt_applicable && !form.pt_state.trim()) {
+      setSaveError("Professional tax is ticked but no state is set. Professional "
+                   + "tax is levied by the state (Article 276), so without one "
+                   + "nothing is withheld and nothing can be — set the state, or "
+                   + "untick PT.");
+      return;
+    }
     setSaveError(null);
     setSaving(true);
     try {
@@ -377,6 +384,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
           // date. Both columns mean "unknown" when NULL.
           employee_code: rest.employee_code?.trim() || undefined,
           date_of_birth: rest.date_of_birth || undefined,
+          pt_state: rest.pt_state?.trim() || undefined,
           aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
           basic_paise: basic,
           hra_percent: hraBps / 100,
@@ -392,7 +400,7 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
       }
       await load();
       setShowAdd(false);
-      setForm({ name: "", employee_code: "", date_of_birth: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false });
+      setForm({ name: "", employee_code: "", date_of_birth: "", aadhaar: "", designation: "", department: "", basic_paise: "", hra_percent: "40", pf_applicable: true, esi_applicable: true, pt_applicable: false, pt_state: "" });
     } catch {
       // Replaces a .catch(() => null) on the request alone, which left the
       // reload after it unguarded.
@@ -474,6 +482,32 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
               </label>
             ))}
           </div>
+          {/* PROFESSIONAL TAX IS LEVIED BY THE STATE (Article 276), so the tick
+              on its own withholds nothing (PAY-05). This form had the checkbox
+              and no state field at all, so a CA could mark an employee liable
+              and every month deduct ₹0 — no gap raised, nothing on the payslip
+              — while the employer stayed liable for what was not deducted.
+              Which states are modelled, and which are a named gap, is the
+              server's answer (domain/payroll/professional_tax.py); the run's
+              statutory_gaps say so per employee. */}
+          {form.pt_applicable && (
+            <div>
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
+                Professional tax state <span className="text-red-500">*</span>
+              </label>
+              <input
+                value={form.pt_state}
+                onChange={e => setForm(f => ({ ...f, pt_state: e.target.value.toUpperCase().slice(0, 2) }))}
+                placeholder="e.g. MH"
+                aria-label="Professional tax state"
+                className="w-28 px-3 py-1.5 text-[12px] uppercase border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                The two-letter state code whose professional tax law applies. Required
+                once PT is ticked — without it nothing is withheld and nothing can be.
+              </p>
+            </div>
+          )}
           {saveError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{saveError}</p>}
           <div className="flex gap-2">
             <button onClick={addEmployee} disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-[12px] rounded-lg hover:bg-blue-700 disabled:opacity-50">

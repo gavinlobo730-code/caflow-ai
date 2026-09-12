@@ -12,7 +12,9 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from core.permissions import rbac
 from core.authz import assert_client_access
-from domain.tds import TDSComputer, TDSDeducteeRecord
+from domain.tds import TDSComputer
+from domain.tds import deductor as tds_deductor
+from core.observability import capture_soft_failure
 from domain.tds.section_rates import tds_rates_for
 from domain.tds.tds_computer import is_company_pan, has_pan as pan_on_file
 from repositories.tds_repository import tds_repo
@@ -42,67 +44,58 @@ computer = TDSComputer()
 
 # ── Request / Response Models ─────────────────────────────────────────────────
 
-class DeducteeInput(BaseModel):
-    deductee_name: str
-    deductee_pan: str
-    section: str
-    nature_of_payment: str
-    payment_date: str
-    payment_amount_paise: int = Field(gt=0)
-    tds_rate_pct: float
-    tds_deducted_paise: int = Field(ge=0)
-    tds_deposited_paise: int = Field(ge=0)
-    challan_no: str
-    bsr_code: str
-    challan_date: str
-    is_lower_deduction: bool = False
-    lower_deduction_cert: Optional[str] = None
-
-
-class ChallanInput(BaseModel):
-    challan_no: str
-    bsr_code: str
-    payment_date: str
-    tds_paise: int
-    surcharge_paise: int = 0
-    interest_paise: int = 0
-    total_paise: int
-    bank_name: Optional[str] = None
-    section: Optional[str] = None
-
-
-class Compute26QRequest(BaseModel):
-    client_id: str
-    tan: str
-    deductor_name: str
-    deductor_pan: str
-    deductor_address: str
-    financial_year: FYLabel
-    quarter: str
-    deductees: list[DeducteeInput]
-    challans: list[ChallanInput] = []
-
-
-class Compute24QRequest(BaseModel):
-    client_id: str
-    tan: str
-    deductor_name: str
-    deductor_pan: str
-    deductor_address: str
-    financial_year: FYLabel
-    quarter: str
-    deductees: list[DeducteeInput]
-    challans: list[ChallanInput] = []
+# Compute26QRequest / Compute24QRequest AND THEIR TWO ENDPOINTS ARE GONE.
+#
+# `POST /26q/compute` and `POST /24q/compute` took a whole deductee list, a
+# challan list AND a deductor block from the caller, ran the engine over them
+# and handed back a statement. That is the API-level shape of the defect this
+# tranche closes at the screen: the only caller was
+# `apps/web/app/tds/returns/page.tsx`, which read `tds_deductions` and
+# `tds_challans` over PostgREST, mapped them into rows here, stamped every
+# row's `tds_deposited_paise` with the amount DEDUCTED (so the engine's own
+# shortfall check could not fire — TDS-29), and invented a TAN because it had
+# nowhere to read one from.
+#
+# Every legitimate build now comes from the posted books, where the deductees
+# are derived, the deposited column is filled from the challans that actually
+# exist (`domain/tds/challan_mapping.py`), and the deductor is read and refused
+# by name (`domain/tds/deductor.py`). An endpoint that trusts caller-supplied
+# deductee rows is the hole still open behind that, so it goes with the screen
+# rather than being left uncalled — the codebase's own rule, stated in
+# `apps/web/scripts/tds-is-computed-by-the-engine-not-the-browser.test.ts`:
+# delete the helper, do not just stop calling it.
+#
+# `TDSComputer.compute_26q` / `.compute_24q` — the DOMAIN methods — stay and
+# are unchanged. They are what the from-books services call.
 
 
 class FromBooksRequest(BaseModel):
+    """A quarter to build, and optionally who to build it for.
+
+    THE DEDUCTOR BLOCK IS NO LONGER REQUIRED, AND THAT CLOSES A HOLE.
+        These four were mandatory because there was nowhere to read them
+        from — which is what migration 325's own header says it was created
+        to end. Nothing then read it, so `apps/web/app/tds/returns/page.tsx`
+        went on inventing them: `const tan = "MUMB00000A"`, `deductor_pan:
+        "AAAAA0000A"`, `deductor_address: "Address not configured"`. Both
+        literals are the right SHAPE, so every validator passed and the
+        return saved clean under a TAN belonging to nobody.
+
+        Omitted now means "read it from the books" — `client_statutory_
+        identity.tan`, the client's own PAN, legal name and postal address —
+        and a value that is neither supplied nor recorded is REFUSED by name
+        (`domain/tds/deductor.py`), never defaulted. A caller that supplies
+        the block still wins, because the per-client compute form has always
+        offered it and a client whose registrations are not yet recorded has
+        no other way to compute a quarter.
+    """
     client_id: str
     financial_year: FYLabel = Field(..., description="e.g. 2025-26")
     quarter: str = Field(..., description="Q1, Q2, Q3, Q4")
-    tan: str
-    deductor_name: str
-    deductor_pan: str
-    deductor_address: str
+    tan: Optional[str] = None
+    deductor_name: Optional[str] = None
+    deductor_pan: Optional[str] = None
+    deductor_address: Optional[str] = None
 
 
 class TDSAmountRequest(BaseModel):
@@ -126,164 +119,48 @@ class TDSAmountRequest(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("/26q/compute")
-def compute_26q(req: Compute26QRequest, user: dict = Depends(rbac("tds", "compute"))):
-    """
-    Compute Form 26Q (non-salary TDS) return structure.
-    IT Act Section 194 series.
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    """
-    assert_client_access(user, req.client_id)
-    records = [
-        TDSDeducteeRecord(
-            deductee_name=d.deductee_name,
-            deductee_pan=d.deductee_pan,
-            section=d.section,
-            nature_of_payment=d.nature_of_payment,
-            payment_date=d.payment_date,
-            payment_amount_paise=d.payment_amount_paise,
-            tds_rate_pct=d.tds_rate_pct,
-            tds_deducted_paise=d.tds_deducted_paise,
-            tds_deposited_paise=d.tds_deposited_paise,
-            challan_no=d.challan_no,
-            bsr_code=d.bsr_code,
-            challan_date=d.challan_date,
-            is_lower_deduction=d.is_lower_deduction,
-            lower_deduction_cert=d.lower_deduction_cert,
-        )
-        for d in req.deductees
-    ]
+def _deductor_for(db, firm_id: str, req: "FromBooksRequest") -> tds_deductor.Deductor:
+    """Who this statement is filed under — from the request, else from the books.
 
-    challans_list = [c.model_dump() for c in req.challans]
+    REFUSES rather than substituting. A TDS statement carries the deductor's
+    TAN, name, PAN and address; a blank or invented one files the quarter
+    against no account, and the deductees get no credit for tax that was
+    actually withheld from them. `domain/tds/deductor.py` holds the rule and
+    the CA-facing sentences.
 
-    payload = computer.compute_26q(
-        tan=req.tan,
-        deductor_name=req.deductor_name,
-        deductor_pan=req.deductor_pan,
-        deductor_address=req.deductor_address,
-        financial_year=req.financial_year,
-        quarter=req.quarter,
-        deductees=records,
-        challans=challans_list,
+    The read is best-effort in the sense that a FAILED read produces gaps
+    rather than an exception — the caller then sees "no TAN recorded", which
+    is the safe direction. It is never treated as "the identifiers are fine".
+    """
+    identity: dict = {}
+    client: dict = {}
+    if db is not None:
+        try:
+            identity = (db.table("client_statutory_identity")
+                        .select("tan")
+                        .eq("firm_id", firm_id).eq("client_id", req.client_id)
+                        .maybe_single().execute().data) or {}
+        except Exception as exc:                                   # noqa: BLE001
+            capture_soft_failure(exc, operation="tds_deductor_identity_read",
+                                 client_id=req.client_id)
+        try:
+            client = (db.table("clients")
+                      .select("client_name, legal_name, pan, address_line1, "
+                              "address_line2, city, state, pincode")
+                      .eq("firm_id", firm_id).eq("id", req.client_id)
+                      .maybe_single().execute().data) or {}
+        except Exception as exc:                                   # noqa: BLE001
+            capture_soft_failure(exc, operation="tds_deductor_client_read",
+                                 client_id=req.client_id)
+    block, codes = tds_deductor.resolve(
+        identity, client,
+        tan=req.tan, name=req.deductor_name,
+        pan=req.deductor_pan, address=req.deductor_address,
     )
-
-    return {
-        "success": True,
-        "data": {
-            # Form 140 from FY 2026-27; still the 1961-Act name for an earlier
-            # period, including a belated or revised one. See
-            # domain/tds/vocabulary.py — this is a fork, not a migration.
-            "form": tds_vocabulary.statement_form(
-                tds_vocabulary.RESIDENT_NON_SALARY, fy_label=payload.financial_year),
-            "tan": payload.tan,
-            "deductor_name": payload.deductor_name,
-            "financial_year": payload.financial_year,
-            "quarter": payload.quarter,
-            "quarter_end_date": payload.quarter_end_date,
-            "total_payment_paise": payload.total_payment_paise,
-            "total_tds_deducted_paise": payload.total_tds_deducted_paise,
-            "total_tds_deposited_paise": payload.total_tds_deposited_paise,
-            "deductee_count": len(payload.deductees),
-            "deductees": [
-                {
-                    "deductee_name": d.deductee_name,
-                    "deductee_pan": d.deductee_pan,
-                    "section": d.section,
-                    "nature_of_payment": d.nature_of_payment,
-                    "payment_date": d.payment_date,
-                    "payment_amount_paise": d.payment_amount_paise,
-                    "tds_rate_pct": d.tds_rate_pct,
-                    "tds_deducted_paise": d.tds_deducted_paise,
-                    "tds_deposited_paise": d.tds_deposited_paise,
-                    "challan_no": d.challan_no,
-                    "bsr_code": d.bsr_code,
-                    "challan_date": d.challan_date,
-                    "is_lower_deduction": d.is_lower_deduction,
-                }
-                for d in payload.deductees
-            ],
-            "challans": payload.challans,
-            "validation_errors": payload.validation_errors,
-            "warnings": payload.warnings,
-        },
-        "error": None,
-    }
-
-
-@router.post("/24q/compute")
-def compute_24q(req: Compute24QRequest, user: dict = Depends(rbac("tds", "compute"))):
-    """
-    Compute Form 24Q (salary TDS) return structure.
-    IT Act Section 192.
-    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    """
-    assert_client_access(user, req.client_id)
-    records = [
-        TDSDeducteeRecord(
-            deductee_name=d.deductee_name,
-            deductee_pan=d.deductee_pan,
-            section=d.section,
-            nature_of_payment=d.nature_of_payment,
-            payment_date=d.payment_date,
-            payment_amount_paise=d.payment_amount_paise,
-            tds_rate_pct=d.tds_rate_pct,
-            tds_deducted_paise=d.tds_deducted_paise,
-            tds_deposited_paise=d.tds_deposited_paise,
-            challan_no=d.challan_no,
-            bsr_code=d.bsr_code,
-            challan_date=d.challan_date,
-        )
-        for d in req.deductees
-    ]
-
-    challans_list = [c.model_dump() for c in req.challans]
-
-    payload = computer.compute_24q(
-        tan=req.tan,
-        deductor_name=req.deductor_name,
-        deductor_pan=req.deductor_pan,
-        deductor_address=req.deductor_address,
-        financial_year=req.financial_year,
-        quarter=req.quarter,
-        deductees=records,
-        challans=challans_list,
-    )
-
-    return {
-        "success": True,
-        "data": {
-            # Form 138 from FY 2026-27; still the 1961-Act name for an earlier
-            # period, including a belated or revised one. See
-            # domain/tds/vocabulary.py — this is a fork, not a migration.
-            "form": tds_vocabulary.statement_form(
-                tds_vocabulary.SALARY, fy_label=payload.financial_year),
-            "tan": payload.tan,
-            "deductor_name": payload.deductor_name,
-            "financial_year": payload.financial_year,
-            "quarter": payload.quarter,
-            "quarter_end_date": payload.quarter_end_date,
-            "total_salary_paise": payload.total_salary_paise,
-            "total_tds_deducted_paise": payload.total_tds_deducted_paise,
-            "total_tds_deposited_paise": payload.total_tds_deposited_paise,
-            "deductee_count": len(payload.deductees),
-            "deductees": [
-                {
-                    "deductee_name": d.deductee_name,
-                    "deductee_pan": d.deductee_pan,
-                    "section": d.section,
-                    "payment_amount_paise": d.payment_amount_paise,
-                    "tds_deducted_paise": d.tds_deducted_paise,
-                    "tds_deposited_paise": d.tds_deposited_paise,
-                    "challan_no": d.challan_no,
-                }
-                for d in payload.deductees
-            ],
-            "challans": payload.challans,
-            "validation_errors": payload.validation_errors,
-            "warnings": payload.warnings,
-        },
-        "error": None,
-    }
+    if block is None:
+        raise HTTPException(status_code=422,
+                            detail=tds_deductor.refusal_detail(codes))
+    return block
 
 
 @router.post("/26q/from-books")
@@ -299,10 +176,11 @@ def compute_26q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds
     assert_client_access(user, req.client_id)
     db = get_supabase()
     firm_id = user["firm_id"]
+    who = _deductor_for(db, firm_id, req)
     try:
         data = tds_26q_from_books(
             db, firm_id, req.client_id, req.financial_year, req.quarter,
-            req.tan, req.deductor_name, req.deductor_pan, req.deductor_address,
+            who.tan, who.name, who.pan, who.address,
         )
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
@@ -328,10 +206,11 @@ def compute_27q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds
     assert_client_access(user, req.client_id)
     db = get_supabase()
     firm_id = user["firm_id"]
+    who = _deductor_for(db, firm_id, req)
     try:
         data = tds_27q_from_books(
             db, firm_id, req.client_id, req.financial_year, req.quarter,
-            req.tan, req.deductor_name, req.deductor_pan, req.deductor_address,
+            who.tan, who.name, who.pan, who.address,
         )
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
@@ -351,10 +230,11 @@ def compute_24q_from_books(req: FromBooksRequest, user: dict = Depends(rbac("tds
     assert_client_access(user, req.client_id)
     db = get_supabase()
     firm_id = user["firm_id"]
+    who = _deductor_for(db, firm_id, req)
     try:
         data = tds_24q_from_books(
             db, firm_id, req.client_id, req.financial_year, req.quarter,
-            req.tan, req.deductor_name, req.deductor_pan, req.deductor_address,
+            who.tan, who.name, who.pan, who.address,
         )
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
@@ -402,6 +282,7 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
     """List all TDS sections with thresholds and rates for the given FY
     (defaults to the current FY)."""
     from domain.tds.lower_deduction import SECTIONS_197
+    from domain.tds.residency import deduction_section_refusal
     rates = tds_rates_for(fy)
     sections = [
         {
@@ -418,6 +299,21 @@ def list_tds_sections(fy: OptionalFYLabel = None, user: dict = Depends(rbac("tds
             # names for the vendor master. Both facts are decided here, where
             # the registry and the statute both live.
             "section_197_eligible": sec in SECTIONS_197,
+            # AND WHETHER A VENDOR MAY CARRY IT AT ALL.
+            #
+            # This list is the supplier screen's section dropdown, served
+            # straight from the registry — so it offered §192 and §206C, both
+            # of which `residency.deduction_section_refusal` rejects at the
+            # save. A dropdown whose options the save refuses is a dead
+            # control, and §206C's was worse than dead: nothing refused it
+            # until now, so picking it withheld 0.1% of every rupee (its
+            # threshold is zero) and stamped the row 26Q, which is not where
+            # TCS is reported.
+            #
+            # Decided HERE, from the one function that decides it, rather than
+            # by the screen keeping its own exclusion list — which is how the
+            # Schedule III caption list drifted in both directions at once.
+            "vendor_eligible": deduction_section_refusal(sec) is None,
         }
         for sec, rule in rates.sections.items()
     ]

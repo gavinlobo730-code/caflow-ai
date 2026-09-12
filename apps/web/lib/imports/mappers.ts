@@ -611,6 +611,8 @@ export const EMPLOYEE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "esi_applicable", label: "ESI Applicable", required: false, hint: "yes / no (default yes)" },
   { key: "pt_applicable", label: "PT Applicable", required: false, hint: "yes / no (default no)" },
   { key: "pt_state", label: "PT State", required: false, hint: "Two-letter state code, e.g. MH" },
+  { key: "eps_eligible", label: "EPS 1995 Member", required: false, hint: "yes / no (default yes) — no only where GSR 609(E) excludes them: first joined EPF on or after 01-09-2014 with pay above the wage ceiling. It decides whether 8.33% is diverted to EPS on the ECR" },
+  { key: "gratuity_act_covered", label: "Gratuity Act Applies", required: false, hint: "yes / no (default yes) — Payment of Gratuity Act 1972 §1(3). It decides which limb of IT Act §10(10) exempts a leaver's gratuity" },
   { key: "bank_account_no", label: "Bank Account No", required: false, hint: "For the salary advice" },
   { key: "bank_ifsc", label: "Bank IFSC", required: false, hint: "e.g. HDFC0001234" },
   { key: "bank_name", label: "Bank Name", required: false },

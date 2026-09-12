@@ -58,6 +58,30 @@ from dataclasses import dataclass
 
 TAN_RE = re.compile(r"^[A-Z]{4}[0-9]{5}[A-Z]$")
 
+#: The two EMPLOYEE identifiers whose shape is settled, kept here so there is
+#: one copy (PAY-30).
+#:
+#: Both already existed twice — `domain/payroll/employee_import.py` refused a
+#: whole file on either, and `domain/payroll/ecr.py` refuses a member at file
+#: build. What had no check at all was the API: `EmployeeIn(uan="NOTANUMBER",
+#: bank_ifsc="bad")` was accepted and stored, so a UAN typed on the form or
+#: sent over the API wedged the ECR months later, at the moment the CA is
+#: trying to file, with the employee's name and no way to see it coming.
+#:
+#: UAN is 12 digits — EPFO's own format. IFSC is RBI's: four letters for the
+#: bank, '0' reserved, six alphanumerics for the branch.
+UAN_RE = re.compile(r"^\d{12}$")
+IFSC_RE = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
+
+#: THE ESIC INSURANCE NUMBER IS DELIBERATELY NOT HERE, and that is a decision
+#: rather than an omission. Nothing in this codebase validates its format
+#: anywhere: `domain/payroll/exceptions.py` checks PRESENCE and stops, and no
+#: length or pattern for it is confirmable from any source in this repository.
+#: A regex written from memory at the create door would refuse legitimate
+#: numbers for every client — the wrong direction of error, and the same
+#: judgement this module already makes about the EPF establishment code, the
+#: ESIC employer code and the LIN. Presence stays presence.
+
 #: The four entity-level identifiers, in the order a Setup screen asks for them,
 #: with the label a CA would recognise and what it is used for.
 ENTITY_FIELDS: tuple[tuple[str, str, str], ...] = (

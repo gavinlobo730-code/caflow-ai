@@ -23,8 +23,7 @@ import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import {
-  getTDSDeductions, getTDSChallans,
-  compute26Q, compute24Q, approveTDSReturn, markTDSFiled,
+  computeReturnFromBooks, approveTDSReturn, markTDSFiled,
   saveTDSReturn, downloadTDSJSON, currentFinancialYear, currentQuarter,
   type TDSReturnPayload, type TDSReturnStatus, type TDSQuarter, type TDSReturnType,
 } from "@/lib/data/tds";
@@ -99,72 +98,40 @@ export default function TDSReturnsPage() {
     setError(null);
   }, [clientId]);
 
+  // THE SERVER BUILDS THE RETURN, FROM THE POSTED BOOKS.
+  //
+  // This function used to read `tds_deductions` and `tds_challans` over
+  // PostgREST, map them into deductee rows here, and post the result to
+  // `/compute` — a pure function over whatever the browser chose to send.
+  // Three defects lived in that, none of them visible on screen:
+  //
+  //   * every deductee went out with `tds_deposited_paise` set to the amount
+  //     DEDUCTED, so `total_deducted − total_deposited` was zero by
+  //     construction and the engine's own shortfall check could never fire
+  //     (TDS-29). §201(1A) charges 1.5% a month from the date of deduction on
+  //     exactly that difference, and the screen reported every quarter as
+  //     fully deposited;
+  //   * the deductor block had to come from somewhere and there was nowhere,
+  //     so it was invented — `const tan = "MUMB00000A"`, `deductor_pan:
+  //     "AAAAA0000A"`. Both are the right shape, so every validator passed and
+  //     the return saved clean under a TAN belonging to nobody;
+  //   * `saveTDSReturn` upserted `tds_returns` from the browser, so `rbac()`
+  //     never ran, and it wrote the Act's form number ("140" from FY 2026-27)
+  //     into a routing column whose CHECK accepts only 24Q/26Q/27Q/27EQ.
+  //
+  // All three are the server's job now. The deductor identity is read from
+  // `client_statutory_identity` (migration 325) and REFUSED by name when it
+  // is not recorded — the refusal text is what this screen shows.
   async function handleCompute() {
     if (!clientId) { setError("Select a client"); return; }
     setLoading(true); setError(null); setResult(null);
     try {
-      // Fetch raw deductions and challans from Supabase
-      const deductions = await getTDSDeductions(clientId, financialYear, quarter);
-      const challans = await getTDSChallans(clientId, financialYear, quarter);
-
-      if (deductions.length === 0) {
-        setError("No TDS deductions found for this period. Add deductions from the TDS Deductions tab.");
-        return;
-      }
-
-      // Build deductee records
-      const deductees = deductions.map(d => ({
-        deductee_name: String(d.deductee_name ?? d.party_name ?? ""),
-        deductee_pan: String(d.deductee_pan ?? d.party_pan ?? "PANNOTAVBL"),
-        section: String(d.section ?? ""),
-        nature_of_payment: String(d.nature_of_payment ?? ""),
-        payment_date: String(d.transaction_date ?? d.payment_date ?? ""),
-        payment_amount_paise: Number(d.payment_amount_paise ?? d.taxable_amount_paise ?? 0),
-        tds_rate_pct: Number(d.tds_rate_pct ?? d.tds_rate ?? 0),
-        tds_deducted_paise: Number(d.tds_paise ?? 0),
-        tds_deposited_paise: Number(d.tds_paise ?? 0),
-        challan_no: String(d.challan_no ?? ""),
-        bsr_code: String(d.bsr_code ?? ""),
-        challan_date: String(d.challan_date ?? d.transaction_date ?? ""),
-        is_lower_deduction: Boolean(d.is_lower_deduction ?? false),
-      }));
-
-      const challanRecords = challans.map(c => ({
-        challan_no: String(c.challan_no ?? ""),
-        bsr_code: String(c.bsr_code ?? ""),
-        payment_date: String(c.payment_date ?? ""),
-        tds_paise: Number(c.tds_paise ?? 0),
-        surcharge_paise: Number(c.surcharge_paise ?? 0),
-        interest_paise: Number(c.interest_paise ?? 0),
-        total_paise: Number(c.total_paise ?? c.tds_paise ?? 0),
-        bank_name: String(c.bank_name ?? ""),
-        section: String(c.section ?? ""),
-      }));
-
-      // Fetch TAN from client's compliance data (best-effort)
-      const tan = "MUMB00000A"; // placeholder — must be configured per client
-      const deductorName = clients.find(c => c.id === clientId)?.client_name ?? "";
-
-      const req = {
+      const payload = await computeReturnFromBooks(returnType, {
         client_id: clientId,
-        tan,
-        deductor_name: deductorName,
-        deductor_pan: "AAAAA0000A",
-        deductor_address: "Address not configured",
         financial_year: financialYear,
         quarter,
-        deductees,
-        challans: challanRecords,
-      };
-
-      let payload: TDSReturnPayload;
-      if (returnType === "24Q") {
-        payload = await compute24Q(req);
-      } else {
-        payload = await compute26Q(req);
-      }
-
-      const rid = await saveTDSReturn(clientId, payload, "prepared");
+      });
+      const rid = await saveTDSReturn(clientId, returnType, payload);
       setResult(payload);
       setReturnId(rid);
       setFilingStatus("prepared");
@@ -214,7 +181,7 @@ export default function TDSReturnsPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/tds" className="text-[#94A3B8] hover:text-[#475569] text-sm">← TDS</Link>
-        <h1 className="text-xl font-bold text-[#0F172A]">TDS Returns — 24Q / 26Q</h1>
+        <h1 className="text-xl font-bold text-[#0F172A]">TDS Returns — 24Q / 26Q / 27Q</h1>
       </div>
 
       {/* CA Review Banner */}
@@ -242,10 +209,19 @@ export default function TDSReturnsPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">Return Type</label>
+            {/* 27Q IS OFFERED BECAUSE IT IS BUILT (TDS-09). Rule 31A(4) routes
+                a deduction by the PAYEE's residency, and the non-resident
+                statement has had a from-books builder since Phase 4 —
+                `services/tds_return_service.tds_27q_from_books`. 26Q excludes
+                those payments BY NAME, so a firm whose only screen offered
+                24Q and 26Q had no way to reach the statement they belong on
+                and rebuilt it by hand from the deduction list.
+                27EQ (TCS) is deliberately absent: nothing builds it. */}
             <select value={returnType} onChange={e => setReturnType(e.target.value as TDSReturnType)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
-              <option value="26Q">26Q — Non-salary (194 series)</option>
+              <option value="26Q">26Q — Non-salary, resident (194 series)</option>
               <option value="24Q">24Q — Salary (192)</option>
+              <option value="27Q">27Q — Non-resident (195 and the like)</option>
             </select>
           </div>
           <div>
@@ -357,12 +333,83 @@ export default function TDSReturnsPage() {
                       <p className="text-lg font-bold text-[#0F172A]">{result.deductee_count}</p>
                     </div>
                   </div>
+                  {/* §201(1A) — THE SHORTFALL THAT COULD NOT APPEAR BEFORE.
+                      The browser used to send every deductee out with
+                      `tds_deposited_paise` equal to the amount DEDUCTED, so
+                      this difference was zero by construction and the screen
+                      told the CA every quarter was fully deposited. The server
+                      fills the deposited column from the challans that
+                      actually exist, FIFO (domain/tds/challan_mapping.py), so
+                      a real shortfall now shows — and it carries interest at
+                      1.5% a month from the date of DEDUCTION, not from the
+                      due date. */}
+                  {result.total_tds_deducted_paise > result.total_tds_deposited_paise && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                      <p className="text-sm font-semibold text-red-700">
+                        {r(result.total_tds_deducted_paise - result.total_tds_deposited_paise)} deducted
+                        and not yet matched to a challan
+                      </p>
+                      <p className="text-xs text-red-600 mt-1">
+                        IT Act §201(1A) charges interest at 1.5% for every month or part of a
+                        month from the date of deduction until the tax is paid. Deposit it, or
+                        record the challan, before filing the quarter.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* WHAT THE CHALLAN MAPPING COULD NOT SETTLE — not a
+                      validation error, and deliberately not shown as one: the
+                      return is assembled and its figures are right. A deductee
+                      with no challan is a 26AS entry that reads 'U'. */}
+                  {(result.challan_gaps?.length ?? 0) > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-1">
+                      <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+                        Challan matching — {result.challan_gaps!.length} unresolved
+                      </p>
+                      {result.challan_gaps!.map((g, i) => (
+                        <p key={i} className="text-xs text-amber-700">• {g}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 26Q excludes non-resident payments BY NAME (Rule 31A(4)(b)).
+                      Saying so, with the amount, is what stops a CA reading a
+                      smaller total as a quiet drop. 27Q is in the dropdown. */}
+                  {(result.excluded_non_resident?.bill_count ?? 0) > 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                      <p className="text-xs text-blue-800">
+                        <strong>{r(result.excluded_non_resident!.tds_paise)}</strong> across{" "}
+                        {result.excluded_non_resident!.bill_count} document(s) is not on this
+                        return. {result.excluded_non_resident!.reason}
+                      </p>
+                    </div>
+                  )}
+
                   <div className="text-xs text-[#64748B] space-y-1">
-                    <p>Form: <strong>{result.form}</strong></p>
+                    <p>Form: <strong>{result.form}</strong>{result.act ? ` (${result.act})` : ""}</p>
                     <p>TAN: <strong className="font-mono">{result.tan}</strong></p>
                     <p>Period: <strong>{result.financial_year} — {result.quarter} (ends {result.quarter_end_date})</strong></p>
                     <p>Deductor: <strong>{result.deductor_name}</strong></p>
+                    {result.source && <p>Built from: <strong>{result.source.replace(/_/g, " ")}</strong></p>}
+                    {result.reconciliation && (
+                      <p>
+                        Ledger tie-up:{" "}
+                        <strong className={result.reconciliation.matched ? "text-green-700" : "text-amber-700"}>
+                          {!result.reconciliation.account_found
+                            ? "the TDS Payable control account was not found"
+                            : result.reconciliation.matched
+                            ? "books agree with the general ledger"
+                            : `books and ledger differ by ${r(Math.abs(result.reconciliation.difference_paise))}`}
+                        </strong>
+                      </p>
+                    )}
                   </div>
+
+                  {(result.statutory_gaps?.length ?? 0) > 0 && (
+                    <div className="text-xs text-[#64748B] space-y-1 border-t border-[#F1F5F9] pt-3">
+                      {result.statutory_gaps!.map((g, i) => <p key={i}>• {g}</p>)}
+                    </div>
+                  )}
                 </div>
               )}
 

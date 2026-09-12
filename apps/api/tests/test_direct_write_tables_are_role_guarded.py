@@ -264,14 +264,30 @@ def test_the_old_windowed_scan_could_not_see_a_long_write():
     some shorter READ chain elsewhere in the file, which is why it looked
     accounted for rather than missing.
 
-    Measured against the real file, and against the LONGEST browser write that
-    exists rather than a named one. It used to point at app/tds/page.tsx's
-    tds_deductions insert (464 characters); Phase 3b deleted that insert, which
-    is what the screen rewrite was for, and this test correctly failed rather
-    than passing on a premise that had gone. Picking the longest write each time
-    is the version of the assertion that survives the next such fix.
+    Measured against the real tree, and against a browser write that ACTUALLY
+    ESCAPES the old cap, rather than a named one.
+
+    It has now gone stale twice, and the second time is why the rule below is
+    what it is. It first pointed at app/tds/page.tsx's tds_deductions insert
+    (464 characters); Phase 3b deleted that insert, which is what the screen
+    rewrite was for, and the test correctly failed rather than passing on a
+    premise that had gone. It was re-pointed at "the LONGEST write anywhere",
+    and that held until lib/data/tds.ts's tds_returns upsert was deleted too —
+    at which point the longest became mca_filings at 624 characters, which the
+    old regex CAN see, because that table also appears in a SHORT write chain
+    elsewhere in the same file and `old_writes` is a set of tables.
+
+    So "longest" was never the property. The property is "a write whose
+    statement runs past the old cap AND which the old scan therefore misses" —
+    six of those exist today, `loans` at 559 characters being the longest. Ask
+    for that directly, and the test survives any of them being fixed until
+    none is left, which is the state its own failure message describes.
     """
-    longest = None
+    old_chain = re.compile(
+        r'\.from\("([a-z_]+)"\)((?:[^;]|\n){0,400}?)(?=\.from\("|;|\Z)', re.S)
+
+    hidden = []   # (length, table, path, verb offset) — seen by the new scan only
+    any_write = False
     for path in WEB.rglob("*.ts*"):
         if set(path.parts) & {"node_modules", ".next", "out", ".vercel"}:
             continue
@@ -279,35 +295,35 @@ def test_the_old_windowed_scan_could_not_see_a_long_write():
             src = _strip_comments(path.read_text(encoding="utf-8"))
         except (UnicodeDecodeError, OSError):                 # pragma: no cover
             continue
+        # PER FILE, because both scans answer per file: a table counts as seen
+        # by the old regex if ANY chain in the file matched with a write verb,
+        # which is exactly how the four originals looked accounted for.
+        old_writes = {t for t, tail in old_chain.findall(src) if _WRITE.search(tail)}
+        new_writes = {t for t, tail in _chains(src) if _WRITE.search(tail)}
         for table, tail in _chains(src):
             m = _WRITE.search(tail)
-            if m and (longest is None or len(tail) > longest[0]):
-                longest = (len(tail), table, path, src, m.start())
+            if not m:
+                continue
+            any_write = True
+            if (table not in old_writes and table in new_writes
+                    and m.start() < 400 < len(tail)):
+                hidden.append((len(tail), table, path, m.start()))
 
-    assert longest, "no browser writes found at all — the scan is broken"
-    length, table, path, src, verb_at = longest
-    assert length > 400, (
-        f"the longest browser write is now only {length} characters "
-        f"({table} in {path.name}) — every write fits inside the old 400-char "
-        "cap, so this test no longer measures anything. That is a GOOD state; "
-        "delete this test rather than weakening it.")
+    assert any_write, "no browser writes found at all — the scan is broken"
+    assert hidden, (
+        "every browser write is now visible to the old 400-character scan, so "
+        "this test no longer measures anything. That is a GOOD state; delete "
+        "this test rather than weakening it.")
 
-    old_chain = re.compile(
-        r'\.from\("([a-z_]+)"\)((?:[^;]|\n){0,400}?)(?=\.from\("|;|\Z)', re.S)
-    old_writes = {t for t, tail in old_chain.findall(src) if _WRITE.search(tail)}
-    new_writes = {t for t, tail in _chains(src) if _WRITE.search(tail)}
-
-    assert table not in old_writes, (
-        f"the old regex now sees {table}'s {length}-character write — it should "
-        "not be able to reach the statement's ';' within 400 characters")
-    assert table in new_writes, "the statement-bounded scan must see it"
-
+    length, table, path, verb_at = max(hidden)
     # ...and it is the LENGTH that hid it, not the table or the verb: the write
-    # verb itself sits well inside the old cap.
+    # verb itself sits well inside the old cap, so a scan that stopped at the
+    # verb would have found it and a scan that had to reach the ';' did not.
     assert verb_at < 400 < length, (
-        f"the write verb is {verb_at} characters in — inside the old 400-char "
-        f"cap — but the statement runs {length} characters to its ';', and that "
-        "is what the old pattern had to consume before it could match")
+        f"{table} in {path.name}: the write verb is {verb_at} characters in — "
+        f"inside the old 400-char cap — but the statement runs {length} "
+        "characters to its ';', and that is what the old pattern had to "
+        "consume before it could match")
 
 
 def test_the_tds_tier_matches_the_endpoints_it_mirrors():

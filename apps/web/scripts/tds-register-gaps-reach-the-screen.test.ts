@@ -78,6 +78,42 @@ test("the sentences are the server's, not the browser's", () => {
     "the browser must not restate the rule it is reporting");
 });
 
+test("the gap the register raises can actually be answered", () => {
+  // TDS-25, and the reason it belongs in THIS file. Making the gaps reach the
+  // CA (PUR-14) made the product tell them, on every foreign remittance, to
+  // record a Form 15CA acknowledgement — and `grep -i 15ca` across apps/web
+  // then found no input and no display anywhere. A refusal a user cannot act
+  // on is worse than a silent one: it is a dead end with the CA's name on it.
+  //
+  // The panel is on the BILL, because 15CA is per remittance under Rule 37BB —
+  // a vendor paid four times in a year needs four of them.
+  const editor = fs.readFileSync(
+    path.join(WEB, "components/purchases/PurchaseBillEditor.tsx"), "utf8");
+  for (const field of ["form_15ca_ack_no", "form_15ca_filed_on", "form_15cb_udin"]) {
+    assert.ok(editor.includes(field),
+      `${field} is not sent by the bill editor — the register asks for it on ` +
+      "every §195 bill and nothing can supply it");
+  }
+  // Shown on the SERVER's answer about the section, not on a browser reading
+  // of the vendor's residency: the same preview that computes the tax decides
+  // it, so the panel and the deduction cannot disagree about who the payee is.
+  assert.match(editor, /tds\.data\?\.tds_section === "195"/,
+    "the panel must key on the server's resolved section");
+  // And the panel is INPUTS ONLY. 15CA is filed on incometax.gov.in under the
+  // remitter's own login; a control here that appeared to do it would be the
+  // credential-capture surface scripts/no-screen-takes-a-portal-credential
+  // exists to forbid, whatever it was labelled. Checked as "no button in the
+  // panel" rather than by forbidding a WORD — the panel's own copy has to say
+  // "file on incometax.gov.in", which is the instruction, not an offer.
+  const panelStart = editor.indexOf("Foreign remittance — Form 15CA");
+  assert.ok(panelStart > 0, "the panel is gone");
+  const panel = editor.slice(panelStart, editor.indexOf("</section>", panelStart));
+  assert.doesNotMatch(panel, /<button|onClick=/,
+    "the Rule 37BB panel takes values and does nothing with them. A control " +
+    "here that appeared to file the 15CA would be a portal-submission " +
+    "surface whatever it was labelled.");
+});
+
 test("a failed register sync is the loudest case, not a silent one", () => {
   // _sync_tds_register deliberately never raises: a bill that received and
   // posted its journal correctly must not be rolled back because its register

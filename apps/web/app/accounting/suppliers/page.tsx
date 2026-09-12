@@ -186,12 +186,27 @@ export default function SuppliersPage() {
     setForm(f => ({ ...f, tds_section: val, tds_rate_percent: sec ? String(sec.rate_individual_pct) : "" }));
   }
 
+  // ONLY THE SECTIONS A VENDOR MAY ACTUALLY CARRY.
+  //
+  // This list came straight from the registry, so it offered §192 and §206C —
+  // both of which `domain/tds/residency.deduction_section_refusal` rejects at
+  // the save. §192's refusal at least existed; §206C's did not, so picking it
+  // withheld 0.1% of every rupee of every bill from that vendor (the section
+  // carries no threshold) and stamped the row 26Q, which is not where TCS is
+  // reported. TCS is collected by a SELLER from a BUYER: on a bill you are
+  // paying there is nothing to collect at all.
+  //
+  // The server decides it (`vendor_eligible`), not this file. `?? true` is the
+  // fallback for the window where the frontend has redeployed ahead of the
+  // backend — the same `??` rule the Schedule III captions follow.
   const sectionOptions = [
     NONE_OPTION,
-    ...tdsSections.map(s => ({
-      value: s.section,
-      label: SECTION_LABELS[s.section] ? `${s.section} — ${SECTION_LABELS[s.section]}` : s.section,
-    })),
+    ...tdsSections
+      .filter(s => s.vendor_eligible ?? true)
+      .map(s => ({
+        value: s.section,
+        label: SECTION_LABELS[s.section] ? `${s.section} — ${SECTION_LABELS[s.section]}` : s.section,
+      })),
     OTHER_OPTION,
   ];
 

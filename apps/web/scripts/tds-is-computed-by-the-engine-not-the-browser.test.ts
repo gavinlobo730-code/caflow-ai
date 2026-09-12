@@ -170,31 +170,68 @@ test("a TDS period is a financial year AND a quarter, never one of them", () => 
   // the year in financial_year and CHECK quarter IN ('Q1'..'Q4'). Migration 347
   // normalises the register onto the schema's own vocabulary; these are the
   // reads that have to speak it.
-  const src = code(path.join(WEB, "lib/data/tds.ts"));
-
-  // Anything that filters a TDS table by quarter must filter by year too — a
-  // Q3 filter alone collects every Q3 the client has ever had.
-  // PER EXPORTED FUNCTION, not per statement and not per fixed window. Both
-  // readers build the query in pieces —
-  //     let q = sb.from("tds_challans")…;
-  //     if (financialYear) q = q.eq("financial_year", financialYear);
-  //     if (quarter)       q = q.eq("quarter", quarter);
-  // — so the filters are in different STATEMENTS from the .from(), and a scan
-  // that stopped at the first `;` would find no quarter filter and pass
-  // vacuously. That is the same blind spot the backend's direct-write scan had
-  // with its 400-character cap, and it is worth not repeating.
-  const fns = src.split(/\nexport /).map(f => "export " + f);
-  for (const table of ["tds_deductions", "tds_challans"]) {
-    const readers = fns.filter(f => f.includes(`.from("${table}")`));
-    assert.ok(readers.length > 0, `${table} is no longer read here — re-point this test`);
-    for (const fn of readers) {
-      if (!/\.eq\("quarter"/.test(fn)) continue;
-      assert.match(
-        fn, /\.eq\("financial_year"/,
-        `${table} is filtered by quarter and not by financial_year, so a Q3 ` +
-        "return reconciles against every Q3 the client has ever filed",
-      );
+  //
+  // RE-POINTED, AND THE SCAN WIDENED. This used to read `lib/data/tds.ts`
+  // alone and assert that both tables were still read from it. They are not:
+  // `getTDSDeductions` and `getTDSChallans` existed only to feed the
+  // browser-side return assembly, and both went with it — which is a STRONGER
+  // outcome than the property this guarded, so the old assertion firing was
+  // the guard doing its job. But four readers survive on two other screens,
+  // and the original scan never saw them. It does now.
+  const readers: { file: string; chain: string }[] = [];
+  for (const file of walk(WEB)) {
+    const src = code(file);
+    for (const table of ["tds_deductions", "tds_challans"]) {
+      const marker = `.from("${table}")`;
+      let at = src.indexOf(marker);
+      while (at !== -1) {
+        // The chain as written, up to the statement's end.
+        let chain = src.slice(at, at + Math.max(0, src.indexOf(";", at) - at) || undefined);
+        // AND the piecewise form, which is the one that hid the bug:
+        //     let q = sb.from("tds_challans")…;
+        //     if (financialYear) q = q.eq("financial_year", financialYear);
+        //     if (quarter)       q = q.eq("quarter", quarter);
+        // The filters are in different STATEMENTS from the .from(), so a scan
+        // that stopped at the first `;` would find no quarter filter and pass
+        // vacuously — the same blind spot the backend's direct-write scan had
+        // with its 400-character cap.
+        const assigned = /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=[^;]*$/
+          .exec(src.slice(Math.max(0, at - 200), at));
+        if (assigned) {
+          const name = assigned[1];
+          const rest = src.slice(at, at + 2000);
+          for (const line of rest.split("\n")) {
+            if (new RegExp(`\\b${name}\\s*=\\s*${name}\\s*\\.`).test(line)) chain += line;
+          }
+        }
+        readers.push({ file: path.relative(WEB, file), chain });
+        at = src.indexOf(marker, at + 1);
+      }
     }
+  }
+
+  for (const { file, chain } of readers) {
+    if (!/\.eq\("quarter"/.test(chain)) continue;
+    assert.match(
+      chain, /\.eq\("financial_year"/,
+      `${file}: a TDS table is filtered by quarter and not by financial_year, ` +
+      "so a Q3 return reconciles against every Q3 the client has ever filed",
+    );
+  }
+
+  // The stronger property that replaced the old assertion: the data layer no
+  // longer reads either table at all. A reader here is one import away from
+  // being the return assembly again — it is what those two functions were.
+  const layer = code(path.join(WEB, "lib/data/tds.ts"));
+  for (const table of ["tds_deductions", "tds_challans"]) {
+    assert.doesNotMatch(
+      layer, new RegExp(`\\.from\\("${table}"\\)`),
+      `lib/data/tds.ts reads ${table} from the browser again. The quarter's ` +
+      "statement is built server-side from the posted books " +
+      "(/api/tds/{26q,24q,27q}/from-books) — assembling it here is what set " +
+      "every deductee's deposited amount to its deducted amount (TDS-29) and " +
+      "what made an invented TAN necessary.",
+    );
   }
 
   // And the screen must send the bare quarter, not a label. "Q1 (Apr-Jun)" was
@@ -203,6 +240,30 @@ test("a TDS period is a financial year AND a quarter, never one of them", () => 
   assert.match(page, /QUARTERS(?::\s*TDSQuarter\[\])?\s*=\s*\["Q1",\s*"Q2",\s*"Q3",\s*"Q4"\]/,
     "the quarter sent to the API must be Q1..Q4 — the label belongs in " +
     "QUARTER_LABELS, which is what it is for");
+});
+
+test("the section dropdown offers only what the save will accept", () => {
+  // §206C is TCS — collected by a SELLER from a BUYER and reported on Form
+  // 27EQ. It sits in the rate registry as reference data, and
+  // `GET /api/tds/sections` serves the registry, so the supplier screen
+  // offered it. Nothing refused it, so a CA could mark a vendor §206C and
+  // every bill from that vendor withheld 0.1% of the WHOLE amount — the
+  // entry's threshold is zero, so it fires on the first rupee — with the row
+  // stamped 26Q by `return_type_for`, which routes on residency and never
+  // sees the section. On a bill you are PAYING there is nothing to collect at
+  // all.
+  //
+  // The server decides eligibility (`vendor_eligible`, from the one function
+  // `domain/tds/residency.deduction_section_refusal`). What is pinned here is
+  // that the screen ASKS — a browser-side exclusion list is how the Schedule
+  // III captions drifted in both directions at once.
+  const page = code(path.join(WEB, "app/accounting/suppliers/page.tsx"));
+  assert.match(page, /vendor_eligible/,
+    "the supplier screen must filter its TDS section list on the server's " +
+    "own vendor_eligible flag");
+  assert.doesNotMatch(page, /"206C"|'206C'/,
+    "a browser-side exclusion list is a second place to decide this, and it " +
+    "will drift from the first");
 });
 
 test("the purchase-bill editor asks the server what this bill withholds", () => {

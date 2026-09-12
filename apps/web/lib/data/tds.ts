@@ -51,32 +51,34 @@ export interface TDSChallan {
   section?: string;
 }
 
-export interface Compute26QRequest {
-  client_id: string;
-  tan: string;
-  deductor_name: string;
-  deductor_pan: string;
-  deductor_address: string;
-  financial_year: string;
-  quarter: TDSQuarter;
-  deductees: TDSDeductee[];
-  challans?: TDSChallan[];
-}
-
-export interface Compute24QRequest {
-  client_id: string;
-  tan: string;
-  deductor_name: string;
-  deductor_pan: string;
-  deductor_address: string;
-  financial_year: string;
-  quarter: TDSQuarter;
-  deductees: TDSDeductee[];
-  challans?: TDSChallan[];
-}
+/* Compute26QRequest / Compute24QRequest AND THEIR TWO CALLERS ARE GONE.
+ *
+ * `/api/tds/26q/compute` and `/24q/compute` are pure functions over deductee
+ * rows the CALLER supplies, and the only caller was `/tds/returns`, which
+ * built those rows in the browser out of `tds_deductions` and `tds_challans`.
+ * That is the assembly TDS-03 was supposed to end and TDS-29 outlived: every
+ * row went out with `tds_deposited_paise = tds_deducted_paise`, so the
+ * engine's shortfall check could not fire, and the deductor block had to be
+ * invented because the browser had nowhere to read it from.
+ *
+ * `computeReturnFromBooks` below is the replacement and the endpoints stay —
+ * they have their own tests and their own reason to exist. What is deleted is
+ * the browser-side wrapper, because a dead wrapper for a deleted pattern is
+ * an invitation to rebuild it. */
 
 export interface TDSReturnPayload {
-  form: "24Q" | "26Q";
+  /** The form number for the PERIOD, not a routing key.
+   *
+   *  `"26Q"` up to 31-03-2026 and `"140"` from FY 2026-27 — CBDT Notification
+   *  22/2026 renumbered the statements and `domain/tds/vocabulary.py` is the
+   *  one place that knows it, so the API returns whichever the quarter's own
+   *  Act uses. This was typed `"24Q" | "26Q"`, which was a lie the compiler
+   *  could not catch (the value crosses the wire as JSON) and which read as
+   *  permission to store it: `saveTDSReturn` wrote it into
+   *  `tds_returns.return_type`, whose CHECK accepts only the four routing
+   *  keys, so from 1 April 2026 every save from this screen was rejected
+   *  (TDS-18). Display this; never store it. */
+  form: string;
   tan: string;
   deductor_name: string;
   financial_year: string;
@@ -91,6 +93,33 @@ export interface TDSReturnPayload {
   challans: TDSChallan[];
   validation_errors: string[];
   warnings: string[];
+  /** Present only on a from-books build (services/tds_return_service.py).
+   *  Optional so the same type serves both, and so a field the service adds
+   *  later cannot break the compile before anybody has decided to show it. */
+  act?: string;
+  source?: string;
+  statutory_gaps?: string[];
+  challan_gaps?: string[];
+  ca_review_required?: boolean;
+  reconciliation?: {
+    books_paise: number;
+    ledger_paise: number;
+    difference_paise: number;
+    matched: boolean;
+    account_found: boolean;
+  };
+  excluded_non_resident?: {
+    bill_count: number;
+    tds_paise: number;
+    reason: string;
+  };
+  period?: {
+    financial_year: string;
+    quarter: string;
+    start: string;
+    end: string;
+    due_date: string;
+  };
 }
 
 export interface TDSReturn {
@@ -119,19 +148,58 @@ export interface TDSReturn {
 // no Bearer header (the dev fallback applies only when SUPABASE_URL is unset).
 // So "Prepare a Return" could not compute anything in production — it threw
 // "26Q compute failed: Unauthorized" whatever the books held (TDS-03).
-export async function compute26Q(req: Compute26QRequest): Promise<TDSReturnPayload> {
-  const json = await authedFetch<TDSReturnPayload>("/api/tds/26q/compute", {
-    method: "POST", body: JSON.stringify(req),
+/** Build a quarter's statement FROM THE POSTED BOOKS, server-side.
+ *
+ *  THIS REPLACES ASSEMBLING IT IN THE BROWSER, and the difference is not
+ *  stylistic. `/tds/returns` used to read `tds_deductions` and `tds_challans`
+ *  over PostgREST, map them into deductee rows itself, and post the result to
+ *  `/compute` — a pure function over whatever the browser chose to send. Two
+ *  things followed from that and neither was visible on screen:
+ *
+ *    * every deductee was stamped `tds_deposited_paise = tds_paise`, so the
+ *      engine's own `deducted − deposited` shortfall check could not fire by
+ *      construction (TDS-29). The server fills the deposited column FIFO from
+ *      the challans that actually exist (domain/tds/challan_mapping.py), so a
+ *      quarter deducted and not deposited now says so — §201(1A) runs at 1.5%
+ *      a month from the date of deduction;
+ *    * the deductor block had to come from somewhere, and the browser had
+ *      nowhere to read it from, so it invented one.
+ *
+ *  The deductor block is deliberately NOT a parameter. The server reads the
+ *  TAN from `client_statutory_identity` (migration 325), the PAN, name and
+ *  address from the client, and REFUSES by name when a registration is not
+ *  recorded — see `domain/tds/deductor.py`. A screen that could pass one
+ *  could pass a wrong one.
+ *
+ *  Rule 31A(4) routes a deduction by the PAYEE's residency, so which of the
+ *  three statements to build is the CA's choice of what they are filing, not
+ *  something the browser infers from the books. */
+export async function computeReturnFromBooks(
+  returnType: TDSReturnType,
+  params: { client_id: string; financial_year: string; quarter: TDSQuarter },
+): Promise<TDSReturnPayload> {
+  const path = {
+    "24Q": "/api/tds/24q/from-books",
+    "27Q": "/api/tds/27q/from-books",
+    "26Q": "/api/tds/26q/from-books",
+  }[returnType as "24Q" | "27Q" | "26Q"];
+  if (!path) throw new Error(`No from-books builder for Form ${returnType}.`);
+  const json = await authedFetch<TDSReturnPayload>(path, {
+    method: "POST", body: JSON.stringify(params),
   });
-  if (!json.success) throw new Error(json.error ?? "26Q computation error");
-  return json.data;
-}
-
-export async function compute24Q(req: Compute24QRequest): Promise<TDSReturnPayload> {
-  const json = await authedFetch<TDSReturnPayload>("/api/tds/24q/compute", {
-    method: "POST", body: JSON.stringify(req),
-  });
-  if (!json.success) throw new Error(json.error ?? "24Q computation error");
+  if (!json.success) {
+    // A 422 from FastAPI is `{detail: "…"}`, not the `{success, data, error}`
+    // envelope, and `detail` is where the deductor refusal's sentences are —
+    // "This client has no TAN recorded…". Reading only `error` would replace
+    // the one thing the CA needs (which registration to go and record) with a
+    // generic failure, which is the shape of the defect this call replaced.
+    const detail = (json as unknown as { detail?: unknown }).detail;
+    throw new Error(
+      json.error
+      ?? (typeof detail === "string" ? detail : undefined)
+      ?? `Couldn't build Form ${returnType} from the books.`,
+    );
+  }
   return json.data;
 }
 
@@ -161,6 +229,20 @@ export interface TDSSection {
   aggregate_threshold_paise: number | null;
   rate_individual_pct: number;
   rate_company_pct: number;
+  /** Whether a VENDOR may be marked with this section.
+   *
+   *  Decided by `domain/tds/residency.deduction_section_refusal`, the one
+   *  function that decides it, and not by the screen keeping its own
+   *  exclusion list — which is how the Schedule III caption list drifted in
+   *  both directions at once.
+   *
+   *  False for §192 (salary; a bill would deduct nothing and say nothing) and
+   *  for §206C (TCS; collected by a seller from a buyer and reported on 27EQ,
+   *  so on a bill you are PAYING there is nothing to collect). Optional so a
+   *  frontend deployed ahead of the backend keeps working — `?? true` is the
+   *  behaviour that existed before the flag. */
+  vendor_eligible?: boolean;
+  section_197_eligible?: boolean;
 }
 
 export interface TDSAmountResult {
@@ -369,50 +451,14 @@ export async function getTDSReturns(clientId: string): Promise<TDSReturn[]> {
   return (data ?? []) as unknown as TDSReturn[];
 }
 
-export async function getTDSDeductions(
-  clientId: string,
-  financialYear?: string,
-  quarter?: string,
-): Promise<Record<string, unknown>[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  let q = sb
-    .from("tds_deductions")
-    .select("*")
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId);
-  if (financialYear) q = q.eq("financial_year", financialYear);
-  if (quarter) q = q.eq("quarter", quarter);
-  const { data, error } = await q.order("transaction_date", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as Record<string, unknown>[];
-}
-
-/** The quarter's deposits.
+/* getTDSDeductions / getTDSChallans ARE GONE TOO, for the same reason.
  *
- *  BOTH halves of the period, or neither. tds_challans holds financial_year
- *  and quarter separately (migration 037) and this filtered on the quarter
- *  alone, so a return for Q3 2026-27 also collected every Q3 challan the
- *  client had ever deposited — reconciling this year's deduction against last
- *  year's payment, and reporting a shortfall or a surplus that is not real. */
-export async function getTDSChallans(
-  clientId: string,
-  financialYear?: string,
-  quarter?: string,
-): Promise<Record<string, unknown>[]> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-  let q = sb
-    .from("tds_challans")
-    .select("*")
-    .eq("firm_id", firmId)
-    .eq("client_id", clientId);
-  if (financialYear) q = q.eq("financial_year", financialYear);
-  if (quarter) q = q.eq("quarter", quarter);
-  const { data, error } = await q.order("payment_date", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as Record<string, unknown>[];
-}
+ * Both read a table straight out of the browser over PostgREST, so `rbac()`
+ * never ran on either, and both existed only to feed the browser-side return
+ * assembly above. The from-books payload carries the deductees AND the
+ * challans the server actually matched, which is the figure the CA needs:
+ * what a challan list shows is what was DEPOSITED, and pairing it with a
+ * deduction is `domain/tds/challan_mapping.py`'s job, not a screen's. */
 
 /** Status transitions go through the backend (PATCH /returns/{id}/status)
  * rather than writing tds_returns directly from the browser — the backend
@@ -435,39 +481,55 @@ export async function markTDSFiled(returnId: string, prn: string, ackNumber: str
   if (!resp.success) throw new Error(resp.error ?? "Failed to mark as filed");
 }
 
+/** Save a computed statement — through the API, under the ROUTING KEY.
+ *
+ *  TWO THINGS WERE WRONG WITH THE VERSION THIS REPLACES.
+ *
+ *  It upserted `tds_returns` over PostgREST, so `rbac("tds","compute")` never
+ *  ran and neither did the backend's own period-lock check or its deductee-PAN
+ *  validation — the same shape as the GST "record as filed" write CLAUDE.md
+ *  records, where a filed return did not lock its period because the browser
+ *  wrote the row itself.
+ *
+ *  And it wrote `return_type: payload.form`. `form` is the number the
+ *  PERIOD's Act uses — `"140"` for a FY 2026-27 26Q — while `return_type` is
+ *  a routing column whose CHECK (migration 037) accepts only 24Q/26Q/27Q/27EQ.
+ *  So from 1 April 2026 every save from this screen was rejected by the
+ *  database and the CA saw "Failed to save TDS return" with no way to tell
+ *  why (TDS-18). The key is passed explicitly now, and `CreateReturnRequest`
+ *  constrains it to those four so a caller cannot reintroduce the confusion.
+ *
+ *  `status` is not sent: the endpoint creates at "pending" and the transition
+ *  to prepared / approved / filed goes through `/returns/{id}/status`, which
+ *  is where the PRN and acknowledgement are captured. */
 export async function saveTDSReturn(
   clientId: string,
+  returnType: TDSReturnType,
   payload: TDSReturnPayload,
-  status: TDSReturnStatus = "prepared",
 ): Promise<string> {
-  const sb = getSupabaseClient();
-  const firmId = await getFirmId();
-
-  const { data, error } = await sb
-    .from("tds_returns")
-    .upsert({
-      firm_id: firmId,
+  const resp = await authedFetch<{ id: string }>("/api/tds-workspace/returns", {
+    method: "POST",
+    body: JSON.stringify({
       client_id: clientId,
-      return_type: payload.form,
+      return_type: returnType,
+      quarter: payload.quarter,
       financial_year: payload.financial_year,
-      quarter: payload.quarter as TDSQuarter,
-      quarter_end: payload.quarter_end_date,
-      due_date: computeDueDate(payload.quarter, payload.financial_year),
+      deductee_details: payload.deductees,
       total_deductions_paise: payload.total_tds_deducted_paise,
       total_deposits_paise: payload.total_tds_deposited_paise,
       deductee_count: payload.deductee_count,
-      status,
-      fvu_json: payload,
       validation_errors: payload.validation_errors,
-      updated_at: new Date().toISOString(),
-    }, {
-      onConflict: "client_id,return_type,financial_year,quarter",
-    })
-    .select("id")
-    .single();
-
-  if (error || !data) throw new Error(error?.message ?? "Failed to save TDS return");
-  return data.id as string;
+    }),
+  });
+  if (!resp.success || !resp.data?.id) {
+    const detail = (resp as unknown as { detail?: unknown }).detail;
+    throw new Error(
+      resp.error
+      ?? (typeof detail === "string" ? detail : undefined)
+      ?? "Failed to save TDS return",
+    );
+  }
+  return resp.data.id;
 }
 
 export function downloadTDSJSON(payload: TDSReturnPayload): void {
@@ -482,17 +544,13 @@ export function downloadTDSJSON(payload: TDSReturnPayload): void {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Quarter due dates — 31 Jul, 31 Oct, 31 Jan, 31 May (CBDT circular) */
-function computeDueDate(quarter: string, fy: string): string {
-  const year = parseInt(fy.split("-")[0]);
-  const map: Record<string, string> = {
-    Q1: `${year}-07-31`,
-    Q2: `${year}-10-31`,
-    Q3: `${year + 1}-01-31`,
-    Q4: `${year + 1}-05-31`,
-  };
-  return map[quarter] ?? `${year + 1}-05-31`;
-}
+/* computeDueDate IS GONE — it was a statutory rule kept in the browser.
+ *
+ * Rule 31A(2)'s quarterly due dates live in
+ * `services/compliance_engine.tds_return_due_date`, which is the authority
+ * (CLAUDE.md), and `routers/tds_workspace.create_return` derives the stored
+ * `due_date` from it. This copy existed only because `saveTDSReturn` wrote
+ * the row itself; the row now comes from the server, which knows the rule. */
 
 export function currentFinancialYear(): string {
   return currentFinancialYearLabel();

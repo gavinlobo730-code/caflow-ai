@@ -144,6 +144,21 @@ GAP_27Q_IDENTIFIERS_MISSING = "non_resident_identifiers_missing"
 # reads Part II would stop the work rather than inform it — but a CA about to
 # pay a challan should be told the rate was reconciled and not verified.
 GAP_195_RATES_UNVERIFIED = "section_195_rates_not_verified"
+# The RESIDENT-SIDE twin, and it is the one that had no gap at all. Raised on
+# any deduction whose year `domain/tds/section_rates.TDS_RATES_BY_FY` does not
+# hold as verified — which includes every year BEFORE the registry starts, not
+# only the years after it.
+#
+# That direction is the dangerous one. `tds_rates_for` substitutes
+# LATEST_VERIFIED_TDS_FY for a year it does not have, and Finance Act 2025
+# RAISED most thresholds — so a bill entered late for FY 2024-25 is measured
+# against a bar the law had not yet lifted, and s.194J at Rs 40,000 comes back
+# nil where Rs 4,000 was due. Under-deduction disallows 30% of the expenditure
+# under s.40(a)(ia) and surfaces at assessment, long after the return.
+#
+# Not a refusal, for the same reason as the s.195 gap: a prior-year bill must
+# still be bookable. The gap is how the CA learns which figure to re-read.
+GAP_RESIDENT_RATES_UNVERIFIED = "resident_tds_rates_not_verified"
 # Nil was withheld on a no-PE declaration nobody dated or attributed. s.201(1)
 # makes a deductor who fails to deduct an assessee in default and s.201(1A)
 # charges interest, so the consequence of a wrong nil sits with the DEDUCTOR —
@@ -205,6 +220,14 @@ GAP_MESSAGES: dict[str, str] = {
         "s.115A and Part II of the First Schedule but have NOT been confirmed "
         "line by line against the Finance Act. Check the rate before paying the "
         "challan.",
+    GAP_RESIDENT_RATES_UNVERIFIED:
+        "The TDS rates and thresholds for this bill's financial year have not "
+        "been confirmed against that year's Finance Act — for a year the "
+        "registry does not hold at all, another year's figures were used. "
+        "Finance Act 2025 RAISED most thresholds, so an earlier year is likely "
+        "UNDER-deducted, and s.40(a)(ia) disallows 30% of the expenditure. "
+        "Check this deduction against that year's own rates before the quarter "
+        "is filed.",
     GAP_NO_PE_DECLARATION_UNDATED:
         "Nil was withheld on the payee having no permanent establishment in "
         "India, but the declaration has no date or nobody recorded who "
@@ -306,6 +329,35 @@ SECTION_192_SALARY = "192"
 #: s.194M later is a one-line change beside the reason rather than a new branch.
 _PROPERTY_SECTIONS = frozenset({"194IA", "194-IA", "194IB", "194-IB"})
 
+#: TCS, which is not a deduction and does not belong on a vendor.
+#:
+#: §206C is in the registry — its own comment says why, and says what it is:
+#: "reference data only; do not assume TCS is an implemented feature because a
+#: rate exists here". Nothing refused it at the vendor master, so a CA could
+#: pick it off the supplier screen's section list (which is served straight
+#: from the registry) and every bill from that vendor would withhold 0.1% of
+#: the whole amount — the entry's threshold is ZERO, so it fires on the first
+#: rupee — and the row would be stamped 26Q by `return_type_for`, which routes
+#: on residency and never sees the section.
+#:
+#: Three things are wrong with that at once, and they are the same three the
+#: docstring below already sets out for §194-IA:
+#:
+#:   * DIRECTION. §206C(1H) is collected BY A SELLER FROM A BUYER. A client
+#:     paying a vendor collects nothing; if the VENDOR collects TCS from our
+#:     client, it is the vendor's own liability and appears on the vendor's
+#:     27EQ, never on ours.
+#:   * STATEMENT. TCS is reported on 27EQ. `tds_deductions.return_type` CHECKs
+#:     ('24Q','26Q','27Q','27EQ'), so 26Q is accepted and simply wrong — the
+#:     one failure mode the CHECK cannot catch.
+#:   * NOTHING COMPUTES IT. The registry entry is unread by any TCS path;
+#:     there is no collection tracking and no 27EQ builder.
+#:
+#: Refused here rather than removed from the registry: the rate is real
+#: reference data and `domain/tds/vocabulary.py` maps 206C→394 for the 2026
+#: Act. What is refused is recording it against a payee.
+SECTION_206C_TCS = "206C"
+
 
 def deduction_section_refusal(section: Optional[str],
                               fy: Optional[str] = None) -> Optional[str]:
@@ -368,13 +420,26 @@ def deduction_section_refusal(section: Optional[str],
             "this vendor the section that fits what they actually supply."
         )
 
+    if code == SECTION_206C_TCS:
+        return (
+            "Section 206C is tax COLLECTED at source, and it cannot be "
+            "recorded against a vendor. It is collected by a seller from a "
+            "buyer and reported on Form 27EQ — so on a bill you are paying "
+            "there is nothing to collect, and a figure withheld here would be "
+            "0.1% of every rupee (the section carries no threshold) reported "
+            "on Form 26Q, which is not where TCS goes. If your client COLLECTS "
+            "tax on its sales, that is a separate obligation this software "
+            "does not yet compute."
+        )
+
     if code in tds_rates_for(fy).sections:
         return None
 
-    # s.192 is excluded from the suggestion for the same reason it is refused
-    # two branches above: offering it here would answer one refusal with
-    # another, on the one section whose failure is silent.
-    known = ", ".join(sorted(set(tds_rates_for(fy).sections) - {SECTION_192_SALARY}))
+    # s.192 and s.206C are excluded from the suggestion for the same reason
+    # they are refused above: offering either would answer one refusal with
+    # another. s.192's failure is silent and s.206C's is on the wrong return.
+    known = ", ".join(sorted(set(tds_rates_for(fy).sections)
+                             - {SECTION_192_SALARY, SECTION_206C_TCS}))
     why = (
         f"This software holds no rate or threshold for section {code}, so it "
         f"cannot work out what to withhold on a bill for this vendor. The "

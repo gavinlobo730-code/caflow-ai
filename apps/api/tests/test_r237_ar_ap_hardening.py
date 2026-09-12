@@ -16,7 +16,11 @@ Task #237 — AR/AP money-movement gaps round 3:
      ("paid" / unchanged) instead of the 3-way logic ("paid" / "partially_paid"
      / unchanged) its 3 sibling note types use.
   5. credit_notes.py's create_credit_note read the linked sales_invoice's
-     is_interstate with no firm_id filter — a cross-firm data leak.
+     is_interstate with no firm_id filter — a cross-firm data leak. The firm
+     filter landed here; the CLIENT filter did not, and SALES-30 is that
+     second half — one client's credit note could still read a sibling
+     client's invoice, which stopped being merely untidy when §34(2)'s
+     correction window began reading through the same select.
   6. FXRevaluationService._open_receivables/_open_payables didn't fold
      debit_note_paise/credit_note_paise into open FX exposure, understating
      the revaluation base for any invoice/bill with a note applied.
@@ -285,17 +289,47 @@ def test_create_credit_note_does_not_leak_interstate_from_other_firms_invoice(mo
         "is_interstate": True, "status": "issued", "deleted_at": None,
     })
 
-    result = cn.create_credit_note(cn.CreditNoteIn(
-        client_id="CLI-A", customer_id=cust["id"], credit_note_date="2026-06-01",
-        sales_invoice_id="FOREIGN-INV",
-        lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", rate_paise=100000,
-                             quantity=1, gst_rate_percent=18.0)],
-    ), CALLER)
-    assert result["success"] is True
-    # Must NOT have picked up the foreign firm's invoice's is_interstate=True —
-    # the lookup couldn't see it (firm-scoped), so it stays at the default.
-    assert result["data"]["is_interstate"] is False
-    assert result["data"]["cgst_paise"] > 0 and result["data"]["igst_paise"] == 0
+    # REFUSED OUTRIGHT SINCE SALES-30, where this used to succeed quietly with
+    # `is_interstate` left at its default. Silence was defensible while the
+    # lookup only supplied the tax split — the split is re-derived at issue, so
+    # a missed link failed safe. It stopped being defensible when §34(2)'s
+    # correction window began reading through the same select: measuring the
+    # window from an invoice that is not this client's produces a WARNING, and a
+    # warning computed off a stranger's date is one nothing downstream catches.
+    # A note that names an invoice the client does not have is a mis-pick, and
+    # saying so costs one correction.
+    with pytest.raises(HTTPException) as e:
+        cn.create_credit_note(cn.CreditNoteIn(
+            client_id="CLI-A", customer_id=cust["id"], credit_note_date="2026-06-01",
+            sales_invoice_id="FOREIGN-INV",
+            lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", rate_paise=100000,
+                                 quantity=1, gst_rate_percent=18.0)],
+        ), CALLER)
+    assert e.value.status_code == 422
+    assert "not part of this client" in e.value.detail
+
+
+def test_create_credit_note_refuses_another_CLIENT_of_the_same_firms_invoice(monkeypatch):
+    """SALES-30's actual hole. The firm filter was there all along; the CLIENT
+    filter was not, so one client's credit note could read a sibling client's
+    invoice — same firm, so the read succeeded, and the service-role key means
+    RLS was never going to catch it."""
+    si, pb, cn, dn, cu, ve, pp, db = _setup(monkeypatch)
+    cust = cu.create_customer(CustomerIn(client_id="CLI-A", name="Buyer", state_code="27"), CALLER)["data"]
+    db.seed("clients", {"id": "CLI-B", "firm_id": FIRM})
+    db.seed("client_sales_invoices", {
+        "id": "SIBLING-INV", "firm_id": FIRM, "client_id": "CLI-B",
+        "invoice_date": "2020-04-01", "is_interstate": True, "status": "issued",
+        "deleted_at": None,
+    })
+    with pytest.raises(HTTPException) as e:
+        cn.create_credit_note(cn.CreditNoteIn(
+            client_id="CLI-A", customer_id=cust["id"], credit_note_date="2026-06-01",
+            sales_invoice_id="SIBLING-INV",
+            lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="x", rate_paise=100000,
+                                 quantity=1, gst_rate_percent=18.0)],
+        ), CALLER)
+    assert e.value.status_code == 422
 
 
 # =============================================================================

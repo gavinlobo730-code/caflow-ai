@@ -1096,9 +1096,21 @@ def get_ledger_span(
         ids = effective_client_ids(current_user)
         scoped = None if ids is None else sorted(ids)
 
-    from core.supabase_client import get_supabase
+    # MOCK MODE HAS NO LEDGER TO SPAN, AND SAYING SO IS NOT THE SAME AS FAILING.
+    # Every other endpoint in this router goes through `_prod_db()`, which
+    # returns None without SUPABASE_URL; this one called `get_supabase()`
+    # directly, which RAISES "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be
+    # set" (ACC-26). The blast radius was small — `useLedgerSpan.ts` catches it
+    # and the period picker falls back to the financial year, and Render sets
+    # the variable so production never saw it — but a 500 that the browser has
+    # to swallow is not how this router answers "there is nothing here".
+    # An empty span is exactly what the fallback wants and what an empty ledger
+    # returns anyway.
+    db = _prod_db()
+    if db is None:
+        return api_response(True, {"first_entry_date": None, "last_entry_date": None})
     from services.ledger_span_service import ledger_span
-    return api_response(True, ledger_span(get_supabase(), current_user["firm_id"], scoped))
+    return api_response(True, ledger_span(db, current_user["firm_id"], scoped))
 
 
 @router.get("/profit-loss")

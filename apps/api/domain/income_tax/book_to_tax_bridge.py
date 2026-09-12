@@ -25,9 +25,22 @@ usually the largest single adjustment in the bridge:
     on the block's written-down value. Assets lose their identity inside the
     block; there is no per-asset life at all.
 
-They are not two rates for one calculation, they are two systems, and NOTHING
-IN THIS CODEBASE IMPLEMENTS THE SECOND ONE. So the §32 figure has to be
-supplied, and when it is not, this bridge says so and marks itself incomplete.
+They are not two rates for one calculation, they are two systems.
+
+**THE SECOND ONE IS NOW IMPLEMENTED, AND THIS PARAGRAPH USED TO SAY IT WAS
+NOT.** `domain/income_tax/section_32.py` computes block depreciation —
+§2(11)'s block definition, §43(6)(c)'s written-down value, the second proviso
+to §32(1)'s half-rate on an asset put to use for under 180 days — and
+`routers/income_tax.py`'s bridge endpoint FETCHES it and feeds it into this
+very module rather than asking the caller for it. The sentence stayed as
+written and was the module's central claim, which is the kind of prose that
+sends the next reader off to rebuild something that exists.
+
+What remains true is the refusal that follows from it. The §32 figure is still
+computed from `income_tax_asset_blocks`, which a human populates with each
+block's opening written-down value and rate: those come off last year's return,
+not out of this ledger. Where no block is recorded the bridge says so and marks
+itself incomplete.
 
 It would be trivial to default the §32 figure to the book figure. That is the
 one thing that must not happen: the two would net to zero, the bridge would

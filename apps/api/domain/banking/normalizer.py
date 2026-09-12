@@ -87,6 +87,24 @@ class NormalizedTxn:
     debit_paise: int
     credit_paise: int
     balance_paise: int
+    #: A row that carries a BALANCE and no movement — "Opening Balance",
+    #: "B/F", "Closing Balance". Banks print them among the transactions and
+    #: they parse perfectly, so they used to be stored as transactions with
+    #: zero on both legs (BANK-29): they cluttered every entries list, could
+    #: never be coded, and `bank_posting_service` refuses them at post time
+    #: with "Transaction has zero amount."
+    #:
+    #: MARKED RATHER THAN DROPPED, and the reason is `_opening_closing_balance`
+    #: in services/banking_service.py — it derives the statement's opening
+    #: balance from the earliest row's `balance_paise`, and on a statement that
+    #: prints an opening-balance row THAT ROW IS the opening balance. Dropping
+    #: it in the parser would move the derived opening forward by the first
+    #: transaction's own movement, which is a wrong number on the statement
+    #: header rather than a tidier list. So it survives the parse, the tie-out
+    #: and the header arithmetic (it contributes zero to both totals and leaves
+    #: the running-balance chain intact), and is filtered out at the last
+    #: moment, before the rows are written.
+    is_balance_marker: bool = False
 
 
 # ── Bank adapters — the ONLY place that knows bank-specific column layouts ─────
@@ -456,6 +474,14 @@ def _rows_to_txns(rows: list[list], header_idx: int,
             debit_paise=debit_paise,
             credit_paise=credit_paise,
             balance_paise=_to_paise(col("balance")),
+            # No movement on either leg. The amount/Dr-Cr branch above already
+            # `continue`s on this case; the two-column branch had no equivalent,
+            # which is why an "Opening Balance" line became a transaction. Not
+            # keyed on the DESCRIPTION — banks write it a dozen ways ("B/F",
+            # "Bal B/F", "OPENING BALANCE", the account name) and a label list
+            # is a list somebody has to keep adding to. Zero on both legs is the
+            # fact that matters and it is the same fact in every language.
+            is_balance_marker=(debit_paise == 0 and credit_paise == 0),
         ))
     return out
 

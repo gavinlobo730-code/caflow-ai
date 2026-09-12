@@ -12,7 +12,7 @@ import os
 import uuid
 import logging
 from datetime import date, datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
@@ -201,9 +201,33 @@ class UpdateDeductionRequest(BaseModel):
     notes: Optional[str] = None
 
 
+#: What `tds_returns.return_type` CHECKs (migration 037), and what this
+#: endpoint therefore accepts.
+#:
+#: IT WAS A BARE `str`, AND THE FORM NUMBER CHANGED UNDER IT (TDS-18).
+#:     `tds_vocabulary.statement_form` returns the number the period's own Act
+#:     uses — 26Q up to 31-03-2026 and **140** from FY 2026-27 (CBDT
+#:     Notification 22/2026) — and every compute endpoint returns that as its
+#:     `form`. A caller that wrote `form` into this field was writing a display
+#:     name into a ROUTING column: the browser-side save in
+#:     `apps/web/lib/data/tds.ts` did exactly that, so from 1 April 2026 the
+#:     insert hit the CHECK and the CA saw "Failed to save TDS return".
+#:
+#:     The routing key is the 1961-Act spelling permanently, on both sides of
+#:     the fork, because that is what the column stores and what
+#:     `residency.return_type_for` decides. The Act's own number is derived
+#:     from it for DISPLAY (`domain/tds/vocabulary.py` — translate at the
+#:     boundary, never rekey a store). A `Literal` here means a caller cannot
+#:     reintroduce the confusion silently; it is a 422 naming the four values.
+ReturnTypeKey = Literal["24Q", "26Q", "27Q", "27EQ"]
+
+
 class CreateReturnRequest(BaseModel):
     client_id: str
-    return_type: str = Field(..., description="24Q or 26Q")
+    return_type: ReturnTypeKey = Field(
+        ..., description="The routing key stored on the row — 24Q, 26Q, 27Q or "
+                         "27EQ. NOT the Act's form number, which is derived "
+                         "for display (Form 138/140/144/143 from FY 2026-27).")
     quarter: str
     financial_year: FYLabel
     deductee_details: list[dict] = Field(default_factory=list)

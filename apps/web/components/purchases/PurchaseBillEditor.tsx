@@ -121,6 +121,11 @@ export interface PurchaseBillDetail {
   status: string;
   notes?: string | null;
   document_url?: string | null;
+  // Rule 37BB, per REMITTANCE — a vendor paid four times in a year needs four
+  // Form 15CAs, which is why these are on the bill and not on the vendor.
+  form_15ca_ack_no?: string | null;
+  form_15ca_filed_on?: string | null;
+  form_15cb_udin?: string | null;
   txn_currency?: string | null;
   exchange_rate?: string | null;
   taxable_amount_paise?: number;
@@ -202,6 +207,17 @@ export function PurchaseBillEditor({
   });
   const [billNo, setBillNo] = useState(existing?.bill_no ?? "");
   const [ourReference, setOurReference] = useState(existing?.our_reference ?? "");
+  // THE RULE 37BB PAPERWORK, WHICH THE PLATFORM ASKED FOR AND COULD NOT TAKE
+  // (TDS-25). Migration 311 added all three columns, `routers/purchase_bills.py`
+  // accepts them on create AND on the soft-update allowlist (they are filed
+  // after the bill, so they must stay editable on a received one), and
+  // `tds_register_service` raises a gap on every §195 bill whose
+  // `form_15ca_ack_no` is blank. Since PUR-14 that gap REACHES the CA — so the
+  // product told them, on every foreign remittance, to record something no
+  // screen let them record.
+  const [form15caAckNo, setForm15caAckNo] = useState(existing?.form_15ca_ack_no ?? "");
+  const [form15caFiledOn, setForm15caFiledOn] = useState(existing?.form_15ca_filed_on ?? "");
+  const [form15cbUdin, setForm15cbUdin] = useState(existing?.form_15cb_udin ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? duplicateSeed?.notes ?? "");
   const [billDate, setBillDate] = useState(existing?.bill_date ?? today);
   const [dueDate, setDueDate] = useState(existing?.due_date ?? "");
@@ -315,13 +331,17 @@ export function PurchaseBillEditor({
     vendorId: existing?.vendor_id ?? "",
     billNo: existing?.bill_no ?? "",
     ourReference: existing?.our_reference ?? "",
+    form15caAckNo: existing?.form_15ca_ack_no ?? "",
+    form15caFiledOn: existing?.form_15ca_filed_on ?? "",
+    form15cbUdin: existing?.form_15cb_udin ?? "",
     notes: existing?.notes ?? "",
     billDate: existing?.bill_date ?? today,
     dueDate: existing?.due_date ?? "",
     isReverseCharge: existing?.is_reverse_charge ?? false,
     lines: initialLines, currency, exchangeRate,
   });
-  const currentSnapshot = { vendorId, billNo, ourReference, notes, billDate, dueDate, isReverseCharge, lines, currency, exchangeRate };
+  const currentSnapshot = { vendorId, billNo, ourReference, notes, billDate, dueDate, isReverseCharge, lines, currency, exchangeRate,
+    form15caAckNo, form15caFiledOn, form15cbUdin };
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
 
@@ -521,6 +541,13 @@ export function PurchaseBillEditor({
               our_reference: ourReference.trim() || undefined,
               notes: notes.trim() || undefined,
               document_url: documentUrl || undefined,
+              // Rule 37BB, and EDITABLE ON A RECEIVED BILL on purpose:
+              // Form 15CA is filed at the time of remittance, which is after
+              // the bill is booked. `_SOFT_BILL_UPDATE_FIELDS` allows all
+              // three for exactly that reason.
+              form_15ca_ack_no: form15caAckNo.trim() || undefined,
+              form_15ca_filed_on: form15caFiledOn || undefined,
+              form_15cb_udin: form15cbUdin.trim() || undefined,
             }
           : {
               bill_date: billDate,
@@ -530,6 +557,13 @@ export function PurchaseBillEditor({
               notes: notes.trim() || undefined,
               document_url: documentUrl || undefined,
               lines: linePayload,
+              // Rule 37BB, and EDITABLE ON A RECEIVED BILL on purpose:
+              // Form 15CA is filed at the time of remittance, which is after
+              // the bill is booked. `_SOFT_BILL_UPDATE_FIELDS` allows all
+              // three for exactly that reason.
+              form_15ca_ack_no: form15caAckNo.trim() || undefined,
+              form_15ca_filed_on: form15caFiledOn || undefined,
+              form_15cb_udin: form15cbUdin.trim() || undefined,
             };
         const upd = await apiCall(`/api/purchase-bills/${existing.id}`, "PATCH", patchPayload, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update bill");
@@ -550,6 +584,9 @@ export function PurchaseBillEditor({
             lines: linePayload,
             currency: isForeign ? currency : undefined,
             exchange_rate: isForeign ? exchangeRate : undefined,
+            form_15ca_ack_no: form15caAckNo.trim() || undefined,
+            form_15ca_filed_on: form15caFiledOn || undefined,
+            form_15cb_udin: form15cbUdin.trim() || undefined,
           },
           token,
         );
@@ -794,6 +831,72 @@ export function PurchaseBillEditor({
             </div>
           )}
         </section>
+
+        {/* ── Rule 37BB — the paperwork for a payment to a non-resident ──
+            Shown when the SERVER says this bill withholds under §195, not when
+            the browser guesses at the vendor's residency: the same preview
+            that computes the tax decides it, so the panel and the deduction
+            cannot disagree about who the payee is.
+
+            §195(6) with Rule 37BB requires Form 15CA for a remittance to a
+            non-resident, and Form 15CB — an accountant's certificate — for
+            most chargeable ones. `tds_register_service` raises a gap on every
+            §195 bill whose 15CA acknowledgement is blank, and since PUR-14
+            that gap reaches the CA: the product spent months telling them to
+            record something no screen let them record (TDS-25).
+
+            RECORDED HERE, NEVER FILED FROM HERE. 15CA is filed on
+            incometax.gov.in under the remitter's own login; this is where the
+            acknowledgement goes afterwards. CLAUDE.md: never auto-submit. */}
+        {tds.data?.tds_section === "195" && (
+          <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+            <h2 className="text-xs font-semibold text-[#334155]">
+              Foreign remittance — Form 15CA / 15CB (IT Act §195(6), Rule 37BB)
+            </h2>
+            <p className="mt-1 text-[10px] text-[#94A3B8]">
+              File on incometax.gov.in under the remitter&apos;s login, then record
+              the acknowledgement here. Nothing on this page is submitted to any
+              portal. These three can still be edited after the bill is received,
+              because the remittance happens later.
+            </p>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">
+                  Form 15CA acknowledgement no.
+                </label>
+                <input value={form15caAckNo} onChange={(e) => setForm15caAckNo(e.target.value)}
+                  placeholder="As shown on the filed 15CA"
+                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">
+                  Form 15CA filed on
+                </label>
+                <input type="date" value={form15caFiledOn}
+                  onChange={(e) => setForm15caFiledOn(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">
+                  Form 15CB UDIN
+                </label>
+                <input value={form15cbUdin} onChange={(e) => setForm15cbUdin(e.target.value)}
+                  placeholder="UDIN of the certifying member"
+                  className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="mt-1 text-[10px] text-[#94A3B8]">
+                  What makes the certificate traceable to the member who signed it.
+                </p>
+              </div>
+            </div>
+            {!form15caAckNo.trim() && (
+              <p className="mt-3 text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1.5">
+                Recorded as a gap on the TDS register until the acknowledgement is
+                entered. Not a refusal — the bill saves either way, because the
+                15CA is filed when the money moves and that may be after this.
+              </p>
+            )}
+          </section>
+        )}
 
         {blockedCreditHits.length > 0 && (
           <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">

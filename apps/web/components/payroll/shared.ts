@@ -55,6 +55,12 @@ export type Employee = {
   bank_account_no?: string | null;
   bank_ifsc?: string | null;
   bank_name?: string | null;
+  // The two statutory exceptions, both `NOT NULL DEFAULT true` on the table
+  // (migrations 295 and 298) and both read by the engine while nothing could
+  // write them (PAY-12). Optional here because a row selected before this
+  // shipped will not carry them and `?? true` is the column's own default.
+  eps_eligible?: boolean;
+  gratuity_act_covered?: boolean;
 };
 
 export type PayrollRun = {

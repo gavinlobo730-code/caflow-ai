@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from core.permissions import rbac
+from domain.branding import image_source
 from models.common import api_response
 from repositories.branding_repository import branding_repo
 from services.audit_service import log_event
@@ -135,6 +136,24 @@ def upsert_branding(body: BrandingUpdate, current_user: dict = Depends(rbac("bra
     if "font_family" in updates and updates["font_family"] not in _VALID_FONTS:
         raise HTTPException(status_code=422, detail=f"font_family must be one of: {', '.join(sorted(_VALID_FONTS))}")
 
+    # AN IMAGE URL IS A PLACE THE SERVER WILL GO. `invoice_pdf_service` fetches
+    # each of these when a PDF is built, from a host inside a provider network,
+    # so a Partner typing `http://169.254.169.254/…` into the logo box was
+    # asking the API to issue that request. Refused here as well as at the
+    # fetch, and the two are deliberate rather than redundant: this one gives
+    # the CA an error where the mistake was made, and the fetch-side check
+    # covers rows written before this validation existed — the same reasoning
+    # `_validate_color` already applies to a colour.
+    for url_field in ("logo_url", "secondary_logo_url"):
+        value = updates.get(url_field)
+        if value:
+            problem = image_source.refusal(value)
+            if problem:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{url_field}: {problem} Upload the image instead, or "
+                           f"host it somewhere the internet can reach.")
+
     saved = branding_repo.upsert_branding(firm_id, updates)
     _audit(firm_id, saved.get("id", firm_id), "update", current_user, old_data=existing, new_data=updates)
     return api_response(True, {"branding": saved})
@@ -213,6 +232,19 @@ def upsert_invoice_settings(body: InvoiceSettingsUpdate, current_user: dict = De
         if not re.match(r"^[A-Z]{4}0[A-Z0-9]{6}$", ifsc):
             raise HTTPException(status_code=422, detail="ifsc_code must be valid RBI IFSC format (e.g. HDFC0001234).")
         updates["ifsc_code"] = ifsc
+
+    # `upi_qr_url` lives on THIS model, not on BrandingUpdate, and it is fetched
+    # server-side by `invoice_pdf_service` exactly as the logo is — so it needs
+    # the same refusal. Two writers, two checks: a loop over three field names
+    # in one of them would have guarded a field that never arrives there and
+    # left the one that does wide open.
+    if updates.get("upi_qr_url"):
+        problem = image_source.refusal(updates["upi_qr_url"])
+        if problem:
+            raise HTTPException(
+                status_code=422,
+                detail=f"upi_qr_url: {problem} Upload the image instead, or host "
+                       f"it somewhere the internet can reach.")
 
     saved = branding_repo.upsert_invoice_settings(firm_id, updates)
 

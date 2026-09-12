@@ -9,6 +9,7 @@ from typing import Optional
 import re
 
 from core.validators import validate_pan
+from domain.payroll import identity as identity_domain
 from models.fy import FYLabel
 
 
@@ -65,6 +66,30 @@ class EmployeeIn(BaseModel):
     bank_account_no: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
+    #: EPS 1995 membership. FALSE only where para 6 of the scheme, as amended
+    #: by GSR 609(E) w.e.f. 01-09-2014, excludes the member: they joined EPF on
+    #: or after that date with pay AT JOINING above the wage ceiling. Not
+    #: derivable — the master holds pay today, and the test is pay then.
+    #:
+    #: SETTABLE FROM NOWHERE UNTIL NOW (PAY-12 residual). Migration 295 added
+    #: the column with `DEFAULT true` and `routers/payroll.py` reads it as
+    #: `emp.get("eps_eligible", True)` at four sites — but it was on neither
+    #: model, in no CSV column and on no form, so every employee was EPS-
+    #: eligible forever. For a member GSR 609(E) excludes, that diverts 8.33%
+    #: of the employer's contribution to EPS ON THE ECR, which is a statutory
+    #: return, and nothing in the product could correct it.
+    eps_eligible: bool = True
+    #: Whether the Payment of Gratuity Act 1972 reaches this employee's
+    #: establishment — §1(3), and §1(3A), which keeps it applying once it has.
+    #: Not derived from headcount: today's count is not the count on the
+    #: qualifying date.
+    #:
+    #: Same hole, same shape (migration 298). It decides WHICH limb of IT Act
+    #: §10(10) computes the exemption — clause (ii) for a covered employee,
+    #: clause (iii) for one who is not, and they are a different formula with a
+    #: different divisor — so a wrong value changes money actually paid to a
+    #: leaver.
+    gratuity_act_covered: bool = True
 
     @field_validator("name")
     @classmethod
@@ -72,6 +97,46 @@ class EmployeeIn(BaseModel):
         if not v.strip():
             raise ValueError("Employee name cannot be blank.")
         return v.strip()
+
+    # ── The two employee identifiers whose shape is settled (PAY-30) ────────
+    #
+    # `EmployeeIn(uan="NOTANUMBER", bank_ifsc="bad")` was accepted and stored.
+    # Both patterns already existed twice — `domain/payroll/employee_import.py`
+    # refuses a whole FILE on either, and `domain/payroll/ecr.py` refuses a
+    # member at file build — so the API was the one door with no check, and a
+    # UAN typed on the form wedged the ECR months later, at the moment the CA
+    # was trying to file. Imported from `domain.payroll.identity`, which is now
+    # the one home for both.
+    #
+    # THE ESIC NUMBER IS DELIBERATELY NOT CHECKED. Nothing in this codebase
+    # validates its format anywhere; `domain/payroll/exceptions.py` checks
+    # presence and stops. A length written from memory here would refuse
+    # legitimate numbers for every client, which is the wrong direction of
+    # error — the same judgement the codebase makes about the EPF
+    # establishment code, the LIN and the state PT slabs.
+    @field_validator("uan")
+    @classmethod
+    def uan_format(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip()
+        if not text:
+            return None
+        if not identity_domain.UAN_RE.match(text):
+            raise ValueError(
+                "UAN must be exactly 12 digits — the EPFO's own format, and "
+                "what the ECR refuses at file build.")
+        return text
+
+    @field_validator("bank_ifsc")
+    @classmethod
+    def ifsc_format(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip().upper()
+        if not text:
+            return None
+        if not identity_domain.IFSC_RE.match(text):
+            raise ValueError(
+                "IFSC must be four letters, then 0, then six letters or "
+                "digits — e.g. HDFC0001234 (RBI's format).")
+        return text
 
     @field_validator("aadhaar_last4")
     @classmethod
@@ -171,6 +236,30 @@ class EmployeeUpdateIn(BaseModel):
     uan: Optional[str] = None
     esi_number: Optional[str] = None
     status: Optional[str] = None
+    #: EPS 1995 membership. FALSE only where para 6 of the scheme, as amended
+    #: by GSR 609(E) w.e.f. 01-09-2014, excludes the member: they joined EPF on
+    #: or after that date with pay AT JOINING above the wage ceiling. Not
+    #: derivable — the master holds pay today, and the test is pay then.
+    #:
+    #: SETTABLE FROM NOWHERE UNTIL NOW (PAY-12 residual). Migration 295 added
+    #: the column with `DEFAULT true` and `routers/payroll.py` reads it as
+    #: `emp.get("eps_eligible", True)` at four sites — but it was on neither
+    #: model, in no CSV column and on no form, so every employee was EPS-
+    #: eligible forever. For a member GSR 609(E) excludes, that diverts 8.33%
+    #: of the employer's contribution to EPS ON THE ECR, which is a statutory
+    #: return, and nothing in the product could correct it.
+    eps_eligible: Optional[bool] = None
+    #: Whether the Payment of Gratuity Act 1972 reaches this employee's
+    #: establishment — §1(3), and §1(3A), which keeps it applying once it has.
+    #: Not derived from headcount: today's count is not the count on the
+    #: qualifying date.
+    #:
+    #: Same hole, same shape (migration 298). It decides WHICH limb of IT Act
+    #: §10(10) computes the exemption — clause (ii) for a covered employee,
+    #: clause (iii) for one who is not, and they are a different formula with a
+    #: different divisor — so a wrong value changes money actually paid to a
+    #: leaver.
+    gratuity_act_covered: Optional[bool] = None
     # THE DATE OF JOINING, which this model did not carry (PAY-12).
     #
     # components/payroll/AddEmployeeModal.tsx has always sent joining_date on
@@ -209,6 +298,34 @@ class EmployeeUpdateIn(BaseModel):
         if v is not None and (v < 0 or v > 100):
             raise ValueError("Percent fields must be between 0 and 100.")
         return v
+
+    # The same two shapes as EmployeeIn, on the UPDATE path too. A field you
+    # can create is a field you can correct, and a validator only at the create
+    # door is one PATCH away from being no validator at all — which is what
+    # tests/test_a_field_you_can_create_is_a_field_you_can_correct.py is for.
+    @field_validator("uan")
+    @classmethod
+    def uan_format(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip()
+        if not text:
+            return None
+        if not identity_domain.UAN_RE.match(text):
+            raise ValueError(
+                "UAN must be exactly 12 digits — the EPFO's own format, and "
+                "what the ECR refuses at file build.")
+        return text
+
+    @field_validator("bank_ifsc")
+    @classmethod
+    def ifsc_format(cls, v: Optional[str]) -> Optional[str]:
+        text = (v or "").strip().upper()
+        if not text:
+            return None
+        if not identity_domain.IFSC_RE.match(text):
+            raise ValueError(
+                "IFSC must be four letters, then 0, then six letters or "
+                "digits — e.g. HDFC0001234 (RBI's format).")
+        return text
 
     @field_validator("name")
     @classmethod

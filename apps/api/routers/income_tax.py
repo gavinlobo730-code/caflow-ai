@@ -382,6 +382,37 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             "cess_paise": result.cess_paise,
             "total_tax_paise": result.total_tax_paise,
         },
+        # THE CAPITAL-GAINS WORKING, WHICH NOTHING USED TO CARRY OUT OF THE
+        # ENGINE. `basic_exemption_absorbed_paise` and
+        # `basic_exemption_absorption` were computed and documented as existing
+        # "so a CA can see WHICH gain the exemption was set against"; a grep
+        # across the routers and the whole frontend returned nothing. So the
+        # screen showed ₹20,800 of tax on a ₹5,00,000 STCG and no account of
+        # the ₹4,00,000 that vanished — the right number with its reasoning
+        # withheld, on a working the CA is the one who has to defend.
+        #
+        # The absorption is a CHOICE the statute does not make: the provisos to
+        # §111A(1), §112(1)(a)(ii) and §112A(2) fix no order between the three,
+        # and this engine takes the highest rate first because that is most
+        # beneficial. A reader is entitled to check that, which they cannot do
+        # from a total.
+        "capital_gains": {
+            "lines": result.capital_gains_lines,
+            "tax_paise": result.capital_gains_tax_paise,
+            "basic_exemption_absorbed_paise": result.basic_exemption_absorbed_paise,
+            "basic_exemption_absorption": result.basic_exemption_absorption,
+        },
+        # §10 income, echoed rather than acted on. It does not enter total
+        # income and the tax is right without it — but the field is on the
+        # request, the client Tax Computation tab renders an input for it, and
+        # until now `compute()` never read it, so a CA typed a figure that
+        # changed nothing and nothing said so. Reported here so the screen can
+        # say "received, not taxable" instead of silently discarding it.
+        "exempt_income": {
+            "reported_paise": result.exempt_income_reported_paise,
+            "note": "Section 10 income is reported (Schedule EI) and is not "
+                    "part of total income, so it does not change the tax.",
+        },
         "payable": {
             "tds_and_advance_paise": result.tds_and_advance_paise,
             "net_payable_paise": result.net_payable_paise,
@@ -422,13 +453,28 @@ def supported_financial_years(current_user: dict = Depends(rbac("income_tax", "r
         the engine cannot compute; only the server knows which those are.
     """
     from domain.income_tax.statutory_rates import RATES_BY_FY, current_fy
+    from services.compliance_engine import advance_tax_due_dates
     years = sorted(RATES_BY_FY.keys(), reverse=True)
+    fy_now = current_fy()
     return api_response(True, {
         "financial_years": [
             {"fy": fy, "verified": RATES_BY_FY[fy].verified}
             for fy in years
         ],
-        "current_fy": current_fy(),
+        "current_fy": fy_now,
+        # THE INSTALMENT CALENDAR FOR THE YEAR THIS RESPONSE ALREADY NAMES
+        # (IT-33). The Income Tax hub carried four hardcoded strings — "15 Jun
+        # 2025" through "15 Mar 2026" — under a heading that also hardcoded
+        # "FY 2025-26", so on any date in FY 2026-27 the first panel of the
+        # module showed four elapsed instalments for the wrong year. §211's
+        # dates are derived by `compliance_engine.advance_tax_due_dates` and
+        # always were; nothing called it from here.
+        #
+        # Served beside `current_fy` rather than from a new endpoint, and from
+        # the SERVER rather than computed in the browser from `new Date()`:
+        # `current_fy` is IST (core.ist_clock), and a browser in another zone
+        # flips the financial year on 31 March.
+        "current_fy_advance_tax": advance_tax_due_dates(int(fy_now[:4]) + 1),
     })
 
 
