@@ -175,7 +175,7 @@ def test_save_gstr1_insert_payload_succeeds(migrated_db):
          total_taxable_paise, total_igst_paise, total_cgst_paise,
          total_sgst_paise, total_cess_paise, status, created_at)
     VALUES
-        ('{return_id}', '{FIRM}', '{CLIENT}', '042025', '27AABCU9603R1ZX',
+        ('{return_id}', '{FIRM}', '{CLIENT}', '042025', '27AABCU9603R1ZN',
          '{{}}'::jsonb, '{{}}'::jsonb, 10000000, 0, 900000, 900000, 0,
          'draft', NOW());
     """
@@ -195,7 +195,7 @@ def test_save_gstr9_insert_payload_succeeds(migrated_db):
          payload_json, summary_json, total_taxable_paise, total_igst_paise,
          total_cgst_paise, total_sgst_paise, total_tax_paise, created_at)
     VALUES
-        ('{return_id}', '{FIRM}', '{CLIENT}', '2025-26', 'FY2025-26', 'gstr9', '27AABCU9603R1ZX', 'draft',
+        ('{return_id}', '{FIRM}', '{CLIENT}', '2025-26', 'FY2025-26', 'gstr9', '27AABCU9603R1ZN', 'draft',
          '{{}}'::jsonb, '{{}}'::jsonb, 500000000, 0, 45000000, 45000000, 90000000, NOW());
     """
     r = _psql(migrated_db, insert_sql)
@@ -211,7 +211,7 @@ def test_save_gstr3b_insert_payload_succeeds(migrated_db):
         (id, firm_id, client_id, period, gstin, payload_json, summary_json,
          tax_liability_paise, itc_claimed_paise, net_tax_paise, status, created_at)
     VALUES
-        ('{return_id}', '{FIRM}', '{CLIENT}', '042025', '27AABCU9603R1ZX',
+        ('{return_id}', '{FIRM}', '{CLIENT}', '042025', '27AABCU9603R1ZN',
          '{{}}'::jsonb, '{{}}'::jsonb, 1800000, 500000, 1300000, 'draft', NOW());
     """
     r = _psql(migrated_db, insert_sql)

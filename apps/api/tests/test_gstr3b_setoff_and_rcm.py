@@ -255,7 +255,7 @@ class TestReverseChargeIsPaidInCash:
     def test_it_is_still_declared_in_table_3_1_d(self):
         """The payload side was already right and must stay right."""
         r = compute_gstr3b([], [_purchase(L1, igst=18_000_00, rc=True)], [])
-        isup_rev = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["sup_details"]["isup_rev"]
+        isup_rev = r.as_gstn_payload("27AAAAA0000A1Z2", "062026")["sup_details"]["isup_rev"]
 
         assert isup_rev["iamt"] == 18_000     # whole rupees, CGST Act §170
 
@@ -290,7 +290,7 @@ class TestZeroRatedSupplies:
         assert r.outward_zero_rated == L10
         assert r.outward_zero_rated_igst == IGST18_ON_L10
 
-        osup_zero = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["sup_details"]["osup_zero"]
+        osup_zero = r.as_gstn_payload("27AAAAA0000A1Z2", "062026")["sup_details"]["osup_zero"]
         assert osup_zero["txval"] == 10_00_000     # whole rupees (CGST Act §170)
         assert osup_zero["iamt"] == 1_80_000, (
             "a §16(3)(b) export declares the tax it paid; a nil here forfeits "
@@ -305,7 +305,7 @@ class TestZeroRatedSupplies:
         assert r.outward_zero_rated == L10
         assert r.outward_zero_rated_igst == 0
 
-        osup_zero = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")["sup_details"]["osup_zero"]
+        osup_zero = r.as_gstn_payload("27AAAAA0000A1Z2", "062026")["sup_details"]["osup_zero"]
         assert osup_zero["txval"] == 10_00_000
         assert osup_zero["iamt"] == 0
 
@@ -314,7 +314,7 @@ class TestZeroRatedSupplies:
         only ever carry integrated tax."""
         sales = [_sale(L10, igst=IGST18_ON_L10, supply="zero_rated")]
         osup_zero = compute_gstr3b(sales, [], []).as_gstn_payload(
-            "27AAAAA0000A1Z5", "062026")["sup_details"]["osup_zero"]
+            "27AAAAA0000A1Z2", "062026")["sup_details"]["osup_zero"]
 
         assert osup_zero["camt"] == 0
         assert osup_zero["samt"] == 0
@@ -403,7 +403,7 @@ def test_one_period_carrying_all_three():
     assert r.rcm_cash_paise == 18_000_00
     assert r.cash_payable_paise == 18_000_00
 
-    p = r.as_gstn_payload("27AAAAA0000A1Z5", "062026")
+    p = r.as_gstn_payload("27AAAAA0000A1Z2", "062026")
     assert p["sup_details"]["osup_zero"] == {
         "txval": 10_00_000, "iamt": 1_80_000, "camt": 0, "samt": 0, "csamt": 0}
     assert p["sup_details"]["isup_rev"]["iamt"] == 18_000

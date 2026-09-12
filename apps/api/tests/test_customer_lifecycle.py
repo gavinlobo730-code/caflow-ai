@@ -17,7 +17,7 @@ from tests.e2e_harness import FakeDB, wire_e2e
 
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "email": "ca@firma.test", "role": "Partner"}
-GSTIN_A = "27AAAAA0000A1Z5"
+GSTIN_A = "27AAAAA0000A1Z2"
 
 
 def _setup(monkeypatch):

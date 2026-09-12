@@ -46,7 +46,7 @@ def _setup(monkeypatch):
     db = FakeDB()
     wire_e2e(monkeypatch, db, [pb, pp])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
-    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5"})
+    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z2"})
     # A resident contractor and a non-resident consultant, in one client's books.
     db.seed("vendors", {
         "id": "RES", "firm_id": FIRM, "client_id": "CLI", "name": "Bharat Constructions Pvt Ltd",

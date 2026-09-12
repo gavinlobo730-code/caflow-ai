@@ -160,10 +160,10 @@ def test_save_gstr1_rejects_invalid_gstin(client):
 
 def test_save_gstr1_accepts_valid_gstin_and_normalizes_case(client):
     resp = client.post("/api/gst-workspace/gstr1", json={
-        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27aabcu9603r1zx",
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27aabcu9603r1zn",
     }, headers=_HEADERS)
     assert resp.status_code == 200
-    assert resp.json()["data"]["gstin"] == "27AABCU9603R1ZX"
+    assert resp.json()["data"]["gstin"] == "27AABCU9603R1ZN"
 
 
 def test_save_gstr3b_rejects_invalid_gstin(client):
@@ -175,7 +175,7 @@ def test_save_gstr3b_rejects_invalid_gstin(client):
 
 def test_save_gstr3b_accepts_valid_gstin(client):
     resp = client.post("/api/gst-workspace/gstr3b", json={
-        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZX",
+        "client_id": _CLIENT_ID, "period": "042025", "gstin": "27AABCU9603R1ZN",
     }, headers=_HEADERS)
     assert resp.status_code == 200
 
@@ -184,13 +184,13 @@ def test_save_gstr3b_accepts_valid_gstin(client):
 
 def test_customer_gstin_and_pan_normalized_to_uppercase():
     from models.parties import CustomerIn
-    c = CustomerIn(client_id="CLI", name="Acme", gstin="27aabcu9603r1zx", pan="abcde1234f")
-    assert c.gstin == "27AABCU9603R1ZX"
+    c = CustomerIn(client_id="CLI", name="Acme", gstin="27aabcu9603r1zn", pan="abcde1234f")
+    assert c.gstin == "27AABCU9603R1ZN"
     assert c.pan == "ABCDE1234F"
 
 
 def test_vendor_gstin_and_pan_normalized_to_uppercase():
     from models.parties import VendorIn
-    v = VendorIn(client_id="CLI", name="Supplier", gstin="27aabcu9603r1zx", pan="abcde1234f")
-    assert v.gstin == "27AABCU9603R1ZX"
+    v = VendorIn(client_id="CLI", name="Supplier", gstin="27aabcu9603r1zn", pan="abcde1234f")
+    assert v.gstin == "27AABCU9603R1ZN"
     assert v.pan == "ABCDE1234F"

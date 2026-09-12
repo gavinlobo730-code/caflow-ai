@@ -63,7 +63,7 @@ def _setup(monkeypatch, *, customer_active=True, vendor_active=True):
     db = FakeDB()
     wire_e2e(monkeypatch, db, [pb, pp, rsvc])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
-    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5"})
+    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z2"})
     db.seed("customers", {"id": "CUST1", "firm_id": FIRM, "client_id": "CLI", "name": "C",
                           "is_active": customer_active, "opening_balance_paise": 0})
     db.seed("vendors", {"id": "VEND1", "firm_id": FIRM, "client_id": "CLI", "name": "V",

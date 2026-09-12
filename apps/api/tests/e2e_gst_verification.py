@@ -39,7 +39,7 @@ from domain.gst.gstr1_builder import (
 )
 from domain.gst.validator import GSTValidator, InvoiceToValidate
 
-GSTIN = "27AABCU9603R1ZX"   # Maharashtra, valid format
+GSTIN = "27AABCU9603R1ZN"   # Maharashtra, valid format
 PERIOD = "052025"            # May 2025
 FIRM_TURNOVER_PAISE = 2_00_00_000_00   # ₹2 Cr — requires 4-digit HSN
 

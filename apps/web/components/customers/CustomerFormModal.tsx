@@ -185,7 +185,7 @@ export function CustomerFormModal({
           <label className="block text-xs font-medium text-[#475569] mb-1">GSTIN</label>
           <input
             value={gstin} onChange={(e) => handleGstinChange(e.target.value)}
-            placeholder="27AABCU9603R1ZX" maxLength={15}
+            placeholder="27AABCU9603R1ZN" maxLength={15}
             className={`${inputCls} font-mono ${gstinProblem(gstin) ? "border-red-300" : ""}`}
           />
           {gstinProblem(gstin) && (

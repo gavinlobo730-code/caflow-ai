@@ -220,7 +220,7 @@ def test_the_flat_sections_are_not_grouped(section):
 # ── merging into a payload ───────────────────────────────────────────────────
 
 def test_amendment_sections_are_added_to_the_payload():
-    payload = {"gstin": "27AAAAA0000A1Z5", "fp": "072025", "b2b": [{"ctin": "x"}]}
+    payload = {"gstin": "27AAAAA0000A1Z2", "fp": "072025", "b2b": [{"ctin": "x"}]}
 
     out = merge_into_payload(payload, {"b2ba": [{"ctin": "y"}]})
 
@@ -259,7 +259,7 @@ def _report(**kw):
 def test_a_changed_invoice_becomes_an_amendment_in_9A():
     report = _report(documents={"amount_changed": [{
         "doc_no": "INV-1", "kind": "invoice", "section": "b2b",
-        "counterparty": "27BBBBB1111B1Z5", "doc_date": "10-06-2025",
+        "counterparty": "27BBBBB1111B1ZN", "doc_date": "10-06-2025",
         "filed": AMOUNTS, "books": {**AMOUNTS, "taxable_paise": 150_000},
         "delta": {"taxable_paise": 50_000},
     }]})
@@ -311,7 +311,7 @@ def test_an_invoice_raised_after_filing_is_carried_forward_not_amended():
     closed one."""
     report = _report(documents={"missing_from_return": [{
         "doc_no": "INV-LATE", "doc_date": "10-06-2025", "section": "b2b",
-        "counterparty": "27BBBBB1111B1Z5", **AMOUNTS,
+        "counterparty": "27BBBBB1111B1ZN", **AMOUNTS,
     }]})
 
     out = propose(report, original_period="062025")

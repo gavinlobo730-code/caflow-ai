@@ -39,7 +39,7 @@ import services.gst_return_service as grs
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 
 FIRM, CLIENT = "FIRM-A", "CLI"
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 CALLER = {"firm_id": FIRM, "id": "u1", "auth_user_id": "auth",
           "email": "ca@f.test", "role": "Partner"}
 
@@ -53,7 +53,7 @@ def db(monkeypatch):
     d.seed("clients", {"id": CLIENT, "firm_id": FIRM, "gstin": GSTIN,
                        "financial_year_start": "2025-04-01", "state_code": "27"})
     d.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT,
-                         "name": "Acme", "gstin": "27BBBBB1111B1Z5",
+                         "name": "Acme", "gstin": "27BBBBB1111B1ZN",
                          "state_code": "27", "is_active": True})
     seed_standard_coa(d, FIRM, CLIENT)
     return d

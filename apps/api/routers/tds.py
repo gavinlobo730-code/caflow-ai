@@ -119,6 +119,76 @@ class TDSAmountRequest(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+def _deductor_sources(db, firm_id: str, client_id: str) -> tuple[dict, dict]:
+    """The two rows `tds_deductor.resolve` reads: the client's statutory
+    identity (migration 325, created for exactly this) and the client itself.
+
+    A FAILED read produces gaps rather than an exception — the caller then sees
+    "no TAN recorded", which is the safe direction. It is never treated as
+    "the identifiers are fine".
+    """
+    identity: dict = {}
+    client: dict = {}
+    if db is None:
+        return identity, client
+    try:
+        identity = (db.table("client_statutory_identity")
+                    .select("tan")
+                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                    .maybe_single().execute().data) or {}
+    except Exception as exc:                                       # noqa: BLE001
+        capture_soft_failure(exc, operation="tds_deductor_identity_read",
+                             client_id=client_id)
+    try:
+        client = (db.table("clients")
+                  .select("client_name, legal_name, pan, address_line1, "
+                          "address_line2, city, state, pincode")
+                  .eq("firm_id", firm_id).eq("id", client_id)
+                  .maybe_single().execute().data) or {}
+    except Exception as exc:                                       # noqa: BLE001
+        capture_soft_failure(exc, operation="tds_deductor_client_read",
+                             client_id=client_id)
+    return identity, client
+
+
+@router.get("/deductor")
+def deductor_block(client_id: str = Query(...),
+                   user: dict = Depends(rbac("tds", "read"))):
+    """Who a TDS statement for this client would be filed under (TDS-28).
+
+    The server has read this from `client_statutory_identity` and `clients`
+    since the deductor block stopped being invented — but nothing SERVED it,
+    so the compliance screen initialised four blank boxes and made the CA type
+    the TAN, the legal name and the PAN every quarter, for every client. A
+    figure the system holds and asks for anyway is a figure that will
+    eventually be typed differently.
+
+    Returns the resolved block where it is complete, and the NAMED GAPS where
+    it is not — `resolved: false` with a sentence per missing identifier,
+    which is the same answer the compute path refuses with. The screen can
+    then say what to go and record rather than letting the CA discover it at
+    the moment they press Compute.
+    """
+    assert_client_access(user, client_id)
+    db = get_supabase()
+    identity, client = _deductor_sources(db, user["firm_id"], client_id)
+    block, codes = tds_deductor.resolve(identity, client)
+    if block is None:
+        return api_response(True, {
+            "resolved": False, "tan": "", "deductor_name": "",
+            "deductor_pan": "", "deductor_address": "",
+            "statutory_gaps": tds_deductor.gaps_with_messages(codes),
+        })
+    return api_response(True, {
+        "resolved": True,
+        "tan": block.tan,
+        "deductor_name": block.name,
+        "deductor_pan": block.pan,
+        "deductor_address": block.address,
+        "statutory_gaps": [],
+    })
+
+
 def _deductor_for(db, firm_id: str, req: "FromBooksRequest") -> tds_deductor.Deductor:
     """Who this statement is filed under — from the request, else from the books.
 
@@ -132,26 +202,7 @@ def _deductor_for(db, firm_id: str, req: "FromBooksRequest") -> tds_deductor.Ded
     rather than an exception — the caller then sees "no TAN recorded", which
     is the safe direction. It is never treated as "the identifiers are fine".
     """
-    identity: dict = {}
-    client: dict = {}
-    if db is not None:
-        try:
-            identity = (db.table("client_statutory_identity")
-                        .select("tan")
-                        .eq("firm_id", firm_id).eq("client_id", req.client_id)
-                        .maybe_single().execute().data) or {}
-        except Exception as exc:                                   # noqa: BLE001
-            capture_soft_failure(exc, operation="tds_deductor_identity_read",
-                                 client_id=req.client_id)
-        try:
-            client = (db.table("clients")
-                      .select("client_name, legal_name, pan, address_line1, "
-                              "address_line2, city, state, pincode")
-                      .eq("firm_id", firm_id).eq("id", req.client_id)
-                      .maybe_single().execute().data) or {}
-        except Exception as exc:                                   # noqa: BLE001
-            capture_soft_failure(exc, operation="tds_deductor_client_read",
-                                 client_id=req.client_id)
+    identity, client = _deductor_sources(db, firm_id, req.client_id)
     block, codes = tds_deductor.resolve(
         identity, client,
         tan=req.tan, name=req.deductor_name,

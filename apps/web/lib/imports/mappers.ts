@@ -88,7 +88,7 @@ export interface BuiltCustomer {
 
 export const CUSTOMER_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "name", label: "Name", required: true, hint: "Customer / party name" },
-  { key: "gstin", label: "GSTIN", required: false, hint: "15-char GSTIN, e.g. 27AABCU9603R1ZX (optional)" },
+  { key: "gstin", label: "GSTIN", required: false, hint: "15-char GSTIN, e.g. 27AABCU9603R1ZN (optional)" },
   { key: "state_code", label: "State Code", required: false, hint: "2-digit GST state code (auto-derived from GSTIN if blank)" },
   { key: "pan", label: "PAN", required: false, hint: "10-char PAN, e.g. AABCU9603R (optional)" },
   { key: "email", label: "Email", required: false, hint: "Billing email (optional)" },

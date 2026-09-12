@@ -44,7 +44,7 @@ from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "id": "u-int", "auth_user_id": "auth",
           "email": "ca@f.test", "role": "Partner"}
-GSTIN = "27AAAAA0000A1Z5"
+GSTIN = "27AAAAA0000A1Z2"
 
 JUNE, JULY = "062025", "072025"
 BILL_TAX = 90000            # Rs 5,000 @ 18% intra-state -> 45000 CGST + 45000 SGST

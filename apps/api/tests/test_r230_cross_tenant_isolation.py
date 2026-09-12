@@ -86,7 +86,7 @@ def test_ensure_customer_link_rejects_cross_firm_client(monkeypatch):
     db = FakeDB()
     monkeypatch.setattr(billing_service, "_db", lambda: db)
     db.seed("clients", {"id": "PC-OTHER", "firm_id": "FIRM-B", "client_name": "Other Firm's Client",
-                        "gstin": "27AAAAA0000A1Z5", "pan": "AAAAA0000A"})
+                        "gstin": "27AAAAA0000A1Z2", "pan": "AAAAA0000A"})
     with pytest.raises(HTTPException) as ei:
         billing_service.ensure_customer_link("FIRM-A", "PC-OTHER", "INTERNAL-A")
     assert ei.value.status_code == 404
@@ -99,11 +99,11 @@ def test_ensure_customer_link_accepts_own_firm_client(monkeypatch):
     db = FakeDB()
     monkeypatch.setattr(billing_service, "_db", lambda: db)
     db.seed("clients", {"id": "PC-1", "firm_id": "FIRM-A", "client_name": "Own Client",
-                        "gstin": "27AAAAA0000A1Z5", "pan": "AAAAA0000A"})
+                        "gstin": "27AAAAA0000A1Z2", "pan": "AAAAA0000A"})
     cust_id = billing_service.ensure_customer_link("FIRM-A", "PC-1", "INTERNAL-A")
     assert cust_id
     cust = db.rows("customers")[0]
-    assert cust["pan"] == "AAAAA0000A" and cust["gstin"] == "27AAAAA0000A1Z5"
+    assert cust["pan"] == "AAAAA0000A" and cust["gstin"] == "27AAAAA0000A1Z2"
     assert cust["client_id"] == "INTERNAL-A"
 
 

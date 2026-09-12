@@ -111,7 +111,7 @@ def make_invoice_for_gstr1(
     id="inv-001",
     reference_no="INV/2025/001",
     transaction_date="2025-05-15",
-    party_gstin="27AABCU9603R1ZX",
+    party_gstin="27AABCU9603R1ZN",
     party_name="Test Co",
     place_of_supply="27",
     is_interstate=False,
@@ -151,7 +151,7 @@ def make_invoice_for_gstr1(
 
 class TestInvoiceClassifier:
     def test_b2b_registered_buyer(self):
-        txn = make_txn_for_classify(party_gstin="27AABCU9603R1ZX")
+        txn = make_txn_for_classify(party_gstin="27AABCU9603R1ZN")
         assert classify_transaction(txn) == GSTInvoiceCategory.B2B
 
     def test_b2cs_unregistered_intrastate(self):
@@ -175,7 +175,7 @@ class TestInvoiceClassifier:
 
     def test_cdnr_credit_note_registered(self):
         txn = make_txn_for_classify(
-            transaction_type="credit_note", party_gstin="27AABCU9603R1ZX"
+            transaction_type="credit_note", party_gstin="27AABCU9603R1ZN"
         )
         assert classify_transaction(txn) == GSTInvoiceCategory.CDNR
 
@@ -185,12 +185,12 @@ class TestInvoiceClassifier:
 
     def test_debit_note_registered(self):
         txn = make_txn_for_classify(
-            transaction_type="debit_note", party_gstin="27AABCU9603R1ZX"
+            transaction_type="debit_note", party_gstin="27AABCU9603R1ZN"
         )
         assert classify_transaction(txn) == GSTInvoiceCategory.CDNR
 
     def test_nil_rated_supply(self):
-        txn = make_txn_for_classify(supply_type="nil_rated", party_gstin="27AABCU9603R1ZX")
+        txn = make_txn_for_classify(supply_type="nil_rated", party_gstin="27AABCU9603R1ZN")
         assert classify_transaction(txn) == GSTInvoiceCategory.NIL_EXEMPT
 
     def test_exempt_supply(self):
@@ -242,9 +242,9 @@ class TestInvoiceClassifier:
 
     def test_batch_classification(self):
         txns = [
-            TransactionForClassification("t1", "sales_invoice", "27AABCU9603R1ZX", False, 100_000_00, "taxable", "Regular", "27", 118_000_00, "2026-04-10"),
+            TransactionForClassification("t1", "sales_invoice", "27AABCU9603R1ZN", False, 100_000_00, "taxable", "Regular", "27", 118_000_00, "2026-04-10"),
             TransactionForClassification("t2", "sales_invoice", None, False, 50_000_00, "taxable", "Regular", "27", 59_000_00, "2026-04-10"),
-            TransactionForClassification("t3", "credit_note", "27AABCU9603R1ZX", False, 10_000_00, "taxable", "Regular", "27", 11_800_00, "2026-04-10"),
+            TransactionForClassification("t3", "credit_note", "27AABCU9603R1ZN", False, 10_000_00, "taxable", "Regular", "27", 11_800_00, "2026-04-10"),
         ]
         results = classify_transactions(txns)
         assert results["t1"] == GSTInvoiceCategory.B2B
@@ -450,13 +450,13 @@ class TestGSTR3BComputer:
         result = compute_gstr3b(
             [make_sale()], [make_purchase()], []
         )
-        payload = result.as_gstn_payload("27AABCU9603R1ZX", "052025")
+        payload = result.as_gstn_payload("27AABCU9603R1ZN", "052025")
         assert "gstin" in payload
         assert "ret_period" in payload
         assert "sup_details" in payload
         assert "itc_elg" in payload
         assert "intr_ltfee" in payload
-        assert payload["gstin"] == "27AABCU9603R1ZX"
+        assert payload["gstin"] == "27AABCU9603R1ZN"
         assert payload["ret_period"] == "052025"
 
     def test_paise_to_rupees_precision(self):
@@ -511,11 +511,11 @@ class TestGSTR1Builder:
     def test_b2b_invoice_structure(self):
         """B2B payload has correct structure."""
         inv = make_invoice_for_gstr1(category=GSTInvoiceCategory.B2B)
-        payload = build_gstr1([inv], "27AABCU9603R1ZX", "052025")
+        payload = build_gstr1([inv], "27AABCU9603R1ZN", "052025")
         assert "b2b" in payload.payload
         b2b = payload.payload["b2b"]
         assert len(b2b) == 1
-        assert b2b[0]["ctin"] == "27AABCU9603R1ZX"
+        assert b2b[0]["ctin"] == "27AABCU9603R1ZN"
         assert len(b2b[0]["inv"]) == 1
         inv_entry = b2b[0]["inv"][0]
         assert inv_entry["inum"] == "INV/2025/001"
@@ -533,7 +533,7 @@ class TestGSTR1Builder:
             taxable_paise=50_000_00, gst_rate=18.0,
             category=GSTInvoiceCategory.B2CS, place_of_supply="27",
         )
-        payload = build_gstr1([inv1, inv2], "27AABCU9603R1ZX", "052025")
+        payload = build_gstr1([inv1, inv2], "27AABCU9603R1ZN", "052025")
         assert "b2cs" in payload.payload
         b2cs = payload.payload["b2cs"]
         assert len(b2cs) == 1  # aggregated into one row
@@ -549,7 +549,7 @@ class TestGSTR1Builder:
             make_invoice_for_gstr1(id=f"inv{i}", reference_no=f"INV00{i}")
             for i in range(3)
         ]
-        payload = build_gstr1(invoices, "27AABCU9603R1ZX", "052025")
+        payload = build_gstr1(invoices, "27AABCU9603R1ZN", "052025")
         assert payload.invoice_count == 3
 
     def test_credit_note_goes_to_cdnr(self):
@@ -557,21 +557,21 @@ class TestGSTR1Builder:
             transaction_type="credit_note",
             category=GSTInvoiceCategory.CDNR,
         )
-        payload = build_gstr1([inv], "27AABCU9603R1ZX", "052025")
+        payload = build_gstr1([inv], "27AABCU9603R1ZN", "052025")
         assert "cdnr" in payload.payload
         cdnr = payload.payload["cdnr"]
         assert cdnr[0]["nt"][0]["ntty"] == "C"
 
     def test_gstin_and_period_in_payload(self):
-        payload = build_gstr1([], "27AABCU9603R1ZX", "052025")
-        assert payload.payload["gstin"] == "27AABCU9603R1ZX"
+        payload = build_gstr1([], "27AABCU9603R1ZN", "052025")
+        assert payload.payload["gstin"] == "27AABCU9603R1ZN"
         assert payload.payload["fp"] == "052025"
 
     def test_taxable_total_computed_correctly(self):
         """Total taxable value must sum all sales invoices."""
         inv1 = make_invoice_for_gstr1(id="i1", reference_no="I1", taxable_paise=100_000_00)
         inv2 = make_invoice_for_gstr1(id="i2", reference_no="I2", taxable_paise=200_000_00)
-        payload = build_gstr1([inv1, inv2], "27AABCU9603R1ZX", "052025")
+        payload = build_gstr1([inv1, inv2], "27AABCU9603R1ZN", "052025")
         assert payload.taxable_total_paise == 300_000_00
 
 
@@ -582,7 +582,7 @@ class TestGSTValidator:
         self.v = GSTValidator()
 
     def test_valid_gstin(self):
-        assert self.v.validate_gstin("27AABCU9603R1ZX") == []
+        assert self.v.validate_gstin("27AABCU9603R1ZN") == []
 
     def test_invalid_gstin_length(self):
         errors = self.v.validate_gstin("27AABCU9603R1Z")
@@ -613,7 +613,7 @@ class TestGSTValidator:
         inv = InvoiceToValidate(
             reference_no="INV001",
             transaction_date="2025-05-10",
-            party_gstin="27AABCU9603R1ZX",
+            party_gstin="27AABCU9603R1ZN",
             place_of_supply="27",
             taxable_amount_paise=100_000_00,
             cgst_paise=9_000_00,
@@ -749,7 +749,7 @@ class TestB2CSRegressionBug1:
         """INTER and INTRA invoices at same POS and same rate must NOT be merged."""
         inter = make_b2cs_invoice("i1", "INV001", is_interstate=True,  place_of_supply="27")
         intra = make_b2cs_invoice("i2", "INV002", is_interstate=False, place_of_supply="27")
-        payload = build_gstr1([inter, intra], "27AABCU9603R1ZX", "052025")
+        payload = build_gstr1([inter, intra], "27AABCU9603R1ZN", "052025")
         b2cs = payload.payload.get("b2cs", [])
         supply_types = {row["sply_ty"] for row in b2cs}
         assert "INTER" in supply_types, "INTER row missing from B2CS"
@@ -760,7 +760,7 @@ class TestB2CSRegressionBug1:
         """INTER row must only include interstate invoice amounts."""
         inter = make_b2cs_invoice("i1", "INV001", is_interstate=True,  place_of_supply="29", taxable_paise=200_000_00)
         intra = make_b2cs_invoice("i2", "INV002", is_interstate=False, place_of_supply="29", taxable_paise=300_000_00)
-        payload = build_gstr1([inter, intra], "27AABCU9603R1ZX", "052025")
+        payload = build_gstr1([inter, intra], "27AABCU9603R1ZN", "052025")
         b2cs = payload.payload.get("b2cs", [])
         inter_row = next((r for r in b2cs if r["sply_ty"] == "INTER"), None)
         intra_row = next((r for r in b2cs if r["sply_ty"] == "INTRA"), None)
@@ -773,7 +773,7 @@ class TestB2CSRegressionBug1:
         """Multiple INTER invoices at same POS+rate must aggregate into one row."""
         inv1 = make_b2cs_invoice("i1", "INV001", is_interstate=True, place_of_supply="27", taxable_paise=50_000_00)
         inv2 = make_b2cs_invoice("i2", "INV002", is_interstate=True, place_of_supply="27", taxable_paise=80_000_00)
-        payload = build_gstr1([inv1, inv2], "27AABCU9603R1ZX", "052025")
+        payload = build_gstr1([inv1, inv2], "27AABCU9603R1ZN", "052025")
         b2cs = payload.payload.get("b2cs", [])
         inter_rows = [r for r in b2cs if r["sply_ty"] == "INTER"]
         assert len(inter_rows) == 1
@@ -783,7 +783,7 @@ class TestB2CSRegressionBug1:
         """Different POS values must remain separate even with same rate and supply type."""
         inv_27 = make_b2cs_invoice("i1", "INV001", is_interstate=True, place_of_supply="27")
         inv_29 = make_b2cs_invoice("i2", "INV002", is_interstate=True, place_of_supply="29")
-        payload = build_gstr1([inv_27, inv_29], "27AABCU9603R1ZX", "052025")
+        payload = build_gstr1([inv_27, inv_29], "27AABCU9603R1ZN", "052025")
         b2cs = payload.payload.get("b2cs", [])
         pos_values = {row["pos"] for row in b2cs}
         assert "27" in pos_values

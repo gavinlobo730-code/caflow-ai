@@ -34,7 +34,7 @@ def _itms(taxable, cgst=0, sgst=0, igst=0, cess=0, rate=18.0):
     }}]
 
 
-def _b2b(inum, taxable, cgst=0, sgst=0, igst=0, ctin="27BBBBB1111B1Z5", idt="10-06-2025"):
+def _b2b(inum, taxable, cgst=0, sgst=0, igst=0, ctin="27BBBBB1111B1ZN", idt="10-06-2025"):
     return {"ctin": ctin, "inv": [{
         "inum": inum, "idt": idt, "val": (taxable + cgst + sgst + igst) / 100,
         "pos": "27", "rchrg": "N", "inv_typ": "R",
@@ -43,7 +43,7 @@ def _b2b(inum, taxable, cgst=0, sgst=0, igst=0, ctin="27BBBBB1111B1Z5", idt="10-
 
 
 def _payload(**sections):
-    return {"gstin": "27AAAAA0000A1Z5", "fp": "062025", **sections}
+    return {"gstin": "27AAAAA0000A1Z2", "fp": "062025", **sections}
 
 
 # ── reading the payload back into paise ──────────────────────────────────────
@@ -76,7 +76,7 @@ def test_a_document_totals_across_its_rate_groups():
     """GSTR-1 splits a document into one itm_det per rate; the document's own
     figure is the sum. Reading the header `val` would fold tax and round-off
     into one number and lose the per-head split every amendment needs."""
-    payload = _payload(b2b=[{"ctin": "27BBBBB1111B1Z5", "inv": [{
+    payload = _payload(b2b=[{"ctin": "27BBBBB1111B1ZN", "inv": [{
         "inum": "INV-1", "idt": "10-06-2025", "val": 1416.0, "pos": "27",
         "rchrg": "N", "inv_typ": "R",
         "itms": _itms(100_000, 9_000, 9_000) + _itms(50_000, 1_250, 1_250, rate=5.0),
@@ -94,7 +94,7 @@ def test_an_invoice_and_a_note_sharing_a_number_are_not_confused():
     so the same number can legitimately appear as both."""
     payload = _payload(
         b2b=[_b2b("001", 100_000, 9_000, 9_000)],
-        cdnr=[{"ctin": "27BBBBB1111B1Z5", "nt": [{
+        cdnr=[{"ctin": "27BBBBB1111B1ZN", "nt": [{
             "ntty": "C", "nt_num": "001", "nt_dt": "12-06-2025", "val": 118.0,
             "pos": "27", "rchrg": "N", "itms": _itms(10_000, 900, 900),
         }]}],

@@ -20,7 +20,7 @@ def _setup(monkeypatch):
     db = FakeDB()
     wire_e2e(monkeypatch, db, [inv])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
-    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5"})
+    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z2"})
     seed_standard_coa(db, FIRM, "CLI")
     # Accounts the standard test COA doesn't include but the adjustment
     # journal needs — mirrors how a real firm's own COA would be set up.

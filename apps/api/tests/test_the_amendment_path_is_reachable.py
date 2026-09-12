@@ -101,7 +101,7 @@ def test_a_document_never_declared_is_not_an_amendment():
     to supersede, and putting it in 9A would amend an entry that does not
     exist."""
     filed = {"b2b": []}
-    books = {"b2b": [{"ctin": "27AAAAA0000A1Z5", "inv": [
+    books = {"b2b": [{"ctin": "27AAAAA0000A1Z2", "inv": [
         {"inum": "INV-1", "idt": "01-06-2026", "val": 1180.0,
          "itms": [{"rt": 18.0, "txval": 1000.0, "camt": 90.0, "samt": 90.0}]}]}]}
     report = compare_payloads(filed, books)
@@ -114,7 +114,7 @@ def test_a_document_never_declared_is_not_an_amendment():
 def test_a_document_that_vanished_from_the_books_is_an_amendment():
     """The most serious of the four: declared, then deleted or cancelled. A
     filed return cannot simply drop it."""
-    filed = {"b2b": [{"ctin": "27AAAAA0000A1Z5", "inv": [
+    filed = {"b2b": [{"ctin": "27AAAAA0000A1Z2", "inv": [
         {"inum": "INV-1", "idt": "01-06-2026", "val": 1180.0,
          "itms": [{"rt": 18.0, "txval": 1000.0, "camt": 90.0, "samt": 90.0}]}]}]}
     report = compare_payloads(filed, {"b2b": []})
@@ -129,7 +129,7 @@ def test_a_reclassified_document_is_reported_once_and_names_both_tables():
     every total double-counts it."""
     inv = {"inum": "INV-1", "idt": "01-06-2026", "val": 1180.0,
            "itms": [{"rt": 18.0, "txval": 1000.0, "camt": 0.0, "samt": 0.0, "iamt": 180.0}]}
-    filed = {"b2b": [{"ctin": "27AAAAA0000A1Z5", "inv": [inv]}]}
+    filed = {"b2b": [{"ctin": "27AAAAA0000A1Z2", "inv": [inv]}]}
     books = {"exp": [{"exp_typ": "WPAY", "inv": [inv]}]}
     report = compare_payloads(filed, books)
     reclassified = report["documents"]["reclassified"]

@@ -85,7 +85,7 @@ def _setup(monkeypatch):
     wire_e2e(monkeypatch, db, [si, pb, cn, dn, cu, ve, pp])
     db.seed("currencies", {"code": "USD", "symbol": "$", "display_name": "US Dollar", "minor_unit": 2, "is_active": True})
     db.seed("currencies", {"code": "INR", "symbol": "₹", "display_name": "Indian Rupee", "minor_unit": 2, "is_active": True})
-    db.seed("clients", {"id": "CLI-A", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5"})
+    db.seed("clients", {"id": "CLI-A", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z2"})
     db.seed("clients", {"id": "CLI-B", "firm_id": FIRM, "gstin": "29BBBBB0000B1Z5"})
     seed_standard_coa(db, FIRM, "CLI-A")
     seed_standard_coa(db, FIRM, "CLI-B")

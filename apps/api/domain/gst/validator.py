@@ -26,6 +26,26 @@ VALID_STATE_CODES = {
     "97",  # other territory
 }
 
+def _gstin_problem(gstin: str) -> str | None:
+    """What is wrong with this GSTIN — `domain/gst/gstin.problem_with`.
+
+    Imported through a wrapper rather than at module scope because
+    `domain.gst.gstin` is the authority and this module is a payload validator;
+    the wrapper is the seam that keeps `GSTIN_RE` below from being reached for
+    this question again.
+    """
+    from domain.gst.gstin import problem_with
+    return problem_with(gstin)
+
+
+# TWO STATE LISTS, AND THEY ARE DELIBERATELY DIFFERENT. `VALID_STATE_CODES`
+# above is for a PLACE OF SUPPLY and includes 96 (outside India) — an export's
+# place of supply is 96 and nothing is registered there.
+# `domain/gst/gstin.VALID_STATE_CODES` is for the first two characters of a
+# GSTIN and does NOT: a GSTIN is a registration in a state, so 96 can never
+# begin one. Collapsing them would either refuse every export or accept a
+# GSTIN that cannot exist.
+
 # GSTN period format: MMYYYY
 PERIOD_RE = re.compile(r"^(0[1-9]|1[0-2])\d{4}$")
 
@@ -73,12 +93,21 @@ class GSTValidator:
     """Validates GSTN data before payload generation."""
 
     def validate_gstin(self, gstin: str) -> list[ValidationError]:
-        """Validate GSTIN format — CGST Act Section 25."""
+        """Validate the CLIENT'S OWN GSTIN — CGST Act §25.
+
+        Delegates to `domain/gst/gstin.problem_with`, the one implementation
+        that computes the CHECK DIGIT (GST-29). This was `GSTIN_RE` alone: a
+        bare shape regex, so `27AAPFU0939F1ZX` — one character off the real
+        `…1ZV` — passed, and the whole GSTR-1 or GSTR-3B was built and offered
+        for filing under a registration number belonging to somebody else or to
+        nobody. A hard refusal is right HERE, unlike the counterparty check
+        below: the return is filed under this number.
+        """
         if not gstin:
             return [ValidationError("gstin", "GSTIN is required")]
-        if not GSTIN_RE.match(gstin):
-            return [ValidationError("gstin", f"Invalid GSTIN format: {gstin}. "
-                                    "Expected: 2-digit state code + PAN + entity number + Z + checksum")]
+        problem = _gstin_problem(gstin)
+        if problem:
+            return [ValidationError("gstin", f"Invalid GSTIN {gstin}: {problem}")]
         return []
 
     def validate_period(self, period: str) -> list[ValidationError]:
@@ -120,13 +149,25 @@ class GSTValidator:
         if conflict:
             errors.append(ValidationError("supply_type", conflict, ref))
 
-        # Party GSTIN format if provided
-        if inv.party_gstin and not GSTIN_RE.match(inv.party_gstin):
-            errors.append(ValidationError(
-                "party_gstin",
-                f"Invalid receiver GSTIN: {inv.party_gstin}",
-                ref,
-            ))
+        # THE COUNTERPARTY'S GSTIN, check digit included (GST-29). Same one
+        # implementation as the client's own above; the difference is what it
+        # costs. §16(2)(aa) sends the credit to whoever the GSTIN names, so a
+        # valid-SHAPED wrong one hands a customer's input tax credit to a
+        # stranger — correctable only by an amendment inside the §37(3) window,
+        # by which time the customer has chased the CA about it.
+        #
+        # REPORTED, not refused: this is one invoice among hundreds and the
+        # error rides in the return's own exception list, where a CA can fix
+        # the master and rebuild. Refusing the whole build for one wrong
+        # counterparty is how a CA learns to skip the validator.
+        if inv.party_gstin:
+            problem = _gstin_problem(inv.party_gstin)
+            if problem:
+                errors.append(ValidationError(
+                    "party_gstin",
+                    f"Invalid receiver GSTIN {inv.party_gstin}: {problem}",
+                    ref,
+                ))
 
         # CGST must equal SGST for intra-state supplies
         if not inv.is_interstate and inv.cgst_paise != inv.sgst_paise:

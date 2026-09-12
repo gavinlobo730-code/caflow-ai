@@ -28,7 +28,7 @@ def _setup(monkeypatch):
     wire_e2e(monkeypatch, db, [pb])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     # Client + vendor share state 27 → intra-state bill (CGST + SGST, no TDS).
-    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5",
+    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z2",
                         "financial_year_start": "2025-04-01"})
     db.seed("vendors", {"id": "VEND1", "firm_id": FIRM, "client_id": "CLI", "name": "Supplier Co",
                         "state_code": "27", "gstin": "27BBBBB1111B1Z3",

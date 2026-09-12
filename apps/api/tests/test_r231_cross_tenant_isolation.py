@@ -63,27 +63,27 @@ def _clear_mock_stores():
 # ── GST saves ──────────────────────────────────────────────────────────────
 
 def test_save_gstr1_rejects_another_firms_client(enforced):
-    body = SaveGSTR1Request(client_id="C-OTHER", period="042026", gstin="27AAAAA0000A1Z5")
+    body = SaveGSTR1Request(client_id="C-OTHER", period="042026", gstin="27AAAAA0000A1Z2")
     with pytest.raises(HTTPException) as ei:
         gst_router.save_gstr1(body, PARTNER_F1)
     assert ei.value.status_code == 404
 
 
 def test_save_gstr1_accepts_own_firms_client(enforced):
-    body = SaveGSTR1Request(client_id="C1", period="042026", gstin="27AAAAA0000A1Z5")
+    body = SaveGSTR1Request(client_id="C1", period="042026", gstin="27AAAAA0000A1Z2")
     result = gst_router.save_gstr1(body, PARTNER_F1)
     assert result["success"] is True
 
 
 def test_save_gstr3b_rejects_another_firms_client(enforced):
-    body = SaveGSTR3BRequest(client_id="C-OTHER", period="042026", gstin="27AAAAA0000A1Z5")
+    body = SaveGSTR3BRequest(client_id="C-OTHER", period="042026", gstin="27AAAAA0000A1Z2")
     with pytest.raises(HTTPException) as ei:
         gst_router.save_gstr3b(body, PARTNER_F1)
     assert ei.value.status_code == 404
 
 
 def test_save_gstr3b_accepts_own_firms_client(enforced):
-    body = SaveGSTR3BRequest(client_id="C1", period="042026", gstin="27AAAAA0000A1Z5")
+    body = SaveGSTR3BRequest(client_id="C1", period="042026", gstin="27AAAAA0000A1Z2")
     result = gst_router.save_gstr3b(body, PARTNER_F1)
     assert result["success"] is True
 
@@ -102,14 +102,14 @@ def test_upload_gstr2b_accepts_own_firms_client(enforced):
 
 
 def test_save_gstr9_rejects_another_firms_client(enforced):
-    body = GSTR9In(client_id="C-OTHER", financial_year="2025-26", gstin="27AAAAA0000A1Z5")
+    body = GSTR9In(client_id="C-OTHER", financial_year="2025-26", gstin="27AAAAA0000A1Z2")
     with pytest.raises(HTTPException) as ei:
         gst_router.save_gstr9(body, PARTNER_F1)
     assert ei.value.status_code == 404
 
 
 def test_save_gstr9_accepts_own_firms_client(enforced):
-    body = GSTR9In(client_id="C1", financial_year="2025-26", gstin="27AAAAA0000A1Z5")
+    body = GSTR9In(client_id="C1", financial_year="2025-26", gstin="27AAAAA0000A1Z2")
     result = gst_router.save_gstr9(body, PARTNER_F1)
     assert result["success"] is True
 

@@ -105,8 +105,8 @@ def test_identity_normalises_and_validates_pan():
 
 
 def test_identity_validates_gstin():
-    m = PracticeIdentityUpdate(gstin="27AABCU9603R1ZX")
-    assert m.gstin == "27AABCU9603R1ZX"
+    m = PracticeIdentityUpdate(gstin="27AABCU9603R1ZN")
+    assert m.gstin == "27AABCU9603R1ZN"
     with pytest.raises(Exception):
         PracticeIdentityUpdate(gstin="BAD-GSTIN")
 

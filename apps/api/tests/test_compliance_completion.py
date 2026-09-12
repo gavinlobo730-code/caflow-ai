@@ -92,7 +92,7 @@ class TestGSTINValidation:
         """Valid GSTIN should match format: 2-digit state + PAN (10) + entity + Z + check."""
         import re
         GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
-        valid = "27AABCU9603R1ZX"
+        valid = "27AABCU9603R1ZN"
         assert GSTIN_RE.match(valid), "Valid GSTIN should pass format check"
 
     def test_invalid_gstin_wrong_state_code(self):
@@ -130,7 +130,7 @@ class TestGSTINValidation:
         inv = InvoiceToValidate(
             reference_no="INV001",
             transaction_date="2026-05-15",
-            party_gstin="27AABCU9603R1ZX",
+            party_gstin="27AABCU9603R1ZN",
             place_of_supply="27",
             taxable_amount_paise=100000,  # ₹1000
             cgst_paise=5000,

@@ -51,7 +51,7 @@ class TestInvoiceExtractionV1:
         monkeypatch.setattr(mod, "_GROQ_KEY", "fake-key")
         real = {
             "vendor_name": "Real Vendor Ltd",
-            "vendor_gstin": "27AAAAA0000A1Z5",
+            "vendor_gstin": "27AAAAA0000A1Z2",
             "invoice_no": "INV-777",
             "invoice_date": "2026-01-01",
             "taxable_amount_paise": 500000,

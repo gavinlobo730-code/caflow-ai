@@ -115,7 +115,7 @@ def test_gstr3b_payload_populates_itc_inelg():
                             ineligible_cgst_paise=4_50000, ineligible_sgst_paise=4_50000),
     ]
     result = compute_gstr3b([], purchases, [])
-    payload = result.as_gstn_payload("27AAAAA0000A1Z5", "062026")
+    payload = result.as_gstn_payload("27AAAAA0000A1Z2", "062026")
 
     # §17(5) MOVED. This asserted itc_inelg == 4500, which was the layout the
     # portal used until August 2022. Notification 14/2022-Central Tax and
@@ -233,7 +233,7 @@ def test_gstr3b_from_books_excludes_ineligible_itc(monkeypatch):
         "ineligible_itc_igst_paise": 0,
     })
     monkeypatch.setattr(svc, "_gl_gst_movements", lambda *a, **k: {"output_paise": 0, "itc_paise": 0, "by_head": {}})
-    result = svc.gstr3b_from_books(db, FIRM, "CLI", "062026", "27AAAAA0000A1Z5")
+    result = svc.gstr3b_from_books(db, FIRM, "CLI", "062026", "27AAAAA0000A1Z2")
     payload = result["payload"]
     # 4(A) is ALL credit availed — 13,50,000 paise = Rs 13,500 — not the figure
     # net of §17(5). It asserted 9000 here, which was the pre-August-2022
@@ -258,7 +258,7 @@ def test_hsn_summary_fallback_includes_cess():
 
     inv = InvoiceForGSTR1(
         id="i1", transaction_type="sales_invoice", reference_no="INV-1",
-        transaction_date="2026-06-10", party_gstin="27BBBBB1111B1Z5", party_name="Acme",
+        transaction_date="2026-06-10", party_gstin="27BBBBB1111B1ZN", party_name="Acme",
         place_of_supply="27", is_interstate=False,
         taxable_amount_paise=1_00_000_00, cgst_paise=9_000_00, sgst_paise=9_000_00,
         igst_paise=0, cess_paise=5_000_00, is_reverse_charge=False, invoice_type="Regular",
@@ -277,7 +277,7 @@ def test_hsn_summary_fallback_zero_cess_unchanged():
 
     inv = InvoiceForGSTR1(
         id="i1", transaction_type="sales_invoice", reference_no="INV-1",
-        transaction_date="2026-06-10", party_gstin="27BBBBB1111B1Z5", party_name="Acme",
+        transaction_date="2026-06-10", party_gstin="27BBBBB1111B1ZN", party_name="Acme",
         place_of_supply="27", is_interstate=False,
         taxable_amount_paise=1_00_000_00, cgst_paise=9_000_00, sgst_paise=9_000_00,
         igst_paise=0, cess_paise=0, is_reverse_charge=False, invoice_type="Regular",
@@ -391,7 +391,7 @@ def _portal_setup(monkeypatch, fail_types, scope):
     monkeypatch.setattr(ps, "_supabase", lambda: db)
     monkeypatch.setattr(ps, "get_provider", lambda name="manual": _FakeProvider(fail_types))
     job = db.seed("gst_sync_jobs", {
-        "firm_id": FIRM, "client_id": "CLI", "gstin": "27AAAAA0000A1Z5",
+        "firm_id": FIRM, "client_id": "CLI", "gstin": "27AAAAA0000A1Z2",
         "sync_type": "manual", "scope": scope, "status": "pending", "snapshots_created": 0,
     })
     return ps, db, job

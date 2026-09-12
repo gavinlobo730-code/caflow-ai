@@ -318,6 +318,28 @@ change. The code is the authority; keep this file in step with it.
   `"MUMB00000A"` / `"AAAAA0000A"`, both well-formed, so every validator passed
   and a quarter saved under a TAN belonging to nobody — a return filed against
   somebody else's account, with §200/§201 exposure staying on the real deductor.
+- **THE DEDUCTOR BLOCK IS SERVED, NOT RE-TYPED** (TDS-28).
+  `GET /api/tds/deductor?client_id=` resolves it through the same
+  `domain/tds/deductor.resolve` the compute path refuses with, off the same
+  two rows (`_deductor_sources` — `client_statutory_identity.tan` and the
+  client's own PAN, legal name and address). Nothing served it before, so the
+  compliance screen opened four blank boxes and the CA typed the TAN, the
+  legal name and the PAN every quarter, for every client — and a quarter filed
+  under a mistyped TAN is filed against somebody else's account. The endpoint
+  NAMES the gaps rather than refusing, because a screen opening a form needs
+  to say what to go and record; the boxes stay editable, and a value already
+  typed is not overwritten when the panel reopens.
+- **A TDS ENGAGEMENT OWES TWELVE MONTHLY DEPOSITS, NOT FOUR STATEMENTS**
+  (TDS-12). Rule 30(2) binds every deductor other than an office of the
+  government, and `compliance_engine.tds_deposit_due_date` had exactly one
+  caller — `payroll_deposit_due_dates` — so the compliance calendar carried a
+  monthly deposit for SALARY and nothing at all for the §194 series.
+  `_tds_obligations` emits `TDS_NON_SALARY_DEPOSIT` for every month of the FY.
+  **Its own obligation type**, not a second `TDS_SALARY_DEPOSIT` row: two
+  deposits with different section codes on the challan and different registers
+  behind them, one generated for a PAYROLL engagement and one for a TDS one,
+  and the dedup key is `(obligation_type, period_start)` so sharing a type
+  would silently drop one.
 - **§206AB was omitted by the Finance Act 2025 w.e.f. 01-04-2025, so
   `tds_validator.is_higher_rate_applicable` takes an FY** and answers the
   ordinary rate for a later year. Not deleted: §206AB governs a period up to
@@ -1647,6 +1669,32 @@ called.
   sits in "missing in 2B" for ever while the CA chases the wrong party. The
   bulk paths report it as a per-item error rather than 422-ing the batch, which
   is that endpoint's own design.
+  **And on the paths that FILE with one, since GST-29's second half.**
+  `domain/gst/validator.GSTValidator.validate_gstin` was a bare shape regex
+  and so was `core/validators.validate_gstin` — the one
+  `routers/gst_workspace.py` records a filed return through — so a
+  valid-shaped wrong GSTIN built the whole GSTR-1 or GSTR-3B and offered it
+  for filing under a registration belonging to somebody else. Both delegate
+  to `problem_with` now. The CLIENT'S OWN GSTIN is a hard refusal (the return
+  is filed under it); the COUNTERPARTY's is REPORTED in the return's own
+  exception list, because refusing a whole build for one wrong customer is
+  how a CA learns to skip the validator. **`core/validators` no longer holds
+  a GSTIN pattern at all** — the pattern is an invitation to answer the
+  question the cheap way. `models/parties.CustomerIn` and `VendorIn` read the
+  shared function, so the refusal now happens at the MODEL; the bulk path
+  builds them inside a per-item `try`, so one bad row is still one row's
+  error. **THREE FIXTURE GSTINs WERE CORRECTED, NOT THE GUARD** —
+  `27AAAAA0000A1Z5`, `27AABCU9603R1ZX` and `27BBBBB1111B1Z5` all had wrong
+  check digits and were used in 77 files, including two frontend
+  placeholders that taught a CA an example their own keystroke validator
+  rejects.
+  **TWO STATE LISTS, DELIBERATELY DIFFERENT.**
+  `domain/gst/validator.VALID_STATE_CODES` is for a PLACE OF SUPPLY and
+  includes **96** (outside India, where an export goes);
+  `domain/gst/gstin.VALID_STATE_CODES` is for the first two characters of a
+  GSTIN and does not, because a GSTIN is a registration in a state.
+  Collapsing them would either refuse every export or accept a GSTIN that
+  cannot exist.
   Deliberately still NOT in `models.client.validate_gstin`, which guards a
   Pydantic field that 512 invented fixture GSTINs across 95 files flow through.
   Closing the bulk door showed how load-bearing that carve-out is:

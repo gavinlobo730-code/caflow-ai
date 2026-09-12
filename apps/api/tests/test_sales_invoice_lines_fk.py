@@ -154,7 +154,7 @@ def _interstate_create_controller(event):
     if t == "customers" and op == "select":
         return _Resp(data=[{"state_code": "07", "gstin": "07AAAAA0000A1Z5"}])
     if t == "clients" and op == "select":
-        return _Resp(data=[{"gstin": "27AAAAA0000A1Z5"}])
+        return _Resp(data=[{"gstin": "27AAAAA0000A1Z2"}])
     if t == "client_sales_invoices" and op == "select" and event["count"] == "exact":
         return _Resp(data=[], count=0)  # first invoice this FY
     if t == "client_sales_invoices" and op == "insert":

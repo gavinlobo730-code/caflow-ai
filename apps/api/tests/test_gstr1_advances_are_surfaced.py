@@ -43,7 +43,7 @@ def db(monkeypatch):
     wire_e2e(monkeypatch, d, [gw, grs])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
     d.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT,
-                         "name": "Acme", "gstin": "27BBBBB1111B1Z5",
+                         "name": "Acme", "gstin": "27BBBBB1111B1ZN",
                          "state_code": "27", "is_active": True})
     return d
 
@@ -181,7 +181,7 @@ def test_the_route_is_registered():
 
 def _client(db, *, applicable):
     db.seed("clients", {"id": CLIENT, "firm_id": FIRM,
-                        "gstin": "27AAAAA0000A1Z5", "state_code": "27",
+                        "gstin": "27AAAAA0000A1Z2", "state_code": "27",
                         "financial_year_start": "2025-04-01",
                         "gst_advance_tax_applicable": applicable})
 
@@ -332,7 +332,7 @@ def test_table_11_reaches_the_gstr1_payload(db):
                           "is_active": True})
 
     payload = grs.gstr1_from_books(db, FIRM, CLIENT, PERIOD,
-                                   "27AAAAA0000A1Z5")["payload"]
+                                   "27AAAAA0000A1Z2")["payload"]
     assert "at" in payload, (
         "Table 11A was computed and never merged into the file the CA uploads")
     assert payload["at"][0]["itms"][0]["ad_amt"] == 1000.0
@@ -348,5 +348,5 @@ def test_a_goods_client_gets_no_at_section_in_the_payload(db):
                           "is_active": True})
 
     payload = grs.gstr1_from_books(db, FIRM, CLIENT, PERIOD,
-                                   "27AAAAA0000A1Z5")["payload"]
+                                   "27AAAAA0000A1Z2")["payload"]
     assert "at" not in payload and "txpd" not in payload

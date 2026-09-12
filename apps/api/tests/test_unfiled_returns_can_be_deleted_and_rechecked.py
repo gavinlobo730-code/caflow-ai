@@ -27,7 +27,7 @@ from routers import gst_workspace as gw
 # ── The staleness comparison ────────────────────────────────────────────────
 
 def _rec(liab=100, itc=40, net=60, status="draft"):
-    return {"id": "R1", "client_id": "CLI", "period": "042026", "gstin": "27AAAAA0000A1Z5",
+    return {"id": "R1", "client_id": "CLI", "period": "042026", "gstin": "27AAAAA0000A1Z2",
             "status": status, "tax_liability_paise": liab,
             "itc_claimed_paise": itc, "net_tax_paise": net}
 

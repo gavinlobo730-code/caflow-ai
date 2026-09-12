@@ -16,7 +16,7 @@ START, END = "2025-04-01", "2026-03-31"
 
 
 def _cust(opening=0):
-    return {"id": CUST, "name": "Acme Ltd", "email": "ap@acme.test", "gstin": "27AAAAA0000A1Z5",
+    return {"id": CUST, "name": "Acme Ltd", "email": "ap@acme.test", "gstin": "27AAAAA0000A1Z2",
             "opening_balance_paise": opening}
 
 

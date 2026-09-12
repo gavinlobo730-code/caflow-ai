@@ -28,7 +28,7 @@ def _setup(monkeypatch):
     db = FakeDB()
     wire_e2e(monkeypatch, db, [pb, payroll_mod])
     monkeypatch.setenv("SUPABASE_URL", "test://db")
-    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z5", "financial_year_start": "2025-04-01"})
+    db.seed("clients", {"id": "CLI", "firm_id": FIRM, "gstin": "27AAAAA0000A1Z2", "financial_year_start": "2025-04-01"})
     # Payroll is switched ON for this client (migration 332). A firm that
     # runs payroll for a client has said so; without the row every write
     # below is refused, which is the gate working rather than a fixture

@@ -87,10 +87,20 @@ def test_tds_itr_advance_roc_audit_obligations():
     # 24Q and 26Q, four quarters each (TDS-12 added the salary statement, which
     # Rule 31A(4) puts on the same four dates). 27Q is the conditional one and
     # this client has no non-resident vendor.
-    assert len(tds) == 8
+    # Eight quarterly statements (24Q + 26Q) plus the twelve monthly Rule
+    # 30(2) deposits TDS-12's second half added — a different obligation with
+    # a different date and a different penalty.
+    assert len(tds) == 20
     assert sorted(s["obligation_type"] for s in tds) == \
-        ["TDS24Q"] * 4 + ["TDS26Q"] * 4
-    assert next(s for s in tds if "Q1" in s["period_label"])["due_date"] == "2025-07-31"
+        ["TDS24Q"] * 4 + ["TDS26Q"] * 4 + ["TDS_NON_SALARY_DEPOSIT"] * 12
+    assert next(s for s in tds
+                if "Q1" in s["period_label"])["due_date"] == "2025-07-31"
+    # Rule 30(2): the seventh of the following month, except March.
+    by_type = {s["obligation_type"]: s for s in tds
+               if s["period_start"] == "2025-04-01"}
+    assert by_type["TDS_NON_SALARY_DEPOSIT"]["due_date"] == "2025-05-07"
+    march = next(s for s in tds if s["period_start"] == "2026-03-01")
+    assert march["due_date"] == "2026-04-30"
 
     itr = ob.obligations_for_service("Income Tax Return", FY)
     assert len(itr) == 1 and itr[0]["due_date"] == "2026-07-31" and itr[0]["compliance_type"] == "Income Tax"
