@@ -2455,14 +2455,66 @@ def delete_rule(
     rule_id: str,
     current_user: dict = Depends(rbac("banking", "write")),
 ):
-    """Remove a rule outright. A rule is configuration, not a financial record —
-    it has never written anything to the ledger, so there is nothing to preserve.
-    To keep one for later, deactivate it instead (PATCH is_active=false)."""
+    """Remove a rule outright.
+
+    THE DOCSTRING USED TO SAY a rule "has never written anything to the ledger,
+    so there is nothing to preserve". That stopped being true when migration
+    322 made a rule TRUSTABLE: a trusted rule passes entries by itself and
+    `bank_entry_service` stamps `posted_by_rule_id` on every line it posted
+    (`created_by = trusted_by`). So a rule can be the recorded reason a journal
+    exists, and `ON DELETE SET NULL` means deleting it silently erases that
+    reason from every one of those lines (BANK-12).
+
+    Three things follow, and none of them is "refuse":
+      * a rule that HAS posted is only deletable by someone who could have
+        trusted it in the first place — `banking.approve`, a Manager or
+        Partner. An Executive may write a rule; only someone answerable for
+        the books may erase why a line posted.
+      * the deletion is written to `audit_log` with the count, because after
+        the delete nothing else records that the rule existed.
+      * the response says how many lines lost their attribution, so a screen
+        can say it rather than reporting a silent success.
+
+    To keep a rule for later, deactivate it instead (PATCH is_active=false).
+    """
     db = _db()
     if not db:
-        return api_response(True, {"id": rule_id, "deleted": True})
+        return api_response(True, {"id": rule_id, "deleted": True, "posted_lines": 0})
     rule = _rule_or_404(db, current_user["firm_id"], rule_id)
     assert_client_access(current_user, rule["client_id"])
+
+    # The partial index on posted_by_rule_id (migration 322) makes this cheap,
+    # and `count="exact"` with `limit(1)` asks the database for the number
+    # rather than shipping the rows to count them here.
+    posted = 0
+    try:
+        resp = (db.table("bank_transactions").select("id", count="exact")
+                .eq("firm_id", current_user["firm_id"])
+                .eq("posted_by_rule_id", rule_id).limit(1).execute())
+        posted = int(getattr(resp, "count", None) or 0)
+    except Exception:                                              # noqa: BLE001
+        # A count that cannot be taken must not decide the permission — failing
+        # closed here would make a rule undeletable by the person who wrote it
+        # because of a transient read. The audit entry below still records the
+        # deletion; only the count is unknown.
+        posted = 0
+
+    if posted:
+        from core.permissions import can
+        if not can(current_user.get("role") or "", "banking", "approve"):
+            raise HTTPException(
+                status_code=403,
+                detail=(f"This rule posted {posted} bank line{'s' if posted != 1 else ''} by "
+                        f"itself, and deleting it erases the record of why they posted. "
+                        f"Only a Manager or Partner can delete it — or deactivate it instead."))
+
     (db.table("bank_matching_rules").delete()
      .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
-    return api_response(True, {"id": rule_id, "deleted": True})
+    # AFTER the delete, because there is nothing left to read afterwards: the
+    # whole rule goes into the audit entry, not merely its id.
+    log_event(
+        current_user["firm_id"], "bank_matching_rule", rule_id, "delete",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data={**rule, "posted_lines_at_delete": posted},
+    )
+    return api_response(True, {"id": rule_id, "deleted": True, "posted_lines": posted})

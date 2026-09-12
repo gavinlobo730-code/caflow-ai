@@ -281,12 +281,36 @@ def create_credit_note(
                     .select("is_interstate, invoice_date")
                     .eq("id", data["sales_invoice_id"])
                     .eq("firm_id", firm_id)
+                    # CLIENT-SCOPED, and it was not (SALES-30). The service-role
+                    # key bypasses RLS, so the `.eq("client_id", …)` filter is
+                    # the isolation control, not a convenience — and a lookup by
+                    # id alone let one client's credit note read ANOTHER client
+                    # of the same firm's invoice. The issue path a few hundred
+                    # lines below has always filtered it; the create path never
+                    # did.
+                    #
+                    # The cost of the gap grew when §34(2) started reading
+                    # through the same select: a cross-client link no longer
+                    # only mis-set `is_interstate` (which fails safe, because
+                    # issue re-derives the place of supply) — it measured the
+                    # correction window from a stranger's invoice date, and that
+                    # answer is a WARNING, so nothing downstream would catch it.
+                    .eq("client_id", client_id)
                     .limit(1)
                     .execute()
                 )
-                if inv_resp.data:
-                    original_invoice = inv_resp.data[0]
-                    is_interstate = original_invoice.get("is_interstate", False)
+                if not inv_resp.data:
+                    # 422 rather than a silent `original_invoice = None`. The
+                    # note names an invoice; if that invoice is not this
+                    # client's, the CA has picked the wrong one and every
+                    # downstream answer — the tax split, the §34(2) window, the
+                    # allocation at issue — would be computed as though the
+                    # link were simply absent.
+                    raise HTTPException(
+                        status_code=422,
+                        detail="The invoice this credit note refers to is not part of this client's books.")
+                original_invoice = inv_resp.data[0]
+                is_interstate = original_invoice.get("is_interstate", False)
 
         # Compute lines (shared with the PATCH endpoint — see _compute_lines)
         computed_lines, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(lines_data, is_interstate)
@@ -442,7 +466,15 @@ def get_credit_note(
         if cn.get("sales_invoice_id"):
             inv = (db.table("client_sales_invoices").select("invoice_date")
                    .eq("id", cn["sales_invoice_id"])
-                   .eq("firm_id", current_user.get("firm_id")).limit(1).execute()).data
+                   .eq("firm_id", current_user.get("firm_id"))
+                   # Client-scoped for SALES-30's reason: the link is a stored FK
+                   # to another document, not this row's own identity, so the
+                   # caller's scope check on the NOTE says nothing about the
+                   # invoice. A note created before the create path was scoped
+                   # can still carry a foreign link, and reading it here would
+                   # measure §34(2) from a stranger's date.
+                   .eq("client_id", cn.get("client_id"))
+                   .limit(1).execute()).data
             supply_row = inv[0] if inv else None
         cn["section_34_2_warning"] = _section_34_2_warning(
             db, current_user.get("firm_id") or "", cn.get("client_id") or "",

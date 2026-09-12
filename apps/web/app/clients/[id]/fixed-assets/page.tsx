@@ -263,6 +263,15 @@ function RegisterTab({ clientId }: { clientId: string }) {
         .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, is_disposed, notes, it_block_key, put_to_use_date")
         .eq("client_id", clientId)
         .eq("is_disposed", false)
+        // SOFT-DELETED ASSETS ARE NOT ON THE REGISTER, and this read was the one
+        // place that thought otherwise. `routers/fixed_assets.py` excludes them
+        // everywhere — list_assets, _live_asset, the depreciation runner, the
+        // schedule, the year-end note — but this tab reads PostgREST directly
+        // and had no such filter, so a deleted asset stayed in the grid and its
+        // cost stayed in the Gross Block. The Delete dialog tells the CA "the
+        // asset leaves the register"; on this screen it did not, and the tab
+        // then disagreed with every other view by exactly that asset's cost.
+        .is("deleted_at", null)
         .order("purchase_date", { ascending: false })
         .order("id"));
       // A non-null PostgREST error is a real failure, not an empty register.

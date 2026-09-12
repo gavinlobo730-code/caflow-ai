@@ -142,6 +142,9 @@ class BankingService:
             "transaction_date": t.transaction_date, "description": t.description,
             "reference_no": t.reference_no, "debit_paise": t.debit_paise,
             "credit_paise": t.credit_paise, "balance_paise": t.balance_paise,
+            # Carried through so _import_core can drop it AFTER the header
+            # arithmetic has used its balance — see NormalizedTxn.is_balance_marker.
+            "is_balance_marker": bool(getattr(t, "is_balance_marker", False)),
         } for t in txns]
         return self._import_core(db, firm_id, client_id, bank_name, account_number,
                                  norm, bank_account_id, actor_id, file_meta=file_meta,
@@ -213,6 +216,16 @@ class BankingService:
                     "repeated_in_file": repeated_in_file}
 
         # 3) statement header (summary over the rows actually stored).
+        #
+        # THE HEADER IS COMPUTED BEFORE THE BALANCE MARKERS ARE DROPPED, and the
+        # order is the whole point (BANK-29). A row that carries a balance and
+        # no movement — "Opening Balance", "B/F" — is not a transaction and must
+        # not be stored as one; but on a statement that prints such a row, that
+        # row IS the opening balance, and `_opening_closing_balance` reads it
+        # from the earliest row's `balance_paise`. Dropping it first would move
+        # the stored opening forward by the first real transaction's movement.
+        # It contributes zero to both totals, so the sums below are unaffected
+        # either way.
         dates = sorted(r["transaction_date"] for r in new_rows)
         opening_paise, closing_paise = _opening_closing_balance(new_rows)
         stmt_payload = {
@@ -223,9 +236,17 @@ class BankingService:
             "closing_balance_paise": closing_paise,
             "total_debits_paise": sum(r["debit_paise"] for r in new_rows),
             "total_credits_paise": sum(r["credit_paise"] for r in new_rows),
+        }
+        # NOW drop them. Everything above has had what it needed from them; from
+        # here on `new_rows` is the set of real transactions, so row_count,
+        # imported_count, the insert and the timeline entry all agree with each
+        # other and with what the CA will see in the entries list.
+        markers = sum(1 for r in new_rows if r.get("is_balance_marker"))
+        new_rows = [r for r in new_rows if not r.get("is_balance_marker")]
+        stmt_payload.update({
             "row_count": len(new_rows), "import_status": "pending",
             "imported_count": len(new_rows), "duplicate_count": duplicates,
-        }
+        })
         if bank_account_id:
             stmt_payload["bank_account_id"] = bank_account_id
         if file_meta:
@@ -291,6 +312,7 @@ class BankingService:
             log_event(firm_id, "bank_statement", statement_id, "create", actor_id=actor_id,
                       new_data={"imported": len(new_rows), "duplicates_skipped": duplicates,
                                 "repeated_in_file": repeated_in_file,
+                                "balance_rows_skipped": markers,
                                 "totals_mismatch_acknowledged": bool(totals_acknowledgement)},
                       metadata={"source": "bank_feed_import",
                                 "file_name": (file_meta or {}).get("file_name"),
@@ -304,7 +326,12 @@ class BankingService:
                 # transactions are ordinary — but a CA is entitled to know the
                 # statement said the same thing twice, because the other
                 # explanation is that the file itself is doubled.
-                "repeated_in_file": repeated_in_file}
+                "repeated_in_file": repeated_in_file,
+                # And how many carried a balance and no movement. Reported for
+                # the same reason: `imported` is now smaller than `total_rows`
+                # by an amount nothing else explains, and a number a CA can
+                # judge beats a silence they have to investigate.
+                "balance_rows_skipped": markers}
 
     # ── Account mapping ───────────────────────────────────────────────────────
     def _scoped_account(self, db, firm_id: str, client_id: str, account_id: str) -> dict:

@@ -144,6 +144,21 @@ GAP_27Q_IDENTIFIERS_MISSING = "non_resident_identifiers_missing"
 # reads Part II would stop the work rather than inform it — but a CA about to
 # pay a challan should be told the rate was reconciled and not verified.
 GAP_195_RATES_UNVERIFIED = "section_195_rates_not_verified"
+# The RESIDENT-SIDE twin, and it is the one that had no gap at all. Raised on
+# any deduction whose year `domain/tds/section_rates.TDS_RATES_BY_FY` does not
+# hold as verified — which includes every year BEFORE the registry starts, not
+# only the years after it.
+#
+# That direction is the dangerous one. `tds_rates_for` substitutes
+# LATEST_VERIFIED_TDS_FY for a year it does not have, and Finance Act 2025
+# RAISED most thresholds — so a bill entered late for FY 2024-25 is measured
+# against a bar the law had not yet lifted, and s.194J at Rs 40,000 comes back
+# nil where Rs 4,000 was due. Under-deduction disallows 30% of the expenditure
+# under s.40(a)(ia) and surfaces at assessment, long after the return.
+#
+# Not a refusal, for the same reason as the s.195 gap: a prior-year bill must
+# still be bookable. The gap is how the CA learns which figure to re-read.
+GAP_RESIDENT_RATES_UNVERIFIED = "resident_tds_rates_not_verified"
 # Nil was withheld on a no-PE declaration nobody dated or attributed. s.201(1)
 # makes a deductor who fails to deduct an assessee in default and s.201(1A)
 # charges interest, so the consequence of a wrong nil sits with the DEDUCTOR —
@@ -205,6 +220,14 @@ GAP_MESSAGES: dict[str, str] = {
         "s.115A and Part II of the First Schedule but have NOT been confirmed "
         "line by line against the Finance Act. Check the rate before paying the "
         "challan.",
+    GAP_RESIDENT_RATES_UNVERIFIED:
+        "The TDS rates and thresholds for this bill's financial year have not "
+        "been confirmed against that year's Finance Act — for a year the "
+        "registry does not hold at all, another year's figures were used. "
+        "Finance Act 2025 RAISED most thresholds, so an earlier year is likely "
+        "UNDER-deducted, and s.40(a)(ia) disallows 30% of the expenditure. "
+        "Check this deduction against that year's own rates before the quarter "
+        "is filed.",
     GAP_NO_PE_DECLARATION_UNDATED:
         "Nil was withheld on the payee having no permanent establishment in "
         "India, but the declaration has no date or nobody recorded who "

@@ -158,12 +158,6 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
     }
   }
 
-  const STATUS_COLORS: Record<string, string> = {
-    pending: "bg-amber-100 text-amber-700",
-    reviewed: "bg-blue-100 text-blue-700",
-    posted: "bg-green-100 text-green-700",
-  };
-
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
       {msg && (
@@ -260,6 +254,21 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
 
       {loading ? (
         <TableSkeleton cols={7} rows={3} />
+      /* THE "STATUS" COLUMN IS GONE, AND THAT IS THE FIX (BANK-25).
+         `bank_statements.import_status` is written exactly once — 'pending', by
+         `services/banking_service.py` at import — and by nothing else, ever. So
+         the chip said "pending" for every statement in the product forever,
+         including ones whose every line had been passed to the ledger months
+         earlier. A status that cannot change is worse than no status: it tells
+         a CA there is work outstanding on a statement that is finished.
+         What a REAL figure would cost, so nobody rebuilds the wrong one: "N of
+         M passed" per statement is a GROUP BY over bank_transactions, and this
+         codebase does not allow a screen to fetch rows proportional to
+         transaction volume to compute it in the browser (CLAUDE.md, reporting
+         performance). It is a SQL function with a mock-mode twin and a parity
+         test, or it is a column the pass/undo paths maintain — not a loop of
+         per-statement counts. The Entries tab already answers the same question
+         for the client as a whole. */
       ) : statements.length === 0 ? (
         <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
           <FileText size={32} className="text-gray-200 mx-auto" />
@@ -269,7 +278,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       ) : (
         <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Bank</th><th className="px-3 py-3 text-left font-semibold">Account No.</th><th className="px-3 py-3 text-left font-semibold">Period</th><th className="px-3 py-3 text-right font-semibold">Credits</th><th className="px-3 py-3 text-right font-semibold">Debits</th><th className="px-3 py-3 text-left font-semibold">Status</th><th className="px-4 py-3 text-left font-semibold">Action</th></tr></thead>
+            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Bank</th><th className="px-3 py-3 text-left font-semibold">Account No.</th><th className="px-3 py-3 text-left font-semibold">Period</th><th className="px-3 py-3 text-right font-semibold">Credits</th><th className="px-3 py-3 text-right font-semibold">Debits</th><th className="px-4 py-3 text-left font-semibold">Action</th></tr></thead>
             <tbody className="divide-y divide-[#F8FAFC]">
               {statements.map((s) => (
                 <tr key={s.id} className="hover:bg-[#F8FAFC]">
@@ -278,9 +287,6 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                   <td className="px-3 py-2.5 text-[#64748B]">{s.statement_from} → {s.statement_to}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-green-700">{fmt(s.total_credits_paise)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-red-700">{fmt(s.total_debits_paise)}</td>
-                  <td className="px-3 py-2.5">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_COLORS[s.import_status] ?? "bg-[#F1F5F9] text-[#64748B]"}`}>{s.import_status}</span>
-                  </td>
                   <td className="px-4 py-2.5">
                     <button onClick={() => selectedStmt === s.id ? setSelectedStmt(null) : openStatement(s.id)} className="text-xs text-blue-600 hover:underline">
                       {selectedStmt === s.id ? "Hide" : "View"} ({s.row_count} txns)

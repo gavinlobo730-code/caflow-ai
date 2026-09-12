@@ -38,6 +38,19 @@ def _validate_invoice_no_shape(v: str) -> str:
     return v
 
 
+def _validate_quantity(v: float) -> float:
+    """Three decimals, because NUMERIC(10,3) is what every quantity column in
+    this schema keeps (migrations 050, 188, 210) and the line's money is
+    computed from what was TYPED. `domain/quantity.py` carries the reasoning and
+    the wording; both line models delegate to it rather than each carrying a
+    rule (INV-09)."""
+    from domain.quantity import quantity_violation
+    problem = quantity_violation(v)
+    if problem:
+        raise ValueError(problem)
+    return v
+
+
 class InvoiceLineIn(BaseModel):
     """Single line on a sales invoice or purchase bill."""
     description: str
@@ -68,7 +81,7 @@ class InvoiceLineIn(BaseModel):
     def quantity_positive(cls, v: float) -> float:
         if v <= 0:
             raise ValueError("quantity must be positive.")
-        return v
+        return _validate_quantity(v)
 
     @field_validator("rate_paise")
     @classmethod
@@ -374,7 +387,7 @@ class PurchaseBillLineIn(BaseModel):
     def quantity_positive(cls, v: float) -> float:
         if v <= 0:
             raise ValueError("quantity must be positive.")
-        return v
+        return _validate_quantity(v)
 
     @field_validator("rate_paise")
     @classmethod

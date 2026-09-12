@@ -65,13 +65,15 @@ from datetime import date
 from typing import Optional
 
 from domain.tds.residency import (
-    GAP_195_RATES_UNVERIFIED, GAP_27Q_IDENTIFIERS_MISSING,
+    GAP_195_RATES_UNVERIFIED, GAP_RESIDENT_RATES_UNVERIFIED,
+    GAP_27Q_IDENTIFIERS_MISSING,
     GAP_FORM_15CA_NOT_RECORDED, GAP_NO_PE_DECLARATION_UNDATED,
     GAP_TDS_IS_A_FY_CATCH_UP,
     GAP_RESIDENCY_NOT_CLASSIFIED, FORM_27Q,
     describe_gaps, is_classified, missing_27q_identifiers, return_type_for,
 )
 from domain.tds.section_195_rates import rates_are_verified
+from domain.tds.section_rates import rates_are_verified as resident_rates_are_verified
 
 _logger = logging.getLogger("caflow.tds_register")
 
@@ -224,6 +226,15 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
         is_195 = (bill.get("tds_section") or "").strip() == "195"
         if is_195 and not rates_are_verified(fy_label(when)):
             gaps.append(GAP_195_RATES_UNVERIFIED)
+        # THE RESIDENT SIDE HAD NO SUCH GAP AT ALL, and it needs one more than
+        # s.195 does. `tds_rates_for` substitutes the latest verified year for a
+        # year it does not hold — for a year BEFORE the registry starts as well
+        # as after — and Finance Act 2025 raised most thresholds, so a bill
+        # entered late for FY 2024-25 is measured against a bar that year's law
+        # had not lifted. Nothing said so; the deduction simply came back nil.
+        elif not is_195 and (bill.get("tds_section") or "").strip() \
+                and not resident_rates_are_verified(fy_label(when)):
+            gaps.append(GAP_RESIDENT_RATES_UNVERIFIED)
         # A nil resting on a declaration nobody dated or attributed. Reported
         # only where the nil was actually RELIED ON — a vendor that holds a
         # declaration and is withheld at a rate anyway has not used it.
@@ -398,6 +409,12 @@ def sync_for_payment(db, firm_id: str, client_id: str, payment: dict,
                 gaps.append(GAP_27Q_IDENTIFIERS_MISSING)
         if is_195 and not rates_are_verified(fy_label(when)):
             gaps.append(GAP_195_RATES_UNVERIFIED)
+        # The resident twin, on the advance path too — an advance is a deduction
+        # event under s.194's "credit or payment, whichever is earlier", so it
+        # meets the same substituted year the bill path does.
+        elif not is_195 and (payment.get("tds_section") or "").strip() \
+                and not resident_rates_are_verified(fy_label(when)):
+            gaps.append(GAP_RESIDENT_RATES_UNVERIFIED)
         if (is_195 and v.get("no_pe_declaration_on_file")
                 and not (v.get("no_pe_declaration_on")
                          and v.get("no_pe_declaration_by"))):
