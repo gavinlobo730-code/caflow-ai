@@ -305,10 +305,18 @@ export default function GSTR3BPage() {
               </h3>
               <p className="text-xs text-[#64748B] mt-0.5">Net of credit notes. CGST Act Section 37.</p>
             </div>
+            {/* THE FORM HAS FIVE COLUMNS AND THIS TABLE HAD FOUR (GST-22).
+                Without a taxable-value column there was nowhere to put the
+                turnover, so the nil-rated/exempt row printed its VALUE under
+                the heading "IGST" — a figure in the wrong unit under a
+                statutory column name. 3.1(c) and 3.1(e) bear no tax at all;
+                what they carry is the value, which is now where the portal
+                puts it. */}
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-[#64748B] uppercase border-b border-[#F1F5F9]">
                   <th className="text-left px-5 py-2.5 font-medium">Supply Type</th>
+                  <th className="text-right px-5 py-2.5 font-medium">Taxable value</th>
                   <th className="text-right px-5 py-2.5 font-medium">IGST</th>
                   <th className="text-right px-5 py-2.5 font-medium">CGST</th>
                   <th className="text-right px-5 py-2.5 font-medium">SGST</th>
@@ -316,14 +324,15 @@ export default function GSTR3BPage() {
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
                 <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">Taxable supplies (B2B + B2C + B2CL)</td>
+                  <td className="px-5 py-3 text-[#334155]">(a) Taxable supplies (B2B + B2C + B2CL)</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.outward.taxable_value_paise)}</td>
                   <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.outward.taxable_igst_paise)}</td>
                   <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.outward.taxable_cgst_paise)}</td>
                   <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(w.outward.taxable_sgst_paise)}</td>
                 </tr>
                 <tr className="hover:bg-[#F8FAFC]">
                   <td className="px-5 py-3 text-[#334155]">
-                    Zero-rated supplies (Exports / SEZ)
+                    (b) Zero-rated supplies (Exports / SEZ)
                     {w.outward.zero_rated_igst_paise > 0 && (
                       <span className="block text-[10px] text-[#64748B] mt-0.5">
                         On payment of tax — CGST s.16(3)(b). Refundable under s.54.
@@ -335,6 +344,7 @@ export default function GSTR3BPage() {
                       carries nil, but one made ON PAYMENT OF TAX (s.16(3)(b))
                       carries real IGST that this return owes and s.54 refunds
                       later — and the em dash said otherwise. */}
+                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.outward.zero_rated_paise)}</td>
                   <td className="px-5 py-3 text-right font-mono text-[#0F172A]">
                     {w.outward.zero_rated_igst_paise > 0 ? r(w.outward.zero_rated_igst_paise) : "—"}
                   </td>
@@ -342,13 +352,57 @@ export default function GSTR3BPage() {
                   <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
                 </tr>
                 <tr className="hover:bg-[#F8FAFC]">
-                  <td className="px-5 py-3 text-[#334155]">Nil-rated / Exempt</td>
-                  <td className="px-5 py-3 text-right font-mono text-[#64748B]">{r(w.outward.nil_exempt_paise)}</td>
+                  <td className="px-5 py-3 text-[#334155]">(c) Nil-rated / Exempt</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.outward.nil_exempt_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
+                </tr>
+                {/* 3.1(d) — reverse charge. Tax with NO taxable value on this
+                    working: §49(4) with §2(82) puts it outside the credit
+                    ledger entirely, so it is carried as the cash liability the
+                    challan needs rather than as turnover. */}
+                <tr className="hover:bg-[#F8FAFC]">
+                  <td className="px-5 py-3 text-[#334155]">(d) Inward supplies liable to reverse charge</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.rcm_inward.igst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.rcm_inward.cgst_paise)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.rcm_inward.sgst_paise)}</td>
+                </tr>
+                {/* 3.1(e) — and it is NOT 3.1(c). Nil-rated and exempt are
+                    supplies GST reaches and then charges at nil or relieves
+                    under §11; non-GST is outside the levy altogether — §9(1)
+                    and §9(2) exclude petroleum and alcoholic liquor for human
+                    consumption, and Schedule III puts a further list outside
+                    "supply". The engine had no accumulator for it until
+                    GST-06, so this row could not exist. */}
+                <tr className="hover:bg-[#F8FAFC]">
+                  <td className="px-5 py-3 text-[#334155]">(e) Non-GST outward supplies</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(w.outward.non_gst_paise ?? 0)}</td>
+                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
                   <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
                   <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
                 </tr>
                 <tr className="bg-blue-50 font-semibold">
-                  <td className="px-5 py-3 text-blue-800">Total Output Tax</td>
+                  <td className="px-5 py-3 text-blue-800">
+                    Total output tax — rows (a) and (b)
+                    {/* (d) is in the table above it and deliberately NOT in
+                        this total. §2(82) defines output tax as EXCLUDING tax
+                        payable on reverse charge, and §49(4) then bars the
+                        credit ledger from discharging it — so reverse-charge
+                        tax is always cash, always on top, and adding it here
+                        would make this figure the wrong base for the Table 6
+                        set-off below. It is carried to the challan panel
+                        instead, which is where it is actually paid. */}
+                    <span className="block text-[10px] font-normal text-blue-700 mt-0.5">
+                      Reverse charge (d) is excluded — s.2(82) puts it outside output tax,
+                      and s.49(4) makes it cash. It is on the challan below.
+                    </span>
+                  </td>
+                  {/* No value total. The portal's 3.1 has none, and summing
+                      (a)+(b)+(c)+(e) under a heading that reads "Total Output
+                      Tax" would label a turnover as a tax. */}
+                  <td className="px-5 py-3 text-right font-mono text-[#94A3B8]">—</td>
                   {/* The IGST total INCLUDES the zero-rated IGST in the row
                       above. It used to be taxable_igst_paise alone, so once
                       that row started printing a real figure — a s.16(3)(b)
@@ -367,6 +421,70 @@ export default function GSTR3BPage() {
               </tbody>
             </table>
           </section>
+
+          {/* Table 3.2 — OF the supplies already in 3.1(a). Computed by
+              gstr3b_computer since the set-off work and served to nobody until
+              GST-22, so the portal cross-check a CA is asked about at filing
+              time — 3.2 against 3.1(a), and against GSTR-1's B2CL and B2CS —
+              could not be made here at all.
+
+              A BREAKDOWN, NEVER AN ADDITION. Every rupee in it is already in
+              3.1(a) above; the section says so rather than leaving a reader to
+              wonder whether the two tables add up.
+
+              The place of supply is shown as the two-digit state CODE because
+              that is what the form takes and what this codebase holds — there
+              is no state-code-to-name table anywhere in it, and writing one
+              into a screen would be a new vocabulary in the browser with
+              nothing on the server to check it against. */}
+          {(() => {
+            const s32 = w.inter_state_3_2;
+            const rows: { kind: string; pos: string; txval: number; iamt: number }[] = [];
+            for (const [kind, label] of [
+              ["unregistered", "Unregistered persons"],
+              ["composition", "Composition taxable persons"],
+              ["uin", "UIN holders"],
+            ] as const) {
+              const byPos = s32?.[kind] ?? {};
+              for (const pos of Object.keys(byPos).sort()) {
+                rows.push({ kind: label, pos, txval: byPos[pos].txval, iamt: byPos[pos].iamt });
+              }
+            }
+            if (!rows.length) return null;   // nothing to declare is not a table
+            return (
+              <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                  <h3 className="font-semibold text-[#1E293B] text-sm">
+                    Table 3.2 — Inter-state supplies to unregistered persons, composition dealers and UIN holders
+                  </h3>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    Of the supplies already declared in 3.1(a) — a breakdown, not an addition.
+                    The portal checks it against 3.1(a) and against GSTR-1.
+                  </p>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-[#64748B] uppercase border-b border-[#F1F5F9]">
+                      <th className="text-left px-5 py-2.5 font-medium">Recipient</th>
+                      <th className="text-left px-5 py-2.5 font-medium">Place of supply (state code)</th>
+                      <th className="text-right px-5 py-2.5 font-medium">Taxable value</th>
+                      <th className="text-right px-5 py-2.5 font-medium">IGST</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F8FAFC]">
+                    {rows.map((row) => (
+                      <tr key={`${row.kind}-${row.pos}`} className="hover:bg-[#F8FAFC]">
+                        <td className="px-5 py-3 text-[#334155]">{row.kind}</td>
+                        <td className="px-5 py-3 font-mono text-[#64748B]">{row.pos}</td>
+                        <td className="px-5 py-3 text-right font-mono text-[#334155]">{r(row.txval)}</td>
+                        <td className="px-5 py-3 text-right font-mono text-[#0F172A]">{r(row.iamt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            );
+          })()}
 
           {/* Table 4 — ITC, in the layout the portal has used since 01-09-2022 */}
           <section className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">

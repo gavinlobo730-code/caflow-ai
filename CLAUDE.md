@@ -1343,10 +1343,23 @@ called.
 - **GSTIN carries a check digit, and the shape regex does not test it.**
   `apps/api/domain/gst/gstin.py` is the authority; `apps/web/lib/gst/gstin.ts`
   mirrors it for keystroke feedback and the two are pinned by
-  `apps/api/tests/fixtures/gstin.json`, which both suites read. Enforced where a
-  human TYPES a GSTIN — onboarding, the customer and vendor create paths — and
-  deliberately NOT in `models.client.validate_gstin`, which guards a Pydantic
-  field that 512 invented fixture GSTINs across 95 files flow through.
+  `apps/api/tests/fixtures/gstin.json`, which both suites read. Enforced
+  wherever a human TYPES a GSTIN — onboarding, and the customer and vendor
+  **create, BULK-IMPORT and PATCH** paths. **That list used to say "create
+  paths" and the code matched it, which was the defect** (GST-29): a CSV import
+  and an edit form are both places a human types a GSTIN, and both were open.
+  §16(2)(aa) sends the credit to whoever the GSTIN names, so a valid-shaped
+  wrong one hands a customer's credit to a stranger, correctable only by an
+  amendment inside the §37(3) window; on the purchase side it is why a bill
+  sits in "missing in 2B" for ever while the CA chases the wrong party. The
+  bulk paths report it as a per-item error rather than 422-ing the batch, which
+  is that endpoint's own design.
+  Deliberately still NOT in `models.client.validate_gstin`, which guards a
+  Pydantic field that 512 invented fixture GSTINs across 95 files flow through.
+  Closing the bulk door showed how load-bearing that carve-out is:
+  `test_customer_bulk_create`'s own fixtures both ended in `5`, so the import
+  path had only ever been exercised with GSTINs the portal would reject. The
+  fixtures were corrected, not the guard relaxed.
 
 - **A UAN and an IFSC are format-checked at every door; an ESIC number is
   not, and that is a decision.** Both patterns live once, in
