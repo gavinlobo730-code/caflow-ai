@@ -38,12 +38,14 @@ type AccountingTab =
   | "cashflow"
   | "approvals"
   | "verify-books"
-  | "reports";
+  | "reports"
+  | "day-book";
 
 const TABS: { id: AccountingTab; label: string }[] = [
   { id: "dashboard",     label: "Dashboard" },
   { id: "coa",           label: "Accounts" },
   { id: "journal",       label: "Journal" },
+  { id: "day-book",      label: "Day Book" },
   { id: "trial",         label: "Trial Balance" },
   { id: "pl",            label: "P & L" },
   { id: "balance-sheet", label: "Balance Sheet" },
@@ -295,6 +297,9 @@ export default function AccountingPage() {
         )}
         {tab === "journal" && (
           <JournalList clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
+        )}
+        {tab === "day-book" && (
+          <JournalList clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} mode="day_book" />
         )}
         {tab === "trial" && (
           <TrialBalance clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} onDrillDown={openDrillDown} />
@@ -620,8 +625,37 @@ function journalEditorHref(clientId: string, entryId: string): string {
   return `/clients/${clientId}/accounting/journal/${entryId}/edit`;
 }
 
-function JournalList({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
+/** The posting path a journal entry came from, spelled for a reader.
+ *
+ *  DERIVED, NOT LISTED. `journal_entries.source_type` has a canonical
+ *  vocabulary — apps/api/domain/accounting/journal_source.py's ALL_SOURCES,
+ *  twenty values, pinned by a test that refuses a twenty-first spelling — and a
+ *  label map here would be a second copy of it, out of step the first time one
+ *  is added. This derives the label from the value instead, so a new source
+ *  reads correctly the day it is stamped.
+ *
+ *  Two of the twenty are CamelCase rather than snake_case ("Opening",
+ *  "TrialBalance"): journal_source.py explains why they keep their original
+ *  spelling, so this handles both shapes.
+ *  apps/api/tests/test_a_journal_source_reads_as_english.py holds the line from
+ *  the side that owns the vocabulary. */
+function sourceLabel(value: string | null | undefined): string {
+  const v = (value ?? "").trim();
+  if (!v) return "—";
+  const spaced = v.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
+
+function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "manual" }: {
+  clientId: string;
+  financialYear: string;
+  onFinancialYearChange: (fy: string) => void;
+  /** "manual" is the authored Journal. "day_book" is every voucher that hit the
+   *  ledger in the window, read-only — see the note below. */
+  mode?: "manual" | "day_book";
+}) {
   const router = useRouter();
+  const dayBook = mode === "day_book";
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [entriesError, setEntriesError] = useState<string | null>(null);
@@ -644,6 +678,18 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
   // Those postings are not hidden, only moved to where they belong: per account
   // in Trial Balance and the Ledger drill-down, and as an immutable record of
   // who changed what in Settings -> Audit Log.
+  //
+  // AND, SINCE ACC-13, IN THE DAY BOOK — which is the OTHER half of the split
+  // this note already describes. QuickBooks, Xero and Zoho all pair the manual
+  // list with a report carrying every posting, and the report was the half that
+  // did not exist: a CA who wanted "everything that hit the books on 14 August"
+  // had to open each account's ledger in turn. `mode="day_book"` is that
+  // report, off the same fetch (which has always loaded every entry in the
+  // window and discarded the non-manual ones in the browser), and it is
+  // READ-ONLY for the reason the removed toggle was removed — nothing on this
+  // screen may act on an auto-posted entry, so the day book offers no action
+  // that would invite it. Rows that ARE manual still open, because for those
+  // the editor is the right destination.
 
   // The date window that SCOPES THE SERVER QUERY — which entries load at all —
   // exactly as Sales Invoices and Purchase Bills do it. Search, sort and
@@ -658,8 +704,8 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
     [periodMode, customFrom, customTo, financialYear],
   );
   const visibleEntries = useMemo(
-    () => entries.filter((e) => e.source_type === "manual"),
-    [entries]
+    () => (dayBook ? entries : entries.filter((e) => e.source_type === "manual")),
+    [entries, dayBook]
   );
 
   const loadEntries = useCallback(async () => {
@@ -717,12 +763,36 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
       render: (e) => <span className="font-mono text-[#334155]">{fmt((e.lines ?? []).reduce((s, l) => s + l.debit_paise, 0))}</span> },
     { key: "status", header: "Status", accessor: (e) => (e.is_posted ? "Posted" : "Draft"),
       render: (e) => <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${e.is_posted ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>{e.is_posted ? "Posted" : "Draft"}</span> },
-  ], []);
+    // Day book only: the manual list is by definition all one source, so the
+    // column would say "manual" on every row. Here it is the point — it is what
+    // tells a CA that a voucher came from an invoice rather than from someone's
+    // keyboard, and therefore where to go to change it.
+    ...(dayBook ? [{
+      key: "source_type", header: "Source", accessor: (e: JournalEntry) => e.source_type ?? "",
+      sortable: true,
+      render: (e: JournalEntry) => (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-[#F1F5F9] text-[#475569]">
+          {sourceLabel(e.source_type)}
+        </span>
+      ),
+    } as Column<JournalEntry>] : []),
+  ], [dayBook]);
 
   const journalFilters: FilterDef<JournalEntry>[] = [
     { key: "entry_type", label: "Type", type: "select", accessor: (e) => e.entry_type,
       options: (ENTRY_TYPES as readonly string[]).map((t) => ({ value: t, label: t })) },
     { key: "entry_date", label: "Date", type: "dateRange", accessor: (e) => e.entry_date },
+    // Options come from the rows on screen, not from a hardcoded list of source
+    // types: `journal_entries.source_type` is written by 26 posting paths and a
+    // literal list here would be a 27th place to keep in step. An option that
+    // matches nothing is also useless to offer.
+    ...(dayBook ? [{
+      key: "source_type", label: "Source", type: "select" as const,
+      accessor: (e: JournalEntry) => e.source_type ?? "",
+      options: Array.from(new Set(entries.map((e) => e.source_type ?? "").filter(Boolean)))
+        .sort()
+        .map((v) => ({ value: v, label: sourceLabel(v) })),
+    } as FilterDef<JournalEntry>] : []),
   ];
 
   // ── Bulk actions ───────────────────────────────────────────────────────────
@@ -858,14 +928,21 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">All Journal Entries</p>
+        <p className="text-xs font-semibold text-[#334155]">
+          {dayBook ? "Day Book — every posting in this period" : "All Journal Entries"}
+        </p>
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push(journalEditorHref(clientId, "new"))}
-            className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
-          >
-            <Plus size={12} /> New Journal Entry
-          </button>
+          {/* No New Journal Entry here. The day book is a REPORT; writing an
+              entry belongs on the Journal tab, where the list afterwards is the
+              list you can act on. */}
+          {!dayBook && (
+            <button
+              onClick={() => router.push(journalEditorHref(clientId, "new"))}
+              className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
+            >
+              <Plus size={12} /> New Journal Entry
+            </button>
+          )}
         </div>
       </div>
       <DataTable
@@ -877,7 +954,14 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
         error={entriesError}
         onRetry={loadEntries}
         onRefresh={loadEntries}
-        onRowClick={(e) => router.push(journalEditorHref(clientId, e.id))}
+        // In the day book only a MANUAL row opens: everything else was posted
+        // behind a document and the journal editor refuses it (ACC-04), so
+        // offering the click would be offering a refusal. The document itself
+        // is reachable from its own module, and from the account's ledger
+        // drill-down.
+        onRowClick={dayBook
+          ? (e) => { if ((e.source_type ?? "") === "manual") router.push(journalEditorHref(clientId, e.id)); }
+          : (e) => router.push(journalEditorHref(clientId, e.id))}
         searchPlaceholder="Search by reference or narration…"
         toolbarExtra={
           <PeriodPicker
@@ -892,13 +976,23 @@ function JournalList({ clientId, financialYear, onFinancialYearChange }: { clien
             ariaLabel="Date range"
           />
         }
-        bulkActions={journalBulkActions}
+        // Every bulk action on this screen (approve, reverse, delete) is an
+        // action on a MANUAL entry — the server refuses each of them for
+        // anything else. Offering them over a list that is mostly
+        // document-sourced would be offering a refusal in bulk.
+        bulkActions={dayBook ? undefined : journalBulkActions}
         initialSort={{ key: "entry_date", dir: "desc" }}
-        exportFilename="journal"
-        persistKey="accounting.journal"
-        emptyTitle="No manual journal entries"
+        exportFilename={dayBook ? "day-book" : "journal"}
+        // A separate key: the two tables show different columns, so sharing one
+        // would carry the day book's Source column preference back to the
+        // Journal tab, which has no such column.
+        persistKey={dayBook ? "accounting.dayBook" : "accounting.journal"}
+        emptyTitle={dayBook ? "Nothing posted in this period" : "No manual journal entries"}
         emptyDescription={
-          entries.length > 0
+          dayBook
+            ? "No entry hit the general ledger between these dates — from a document or "
+              + "from anyone\u2019s keyboard. Widen the date range above if you expected some."
+            : entries.length > 0
             ? "Everything posted for this client so far came from a document — an invoice, "
               + "a bill, a bank line, a year-end close. Those are on Trial Balance and in "
               + "each account\u2019s ledger, and every change to them is in Settings \u2192 Audit Log. "

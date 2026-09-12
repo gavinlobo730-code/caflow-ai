@@ -277,8 +277,15 @@ class _Q:
         self._op = "delete"
         return self
 
-    def order(self, col, **_k):
-        self._order.append(col)      # accumulates, as PostgREST does
+    def order(self, col, desc=False, **_k):
+        # `desc` is HONOURED, and used not to be. It was swallowed into **_k, so
+        # every ordered query in every test using this double came back
+        # ascending however it was written — and a function whose whole job is
+        # "the newest row per item" (routers/inventory.py::_last_ledger_rows)
+        # could not be tested here at all: the double handed it the oldest and
+        # agreed with itself. A test double that quietly answers a different
+        # question than production is worse than no double.
+        self._order.append((col, bool(desc)))   # accumulates, as PostgREST does
         return self
 
     def limit(self, n):
@@ -314,8 +321,8 @@ class _Q:
             for r in matched:
                 rows.remove(r)
             return _Resp(matched)
-        for col in reversed(self._order):
-            matched = sorted(matched, key=lambda r, c=col: str(r.get(c)))
+        for col, desc in reversed(self._order):
+            matched = sorted(matched, key=lambda r, c=col: str(r.get(c)), reverse=desc)
         total = len(matched)
         if self._range is not None:
             matched = matched[self._range[0]: self._range[1] + 1]

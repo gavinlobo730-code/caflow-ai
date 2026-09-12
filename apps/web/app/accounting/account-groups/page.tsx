@@ -228,11 +228,39 @@ export default function AccountGroupsPage() {
   );
   if (error) return <div className="p-6"><div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div></div>;
 
-  // Group by parent_group → sub_group
+  // Group by parent_group → sub_group, DERIVING both where the CA has not said
+  // (ACC-24).
+  //
+  // These two columns have existed since migration 057 and only the CSV import
+  // and this screen's own editor ever write them, so every normally-onboarded
+  // firm arrived here to a single "Ungrouped → General" block holding all 57
+  // seeded accounts. The screen was not broken; it was being told nothing.
+  //
+  // WHY DERIVE RATHER THAN SEED THEM. The obvious fix is a fifth element on
+  // each STANDARD_COA tuple in coa_seed_service.py, plus a backfill migration
+  // for the firms already seeded. It was not taken, for two reasons:
+  //
+  //   * it stores a COPY of account_type and account_subtype in two more
+  //     columns. Two columns holding the same fact drift, and this repository
+  //     has the scar: account_group_mappings cached a derived classification,
+  //     nothing re-derived it, and the year-end statements detached from the
+  //     CA's own decisions (see CLAUDE.md, "a row is an OVERRIDE, not the
+  //     source"). Same shape, same answer — derive, and treat a stored value
+  //     as the override it is;
+  //   * a backfill has to decide whether to overwrite a group a CA typed. This
+  //     way there is nothing to decide, and firms already seeded are fixed on
+  //     the next page load rather than on the next migration.
+  //
+  // What is derived is a NAVIGATIONAL tree, not a statutory one. Schedule III
+  // presentation is decided elsewhere and only elsewhere — schedule_iii_mapping
+  // through domain/reporting/schedule_iii.py — and putting its captions here
+  // would be the second mapping screen CLAUDE.md says not to build.
   const grouped: Record<string, Record<string, CoaRow[]>> = {};
+  const derived = new Set<string>();
   for (const acc of accounts) {
-    const pg = acc.parent_group ?? "Ungrouped";
-    const sg = acc.sub_group ?? "General";
+    const pg = acc.parent_group ?? acc.account_type ?? "Ungrouped";
+    const sg = acc.sub_group ?? acc.account_subtype ?? "General";
+    if (acc.parent_group == null) derived.add(pg);
     if (!grouped[pg]) grouped[pg] = {};
     if (!grouped[pg][sg]) grouped[pg][sg] = [];
     grouped[pg][sg].push(acc);
@@ -266,7 +294,15 @@ export default function AccountGroupsPage() {
           return (
             <div key={pg} className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
               <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#F1F5F9] flex items-center justify-between">
-                <span className="text-sm font-semibold text-[#334155]">{pg}</span>
+                <span className="text-sm font-semibold text-[#334155]">
+                  {pg}
+                  {derived.has(pg) && (
+                    <span className="ml-2 font-normal text-[10px] text-[#94A3B8]"
+                          title="No group recorded for these ledgers, so they are shown under their account type. Edit a ledger to file it where you want it.">
+                      by account type
+                    </span>
+                  )}
+                </span>
                 <span className="text-xs text-[#94A3B8]">{total} accounts</span>
               </div>
               {subGroups.map(sg => (

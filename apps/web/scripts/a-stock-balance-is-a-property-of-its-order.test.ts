@@ -98,6 +98,15 @@ test("the register can be asked as at a date, and says which it is showing", () 
 });
 
 test("the as-at register drops the Status column", () => {
-  assert.match(src, /asAt \? allColumns\.filter\(\(c\) => c\.key !== "is_active"\) : allColumns/,
+  // The filter grew a second exclusion when INV-10 put row ACTIONS on the
+  // register: both modals print their figures as what is on hand "currently",
+  // and in as-at mode those are the figures as at the chosen date. So this now
+  // asserts the RULE — a today-fact is not shown on a dated statement — rather
+  // than one spelling of the expression, and names both things it covers.
+  assert.match(src, /c\.key !== "is_active"/,
     "an item's archived flag is a fact about today, not about the date asked for");
+  assert.match(src, /c\.key !== "actions"/,
+    "and neither is 'currently N on hand', which is what both action modals print");
+  assert.match(src, /const columns = asAt/,
+    "the exclusion must key off the as-at mode");
 });
