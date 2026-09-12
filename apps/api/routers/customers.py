@@ -413,6 +413,21 @@ def bulk_create_customers(
             if not can_access_client(current_user, parsed.client_id):
                 errors.append({"index": idx, "name": item.get("name"), "error": "Client not found for this firm."})
                 continue
+            # Shape AND check digit, the same test the single-create path
+            # applies (GST-29). It was NOT applied here, and a CSV import is
+            # where a transposed GSTIN is most likely to arrive: the customer's
+            # GSTIN is what puts the supply into THEIR GSTR-2B (§16(2)(aa)), so
+            # a valid-shaped wrong one silently hands the credit to a stranger
+            # and is correctable only by an amendment inside the §37(3) window.
+            #
+            # A per-item error, not a 422: this endpoint's whole design is that
+            # "one malformed CSV row cannot 422 the whole batch", and a bad
+            # GSTIN is exactly that kind of row.
+            _gstin_problem = gstin_problem(_norm(item.get("gstin")))
+            if _gstin_problem:
+                errors.append({"index": idx, "name": item.get("name"),
+                               "error": _gstin_problem})
+                continue
             payload = parsed.model_dump()
             payload["firm_id"] = firm_id
             payload["is_active"] = True
@@ -642,6 +657,14 @@ def update_customer(
     try:
         payload = data.model_dump(exclude_none=True)
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        # A validator only at the create door is one PATCH from being none
+        # (GST-29). Editing a customer is a place a human types a GSTIN, and
+        # the consequence is the same as at create: §16(2)(aa) sends the credit
+        # to whoever the GSTIN names.
+        if "gstin" in payload:
+            _gstin_problem = gstin_problem(_norm(payload.get("gstin")))
+            if _gstin_problem:
+                raise HTTPException(status_code=422, detail=_gstin_problem)
         data = payload
 
         # The prior-row fetch doubles as the M2 guard: WRITING opening_balance_paise

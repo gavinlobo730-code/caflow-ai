@@ -448,6 +448,18 @@ def create_vendors_bulk(
             continue
 
         payload = vendor_in.model_dump()
+        # Shape AND check digit, the same test create_vendor applies (GST-29).
+        # A CSV import is where a transposed GSTIN is most likely to arrive,
+        # and on the purchase side a wrong supplier GSTIN is what the 2B
+        # reconciliation will then fail to match — §16(2)(aa) makes the
+        # supplier's own filing the condition of the credit, so the bill sits
+        # in "missing in 2B" for ever and the CA chases the wrong party.
+        #
+        # A per-item error, not a 422, matching this endpoint's design.
+        _gstin_problem = gstin_problem(_norm(payload.get("gstin")))
+        if _gstin_problem:
+            errors.append({"index": i, "name": name, "error": _gstin_problem})
+            continue
         payload["firm_id"] = current_user.get("firm_id")
         payload["is_active"] = True
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -587,6 +599,12 @@ def update_vendor(
     try:
         payload = data.model_dump(exclude_none=True)
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        # A validator only at the create door is one PATCH from being none
+        # (GST-29). Editing a vendor is a place a human types a GSTIN.
+        if "gstin" in payload:
+            _gstin_problem = gstin_problem(_norm(payload.get("gstin")))
+            if _gstin_problem:
+                raise HTTPException(status_code=422, detail=_gstin_problem)
         data = payload
 
         # The prior-row fetch doubles as the M2 guard: WRITING opening_balance_paise

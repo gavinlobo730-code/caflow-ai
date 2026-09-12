@@ -973,6 +973,25 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
                 # of the portal's form includes it, so the screen needs it too.
                 "zero_rated_igst_paise": result.outward_zero_rated_igst,
                 "nil_exempt_paise": result.outward_nil_exempt,
+                # 3.1(e). A DIFFERENT line from 3.1(c): nil-rated and exempt
+                # are supplies GST reaches and then charges at nil or relieves
+                # (§11); non-GST is a supply the levy does not reach at all —
+                # petroleum, alcoholic liquor for human consumption, Schedule
+                # III. The computer accumulated neither until GST-06; it
+                # accumulated nil/exempt and dropped non-GST on the floor,
+                # while GSTR-1 declared the same invoice as `ngsup_amt`.
+                "non_gst_paise": result.outward_non_gst,
+            },
+            # Table 3.2 — OF the supplies already in 3.1(a), the inter-state
+            # ones to unregistered persons, composition dealers and UIN
+            # holders, per place of supply. A breakdown, never an addition:
+            # the portal cross-checks it against 3.1(a) and against GSTR-1's
+            # B2CL and B2CS tables. Computed since the set-off work and served
+            # to nobody until now.
+            "inter_state_3_2": {
+                "unregistered": result.inter_sup_unreg,
+                "composition": result.inter_sup_comp,
+                "uin": result.inter_sup_uin,
             },
             "rcm_inward": {
                 "cgst_paise": result.rcm_cgst,

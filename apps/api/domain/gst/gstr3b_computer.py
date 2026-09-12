@@ -150,6 +150,21 @@ class GSTR3BResult:
     outward_zero_rated_igst: int = 0
     outward_nil_exempt: int = 0      # nil-rated + exempt taxable value
 
+    # Table 3.1(e) — NON-GST outward supplies. A separate line from 3.1(c),
+    # and a different thing: 3.1(c) is a supply GST reaches and charges at nil
+    # or exempts (§11), 3.1(e) is a supply GST does not reach at all —
+    # petroleum products and alcoholic liquor for human consumption, excluded
+    # by §9(1) and §9(2), and anything in Schedule III.
+    #
+    # This used to be a literal 0 in the payload while the accumulation loop
+    # had no branch for `non_gst` at all, so such a supply fell off the end
+    # silently (GST-06). The same invoice IS declared by GSTR-1, which maps
+    # `non_gst` to `ngsup_amt` (gstr1_builder.py), so one document produced two
+    # returns that disagreed about whether it existed. 3.1(e) carries no tax by
+    # definition, so nothing was underpaid — what was wrong is the disclosure,
+    # and the mismatch is the kind a portal comparison surfaces months later.
+    outward_non_gst: int = 0         # non-GST outward supply value
+
     # Table 3.2 of the FORM (not of this dataclass's old numbering): of the
     # supplies declared in 3.1(a), the inter-state ones made to unregistered
     # persons, composition taxable persons and UIN holders, per place of
@@ -542,7 +557,9 @@ class GSTR3BResult:
                     "samt": r(self.rcm_sgst),
                     "csamt": 0,
                 },
-                "osup_nongst": {"txval": 0},
+                # 3.1(e). Value only — a supply outside the levy bears no tax,
+                # so the form has no tax columns here.
+                "osup_nongst": {"txval": r(self.outward_non_gst)},
             },
             # Table 3.2 — of the supplies in 3.1(a), the inter-state ones made
             # to unregistered persons, composition taxable persons and UIN
@@ -747,6 +764,11 @@ def compute_gstr3b(
         sign = -1 if s.transaction_type == "credit_note" else 1
         if s.supply_type in ("nil_rated", "exempt"):
             result.outward_nil_exempt += sign * s.taxable_amount_paise
+        elif s.supply_type == "non_gst":
+            # 3.1(e), NOT 3.1(c). Outside the levy rather than relieved of it —
+            # see the field's comment. Falling off the end of this chain is
+            # what GST-06 was.
+            result.outward_non_gst += sign * s.taxable_amount_paise
         elif s.supply_type == "zero_rated":
             result.outward_zero_rated += sign * s.taxable_amount_paise
             # IGST Act §16(3)(b): an export or SEZ supply made ON PAYMENT of

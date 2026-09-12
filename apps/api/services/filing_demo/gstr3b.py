@@ -230,11 +230,16 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
     ]
 
     # ── Stage 2: Table 3.1 ───────────────────────────────────────────────────
-    # Rows (a)–(d) of the form. (e) non-GST outward supplies is not tracked
-    # upstream, so it is absent rather than shown as a nil the books did not
-    # actually assert. A dash means "this line carries no figure of that kind"
-    # — zero-rated and exempt supplies bear no output tax, and the taxable
-    # value behind reverse-charge inward supplies is not part of this working.
+    # Rows (a)–(e) of the form. (e) used to be absent here, with a comment
+    # saying non-GST outward supplies were "not tracked upstream" — true when
+    # written, and false since GST-06 gave `gstr3b_computer` the accumulator
+    # it had been missing. It is a real figure now, so the walk-through shows
+    # it: a demo that omits a line the live return carries teaches the wrong
+    # form.
+    #
+    # A dash means "this line carries no figure of that kind" — zero-rated and
+    # exempt supplies bear no output tax, and the taxable value behind
+    # reverse-charge inward supplies is not part of this working.
     dash = {"text": "—"}
     stages.append(common.table_stage(
         "Table 3.1 — Outward supplies and inward supplies liable to reverse charge",
@@ -270,6 +275,13 @@ def build(db, firm_id: str, client_id: str, ref: dict) -> dict:
              {"paise": _p(rcm, "igst_paise")},
              {"paise": _p(rcm, "cgst_paise")},
              {"paise": _p(rcm, "sgst_paise")}],
+            # (e) is not (c). A nil-rated or exempt supply is one GST reaches
+            # and then charges at nil or relieves under §11; a non-GST supply
+            # is outside the levy altogether — §9(1) and §9(2) exclude
+            # petroleum products and alcoholic liquor for human consumption,
+            # and Schedule III puts a further list outside "supply".
+            [{"text": "(e) Non-GST outward supplies"},
+             {"paise": _p(outward, "non_gst_paise")}, dash, dash, dash],
         ],
     ))
 

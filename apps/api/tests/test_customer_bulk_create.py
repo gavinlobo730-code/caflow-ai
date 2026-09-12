@@ -21,8 +21,17 @@ from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa, coa_id, accou
 FIRM = "FIRM-A"
 CALLER = {"firm_id": FIRM, "auth_user_id": "u1", "id": "internal-uid",
           "email": "ca@firma.test", "role": "Partner"}
-GSTIN_A = "27AAAAA0000A1Z5"
-GSTIN_B = "27BBBBB0000B1Z5"
+# CHECK-DIGIT-VALID, and they did not use to be. Both ended in 5, which is the
+# shape a GSTIN has and not the digit these two compute to — so the bulk import
+# path was only ever exercised with GSTINs the portal would reject. That was
+# invisible until GST-29 gave the path the same check the single-create door
+# has always had; the fixtures are corrected rather than the guard relaxed,
+# because a dedup test that can only run on invalid data is not testing the
+# import a CA actually performs. The last character is the computed check
+# digit for the fourteen before it (CGST Act §25 / the GSTN algorithm,
+# domain/gst/gstin.py).
+GSTIN_A = "27AAAAA0000A1Z2"
+GSTIN_B = "27BBBBB0000B1ZT"
 
 
 class CountingDB(FakeDB):

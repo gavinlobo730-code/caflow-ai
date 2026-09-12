@@ -99,6 +99,23 @@ export interface GSTR3BWorking {
      *  as output tax. */
     zero_rated_igst_paise: number;
     nil_exempt_paise: number;
+    /** Table 3.1(e) — non-GST outward supplies. NOT 3.1(c): nil-rated and
+     *  exempt are supplies GST reaches and then charges at nil or relieves
+     *  (CGST s.11); non-GST is outside the levy entirely — petroleum and
+     *  alcoholic liquor for human consumption (s.9(1), s.9(2)), and Schedule
+     *  III. Optional because a return saved before GST-06 has no such key;
+     *  the row reads 0 rather than blank, which is the correct declaration. */
+    non_gst_paise?: number;
+  };
+  /** Table 3.2 — OF the supplies already in 3.1(a), the inter-state ones made
+   *  to unregistered persons, composition dealers and UIN holders, keyed by
+   *  2-digit place-of-supply state code. A breakdown, never an addition: the
+   *  portal cross-checks it against 3.1(a) and against GSTR-1's B2CL/B2CS.
+   *  Optional for the same reason as non_gst_paise. */
+  inter_state_3_2?: {
+    unregistered: Record<string, { txval: number; iamt: number }>;
+    composition: Record<string, { txval: number; iamt: number }>;
+    uin: Record<string, { txval: number; iamt: number }>;
   };
   rcm_inward: {
     igst_paise: number;

@@ -65,6 +65,9 @@ CASH_IGST, CASH_CGST, CASH_SGST = 45_000_00, 0, 0                   # Table 6
 TAXABLE_VALUE = 10_00_000_00
 ZERO_RATED = 2_00_000_00
 NIL_EXEMPT = 50_000_00
+# 3.1(e). A separate figure from NIL_EXEMPT and deliberately a different one,
+# so a row that reads the wrong key fails rather than matching by coincidence.
+NON_GST = 75_000_00
 
 LIABILITY = (OUT_IGST + OUT_CGST + OUT_SGST) + (RCM_IGST + RCM_CGST + RCM_SGST)
 ITC_CLAIMED = NET_IGST + NET_CGST + NET_SGST          # 4(C) across the heads
@@ -82,7 +85,8 @@ def _working() -> dict:
                     "taxable_cgst_paise": OUT_CGST,
                     "taxable_sgst_paise": OUT_SGST,
                     "zero_rated_paise": ZERO_RATED,
-                    "nil_exempt_paise": NIL_EXEMPT},
+                    "nil_exempt_paise": NIL_EXEMPT,
+                    "non_gst_paise": NON_GST},
         "rcm_inward": {"igst_paise": RCM_IGST, "cgst_paise": RCM_CGST,
                        "sgst_paise": RCM_SGST},
         "itc": {"avail_igst_paise": AVAIL_IGST, "avail_cgst_paise": AVAIL_CGST,
@@ -384,18 +388,26 @@ def test_table_4_names_the_notification_the_circular_and_where_17_5_sits():
 
 # ── Table 3.1 and Table 5.1 ─────────────────────────────────────────────────
 
-def test_table_31_carries_the_four_lines_the_working_supports():
+def test_table_31_carries_the_five_lines_the_working_supports():
+    """(e) joined the four when GST-06 gave the computer its accumulator. Until
+    then non-GST outward supplies fell off the end of gstr3b_computer's
+    classification chain, so the demo omitted the row rather than print a nil
+    the books had not asserted — which was the honest choice while it was
+    true."""
     out = _build()
     table = _stage(out, "Table 3.1")
     assert table["columns"] == ["", "Taxable value", "IGST", "CGST", "SGST"]
     rows = table["rows"]
-    assert [r[0]["text"][:3] for r in rows] == ["(a)", "(b)", "(c)", "(d)"]
+    assert [r[0]["text"][:3] for r in rows] == ["(a)", "(b)", "(c)", "(d)", "(e)"]
     assert _cells(rows[0]) == [rows[0][0]["text"], TAXABLE_VALUE,
                                OUT_IGST, OUT_CGST, OUT_SGST]
     assert _cells(rows[1])[1:] == [ZERO_RATED, "—", "—", "—"], (
         "a zero-rated supply bears no output tax; a nil would read as a figure")
     assert _cells(rows[2])[1:] == [NIL_EXEMPT, "—", "—", "—"]
     assert _cells(rows[3])[1:] == ["—", RCM_IGST, RCM_CGST, RCM_SGST]
+    assert _cells(rows[4])[1:] == [NON_GST, "—", "—", "—"], (
+        "3.1(e) is a value-only line — a supply outside the levy bears no tax")
+    assert NON_GST != NIL_EXEMPT, "the fixture must tell (c) and (e) apart"
     assert "§9(3)/(4)" in table["note"] and "§49(4)" in table["note"], (
         "3.1(d) is self-assessed by the recipient and paid in cash")
 
