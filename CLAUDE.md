@@ -185,6 +185,57 @@ change. The code is the authority; keep this file in step with it.
   `deduction_section_refusal` is the one place that decides this (§192 is the
   other refusal), and `GET /api/tds/sections` serves its answer as
   `vendor_eligible` so a screen cannot keep a second exclusion list.
+  **AND §206C(1H) CEASED TO OPERATE FROM 01-04-2025** — the seller no longer
+  collects on receipts above ₹50 lakh and the BUYER deducts under §194Q, so the
+  overlap is resolved in §194Q's favour and Form 27EQ / Form 27D for this item
+  fall away. The registry's comment said "unchanged, 0.1%" for a year after
+  that (SALES-32). The 0.1% ENTRY STAYS at its historic rate, because a belated
+  or revised 27EQ for FY 2024-25 is filed at it — the fork shape again — and
+  the cessation is `section_rates.SECTION_206C_1H_CEASED_FROM_FY`, a named
+  constant like `SECTION_206AB_OMITTED_FROM_FY` and NOT a `rate_gap` (that
+  field means "this limb's own rate is not held", and a test holds it to
+  exactly that). ⚠️ `[S+]`, and the EFFECT is cited rather than the mechanism:
+  most sources say the sub-section was omitted, one reads the Finance Act 2025
+  as inserting a proviso that leaves the text in the Act and makes it
+  inapplicable. Identical from 01-04-2025, different textually.
+- **A PLACE OF SUPPLY HAS FOUR SOURCES AND ONE RESOLVER**, and the invoice
+  declares the field TWICE. `domain/gst/place_of_supply.recipient_place_of_supply`
+  is the chain — what the caller stated (CGST Rule 46(n) makes it the
+  document's own particular), then the customer's recorded state, then the
+  first two characters of the customer's GSTIN (CGST §25), then the SUPPLIER's
+  own state (IGST §12(2)(b)(ii), the unregistered walk-in, and it must be last)
+  — and `("", "unknown")` where even that is absent, because `clients.gstin` is
+  nullable. **The GSTIN branch takes the PREFIX, not `gstin.state_code`**: the
+  question is which state, not whether the registration number is well-formed,
+  and falling through on a bad check digit would silently turn an inter-state
+  supply intra-state. `SalesInvoiceIn` carries BOTH `supply_state_code` and
+  `place_of_supply`; until SALES-31 the real create path read only the first
+  while the mock branch read both, so a caller filling in the second had it
+  honoured under test and discarded in production. Both are validated against
+  the state list now (as `ReceiptIn.place_of_supply` has been since GST-15),
+  the edit path too, and a request whose two disagree is refused rather than
+  silently resolved one way.
+- **A §37(3) AMENDMENT RE-DECLARES THE WHOLE ENTRY, so an export amendment
+  carries its shipping bill.** `domain/gst/amendments.build_invoice_amendment`
+  emitted three empty strings for `sbpcode`/`sbnum`/`sbdt` on `expa`
+  (SALES-10) while the main build has emitted the real values since migration
+  349 — so amending an export's VALUE replaced a filed entry that had a
+  shipping bill with one that did not, and CGST Rule 96(1) matches the refund
+  against exactly those three fields at customs. `exception_report`'s document
+  index carries them now (`None` on a non-export, because three blanks there
+  would read as an export with nothing recorded) and the amendment declares
+  the BOOKS side. Absent still means three empty strings: the portal accepts
+  an export declared before the shipping bill exists.
+- **A CUSTOMER RECEIPT SETTLES CASH PLUS THE TAX THEY WITHHELD.**
+  `ReceiptIn.tds_paise` posts Dr Bank + Dr TDS Receivable / Cr Trade
+  Receivables and the settlement is `amount + tds` — IT Act §198 deems the tax
+  deducted to be income received and §199 gives the deductee credit for it — so
+  a ₹1,00,000 invoice paid ₹90,000 net of ₹10,000 §194J is settled in full. No
+  screen sent the field until SALES-07, so the invoice stayed part-unpaid and
+  no TDS Receivable existed to claim against. The box is hidden on a FOREIGN
+  receipt because `create_foreign_receipt` refuses any non-zero value, and the
+  unallocated figure on the screen measures against the settlement rather than
+  the cash, which is the same figure the server's over-allocation refusal uses.
 - **`tds_deductions.return_type` and `tds_returns.return_type` store the 1961-Act
   ROUTING KEY permanently — 24Q/26Q/27Q/27EQ — on both sides of the 2026 fork.**
   `vocabulary.statement_form` returns the number the PERIOD's own Act uses (140

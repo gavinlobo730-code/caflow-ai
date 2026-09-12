@@ -3420,6 +3420,15 @@ function ReceiptForm({
   const [customerId, setCustomerId] = useState("");
   const [receiptDate, setReceiptDate] = useState(today);
   const [amount, setAmount] = useState("");
+  // TDS THE CUSTOMER WITHHELD (SALES-07). `ReceiptIn.tds_paise` and
+  // `receipt_service` have handled this since the model was written — the
+  // journal is Dr Bank + Dr TDS Receivable / Cr Trade Receivables, and the
+  // SETTLEMENT is amount + TDS — and this form never sent it. So a ₹1,00,000
+  // invoice settled by a ₹90,000 receipt with ₹10,000 withheld under §194J
+  // was recorded as ₹90,000 received, leaving ₹10,000 outstanding on an
+  // invoice the customer has paid in full and no TDS Receivable to claim
+  // credit for under §199.
+  const [tds, setTds] = useState("");
   const [paymentMode, setPaymentMode] = useState("bank");
   // WHICH ACCOUNT THE MONEY WAS RECEIVED INTO (SALES-08). The API has accepted
   // ReceiptIn.bank_account_id since the model was written and this form never
@@ -3559,6 +3568,13 @@ function ReceiptForm({
   // null here means "not an amount", which the save path refuses below rather
   // than treating as zero.
   const amountPaise = paiseFromRupeeInput(amount || "0");
+  const tdsPaise = paiseFromRupeeInput(tds || "0");
+  // What can be applied against invoices. IT Act §198 deems the tax deducted
+  // to be income received, and §199 gives the deductee credit for it — so the
+  // customer who banked ₹90,000 and deposited ₹10,000 to the government has
+  // discharged ₹1,00,000 of the invoice, and the settlement is the sum.
+  const settlementPaise =
+    amountPaise === null || tdsPaise === null ? null : amountPaise + tdsPaise;
   const allocationPaise = Object.fromEntries(
     Object.entries(allocations).map(([id, v]) => [id, paiseFromRupeeInput(v || "0")]),
   ) as Record<string, number | null>;
@@ -3578,6 +3594,17 @@ function ReceiptForm({
       return;
     }
     if (amountPaise <= 0) { setError("Amount must be greater than zero"); return; }
+    if (tdsPaise === null) {
+      setError("TDS must be a number of rupees, e.g. 10000 or 10000.50 — without commas.");
+      return;
+    }
+    // The server refuses it too (`create_foreign_receipt`, 422). Said here as
+    // well so the CA sees which box to clear while it is still on the screen —
+    // the same rule, before the round trip rather than instead of it.
+    if (isForeign && tdsPaise > 0) {
+      setError(`TDS on a ${currency} receipt is not supported yet — record the receipt without it.`);
+      return;
+    }
     if (!receiptDate) { setError("Receipt date required"); return; }
     if (isForeign && (!exchangeRate.trim() || !(rateNum > 0))) {
       setError(`Enter a valid exchange rate for ${currency} → INR`);
@@ -3606,6 +3633,9 @@ function ReceiptForm({
           customer_id: customerId,
           receipt_date: receiptDate,
           amount_paise: amountPaise,
+          // Omitted rather than sent as 0 on a foreign receipt: the server
+          // refuses any non-zero value there and 0 is this field's default.
+          ...(tdsPaise > 0 ? { tds_paise: tdsPaise } : {}),
           payment_mode: paymentMode,
           bank_account_id: bankAccountId || undefined,
           reference_no: referenceNo.trim() || undefined,
@@ -3686,6 +3716,32 @@ function ReceiptForm({
             className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
           />
         </div>
+        {/* TDS THE CUSTOMER WITHHELD. Hidden on a foreign receipt because the
+            server refuses it there (`create_foreign_receipt`, 422) — offering a
+            box whose only outcome is a rejection is worse than not having one.
+            The settlement is amount + TDS: §198 deems the tax deducted to be
+            income received and §199 gives the deductee credit for it, so a
+            customer who banked ₹90,000 and deposited ₹10,000 has settled the
+            whole ₹1,00,000 invoice. */}
+        {!isForeign && (
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">TDS withheld (₹)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={tds}
+              onChange={(e) => { setTds(e.target.value); setError(null); }}
+              placeholder="0.00"
+              className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
+            />
+            <p className="mt-1 text-[10px] text-[#94A3B8]">
+              {tdsPaise !== null && tdsPaise > 0 && amountPaise !== null
+                ? `Settles ${fmtAmt(amountPaise + tdsPaise)} of invoices — the cash plus the tax deducted (IT Act §199).`
+                : "What the customer deducted at source and paid to the government, if any."}
+            </p>
+          </div>
+        )}
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Payment Mode</label>
           <select
@@ -3866,10 +3922,16 @@ function ReceiptForm({
           {totalAllocated > 0 && (
             <p className="text-xs text-[#64748B]">
               Allocated: {fmtAmt(totalAllocated)}
-              {/* With no readable amount there is no unallocated figure to show.
+              {/* Against the SETTLEMENT, not the cash. The server's own
+                  over-allocation refusal is `amount + tds`, so measuring the
+                  unallocated figure against the cash alone showed a receipt
+                  with TDS as over-allocated on a screen the server would
+                  accept.
+
+                  With no readable amount there is no unallocated figure to show.
                   Printing one computed from a coerced zero would tell the CA
                   the whole receipt is unallocated, which is not what is wrong. */}
-              {amountPaise !== null && ` / Unallocated: ${fmtAmt(amountPaise - totalAllocated)}`}
+              {settlementPaise !== null && ` / Unallocated: ${fmtAmt(settlementPaise - totalAllocated)}`}
             </p>
           )}
         </div>

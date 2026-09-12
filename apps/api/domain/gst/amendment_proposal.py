@@ -193,4 +193,7 @@ def _build_node(section: str, finding: dict, corrected: dict) -> dict:
         original_no=doc_no, original_date=doc_date, section=section,
         corrected=corrected,
         place_of_supply=finding.get("counterparty") or "",
+        # Only `expa` reads it, and the builder ignores it elsewhere. Passed
+        # unconditionally so a section added later cannot silently lose it.
+        shipping_bill=finding.get("shipping_bill"),
     )

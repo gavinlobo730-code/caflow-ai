@@ -118,6 +118,7 @@ def build_invoice_amendment(
     corrected: dict, counterparty: str = "", doc_no: Optional[str] = None,
     doc_date: Optional[str] = None, place_of_supply: str = "",
     reverse_charge: bool = False, invoice_type: str = "R", rate: Any = None,
+    shipping_bill: Optional[dict] = None,
 ) -> dict:
     """One amended invoice entry, for b2ba / b2cla / expa.
 
@@ -125,6 +126,15 @@ def build_invoice_amendment(
     matches on. They are the ORIGINAL values even when the correction changed
     the invoice number itself — which is precisely the case where getting this
     wrong silently creates a second invoice instead of amending the first.
+
+    `shipping_bill` carries Table 6A's `sbpcode` / `sbnum` / `sbdt` on an
+    `expa` amendment. It used to be three hardcoded empty strings (SALES-10):
+    the main GSTR-1 build has emitted the real values since migration 349, but
+    a §37(3) amendment RE-DECLARES the whole entry, so amending an export's
+    value replaced a filed entry that had a shipping bill with one that did
+    not — and CGST Rule 96(1) matches the refund against exactly those three
+    fields at customs. Absent still means three empty strings, because the
+    portal accepts an export declared before the shipping bill exists.
     """
     node = {
         "oinum": original_no,
@@ -138,7 +148,10 @@ def build_invoice_amendment(
         node.update({"pos": place_of_supply, "rchrg": "Y" if reverse_charge else "N",
                      "inv_typ": invoice_type})
     elif section == "expa":
-        node.update({"sbpcode": "", "sbnum": "", "sbdt": ""})
+        sb = shipping_bill or {}
+        node.update({"sbpcode": str(sb.get("sbpcode") or ""),
+                     "sbnum": str(sb.get("sbnum") or ""),
+                     "sbdt": str(sb.get("sbdt") or "")})
     return node
 
 

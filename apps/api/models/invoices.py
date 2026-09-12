@@ -29,6 +29,29 @@ from decimal import Decimal
 # which needs DB access this pure model layer doesn't have.
 
 
+def _validate_state_code(v, *, field: str):
+    """A GST state code, or a refusal naming what it decides.
+
+    CGST Rule 46(n) makes the place of supply a particular of the tax invoice,
+    and it is what puts the line in a GSTR-1 bucket and decides IGST against
+    CGST+SGST. `ReceiptIn.place_of_supply` has been validated since GST-15 and
+    the invoice's two spellings of the same field were not (SALES-31), so a
+    typo reached the document, the ledger and the return.
+    """
+    if v is None:
+        return None
+    v = str(v).strip()
+    if not v:
+        return None
+    from domain.gst.validator import VALID_STATE_CODES
+    if v not in VALID_STATE_CODES:
+        raise ValueError(
+            f"'{v}' is not a GST state code. The place of supply decides IGST "
+            "against CGST+SGST and which GSTR-1 table the invoice lands in, so "
+            "it cannot be a free string.")
+    return v
+
+
 def _validate_invoice_no_shape(v: str) -> str:
     from domain.gst.invoice_series import format_violation
     v = (v or "").strip()
@@ -254,6 +277,31 @@ class SalesInvoiceIn(BaseModel):
     def _invoice_no_shape(cls, v: str) -> str:
         return _validate_invoice_no_shape(v)
 
+    @field_validator("place_of_supply", "supply_state_code")
+    @classmethod
+    def _place_of_supply_is_a_state(cls, v):
+        return _validate_state_code(v, field="place of supply")
+
+    @model_validator(mode="after")
+    def _one_place_of_supply(self):
+        """TWO SPELLINGS OF ONE FIELD, and they must not disagree.
+
+        This model has always declared both, and until SALES-31 the real
+        create path read only `supply_state_code` while the mock branch read
+        `place_of_supply or supply_state_code`. Both are now resolved through
+        `domain/gst/place_of_supply.recipient_place_of_supply`, which takes ONE
+        stated code — so a request carrying two different ones is a request
+        that means two different things, and picking either silently is how
+        the divergence happened in the first place.
+        """
+        pos = (self.place_of_supply or "").strip()
+        ssc = (self.supply_state_code or "").strip()
+        if pos and ssc and pos != ssc:
+            raise ValueError(
+                f"place_of_supply '{pos}' and supply_state_code '{ssc}' are "
+                "two spellings of one field and they disagree. Send one.")
+        return self
+
     @field_validator("port_code")
     @classmethod
     def _port_code_shape(cls, v: Optional[str]) -> Optional[str]:
@@ -301,6 +349,8 @@ class SalesInvoiceUpdateIn(BaseModel):
     invoice_date: Optional[str] = None
     due_date: Optional[str] = None
     credit_days: Optional[int] = None
+    # Validated below — a correction path with no check is one PATCH away from
+    # having none at all (the same reasoning as the UAN/IFSC validators).
     supply_state_code: Optional[str] = None
     lines: Optional[list[SalesInvoiceLineIn]] = None
     # See SalesInvoiceIn — the same two, on the edit path.
@@ -340,6 +390,12 @@ class SalesInvoiceUpdateIn(BaseModel):
     # amount-affecting fields — flipping it changes the payable total, which
     # CGST Rule 46 locks once the invoice is issued.
     round_off_enabled: Optional[bool] = None
+
+
+    @field_validator("supply_state_code")
+    @classmethod
+    def _place_of_supply_is_a_state(cls, v):
+        return _validate_state_code(v, field="place of supply")
 
     @field_validator("invoice_no")
     @classmethod
@@ -556,7 +612,18 @@ class ReceiptIn(BaseModel):
     customer_id: str
     receipt_date: str  # YYYY-MM-DD
     amount_paise: int
-    tds_paise: int = 0          # TDS deducted by the client on the firm fee (IT Act §194J)
+    # TDS THE CUSTOMER WITHHELD from this payment — §194C, §194J or whichever
+    # section their payment falls under. The comment here used to say "deducted
+    # by the client on the firm fee", which is the CA firm's own billing and the
+    # wrong party: this is the CLIENT's sales receipt and the deductor is the
+    # client's customer.
+    #
+    # The settlement is amount + TDS because §198 deems the tax deducted to be
+    # income received and §199 gives the deductee credit for it, so a customer
+    # who banks ₹90,000 and deposits ₹10,000 has discharged the whole ₹1,00,000
+    # invoice. Nothing SENT this until SALES-07 — the field, the journal leg and
+    # the settlement arithmetic all worked and no screen filled it in.
+    tds_paise: int = 0
     # "bank_transfer" was never a valid value against the receipts.payment_mode
     # CHECK constraint (migration 050: bank/cash/cheque/upi/neft/rtgs/online,
     # widened by migration 161) — any caller relying on this default violated
