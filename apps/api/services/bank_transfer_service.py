@@ -20,13 +20,12 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from domain.banking.transfers import detect, describe, TransferPair, DEFAULT_WINDOW_DAYS
+from core.db_paging import fetch_all
+from domain.banking.transfers import (
+    DEFAULT_WINDOW_DAYS, TransferPair, describe, detect, scan_window,
+)
 
 _logger = logging.getLogger("caflow.bank_transfers")
-
-# How many transactions to consider when scanning for pairs. A transfer's two
-# halves are days apart at most, so an unbounded scan buys nothing.
-SCAN_LIMIT = 1000
 
 
 class BankTransferService:
@@ -48,14 +47,42 @@ class BankTransferService:
     # ── detection ───────────────────────────────────────────────────────────
     def detect_pairs(self, db, firm_id: str, client_id: str,
                      window_days: int = DEFAULT_WINDOW_DAYS,
-                     txns: Optional[list[dict]] = None) -> list[TransferPair]:
-        """Candidate pairs for this client. Never writes."""
+                     txns: Optional[list[dict]] = None,
+                     around: Optional[list[dict]] = None) -> list[TransferPair]:
+        """Candidate pairs for this client. Never writes.
+
+        `around` IS THE ROWS AN ANSWER IS WANTED FOR, and passing it is what
+        keeps this proportional to the question rather than to the ledger
+        (BANK-15). The scan then covers only `transfers.scan_window` of those
+        dates, which is every row that could pair with one of them and every
+        row that could compete for the same counterpart.
+
+        This used to read the newest 1,000 transactions of the whole client,
+        and that was not only slow. `bank_entry_service.redraft` walks its
+        chunks in transaction_date order, OLDEST FIRST, so on a client past a
+        thousand lines the index it consulted covered the newest lines and the
+        chunk it was drafting was the oldest: every old line was told it had no
+        transfer counterpart, which is a wrong answer rather than a slow one.
+        And the cap was silent — 1,000 rows and 1,000-of-40,000 rows come back
+        looking identical.
+
+        With no `around` the scan is the whole client, PAGED — `fetch_all`
+        rather than a cap, because a truncated read here says "no transfer"
+        about lines it never looked at.
+        """
         rows = txns
         if rows is None:
-            rows = (db.table("bank_transactions").select("*")
-                    .eq("firm_id", firm_id).eq("client_id", client_id)
-                    .order("transaction_date", desc=True)
-                    .limit(SCAN_LIMIT).execute().data) or []
+            lo, hi = scan_window(around or [], window_days=window_days)
+
+            def q():
+                base = (db.table("bank_transactions").select("*")
+                        .eq("firm_id", firm_id).eq("client_id", client_id))
+                if lo and hi:
+                    base = (base.gte("transaction_date", lo.isoformat())
+                                .lte("transaction_date", hi.isoformat()))
+                return base
+
+            rows = fetch_all(q, label="bank_transfer_scan")
         by_stmt = self._account_by_statement(db, firm_id, client_id)
         # The domain module compares accounts, not statements — a client can have
         # many statements per account, and two lines on different statements of

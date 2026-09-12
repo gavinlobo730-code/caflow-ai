@@ -51,6 +51,7 @@ import services.bank_candidate_search_service as search_svc
 import services.bank_column_mapping_service as column_mappings
 import services.bank_matching_service as bms
 from domain.banking import bill_open_paise, invoice_open_paise, rank_suggestions
+from domain.banking.matcher import Candidate
 from domain.banking.narration import describe, parse_narration
 from services.bank_matching_service import bank_matching_service as svc
 from services.bank_posting_service import bank_posting_service
@@ -88,8 +89,15 @@ def _invoice(**kw):
 
 
 def test_a_bill_ninety_percent_paid_reports_the_tenth_that_is_left():
+    # THE BANK LINE IS THE TENTH THAT IS LEFT (BANK-10). It used to be the
+    # whole 100,000, and that scenario is no longer a candidate at all — you
+    # cannot settle 10,000 of outstanding with a 100,000 payment, which is the
+    # same rule the invoice side has always stated as "a receipt LARGER than
+    # the invoice isn't settling it". The band moved onto the OPEN figure, so
+    # a fixture whose bank amount is the face value now tests the case the
+    # band correctly excludes.
     [c] = svc._bills_from([_bill(paid_paise=90_000, status="partially_paid")],
-                          {"v1": "Om Stationers"}, 100_000)
+                          {"v1": "Om Stationers"}, 10_000)
     assert c.outstanding_paise == 10_000, (
         "a bill with 90,000 of its 100,000 net payable settled has 10,000 open; "
         f"got {c.outstanding_paise}")
@@ -111,7 +119,7 @@ def test_the_same_bill_through_the_search_path_answers_identically():
     db.store["vendors"] = [{"id": "v1", "firm_id": FIRM, "client_id": CLIENT,
                             "name": "Om Stationers"}]
 
-    from_match = svc._bills_from([row], {"v1": "Om Stationers"}, 100_000)[0]
+    from_match = svc._bills_from([row], {"v1": "Om Stationers"}, 10_000)[0]
     [from_search] = search_svc.bank_candidate_search_service._bills(
         db, FIRM, CLIENT, "2026-01-01", "2026-12-31")
 
@@ -138,6 +146,16 @@ def test_a_fully_settled_bill_is_not_a_candidate_whatever_its_status_says():
     cannot: paid >= payable means nothing is owed."""
     assert svc._bills_from([_bill(paid_paise=100_000, status="unpaid")],
                            {"v1": "Om"}, 100_000) == []
+
+
+def test_a_payment_larger_than_what_is_open_is_not_a_candidate():
+    """BANK-10's other edge. A bill with 10,000 open is not settled by a
+    100,000 payment, and offering it invites a CA to record one — the band's
+    upper bound is what is OPEN, not the face value."""
+    assert svc._bills_from([_bill(paid_paise=90_000, status="partially_paid")],
+                           {"v1": "Om"}, 100_000) == []
+    assert svc._invoices_from([_invoice(paid_paise=90_000)],
+                              {"c1": "Acme"}, 100_000) == []
 
 
 def test_the_note_columns_move_the_open_figure_the_way_the_schema_says():
@@ -180,12 +198,20 @@ def test_the_pools_fetch_what_the_open_figure_needs():
 
 
 def test_the_outstanding_bonus_no_longer_fires_on_a_settled_bill():
-    """The scoring consequence, end to end. matcher.py adds +15 for 'matches
-    outstanding balance'; on a 90%-paid bill reporting its full payable, a bank
-    line for the FULL payable collected that bonus — the ranker asserting the
-    line settles a bill that has a tenth of it left."""
-    [c] = svc._bills_from([_bill(paid_paise=90_000, status="partially_paid")],
-                          {"v1": "Om"}, 100_000)
+    """The scoring consequence. matcher.py adds +15 for 'matches outstanding
+    balance'; on a 90%-paid bill reporting its full payable, a bank line for
+    the FULL payable collected that bonus — the ranker asserting the line
+    settles a bill that has a tenth of it left.
+
+    The Candidate is built here rather than through `_bills_from`, because
+    BANK-10 moved the automatic offer's band onto the open figure and that
+    path no longer produces this pairing at all. The UNBANDED manual search
+    still can — a CA may search a date range and find the bill — so the
+    ranker's own behaviour is what this pins."""
+    c = Candidate(entity_type="purchase_bill", entity_id="b1",
+                  label="B-1 · Om", amount_paise=100_000,
+                  entity_date="2026-04-01", party_name="Om", party_id="v1",
+                  outstanding_paise=10_000)
     [s] = rank_suggestions(100_000, "2026-04-01", "OM STATIONERS", [c])
     assert "matches outstanding balance" not in s.reasons, (
         "the bank line is 100,000 and only 10,000 is open — that is not a match "

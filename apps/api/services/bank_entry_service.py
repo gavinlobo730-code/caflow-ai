@@ -232,7 +232,7 @@ class BankEntryService:
         txn["history"] = bank_payee_service.as_dict(bank_payee_service.suggest_for(txn, index))
         txn["suggested_payee"] = bank_payee_service.suggest_payee(
             db, firm_id, client_id, txn, parties=bank_payee_service.parties(db, firm_id, client_id))
-        pairs = self._pairs_by_txn(db, firm_id, client_id)
+        pairs = self._pairs_by_txn(db, firm_id, client_id, [txn])
         txn["transfer_candidate"] = pairs.get(str(txn_id))
         return txn
 
@@ -399,7 +399,7 @@ class BankEntryService:
             candidates = bank_matching_service.suggestions_for_many(
                 db, firm_id, client_id,
                 [t for t in rows if not t.get("matched_entity_id")])
-            pairs = self._pairs_by_txn(db, firm_id, client_id)
+            pairs = self._pairs_by_txn(db, firm_id, client_id, rows)
             bank_names = self._bank_account_names(db, firm_id, client_id)
             account_names = self._account_names(db, firm_id, rules, index)
             now = _now()
@@ -444,12 +444,21 @@ class BankEntryService:
         tr_d = E.from_transfer(pair, str(t.get("id")), other_name)
         return E.choose(rule_d, doc_d, tr_d, hist_d)
 
-    def _pairs_by_txn(self, db, firm_id, client_id) -> dict:
-        """Each open line's candidate counterpart, keyed by BOTH ids. Never
+    def _pairs_by_txn(self, db, firm_id, client_id, around: list[dict]) -> dict:
+        """Each of `around`'s candidate counterparts, keyed by BOTH ids. Never
         fatal: a scan that fails costs the lines a transfer proposal, not the
-        redraft."""
+        redraft.
+
+        `around` is passed on so the scan covers the dates of THESE rows and
+        not the whole client (BANK-15). It is rebuilt per chunk rather than
+        hoisted above the caller's chunk loop, which is the other way to stop
+        the scan being quadratic: hoisting would make one failed scan cost
+        every remaining chunk its transfer proposals instead of one, and a
+        windowed scan is already proportional to the chunk.
+        """
         try:
-            pairs = bank_transfer_service.detect_pairs(db, firm_id, client_id)
+            pairs = bank_transfer_service.detect_pairs(db, firm_id, client_id,
+                                                       around=around)
         except Exception as e:  # pragma: no cover - best effort, as the endpoint is
             _logger.warning("transfer detection failed for client %s: %s", client_id, e)
             return {}

@@ -849,6 +849,29 @@ def _pdf_rows(content: bytes) -> list[list[str]]:
         stays empty, which is the whole point — the position is preserved
         because it was never inferred from spacing in the first place.
 
+    THE CHOICE IS PER PAGE, AND THAT IS THE WHOLE OF BANK-14
+        It used to be per document: `if rows: return rows` sat outside the page
+        loop, so ONE page with ruling lines short-circuited the rest of the
+        statement. A bank that rules page 1 and loses the ruling on the
+        continuation pages — common, because the ruling is often a background
+        rectangle that only the first page carries — imported page 1 and
+        silently dropped every page after it. Silently: the tie-out can only
+        catch a short read on a statement that PRINTS its totals, and the
+        totals are on the last page, which is one of the pages that vanished.
+
+        Two things had to change together. The strategy is now decided page by
+        page, and the geometric columns are carried forward from the page that
+        printed the header — `_rows_by_position` needs a header line to place
+        the columns and a continuation page does not repeat one, so per-page
+        fallback on its own would have returned nothing for exactly the pages
+        it was added to rescue. `_Columns` and `_geometric_rows` are that.
+
+        Where the two strategies disagree about how many columns there are, the
+        document is read by the one that reached every page rather than
+        interleaved. Interleaving them would put a row against the wrong column
+        count, which is the deposit-in-the-withdrawal-column failure the
+        geometry exists to avoid in the first place.
+
     WHAT IT REFUSES
         A SCANNED PDF — a photograph of paper — has no text layer at all, and
         no amount of geometry invents one. That is refused by the caller with a
@@ -872,18 +895,29 @@ def _pdf_rows(content: bytes) -> list[list[str]]:
     rows: list[list[str]] = []
     try:
         with pdfplumber.open(io.BytesIO(content)) as pdf:
-            for page in pdf.pages:
+            pages = list(pdf.pages)
+
+            ruled: list[list[list[str]]] = []
+            for page in pages:
+                page_rows: list[list[str]] = []
                 for table in (page.extract_tables() or []):
                     for raw in table:
                         cells = [_clean(c) for c in raw]
                         if any(cells):
-                            rows.append(cells)
-            if rows:
-                return rows
+                            page_rows.append(cells)
+                ruled.append(page_rows)
 
-            # No ruled table anywhere in the document — fall back to geometry.
-            for page in pdf.pages:
-                rows.extend(_rows_by_position(page))
+            if all(ruled):
+                return [r for page_rows in ruled for r in page_rows]
+
+            # At least one page drew no ruled table — which is NOT the same
+            # as a page the ruled pass failed on. Most statements end with a
+            # computer-generated-statement notice and many open with a covering
+            # letter, and neither is a table. So read every page by geometry as
+            # well and take, page by page, whichever strategy actually read it.
+            # The second pass only costs anything on a document the ruled pass
+            # could not finish.
+            rows = _merge_pages(ruled, _geometric_rows(pages))
     except StatementParseError:
         raise
     except Exception as e:  # noqa: BLE001 — the PDF library's own exceptions
@@ -931,9 +965,34 @@ def _merge_label_words(words: list[dict]) -> list[dict]:
     return out
 
 
-def _rows_by_position(page) -> list[list[str]]:
-    """One list of cells per visual line, columns taken from the header's
-    x-coordinates. See _pdf_rows for why this is not a whitespace split."""
+@dataclass(frozen=True)
+class _Columns:
+    """Where a statement's columns sit on the page, taken from a header line.
+
+    A separate value rather than a local in `_rows_by_position` because THE
+    COLUMNS BELONG TO THE DOCUMENT AND NOT TO THE PAGE. Almost every bank
+    prints the column header once, on the first page; the continuation pages
+    are bare rows. Re-deriving the boundaries per page therefore answers
+    "no header, no columns, no rows" for every page but the first, which is
+    how a five-page statement used to import as one page (BANK-14).
+    """
+
+    count: int
+    #: count - 1 boundaries, left to right. Each sits in the GAP between two
+    #: header labels, so a value right-aligned under its heading still lands in
+    #: the right column.
+    bounds: tuple[float, ...]
+
+    def column_of(self, word: dict) -> int:
+        mid = (word["x0"] + word["x1"]) / 2
+        for i, b in enumerate(self.bounds):
+            if mid < b:
+                return i
+        return len(self.bounds)
+
+
+def _page_lines(page) -> list[list[dict]]:
+    """The page's words grouped into visual lines, top to bottom."""
     words = page.extract_words() or []
     if not words:
         return []
@@ -944,36 +1003,112 @@ def _rows_by_position(page) -> list[list[str]]:
             lines[-1].append(w)
         else:
             lines.append([w])
+    return lines
 
+
+def _columns_from(lines: list[list[dict]]) -> Optional[_Columns]:
+    """The column geometry this page's own header line defines, or None if it
+    prints no header — which a continuation page does not."""
     header = next((ln for ln in lines
                    if _looks_like_header([w["text"] for w in ln])), None)
     if header is None:
-        return []
+        return None
     header = _merge_label_words(header)
     if len(header) < 3:
-        return []
-
-    # A boundary sits in the GAP between two header labels, so a value that is
-    # right-aligned under its heading still lands in the right column.
+        return None
     starts = [w["x0"] for w in header]
     ends = [w["x1"] for w in header]
-    bounds = [(ends[i] + starts[i + 1]) / 2 for i in range(len(header) - 1)]
+    return _Columns(
+        count=len(header),
+        bounds=tuple((ends[i] + starts[i + 1]) / 2 for i in range(len(header) - 1)),
+    )
 
-    def _column_of(w: dict) -> int:
-        mid = (w["x0"] + w["x1"]) / 2
-        for i, b in enumerate(bounds):
-            if mid < b:
-                return i
-        return len(bounds)
 
+def _rows_by_position(lines: list[list[dict]], columns: _Columns) -> list[list[str]]:
+    """One list of cells per visual line, columns taken from the header's
+    x-coordinates. See _pdf_rows for why this is not a whitespace split."""
     out: list[list[str]] = []
     for ln in lines:
-        cells = [""] * len(header)
+        cells = [""] * columns.count
         for w in ln:
-            i = _column_of(w)
+            i = columns.column_of(w)
             cells[i] = f"{cells[i]} {w['text']}".strip() if cells[i] else w["text"]
         if any(cells):
             out.append(cells)
+    return out
+
+
+def _geometric_rows(pages) -> list[list[list[str]]]:
+    """Every page read by geometry, in document order, one list of rows each.
+
+    The list is per page rather than flattened because `_pdf_rows` decides page
+    by page which strategy read that page, and the ORDER the rows come back in
+    is load-bearing: `_opening_closing_balance` (services/banking_service.py)
+    takes the statement's opening balance off the earliest row and
+    `domain/banking/tie_out.balance_agreement` walks the running balance down
+    the file, so a merge that reordered pages would fail arithmetic that is
+    actually correct.
+
+    A page before the first header cannot be placed and yields nothing; there
+    is no such page in a statement, and inventing columns for one would be
+    exactly the guess this module refuses to make.
+    """
+    out: list[list[list[str]]] = []
+    columns: Optional[_Columns] = None
+    for page in pages:
+        lines = _page_lines(page)
+        # A page that prints its own header uses it — layouts do shift between
+        # pages — and it becomes the carried geometry for the bare pages after.
+        columns = _columns_from(lines) or columns
+        out.append(_rows_by_position(lines, columns) if columns else [])
+    return out
+
+
+def _header_width(rows) -> Optional[int]:
+    """How many cells the header row has, or None if these rows contain no
+    header. `_rows_to_txns` indexes every row by position against that row, so
+    two reads that disagree about it disagree about which column is which."""
+    for cells in rows:
+        if _looks_like_header([str(c) for c in cells]):
+            return len(cells)
+    return None
+
+
+def _merge_pages(ruled: list[list[list[str]]],
+                 geometric: list[list[list[str]]]) -> list[list[str]]:
+    """One document out of the two per-page reads, in page order.
+
+    Page by page, whichever strategy read that page: a page the ruled pass
+    missed comes from geometry, and a page geometry cannot place — one before
+    any header has been seen — keeps whatever the ruled pass got.
+
+    THE ONE DECISION THAT IS NOT PER PAGE is what to do when the two reads
+    disagree about HOW MANY COLUMNS the statement has. `_rows_to_txns` indexes
+    every row by position against ONE header row, so a five-column page and a
+    six-column page in the same document means one of them has its deposit read
+    out of the withdrawal column — the exact failure the geometry exists to
+    avoid. No interleaving is safe there, so the document is read by geometry
+    throughout, that being the read whose column count is known to be the
+    statement's own: it comes from a header line this module measured, while
+    the ruled count is whatever pdfplumber's line detection happened to find.
+
+    The test is on the GEOMETRIC width and not on both. A ruled read with no
+    header row has not read the statement's table — a summary box drawn with
+    ruling lines is the common case — so it does not get to outvote a geometry
+    that found one. A geometry with no header has no column count at all, and
+    an unknown count is not a disagreement.
+    """
+    ruled_width = _header_width(r for page in ruled for r in page)
+    geometric_width = _header_width(r for page in geometric for r in page)
+    prefer_geometry = (geometric_width is not None
+                       and ruled_width != geometric_width)
+
+    out: list[list[str]] = []
+    for ruled_page, geometric_page in zip(ruled, geometric):
+        if prefer_geometry and geometric_page:
+            out.extend(geometric_page)
+        else:
+            out.extend(ruled_page or geometric_page)
     return out
 
 

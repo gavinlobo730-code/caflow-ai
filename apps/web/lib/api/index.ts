@@ -1612,6 +1612,14 @@ export const api = {
     /** Multi-Currency Phase 5 — derived base (+ foreign for FX accounts) balance. */
     accountBalance: (accountId: string, params: Record<string, string>) => request(`/api/banking/accounts/${accountId}/balance?${new URLSearchParams(params)}`),
     listStatements: (params?: Record<string, string>) => request(`/api/banking/statements${params ? "?" + new URLSearchParams(params) : ""}`),
+    /** Store ALREADY-PARSED statement rows. No screen calls this and none may:
+     *  the browser cannot parse a bank statement — domain/banking/normalizer.py
+     *  holds the column adapters, the CA's saved mapping, the dedup and the
+     *  tie-out against the statement's own printed totals, and a file turned
+     *  into rows here reaches none of them. Use uploadStatement, which sends
+     *  the FILE. Kept for a scripted import, and it requires bank_account_id
+     *  since BANK-22.
+     *  Guarded by scripts/a-statement-is-parsed-on-the-server-and-belongs-to-an-account.test.ts */
     importStatement: (data: unknown) => request("/api/banking/statements/import", { method: "POST", body: JSON.stringify(data) }),
     /** Remove a statement imported by mistake (BANK-06) — the wrong file, the
      *  wrong client, the wrong month. HARD, and the lines go with it, because

@@ -33,12 +33,18 @@ def _setup(monkeypatch):
     wire_e2e(monkeypatch, db, [bk, bsvc])
     monkeypatch.setattr(bk, "_db", lambda: db)           # router uses _db(), not _USE_MOCK
     db.seed("clients", {"id": "CLI", "firm_id": FIRM})
+    # The account the statement belongs to. Required on the import since
+    # BANK-22, and checked for ownership by banking_service._import_core.
+    db.seed("bank_accounts", {"id": "BA-1", "firm_id": FIRM, "client_id": "CLI",
+                              "bank_name": "HDFC", "account_no": "0001",
+                              "currency": "INR"})
     return bk, db
 
 
 def _import_two(bk):
     return bk.import_statement(StatementImportIn(
         client_id="CLI", bank_name="HDFC", account_number="0001",
+        bank_account_id="BA-1",
         rows=[
             StatementImportRow(transaction_date="2026-04-02", description="Client receipt",
                                credit_paise=500_000, balance_paise=500_000, reference_no="R1"),

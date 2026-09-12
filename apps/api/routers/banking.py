@@ -815,7 +815,9 @@ def upload_statement(
     client_id: str = Form(...),
     bank_name: str = Form("Bank"),
     account_number: Optional[str] = Form(None),
-    bank_account_id: Optional[str] = Form(None),
+    # REQUIRED (BANK-22) — see models.banking.StatementImportIn for why an
+    # unlinked statement is a statement nothing downstream can place.
+    bank_account_id: str = Form(...),
     column_mapping: Optional[str] = Form(None),
     save_mapping: bool = Form(False),
     opening_balance_paise: Optional[int] = Form(None),

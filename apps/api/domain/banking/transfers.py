@@ -147,6 +147,36 @@ def _can_pair(out: dict, inb: dict, window_days: int) -> bool:
     return abs((d_in - d_out).days) <= window_days
 
 
+#: How many windows either side of the rows in question a scan has to cover.
+#:
+#: ONE window finds every counterpart: `_can_pair` refuses a gap wider than
+#: `window_days`, so nothing outside it can pair with a row inside it. The
+#: SECOND window is for the competition. `detect` assigns greedily, best gap
+#: first, and a counterpart may itself be a candidate for a line one window
+#: further out; without that line in the set, the greedy pass can hand the
+#: counterpart to a different row than it would have on the whole statement.
+#: The chain does not terminate in theory — every row is one window from the
+#: next — but the pairing is a SUGGESTION a human confirms, and a scan that
+#: grew with the ledger is the thing this bounds.
+SCAN_PADDING_WINDOWS = 2
+
+
+def scan_window(rows: Iterable[dict], *,
+                window_days: int = DEFAULT_WINDOW_DAYS
+                ) -> tuple[Optional[date], Optional[date]]:
+    """The date range a scan must cover to pair `rows` the way the whole
+    statement would. (None, None) when none of them carries a readable date.
+
+    Dates are read with the SAME parser `detect` uses, deliberately: a window
+    computed by a second reader could exclude a row `detect` would have paired.
+    """
+    dates = sorted(d for d in (_as_date(r.get("transaction_date")) for r in rows) if d)
+    if not dates:
+        return None, None
+    reach = timedelta(days=max(0, int(window_days)) * SCAN_PADDING_WINDOWS)
+    return dates[0] - reach, dates[-1] + reach
+
+
 def detect(txns: Iterable[dict], *, window_days: int = DEFAULT_WINDOW_DAYS) -> list[TransferPair]:
     """Every transfer pair visible in this set of transactions.
 

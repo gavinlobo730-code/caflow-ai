@@ -9,6 +9,8 @@ import re
 
 import pytest
 
+from tests.e2e_harness import _apply_generated
+
 from domain.banking import (
     Candidate, rank_suggestions, suggest_category, rule_matches,
     is_valid_category, CATEGORIES,
@@ -298,6 +300,16 @@ class _Q:
 
     def _matches(self):
         rows = self.store.setdefault(self.table, [])
+        # THE GENERATED COLUMNS, BEFORE THE FILTER (BANK-10). Postgres
+        # maintains `outstanding_paise` on client_sales_invoices and
+        # purchase_bills (migration 278) and a query may filter on it; this
+        # local double predates the shared harness and did not, so the moment
+        # bank matching started banding on the open figure every seeded row
+        # was filtered out — the double answering a different question than
+        # production, which is the failure `tests/e2e_harness.py`'s own note
+        # on `order` already describes. Reuses that harness's transcription
+        # rather than adding a second one.
+        _apply_generated(self.table, rows)
         return [r for r in rows
                 if all(r.get(k) == v for k, v in self._eq)
                 and all(p(r) for p in self._pred)]

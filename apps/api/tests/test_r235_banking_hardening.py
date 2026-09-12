@@ -64,7 +64,7 @@ def test_create_bank_account_accepts_own_firms_client(enforced):
 
 def test_import_statement_rejects_another_firms_client(enforced):
     body = StatementImportIn(
-        client_id="C-OTHER", bank_name="Bank",
+        client_id="C-OTHER", bank_name="Bank", bank_account_id="ba-1",
         rows=[StatementImportRow(transaction_date="2026-04-01", description="x",
                                   debit_paise=0, credit_paise=100, balance_paise=100)],
     )

@@ -72,11 +72,12 @@ class BankPostingService:
         banking_service.assert_bank_account_is_inr for the whole reasoning.
 
         Deliberately NOT folded into _resolve_bank, which reads the same
-        bank_accounts row: that read sits inside a try/except that falls back to
-        the firm's generic Bank ledger, so a refusal raised there would be
-        swallowed and the post would continue against the wrong account — the
-        exact failure mode that except block was narrowed to report rather than
-        hide. A guard has to be somewhere nothing catches it.
+        bank_accounts row: that read sits inside a try/except, so a refusal
+        raised there would be caught and reported as a resolution failure. Since
+        BANK-22 that means the post is REFUSED either way rather than landing on
+        the firm's generic ledger — but with the wrong sentence, naming a
+        missing link where the truth is a foreign currency. A guard has to be
+        somewhere nothing catches it.
         """
         stmt_id = txn.get("statement_id")
         if not stmt_id:
@@ -89,6 +90,17 @@ class BankPostingService:
                                    client_id=txn["client_id"])
 
     # ── account resolution ───────────────────────────────────────────────────
+    #: Why a bank line can refuse to post (BANK-22). This used to fall through
+    #: to `resolve_payment_account`'s generic master "Bank" ledger, which posts
+    #: and balances perfectly and puts the money in the WRONG bank sub-ledger —
+    #: so the account it belongs to never reconciles, and nothing on the entry
+    #: says why. The statement's link to a bank account is REQUIRED at import
+    #: now; this is the door for the statements imported before it was.
+    _NO_BANK_LEDGER = (
+        "This line's statement is not linked to a bank account, so there is no "
+        "bank ledger to post it to. Re-import the statement with the bank "
+        "account selected.")
+
     def _resolve_bank(self, db, firm_id, txn, bank_account_id: Optional[str]) -> str:
         if bank_account_id:
             return self._validate_account(db, firm_id, bank_account_id)
@@ -124,14 +136,7 @@ class BankPostingService:
                     e, operation="bank_posting._resolve_bank",
                     firm_id=firm_id, client_id=client_id, statement_id=stmt_id,
                 )
-        # Fall back through the SHARED resolver rather than naming the ledger
-        # here. This path already resolved the per-bank ledger correctly above
-        # while receipts and vendor payments did not — the finding's remedy is
-        # explicitly "make them share one resolver so they cannot diverge
-        # again", and a second copy of the fallback is how they diverged.
-        return resolve_payment_account(
-            db, firm_id=firm_id, client_id=txn["client_id"],
-            find_account=phase2_journal_service._find_account).account_id
+        raise HTTPException(status_code=422, detail=self._NO_BANK_LEDGER)
 
     def _resolve_counter(self, db, firm_id, txn, account_id: Optional[str]) -> str:
         cat = txn.get("category")
