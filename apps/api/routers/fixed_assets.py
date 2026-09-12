@@ -25,6 +25,7 @@ import re
 from models.common import api_response
 from models.accounting import (FixedAssetIn, FixedAssetUpdateIn, DepreciationIn,
                                DepreciationRunIn, DisposalIn)
+from core.db_paging import fetch_all
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from services.timeline_service import timeline_service
@@ -58,33 +59,6 @@ def capitalised_cost_paise(cost_paise: int, igst_paise: int, cgst_paise: int,
     """
     tax = int(igst_paise or 0) + int(cgst_paise or 0) + int(sgst_paise or 0)
     return int(cost_paise) + (tax if (tax and itc_eligible is False) else 0)
-
-
-def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
-    """Fetch EVERY row via keyset paging on `key`.
-
-    The same helper eleven services carry. An un-paged `.execute()` is silently
-    capped at PostgREST's ~1000 rows, and a register-integrity report that
-    stopped at 1000 assets would answer "clean" for the client most likely to
-    have a problem. FA-12 records that the other fixed-asset reads have the same
-    gap; this closes it only where the new report needs it, rather than widening
-    the change.
-    """
-    first = make_query()
-    if not (hasattr(first, "gt") and hasattr(first, "order") and hasattr(first, "limit")):
-        return first.execute().data or []
-    out: list = []
-    cursor = None
-    while True:
-        q = make_query()
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        rows = q.order(key).limit(page).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        cursor = rows[-1][key]
-    return out
 
 
 _journal_svc = Phase2JournalService()
@@ -362,6 +336,131 @@ def _live_asset(db, asset_id: str, firm_id: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
+def _wdv_with_no_stopping_point(asset: dict) -> Optional[dict]:
+    """A reducing-balance asset with nothing to stop it (FA-13).
+
+    `_wdv_residual_at_end_of_life` needs the row's own useful life to work out
+    where the charge ends. Where there is no life recorded, the only terminal
+    left is `salvage_value_paise` — and a reducing balance never reaches a
+    salvage of zero, which is the column's default and what the form
+    pre-fills. Such a row is charged for ever, in ever-smaller amounts, long
+    after the asset is worn out.
+
+    Reported rather than repaired, for the same reason FA-02's departure is:
+    the life is a Schedule II Part C judgement about THIS asset, and writing
+    one in from the category default would change the charge on a row a CA may
+    have deliberately left open. Naming it costs a CA one edit; guessing it
+    moves the profit.
+
+    Not raised for Land (never depreciated), for a category Schedule II
+    prescribes nothing for (there is no life to have recorded), or where the
+    rate is 0.00 or the asset is already fully depreciated — none of those
+    keeps charging.
+    """
+    category = asset.get("asset_category")
+    if category in _NOT_DEPRECIABLE:
+        return None
+    method = asset.get("depreciation_method") or "WDV"
+    method = getattr(method, "value", method)
+    if method != "WDV":
+        return None                    # SL divides by the life; it terminates
+    if asset.get("useful_life_years"):
+        return None
+    classes = SCHEDULE_II_CATEGORIES.get(category or "")
+    if not classes or all(c["useful_life_years"] is None for c in classes):
+        return None
+    if int(asset.get("salvage_value_paise") or 0) > 0:
+        return None                    # the salvage is the terminal
+    rate = asset.get("wdv_rate_percent")
+    if rate is None or Decimal(str(rate)) <= 0:
+        return None                    # nothing is being charged
+    cost = int(asset.get("purchase_cost_paise") or 0)
+    accum = int(asset.get("accumulated_depreciation_paise") or 0)
+    if cost <= 0 or cost - accum <= 0:
+        return None
+    prescribed = sorted({c["useful_life_years"] for c in classes
+                         if c["useful_life_years"]})
+    return {
+        "kind": "wdv_asset_has_no_stopping_point",
+        "asset_code": asset.get("asset_code"),
+        "asset_name": asset.get("asset_name"),
+        "wdv_rate_percent": float(rate),
+        "prescribed_useful_life_years": prescribed,
+        "amount_paise": cost - accum,
+        "what_it_means": (
+            "This asset depreciates on the reducing balance with no useful life "
+            "recorded and no salvage value, so nothing ever stops the charge — "
+            "it keeps writing the asset down after it is fully depreciated. "
+            "Record the useful life (Schedule II Part C gives "
+            f"{', '.join(str(y) for y in prescribed)} year"
+            f"{'s' if prescribed != [1] else ''} for this category) or a salvage "
+            "value, and the charge will stop where Schedule II says it should."),
+    }
+
+
+def _wdv_residual_at_end_of_life(asset: dict, rate: Decimal) -> int:
+    """Where a WDV asset's own rate and life say the charge STOPS (FA-13).
+
+    A reducing balance is geometric: it approaches its floor and never reaches
+    it. So with `salvage_value_paise = 0` — which is the column's default and
+    what the form pre-fills — `wdv_now <= salvage` is never true and the asset
+    depreciates for ever. That is not a rounding curiosity: FA-02 replaced a
+    set of Income-tax block rates with Schedule II's own derived ones, and a
+    derived rate lands the asset exactly on its residual at the end of its
+    life, so the overshoot now begins precisely when the asset is fully
+    depreciated. A three-year ₹1,00,000 computer at the derived 63.16% reaches
+    ₹5,000 after three years and was then charged ₹3,158 in year four.
+
+    The floor is the row's OWN arithmetic run forwards: `life` years of the
+    very charge this function computes, from the original cost.
+
+    NOT a 5%-of-cost constant. Part C Note 5 caps the residual at 5% and
+    `_wdv_rate_for_life` derives the rate from exactly that cap, so for an
+    asset on a derived rate the two agree — but for an asset whose CA recorded
+    a different rate, 5% would be a figure from a different asset's arithmetic.
+
+    And NOT the closed form `cost × (1 − rate/100) ^ life` either, which is the
+    obvious way to write it and is wrong by a few paise: every year's charge is
+    FLOORED to the paise, so the balance the asset actually reaches is a little
+    higher than the smooth curve. On the worked example above the closed form
+    lands one paisa below where the yearly chain does, and the asset takes a
+    ₹0.01 charge in year four — a journal entry, in a period after the asset
+    was finished, for a rounding difference. Running the same chain the charges
+    run is the only way the two agree exactly.
+
+    Monthly posting rounds again on top of this, so a real register may arrive
+    a few paise above the floor; `min(annual, wdv_now - floor)` then takes it
+    to exactly the floor and the next year is nil. The floor is a bound, not a
+    prediction.
+
+    Returns 0 — no floor of its own — where the row has no usable life, which
+    leaves the stored salvage as the only terminal and is the behaviour every
+    such row has today. `register-integrity` names those rows rather than
+    letting them run silently.
+    """
+    try:
+        life = int(asset.get("useful_life_years") or 0)
+    except (TypeError, ValueError):
+        return 0
+    if life < 1:
+        return 0
+    cost = int(asset.get("purchase_cost_paise") or 0)
+    if cost <= 0:
+        return 0
+    if rate <= 0:
+        # A 0.00 rate charges nothing, so the whole cost is the residual.
+        return cost
+    if rate >= 100:
+        # Written off in the first year; no residual to protect.
+        return 0
+    wdv = cost
+    for _ in range(life):
+        wdv -= math.floor(Decimal(wdv) * rate / Decimal(100))
+        if wdv <= 0:
+            return 0
+    return wdv
+
+
 def _compute_annual_depreciation(asset: dict) -> int:
     """
     Compute ONE YEAR's depreciation in paise from the asset's current state,
@@ -393,13 +492,20 @@ def _compute_annual_depreciation(asset: dict) -> int:
     if category in _NOT_DEPRECIABLE:
         return 0
 
-    if wdv_now <= salvage:
-        return 0  # fully depreciated
-
     if method == "SL":
+        # `or`, not `is None`, DELIBERATELY (FA-14). The door now refuses a
+        # life below 1 (models.accounting.FixedAssetIn), so a 0 reaching here
+        # is a row written before that validator or straight over PostgREST —
+        # and for those `is None` would divide by zero two lines down and
+        # answer a 500 instead of a charge. The honesty lives at the door,
+        # where a CA can be told; here the only safe reading of a stored 0 is
+        # "no life recorded".
         life = asset.get("useful_life_years") or _default_schedule_ii_class(category)["useful_life_years"]
         if not life:
             raise ValueError(_no_statutory_basis(category, "SL"))
+        floor_paise = salvage
+        if wdv_now <= floor_paise:
+            return 0  # fully depreciated
         annual = math.floor(Decimal(cost - salvage) / Decimal(life))
     else:  # WDV
         rate_value = asset.get("wdv_rate_percent")
@@ -408,10 +514,14 @@ def _compute_annual_depreciation(asset: dict) -> int:
         if rate_value is None:
             raise ValueError(_no_statutory_basis(category, "WDV"))
         rate = Decimal(str(rate_value))
+        floor_paise = max(salvage, _wdv_residual_at_end_of_life(asset, rate))
+        if wdv_now <= floor_paise:
+            return 0  # fully depreciated
         annual = math.floor(Decimal(wdv_now) * rate / Decimal(100))
 
-    # Cannot depreciate below salvage value
-    return min(annual, wdv_now - salvage)
+    # Cannot depreciate below the floor — the CA's salvage, or (WDV) the
+    # residual the row's own rate and life imply, whichever is higher.
+    return min(annual, wdv_now - floor_paise)
 
 
 def _annual_depreciation_for_period(asset: dict, period: str) -> tuple[int, str, int]:
@@ -585,12 +695,19 @@ def list_assets(
     db = _db()
     if not db:
         return api_response(True, [])
-    q = (db.table("fixed_assets").select("*").eq("firm_id", current_user["firm_id"])
-         .eq("client_id", client_id).is_("deleted_at", "null"))
-    if not include_disposed:
-        q = q.eq("is_disposed", False)
-    res = q.order("purchase_date", desc=True).execute()
-    assets = res.data or []
+    def _q():
+        q = (db.table("fixed_assets").select("*").eq("firm_id", current_user["firm_id"])
+             .eq("client_id", client_id).is_("deleted_at", "null"))
+        return q if include_disposed else q.eq("is_disposed", False)
+
+    # FA-12. This was a bare `.execute()`, so a register past PostgREST's ~1000
+    # rows returned its first thousand and looked exactly like a register of a
+    # thousand. `fetch_all` keysets on `id` and imposes its own ORDER BY, so the
+    # newest-first order the grid wants is applied AFTER the walk rather than in
+    # the query — a cursor cannot page one order while sorting by another.
+    assets = fetch_all(_q, label="fixed_assets.list")
+    assets.sort(key=lambda a: (str(a.get("purchase_date") or ""), str(a.get("id") or "")),
+                reverse=True)
     # Compute current WDV for display
     for a in assets:
         a["current_wdv_paise"] = a["purchase_cost_paise"] - a.get("accumulated_depreciation_paise", 0)
@@ -619,6 +736,8 @@ def create_asset(
     method       = data.depreciation_method.value
     default_cls  = _default_schedule_ii_class(data.asset_category)
     wdv_rate     = data.wdv_rate_percent if data.wdv_rate_percent is not None else default_cls["wdv_rate_percent"]
+    # `or` is safe here now: FixedAssetIn refuses a life below 1, so the only
+    # falsy value that reaches this line is None — "not stated" (FA-14).
     useful_life  = data.useful_life_years or default_cls["useful_life_years"]
     if data.asset_category not in _NOT_DEPRECIABLE:
         if method == "WDV" and wdv_rate is None:
@@ -701,7 +820,32 @@ def create_asset(
     # acquisition land on the OLD asset's entry and its cost never reach the
     # balance sheet. Soft-deleted rows keep their codes and are deliberately
     # still counted here (no deleted_at filter).
-    asset_code = "FA-{:04d}".format(next_sequence(
+    #
+    # FA-17: a code the CA TYPED wins. The form has always had the box and the
+    # value was thrown away — Pydantic dropped the unknown field and this line
+    # overwrote it — so a client's own asset tag, which is what a physical
+    # verification is carried out against, never reached the register.
+    # `FixedAssetIn` refuses a typed code in the generated `FA-nnnn` shape, so
+    # honouring one cannot jump or collide with this series.
+    if data.asset_code:
+        clash = (db.table("fixed_assets").select("id, asset_name")
+                 .eq("firm_id", current_user["firm_id"])
+                 .eq("client_id", client_id)
+                 .eq("asset_code", data.asset_code)
+                 .limit(1).execute().data) or []
+        if clash:
+            # Migration 351's unique index is the real guarantee — including
+            # against a soft-deleted row, which keeps its code because the
+            # FA-* journal references are built from it. This read only buys
+            # the CA a sentence instead of a constraint violation.
+            raise HTTPException(
+                status_code=409,
+                detail=(f"Asset code '{data.asset_code}' is already used by "
+                        f"{clash[0].get('asset_name') or 'another asset'} for "
+                        f"this client. Asset codes are the identity every "
+                        f"acquisition and depreciation journal reference is "
+                        f"built from, so two assets cannot share one."))
+    asset_code = data.asset_code or "FA-{:04d}".format(next_sequence(
         db, "fixed_assets", "FA-",
         firm_id=current_user["firm_id"], client_id=client_id))
 
@@ -988,10 +1132,18 @@ def run_depreciation(
                                    "months_posted": 0, "depreciation_paise": 0,
                                    "remaining_months": 0})
 
-    assets = (db.table("fixed_assets").select("*")
-              .eq("firm_id", current_user["firm_id"]).eq("client_id", data.client_id)
-              .eq("is_disposed", False).is_("deleted_at", "null")
-              .order("asset_code").execute().data or [])
+    # FA-12, and this read is the one that mattered most: above a thousand
+    # assets a "run the year" silently depreciated the first thousand and
+    # reported `assets_considered` as a thousand — a month-end that looks
+    # finished and is two-thirds done. Sorted after the walk, and on a
+    # coalesced code because `asset_code` is NULLABLE and `sorted` raises on a
+    # None against a str.
+    assets = fetch_all(
+        lambda: (db.table("fixed_assets").select("*")
+                 .eq("firm_id", current_user["firm_id"]).eq("client_id", data.client_id)
+                 .eq("is_disposed", False).is_("deleted_at", "null")),
+        label="fixed_assets.run_depreciation")
+    assets.sort(key=lambda a: (str(a.get("asset_code") or ""), str(a.get("id") or "")))
 
     results, months_posted, total_paise, remaining = [], 0, 0, 0
     for asset in assets:
@@ -1626,14 +1778,13 @@ def depreciation_schedule(
     # other endpoint in this file already scopes by firm_id (list_assets,
     # create_asset, post_depreciation, dispose_asset) -- this was the one
     # gap.
-    assets = (
-        db.table("fixed_assets").select("*")
-        .eq("firm_id", current_user["firm_id"])
-        .eq("client_id", client_id)
-        .eq("is_disposed", False)
-        .is_("deleted_at", "null")
-        .execute().data or []
-    )
+    assets = fetch_all(                                             # FA-12
+        lambda: (db.table("fixed_assets").select("*")
+                 .eq("firm_id", current_user["firm_id"])
+                 .eq("client_id", client_id)
+                 .eq("is_disposed", False)
+                 .is_("deleted_at", "null")),
+        label="fixed_assets.depreciation_schedule")
     # Projected as of the CURRENT financial year — reuses each asset's own
     # cached depreciation_fy/depreciation_fy_start_accum_paise (task #232) so
     # the figure shown here matches what the next actual posting will charge,
@@ -1719,7 +1870,7 @@ def register_integrity(
     """Where the fixed-asset register disagrees with the ledger, or with
     Schedule II (FA-07, FA-02).
 
-    THE FOUR WAYS IT COMES APART, and each is silent today:
+    THE FIVE WAYS IT COMES APART, and each is silent today:
 
       * AN ASSET WITH NO ACQUISITION JOURNAL. The register says the client owns
         a machine and no entry ever put it on the balance sheet. It arises when
@@ -1736,6 +1887,10 @@ def register_integrity(
         written before the rate was derived from Part C carry Income-tax Act
         block rates, which under-depreciate. See schedule_ii_departure for why
         this is reported rather than migrated away.
+      * A WDV ASSET THAT NEVER STOPS (FA-13). A reducing balance approaches its
+        floor and never reaches it, so a row with no useful life and no salvage
+        has no terminal at all and is still being charged years after it is
+        worn out. See _wdv_with_no_stopping_point.
 
     This REPORTS. It repairs nothing and posts nothing: every remedy is a
     judgement — repost, delete a duplicate, re-link a bill — and which one is
@@ -1747,13 +1902,14 @@ def register_integrity(
     firm_id = current_user["firm_id"]
     assert_client_access(current_user, client_id)
 
-    rows = _paginate_all(lambda: db.table("fixed_assets")
+    rows = fetch_all(lambda: db.table("fixed_assets")
                          .select("id, asset_code, asset_name, purchase_cost_paise, "
                                  "journal_entry_id, acquisition_mode, purchase_bill_id, "
                                  "is_disposed, asset_category, depreciation_method, "
                                  "wdv_rate_percent, useful_life_years")
                          .eq("firm_id", firm_id).eq("client_id", client_id)
-                         .is_("deleted_at", "null"))
+                         .is_("deleted_at", "null"),
+                     label="fixed_assets.register_integrity")
 
     findings: list[dict] = []
     by_bill: dict[str, list[dict]] = {}
@@ -1775,6 +1931,9 @@ def register_integrity(
             departure = schedule_ii_departure(a)
             if departure:
                 findings.append(departure)
+            no_terminal = _wdv_with_no_stopping_point(a)
+            if no_terminal:
+                findings.append(no_terminal)
         if a.get("purchase_bill_id"):
             by_bill.setdefault(a["purchase_bill_id"], []).append(a)
 

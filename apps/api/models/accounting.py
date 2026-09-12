@@ -3,6 +3,7 @@ Pydantic request models for accounting endpoints.
 Double-entry: debit_paise == credit_paise enforced at validation level.
 CGST Act §2(59): all money values stored as integer paise (never float).
 """
+import re
 from datetime import date as _date
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
@@ -326,6 +327,12 @@ class DepreciationMethod(str, Enum):
 class FixedAssetIn(BaseModel):
     client_id: str
     asset_name: str
+    #: The CLIENT'S OWN asset tag — the number stencilled on the machine, which
+    #: is what a physical verification is done against (FA-17). The form has
+    #: always had the box; the field did not exist here, so Pydantic dropped it
+    #: and the router overwrote whatever was typed with the generated `FA-nnnn`.
+    #: Optional: left unset, the generated series still applies.
+    asset_code: Optional[str] = None
     asset_category: str = "Other"
     purchase_date: str  # YYYY-MM-DD
     purchase_cost_paise: int
@@ -415,6 +422,87 @@ class FixedAssetIn(BaseModel):
     def must_be_non_negative(cls, v: int) -> int:
         if v < 0:
             raise ValueError("Cost/salvage values must be non-negative paise integers.")
+        return v
+
+    @field_validator("asset_code")
+    @classmethod
+    def code_may_not_impersonate_the_generated_series(cls, v):
+        """A typed code is honoured — unless it is the GENERATOR'S OWN shape.
+
+        `services/numbering.sequence_after` hands out the next `FA-{n:04d}` by
+        taking the highest existing value that starts with `FA-` and whose tail
+        is all digits, plus one. So a CA typing their own `FA-0500` does two
+        things at once: it jumps the generated series to 0501, leaving 500
+        numbers that can never be issued, and a typed `FA-0001` collides head-on
+        with the row the generator already gave that number to — a 23505 on
+        migration 351's unique index, at the moment the asset is saved.
+
+        Worse than either, `asset_code` is the identity every fixed-asset
+        journal reference is built from (`FA-ACQ-{code}`,
+        `FA-DEPN-{code}-{period}`) and the posting kernel dedupes on
+        `(client_id, reference_no, entry_date)`. A collision there does not
+        raise: the second asset's acquisition silently lands on the first
+        asset's entry.
+
+        Case-insensitive, because `fa-0500` reads as the same tag to a human and
+        is a different row to a unique index.
+
+        Everything else is accepted, with only the two limits a journal
+        reference imposes: a bounded length and no whitespace or separator that
+        would make `FA-ACQ-{code}` ambiguous.
+        """
+        if v is None:
+            return None
+        code = v.strip()
+        if not code:
+            return None                       # a blank box is "not stated"
+        if re.fullmatch(r"FA-\d+", code, flags=re.IGNORECASE):
+            raise ValueError(
+                f"'{code}' is the shape this register generates for itself "
+                f"(FA-0001, FA-0002 …). Using it by hand skips numbers out of "
+                f"that series or collides with a row that already has it. Leave "
+                f"the box empty to take the next generated code, or use your "
+                f"own tag in any other form.")
+        if len(code) > 32:
+            raise ValueError(
+                "asset_code must be 32 characters or fewer — it is embedded in "
+                "every acquisition and depreciation journal reference for this "
+                "asset.")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9/_.-]*", code):
+            raise ValueError(
+                "asset_code may contain letters, digits, hyphen, slash, "
+                "underscore and full stop only, and must start with a letter or "
+                "a digit.")
+        return code
+
+    @field_validator("useful_life_years")
+    @classmethod
+    def life_is_years_or_not_stated(cls, v):
+        """A life of 0 is not a life, and it was being SWALLOWED (FA-14).
+
+        `routers/fixed_assets.py` resolves the life as `data.useful_life_years
+        or default_cls["useful_life_years"]` at INSERT and again as
+        `asset.get("useful_life_years") or _default_...` at compute time. `or`
+        cannot tell an unstated life from a typed zero, so a CA who entered 0
+        — meaning "this is not depreciable" or simply a slip — silently got the
+        Schedule II category default and a charge they never asked for.
+
+        Refused at the door rather than honoured, because the two ways of
+        honouring it are both worse. Reading it as "no depreciation" duplicates
+        `_NOT_DEPRECIABLE` and the 0.00 rate, which already say that
+        explicitly. Letting it reach the SL branch divides `cost - salvage` by
+        it — a ZeroDivisionError and a 500, which is what turning the `or` into
+        `is None` on its own would produce.
+
+        Negative is refused for the same reason and would otherwise depreciate
+        upwards.
+        """
+        if v is not None and v < 1:
+            raise ValueError(
+                "useful_life_years must be at least 1 year, or left unset to "
+                "take the Schedule II Part C life for the category. A life of "
+                "0 was silently replaced by that default; if the asset is not "
+                "depreciable, record it as Land or set a 0.00 rate.")
         return v
 
 
@@ -509,6 +597,21 @@ class FixedAssetUpdateIn(BaseModel):
         if v is not None and v not in ("paid", "credit", "from_bill"):
             raise ValueError(
                 "acquisition_mode must be 'paid', 'credit' or 'from_bill'.")
+        return v
+
+    @field_validator("useful_life_years")
+    @classmethod
+    def life_is_years_or_not_stated(cls, v):
+        """The same rule as FixedAssetIn's — see the reasoning there.
+
+        A validator only on the create door is one PATCH away from being no
+        validator at all, and this is a tier-C field: it is exactly the one a
+        CA revises after the fact under Schedule II Part C Note 7.
+        """
+        if v is not None and v < 1:
+            raise ValueError(
+                "useful_life_years must be at least 1 year, or omitted to "
+                "leave the recorded life alone.")
         return v
 
 

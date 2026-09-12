@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+from core.db_paging import fetch_all
 from core.observability import capture_soft_failure
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -181,12 +182,11 @@ def _compute_fixed_assets_note_data(db, firm_id: str, client_id: str, fy_end: Op
     fy_start, fy_last = _fy_window(fy_end)
     # EVERY asset, disposed included — see (2) above. A soft-deleted one is a
     # row created by mistake (migration 351) and was never in the register.
-    rows = (
-        db.table("fixed_assets").select("*")
-        .eq("firm_id", firm_id).eq("client_id", client_id)
-        .is_("deleted_at", "null")
-        .execute().data or []
-    )
+    rows = fetch_all(                                               # FA-12
+        lambda: (db.table("fixed_assets").select("*")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .is_("deleted_at", "null")),
+        label="year_end_notes.fixed_assets")
 
     gaps: list[str] = []
     fy_label = None
@@ -375,10 +375,14 @@ def _compute_accounting_policies_data(
                              firm_id=firm_id, client_id=client_id)
 
     try:
-        assets = (db.table("fixed_assets").select("depreciation_method")
-                  .eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("is_disposed", False)
-                  .execute().data or [])
+        # FA-12. `id` is in the projection because it is the cursor: paging
+        # reads it off the last row of each page, and a select list without it
+        # works perfectly until the thousandth asset and then cannot advance.
+        assets = fetch_all(
+            lambda: (db.table("fixed_assets").select("id, depreciation_method")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .eq("is_disposed", False)),
+            label="year_end_notes.depreciation_methods")
     except Exception as exc:
         capture_soft_failure(exc, operation="accounting_policies.depreciation_methods",
                              firm_id=firm_id, client_id=client_id)

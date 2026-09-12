@@ -1513,6 +1513,7 @@ const FINDING_TITLE: Record<string, string> = {
   bill_capitalised_more_than_once: "One bill capitalised twice",
   capitalised_from_a_bill_that_is_gone: "The bill behind this asset is gone",
   depreciation_basis_departs_from_schedule_ii: "Depreciation basis is off Schedule II",
+  wdv_asset_has_no_stopping_point: "Depreciation here never stops",
 };
 
 function RegisterIntegrity({ clientId }: { clientId: string }) {

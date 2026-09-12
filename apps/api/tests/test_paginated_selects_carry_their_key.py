@@ -40,8 +40,17 @@ import pytest
 
 API_ROOT = Path(__file__).resolve().parents[1]
 
-# The helpers that keyset-paginate and index rows[-1][key].
-PAGINATORS = {"_paginate_all", "_fetch_all"}
+# The helpers that keyset-paginate and read the cursor off the last row.
+#
+# `fetch_all` is `core/db_paging.py`'s — the SHARED one, the module this
+# codebase says is "one place that the next person finds before writing the
+# sixth" copy. It was the one this scan did not cover: the set held only the
+# private copies, so every call site that had already moved to the shared
+# helper moved OUT of the rule at the same time. `fetch_all` fails softer than
+# the private copies (it logs and stops rather than raising KeyError) — which
+# is worse for this rule, not better: a KeyError is a 500 somebody reports,
+# and a short read that logs is a wrong answer nobody sees.
+PAGINATORS = {"_paginate_all", "_fetch_all", "fetch_all"}
 
 SKIP_DIRS = {"tests", ".venv", "__pycache__", "migrations"}
 

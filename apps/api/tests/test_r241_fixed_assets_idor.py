@@ -26,9 +26,24 @@ class _Resp:
 
 
 class _Q:
+    """A query builder faithful enough to page over.
+
+    `gt`, `order` and a limit that actually CAPS were added when the router
+    moved off its private paginator onto `core.db_paging.fetch_all` (FA-12).
+    They are modelled rather than stubbed as no-ops for the same reason `is_`
+    is: `fetch_all` keysets forward on `id` and stops on a short page, so a
+    double whose `limit` returns everything and whose `gt` filters nothing
+    would loop until the 1000-page cap and then report a truncated read — the
+    exact failure the paging exists to prevent, passing as a green test.
+    """
+
     def __init__(self, store, table):
         self.s, self.t = store, table
         self.f = []
+        self._gt = None
+        self._order = None
+        self._desc = False
+        self._limit = None
 
     def select(self, *_a, **_k):
         return self
@@ -45,12 +60,29 @@ class _Q:
         self.f.append((col, None))
         return self
 
-    def limit(self, _n):
+    def gt(self, col, value):
+        self._gt = (col, value)
+        return self
+
+    def order(self, col, desc=False):
+        self._order, self._desc = col, desc
+        return self
+
+    def limit(self, n):
+        self._limit = n
         return self
 
     def execute(self):
-        rows = self.s.setdefault(self.t, [])
-        return _Resp([r for r in rows if all(r.get(k) == v for k, v in self.f)])
+        rows = [r for r in self.s.setdefault(self.t, [])
+                if all(r.get(k) == v for k, v in self.f)]
+        if self._gt is not None:
+            col, value = self._gt
+            rows = [r for r in rows if str(r.get(col)) > str(value)]
+        if self._order is not None:
+            rows.sort(key=lambda r: str(r.get(self._order) or ""), reverse=self._desc)
+        if self._limit is not None:
+            rows = rows[:self._limit]
+        return _Resp(rows)
 
 
 class FakeDB:
