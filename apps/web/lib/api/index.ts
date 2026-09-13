@@ -661,6 +661,20 @@ export type JournalEntryDetail = {
   status: "posted" | "draft";
   editable: boolean;
   lock_reason: string | null;
+  /** Supporting documents (migration 138). A name and EITHER a pasted
+   *  http(s) link OR the id of a document in the firm's store — never both:
+   *  the store's own URLs are signed and expire in an hour, so an uploaded
+   *  document is referenced by id and a fresh link minted when someone opens
+   *  it. `domain/attachments` is the rule and REFUSES anything else, including
+   *  a `javascript:` or `data:` link, which is stored XSS delivered as a
+   *  "receipt". */
+  attachments?: JournalAttachment[];
+};
+
+export type JournalAttachment = {
+  name: string;
+  url?: string;
+  document_id?: string;
 };
 
 /** PATCH body. Every field optional; `lines` replaces the whole set. */
@@ -765,11 +779,43 @@ export type AgeingDocument = {
   considered_doubtful?: boolean;
 };
 
+/** One payment or receipt with money no document has absorbed (PUR-24).
+ *  A supplier advance is an ASSET and a customer advance a LIABILITY, so
+ *  neither is inside the ageing buckets — they are their own section, and
+ *  what ties the report to the control account is the ageing total LESS
+ *  them. `days_old` is AGE, not lateness: an advance has no due date. */
+export type AgeingAdvance = {
+  document_id: string;
+  document_no: string | null;
+  party_id: string | null;
+  party_name: string | null;
+  document_date: string | null;
+  unapplied_paise: number;
+  days_old: number;
+  aging_bucket: string;
+  /** Present only on a non-INR document. There is no stored
+   *  transaction-currency counterpart to the base figure, so this is a label
+   *  and the amount above stays the authoritative one. */
+  txn_currency?: string;
+};
+
 /** The per-document ageing payload. `K` names which key carries the rows. */
 export type AgeingDetail<K extends "invoices" | "bills"> = {
   as_of: string | null;
   buckets: Record<string, number>;
   total_outstanding_paise: number;
+  advances: AgeingAdvance[];
+  advance_buckets: Record<string, number>;
+  total_advances_paise: number;
+  /** Documents outstanding LESS the advances against no document — the figure
+   *  that ties to Trade Receivables / Trade Payables. Computed server-side so
+   *  one number means one thing. Exactly one of the two is present, named for
+   *  the side it belongs to. */
+  net_receivable_paise?: number;
+  net_payable_paise?: number;
+  /** A stored unapplied balance that disagrees with the document's own
+   *  allocation rows, stated rather than absorbed. */
+  advance_gaps: string[];
 } & { [P in K]: AgeingDocument[] };
 
 // ── The Schedule III ratios ──────────────────────────────────────────────────

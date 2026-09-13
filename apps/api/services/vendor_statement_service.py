@@ -22,6 +22,9 @@ from typing import Optional
 from fastapi import HTTPException
 
 from services.statement_currency import attach_currency_outstanding, summarize_by_currency
+from domain.reporting.party_advances import (
+    AdvanceInput, aging_bucket as _aging_bucket, empty_buckets, unapplied_advances,
+)
 
 _logger = logging.getLogger("caflow.vendor_statement")
 
@@ -174,18 +177,6 @@ def build_statement(vendor: dict, start: str, end: str,
     return result
 
 
-def _aging_bucket(days_overdue: int) -> str:
-    if days_overdue <= 0:
-        return "not_due"
-    if days_overdue <= 30:
-        return "0-30"
-    if days_overdue <= 60:
-        return "31-60"
-    if days_overdue <= 90:
-        return "61-90"
-    return "90+"
-
-
 class VendorStatementService:
 
     def _vendor(self, db, firm_id, client_id, vendor_id) -> dict:
@@ -301,7 +292,7 @@ class VendorStatementService:
         vnames = {v["id"]: v.get("name") for v in _paginate_all(lambda: db.table("vendors").select("id, name")
                   .eq("firm_id", firm_id).eq("client_id", client_id))}
 
-        buckets = {"not_due": 0, "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
+        buckets = empty_buckets()
         rows, total = [], 0
         ccy_entries: list[tuple] = []   # (currency, base_paise, foreign_minor) for the breakdown
         for b in bills:
@@ -342,13 +333,97 @@ class VendorStatementService:
             ccy_entries.append((cur, outstanding, foreign_out))
             rows.append(row)
 
+        # ── UNAPPLIED VENDOR ADVANCES (PUR-24) ──────────────────────────────
+        # Money paid to a supplier that no bill has absorbed. Without it the
+        # ageing total cannot be tied to the Trade Payables control account —
+        # the vendor STATEMENT debits every payment (build_statement's payment
+        # loop) while this report saw only bills, so the two legitimately
+        # disagreed by exactly the advances outstanding.
+        #
+        # Its own section, never folded into `buckets`: a supplier advance is
+        # an ASSET, and adding it to the payables ageing would misstate the
+        # Schedule III payables note this report feeds.
+        advances = self._unapplied_advances(db, firm_id, client_id, vnames, today)
+
         out = {"as_of": today.isoformat(), "buckets": buckets,
-               "total_outstanding_paise": total, "bills": rows}
+               "total_outstanding_paise": total, "bills": rows,
+               "advances": advances.advances,
+               "advance_buckets": advances.buckets,
+               "total_advances_paise": advances.total_paise,
+               # WHAT TIES TO THE CONTROL ACCOUNT. Bills outstanding less the
+               # advances sitting against no bill. Reported rather than left
+               # for the screen to subtract, so one figure means one thing
+               # (CLAUDE.md: zero business logic in the frontend).
+               "net_payable_paise": total - advances.total_paise,
+               "advance_gaps": advances.gaps}
+        # Advances are deliberately OUT of ccy_entries: the per-currency block
+        # reconciles to total_outstanding_paise, the DOCUMENT total, and there
+        # is no stored transaction-currency counterpart to unallocated_paise.
         base_cur, by_ccy = summarize_by_currency(ccy_entries)
         if by_ccy is not None:
             out["base_currency"] = base_cur
             out["by_currency"] = by_ccy
         return out
+
+    def _unapplied_advances(self, db, firm_id: str, client_id: str,
+                            vnames: dict, today) -> "object":
+        """Vendor payments with an unapplied balance, aged.
+
+        The filter is in the QUERY (CLAUDE.md, "Reporting performance"): a
+        client with 5,000 payments and three advances fetches three rows.
+        `unallocated_paise` is the column every other reader uses
+        (gst_advance_service reads its AR twin) and is maintained on all three
+        write paths — see domain/reporting/party_advances for why it is read
+        rather than derived.
+        """
+        pays = _paginate_all(lambda: db.table("purchase_payments")
+                .select("id, payment_no, payment_date, vendor_id, amount_paise, "
+                        "unallocated_paise, is_reversed, txn_currency")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .gt("unallocated_paise", 0))
+        # A reversed payment moved no money — same Python-side filter and same
+        # reason as generate(): a test double lacking the key must read as NOT
+        # reversed, which .eq("is_reversed", False) would get backwards.
+        pays = [p for p in pays if not p.get("is_reversed")]
+        if not pays:
+            return unapplied_advances([], today=today, document_label="payment")
+
+        # The cross-check input. Only the bridge table's own rows, and only
+        # the live ones — a reversed payment's allocations are VOIDED rather
+        # than deleted (migration 226), so counting them would imply the
+        # payment is still applied.
+        allocated: dict[str, int] = {}
+        seen_bridge: set[str] = set()
+        ids = [p["id"] for p in pays if p.get("id")]
+        for i in range(0, len(ids), 200):
+            chunk = ids[i:i + 200]
+            for a in _paginate_all(lambda chunk=chunk: db.table("purchase_payment_allocations")
+                    .select("id, purchase_payment_id, allocated_paise, is_voided")
+                    .in_("purchase_payment_id", chunk)):
+                if a.get("is_voided"):
+                    continue
+                pid = a.get("purchase_payment_id")
+                seen_bridge.add(pid)
+                allocated[pid] = allocated.get(pid, 0) + int(a.get("allocated_paise") or 0)
+
+        return unapplied_advances([
+            AdvanceInput(
+                document_id=p.get("id"),
+                document_no=p.get("payment_no"),
+                party_id=p.get("vendor_id"),
+                party_name=vnames.get(p.get("vendor_id")),
+                document_date=p.get("payment_date"),
+                # A vendor payment settles its cash amount; there is no
+                # withheld-tax addition on this side (that is the CUSTOMER
+                # receipt, IT Act §198/§199 — see the AR mirror).
+                settlement_paise=int(p.get("amount_paise") or 0),
+                unallocated_paise=int(p.get("unallocated_paise") or 0),
+                allocated_paise=(allocated.get(p.get("id"), 0)
+                                 if p.get("id") in seen_bridge else None),
+                currency=(p.get("txn_currency") or "INR"),
+            )
+            for p in pays
+        ], today=today, document_label="payment")
 
 
 vendor_statement_service = VendorStatementService()

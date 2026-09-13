@@ -72,6 +72,9 @@ from domain.tds.residency import (
     GAP_RESIDENCY_NOT_CLASSIFIED, FORM_27Q,
     describe_gaps, is_classified, missing_27q_identifiers, return_type_for,
 )
+from domain.tds.purchase_return import (
+    GAP_CREDIT_MOVED_AFTER_DEDUCTION, credit_moved_after_deduction,
+)
 from domain.tds.section_195_rates import rates_are_verified
 from domain.tds.section_rates import rates_are_verified as resident_rates_are_verified
 
@@ -139,6 +142,52 @@ def _display_form(return_type: str, when) -> str:
         return vocabulary.statement_form(kind, event_date=_as_date(when))
     except Exception:
         return return_type
+
+
+def notes_against_bill(db, firm_id: str, bill: dict) -> tuple[int, int]:
+    """(returned, increased) TAXABLE paise from the notes raised on one bill.
+
+    TAXABLE, never the note totals. The deductee row's `payment_amount_paise`
+    excludes GST (CBDT Circular 23/2017), so measuring the movement against a
+    note total including tax would overstate it by the tax on it — which is why
+    the bill's own `debited_paise` / `credit_note_paise` rollups are used only
+    as the CHEAP TEST for whether to ask at all, never as the figures.
+
+    That test is the point: a freshly received bill has both at zero, so the
+    ordinary path takes no extra read. Only a bill that has actually been
+    noted pays for this query.
+    """
+    if int(bill.get("debited_paise") or 0) == 0 and int(bill.get("credit_note_paise") or 0) == 0:
+        return 0, 0
+    bill_id = bill.get("id")
+    if not bill_id or db is None:
+        return 0, 0
+    returned = increased = 0
+    try:
+        # A DEBIT note is the purchase return and REDUCES what is credited; a
+        # purchase CREDIT note is the supplier's §34(3) undercharge correction
+        # and INCREASES it. The names run opposite to the intuition and
+        # CLAUDE.md records the trap; getting them the wrong way round would
+        # report a supplier's extra charge as a return.
+        for row in (db.table("debit_notes")
+                    .select("taxable_amount_paise, status, deleted_at")
+                    .eq("firm_id", firm_id).eq("purchase_bill_id", bill_id)
+                    .execute().data or []):
+            if (row.get("status") or "") == "issued" and not row.get("deleted_at"):
+                returned += int(row.get("taxable_amount_paise") or 0)
+        for row in (db.table("purchase_credit_notes")
+                    .select("taxable_amount_paise, status, deleted_at")
+                    .eq("firm_id", firm_id).eq("purchase_bill_id", bill_id)
+                    .execute().data or []):
+            if (row.get("status") or "") == "issued" and not row.get("deleted_at"):
+                increased += int(row.get("taxable_amount_paise") or 0)
+    except Exception as e:                                      # noqa: BLE001
+        # Degrade to "no notes seen" rather than failing a sync. A gap that
+        # cannot be measured is worse reported as nil than as a crash on a
+        # path whose whole contract is never to raise into the caller.
+        _logger.error("could not read the notes against bill %s: %s", bill_id, e)
+        return 0, 0
+    return returned, increased
 
 
 def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
@@ -263,6 +312,22 @@ def sync_for_bill(db, firm_id: str, client_id: str, bill: dict,
         _expected = int(bill.get("taxable_amount_paise") or 0) * int(bill.get("tds_rate_bps") or 0) // 10000
         if deducted != _expected:
             gaps.append(GAP_TDS_IS_A_FY_CATCH_UP)
+        # A PURCHASE RETURN AFTER THE TAX WAS WITHHELD (PUR-23 ≡ TDS-32).
+        # `sync_for_bill`'s own docstring says it is called on every
+        # transition; issuing a note was the transition nothing called it on,
+        # so the deductee row kept reporting a credit that had been partly
+        # reversed and the vendor's 26AS showed income they did not earn.
+        # REPORTED and not adjusted — domain/tds/purchase_return explains why
+        # the statute leaves two lawful answers and the books hold neither of
+        # the facts that pick between them.
+        _returned, _increased = notes_against_bill(db, firm_id, bill)
+        _moved = credit_moved_after_deduction(
+            bill_no=bill.get("bill_no"), section=bill.get("tds_section"),
+            credited_paise=int(bill.get("taxable_amount_paise") or 0),
+            tds_paise=deducted,
+            returned_taxable_paise=_returned, increased_taxable_paise=_increased)
+        if _moved:
+            gaps.append(GAP_CREDIT_MOVED_AFTER_DEDUCTION)
         # Payload written INLINE with literal keys — tests/test_backend_columns_
         # exist_pg.py can only read a query whose table name and payload keys
         # are both string constants.

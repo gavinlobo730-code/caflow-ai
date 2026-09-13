@@ -512,6 +512,41 @@ change. The code is the authority; keep this file in step with it.
   LUT or bond (§16(3)(a)). `domain/gst/gstr3b_computer.py` is the authority for
   all three, and the callers carry them — a figure the computer gets right and
   no screen shows is not a fixed bug.
+- **WHAT BEING LATE COSTS IS `domain/gst/late_filing.py`, and half of it is a
+  REFUSAL.** §50(1) interest is COMPUTED — 18% (Notification 13/2017-Central
+  Tax), and Rule 88B(1) is the load-bearing part: where the supplies are
+  declared in a return furnished after the due date, interest runs only on
+  "that portion of the tax which is paid by debiting the electronic CASH
+  ledger", so a head the credit ledger discharged in full bears NONE however
+  late the return is, and charging on the gross output tax demands several
+  times what is due. `cash_payable_*` is that base and is the same figure Table
+  6 pays the challan with. Rule 88B(2) is the other case — tax NOT declared in
+  the return, found in a §73/§74 proceeding — and there it IS the whole tax
+  from the date it fell due, so a caller that used the cash figure would
+  understate it. §50(3) is 24% on credit wrongly availed **AND UTILISED** (Rule
+  88B(3)) and REFUSES rather than substituting the availed figure: credit
+  availed and never utilised bears nothing, so the substitution would charge a
+  taxpayer who owes nothing at the higher of the two rates.
+  **THE §47 LATE FEE IS NOT COMPUTED AT ALL.** The statutory ₹100 a day per Act
+  capped at ₹5,000 is held so nobody has to look up what the notifications
+  reduced, and is deliberately NOT a fallback — no registered person has paid
+  it since 2018 (Notifications 4/2018 and 76/2018 reduced it; 19/2021 and
+  20/2021 capped it by turnover band), and ₹200 a day where ₹50 is notified is
+  four times a figure a CA would pay over. `LATE_FEE_RATES` is EMPTY and adding
+  a row is a human step like the state professional-tax slabs. Two conventions
+  are stated rather than assumed: **DAYS, not months** (due 20 July, paid 21
+  July is one day — NOT the §201(1A) "month or part of a month" arithmetic,
+  which would be thirty times wrong here), and **rounded UP**, because interest
+  is a sum the taxpayer OWES and understating it leaves a residual demand —
+  the same direction ESI takes and the opposite of the GST discount, which
+  floors because there understating cannot under-declare tax. ⚠️ Two `[S]`
+  points, both failing generous: the divisor is 365 even in a leap year, and
+  the 2020 concessional-rate notifications are NOT held, so a period they
+  covered is charged at 18% and SAYS SO in its caveats.
+  **`filed_on` is OPTIONAL everywhere it appears** — a return being prepared
+  has no filing date, and defaulting to today would put a figure on Table 5.1
+  that changes every day the return is not filed.
+
 - **A discount on the invoice reduces the value of supply; a discount after it
   does not, and the two are different sections.** §15(3)(a) excludes a discount
   "given before or at the time of the supply if such discount has been **duly
@@ -838,6 +873,7 @@ the response. Adding any of them is a human step, like the ITR schemas.
 | prior gratuity / leave exemption used | `gratuity.py`, `leave_encashment.py` | §10(10) and §10(10AA) are LIFETIME limits across employers |
 | a vendor's MSMED classification | `vendors.msme_status`, surfaced by `public.schedule_iii_ageing` | it is a fact about the SUPPLIER — their Udyam registration — that no ledger holds, and it is not presentational: §43B(h) (Finance Act 2023, AY 2024-25) disallows a deduction for sums payable to a micro or small enterprise beyond the MSMED §15 limit unless actually paid, so calling an unclassified vendor "Others" changes taxable income. The column has NO default; an unclassified balance is reported beside the payables table, never inside a row |
 | the DTAA rate for a payment to a non-resident | `public.dtaa_treaty_rates` (migration 310) — one row per (country, nature), firm-scoped; `vendors.treaty_rate_bps` is now only a per-vendor override. Refused on the purchase-bill path when a TRC is held and nothing is recorded | §194C, §194J and their neighbours charge, in their own words, sums paid "to a **resident**" — so for a non-resident payee they do not apply at all and §195 does, at rates in force under Part II of the First Schedule by NATURE of income, with surcharge and cess, displaced by the DTAA under §90(2) where a TRC and Form 10F are held. Nature of income × ninety-odd treaties × surcharge band cannot be written from memory, and §206AA's 20% floor has a non-resident carve-out (§206AA(7) with Rule 37BC) that residents do not get. Under-deducting disallows the WHOLE expenditure under §40(a)(i). The ACT side is now computed — `domain/tds/section_195_rates.py` holds §115A and Part II by nature of income, with surcharge and cess — but §90(2) gives the assessee whichever of the Act and the AGREEMENT is more beneficial, and the agreement cannot be: ninety-odd treaties, differing royalty/FTS/interest articles, MFN clauses needing their own §90(1) notification (*AO v. Nestle SA*, 2023), and several — the UAE and Singapore among them — with no FTS article at all. So a CA reads the agreement once per country and nature and records what they read (Settings → DTAA Treaty Rates); the engine then applies §90(2) to the two numbers it has, and REFUSES where a TRC is on file and nothing is recorded, because falling back to the Act rate would over-deduct exactly where somebody has established a treaty applies. **"No article" is an ANSWER, not a missing rate**: several agreements — the UAE and Singapore among them — have no FTS article, which makes the income Article 7 business profits and not taxable here without a PE, so it needs the same no-PE declaration chargeability does |
+| the §47 GST late-fee rates | `domain/gst/late_filing.LATE_FEE_RATES`, empty; the refusal reaches the screen as a sentence naming the notification | the statutory figure is ₹100 a day per Act capped at ₹5,000, and nobody has paid it since 2018 — Notifications 4/2018 and 76/2018 reduced it and 19/2021 and 20/2021 capped it by turnover band, so the figure in force depends on the return, the year AND the taxpayer's own turnover. This environment's proxy refuses every `.gov.in`, and a late fee written from memory is a number a CA would pay over. §50 INTEREST is computed — its rates are in the Act |
 | which accounts hold unbilled dues | `chart_of_accounts.unbilled_dues_side` + `public.schedule_iii_unbilled_reviews` (migration 305) | both ageing notes end "Unbilled dues shall be disclosed separately", and an unbilled due has no document — having none is what makes it unbilled — so the figure is a BALANCE on accounts somebody marked. No account name decides it: "Accrued Interest" may be income receivable or an expense payable. And the review is a SECOND fact: the markings say which accounts hold them, only the review says there are no others, so an unreviewed client shows no figure rather than a zero that claims it has none |
 
 **§89 also refuses a year the rate registry does not hold**, and that is worth

@@ -275,10 +275,34 @@ class JournalEntryIn(BaseModel):
     narration: Optional[str] = None
     entry_type: str = "Journal"
     status: str = "draft"            # "draft" (off-books) | "posted" (to the ledger)
-    attachments: list[dict] = []     # supporting documents: [{"name","url"}, ...]
+    # SUPPORTING DOCUMENTS, VALIDATED (ACC-25). `journal_entries.attachments`
+    # has existed since migration 138 and `_create_journal` writes whatever it
+    # is handed; this field was a bare `list[dict]`, so a `javascript:` or
+    # `data:` URL went into the entry and became script execution in the app's
+    # own origin the moment a CA clicked the "supporting document" on a
+    # voucher. `domain/attachments` was written for exactly that on the bank
+    # side and closes the same hole here — its scheme vocabulary is CLOSED
+    # rather than sanitised, and an uploaded document stores its id with NO url
+    # so a signed link cannot rot into a dead one by the time somebody audits
+    # the entry.
+    attachments: list[dict] = []
     lines: list[JournalLineIn]
 
     _check_entry_date = field_validator("entry_date")(_posting_date)
+
+    @field_validator("attachments")
+    @classmethod
+    def attachments_are_safe(cls, v: list[dict]) -> list[dict]:
+        from domain.attachments import AttachmentError, parse_attachments
+        try:
+            # Normalised on the way through, so what reaches the kernel is the
+            # parsed shape rather than whatever the caller sent — a document-
+            # backed attachment carrying a url is REFUSED here rather than
+            # having the url quietly dropped, because the two mean different
+            # things.
+            return [a.to_dict() for a in parse_attachments(v)]
+        except AttachmentError as e:
+            raise ValueError(str(e)) from e
 
     @field_validator("entry_type")
     @classmethod

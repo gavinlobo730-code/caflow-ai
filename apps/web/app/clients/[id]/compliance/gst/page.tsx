@@ -689,6 +689,11 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
 
   const [showCompute, setShowCompute] = useState(false);
   const [computePeriod, setComputePeriod] = useState("");
+  // GST-21 — the date the return was (or will be) filed. Left blank on
+  // purpose: a return being prepared has none, and defaulting to today would
+  // put an interest figure on Table 5.1 that changes every day it is not
+  // filed. Given, the server computes §50(1) per head off the CASH payable.
+  const [filedOn, setFiledOn] = useState("");
   const [computing, setComputing] = useState(false);
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
@@ -818,7 +823,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
     setComputeResult(null);
     const r = await apiFetch("/api/gst/gstr3b/from-books", {
       method: "POST",
-      body: JSON.stringify({ client_id: clientId, period: computePeriod }),
+      body: JSON.stringify({ client_id: clientId, period: computePeriod,
+                             ...(filedOn ? { filed_on: filedOn } : {}) }),
     });
     if (r.success) setComputeResult(r.data as Record<string, unknown>);
     else setComputeError(r.error ?? "Couldn't compute GSTR-3B from books.");
@@ -911,9 +917,19 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             Derives GSTR-3B entirely from posted sales/purchase documents (including issued
             credit/debit notes) and reconciles output tax and ITC to the General Ledger.
           </p>
-          <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
-            onChange={(e) => setComputePeriod(e.target.value)}
-            className="w-full border rounded px-3 py-1.5 text-sm" />
+          <div className="grid grid-cols-2 gap-2">
+            <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
+              onChange={(e) => setComputePeriod(e.target.value)}
+              className="w-full border rounded px-3 py-1.5 text-sm" />
+            <div>
+              <input type="date" value={filedOn} aria-label="Date filed"
+                onChange={(e) => setFiledOn(e.target.value)}
+                className="w-full border rounded px-3 py-1.5 text-sm" />
+              <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                Date filed — optional. Fill it to see §50 interest.
+              </p>
+            </div>
+          </div>
           {computeError && <p className="text-red-600 text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <button onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
@@ -999,6 +1015,71 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     pay from the credit ledger and {rupees(cf)} carries into the next return.
                   </p>
                 )}
+                {/* TABLE 5.1 — WHAT BEING LATE COSTS (GST-21).
+                    The interest is computed PER HEAD on the CASH payable, not
+                    on the gross output tax: Rule 88B(1) charges only "that
+                    portion of the tax which is paid by debiting the electronic
+                    cash ledger", so a head the credit ledger discharged in
+                    full bears none however late the return is.
+                    The LATE FEE is a refusal, and the sentence naming the
+                    notification to read is the server's — §47's notified rates
+                    are not held, and a fee written from memory is a number a
+                    CA would pay over. */}
+                {(() => {
+                  const lf = computeResult.late_filing as {
+                    available?: boolean; reason?: string; due_date?: string;
+                    days_late?: number; interest_total_paise?: number;
+                    interest_by_head?: { head: string; base_paise: number; days: number;
+                                         interest_paise: number }[];
+                    late_fee?: { refused?: boolean; reason?: string; fee_paise?: number };
+                    caveats?: string[];
+                  } | undefined;
+                  if (!lf) return null;
+                  if (!lf.available) {
+                    return (
+                      <p className="text-xs text-[#94A3B8] border-t pt-2">{lf.reason}</p>
+                    );
+                  }
+                  const heads = (lf.interest_by_head ?? []).filter((h) => h.base_paise > 0);
+                  return (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm space-y-1">
+                      <p className="font-medium text-amber-900">
+                        Table 5.1 — {lf.days_late} day{lf.days_late === 1 ? "" : "s"} after the
+                        due date of {lf.due_date}
+                      </p>
+                      <div className="flex justify-between text-amber-900">
+                        <span>§50(1) interest at 18% on the cash payable</span>
+                        <span className="font-mono">{rupees(lf.interest_total_paise ?? 0)}</span>
+                      </div>
+                      {heads.length > 0 && (
+                        <table className="w-full text-[11px] text-amber-800">
+                          <tbody>
+                            {heads.map((h) => (
+                              <tr key={h.head}>
+                                <td className="uppercase py-0.5">{h.head}</td>
+                                <td className="py-0.5">{rupees(h.base_paise)} × 18% × {h.days}/365</td>
+                                <td className="py-0.5 text-right font-mono">{rupees(h.interest_paise)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                      {lf.late_fee?.refused ? (
+                        <p className="text-[11px] text-amber-800 border-t border-amber-200 pt-1">
+                          {lf.late_fee.reason}
+                        </p>
+                      ) : (
+                        <div className="flex justify-between text-amber-900 border-t border-amber-200 pt-1">
+                          <span>§47 late fee</span>
+                          <span className="font-mono">{rupees(lf.late_fee?.fee_paise ?? 0)}</span>
+                        </div>
+                      )}
+                      {(lf.caveats ?? []).map((c, i) => (
+                        <p key={i} className="text-[11px] text-amber-700">{c}</p>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {/* THE TABLES, not just the totals.
                     The GSTN offline utility is table by table, and a CA
                     reviewing before filing is checking 3.1 and 4, not a single

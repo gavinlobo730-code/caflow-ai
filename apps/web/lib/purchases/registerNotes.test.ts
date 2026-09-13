@@ -18,7 +18,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  registerNotesFrom, paymentNotesFrom, dedupeRegisterNotes,
+  registerNotesFrom, topLevelNotesFrom, dedupeRegisterNotes,
 } from "./registerNotes.ts";
 
 // domain/tds/residency.describe_gaps: [{"code": c, "message": GAP_MESSAGES...}]
@@ -51,7 +51,7 @@ test("a bill's gap details render as sentences, not as objects", () => {
 test("an advance's gaps come off the top level of the payment", () => {
   // services/tds_register_service.sync_for_payment reports the same vocabulary,
   // but a payment has no second document to nest it under.
-  const notes = paymentNotesFrom({
+  const notes = topLevelNotesFrom({
     id: "p1", tds_paise: 1000000, vendor_name: "Bharat Constructions",
     statutory_gaps: ["vendor_residency_not_classified"],
     gap_details: [REAL_GAP_DETAILS[0]],
@@ -62,15 +62,15 @@ test("an advance's gaps come off the top level of the payment", () => {
 });
 
 test("a payment with nothing to report renders nothing", () => {
-  assert.deepEqual(paymentNotesFrom({ id: "p1", tds_paise: 0 }), []);
-  assert.deepEqual(paymentNotesFrom(null), []);
-  assert.deepEqual(paymentNotesFrom("not an object"), []);
+  assert.deepEqual(topLevelNotesFrom({ id: "p1", tds_paise: 0 }), []);
+  assert.deepEqual(topLevelNotesFrom(null), []);
+  assert.deepEqual(topLevelNotesFrom("not an object"), []);
 });
 
 test("a code with no wording still reaches the screen", () => {
   // describe_gaps keeps an unknown code with an empty message rather than
   // dropping it. An empty note reads as no gap, so the code stands in.
-  const notes = paymentNotesFrom({
+  const notes = topLevelNotesFrom({
     statutory_gaps: ["something_new"],
     gap_details: [{ code: "something_new", message: "" }],
   });

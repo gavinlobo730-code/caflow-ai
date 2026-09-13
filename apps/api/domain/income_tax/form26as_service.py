@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from uuid import uuid4
 
+from domain.income_tax import claimable_credit as _claimable
 from domain.income_tax import form26as_matcher as _m
 
 _logger = logging.getLogger("caflow.form26as")
@@ -652,6 +653,46 @@ def _record_patch(outcome: _m.EntryOutcome) -> dict:
     }
 
 
+def claimable_credit(firm_id: str, client_id: str, financial_year: str) -> dict:
+    """What the client may claim off 26AS for the year — IT-31.
+
+    Read straight from the latest PARSED upload rather than from a stored
+    reconciliation, so the computation screen can prefill the moment the
+    statement is in, without a reconciliation having been run first. The
+    reconciliation is the check on the claim (Rule 37BA(1) — see
+    domain/income_tax/claimable_credit), not its source.
+
+    A year with no parsed 26AS reports `available: false` with a reason. NOT a
+    zero: nobody having uploaded the statement and the client having no credit
+    are opposite facts, and a prefilled 0 would quietly become a filed 0.
+    """
+    uploads = [u for u in list_uploads(firm_id, client_id, financial_year)
+               if u.get("parse_status") == "parsed"]
+    if not uploads:
+        return {
+            "available": False,
+            "financial_year": financial_year,
+            "reason": (f"No parsed Form 26AS for FY {financial_year}. Download it "
+                       f"from TRACES and upload it here — the claim follows the "
+                       f"deductor's statement (Rule 37BA(1)), so there is nothing "
+                       f"to prefill until it is in."),
+        }
+    upload = uploads[0]
+    records = _load_records(firm_id, upload["id"])
+    out = _claimable.claimable_from_records(records).as_dict()
+    out.update({
+        "available": True,
+        "financial_year": financial_year,
+        "upload_id": upload["id"],
+        "record_count": len(records),
+        # The screen must be able to say WHICH statement the figure came off:
+        # a prefilled number whose provenance is invisible is one a reviewer
+        # cannot check.
+        "uploaded_at": upload.get("created_at"),
+    })
+    return out
+
+
 def run_reconciliation(
     firm_id: str,
     client_id: str,
@@ -696,6 +737,16 @@ def run_reconciliation(
         ],
         "not_a_tds_credit_paise": sum(
             int(r.get("tds_deposited_paise") or 0) for r in other_records),
+        # WHAT THE RETURN MAY CLAIM (IT-31), computed from the SAME records and
+        # returned beside the summary for the same reason as the block above:
+        # `summary` is spread into the form_26as_reconciliations INSERT, so a
+        # key that is not a column of that table fails the whole reconciliation
+        # on the live database while passing in mock mode.
+        #
+        # From ALL the records, not `credit_records`: three of the four figures
+        # come from the parts the matcher never sees — Part C is the client's
+        # own advance tax and Part D a refund already received.
+        "claimable": _claimable.claimable_from_records(records).as_dict(),
     }
 
     recon_row = {

@@ -42,6 +42,7 @@ from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
+from services import tds_register_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
 
@@ -573,6 +574,31 @@ def issue_purchase_credit_note(pcn_id: str, current_user: dict = Depends(rbac("a
             amount_paise=updated.get("total_paise"),
             actor_id=current_user.get("auth_user_id"), actor_name=current_user.get("email"),
         )
+
+        # THE TDS REGISTER, THE MIRROR OF THE DEBIT-NOTE PATH (PUR-23 ≡ TDS-32).
+        # A §34(3) credit note runs the OTHER way — it INCREASES what was
+        # credited to the payee, so the aggregate the section charges on has
+        # grown and the deduction may be SHORT, which is the §201(1A)
+        # direction and the expensive one. Same treatment either way: the
+        # register is revisited, no figure is adjusted, and the gap is what
+        # reaches the CA. Never raises into this path.
+        try:
+            if bill_id:
+                _b = (db.table("purchase_bills").select("*")
+                      .eq("id", bill_id).eq("firm_id", firm_id)
+                      .eq("client_id", client_id).limit(1).execute().data or [])
+                if _b:
+                    _v = (db.table("vendors").select("*")
+                          .eq("id", _b[0].get("vendor_id")).eq("firm_id", firm_id)
+                          .limit(1).execute().data or [{}])[0]
+                    _reg = tds_register_service.sync_for_bill(
+                        db, firm_id or "", client_id, _b[0], _v)
+                    if _reg.get("statutory_gaps"):
+                        updated = {**updated,
+                                   "statutory_gaps": _reg["statutory_gaps"],
+                                   "gap_details": _reg.get("gap_details")}
+        except Exception as e:
+            _logger.error("issue_purchase_credit_note: TDS register resync failed for %s: %s", pcn_id, e)
 
         updated["journal_entry_id"] = journal_id
         return api_response(True, updated)

@@ -14,6 +14,35 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // picker offer FY 2023-24 and FY 2024-25, which the engine has no rates for
 // and silently computed at the current year's instead.
 interface SupportedFY { fy: string; verified: boolean }
+
+/** What GET /api/form-26as/claimable returns (IT-31).
+ *
+ *  FOUR figures, because the return has four lines: TDS is Schedule TDS, TCS
+ *  is Schedule TCS under §206C(4), tax the client paid itself is Part C and
+ *  its own line, and a refund already received is not a credit at all.
+ *  Anything not booked FINAL at TRACES is `provisional_paise` and excluded —
+ *  claiming an unmatched credit is what produces a §143(1) demand.
+ *
+ *  `available: false` is a NAMED absence, never a zero: nobody having
+ *  uploaded 26AS and the client having no credit are opposite facts. */
+interface ClaimableCredit {
+  available: boolean;
+  reason?: string;
+  financial_year?: string;
+  uploaded_at?: string | null;
+  record_count?: number;
+  tds_claimable_paise?: number;
+  tcs_claimable_paise?: number;
+  provisional_paise?: number;
+  tax_paid_by_client_paise?: number;
+  refund_already_received_paise?: number;
+  by_deductor?: {
+    deductor_name: string; deductor_tan: string | null; kind: string;
+    claimable_paise: number; provisional_paise: number; entry_count: number;
+  }[];
+  caveats?: string[];
+  basis?: string;
+}
 // FROM THE CLOCK, NOT A LITERAL — the same rule as the financial-year list,
 // derived from it so the two cannot disagree about which year is current
 // (IT Act §2(9): the AY is the FY plus one).
@@ -256,6 +285,11 @@ export default function TaxComputationPage() {
   const [otherIncome, setOtherIncome] = useState("");
   const [tds, setTds] = useState("");
   const [advanceTax, setAdvanceTax] = useState("");
+  // IT-31 — what Form 26AS actually supports, so the CA stops retyping a
+  // figure they have just reconciled. `tdsTouched` is why the prefill is safe:
+  // it fills an EMPTY box once and never overwrites a number somebody typed.
+  const [claim, setClaim] = useState<ClaimableCredit | null>(null);
+  const [tdsTouched, setTdsTouched] = useState(false);
 
   // IT-05. The endpoint has accepted every one of these since IT-01; this
   // screen sent six figures and nothing else, so an OLD-REGIME individual was
@@ -441,6 +475,40 @@ export default function TaxComputationPage() {
     })();
     return () => { cancelled = true; };
   }, [entityType]);
+
+  // WHAT 26AS SUPPORTS (IT-31). Rule 37BA(1) gives credit on the basis of the
+  // deductor's own statement to the department, which is what 26AS reproduces
+  // — so this is the claim and the books are the check on it. Until now the CA
+  // ran the reconciliation on one tab, learned exactly which credits were
+  // supported, and then retyped the total into this box by hand.
+  //
+  // The prefill fills an EMPTY field once. It never overwrites a typed figure:
+  // the CA may know something 26AS does not yet show, and silently replacing
+  // their number would be worse than not helping at all. Where the two differ,
+  // the panel says so rather than resolving it.
+  useEffect(() => {
+    let cancelled = false;
+    if (!clientId || !fy) { setClaim(null); return; }
+    (async () => {
+      try {
+        const r = await apiFetch(
+          `/api/form-26as/claimable?client_id=${encodeURIComponent(clientId)}`
+          + `&financial_year=${encodeURIComponent(fy)}`);
+        if (cancelled || !r.success) return;
+        const c = r.data as ClaimableCredit;
+        setClaim(c);
+        if (c?.available) {
+          setTds((prev) => (prev.trim() === "" && (c.tds_claimable_paise ?? 0) > 0
+            ? String((c.tds_claimable_paise ?? 0) / 100) : prev));
+          setAdvanceTax((prev) => (prev.trim() === "" && (c.tax_paid_by_client_paise ?? 0) > 0
+            ? String((c.tax_paid_by_client_paise ?? 0) / 100) : prev));
+        }
+      } catch {
+        /* no claim panel; the CA types the figure as before */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clientId, fy]);
 
   // Which years this build can compute is the server's answer, not a constant
   // in this file. A failed probe leaves the picker empty rather than guessing:
@@ -904,12 +972,91 @@ export default function TaxComputationPage() {
               </p>
             ) : null}
 
+            {/* IT-31 — the credit Form 26AS supports, beside the box the CA
+                used to retype it into. Rule 37BA(1) gives credit on the basis
+                of the deductor's own statement to the department, so this is
+                the claim and the books are the check on it. */}
+            {claim && (
+              <div className={`rounded-lg border px-4 py-3 ${
+                claim.available ? "border-blue-100 bg-blue-50/50" : "border-amber-200 bg-amber-50"}`}>
+                {!claim.available ? (
+                  <p className="text-[11px] text-amber-900">{claim.reason}</p>
+                ) : (
+                  <>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-[11px] font-medium text-[#334155]">
+                        Form 26AS supports {paise(claim.tds_claimable_paise ?? 0)} of TDS
+                        {(claim.tcs_claimable_paise ?? 0) > 0 &&
+                          <> and {paise(claim.tcs_claimable_paise ?? 0)} of TCS</>}
+                        {(claim.tax_paid_by_client_paise ?? 0) > 0 &&
+                          <>, with {paise(claim.tax_paid_by_client_paise ?? 0)} paid by the client itself</>}
+                        .
+                      </p>
+                      {tdsTouched && (
+                        <button
+                          onClick={() => { setTds(String((claim.tds_claimable_paise ?? 0) / 100)); }}
+                          className="text-[10px] text-blue-700 border border-blue-200 rounded-md px-2 py-0.5 hover:bg-blue-100 flex-shrink-0"
+                        >
+                          Use the 26AS figure
+                        </button>
+                      )}
+                    </div>
+                    {/* THE VARIANCE, STATED AND NOT RESOLVED. The CA may know
+                        something 26AS does not yet show; what they must not do
+                        is claim a different number without noticing. */}
+                    {/* ONE money parser, and only one (CLAUDE.md).
+                        `Math.round(parseFloat(tds) * 100)` reads as harmless
+                        and turns a CA's "1,25,000" into ₹1 — the guard in
+                        scripts/every-amount-field-uses-the-one-parser.test.ts
+                        caught exactly that here. */}
+                    {tdsTouched
+                      && (paiseFromRupeeInput(tds || "0") ?? 0) !== (claim.tds_claimable_paise ?? 0) && (
+                      <p className="text-[11px] text-amber-800 mt-1">
+                        You have entered {paise(paiseFromRupeeInput(tds || "0") ?? 0)}, which is
+                        not the 26AS figure. Under Rule 37BA(1) the department gives credit on the
+                        deductor&apos;s statement — a claim above it is the one that comes back as a
+                        §143(1) adjustment.
+                      </p>
+                    )}
+                    {(claim.caveats ?? []).map((c, i) => (
+                      <p key={i} className="text-[10px] text-[#64748B] mt-1">{c}</p>
+                    ))}
+                    {(claim.by_deductor ?? []).length > 0 && (
+                      <details className="mt-1.5">
+                        <summary className="text-[10px] text-blue-700 cursor-pointer">
+                          Per deductor ({(claim.by_deductor ?? []).length})
+                        </summary>
+                        <table className="w-full text-[10px] mt-1">
+                          <tbody>
+                            {(claim.by_deductor ?? []).map((d, i) => (
+                              <tr key={i} className="border-t border-blue-100">
+                                <td className="py-0.5 pr-2 text-[#334155]">{d.deductor_name}</td>
+                                <td className="py-0.5 pr-2 text-[#94A3B8]">{d.deductor_tan ?? "—"}</td>
+                                <td className="py-0.5 pr-2 uppercase text-[#94A3B8]">{d.kind}</td>
+                                <td className="py-0.5 text-right tabular-nums text-[#334155]">
+                                  {paise(d.claimable_paise)}
+                                </td>
+                                <td className="py-0.5 pl-2 text-right tabular-nums text-amber-700">
+                                  {d.provisional_paise > 0 ? `+${paise(d.provisional_paise)} not final` : ""}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </details>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: "Gross Salary (₹)", value: salary, set: setSalary },
                 { label: "Business Income (₹)", value: businessIncome, set: setBusinessIncome },
                 { label: "Other Income (₹)", value: otherIncome, set: setOtherIncome },
-                { label: "TDS Deducted (₹)", value: tds, set: setTds },
+                { label: "TDS Deducted (₹)", value: tds,
+                  set: (v: string) => { setTdsTouched(true); setTds(v); } },
                 { label: "Advance Tax Paid (₹)", value: advanceTax, set: setAdvanceTax },
                 // IT-05 — the heads the endpoint has always accepted and this
                 // screen never sent. A house-property LOSS is entered with a

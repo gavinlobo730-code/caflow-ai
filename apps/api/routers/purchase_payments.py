@@ -498,6 +498,21 @@ def create_purchase_payment(
                 "reference_no": data.get("reference_no"),
                 "notes": data.get("notes"),
                 "journal_entry_id": journal_entry_id,
+                # WHAT THIS PAYMENT HAS NOT DISCHARGED. `unallocated_paise`
+                # was computed above for the §194 advance test and then never
+                # persisted, so every advance recorded from the Purchases
+                # screen kept the column's DEFAULT 0 (migration 226) while
+                # holding real unapplied money. Two things read that column and
+                # both were wrong about such a payment:
+                # `update_allocations_core`, which is how a stranded advance is
+                # later applied to a bill once it exists, and the AP ageing's
+                # advances section, which is what ties the report to the Trade
+                # Payables control account (PUR-24).
+                #
+                # 0 when the payment names a bill: `_claim_bill_outstanding`
+                # has already reserved the whole amount against it, which is
+                # the same reading the §194 test above takes.
+                "unallocated_paise": unallocated_paise,
                 "created_at": _now_iso(),
                 "updated_at": _now_iso(),
                 **vendor_tds.strip_non_columns(tds_cols),

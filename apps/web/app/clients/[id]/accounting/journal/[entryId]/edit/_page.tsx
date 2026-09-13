@@ -125,6 +125,7 @@ export default function JournalEntryPageClient() {
   async function handleSave(mode: JournalSaveMode, payload: {
     entry_date: string; entry_type: string; reference_no: string;
     narration: string; lines: JournalLineIO[];
+    attachments: { name: string; url: string }[];
   }) {
     setSaving(true); setSaveError(null);
     try {
@@ -140,6 +141,12 @@ export default function JournalEntryPageClient() {
           entry_type: payload.entry_type,
           status: mode === "post" ? "posted" : "draft",
           lines: payload.lines,
+          // ACC-25. The kernel has taken these since migration 138 and this
+          // screen never sent them; `models/accounting.JournalEntryIn` now
+          // validates each one through `domain/attachments`, so a link that is
+          // not http(s) comes back as a 422 the CA can read rather than
+          // becoming a click-to-execute "receipt" on the voucher.
+          attachments: payload.attachments,
         }) as ApiResp<{ id: string }>;
         done(
           mode === "post" ? "journal_entry_posted" : "journal_entry_saved",

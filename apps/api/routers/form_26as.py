@@ -213,6 +213,38 @@ def run_reconciliation(
         raise HTTPException(500, detail=str(e))
 
 
+@router.get("/claimable")
+def get_claimable_credit(
+    client_id: str,
+    financial_year: FYLabel,
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """What the return may claim off Form 26AS for the year (IT-31).
+
+    Rule 37BA(1) gives credit "on the basis of information relating to
+    deduction of tax furnished by the deductor to the income-tax authority" —
+    the deductor's own statement, which 26AS reproduces. So the claim comes off
+    26AS and the books are the CHECK on it; a credit the books assert and 26AS
+    does not report is exactly the one the rule does not allow, which is what
+    the reconciliation's `unsupported_credit_paise` measures.
+
+    FOUR FIGURES, because the return has four lines: TDS (Schedule TDS), TCS
+    (Schedule TCS, §206C(4)), tax the client paid itself (Part C, its own
+    line), and a refund already received (Part D, not a credit at all).
+    Anything not booked FINAL at TRACES is reported separately and excluded —
+    see domain/income_tax/claimable_credit.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This prefills a working paper;
+    # nothing here files anything, and the CA may override every figure.
+    """
+    from domain.income_tax.form26as_service import claimable_credit
+    # Mount-guard-covered (required client_id query param); explicit so the
+    # scope check is visible at the read.
+    assert_client_access(current_user, client_id)
+    return api_response(True, claimable_credit(
+        current_user["firm_id"], client_id, financial_year))
+
+
 @router.get("/reconciliation")
 def get_reconciliation(
     client_id: str,
