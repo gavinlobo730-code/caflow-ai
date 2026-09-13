@@ -175,6 +175,58 @@
    "type": "text"
   }
  },
+ "account_budgets": {
+  "account_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "budget_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "created_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "fy": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "updated_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  }
+ },
  "account_group_mappings": {
   "account_id": {
    "default": "",
@@ -1852,6 +1904,11 @@
    "nullable": "YES",
    "type": "text"
   },
+  "description_patterns": {
+   "default": "",
+   "nullable": "YES",
+   "type": "ARRAY"
+  },
   "firm_id": {
    "default": "",
    "nullable": "NO",
@@ -1871,6 +1928,21 @@
    "default": "false",
    "nullable": "NO",
    "type": "boolean"
+  },
+  "match_field": {
+   "default": "'description'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "match_operator": {
+   "default": "'contains'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "priority": {
+   "default": "100",
+   "nullable": "NO",
+   "type": "integer"
   },
   "rule_name": {
    "default": "",
@@ -3678,6 +3750,21 @@
   }
  },
  "client_sales_invoice_lines": {
+  "cess_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "cess_rate_bps": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "cess_specific_paise_per_unit": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
   "cgst_paise": {
    "default": "0",
    "nullable": "NO",
@@ -3779,6 +3866,11 @@
    "default": "",
    "nullable": "YES",
    "type": "uuid"
+  },
+  "cess_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
   },
   "cgst_paise": {
    "default": "0",
@@ -11497,6 +11589,21 @@
    "nullable": "YES",
    "type": "text"
   },
+  "original_acknowledgement_number": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "original_filing_date": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "original_filing_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
   "partner_reviewed_at": {
    "default": "",
    "nullable": "YES",
@@ -11506,6 +11613,11 @@
    "default": "",
    "nullable": "YES",
    "type": "uuid"
+  },
+  "return_type": {
+   "default": "'original'::text",
+   "nullable": "NO",
+   "type": "text"
   },
   "reviewed_at": {
    "default": "",
@@ -11610,6 +11722,16 @@
    "type": "timestamp with time zone"
   },
   "rate_selected_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "recurring_occurrence": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "recurring_template_id": {
    "default": "",
    "nullable": "YES",
    "type": "uuid"
@@ -14844,6 +14966,21 @@
    "nullable": "YES",
    "type": "text"
   },
+  "cess_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "cess_rate_bps": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "cess_specific_paise_per_unit": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
   "cgst_paise": {
    "default": "0",
    "nullable": "NO",
@@ -14945,6 +15082,11 @@
    "default": "",
    "nullable": "YES",
    "type": "timestamp with time zone"
+  },
+  "cess_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
   },
   "cgst_paise": {
    "default": "0",
@@ -15130,6 +15272,16 @@
    "default": "",
    "nullable": "YES",
    "type": "timestamp with time zone"
+  },
+  "recurring_occurrence": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "recurring_template_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
   },
   "sgst_paise": {
    "default": "0",
@@ -16174,6 +16326,363 @@
    "default": "now()",
    "nullable": "NO",
    "type": "timestamp with time zone"
+  }
+ },
+ "recurring_journal_runs": {
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "detail": {
+   "default": "",
+   "nullable": "YES",
+   "type": "jsonb"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "journal_entry_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "occurrence_date": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "status": {
+   "default": "'generated'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "template_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  }
+ },
+ "recurring_journal_template_lines": {
+  "account_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "credit_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "debit_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "narration": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "sort_order": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "template_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  }
+ },
+ "recurring_journal_templates": {
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "created_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "day_of_month": {
+   "default": "1",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "end_date": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "frequency": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "name": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "narration": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "next_run_date": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "start_date": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "status": {
+   "default": "'active'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  }
+ },
+ "recurring_purchase_bill_runs": {
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "detail": {
+   "default": "",
+   "nullable": "YES",
+   "type": "jsonb"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "occurrence_date": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "purchase_bill_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "status": {
+   "default": "'generated'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "template_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  }
+ },
+ "recurring_purchase_bill_template_lines": {
+  "blocked_credit_reason": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "description": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "expense_account_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "gst_rate_bps": {
+   "default": "1800",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "hsn_sac": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "is_service": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "itc_eligible": {
+   "default": "true",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "quantity": {
+   "default": "1",
+   "nullable": "NO",
+   "type": "numeric"
+  },
+  "rate_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "service_catalogue_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "sort_order": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "tds_applicable": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "template_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "unit": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  }
+ },
+ "recurring_purchase_bill_templates": {
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "created_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "description": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "end_date": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "frequency": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "is_inter_state": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "is_reverse_charge": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "next_run_date": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "notes": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "start_date": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "status": {
+   "default": "'active'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "title": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "vendor_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
   }
  },
  "related_party_loans": {
@@ -19596,6 +20105,11 @@
    "default": "",
    "nullable": "YES",
    "type": "integer"
+  },
+  "credit_limit_paise": {
+   "default": "",
+   "nullable": "YES",
+   "type": "bigint"
   },
   "email": {
    "default": "",

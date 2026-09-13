@@ -464,3 +464,47 @@ The diff is 286 insertions and NO deletions, which is the second check on step
 separately earlier the same day at migration 371, and its own in-flight
 exclusion covers 372 and 373. The two run on their own cycles — which is why
 the capture date lives in each `.meta.json` rather than in the filename.
+
+## Both refreshed again, 13 September 2026 (21:20 IST), after migrations 374-381
+
+Twice in one day, and the second time is the interesting one. The schema
+fixture had been refreshed that afternoon to production's mark of **373**,
+which was right at the time; PR #523 then merged and the production job
+applied **374-381** within the hour. By evening the guards fixture — untouched
+since 11:27, at mark **371** — had fallen ELEVEN migrations behind the
+repository, and
+`test_guards_match_production_pg.py::test_the_in_flight_exclusion_cannot_excuse_everything`
+said so. That is the ratchet working exactly as the 4 September note describes:
+past ten, the in-flight exclusion stops being a courtesy for the migration in
+the PR and starts excusing real drift.
+
+`ADDED_AFTER_THE_SNAPSHOT` was saying the same thing from the other side —
+nineteen entries over six migrations, working around columns production had
+had for hours.
+
+Same console route as every refresh since 293, and the same proof. This
+session has no libpq DSN to production, so each file was rebuilt from a DELTA
+and the reassembly HASHED against production BEFORE anything was written (the
+scripts raise on a mismatch, leaving the old file in place):
+
+1. the local file was hashed with the format recorded in its own `.meta.json`
+   and reproduced it exactly — which is what proves the local string is the
+   same question production is being asked;
+2. every table migrations 372-381 touch was re-read IN FULL and replaced
+   wholesale, not merged row by row, so a column or constraint DROPPED from
+   one of them disappears here too;
+3. the rebuilt file was hashed the same way and compared with production.
+
+| Fixture | Delta re-read | Rows | md5 |
+|---|---|---|---|
+| schema | 15 tables, 359 columns | 4,237 columns in 284 tables | `e764f1bd44aa5cafe1c2e4eaa1fd8dda` |
+| guards | 16 tables, 203 rows | 2,356 (279 rls, 693 policies, 1,384 constraints) | `111977fa54589d4f31096fd92a2223ee` |
+
+Both hashes cover EVERY row, not only the tables touched, so an unrelated
+out-of-band change anywhere would have failed the comparison rather than
+passing silently.
+
+`applied_through_migration` is 381 in both metas, which is production's
+`max(filename)` in `schema_migrations` at the moment of capture.
+`ADDED_AFTER_THE_SNAPSHOT` is back to the migrations this branch has not
+merged yet.

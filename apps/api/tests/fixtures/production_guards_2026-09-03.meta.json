@@ -1,9 +1,9 @@
 {
- "captured_at_ist": "2026-09-13T11:27",
- "applied_through_migration": 371,
- "guards_md5": "ffe6cb9b930d73618ee66fcbd42d12f8",
- "rls_tables": 272,
- "policies": 674,
- "constraints": 1319,
+ "captured_at_ist": "2026-09-13T21:05",
+ "applied_through_migration": 381,
+ "guards_md5": "111977fa54589d4f31096fd92a2223ee",
+ "rls_tables": 279,
+ "policies": 693,
+ "constraints": 1384,
  "note": "applied_through_migration is the highest migration recorded in production's schema_migrations when this snapshot was taken. Migrations above it are in flight, and test_guards_match_production_pg.py excuses any policy or constraint they NAME so that adding one does not fail its own PR. guards_md5 is md5(string_agg(kind|tbl|name|detail|expr_md5, newline ORDER BY kind, tbl, name)) over GUARD_SQL's rows, so a refresh made through a SQL console can be proved equal to a real capture. Refresh both files together. The FILENAME still says 2026-09-03 and that is deliberate: renaming would orphan the schema snapshot captured beside it, which is a separate capture on its own cycle. The capture date lives here."
 }
