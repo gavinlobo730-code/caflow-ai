@@ -97,6 +97,8 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("itr_filings", "original_filing_id"): "migration 381",
     ("itr_filings", "original_acknowledgement_number"): "migration 381",
     ("itr_filings", "original_filing_date"): "migration 381",
+    ("bank_transactions", "gst_rate_bps"): "migration 382",
+    ("bank_transactions", "gst_is_interstate"): "migration 382",
 }
 
 

@@ -7,20 +7,20 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **83** | re-read against the code. The defect is gone. |
+| closed | **84** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | partial | **10** | part of the finding is answered, part is not. Each says which. |
-| open | **22** | re-read and still true. |
+| open | **21** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 32 items — 22 open and 10 partial — not 254.**
+**The work left is 31 items — 21 open and 10 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 22 open, most are not code problems.** Nearly every one needs a
+**And of the 21 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -32,7 +32,6 @@ migration; a handful need a statutory document a person has to read.
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
 | medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
 | medium | **BANK-21** | Credit-card accounts are not supported at all |
-| medium | **BANK-24** | Bank-charge input tax credit is posted with no supplier GSTIN or invoice reference, so it can ne |
 | medium | **FA-08b** | No output tax on a fixed-asset disposal — the split half of FA-08 |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
@@ -59,7 +58,6 @@ migration; a handful need a statutory document a person has to read.
 | **IT-19** | somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) — a migration |
 | **ACC-19** | the two endpoints and the two controls. The owner decision the finding was blocked on is taken. |
 | **BANK-21** | a migration; a card is a liability account whose statement signs are the mirror of a bank's |
-| **BANK-24** | the per-transaction control and the split it drives. The shape question the finding raised is settled by the owner and is no longer a blocker. |
 | **FA-08b** | a migration for the disposal's tax split, and a decision on CGST s.18(6) |
 | **FA-11** | a migration per item. One hazard the finding does not name: a shift multiplier folded into wdv_rate_percent would make schedule_ii_departure report every double-shift asset as a Part C departure, so it must be its own column |
 | **GST-25** | schema per return type |
@@ -149,6 +147,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **ACC-15** | A discarded draft journal can be resurrected and posted, because post_draft never selects delete |
 | medium | **BANK-18** | The import module's most important refusals reach the CA as raw JSON: "API error 422: {\"detail\ |
 | medium | **BANK-19** | Two banking screens parse typed rupees outside lib/money/rupeeInput, against the "one parser, an |
+| medium | **BANK-24** | Bank-charge input tax credit is posted with no supplier GSTIN or invoice reference, so it can ne |
 | medium | **FA-16** | 'Post All for Period' is N sequential requests with every error swallowed |
 | medium | **FA-18** | The depreciation-schedule endpoint is unreachable from any screen |
 | medium | **FA-19** | Rule 43 capital-goods ITC apportionment does not exist |

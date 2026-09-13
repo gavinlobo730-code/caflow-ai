@@ -671,6 +671,39 @@ change. The code is the authority; keep this file in step with it.
   so it is not a reverse-charge document at all and no document type here
   carries it; an ISD invoice is not modelled either. A nil meaning "we cannot
   see it" is not a nil meaning "there was none".
+- **A BANK LINE THE CA MARKED AS CARRYING GST IS A DOCUMENT, AND THE
+  DOCUMENT IS THE TRANSACTION** (BANK-24). The posting drawer has always let a
+  CA say "there is 18% GST inside this ₹590", and `bank_posting_service` then
+  posts a real Dr GST Input leg (CGST §16 — a bank charge is an input service
+  received in the course or furtherance of business). GSTR-3B is built from
+  DOCUMENTS, and a bank line is not a purchase bill, so the credit the CA
+  declared never reached Table 4(A) — while `_gl_gst_movements` DOES read the
+  GST Input account, so the same rupees came back as an unexplained
+  books-vs-ledger ITC difference every month, on a return about to be filed.
+  Money IN was the same defect and worse: `build_inclusive_lines(is_credit=
+  True)` credits GST Output, so an outward supply's liability sat in the ledger
+  and no return declared it. Migration 382 records the rate that was POSTED on
+  `bank_transactions` — `draft_gst_rate_bps` (322) cannot serve, because the
+  caller may override it and a line posted with no draft carries NULL — and
+  **that is what keeps the reconciliation's two sides independently derived**:
+  reading the tax back out of `journal_lines` would make this slice compare the
+  ledger with itself, the same reason Table 4(B) is built from documents.
+  `domain/gst/bank_charge_gst.py` is the rule; the inward side goes to
+  **4(A)(5) "All other ITC"** (not 4(A)(3) — the bank charges the tax and pays
+  it over, and the reverse-charge row would also create a 3.1(d) liability that
+  does not exist) and the outward side to **3.1(a)** through the one
+  `_outward_transactions` Rule 43's turnover also reads. Three refusals are
+  deliberate: **a recorded ZERO declares nothing** (it posts identically to an
+  unmarked line, so nothing says whether a receipt is nil-rated, exempt,
+  outside the levy — or not a supply at all), **never Table 3.2** (no recipient
+  state, no recipient class; the `SalesTransaction` defaults keep it out by
+  construction — do not helpfully fill them in), and **no §17(5) split**. What
+  cannot be computed is NAMED on every answer that carries one: §16(2)(aa)
+  wants a supplier document a bank line does not hold, and an outward supply
+  with no tax invoice will not be in the GSTR-1 the portal compares this return
+  against (Rule 46). **No GSTIN is invented** — the finding's own suggested fix
+  would have put one on a bank table so the 2B match passed, which is claiming
+  a document exists.
 - **GSTR-3B Table 3.1(a) carries GSTR-1 TABLE 11, and the ledger cannot.**
   §13(2) puts the time of supply for SERVICES at the earlier of invoice or
   payment, so tax on an advance received for services falls due on receipt,

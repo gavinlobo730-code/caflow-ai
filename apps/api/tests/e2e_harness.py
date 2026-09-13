@@ -306,6 +306,15 @@ class _Query:
             if val in (True, "true"): return rv is True
             if val in (False, "false"): return rv is False
             return rv == val
+        if kind == "not_is":
+            # `.not_.is_(col, "null")` — how the real code asks for "this
+            # column is filled in" (ageing_schedule_service,
+            # bank_matching_service, msme_43bh_service, and the bank-GST fetch
+            # in gst_return_service). Unimplemented, it raised — but the
+            # DANGEROUS shape is the opposite one: a fake that answered a
+            # negated filter as a passthrough would return every row and the
+            # test would pass on data the database never would have sent.
+            return not cls._term(row, "is", col, val)
         if kind == "like":  return cls._ilike(rv, val)  # case-sensitive in PG; ok for tests
         if kind == "ilike": return cls._ilike(rv, val)
         if kind == "not_eq": return rv != val
