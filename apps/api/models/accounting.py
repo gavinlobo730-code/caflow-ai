@@ -348,6 +348,29 @@ class DepreciationMethod(str, Enum):
     WDV = "WDV"
 
 
+def _validated_rule_43_use(v):
+    """One spelling of the Rule 43(1) use, on the create path and the edit one.
+
+    The values are `domain.gst.rule_43.VALID_USES` and the CHECK in migration
+    372 — asked of the domain module rather than restated, so a fourth use
+    cannot be accepted here and then refused by the database. A validator only
+    at the create door is one PATCH from being none, which is why both models
+    call this.
+    """
+    if v is None:
+        return v
+    from domain.gst.rule_43 import VALID_USES
+    if v not in VALID_USES:
+        raise ValueError(
+            "rule_43_use must be 'common' (CGST Rule 43(1)(c) — used partly "
+            "for exempt supplies, so 1/60th of the credit is apportioned every "
+            "month for five years), 'exclusively_exempt' (43(1)(a), no credit "
+            "was available) or 'exclusively_taxable' (43(1)(b), the whole "
+            "credit stands). Leave it unset where the CA has not decided — an "
+            "unclassified asset is reported as a gap, never guessed.")
+    return v
+
+
 class FixedAssetIn(BaseModel):
     client_id: str
     asset_name: str
@@ -397,6 +420,22 @@ class FixedAssetIn(BaseModel):
     # claimed or expensed.
     itc_eligible: Optional[bool] = None
     itc_blocked_reason: Optional[str] = None
+
+    # ── FA-19: which of CGST Rule 43(1)'s three uses (migration 372) ────────
+    # None = the CA has not said, and that is the default on purpose. Rule 43
+    # spreads the credit on a COMMON capital good over sixty tax periods and
+    # adds the exempt-turnover share back to output tax each month; an asset
+    # used exclusively for exempt supplies never had the credit (43(1)(a)) and
+    # one used exclusively for taxable or zero-rated supplies keeps all of it
+    # (43(1)(b)). Which applies is a fact about the business that no document
+    # carries, so an unclassified asset is left OUT of the working and named,
+    # never assumed either way.
+    rule_43_use: Optional[str] = None
+
+    @field_validator("rule_43_use")
+    @classmethod
+    def known_rule_43_use(cls, v):
+        return _validated_rule_43_use(v)
 
     @field_validator("igst_paise", "cgst_paise", "sgst_paise")
     @classmethod
@@ -597,6 +636,10 @@ class FixedAssetUpdateIn(BaseModel):
     itc_eligible: Optional[bool] = None
     itc_blocked_reason: Optional[str] = None
 
+    #: Tier A — a GST classification, not an accounting estimate. See
+    #: FixedAssetIn.rule_43_use.
+    rule_43_use: Optional[str] = None
+
     useful_life_years: Optional[int] = None
     salvage_value_paise: Optional[int] = None
     depreciation_method: Optional[DepreciationMethod] = None
@@ -606,6 +649,11 @@ class FixedAssetUpdateIn(BaseModel):
     #: re-posted journal's narration, because a reversal on the ledger with no
     #: reason beside it is what an auditor asks about first.
     reason: Optional[str] = None
+
+    @field_validator("rule_43_use")
+    @classmethod
+    def known_rule_43_use(cls, v):
+        return _validated_rule_43_use(v)
 
     @field_validator("purchase_cost_paise", "salvage_value_paise",
                      "igst_paise", "cgst_paise", "sgst_paise")

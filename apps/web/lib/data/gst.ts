@@ -493,6 +493,63 @@ export async function fetchRule37Report(
 }
 
 
+/** One asset in the Rule 43 working, included or not, and why. */
+export interface Rule43Asset {
+  asset_id: string;
+  asset_name: string;
+  use: "common" | "exclusively_exempt" | "exclusively_taxable" | null;
+  /** Which of the sixty instalments this period is — null where it takes none. */
+  period_index: number | null;
+  included: boolean;
+  reason: string;
+  credit_paise: { igst: number; cgst: number; sgst: number };
+}
+
+export interface Rule43Working {
+  period: string;
+  /** Te — added to output tax liability, per head (Rule 43(2)). */
+  te_paise: { igst: number; cgst: number; sgst: number };
+  te_total_paise: number;
+  /** Σ A over participating commons, UNDIVIDED, so the arithmetic is checkable. */
+  common_credit_paise: { igst: number; cgst: number; sgst: number };
+  exempt_turnover_paise: number | null;
+  total_turnover_paise: number | null;
+  useful_life_months: number;
+  assets: Rule43Asset[];
+  /** One sentence per asset the CA has to go and classify. */
+  gaps: string[];
+  caveats: string[];
+  refused: boolean;
+  refusal: string;
+  turnover_source: string;
+  turnover_breakdown: {
+    taxable_paise: number; zero_rated_paise: number;
+    nil_exempt_paise: number; non_gst_paise: number;
+  } | null;
+  how_to_declare: string;
+  ca_review_required: true;
+}
+
+/** The Rule 43 capital-goods apportionment for one tax period.
+ *
+ *  CGST Rule 43: one-sixtieth of the credit on each COMMON capital good,
+ *  apportioned by exempt turnover, added back to output tax — every month for
+ *  five years. E and F are read off the same posted documents that build this
+ *  return's Table 3.1, so the working and the return cannot disagree.
+ *
+ *  # CA REVIEW REQUIRED — this reports; it posts no journal and files nothing.
+ */
+export async function fetchRule43Working(
+  clientId: string,
+  period: string,        // MMYYYY
+): Promise<Rule43Working> {
+  return apiGet<Rule43Working>(
+    `/api/gst-workspace/itc/rule-43?client_id=${encodeURIComponent(clientId)}` +
+    `&period=${encodeURIComponent(period)}`,
+  );
+}
+
+
 /**
  * Compute GSTR-3B for a client and period.
  * Fetches data from Supabase, computes via API, stores result.

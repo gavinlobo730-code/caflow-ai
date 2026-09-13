@@ -718,18 +718,18 @@ def _late_filing_block(result, period: str, filed_on) -> dict:
     }
 
 
-def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
-                      filed_on: "date | None" = None) -> dict:
-    """Compute GSTR-3B from posted books and reconcile to the General Ledger.
+def _outward_transactions(db, firm_id: str, client_id: str,
+                          start: str, end: str) -> "list[SalesTransaction]":
+    """Every outward document of the period, as the computer wants to see it.
 
-    `filed_on` is the date the return is (or will be) filed, and it is
-    OPTIONAL for a reason: a return being prepared has no filing date, and
-    substituting today would give Table 5.1 a figure that changes every day
-    the return is not filed. Give it and §50(1) interest is computed per
-    head; omit it and 5.1 is zeros, as before.
+    MOVED here rather than copied (FA-19). Two callers need the outward side
+    now: `gstr3b_from_books`, which has always built it inline, and
+    `outward_turnover`, which Rule 43 asks for E and F. Two constructions of
+    one list is how a return and a working come to disagree about what was
+    supplied, and this one is not trivial — a note inherits its parent
+    invoice's classification (CGST §34), a sales debit note is signed the
+    other way from a credit note, and the recipient type feeds Table 3.2.
     """
-    start, end = _period_bounds(period)
-
     invoices_3b = _posted_sales(db, firm_id, client_id, start, end)
     cust_3b = _customers_for_3b(db, firm_id, invoices_3b)
 
@@ -787,6 +787,91 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             supply_type=cls["supply_type"],
             is_reverse_charge=cls["is_reverse_charge"],
         ))
+    return sales
+
+
+def outward_turnover(db, firm_id: str, client_id: str, period: str) -> dict:
+    """E and F for one tax period — CGST Rule 42/43's turnover fractions.
+
+    E is the "aggregate value of exempt supplies". §2(47) defines an exempt
+    supply as one taxed at nil, wholly exempt under §11 of the CGST Act or §6
+    of the IGST Act, AND a NON-TAXABLE supply — which §2(78) defines as one on
+    which tax is not leviable at all. So nil-rated, exempt and non-GST are one
+    figure here, not two.
+
+    A ZERO-RATED SUPPLY IS NOT IN E, and that is the load-bearing exclusion.
+    §16(1) of the IGST Act allows credit on a zero-rated supply expressly, and
+    Rule 43(1)(b) names such supplies as being "other than exempted supplies".
+    Putting an exporter's turnover in E would reverse the credit the export
+    scheme exists to give back.
+
+    F is "the total turnover in the State" — §2(112): taxable supplies, exempt
+    supplies, exports and inter-State supplies of a person with the same PAN,
+    excluding tax. Both are taxable VALUES, exclusive of GST, which is what the
+    computer's `outward_*` figures already are.
+
+    Read through the SAME documents and the SAME computer that build GSTR-3B
+    Table 3.1, so a Rule 43 working and the return it belongs to cannot
+    disagree about what was supplied.
+    """
+    start, end = _period_bounds(period)
+    sales = _outward_transactions(db, firm_id, client_id, start, end)
+    r = compute_gstr3b(sales, [], [], [], [])
+    exempt = r.outward_nil_exempt + r.outward_non_gst
+    total = (r.outward_taxable_value + r.outward_zero_rated
+             + r.outward_nil_exempt + r.outward_non_gst)
+
+    caveats: list[str] = []
+    # AN OUTWARD SUPPLY THE RECIPIENT PAYS TAX ON IS STILL THIS CLIENT'S
+    # TURNOVER, and it is not in these figures. `compute_gstr3b` accumulates a
+    # taxable supply into `outward_taxable_value` only `if not
+    # s.is_reverse_charge` — right for Table 3.1(a), where the supplier
+    # declares no output tax — but §2(112) excludes only "the value of INWARD
+    # supplies on which tax is payable by a person on reverse charge basis".
+    # A GTA's or an advocate's own outward supplies belong in F. Leaving them
+    # out makes F smaller, so E ÷ F and therefore Te come out LARGER: the safe
+    # direction (the same one the ceiling rounding takes), but a figure a CA
+    # must be told about rather than left to discover.
+    rcm_out = sum(t.taxable_amount_paise
+                  * (-1 if t.transaction_type == "credit_note" else 1)
+                  for t in sales
+                  if t.supply_type == "taxable" and t.is_reverse_charge)
+    if rcm_out:
+        caveats.append(
+            f"Outward supplies of {rcm_out} paise on which the RECIPIENT pays "
+            f"under reverse charge are NOT in the total turnover (F) below. "
+            f"§2(112) excludes only INWARD reverse-charge supplies, so these "
+            f"belong in F — leaving them out makes the exempt fraction, and "
+            f"therefore any Rule 42 or Rule 43 reversal, larger than it should "
+            f"be. Adjust by hand where it matters.")
+
+    return {
+        "period": period,
+        "exempt_paise": exempt,
+        "total_paise": total,
+        "breakdown": {
+            "taxable_paise": r.outward_taxable_value,
+            "zero_rated_paise": r.outward_zero_rated,
+            "nil_exempt_paise": r.outward_nil_exempt,
+            "non_gst_paise": r.outward_non_gst,
+        },
+        "caveats": caveats,
+    }
+
+
+def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
+                      filed_on: "date | None" = None) -> dict:
+    """Compute GSTR-3B from posted books and reconcile to the General Ledger.
+
+    `filed_on` is the date the return is (or will be) filed, and it is
+    OPTIONAL for a reason: a return being prepared has no filing date, and
+    substituting today would give Table 5.1 a figure that changes every day
+    the return is not filed. Give it and §50(1) interest is computed per
+    head; omit it and 5.1 is zeros, as before.
+    """
+    start, end = _period_bounds(period)
+
+    sales = _outward_transactions(db, firm_id, client_id, start, end)
 
     purchases: list[PurchaseTransaction] = []
     for b in _posted_bills(db, firm_id, client_id, start, end):

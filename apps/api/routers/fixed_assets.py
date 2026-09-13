@@ -148,12 +148,15 @@ def _db():
 #:      carrying amount over the remaining life, PROSPECTIVELY. Rewriting
 #:      months already posted at the old basis would restate periods a return
 #:      may already cover.
-#: Tier A also carries the two IT Act §32 facts. They change no Companies Act
-#: figure and post nothing — §32 is a different system, per BLOCK rather than
-#: per asset, and it reads them itself (domain/income_tax/section_32.py). A
-#: correction to either is a correction to a classification, not to an estimate.
+#: Tier A also carries the two IT Act §32 facts and the CGST Rule 43(1) use.
+#: None of the three changes a Companies Act figure or posts anything — §32 is
+#: a different system, per BLOCK rather than per asset, and it reads them
+#: itself (domain/income_tax/section_32.py); Rule 43 is a third system again,
+#: read by domain/gst/rule_43.py. A correction to any of them is a correction
+#: to a CLASSIFICATION, not to an estimate.
 _TIER_A_FIELDS = frozenset({"asset_name", "location", "notes",
-                            "it_block_key", "put_to_use_date"})
+                            "it_block_key", "put_to_use_date",
+                            "rule_43_use"})
 _TIER_B_FIELDS = frozenset({
     "purchase_cost_paise", "asset_category", "purchase_date",
     "acquisition_mode", "vendor_id", "purchase_bill_id", "bank_account_id",
@@ -666,6 +669,11 @@ def create_asset(
         # put-to-use date in particular is never taken from the purchase date.
         "it_block_key":                data.it_block_key,
         "put_to_use_date":             data.put_to_use_date,
+        # CGST Rule 43(1) (migration 372). Third system, same shape as §32
+        # above: it changes no Companies Act figure, posts nothing, and
+        # domain/gst/rule_43.py reads it itself. NULL where the CA has not
+        # said, and reported as a gap rather than assumed.
+        "rule_43_use":                 data.rule_43_use,
     }).execute()
 
     asset = (row.data or [{}])[0]

@@ -39,10 +39,12 @@ import {
   downloadGSTR3BJSON,
   getGSTR3BReturn,
   fetchRule37Report,
+  fetchRule43Working,
   toPeriod,
   type GSTR3BComputeResult,
   type GSTReturnStatus,
   type Rule37Report,
+  type Rule43Working,
 } from "@/lib/data/gst";
 import { periodEndDate, splitRule37Bills } from "@/lib/gst/rule37Period";
 
@@ -99,6 +101,12 @@ export default function GSTR3BPage() {
   const [rule37, setRule37] = useState<Rule37Report | null>(null);
   const [rule37Error, setRule37Error] = useState<string | null>(null);
 
+  // Rule 43: the capital-goods twin of Rule 37 above, and reported the same
+  // way — beside the return, never folded into it, because no journal has been
+  // posted for it either.
+  const [rule43, setRule43] = useState<Rule43Working | null>(null);
+  const [rule43Error, setRule43Error] = useState<string | null>(null);
+
   // Mark as Filed modal
   const [showFiledModal, setShowFiledModal] = useState(false);
   const [arn, setArn] = useState("");
@@ -120,6 +128,8 @@ export default function GSTR3BPage() {
     setResult(null);
     setRule37(null);
     setRule37Error(null);
+    setRule43(null);
+    setRule43Error(null);
     try {
       const res = await computeGSTR3B(clientId, yearMonth);
       setResult(res);
@@ -133,6 +143,14 @@ export default function GSTR3BPage() {
         setRule37(await fetchRule37Report(clientId, periodEndDate(yearMonth)));
       } catch (e) {
         setRule37Error(e instanceof Error ? e.message : "Could not check Rule 37");
+      }
+      // Asked for the PERIOD, not a date: Rule 43 apportions per tax period,
+      // and the sixty instalments are counted from the invoice month. Failing
+      // must not fail the return, same as Rule 37 above.
+      try {
+        setRule43(await fetchRule43Working(clientId, period));
+      } catch (e) {
+        setRule43Error(e instanceof Error ? e.message : "Could not check Rule 43");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Computation failed");
@@ -219,7 +237,7 @@ export default function GSTR3BPage() {
               <ClientLookup
                 clients={clients}
                 value={clientId}
-                onChange={(id) => { setClientId(id); setResult(null); setError(null); setRule37(null); }}
+                onChange={(id) => { setClientId(id); setResult(null); setError(null); setRule37(null); setRule43(null); }}
                 ariaLabel="Client"
                 placeholder="— Select client —"
               />
@@ -229,7 +247,7 @@ export default function GSTR3BPage() {
             <label className="block text-sm font-medium text-[#334155] mb-1">Period</label>
             <select
               value={yearMonth}
-              onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); setRule37(null); }}
+              onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); setRule37(null); setRule43(null); }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               {PERIOD_OPTIONS.map(o => (
@@ -855,6 +873,156 @@ export default function GSTR3BPage() {
                   them here would put the return out of step with the ledger and the reconciliation
                   would flag it. Post the reversal journal, then recompute and it will appear in
                   4(B)(2) on its own.
+                </div>
+              </section>
+            );
+          })()}
+
+          {/* Rule 43 — the capital-goods twin, and reported the same way */}
+          {(rule43 || rule43Error) && (() => {
+            if (rule43Error) {
+              return (
+                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 text-sm text-[#64748B]">
+                  <strong className="text-[#334155]">Rule 43 not checked.</strong>{" "}
+                  {rule43Error} The figures above are unaffected, but the capital-goods
+                  apportionment has not been worked for this period.
+                </section>
+              );
+            }
+            const r43 = rule43!;
+            const running = r43.assets.filter(a => a.included);
+            const unclassified = r43.assets.filter(a => a.use === null);
+
+            // A refusal is not a nil answer. Rule 43(1)(g)'s proviso sends the
+            // CA to the last period whose turnover is known, and that is a
+            // different period's figures — never substituted here.
+            if (r43.refused) {
+              return (
+                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4">
+                  <p className="text-sm text-[#334155] font-semibold mb-1">
+                    Rule 43 could not be worked for this period
+                  </p>
+                  <p className="text-xs text-[#64748B]">{r43.refusal}</p>
+                  {running.length > 0 && (
+                    <p className="text-xs text-[#64748B] mt-2">
+                      {running.length} common capital good{running.length !== 1 ? "s are" : " is"} still
+                      inside the five years, carrying {r(r43.common_credit_paise.igst
+                        + r43.common_credit_paise.cgst + r43.common_credit_paise.sgst)} of credit.
+                    </p>
+                  )}
+                </section>
+              );
+            }
+
+            if (r43.assets.length === 0) {
+              return null;   // no fixed assets at all — nothing worth a panel
+            }
+
+            const nothingDue = r43.te_total_paise === 0 && unclassified.length === 0;
+            if (nothingDue) {
+              return (
+                <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-[#94A3B8] mt-0.5 shrink-0" />
+                  <p className="text-sm text-[#64748B]">
+                    <strong className="text-[#334155]">No Rule 43 reversal due.</strong>{" "}
+                    {running.length === 0
+                      ? "No common capital good is inside its five-year life this period."
+                      : "There were no exempt supplies this period, so the exempt share of the instalment is nil."}
+                  </p>
+                </section>
+              );
+            }
+
+            return (
+              <section className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-amber-200 flex items-start gap-2">
+                  <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <h3 className="font-semibold text-amber-900 text-sm">
+                      Rule 43 — capital goods used partly for exempt supplies
+                    </h3>
+                    <p className="text-xs text-amber-800 mt-0.5">
+                      CGST Rule 43: one-sixtieth of the credit on each common capital good,
+                      apportioned by exempt turnover, is added back to output tax — every month
+                      for five years, per tax head.
+                    </p>
+                  </div>
+                </div>
+
+                {r43.te_total_paise > 0 && (
+                  <div className="px-5 py-4">
+                    <div className="flex items-baseline justify-between mb-3">
+                      <p className="text-sm text-amber-900">
+                        <strong>Te</strong> for this period, over {running.length} capital
+                        good{running.length !== 1 ? "s" : ""}
+                      </p>
+                      <p className="font-mono font-semibold text-amber-900">{r(r43.te_total_paise)}</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      {(["igst", "cgst", "sgst"] as const).map(h => (
+                        <div key={h} className="rounded-lg bg-white/70 border border-amber-200 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-amber-700">{h}</p>
+                          <p className="font-mono text-sm text-amber-900">{r(r43.te_paise[h])}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {r43.exempt_turnover_paise !== null && r43.total_turnover_paise !== null && (
+                      <p className="text-xs text-amber-800">
+                        E ÷ F = {r(r43.exempt_turnover_paise)} ÷ {r(r43.total_turnover_paise)}, from{" "}
+                        {r43.turnover_source}. Common credit running:{" "}
+                        {r(r43.common_credit_paise.igst + r43.common_credit_paise.cgst
+                           + r43.common_credit_paise.sgst)} over {r43.useful_life_months} months.
+                      </p>
+                    )}
+                    <ul className="mt-3 space-y-1.5">
+                      {running.map(a => (
+                        <li key={a.asset_id} className="text-xs text-amber-800 flex items-baseline justify-between gap-4">
+                          <span>
+                            {a.asset_name}
+                            <span className="text-amber-700 ml-2">
+                              instalment {a.period_index} of {r43.useful_life_months}
+                            </span>
+                          </span>
+                          <span className="font-mono shrink-0">
+                            {r(a.credit_paise.igst + a.credit_paise.cgst + a.credit_paise.sgst)} credit
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* The gaps are the point. An unclassified asset is left OUT,
+                    so the figure above is understated by whatever it carries —
+                    and a CA cannot know that from a number. */}
+                {r43.gaps.length > 0 && (
+                  <div className="px-5 py-3 border-t border-amber-200">
+                    <p className="text-xs font-semibold text-amber-900 mb-1.5">
+                      {r43.gaps.length} asset{r43.gaps.length !== 1 ? "s are" : " is"} not in this
+                      working, and should be
+                    </p>
+                    <ul className="space-y-1">
+                      {r43.gaps.map((g, i) => (
+                        <li key={i} className="text-xs text-amber-800">• {g}</li>
+                      ))}
+                    </ul>
+                    <p className="text-[11px] text-amber-700 mt-2">
+                      Record the use on the asset in the client&apos;s Fixed Assets tab, then
+                      recompute.
+                    </p>
+                  </div>
+                )}
+
+                {r43.caveats.length > 0 && (
+                  <div className="px-5 py-3 border-t border-amber-200 space-y-1">
+                    {r43.caveats.map((c, i) => (
+                      <p key={i} className="text-[11px] text-amber-700">{c}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="px-5 py-3 bg-amber-100/60 border-t border-amber-200 text-xs text-amber-900">
+                  <strong>Not included in Table 4(B) above.</strong> {r43.how_to_declare}
                 </div>
               </section>
             );

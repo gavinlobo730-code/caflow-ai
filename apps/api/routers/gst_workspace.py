@@ -1366,6 +1366,86 @@ def gstr1_advances(
         get_supabase(), current_user["firm_id"], client_id, period))
 
 
+@router.get("/itc/rule-43")
+def rule43_capital_goods(
+    client_id: str = Query(..., description="Client whose capital-goods register to apportion"),
+    period: str = Query(..., description="MMYYYY of the tax period"),
+    exempt_turnover_paise: Optional[int] = Query(
+        None, description="E, where the proviso to Rule 43(1)(g) applies — the "
+                          "LAST period for which turnover is available. Send "
+                          "both or neither."),
+    total_turnover_paise: Optional[int] = Query(
+        None, description="F, the same period as exempt_turnover_paise."),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """One-sixtieth of the credit on common capital goods, apportioned by exempt turnover.
+
+    CGST Rule 43. A registered person making both taxable and exempt supplies
+    cannot keep the whole input tax credit on a machine used for both, so the
+    rule spreads that credit over SIXTY tax periods and adds the exempt share
+    of each instalment back to output tax:
+
+        A   the credit taken on one common capital good        43(1)(c)
+        Tm  a period's share of it, A ÷ 60                     43(1)(e)
+        Tr  Σ Tm over goods whose useful life REMAINS          43(1)(f)
+        Te  (E ÷ F) × Tr, added to output tax                  43(1)(g)/(h)
+
+    computed per head, because 43(2) says to. E is the aggregate value of
+    exempt supplies (§2(47) with §2(78), so nil-rated, exempt and non-GST
+    together, and NOT zero-rated); F is the total turnover in the State
+    (§2(112)). Both are read off the same posted documents that build GSTR-3B
+    Table 3.1, so this working and the return cannot disagree.
+
+    AN ASSET NOBODY HAS CLASSIFIED IS LEFT OUT AND NAMED. `rule_43_use`
+    (migration 372) is the CA's own determination of which of 43(1)(a), (b) or
+    (c) the asset falls in, and guessing is unsafe in both directions —
+    assuming common reverses credit §16(1) gives, assuming exclusively taxable
+    leaves Te unpaid with 43(1)(h) interest running on it.
+
+    `exempt_turnover_paise` / `total_turnover_paise` exist for the proviso to
+    43(1)(g): where a period's turnover is nil or unavailable, E and F come
+    from the last period for which they are. Those are a different period's
+    figures, so they are never substituted automatically — the working refuses
+    and says so, and a CA who has looked them up passes them here.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This computes a working. It
+    # posts no journal, writes no register row and files nothing: Te reaches
+    # Table 4(B)(1) only when the CA raises the reversal journal and registers
+    # it with ground 'rule_43'.
+    """
+    assert_client_access(current_user, client_id)
+    supplied = (exempt_turnover_paise is not None) or (total_turnover_paise is not None)
+    if supplied and (exempt_turnover_paise is None or total_turnover_paise is None):
+        # E without F is a fraction with no denominator, and F without E would
+        # silently read as nil exempt turnover — a Te of zero that looks
+        # computed. Both or neither.
+        raise HTTPException(
+            status_code=422,
+            detail="Send both exempt_turnover_paise and total_turnover_paise, "
+                   "or neither. One alone is not a turnover fraction.")
+    override = ({"exempt_paise": exempt_turnover_paise,
+                 "total_paise": total_turnover_paise} if supplied else None)
+    if _USE_MOCK:
+        return api_response(True, {
+            "period": period, "te_paise": {"igst": 0, "cgst": 0, "sgst": 0},
+            "te_total_paise": 0,
+            "common_credit_paise": {"igst": 0, "cgst": 0, "sgst": 0},
+            "exempt_turnover_paise": None, "total_turnover_paise": None,
+            "useful_life_months": 60, "assets": [], "gaps": [],
+            "caveats": [], "refused": False, "refusal": "",
+            "turnover_source": "mock", "turnover_breakdown": None,
+            "how_to_declare": "", "ca_review_required": True,
+        })
+    from core.supabase_client import get_supabase
+    from services.gst_rule_43_service import Rule43Error, for_period
+    try:
+        return api_response(True, for_period(
+            get_supabase(), current_user["firm_id"], client_id, period,
+            turnover=override))
+    except Rule43Error as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.get("/itc/rule37")
 def rule37_itc_reversal(
     client_id: str = Query(..., description="Client whose purchase ledger to check"),
