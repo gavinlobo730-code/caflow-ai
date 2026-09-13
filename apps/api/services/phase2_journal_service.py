@@ -1647,14 +1647,32 @@ class Phase2JournalService:
             raise
 
     def journal_for_asset_disposal(
-        self, asset: dict, sale_proceeds_paise: int, firm_id: str, client_id: str
+        self, asset: dict, sale_proceeds_paise: int, firm_id: str, client_id: str,
+        output_tax: Optional[dict] = None,
     ) -> Optional[str]:
         """
         Asset disposal journal.
         Dr  Accumulated Depreciation  (accumulated_depreciation_paise)
-        Dr  Bank                      (sale_proceeds_paise)
+        Dr  Bank                      (sale_proceeds_paise, tax-INCLUSIVE)
+          Cr  GST Output CGST/SGST/IGST  (the tax inside the proceeds)
         Dr/Cr  P&L on Disposal        (balancing — loss or gain)
           Cr  Fixed Asset Account     (purchase_cost_paise)
+
+        `output_tax` is {"cgst_paise", "sgst_paise", "igst_paise"} — the tax on
+        the TRANSACTION VALUE under CGST Act s.15, backed out of the proceeds
+        by domain/gst/section_18_6 (FA-08b). A sale of a capital asset is a
+        supply and this journal carried no tax line at all, so the tax was
+        never declared and the CA had to remember to raise a separate invoice.
+
+        WHAT IS NOT POSTED HERE. s.18(6) charges the HIGHER of this and the
+        credit taken on the asset reduced for the time it was held. Where the
+        reduced credit is the higher limb, the EXCESS is left for the CA to
+        raise: two Rules prescribe the reduction and give different figures
+        (see section_18_6), and there is no invoice behind the difference. The
+        same judgement itc_register_service records about a Rule 37 reversal.
+
+        The gain or loss is then computed on the consideration NET of tax —
+        the buyer's tax is not the seller's proceeds.
         """
         if _USE_MOCK:
             return None
@@ -1688,7 +1706,13 @@ class Phase2JournalService:
             cost        = asset["purchase_cost_paise"]
             accum_depn  = asset.get("accumulated_depreciation_paise", 0)
             wdv         = cost - accum_depn
-            gain_loss   = sale_proceeds_paise - wdv  # positive = gain, negative = loss
+            tax         = output_tax or {}
+            tax_total   = (int(tax.get("cgst_paise") or 0)
+                           + int(tax.get("sgst_paise") or 0)
+                           + int(tax.get("igst_paise") or 0))
+            # The proceeds are what the buyer paid, tax included, so the
+            # consideration the gain is measured against is net of it.
+            gain_loss   = (sale_proceeds_paise - tax_total) - wdv
 
             lines = [
                 {"account_id": accum_dep_id, "debit_paise": accum_depn, "credit_paise": 0,
@@ -1700,6 +1724,24 @@ class Phase2JournalService:
                 {"account_id": asset_acct,    "debit_paise": 0, "credit_paise": cost,
                  "narration": f"Fixed asset removed: {asset['asset_name']}"},
             ]
+
+            # CGST Act s.9 levies on the outward supply; the head comes from
+            # what the CA stated about the sale, not from what the acquisition
+            # was. Resolved through the SAME _find_account the sales side uses,
+            # so a disposal and an invoice land on one liability — the reason
+            # bank_posting_service resolves it that way too.
+            for head, key in (("CGST", "cgst_paise"), ("SGST", "sgst_paise"),
+                              ("IGST", "igst_paise")):
+                amount = int(tax.get(key) or 0)
+                if amount <= 0:
+                    continue
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%GST Output%",
+                        system_key=f"gst_{head.lower()}"),
+                    "debit_paise": 0, "credit_paise": amount,
+                    "narration": f"Output {head} on asset disposal (CGST Act s.9)",
+                })
 
             if gain_loss > 0:
                 gain_id = self._find_account(db, firm_id, client_id, "%Profit on Asset Disposal%")

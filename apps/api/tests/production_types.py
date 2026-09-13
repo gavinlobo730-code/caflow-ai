@@ -81,6 +81,9 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     # only entries left are the migrations this branch has not merged yet.
     ("bank_transactions", "gst_rate_bps"): "migration 382",
     ("bank_transactions", "gst_is_interstate"): "migration 382",
+    ("fixed_assets", "disposal_is_supply"): "migration 383",
+    ("fixed_assets", "disposal_gst_rate_bps"): "migration 383",
+    ("fixed_assets", "disposal_is_interstate"): "migration 383",
 }
 
 

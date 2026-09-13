@@ -31,6 +31,7 @@ from domain.gst.gstr3b_computer import (
 )
 from core.observability import capture_soft_failure
 import domain.gst.bank_charge_gst as bank_charge_gst
+import domain.gst.section_18_6 as section_18_6
 from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
 from domain.gst.classifier import classify_transaction, TransactionForClassification
 from domain.gst.validator import GSTValidator, InvoiceToValidate
@@ -464,6 +465,35 @@ def _bank_lines_declaring_gst(db, firm_id, client_id, start, end) -> list[dict]:
             .gte("transaction_date", start).lte("transaction_date", end))
 
 
+def _disposals_declaring_gst(db, firm_id, client_id, start, end) -> list[dict]:
+    """Assets disposed in the period on which the CA declared output tax (FA-08b).
+
+    A disposal is not a sales invoice, so nothing in the outward document set
+    sees it — but `dispose_asset` now posts a real Cr GST Output leg for one
+    (CGST Act §9 on the supply, §15 on its transaction value). Migration 383
+    records the rate on the ASSET, which is what makes this a document fetch
+    rather than a second reading of the ledger: sourcing it from `journal_lines`
+    would make the books-vs-ledger comparison agree with itself on this slice.
+
+    The credit-side columns come too, because §18(6)'s other limb is worked out
+    from them and the return has to say when it demands more than the tax
+    declared here.
+
+    Columns are spelled out rather than pulled from a constant so
+    test_backend_columns_exist_pg can check every name against the real schema.
+    """
+    return _paginate_all(lambda: db.table("fixed_assets")
+            .select("id, asset_name, purchase_date, disposal_date, "
+                    "disposal_value_paise, disposal_is_supply, "
+                    "disposal_gst_rate_bps, disposal_is_interstate, "
+                    "cgst_paise, sgst_paise, igst_paise, itc_eligible, "
+                    "is_disposed, deleted_at")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("is_disposed", True)
+            .not_.is_("disposal_gst_rate_bps", "null")
+            .gte("disposal_date", start).lte("disposal_date", end))
+
+
 def _gstr2a_for_period(db, firm_id, client_id, period) -> list[dict]:
     """Supplier-filed records for the period, for the Rule 36(4) comparison.
 
@@ -850,7 +880,8 @@ def _late_filing_block(result, period: str, filed_on) -> dict:
 
 def _outward_transactions(db, firm_id: str, client_id: str,
                           start: str, end: str,
-                          bank_gst: "bank_charge_gst.BankGSTOnTheReturn | None" = None
+                          bank_gst: "bank_charge_gst.BankGSTOnTheReturn | None" = None,
+                          disposals: "list | None" = None,
                           ) -> "list[SalesTransaction]":
     """Every outward document of the period, as the computer wants to see it.
 
@@ -945,6 +976,26 @@ def _outward_transactions(db, firm_id: str, client_id: str,
             cgst_paise=out.split.cgst_paise,
             sgst_paise=out.split.sgst_paise,
             igst_paise=out.split.igst_paise,
+            cess_paise=0,
+            supply_type="taxable",
+            is_reverse_charge=False,
+        ))
+    # An asset disposal is an outward supply too (FA-08b), and the disposal
+    # journal already credits GST Output for it. Same argument as the bank
+    # receipt above, same place: one list, so a working and a return cannot
+    # disagree about what was supplied. And Table 3.1(a) only — a disposal
+    # records no recipient state and no recipient class, so 3.2 would assert
+    # what the books do not hold.
+    if disposals is None:
+        disposals, _ = section_18_6.outward_supplies(
+            _disposals_declaring_gst(db, firm_id, client_id, start, end))
+    for d in disposals:
+        sales.append(SalesTransaction(
+            transaction_type="asset_disposal",
+            taxable_amount_paise=d.taxable_paise,
+            cgst_paise=d.tax.cgst_paise,
+            sgst_paise=d.tax.sgst_paise,
+            igst_paise=d.tax.igst_paise,
             cess_paise=0,
             supply_type="taxable",
             is_reverse_charge=False,
@@ -1067,8 +1118,15 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # it per use is three cross-region round trips for one small answer.
     bank_gst = bank_charge_gst.declared_gst(
         _bank_lines_declaring_gst(db, firm_id, client_id, start, end))
+    # FA-08b — the same shape, one fetch, used for the outward side and for the
+    # caveats. `disposal_caveats` carries the two things the figures cannot
+    # say: GSTR-1 has no invoice to carry these supplies, and s.18(6) may
+    # demand more than the tax charged.
+    disposals, disposal_caveats = section_18_6.outward_supplies(
+        _disposals_declaring_gst(db, firm_id, client_id, start, end))
 
-    sales = _outward_transactions(db, firm_id, client_id, start, end, bank_gst=bank_gst)
+    sales = _outward_transactions(db, firm_id, client_id, start, end,
+                                  bank_gst=bank_gst, disposals=disposals)
 
     # Table 4(A)(2). Resolved once for the whole return — see
     # _import_of_services_vendors — and applied to bills AND to the notes that
@@ -1411,6 +1469,15 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # bank line declared any GST, so a client who never uses the feature
         # sees nothing.
         "bank_line_caveats": list(bank_gst.caveats),
+        # WHAT AN ASSET DISPOSAL PUTS ON THIS RETURN, AND WHAT IT CANNOT SAY
+        # (FA-08b). A sale of a capital asset is a supply and the disposal
+        # journal now credits GST Output for it, so Table 3.1(a) declares it —
+        # it was in neither the ledger nor the return before. These sentences
+        # are the half that cannot be computed: GSTR-1 is built from invoices
+        # and there is none behind a disposal (Rule 46), and CGST Act s.18(6)
+        # charges the HIGHER of this tax and the credit taken on the asset
+        # reduced for the time it was held, which the return does not carry.
+        "disposal_caveats": list(disposal_caveats),
         "working": {
             "outward": {
                 "taxable_value_paise": result.outward_taxable_value,
@@ -1585,6 +1652,16 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                 "output_tax_paise": bank_gst.output_tax_paise,
                 "inward_line_count": len(bank_gst.inward),
                 "outward_line_count": len(bank_gst.outward),
+            },
+            # FA-08b — the disposals' own contribution to 3.1(a), on both sides
+            # of the output-tax comparison. Named for the same reason: a CA
+            # looking at 3.1(a) above the sales register needs to see where the
+            # difference came from, and the s.18(6) caveat is about these
+            # rupees.
+            "asset_disposals": {
+                "output_tax_paise": sum(d.tax.total_paise for d in disposals),
+                "taxable_value_paise": sum(d.taxable_paise for d in disposals),
+                "count": len(disposals),
             },
             "reconciled": output_matched and itc_matched,
             "ledger_by_head": gl["by_head"],

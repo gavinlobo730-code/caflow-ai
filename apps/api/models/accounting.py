@@ -692,10 +692,40 @@ class DisposalIn(BaseModel):
     sale_proceeds_paise: int = 0
     disposal_date: Optional[str] = None  # YYYY-MM-DD; defaults to today
     notes: Optional[str] = None
+    # ── the GST treatment (FA-08b, migration 383) ────────────────────────────
+    # A sale of a capital asset is a SUPPLY, and CGST Act s.18(6) charges the
+    # HIGHER of the credit taken on it (reduced for the time it was held) and
+    # the tax on the transaction value. None of that could be expressed here:
+    # the disposal journal carried no tax line and this model had no field to
+    # drive one.
+    #
+    # All three are STATED and none is inferred. Whether a disposal is a supply
+    # turns on facts no ledger holds (a scrapping for nothing, a transfer whose
+    # treatment turns on Schedule I); the rate on the outward supply is not
+    # necessarily the rate the asset was bought at; and an asset bought locally
+    # may be sold across a state border, which changes the head. Left unstated,
+    # each is NAMED as a gap on the answer rather than assumed.
+    is_supply: Optional[bool] = None
+    gst_rate_bps: Optional[int] = None
+    is_interstate: bool = False
 
     @field_validator("sale_proceeds_paise")
     @classmethod
     def must_be_non_negative(cls, v: int) -> int:
         if v < 0:
             raise ValueError("sale_proceeds_paise must be non-negative.")
+        return v
+
+    @field_validator("gst_rate_bps")
+    @classmethod
+    def must_be_a_rate_the_engine_holds(cls, v: Optional[int]) -> Optional[int]:
+        # The same five migration 383's CHECK allows and
+        # domain/banking/charge_gst.ALLOWED_RATES_BPS splits at. Refused at the
+        # model so a typo in a tax head never reaches the database — a wrong
+        # rate here becomes a wrong GSTR-3B.
+        from domain.banking.charge_gst import ALLOWED_RATES_BPS
+        if v is not None and int(v) not in ALLOWED_RATES_BPS:
+            raise ValueError(
+                "gst_rate_bps must be one of "
+                + ", ".join(str(r) for r in ALLOWED_RATES_BPS))
         return v

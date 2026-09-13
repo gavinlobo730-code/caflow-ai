@@ -704,6 +704,53 @@ change. The code is the authority; keep this file in step with it.
   against (Rule 46). **No GSTIN is invented** — the finding's own suggested fix
   would have put one on a bank table so the 2B match passed, which is claiming
   a document exists.
+- **A FIXED-ASSET DISPOSAL IS A SUPPLY, AND CGST §18(6) CHARGES THE HIGHER OF
+  TWO LIMBS** (FA-08b, migration 383). `journal_for_asset_disposal` posted four
+  lines — accumulated depreciation cleared, the whole proceeds to bank, the
+  asset out at cost, the gain or loss balancing — and NO tax line at all, and
+  `DisposalIn` had no field that could have driven one. So the sale of a
+  capital asset was never declared: nothing in the ledger, nothing on the
+  return, and the CA had to remember to raise a separate sales invoice.
+  §18(6) charges "the input tax credit taken on the said capital goods ...
+  reduced by such percentage points as may be prescribed **or** the tax on the
+  transaction value ... **whichever is higher**", so an asset sold cheap early
+  in its life pays back CREDIT rather than tax on the price — the case a plain
+  output-tax line under-declares by an order of magnitude.
+  `domain/gst/section_18_6.py` is the authority.
+  ⚠️ **TWO RULES PRESCRIBE THE REDUCTION AND THEY DISAGREE**, so BOTH readings
+  are reported and neither is chosen — the `interest_on_rule_37_reversal`
+  shape, for the same reason: this is a sum the CA pays over. Rule 40(2) is
+  five percentage points per **quarter or part thereof** from the invoice date;
+  Rule 44(6), through Rule 44(1)(b), pro-rates the credit over the **remaining
+  useful life in months out of sixty**. At 38 months that is 35% against
+  36.67%. `[S]` — every `.gov.in` is refused at this environment's proxy.
+  **The part DAYS count in Rule 40(2)**: three months exactly is one quarter, a
+  single day more is two, so the count cannot be `ceil(whole_months / 3)`.
+  **The comparison is on the TOTAL**, not head by head — Rule 44(6)'s
+  "determined separately for ... central tax, State tax" governs how limb (a)
+  is worked out, not how the two limbs are ranked; ranking per head would pay
+  the credit limb on one head and the value limb on another, which is not a
+  figure the section describes. **Every rounding goes UP** (a sum the taxpayer
+  owes) and a part month does NOT count as elapsed, which leaves the remaining
+  life larger and the charge larger — the direction that cannot leave a
+  shortfall. **Only limb (b) is POSTED**: the tax on the transaction value is
+  what the buyer paid and is not in doubt, while the excess has two readings
+  and no invoice behind it, so the CA raises it — `itc_register_service`'s
+  judgement about Rule 37. The **proceeds are TAX-INCLUSIVE** and the tax is
+  backed out with `charge_gst.split_inclusive_charge`, so the journal balances
+  with no plug and the **gain is measured on the consideration NET of tax** —
+  the buyer's tax is not the seller's proceeds. Migration 383's three columns
+  are all STATED: `disposal_is_supply` (nullable, NO default — a scrapping for
+  nothing and a sale are the same row shape), `disposal_gst_rate_bps` and
+  `disposal_is_interstate` (an asset bought locally may be sold across a state
+  border, and §18(6) does not say which head the credit limb is then paid in —
+  NAMED, never resolved). The return reads those columns as the document and
+  declares the supply in **3.1(a), never 3.2**. Two more refusals: no credit
+  taken means §18(6) does not reach the supply at all (only §9 does), and an
+  asset that does not RECORD its credit position is a named gap rather than
+  assumed nil. `GET /api/fixed-assets/{id}/disposal-preview` writes nothing and
+  runs the same module, so what the CA is shown before confirming is what gets
+  posted.
 - **GSTR-3B Table 3.1(a) carries GSTR-1 TABLE 11, and the ledger cannot.**
   §13(2) puts the time of supply for SERVICES at the earlier of invoice or
   payment, so tax on an advance received for services falls due on receipt,
