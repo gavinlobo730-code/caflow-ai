@@ -988,6 +988,14 @@
    "detail": "f",
    "expr_md5": "8fd8d299692a885b516f0dd32bff8bce"
   },
+  "client_sales_invoice_lines.client_sales_invoice_lines_discount_non_negative": {
+   "detail": "c",
+   "expr_md5": "69ff448a54c3457cf525137ccaf8f3ad"
+  },
+  "client_sales_invoice_lines.client_sales_invoice_lines_discount_percent_range": {
+   "detail": "c",
+   "expr_md5": "9ea57535b5b49be6c6565599f1933219"
+  },
   "client_sales_invoice_lines.client_sales_invoice_lines_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -1011,6 +1019,14 @@
   "client_sales_invoices.client_sales_invoices_customer_id_fkey": {
    "detail": "f",
    "expr_md5": "e4ee868f8610b4ab5e459e3bbb465f49"
+  },
+  "client_sales_invoices.client_sales_invoices_discount_non_negative": {
+   "detail": "c",
+   "expr_md5": "286f043f8c874d9e8a19ead44c4fc709"
+  },
+  "client_sales_invoices.client_sales_invoices_discount_percent_range": {
+   "detail": "c",
+   "expr_md5": "9ea57535b5b49be6c6565599f1933219"
   },
   "client_sales_invoices.client_sales_invoices_exchange_rate_check": {
    "detail": "c",
@@ -2758,7 +2774,7 @@
   },
   "itc_reversal_register.itc_reversal_register_reason_code_check": {
    "detail": "c",
-   "expr_md5": "b41a4bab2b030ee48d0133a982bb6f62"
+   "expr_md5": "96524c689534fd9ef4ae99e5f761ea3b"
   },
   "itc_reversal_register.itc_reversal_register_reclaim_has_parent": {
    "detail": "c",
@@ -3336,6 +3352,46 @@
    "detail": "f",
    "expr_md5": "09ebfeb7d22713b3be319b477b740a6f"
   },
+  "payroll_loan_recoveries.payroll_loan_recoveries_amount_nonzero": {
+   "detail": "c",
+   "expr_md5": "c65bd85e3c3e1dfb8c9b61b81377009a"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_created_by_fkey": {
+   "detail": "f",
+   "expr_md5": "f2ec412d6c280402cdf6c98b7739d275"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_employee_id_fkey": {
+   "detail": "f",
+   "expr_md5": "65deafd493a32e21e621e37c782d238a"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_kind_check": {
+   "detail": "c",
+   "expr_md5": "eea120ac4ac547631b6d2ed9c2bb601b"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_loan_id_fkey": {
+   "detail": "f",
+   "expr_md5": "e7c30198a5891866b3738dbdae6739d1"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_run_id_fkey": {
+   "detail": "f",
+   "expr_md5": "85910ec940f7be46a3cc09f9a65c49d4"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_sign_matches_kind": {
+   "detail": "c",
+   "expr_md5": "b383f9b4d79eb480bf5d81cf84bc53c5"
+  },
   "payroll_loans.payroll_loans_amounts_nonneg": {
    "detail": "c",
    "expr_md5": "8c1ec7f96736cc881038c4d2638b5348"
@@ -3555,6 +3611,10 @@
   "payroll_slips.payroll_slips_employee_id_fkey": {
    "detail": "f",
    "expr_md5": "65deafd493a32e21e621e37c782d238a"
+  },
+  "payroll_slips.payroll_slips_perquisites_nonneg": {
+   "detail": "c",
+   "expr_md5": "5a95bc19407cfd072bc1c3ea83859ed7"
   },
   "payroll_slips.payroll_slips_pkey": {
    "detail": "p",
@@ -4295,6 +4355,66 @@
   "shared_reports.shared_reports_shared_by_fkey": {
    "detail": "f",
    "expr_md5": "6074409b25c5376b58df83965d23c746"
+  },
+  "statutory_remittances.statutory_remittance_contribution_period_belongs_to_esi": {
+   "detail": "c",
+   "expr_md5": "946beb0567cf59f76a7a8937b6ea1462"
+  },
+  "statutory_remittances.statutory_remittance_paid_needs_a_date": {
+   "detail": "c",
+   "expr_md5": "365cc85d24b60e0b3ba78cc495eb878d"
+  },
+  "statutory_remittances.statutory_remittance_paid_not_before_submitted": {
+   "detail": "c",
+   "expr_md5": "d172ad86bc04869aae715be9f153933e"
+  },
+  "statutory_remittances.statutory_remittance_state_belongs_to_pt": {
+   "detail": "c",
+   "expr_md5": "40385c0bba02388d592abcfadd0d3152"
+  },
+  "statutory_remittances.statutory_remittances_amount_paise_check": {
+   "detail": "c",
+   "expr_md5": "5afc3735c7e44446534a08306fa6e22d"
+  },
+  "statutory_remittances.statutory_remittances_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "statutory_remittances.statutory_remittances_contribution_period_check": {
+   "detail": "c",
+   "expr_md5": "cb46729c2c9e9d19e8e07576cfe3e969"
+  },
+  "statutory_remittances.statutory_remittances_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "statutory_remittances.statutory_remittances_journal_entry_id_fkey": {
+   "detail": "f",
+   "expr_md5": "de1209e014606c6dbba76222631f27df"
+  },
+  "statutory_remittances.statutory_remittances_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "statutory_remittances.statutory_remittances_recorded_by_fkey": {
+   "detail": "f",
+   "expr_md5": "35ff332c65916a62d13a99fd504f8e09"
+  },
+  "statutory_remittances.statutory_remittances_run_id_fkey": {
+   "detail": "f",
+   "expr_md5": "47856a77c386dd846e46c153e93cd91b"
+  },
+  "statutory_remittances.statutory_remittances_scheme_check": {
+   "detail": "c",
+   "expr_md5": "a170a60899a8c42c4cc7e1a609408651"
+  },
+  "statutory_remittances.statutory_remittances_status_check": {
+   "detail": "c",
+   "expr_md5": "c9402b2ed56598c7be3357a8e10d762c"
+  },
+  "statutory_remittances.statutory_remittances_wage_month_check": {
+   "detail": "c",
+   "expr_md5": "3f72f97caaaed9479fa2b71c811dd6d6"
   },
   "suppliers.suppliers_client_id_fkey": {
    "detail": "f",
@@ -5386,6 +5506,10 @@
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
+  "bank_accounts.bank_accounts_assignment_scope": {
+   "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
+   "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
+  },
   "bank_accounts.firm_staff_manage_bank_accounts": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
@@ -5886,6 +6010,10 @@
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "9cb37ebd04c955c0990fff8d19763923"
   },
+  "debit_notes.debit_notes_assignment_scope": {
+   "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
+   "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
+  },
   "debit_notes.firm_debit_notes": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
@@ -6370,6 +6498,10 @@
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
+  "gstr2b_reconciliations.gstr2b_reconciliations_assignment_scope": {
+   "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
+   "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
+  },
   "gstr2b_uploads.gstr2b_uploads_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
    "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
@@ -6842,6 +6974,22 @@
    "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
    "expr_md5": "e3f83c69e9c751fe922a1a917c0bf576"
   },
+  "payroll_loan_recoveries.payroll_loan_recoveries_firm_scope": {
+   "detail": "permissive cmd=* roles=PUBLIC",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "7f2fe0a30a336749d276ae57486d9716"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "fe15002f4dc2866a0180f896d03038bb"
+  },
+  "payroll_loan_recoveries.payroll_loan_recoveries_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "18b6c82111707e214f8aaa30c5b6e717"
+  },
   "payroll_loans.payroll_loans_firm_scope": {
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
@@ -7050,6 +7198,10 @@
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
+  "purchase_credit_notes.purchase_credit_notes_assignment_scope": {
+   "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
+   "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
+  },
   "purchase_payment_allocations.firm_client_isolation": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "220a60d9c8f4f7f3c3e2a73396d7077f"
@@ -7157,6 +7309,10 @@
   "sales_debit_notes.firm_sales_debit_notes": {
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "sales_debit_notes.sales_debit_notes_assignment_scope": {
+   "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
+   "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
   },
   "sales_invoices.sales_invoices_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
@@ -7281,6 +7437,18 @@
   "shared_reports.shared_reports_role_update": {
    "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
    "expr_md5": "70158a0a5215c9e83715df3edc962014"
+  },
+  "statutory_remittances.firm_reads_statutory_remittances": {
+   "detail": "permissive cmd=r roles=authenticated",
+   "expr_md5": "56e7a3afd621822dfb97eaf9b254ac95"
+  },
+  "statutory_remittances.firm_updates_statutory_remittances": {
+   "detail": "permissive cmd=w roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "statutory_remittances.firm_writes_statutory_remittances": {
+   "detail": "permissive cmd=a roles=authenticated",
+   "expr_md5": "9bc0d2e6c01990d486d8d9d6de8f1b09"
   },
   "suppliers.firm_staff_manage_suppliers": {
    "detail": "permissive cmd=* roles=authenticated",
@@ -7549,6 +7717,10 @@
   "tds_lower_deduction_certificates.tds_ldc_role_update": {
    "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
    "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
+  "tds_lower_deduction_certificates.tds_lower_deduction_certificates_assignment_scope": {
+   "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
+   "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
   },
   "tds_returns.firm_staff_tds_returns": {
    "detail": "permissive cmd=* roles=authenticated",
@@ -8488,6 +8660,10 @@
    "detail": "on",
    "expr_md5": ""
   },
+  "payroll_loan_recoveries": {
+   "detail": "on",
+   "expr_md5": ""
+  },
   "payroll_loans": {
    "detail": "on",
    "expr_md5": ""
@@ -8685,6 +8861,10 @@
    "expr_md5": ""
   },
   "shared_reports": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "statutory_remittances": {
    "detail": "on",
    "expr_md5": ""
   },

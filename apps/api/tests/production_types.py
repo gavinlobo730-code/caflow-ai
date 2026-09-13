@@ -83,6 +83,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("client_sales_invoice_lines", "discount_paise"): "migration 364",
     ("client_sales_invoice_lines", "discount_percent_bps"): "migration 364",
     ("payroll_slips", "perquisites_in_tds_estimate_paise"): "migration 368",
+    ("fixed_assets", "rule_43_use"): "migration 372",
 }
 
 

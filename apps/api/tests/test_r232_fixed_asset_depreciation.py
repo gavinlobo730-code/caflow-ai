@@ -222,13 +222,13 @@ def test_sl_method_unaffected_by_fy_caching():
 
 # ── post_depreciation: the under-depreciation regression itself ────────────
 
-def test_wdv_monthly_charge_stays_fixed_across_months_in_the_same_fy():
+def test_wdv_monthly_charge_stays_fixed_across_months_in_the_same_fy(monkeypatch):
     """The core task #232 bug: month 2's charge must equal month 1's — both
     computed from the SAME fixed FY-opening base — not a smaller figure
     recomputed from month 1's already-reduced accumulated_depreciation_paise."""
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-01", wdv_rate_percent=24.0)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
 
     r1 = fa_router.post_depreciation("asset-1", _dep(period="2026-05"), {"firm_id": FIRM, "id": "u1"})
@@ -247,10 +247,10 @@ def test_wdv_monthly_charge_stays_fixed_across_months_in_the_same_fy():
     assert m2 > buggy_monthly
 
 
-def test_wdv_resets_base_when_crossing_into_a_new_financial_year():
+def test_wdv_resets_base_when_crossing_into_a_new_financial_year(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-01", wdv_rate_percent=25.0)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
 
     # Post every month of FY 2026-27 (Apr..Mar).
@@ -280,10 +280,10 @@ def test_prorate_purchase_month_pure_function():
     assert _prorate_purchase_month(3000, "2026-04-10") == 3000 * 21 // 30
 
 
-def test_purchase_month_depreciation_is_prorated_by_days_held():
+def test_purchase_month_depreciation_is_prorated_by_days_held(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-10", wdv_rate_percent=24.0)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
 
     result = fa_router.post_depreciation("asset-1", _dep(period="2026-04"), {"firm_id": FIRM, "id": "u1"})
@@ -294,10 +294,10 @@ def test_purchase_month_depreciation_is_prorated_by_days_held():
     assert result["data"]["depreciation_paise"] < full_monthly
 
 
-def test_month_after_purchase_month_gets_the_full_charge_not_prorated():
+def test_month_after_purchase_month_gets_the_full_charge_not_prorated(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-10", wdv_rate_percent=24.0)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
 
     result = fa_router.post_depreciation("asset-1", _dep(period="2026-05"), {"firm_id": FIRM, "id": "u1"})
@@ -308,30 +308,30 @@ def test_month_after_purchase_month_gets_the_full_charge_not_prorated():
 
 # ── Purchase-date validation ─────────────────────────────────────────────────
 
-def test_rejects_period_before_the_purchase_date():
+def test_rejects_period_before_the_purchase_date(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-07-15")
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
 
     with pytest.raises(HTTPException) as exc:
         fa_router.post_depreciation("asset-1", _dep(period="2026-06"), {"firm_id": FIRM, "id": "u1"})
     assert exc.value.status_code == 422
 
 
-def test_accepts_the_exact_purchase_month():
+def test_accepts_the_exact_purchase_month(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-07-15")
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_depreciation = lambda *a, **k: "je-1"
 
     result = fa_router.post_depreciation("asset-1", _dep(period="2026-07"), {"firm_id": FIRM, "id": "u1"})
     assert result["success"] is True
 
 
-def test_rejects_malformed_period_format():
+def test_rejects_malformed_period_format(monkeypatch):
     db = FakeDB()
     _seed_asset(db)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     with pytest.raises(HTTPException) as exc:
         fa_router.post_depreciation("asset-1", _dep(period="2026"), {"firm_id": FIRM, "id": "u1"})
     assert exc.value.status_code == 422
@@ -345,7 +345,7 @@ def _raise_locked(firm_id, date_str):
 
 def test_create_asset_blocked_in_locked_fy(monkeypatch):
     db = FakeDB()
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     monkeypatch.setattr(fa_router.period_validation_service, "validate_posting_date", _raise_locked)
 
     body = FixedAssetIn(client_id=CLIENT, asset_name="Laptop", purchase_date="2026-04-01",
@@ -359,7 +359,7 @@ def test_create_asset_blocked_in_locked_fy(monkeypatch):
 def test_post_depreciation_blocked_in_locked_fy(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-01")
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     monkeypatch.setattr(fa_router.period_validation_service, "validate_posting_date", _raise_locked)
 
     with pytest.raises(HTTPException) as exc:
@@ -371,7 +371,7 @@ def test_post_depreciation_blocked_in_locked_fy(monkeypatch):
 def test_dispose_asset_blocked_in_locked_fy(monkeypatch):
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-01")
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     monkeypatch.setattr(fa_router.period_validation_service, "validate_posting_date", _raise_locked)
 
     with pytest.raises(HTTPException) as exc:

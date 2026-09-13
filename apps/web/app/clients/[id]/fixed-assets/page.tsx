@@ -664,6 +664,13 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     // and the depreciable cost — blocked tax is capitalised and depreciates.
     itc_eligible:          "" as "" | "yes" | "no",
     itc_blocked_reason:    "",
+    // "" = the CA has not said, and that is the honest default. CGST Rule 43
+    // spreads the credit on a COMMON capital good over sixty months; an asset
+    // used only for exempt supplies never had the credit and one used only for
+    // taxable or zero-rated supplies keeps all of it. Guessing is unsafe both
+    // ways, so an unanswered asset is reported as a gap in the Rule 43 working
+    // rather than apportioned or left out silently.
+    rule_43_use:           "" as "" | "common" | "exclusively_exempt" | "exclusively_taxable",
   });
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
@@ -810,6 +817,10 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         itc_eligible:          taxTotal > 0 && form.itc_eligible ? form.itc_eligible === "yes" : undefined,
         itc_blocked_reason:    taxTotal > 0 && form.itc_eligible === "no"
                                  ? (form.itc_blocked_reason || undefined) : undefined,
+        // Sent only when answered. "" is not a use and the model would refuse
+        // it; omitting leaves the column NULL, which is what "not classified"
+        // means everywhere else this asset is read.
+        rule_43_use:           form.rule_43_use || undefined,
       };
       if (body.wdv_rate_percent !== undefined && !Number.isFinite(body.wdv_rate_percent)) {
         setError("The WDV rate must be a percentage, e.g. 12.5."); return;  // the finally below lowers `saving`
@@ -1061,6 +1072,31 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
                     <input className={INPUT} value={form.itc_blocked_reason}
                            placeholder="e.g. motor vehicle — §17(5)(a)"
                            onChange={e => setForm(f => ({ ...f, itc_blocked_reason: e.target.value }))} />
+                  </Field>
+                )}
+                {/* CGST Rule 43. Asked only where credit was CLAIMED — there is
+                    nothing to apportion on tax §17(5) already blocked, and on an
+                    asset carrying no tax at all. Deliberately not required: an
+                    unanswered asset is named in the Rule 43 working, and a guess
+                    either way costs somebody money. */}
+                {form.itc_eligible === "yes" && (
+                  <Field label="What is it used for? (CGST Rule 43)">
+                    <select className={INPUT} value={form.rule_43_use}
+                            onChange={e => setForm(f => ({ ...f, rule_43_use: e.target.value as typeof f.rule_43_use }))}>
+                      <option value="">Not decided yet</option>
+                      <option value="exclusively_taxable">Only taxable or export supplies — 43(1)(b)</option>
+                      <option value="common">Both taxable and exempt — 43(1)(c)</option>
+                      <option value="exclusively_exempt">Only exempt or non-business — 43(1)(a)</option>
+                    </select>
+                    <p className="mt-1 text-[10px] text-[#94A3B8]">
+                      {form.rule_43_use === "common"
+                        ? "One-sixtieth of this credit is apportioned by exempt turnover every month for five years, and added back to output tax."
+                        : form.rule_43_use === "exclusively_exempt"
+                        ? "No credit was available on this asset, so there is nothing to reverse."
+                        : form.rule_43_use === "exclusively_taxable"
+                        ? "The whole credit stands and Rule 43 never reaches this asset."
+                        : "Leave this until the CA has decided. The Rule 43 working lists an unclassified asset rather than guessing — assuming it is common reverses credit §16(1) gives, assuming it is taxable leaves a shortfall Rule 43(1)(h) charges interest on."}
+                    </p>
                   </Field>
                 )}
               </>

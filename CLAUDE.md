@@ -1295,6 +1295,44 @@ communicated to the recipient, and **GSTR-2B is that communication**.
 - **Not built:** invoice-wise Rule 36(4). The reconciliation now knows per
   document whether 2B allows the credit; `gstr3b_computer` still caps in
   aggregate.
+- **RULE 43 IS BUILT AND RULE 42 IS NOT, and the missing input was never the
+  arithmetic** (FA-19). A client making both taxable and exempt supplies
+  reverses one-sixtieth of the credit on each COMMON capital good every month
+  for five years, apportioned by exempt turnover — Tc, Tm, Tr, Te, per head
+  because Rule 43(2) says so. `domain/gst/rule_43.py` is the authority,
+  `services/gst_rule_43_service.py` fetches its two inputs, and
+  `GET /api/gst-workspace/itc/rule-43` serves the working beside the return.
+  **The one fact nobody held was which of Rule 43(1)'s three uses an asset is
+  put to** — the tax split has been on `fixed_assets` since migration 343 —
+  so migration 372 adds `rule_43_use`, nullable, no default, CHECKed to
+  `common | exclusively_exempt | exclusively_taxable`. **A NULL is REFUSED and
+  NAMED, never assumed**, because guessing is unsafe in both directions:
+  assuming common reverses credit §16(1) gives, assuming exclusively taxable
+  leaves Te undeclared with Rule 43(1)(h) interest running on it. Same shape as
+  `vendors.msme_status`. **E and F come from
+  `gst_return_service.outward_turnover`**, which builds the outward side
+  through the same `_outward_transactions` `gstr3b_from_books` uses — extracted
+  rather than copied, so a working and its return cannot disagree about what
+  was supplied. E is nil-rated + exempt + non-GST (§2(47) reading in §2(78)) and
+  **deliberately NOT zero-rated** (IGST §16(1) allows that credit and 43(1)(b)
+  names such supplies as other than exempted); F is all four (§2(112)).
+  ⚠️ **An OUTWARD supply the RECIPIENT pays tax on is missing from F**, because
+  `compute_gstr3b` accumulates a taxable supply only `if not
+  s.is_reverse_charge` — right for Table 3.1(a) and wrong for §2(112), which
+  excludes only INWARD reverse-charge supplies. A GTA's or an advocate's own
+  outward supplies are their turnover. A smaller F makes Te LARGER, which is
+  the safe direction, and the answer SAYS so for the period rather than being
+  silently generous. **Te
+  rounds UP** — it is added to output tax and 43(1)(h) charges interest, so
+  understating it is a shortfall that grows; the division happens ONCE on the
+  aggregate, not per asset. **It POSTS NOTHING**: the CA raises the reversal
+  journal and registers it with ground `rule_43`, which
+  `itc_register_service` has accepted since migration 362 and nothing could
+  produce a figure for. Three things are named as not modelled rather than
+  approximated: the (a)→(c) and (b)→(c) transitions (the provisos' five
+  percentage points per quarter need a HISTORY of the classification, which is
+  a second table), the Explanation to 43(1)(g)'s excise exclusions, and Rule 42
+  itself — the inputs-and-input-services twin, still absent.
 - **The 26AS reconciliation is the same rule and had the same defect
   (TDS-21).** `POST /tds-workspace/form26as/upload` asked the caller for BOTH
   sides — `raw_data.tds_entries` AND `raw_data.book_deductions` — with the tab

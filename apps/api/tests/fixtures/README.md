@@ -377,3 +377,41 @@ added.
 
 `applied_through_migration` moves 351 -> 361. 362 is the migration in flight in
 the PR that carries this refresh.
+
+## Guards refreshed 13 September 2026, after migration 371
+
+Eleven behind again — 361 against a repository at 372 — and the same ratchet
+refused, for the same reason it exists. Migration 372 (`fixed_assets.rule_43_use`)
+is the one in flight in the PR that carries this refresh.
+
+**A DIFFERENT ROUTE FROM THE FOUR REFRESHES ABOVE, and it is worth recording
+because it is cheaper and the proof is identical.** Those paged `GUARD_SQL` and
+reassembled every row. This one did not move 2,265 rows at all:
+
+1. Production's own `guards_md5` and per-kind counts were read first — 272 RLS
+   switches, 674 policies, 1,319 constraints, `ffe6cb9b930d73618ee66fcbd42d12f8`.
+2. The thirteen tables migrations 362-371 touch were read in full and their
+   `(kind, table)` groups REPLACED wholesale in the fixture — a replace and not
+   a merge, so a constraint production has dropped disappears here too.
+3. The result was hashed the same way and compared to (1).
+
+That third step is what makes the shortcut safe: the checksum covers all 2,265
+rows, so a change in any table the patch did NOT touch would have failed it.
+It did fail once, and usefully — the first attempt sorted the JOINED row
+strings rather than the `(kind, tbl, name)` TUPLE, which orders
+`x|a_b|…` against `x|a|…` differently because `|` sorts after a letter. The
+per-`(kind, initial)` comparison that located it found zero content
+differences, which is how the mismatch was identified as ordering rather than
+drift. **Sort the tuple, not the string.**
+
+`applied_through_migration` moves 361 -> 371. The counts move 270/661/1,289 ->
+272/674/1,319: two new tables (`statutory_remittances`,
+`payroll_loan_recoveries`), thirteen new policies (three on the first, four on
+the second, and migration 370's six assignment-scope policies), thirty new
+constraints. Zero deletions again, and no expression hash changed anywhere.
+
+The COLUMN snapshot is deliberately NOT refreshed here. It sits at 358 and its
+own test has no ten-migration cap, because the columns added since are declared
+one by one in `production_types.ADDED_AFTER_THE_SNAPSHOT` — a list somebody
+must edit, which is its own ratchet. Refreshing it is a separate capture on its
+own cycle, as the note in its `.meta.json` says.
