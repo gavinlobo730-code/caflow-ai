@@ -94,6 +94,8 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("purchase_bill_lines", "cess_specific_paise_per_unit"): "migration 374",
     ("purchase_bill_lines", "cess_paise"): "migration 374",
     ("vendors", "credit_limit_paise"): "migration 378",
+    ("purchase_bills", "recurring_template_id"): "migration 379",
+    ("purchase_bills", "recurring_occurrence"): "migration 379",
 }
 
 

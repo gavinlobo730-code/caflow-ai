@@ -87,7 +87,12 @@ BUDGET: dict[str, int] = {
     "/api/payroll": 1, "/api/purchase-bills": 1, "/api/tally-migration": 1,
 }
 
-TOTAL_BUDGET = 133
+# LOWERED from 133 to the measured 132 on 2026-09-13. PUR-26 added four
+# `/api/recurring-purchase-bills` endpoints and wired all four to the Purchases
+# screen, so the module needs no budget of its own; the spare 1 the total had
+# been carrying is given back rather than absorbed, which is the only direction
+# this number is allowed to move.
+TOTAL_BUDGET = 132
 
 
 def _sources() -> str:

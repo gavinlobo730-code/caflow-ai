@@ -39,6 +39,7 @@ import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { RecurringBills } from "@/components/purchases/RecurringBills";
 
 import { todayLocalISO } from "@/lib/dateMath";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -139,9 +140,10 @@ async function getAuthToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
-type PurchaseTab = "bills" | "vendors" | "payments" | "debit-notes" | "credit-notes";
+type PurchaseTab = "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes";
 const TABS: { id: PurchaseTab; label: string }[] = [
   { id: "bills", label: "Purchase Bills" },
+  { id: "recurring", label: "Recurring" },
   { id: "vendors", label: "Vendors" },
   { id: "payments", label: "Payments" },
   { id: "debit-notes", label: "Debit Notes" },
@@ -249,6 +251,7 @@ export default function PurchasesPage() {
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
         {tab === "bills" && <PurchaseBills clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "recurring" && <RecurringBills clientId={clientId} />}
         {tab === "vendors" && <Vendors clientId={clientId} />}
         {tab === "payments" && <Payments clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
         {tab === "debit-notes" && <DebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}

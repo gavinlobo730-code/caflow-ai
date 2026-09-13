@@ -196,10 +196,10 @@
       "needs": "three new document types"
     },
     "PUR-26": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "no recurring purchase bill, though recurring sales invoices are complete (repo-wide probe, 2026-09-12)",
-      "needs": "a schedule table; the sales side is the pattern to copy"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "Migration 379 gives purchase bills the template / lines / runs trio that sales invoices have had since 107 and journals since 377, `services/recurring_purchase_bill_service.py` drives it, `/api/recurring-purchase-bills` serves it, the Purchases screen has a Recurring tab, and the daily sweep runs it beside the other two. DRAFTS ONLY — receiving is what posts Dr Expense / Dr GST Input / Cr Trade Payables, withholds the TDS and claims the credit, and stays the CA's act. The tax is the ordinary bill engine's, not this module's. ONE CADENCE ENGINE: domain/recurrence is imported, and a test asserts the module holds no copy — two engines drifting means one feature generates in a month the other skips. A FAILED occurrence is recorded and the template does NOT advance. `bill_no` is the VENDOR'S own number and is left blank (it is half the key GSTR-2B matching uses); `our_reference` is stamped. The per-line facts that decide money — itc_eligible (CGST s.17(5)), expense_account_id, tds_applicable — travel on the template rather than being re-decided every month, and a line with no catalogue item is refused at SAVE time because the alternative is failing inside an unattended 06:00 IST job. tests/test_a_recurring_bill_is_a_template_the_firm_owns.py holds all of it.",
+      "why_it_mattered_more_here": "Most of the s.194 series charges on the YEAR'S AGGREGATE (s.194C(5) and the 'aggregate of the sums' limb in ss.194A/194D/194G/194H/194J), so a month nobody entered does not only lose an expense — it changes what the NEXT bill should withhold, and with it the Rule 30(2) deposit and the quarterly statement."
     },
     "SALES-21": {
       "status": "open",

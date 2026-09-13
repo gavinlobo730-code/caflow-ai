@@ -1253,6 +1253,25 @@ PostgREST. That is why:
   reads. A failed occurrence is RECORDED in `recurring_journal_runs` and the
   template does NOT advance — a template that cannot post needs a CA, and
   advancing past a failure would skip the month silently.
+  **There are THREE of these now** — sales invoices (107), journals (377) and
+  PURCHASE BILLS (379, PUR-26) — and the third exists because the purchase side
+  is where a missed month costs more than an expense: most of the §194 series
+  charges on the YEAR'S AGGREGATE, so rent (§194I) or a retainer (§194J) that
+  nobody entered changes what the NEXT bill should withhold, and with it the
+  Rule 30(2) deposit and the quarterly statement.
+  `services/recurring_purchase_bill_service.py` generates a **DRAFT** bill
+  through the ordinary bill engine and never RECEIVES one — receiving is what
+  posts Dr Expense / Dr GST Input / Cr Trade Payables, withholds the TDS and
+  claims the credit. **`bill_no` is left blank on purpose**: it is the VENDOR'S
+  own document number, a fact about the landlord's books, and half the key
+  `domain/gst/itc_matching` uses — inventing one puts a number the supplier
+  never issued onto a document the 2B reconciliation reads. `our_reference` is
+  ours and is stamped. The per-line facts that decide money —
+  `itc_eligible` (CGST §17(5)), `expense_account_id`, `tds_applicable` — travel
+  on the TEMPLATE, because defaulting them at generation would re-decide every
+  month what the CA decided once; and a line with no catalogue item is refused
+  at SAVE time, since `PurchaseBillLineIn` has required one since migration 206
+  and the alternative is failing inside an unattended 06:00 IST job.
 - **The migrations and production have drifted before, in both halves of the
   schema.** `tests/test_schema_matches_production_pg.py` (columns) and
   `tests/test_guards_match_production_pg.py` (RLS switches, policies,
