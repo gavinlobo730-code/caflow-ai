@@ -7,20 +7,20 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **75** | re-read against the code. The defect is gone. |
+| closed | **76** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | partial | **9** | part of the finding is answered, part is not. Each says which. |
-| open | **32** | re-read and still true. |
+| open | **31** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 41 items — 32 open and 9 partial — not 254.**
+**The work left is 40 items — 31 open and 9 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 32 open, most are not code problems.** Nearly every one needs a
+**And of the 31 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -45,7 +45,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **INV-08** | Physical verification is one item at a time, with no count sheet and no session |
 | medium | **IT-23** | The ITR filing workflow offers only ITR-3/5/6/7, has no revised or updated return path, and the  |
 | medium | **PAY-23** | Statutory bonus is computed only inside a leaver's settlement — there is no annual bonus run for |
-| medium | **PAY-25** | The payroll journal posts one Salaries Expense account and defines the debit as the sum of the c |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 | medium | **PUR-16** | A second, orphaned vendor master at /accounting/suppliers that no purchase path reads |
@@ -79,7 +78,6 @@ migration; a handful need a statutory document a person has to read.
 | **INV-08** | a session table |
 | **IT-23** | a status and a pointer to the original acknowledgement — a migration |
 | **PAY-23** | a bonus register, and the state minimum wage the Act computes on |
-| **PAY-25** | a per-department or per-account split needs somewhere to record the mapping |
 | **PAY-26** | schema for claims |
 | **PAY-27** | each bank's own file format |
 | **PUR-16** | ONE migration — vendors has 34 of the 36 columns already; only credit_limit_paise has no equivalent (payment_terms_days maps to credit_days). Repointing the screen without it would silently drop a recorded credit limit |
@@ -182,6 +180,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PAY-17** | Annual professional tax for §16(iii) is estimated as this month's PT × 12 — six times the year's |
 | medium | **PAY-18** | `logger` is undefined in the /employee-exceptions error path — a failed declarations read raises |
 | medium | **PAY-24** | Leave is half-built: balances are invented in TypeScript as 12/12/15, nothing accrues or carries |
+| medium | **PAY-25** | The payroll journal posts one Salaries Expense account and defines the debit as the sum of the c |
 | medium | **PUR-12** | The reconciliation screen tells the CA that ITC is restricted to 105% of GSTR-2A — a cushion rep |
 | medium | **PUR-20** | GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client |
 | medium | **PUR-23** | Issuing a debit note (purchase return) does not resync the TDS register, so 26Q keeps reporting  |

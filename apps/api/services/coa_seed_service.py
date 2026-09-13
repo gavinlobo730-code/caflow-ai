@@ -121,6 +121,15 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("5013", "Staff Welfare",                "Expense", "Staff Welfare"),
     ("5014", "Interest on Loans",            "Expense", "Finance Cost"),
     ("5015", "Round Off",                    "Expense", "Overhead"),           # %Round Off% (invoice round-off; migration 174)
+    # Schedule III Part II presents Employee Benefits Expense split into
+    # (a) salaries and wages, (b) contribution to provident and other funds,
+    # (c) share based payments and (d) staff welfare. The payroll accrual used
+    # to debit one Salaries Expense line for gross AND the employer's PF/ESI,
+    # which made (b) nil on every payroll client's note (PAY-25). The subtype
+    # carries "Employee" so domain/reporting/schedule_iii.py buckets it under
+    # the same caption as 5002 — the caption total is unchanged, only the
+    # note's sub-split. Migration 375 backfills it for existing firms.
+    ("5016", "Contribution to Provident and Other Funds", "Expense", "Employee Benefits"),  # %Contribution to Provident%
     ("5901", "Loss on Asset Disposal",       "Expense", "Other Expense"),      # %Loss on Asset Disposal%
 ]
 

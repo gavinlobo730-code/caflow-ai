@@ -455,10 +455,9 @@
       "why": "gstr3b_computer has no import-IGST or ISD row for Table 4(A)"
     },
     "PAY-25": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "the payroll journal posts one Dr Salaries Expense for gross plus employer PF and ESI",
-      "needs": "a per-department or per-account split needs somewhere to record the mapping"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "Closed 2026-09-13. The accrual posts TWO debits: Salaries Expense = gross (IT Act s.17(1)) and a new Contribution to Provident and Other Funds = employer PF + EDLI + the EPF administrative charge + employer ESI — Schedule III Division I Part II presents Employee Benefits Expense split that way, and one combined debit made (b) nil on every payroll client's note. The employer share is summed off `payroll_slips` (paged), because `payroll_runs` stores only the COMBINED pf/esi totals and has no column for either employer half; reading the slips means an old run finalised after this change splits correctly too and there is no cached figure to drift. Migration 375 seeds account 5016 for every existing firm and coa_seed_service carries it for new ones; the subtype is \"Employee Benefits\" so domain/reporting/schedule_iii.py buckets it under the SAME caption as 5002 — the P&L caption total is unchanged and only the note's sub-split moves, which is what makes it safe against books already holding one-line entries (a posted journal cannot be rewritten, migration 251). The range guard became an EXACT identity, because the debit is no longer defined as sum(credits) — and it immediately caught a test fixture whose total_net_paise had deducted BOTH halves of the 12% from the employee's pay. NOT extended to `_build_settlement_lines`: a leaver's F&F payload carries no employer contribution at all, so there is nothing there to split."
     },
     "PUR-23": {
       "status": "closed",

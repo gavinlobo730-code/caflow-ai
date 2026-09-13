@@ -199,6 +199,35 @@ change. The code is the authority; keep this file in step with it.
   return back). **A filing that pins NOTHING is allowed through**: the column is
   nullable and a CA who computed outside the product has no snapshot to pin, so
   refusing would make the pin mandatory by accident.
+- **THE PAYROLL ACCRUAL HAS TWO DEBITS, AND THE EMPLOYER SHARE COMES OFF THE
+  SLIPS** (PAY-25). Schedule III Division I Part II presents Employee Benefits
+  Expense as (a) salaries and wages, (b) contribution to provident and other
+  funds, (c) share based payments and (d) staff welfare. `_build_payroll_lines`
+  posted ONE debit for gross PLUS the employer's 12% PF, EDLI, the EPF
+  administrative charge and the employer's 3.25% ESI, so **(b) was nil on every
+  payroll client's note and (a) was overstated by exactly the contribution** —
+  and the split cannot be recovered afterwards, because one posted debit
+  carries no record of how much of it was contribution and a posted journal
+  cannot be rewritten (migration 251). It has to be two lines at the moment of
+  posting or it is not recoverable at all. Salaries takes **gross** (§17(1));
+  `Contribution to Provident and Other Funds` (5016, migration 375) takes the
+  employer side. The **administrative CHARGE is a fee, not a contribution**,
+  and is grouped there anyway because it is remitted on the same challan and is
+  universally presented with PF. **The employer share is summed off
+  `payroll_slips`, paged** — `payroll_runs` stores only the COMBINED
+  `total_pf_paise` / `total_esi_paise` and has no column for either employer
+  half, so reading the slips is the only way, and it also means an old run
+  finalised after the change splits correctly with no cached figure to drift.
+  **The subtype `Employee Benefits` is load-bearing**: `schedule_iii.classify`
+  buckets on it, so both accounts land under one caption and the P&L total is
+  unchanged — only the note's sub-split moves, which is what makes this safe
+  against books already holding one-line entries. **The range guard became an
+  EXACT identity** (`gross + contribution == sum(credits)`), because the debit
+  is no longer defined as sum(credits) and the kernel's balance check does its
+  job again — it caught a fixture on the first run whose `total_net_paise` had
+  deducted BOTH halves of the 12% from the employee's pay. Deliberately NOT
+  extended to `_build_settlement_lines`: a leaver's F&F payload carries no
+  employer contribution at all, so there is nothing there to split.
 - **A DRAFT payroll run has deducted nothing** (PAY-04).
   `_tds_already_deducted_this_fy` and `_members_contributing_earlier_this_period`
   read `payroll_runs` with no status predicate while every other reader has
