@@ -231,10 +231,9 @@
       "needs": "ONE migration — vendors has 34 of the 36 columns already; only credit_limit_paise has no equivalent (payment_terms_days maps to credit_days). Repointing the screen without it would silently drop a recorded credit limit"
     },
     "ACC-06": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "components still hold recurring journal templates in localStorage — const LS_KEY = \"practicesync_recurring_templates\"",
-      "needs": "tables for the templates, budgets and retainers"
+      "status": "partial",
+      "verified_on": "2026-09-13",
+      "why": "THE HONESTY HALF IS DONE — the finding's own interim, in its words: 'until then the hub cards should say this device only'. One BrowserOnlyNotice component on all three screens, the hub cards carry the same warning, and the Recurring card no longer says 'Automate monthly, quarterly & yearly entries' — nothing posts a due template. Each screen also names what IT specifically cannot do (a retainer invoice is not a sales invoice; the budget's actuals are real and only the budgets are local). apps/web/scripts/a-browser-only-screen-says-so.test.ts states the RULE, so a fourth such screen fails rather than appearing quietly — and that sweep found the team-page permissions defect below. WHAT REMAINS is the fix itself: firm-scoped tables with RLS, CRUD behind rbac(), and jobs/scheduler.py posting due templates as DRAFTS. That is a migration."
     },
     "ACC-19": {
       "status": "open",

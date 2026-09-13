@@ -9,25 +9,24 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 |---|---|---|
 | closed | **71** | re-read against the code. The defect is gone. |
 | closed_by_commit | **159** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **10** | part of the finding is answered, part is not. Each says which. |
-| open | **34** | re-read and still true. |
+| partial | **11** | part of the finding is answered, part is not. Each says which. |
+| open | **33** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 44 items — 34 open and 10 partial — not 254.**
+**The work left is 44 items — 33 open and 11 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 34 open, most are not code problems.** Nearly every one needs a
+**And of the 33 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
 
 | severity | finding | what it is |
 |---|---|---|
-| high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
@@ -66,7 +65,6 @@ migration; a handful need a statutory document a person has to read.
 
 | finding | what actually blocks it |
 |---|---|
-| **ACC-06** | tables for the templates, budgets and retainers |
 | **GST-11** | schema for a quarterly filing preference, plus IFF |
 | **GST-20** | a registrations table; clients.gstin is singular today |
 | **IT-19** | somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) — a migration |
@@ -100,6 +98,7 @@ migration; a handful need a statutory document a person has to read.
 
 | severity | finding | what it is |
 |---|---|---|
+| high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |

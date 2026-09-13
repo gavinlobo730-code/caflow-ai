@@ -25,6 +25,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Client } from "@/lib/types";
+import BrowserOnlyNotice from "@/components/BrowserOnlyNotice";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -536,6 +537,13 @@ export default function RetainerPage() {
         <h1 className="text-xl font-semibold text-[#0F172A]">Monthly Retainer Tracker</h1>
         <p className="text-sm text-[#64748B] mt-0.5">Track fixed-fee retainer clients, work done, and generate invoices</p>
       </div>
+
+      <BrowserOnlyNotice
+        what="retainers, the work logged against them and the invoices raised here"
+        alsoNot={"An invoice raised on this screen is not a sales invoice in the books. " +
+                 "Raise it in the client's Sales tab for it to reach the ledger, GSTR-1 " +
+                 "and the receivables."}
+      />
 
       {error && (
         <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700">

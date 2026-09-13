@@ -3411,6 +3411,20 @@ export const api = {
     myPermissions: () =>
       request<ApiResp<{ role: string | null; permissions: Record<string, string[]> }>>(
         "/api/identity/permissions"),
+    /** What EVERY role can reach — the Team screen's access matrix.
+     *
+     *  myPermissions above answers for the caller, which is what a screen
+     *  needs to decide whether to render a control. This answers for all five
+     *  roles, which is what a Partner needs to see what each member's role
+     *  actually grants.
+     *
+     *  `app/team/page.tsx` carried its own copy of this and it had drifted
+     *  badly in the direction that matters: it told a Partner an Executive
+     *  could reach only Clients and Tasks, when the backend grants them
+     *  Accounting, GST, Income Tax, MCA, Reports and TDS as well. */
+    roleMatrix: () =>
+      request<ApiResp<{ roles: string[]; matrix: Record<string, Record<string, string[]>> }>>(
+        "/api/identity/role-matrix"),
   },
   /** The Annual Information Statement — IT Act §285BB.
    *

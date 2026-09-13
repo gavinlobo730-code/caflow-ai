@@ -1039,6 +1039,25 @@ PostgREST. That is why:
   RLS is genuinely enforced on the API path too.
 - RBAC: `Partner > Manager > Executive > Reviewer > Client`
   (`core/permissions.py`, applied as `rbac(resource, action)`).
+- **ACCESS IS BY ROLE, AND THERE IS NO PER-MEMBER OVERRIDE.** `rbac()` decides
+  every request from the role alone. The Team screen used to render a "Module
+  Access Matrix" of per-member toggles headed *"Changes are saved instantly.
+  Overrides the role default for that individual"* — and every clause was
+  false: the toggles wrote into `localStorage`, reaching no other user, device
+  or server, and nothing in `core/permissions.py` could have honoured them
+  anyway. A Partner who unticked Payroll for an Executive believed they had
+  removed access and had not. The grid is READ-ONLY now, and a browser
+  carrying old overrides has them purged, because "custom" asserted a
+  restriction that never existed.
+- **A screen showing what a role can reach ASKS.** `GET /api/identity/permissions`
+  answers for the caller (what to render); `GET /api/identity/role-matrix`
+  answers for all five roles (what the Team screen shows a Partner). Both are
+  `get_accessible_resources` and neither is a security boundary. The Team
+  screen's own `ROLE_DEFAULTS` copy had drifted in the expensive direction —
+  it showed an Executive reaching Clients and Tasks only, when PERMISSIONS
+  gives them accounting, gst, income_tax, mca, report and tds besides, and it
+  gave a Manager Billing they do not have while withholding the Reports and
+  Settings they do.
 
 ## Schedule III captions — one vocabulary, and the screen is served it
 
