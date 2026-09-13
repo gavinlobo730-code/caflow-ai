@@ -130,8 +130,8 @@
     },
     "FA-08b": {
       "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "no output tax on an asset disposal anywhere: journal_for_asset_disposal emits no tax line and DisposalIn has no tax field. Separated from FA-08 because the finding's depreciation half is closed and its own suggested fix for that half was unsound",
+      "verified_on": "2026-09-13",
+      "why": "no output tax on an asset disposal anywhere: journal_for_asset_disposal emits no tax line and DisposalIn has no tax field. Separated from FA-08 because the finding's depreciation half is closed and its own suggested fix for that half was unsound OWNER DECISION, 13-09-2026, delegated: \"you take the decision\". CGST §18(6) is computed as the statute states it — the HIGHER of the credit taken reduced by five percentage points per quarter or part of a quarter from the invoice date (Rule 44(6)) and the tax on the transaction value — with both figures and the working shown, because picking one silently is how a disposal under-declares. Whether a particular disposal is a SUPPLY at all (a scrapping with no consideration, a transfer to a related party) turns on facts the ledger does not hold and is NAMED on the answer rather than assumed. See docs/audits/questions-for-the-owner.md §D.",
       "needs": "a migration for the disposal's tax split, and a decision on CGST s.18(6)",
       "title": "No output tax on a fixed-asset disposal — the split half of FA-08",
       "severity": "medium"
@@ -237,8 +237,8 @@
     "ACC-19": {
       "status": "open",
       "verified_on": "2026-09-13",
-      "why": "RE-READ AND THE FINDING UNDERSTATES IT. All FIVE multi-currency phases are built — foreign documents, realized and unrealized FX, five /api/fx-reports endpoints, foreign bank accounts — and NONE of it can be switched on. resolve_currency_policy is `active = l1 AND l2 AND l3`. L1 is the env kill switch MULTI_CURRENCY_ENABLED, which is CORRECTLY env-driven and must not get a settings toggle (core/feature_flags says 'No DB dependency'); the finding names only that one. The real defect is L2 and L3: firms.multi_currency_entitled and clients.multi_currency_enabled are NOT NULL DEFAULT FALSE (migration 146), READ by policy.py and six routers — banking, currencies, purchase_bills, sales_invoices, purchase_payments and more — and WRITTEN BY NOTHING: no endpoint, no Pydantic field, no screen, no seed. Only a manual UPDATE can activate the feature.",
-      "needs": "an owner decision before any code. L3 is a per-client opt-in a CA would set, but turning it on alone changes nothing because the three are ANDed. L2 is documented as 'Commercial | is the practice entitled? (plan/beta)' — making it self-serve turns a commercial entitlement into a toggle the firm grants itself, which is a product call, not a code one. Half-building L3 is pointless; building both without deciding L2's nature is worse."
+      "why": "RE-READ AND THE FINDING UNDERSTATES IT. All FIVE multi-currency phases are built — foreign documents, realized and unrealized FX, five /api/fx-reports endpoints, foreign bank accounts — and NONE of it can be switched on. resolve_currency_policy is `active = l1 AND l2 AND l3`. L1 is the env kill switch MULTI_CURRENCY_ENABLED, which is CORRECTLY env-driven and must not get a settings toggle (core/feature_flags says 'No DB dependency'); the finding names only that one. The real defect is L2 and L3: firms.multi_currency_entitled and clients.multi_currency_enabled are NOT NULL DEFAULT FALSE (migration 146), READ by policy.py and six routers — banking, currencies, purchase_bills, sales_invoices, purchase_payments and more — and WRITTEN BY NOTHING: no endpoint, no Pydantic field, no screen, no seed. Only a manual UPDATE can activate the feature. OWNER DECISION, 13-09-2026, delegated: \"I have always trusted you to take the right decision\". L2 becomes a SELF-SERVE Partner setting and L3 a per-client opt-in. There is no billing, plan or entitlement machinery anywhere in this product, so a commercial entitlement has nothing to hang off and gating one checkbox would mean building an entitlement system first — larger and less useful than the feature it gates. If it is ever sold, the column does not move: a plan check goes in front of the endpoint that sets it. MULTI_CURRENCY_ENABLED stays an environment kill switch. See docs/audits/questions-for-the-owner.md §B.",
+      "needs": "the two endpoints and the two controls. The owner decision the finding was blocked on is taken."
     },
     "GST-10": {
       "status": "partial",
@@ -266,9 +266,9 @@
       "why": "PROBED, and the 'appears in the tree' note was wrong. bill_of_entry occurs ONLY in domain/gst/gstr2b.py as a section of the PORTAL's own file — there is no Bill of Entry document type in the product. gstr3b_computer's _table_4a_rows emits IMPG and IMPS as hard zeros with a comment saying nothing upstream distinguishes an import. Needs a migration (a new document table)."
     },
     "PUR-27": {
-      "status": "open",
+      "status": "not_a_defect_as_stated",
       "verified_on": "2026-09-13",
-      "why": "PROBED, and the 'appears in the tree' note was wrong: expense_claim / ExpenseClaim occurs nowhere in apps/api or apps/web. Needs a migration. The finding itself says to check with the owner whether the banking voucher path is sufficient before building — that question is in docs/audits/questions-for-the-owner.md."
+      "why": "OWNER DECISION, 13-09-2026: not building an expense-claim document. The finding itself said to ask whether the banking voucher path is sufficient before building; it is. In the owner's words, \"we don't do the accounting, the CAs do, so it's their responsibility … we have given the attachment, if they want they can attach it, it's their call\" — a claim is settled between the CA and their client, and `domain/banking/attachments` already carries the evidence. Recorded here rather than left open so it is not re-opened as a gap: it is a scope decision, not a hole. See docs/audits/questions-for-the-owner.md §F."
     },
     "IT-11": {
       "status": "partial",
@@ -628,8 +628,8 @@
     "ACC-16": {
       "status": "open",
       "verified_on": "2026-09-13",
-      "why": "no line-ordering column on journal_lines in any migration, so a voucher's Dr/Cr lines display in arbitrary order",
-      "needs": "a migration adding the column, plus a backfill — and the probe pass warns migration 251's immutability trigger REFUSES that backfill outright, which the finding does not mention"
+      "why": "no line-ordering column on journal_lines in any migration, so a voucher's Dr/Cr lines display in arbitrary order OWNER DECISION, 13-09-2026, delegated. NO TRIGGER IS DISABLED and nothing already posted is rewritten: the column is added for lines written from now on, and the order for existing lines is DERIVED at read time — debits before credits, then created_at, then id — so an old voucher displays the conventional way round and displays the SAME way round every time. Same visible outcome as the finding's backfill, without the rare reviewable act against production that migration 251's immutability trigger would require. See docs/audits/questions-for-the-owner.md §E.",
+      "needs": "a migration adding the nullable column, and the read-time ordering. The backfill the finding asks for is deliberately NOT done."
     },
     "ACC-17": {
       "status": "closed_by_commit",
@@ -900,8 +900,8 @@
     "BANK-24": {
       "status": "open",
       "verified_on": "2026-09-13",
-      "why": "Confirmed and sharpened. NO bank table holds a GSTIN at all — not bank_accounts, not bank_matching_rules, not bank_transactions — and domain/gst/itc_matching.py and gst_2b_reconciliation_service know nothing about bank charges. Migration 254 gave the RULE the two facts a split needs (suggested_gst_rate_bps, suggested_is_interstate) and stopped there, so the credit is booked under §16 and can never be tied to the 2B row that §16(2)(aa) makes it conditional on.",
-      "needs": "ONE FACT SETTLED FIRST, and it decides the schema. A bank does not issue an invoice per charge — the ordinary practice is a MONTHLY CONSOLIDATED GST invoice covering the month's charges, which reaches GSTR-2B as a single B2B document. If that is right, the finding's 'two fields on the charge' is the wrong shape: the GSTIN belongs on the RULE (constant per bank, beside 254's two columns) and the document reference belongs once per (bank account, month), with the matcher comparing the month's aggregate against one 2B row. Per-charge references would make every charge an unmatched document and leave the register noisier than it is now. ⚠️ [S] — the monthly-consolidated practice is written from knowledge; this environment's proxy refuses every egress, so it was not confirmed. Check one real bank GST invoice before choosing the shape."
+      "why": "Confirmed and sharpened. NO bank table holds a GSTIN at all — not bank_accounts, not bank_matching_rules, not bank_transactions — and domain/gst/itc_matching.py and gst_2b_reconciliation_service know nothing about bank charges. Migration 254 gave the RULE the two facts a split needs (suggested_gst_rate_bps, suggested_is_interstate) and stopped there, so the credit is booked under §16 and can never be tied to the 2B row that §16(2)(aa) makes it conditional on. OWNER DECISION, 13-09-2026: the monthly-consolidated bank-invoice shape is NOT being built. In the owner's words, \"they upload the transactions and the CAs only select on which transaction GST is there; we shouldn't presume, let the CAs do it, give them the modal where they can select\". So the CA marks a bank-charge line as carrying GST, at a rate, inter-state or not, and migration 254's per-rule suggested_gst_rate_bps / suggested_is_interstate stay as the per-bank DEFAULT the rule proposes. No bank-invoice document, no GSTIN on a bank table, no inference from a narration — which also removes the [S] dependency on a bank's invoicing practice that could not be confirmed from here. See docs/audits/questions-for-the-owner.md §C.",
+      "needs": "the per-transaction control and the split it drives. The shape question the finding raised is settled by the owner and is no longer a blocker."
     },
     "BANK-25": {
       "status": "closed_by_commit",

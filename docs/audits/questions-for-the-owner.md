@@ -227,3 +227,95 @@ decision and I am treating these the same way. What is left here is two DROPs
 Everything not on this list either needed no permission or needed no migration,
 and is either shipped or scheduled. `docs/audits/findings-status.md` is the
 count.
+
+---
+
+# ANSWERED — 13 September 2026, evening
+
+Six things were put to the owner after PR #523 went green. All six came back
+in one message. Recorded here verbatim in substance, with what each one
+settles, because a decision that lives only in a chat log is a decision nobody
+can find later.
+
+## A. Merge #523 — **"Merge all of them"**
+
+Merged as `523ad02e`, squash, on a green head. Migrations **374–381** applied
+to production by the `apply pending migrations — production` job.
+
+## B. ACC-19, multi-currency — **"did not understand the question, but I have always trusted you"**
+
+The question restated: the whole multi-currency feature is BUILT — foreign
+documents, realised and unrealised FX, five report endpoints, foreign bank
+accounts — and cannot be switched on, because `resolve_currency_policy` ANDs
+three flags and two of them (`firms.multi_currency_entitled`,
+`clients.multi_currency_enabled`) are written by **nothing**: no endpoint, no
+model field, no screen, no seed. Only a hand-written SQL UPDATE activates it.
+The open question was whether the FIRM-level one is a self-serve setting or a
+commercial entitlement you sell.
+
+**Decided: a self-serve Partner setting, plus the per-client opt-in.** There
+is no billing, plan or entitlement machinery anywhere in this product, so
+"commercial entitlement" has nothing to hang off — gating one checkbox would
+mean inventing an entitlement system first, which is a larger and less useful
+build than the feature it gates. A CA firm either has foreign-currency clients
+or it does not; it is not a flag anyone games. If it is ever sold, the column
+does not move: a plan check goes in front of the endpoint that sets it.
+`MULTI_CURRENCY_ENABLED` stays an environment kill switch and must NOT get a
+settings toggle — `core/feature_flags` says "No DB dependency" and means it.
+
+## C. BANK-24, GST on bank charges — **"keep it general … they upload the transactions and the CAs only select on which transaction GST is there; we shouldn't presume, let the CAs do it, give them the modal where they can select"**
+
+**This overrides the shape the finding proposed, and it is the right call.**
+The finding wanted a monthly consolidated bank GST invoice modelled as a
+document, matched against one GSTR-2B row. That presumes both the bank's
+invoicing practice — `[S]`-graded, unconfirmable from here — and *which* lines
+of a statement carry GST, which is exactly the guessing this codebase refuses
+everywhere else.
+
+**Decided: the CA marks the transaction.** A bank-charge line gets a control
+where the CA says "this carries GST", at what rate, and whether it is
+inter-state. `bank_matching_rules` already carries `suggested_gst_rate_bps`
+and `suggested_is_interstate` (migration 254) as the per-bank DEFAULT, so the
+rule proposes and the CA disposes — the same division of labour the rest of
+the bank module uses. No bank-invoice document, no GSTIN on a bank table, no
+inference from a narration.
+
+## D. FA-08b, output tax on an asset disposal — **"I really am not aware of this, so you take the decision; if you need anything from somewhere you can't reach, tell me and I'll provide it"**
+
+**Decided: build it, computing CGST §18(6) as the statute states it** — on a
+supply of capital goods on which input tax credit has been taken, the amount
+payable is the HIGHER of (a) the credit taken reduced by five percentage
+points per quarter or part of a quarter from the invoice date (Rule 44(6)) and
+(b) the tax on the transaction value. Both are computed and the higher is
+taken, with the working shown, because "whichever is higher" is the operative
+words and picking one silently is how a disposal under-declares.
+
+**One thing I may come back to you for:** whether a particular disposal is a
+"supply" at all — a scrapping with no consideration, or a transfer to a
+related party — turns on facts the ledger does not hold. Those are named on
+the answer rather than assumed, in the shape `vendors.msme_status` uses.
+
+## E. ACC-16, journal line order — **"again did not understand, but I trust you"**
+
+The question restated: open a voucher and its debit and credit lines come back
+in whatever order the database happens to return. There is no "line 1, line 2"
+column. The finding's fix — add the column and backfill every line already
+posted — runs into migration 251, whose trigger **forbids touching a posted
+journal line at all**, so the backfill would need the trigger disabled against
+production, run, and re-enabled. That is a rare and reviewable act, and I was
+not going to do it unattended for a presentational fix.
+
+**Decided: no trigger is disabled and nothing is rewritten.** The column is
+added for lines written FROM NOW ON, and the order for lines already posted is
+DERIVED at read time — debits before credits, then creation order, then id, so
+an old voucher displays the conventional way round and displays the SAME way
+round every time. That is the same visible outcome as the backfill, with none
+of the risk. Scheduled, not yet built.
+
+## F. PUR-27, expense claims — **"we don't do the accounting, the CAs do, so it's their responsibility … we have given the attachment, if they want they can attach it, it's their call"**
+
+**Decided: not building an expense-claim document.** The banking voucher path
+plus `domain/banking/attachments` is the answer, and the CA confirms the claim
+with their client as part of their own engagement. Recorded as
+`not_a_defect_as_stated` rather than left open, so nobody re-opens it as a
+gap: it is a scope decision, not a hole.

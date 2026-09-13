@@ -10,17 +10,17 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 | closed | **83** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | partial | **10** | part of the finding is answered, part is not. Each says which. |
-| open | **23** | re-read and still true. |
-| not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
+| open | **22** | re-read and still true. |
+| not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 33 items — 23 open and 10 partial — not 254.**
+**The work left is 32 items — 22 open and 10 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 23 open, most are not code problems.** Nearly every one needs a
+**And of the 22 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -46,7 +46,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PUR-18** | Import of goods has no path — no Bill of Entry, so the IGST paid to customs cannot be recorded a |
 | medium | **PUR-19** | Reverse-charge bills produce no self-invoice (§31(3)(f)) and no payment voucher (§31(3)(g)) |
 | medium | **PUR-25** | No purchase orders, goods receipt notes or three-way matching |
-| medium | **PUR-27** | No expense claim or petty cash module — every small expense needs a vendor and a purchase bill |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
 | low | **ACC-16** | Journal lines have no ordering column, so a voucher's Dr/Cr lines display in arbitrary order and |
@@ -58,9 +57,9 @@ migration; a handful need a statutory document a person has to read.
 | **GST-11** | schema for a quarterly filing preference, plus IFF |
 | **GST-20** | a registrations table; clients.gstin is singular today |
 | **IT-19** | somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) — a migration |
-| **ACC-19** | an owner decision before any code. L3 is a per-client opt-in a CA would set, but turning it on alone changes nothing because the three are ANDed. L2 is documented as 'Commercial | is the practice entitled? (plan/beta)' — making it self-serve turns a commercial entitlement into a toggle the firm grants itself, which is a product call, not a code one. Half-building L3 is pointless; building both without deciding L2's nature is worse. |
+| **ACC-19** | the two endpoints and the two controls. The owner decision the finding was blocked on is taken. |
 | **BANK-21** | a migration; a card is a liability account whose statement signs are the mirror of a bank's |
-| **BANK-24** | ONE FACT SETTLED FIRST, and it decides the schema. A bank does not issue an invoice per charge — the ordinary practice is a MONTHLY CONSOLIDATED GST invoice covering the month's charges, which reaches GSTR-2B as a single B2B document. If that is right, the finding's 'two fields on the charge' is the wrong shape: the GSTIN belongs on the RULE (constant per bank, beside 254's two columns) and the document reference belongs once per (bank account, month), with the matcher comparing the month's aggregate against one 2B row. Per-charge references would make every charge an unmatched document and leave the register noisier than it is now. ⚠️ [S] — the monthly-consolidated practice is written from knowledge; this environment's proxy refuses every egress, so it was not confirmed. Check one real bank GST invoice before choosing the shape. |
+| **BANK-24** | the per-transaction control and the split it drives. The shape question the finding raised is settled by the owner and is no longer a blocker. |
 | **FA-08b** | a migration for the disposal's tax split, and a decision on CGST s.18(6) |
 | **FA-11** | a migration per item. One hazard the finding does not name: a shift multiplier folded into wdv_rate_percent would make schedule_ii_departure report every double-shift asset as a Part C departure, so it must be its own column |
 | **GST-25** | schema per return type |
@@ -74,7 +73,7 @@ migration; a handful need a statutory document a person has to read.
 | **PUR-25** | three new document types |
 | **SALES-21** | four new document types |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |
-| **ACC-16** | a migration adding the column, plus a backfill — and the probe pass warns migration 251's immutability trigger REFUSES that backfill outright, which the finding does not mention |
+| **ACC-16** | a migration adding the nullable column, and the read-time ordering. The backfill the finding asks for is deliberately NOT done. |
 
 ## Partial
 
@@ -97,6 +96,7 @@ migration; a handful need a statutory document a person has to read.
 | severity | finding | what it is |
 |---|---|---|
 | medium | **GST-26** | No HSN/SAC master is shipped — every firm builds its own library from nothing |
+| medium | **PUR-27** | No expense claim or petty cash module — every small expense needs a vendor and a purchase bill |
 | medium | **SALES-22** | No HSN/SAC master is exposed — every firm builds its code library from zero before it can raise  |
 | medium | **TDS-10** | TCS (§206C(1H)/(1F)/(1G), Form 27EQ, Form 27D) does not exist — only a rate row nobody reads |
 | low | **GST-31** | The GST portal integration router is complete, honest and reachable from no screen |
