@@ -11,6 +11,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { Account } from "@/lib/types";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import BrowserOnlyNotice from "@/components/BrowserOnlyNotice";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -316,6 +317,13 @@ export default function BudgetPage() {
           ))}
         </select>
       </div>
+
+      <BrowserOnlyNotice
+        what="budget figures"
+        alsoNot={"The ACTUALS beside them are read from the ledger and are real — only " +
+                 "the budgets you type are local, so a variance looks right and is " +
+                 "measured against a figure nobody else can see."}
+      />
 
       {/* Summary Bar */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

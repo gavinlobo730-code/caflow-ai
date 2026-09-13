@@ -220,6 +220,48 @@ def my_permissions(current_user: dict = Depends(get_current_user)):
     return api_response(True, {"role": role, "permissions": get_accessible_resources(role)})
 
 
+@router.get("/role-matrix")
+def role_matrix(current_user: dict = Depends(rbac("team", "read"))):
+    """What EVERY role can reach, for the Team screen's access matrix.
+
+    /permissions above answers for the caller alone, which is what a screen
+    needs to decide whether to render a control. This answers for all five
+    roles, which is what the Team screen needs to show a Partner what each
+    member's role actually grants.
+
+    WHY IT EXISTS (a defect with no finding)
+        `app/team/page.tsx` carried its own ROLE_DEFAULTS map — eleven modules
+        by five roles, "mirrors permissions.ts logic" said the comment — AND a
+        per-member override grid whose header read "Toggle access per member
+        per module. Changes are saved instantly. Overrides the role default for
+        that individual."
+
+        Every clause of that was false. The overrides went into
+        `localStorage["practicesync_permissions_<firm>"]`, so they reached no
+        other user, no other device and no server; there is no per-member
+        override concept in `core/permissions.py` at all, so nothing could have
+        honoured them; and `rbac()` decides every request from the ROLE alone.
+        A Partner who unticked Payroll for an Executive believed they had
+        removed access. They had not, anywhere.
+
+        A control that does nothing is the dead-control fault this codebase
+        keeps removing. A control that does nothing while LOOKING like access
+        control is worse, so the grid is read-only now and reads from here.
+
+    NOT A SECURITY BOUNDARY, exactly as /permissions says of itself: `rbac()`
+    on each endpoint is the only thing that decides anything. This decides what
+    is worth rendering, and it exists so there is one copy of the matrix
+    instead of a browser copy that drifts the moment PERMISSIONS changes.
+    """
+    from core.permissions import Role as _Role
+    return api_response(True, {
+        # Ordered least- to most-privileged, so a screen rendering columns in
+        # this order does not have to know the hierarchy itself.
+        "roles": [r.value for r in _Role],
+        "matrix": {r.value: get_accessible_resources(r.value) for r in _Role},
+    })
+
+
 class MyProfileBody(BaseModel):
     full_name: str
 

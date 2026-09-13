@@ -15,6 +15,7 @@ import { api } from "@/lib/api";
 import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
 import type { Account, Client } from "@/lib/types";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import BrowserOnlyNotice from "@/components/BrowserOnlyNotice";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -349,6 +350,13 @@ export default function RecurringPage() {
           <Plus size={13} /> New Template
         </button>
       </div>
+
+      <BrowserOnlyNotice
+        what="recurring templates"
+        alsoNot={"Nothing posts a due template either. When one falls due the entry still " +
+                 "has to be raised through the client's journal — this screen is the " +
+                 "reminder, not the posting."}
+      />
 
       {/* Due Today Banner */}
       {dueTemplates.length > 0 && (

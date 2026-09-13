@@ -9,25 +9,24 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 |---|---|---|
 | closed | **71** | re-read against the code. The defect is gone. |
 | closed_by_commit | **159** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **10** | part of the finding is answered, part is not. Each says which. |
-| open | **34** | re-read and still true. |
+| partial | **9** | part of the finding is answered, part is not. Each says which. |
+| open | **35** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 44 items — 34 open and 10 partial — not 254.**
+**The work left is 44 items — 35 open and 9 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 34 open, most are not code problems.** Nearly every one needs a
+**And of the 35 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
 
 | severity | finding | what it is |
 |---|---|---|
-| high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
@@ -37,8 +36,10 @@ migration; a handful need a statutory document a person has to read.
 | medium | **BANK-24** | Bank-charge input tax credit is posted with no supplier GSTIN or invoice reference, so it can ne |
 | medium | **FA-08b** | No output tax on a fixed-asset disposal — the split half of FA-08 |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
+| medium | **FA-19** | Rule 43 capital-goods ITC apportionment does not exist |
 | medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
+| medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
 | medium | **INV-02** | Moving average is the only costing method — no FIFO and no standard cost |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
@@ -66,7 +67,6 @@ migration; a handful need a statutory document a person has to read.
 
 | finding | what actually blocks it |
 |---|---|
-| **ACC-06** | tables for the templates, budgets and retainers |
 | **GST-11** | schema for a quarterly filing preference, plus IFF |
 | **GST-20** | a registrations table; clients.gstin is singular today |
 | **IT-19** | somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) — a migration |
@@ -100,14 +100,13 @@ migration; a handful need a statutory document a person has to read.
 
 | severity | finding | what it is |
 |---|---|---|
+| high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
-| medium | **FA-19** | Rule 43 capital-goods ITC apportionment does not exist |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
-| medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **PAY-15** | Attendance and LOP cannot be entered from the client Payroll tab at all — they live on a firm-wi |
 | low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 

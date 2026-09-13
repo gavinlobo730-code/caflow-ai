@@ -9,112 +9,61 @@ import { api } from "@/lib/api";
 // Client is external (uses the portal) and is not a team member here.
 type Role = "Partner" | "Manager" | "Executive" | "Reviewer";
 
-// All modules trackable in the permissions matrix
-const MODULES = [
-  "Accounting",
-  "GST",
-  "Income Tax",
-  "TDS",
-  "MCA",
-  "Payroll",
-  "Billing",
-  "Reports",
-  "Settings",
-  "Clients",
-  "Tasks",
-] as const;
+// The modules this screen names, and the backend resource each one IS.
+//
+// A LABEL, NOT A MATRIX. What each role can reach comes from
+// GET /api/identity/role-matrix, served straight out of core/permissions.py's
+// PERMISSIONS. This file used to hold its own ROLE_DEFAULTS — eleven modules
+// by four roles, "mirrors permissions.ts logic" said the comment — and it had
+// drifted in the direction that matters most: it showed an Executive as having
+// Clients and Tasks only, when the backend grants them Accounting, GST, Income
+// Tax, MCA, Reports and TDS too, and it showed a Manager with Billing they do
+// not have and without the Reports and Settings they do.
+const MODULES: { label: string; resource: string }[] = [
+  { label: "Accounting", resource: "accounting" },
+  { label: "GST", resource: "gst" },
+  { label: "Income Tax", resource: "income_tax" },
+  { label: "TDS", resource: "tds" },
+  { label: "MCA", resource: "mca" },
+  { label: "Payroll", resource: "payroll" },
+  { label: "Billing", resource: "billing" },
+  { label: "Reports", resource: "report" },
+  { label: "Settings", resource: "settings" },
+  { label: "Clients", resource: "client" },
+  { label: "Tasks", resource: "task" },
+];
 
-type Module = (typeof MODULES)[number];
+/** The served matrix: role → resource → the actions that role may take. */
+type RoleMatrix = Record<string, Record<string, string[]>>;
 
-// Default module access per role — mirrors permissions.ts logic
-const ROLE_DEFAULTS: Record<Role, Record<Module, boolean>> = {
-  Partner: {
-    Accounting: true,
-    GST: true,
-    "Income Tax": true,
-    TDS: true,
-    MCA: true,
-    Payroll: true,
-    Billing: true,
-    Reports: true,
-    Settings: true,
-    Clients: true,
-    Tasks: true,
-  },
-  Manager: {
-    Accounting: true,
-    GST: true,
-    "Income Tax": true,
-    TDS: true,
-    MCA: true,
-    Payroll: true,
-    Billing: true,
-    Reports: false,
-    Settings: false,
-    Clients: true,
-    Tasks: true,
-  },
-  Executive: {
-    Accounting: false,
-    GST: false,
-    "Income Tax": false,
-    TDS: false,
-    MCA: false,
-    Payroll: false,
-    Billing: false,
-    Reports: false,
-    Settings: false,
-    Clients: true,
-    Tasks: true,
-  },
-  Reviewer: {
-    Accounting: false,
-    GST: false,
-    "Income Tax": false,
-    TDS: false,
-    MCA: false,
-    Payroll: false,
-    Billing: false,
-    Reports: false,
-    Settings: false,
-    Clients: true,
-    Tasks: true,
-  },
-};
-
-// Per-member permissions map: memberId -> module -> boolean
-type MemberPermissions = Record<string, Record<Module, boolean>>;
-
-// localStorage key per firm
-function permissionsKey(firmId: string): string {
-  return `practicesync_permissions_${firmId}`;
+/** Whether `role` may reach `resource` at all, per the server. */
+function roleReaches(matrix: RoleMatrix, role: string, resource: string): boolean {
+  return (matrix[role]?.[resource]?.length ?? 0) > 0;
 }
 
-function loadPermissionsFromStorage(firmId: string): MemberPermissions {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(permissionsKey(firmId));
-    if (!raw) return {};
-    return JSON.parse(raw) as MemberPermissions;
-  } catch {
-    return {};
-  }
-}
+/**
+ * The per-member override store, kept ONLY to clear it.
+ *
+ * This screen used to write a member→module→boolean map into
+ * localStorage["practicesync_permissions_<firm>"] and render it as an access
+ * matrix whose header read "Toggle access per member per module. Changes are
+ * saved instantly. Overrides the role default for that individual."
+ *
+ * Every clause of that was false. The map reached no other user, no other
+ * device and no server; `core/permissions.py` has no per-member override
+ * concept, so nothing could have honoured it; and `rbac()` decides every
+ * request from the ROLE alone. A Partner who unticked Payroll for an Executive
+ * believed they had removed access. They had not, anywhere.
+ *
+ * So the grid is read-only and the store is PURGED on load — a browser
+ * carrying old overrides must stop showing a member as "custom", because that
+ * word asserted a restriction that never existed.
+ */
+const LEGACY_OVERRIDE_KEY = (firmId: string) => `practicesync_permissions_${firmId}`;
 
-function savePermissionsToStorage(firmId: string, perms: MemberPermissions): void {
+function purgeLegacyOverrides(firmId: string): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(permissionsKey(firmId), JSON.stringify(perms));
-}
-
-/** Returns the effective permissions for a member — stored overrides, or role defaults */
-function effectivePermissions(
-  member: { id: string; role: Role },
-  stored: MemberPermissions
-): Record<Module, boolean> {
-  if (stored[member.id]) {
-    return stored[member.id];
-  }
-  return { ...ROLE_DEFAULTS[member.role] };
+  try { localStorage.removeItem(LEGACY_OVERRIDE_KEY(firmId)); } catch { /* private window */ }
 }
 
 interface TeamMember {
@@ -365,7 +314,29 @@ function ActionsMenu({ member, onEdit, onDeactivate }: ActionsMenuProps) {
 }
 
 // ---- Role Permissions Info Card ----
+//
+// SERVED, like the matrix below it and for the same reason. This rendered
+// ROLE_DEFAULTS, the browser's own copy of core/permissions.py, and told a
+// Partner an Executive could reach Clients and Tasks only — when the backend
+// grants them Accounting, GST, Income Tax, MCA, Reports and TDS besides. It
+// also carried the line "Admins can override these per person in the matrix
+// above", which described a capability that has never existed.
 function RolePermissionsCard() {
+  const [matrix, setMatrix] = useState<RoleMatrix | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.identity.roleMatrix()
+      .then((r) => {
+        if (cancelled) return;
+        if (r.success && r.data) { setMatrix(r.data.matrix); setError(null); }
+        else { setMatrix(null); setError(r.error ?? "Couldn't load role permissions."); }
+      })
+      .catch(() => { if (!cancelled) { setMatrix(null); setError("Couldn't load role permissions."); } });
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
       <div className="flex items-center gap-2">
@@ -373,39 +344,45 @@ function RolePermissionsCard() {
           <Lock className="w-3.5 h-3.5 text-violet-600" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-[#0F172A]">Default Role Permissions</h3>
-          <p className="text-xs text-[#94A3B8]">Admins can override these per person in the matrix above</p>
+          <h3 className="text-sm font-semibold text-[#0F172A]">Role Permissions</h3>
+          <p className="text-xs text-[#94A3B8]">
+            Read from the server. Access is decided by role — there is no per-person override.
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {ROLES.map(role => {
-          const defaults = ROLE_DEFAULTS[role];
-          const allowed = MODULES.filter(m => defaults[m]);
-          const denied = MODULES.filter(m => !defaults[m]);
-          return (
-            <div key={role} className="border border-[#F1F5F9] rounded-lg p-3 space-y-2">
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[role]}`}>
-                {role}
-              </span>
-              <div className="space-y-1">
-                {allowed.map(m => (
-                  <div key={m} className="flex items-center gap-1.5 text-xs text-green-700">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
-                    {m}
-                  </div>
-                ))}
-                {denied.map(m => (
-                  <div key={m} className="flex items-center gap-1.5 text-xs text-[#94A3B8]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-gray-200 shrink-0" />
-                    {m}
-                  </div>
-                ))}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {!matrix && !error && <p className="text-xs text-[#94A3B8]">Loading…</p>}
+
+      {matrix && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {ROLES.map(role => {
+            const allowed = MODULES.filter(m => roleReaches(matrix, role, m.resource));
+            const denied = MODULES.filter(m => !roleReaches(matrix, role, m.resource));
+            return (
+              <div key={role} className="border border-[#F1F5F9] rounded-lg p-3 space-y-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[role]}`}>
+                  {role}
+                </span>
+                <div className="space-y-1">
+                  {allowed.map(m => (
+                    <div key={m.resource} className="flex items-center gap-1.5 text-xs text-green-700">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                      {m.label}
+                    </div>
+                  ))}
+                  {denied.map(m => (
+                    <div key={m.resource} className="flex items-center gap-1.5 text-xs text-[#94A3B8]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-200 shrink-0" />
+                      {m.label}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -417,37 +394,36 @@ interface PermissionsMatrixProps {
 }
 
 function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
-  const [stored, setStored] = useState<MemberPermissions>({});
+  // THE MATRIX IS SERVED, AND THE GRID IS READ-ONLY.
+  //
+  // It used to be a per-member toggle grid backed by localStorage, under a
+  // header that read "Toggle access per member per module. Changes are saved
+  // instantly. Overrides the role default for that individual." None of that
+  // was true — see LEGACY_OVERRIDE_KEY at the top of this file. A control that
+  // does nothing is the dead-control fault; one that does nothing while
+  // looking like access control is worse, because a Partner acts on it.
+  const [matrix, setMatrix] = useState<RoleMatrix | null>(null);
+  const [matrixError, setMatrixError] = useState<string | null>(null);
 
-  // Load from localStorage on mount
   useEffect(() => {
-    setStored(loadPermissionsFromStorage(firmId));
+    // Any overrides this browser is still carrying are removed, so nobody sees
+    // a member marked "custom" for a restriction that never existed anywhere.
+    purgeLegacyOverrides(firmId);
   }, [firmId]);
 
-  function togglePermission(memberId: string, memberRole: Role, module: Module) {
-    setStored(prev => {
-      // Start from current effective permissions for this member
-      const current = effectivePermissions({ id: memberId, role: memberRole }, prev);
-      const updated: MemberPermissions = {
-        ...prev,
-        [memberId]: {
-          ...current,
-          [module]: !current[module],
-        },
-      };
-      savePermissionsToStorage(firmId, updated);
-      return updated;
-    });
-  }
-
-  function resetMemberToDefault(memberId: string) {
-    setStored(prev => {
-      const updated = { ...prev };
-      delete updated[memberId];
-      savePermissionsToStorage(firmId, updated);
-      return updated;
-    });
-  }
+  useEffect(() => {
+    let cancelled = false;
+    api.identity.roleMatrix()
+      .then((r) => {
+        if (cancelled) return;
+        if (r.success && r.data) { setMatrix(r.data.matrix); setMatrixError(null); }
+        // Shown, never replaced by an empty grid: every box unticked reads as
+        // "nobody can reach anything", which is a statement and a false one.
+        else { setMatrix(null); setMatrixError(r.error ?? "Couldn't load the access matrix."); }
+      })
+      .catch(() => { if (!cancelled) { setMatrix(null); setMatrixError("Couldn't load the access matrix."); } });
+    return () => { cancelled = true; };
+  }, []);
 
   const activeMembers = members.filter(m => m.is_active !== false);
 
@@ -460,6 +436,21 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
     );
   }
 
+  if (matrixError) {
+    return (
+      <div className="bg-white rounded-xl border border-[#F1F5F9] p-6 text-center">
+        <p className="text-sm text-red-600">{matrixError}</p>
+      </div>
+    );
+  }
+  if (!matrix) {
+    return (
+      <div className="bg-white rounded-xl border border-[#F1F5F9] p-6 text-center">
+        <p className="text-sm text-[#94A3B8]">Loading access matrix…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Matrix table */}
@@ -467,8 +458,9 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
         <div className="px-5 py-4 border-b border-gray-50">
           <h2 className="text-sm font-semibold text-[#0F172A]">Module Access Matrix</h2>
           <p className="text-xs text-[#94A3B8] mt-0.5">
-            Toggle access per member per module. Changes are saved instantly.
-            Overrides the role default for that individual.
+            What each member&apos;s ROLE gives them, read from the server. Access is
+            decided by role — to change what somebody can reach, change their role
+            above. There is no per-person override.
           </p>
         </div>
 
@@ -481,24 +473,19 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
                 </th>
                 {MODULES.map(mod => (
                   <th
-                    key={mod}
+                    key={mod.resource}
                     className="text-center text-xs font-medium text-[#64748B] px-2 py-3 min-w-[70px]"
                   >
-                    <span className="block">{mod.split(" ")[0]}</span>
-                    {mod.includes(" ") && (
-                      <span className="block text-[#94A3B8]">{mod.split(" ").slice(1).join(" ")}</span>
+                    <span className="block">{mod.label.split(" ")[0]}</span>
+                    {mod.label.includes(" ") && (
+                      <span className="block text-[#94A3B8]">{mod.label.split(" ").slice(1).join(" ")}</span>
                     )}
                   </th>
                 ))}
-                <th className="text-center text-xs font-medium text-[#64748B] px-3 py-3 min-w-[80px]">
-                  Reset
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F8FAFC]">
               {activeMembers.map(member => {
-                const perms = effectivePermissions({ id: member.id, role: member.role }, stored);
-                const isOverridden = !!stored[member.id];
                 const initials = member.full_name
                   .split(" ")
                   .filter(Boolean)
@@ -523,63 +510,36 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
                             <span className={`text-xs px-1.5 py-px rounded-full font-medium ${ROLE_COLORS[member.role]}`}>
                               {member.role}
                             </span>
-                            {isOverridden && (
-                              <span className="text-xs text-orange-500 font-medium">custom</span>
-                            )}
                           </div>
                         </div>
                       </div>
                     </td>
 
-                    {/* Module checkboxes */}
+                    {/* What the ROLE reaches. A dot, not a checkbox: a
+                        checkbox invites a click, and there is nothing to
+                        click — access moves with the role. */}
                     {MODULES.map(mod => {
-                      const enabled = perms[mod];
-                      const defaultVal = ROLE_DEFAULTS[member.role][mod];
-                      const differs = isOverridden && stored[member.id]?.[mod] !== defaultVal;
+                      const enabled = roleReaches(matrix, member.role, mod.resource);
                       return (
-                        <td key={mod} className="px-2 py-3 text-center">
-                          <label className="inline-flex items-center justify-center cursor-pointer group">
-                            <input
-                              type="checkbox"
-                              checked={enabled}
-                              onChange={() => togglePermission(member.id, member.role, mod)}
-                              className="sr-only"
-                            />
-                            <span
-                              className={[
-                                "w-5 h-5 rounded flex items-center justify-center border transition-colors",
-                                enabled
-                                  ? differs
-                                    ? "bg-orange-500 border-orange-500"
-                                    : "bg-blue-600 border-blue-600"
-                                  : "border-[#E2E8F0] bg-white group-hover:border-gray-300",
-                              ].join(" ")}
-                            >
-                              {enabled && (
-                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
-                                  <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              )}
-                            </span>
-                          </label>
+                        <td key={mod.resource} className="px-2 py-3 text-center">
+                          <span
+                            title={enabled
+                              ? `${member.role} can reach ${mod.label} (${(matrix[member.role]?.[mod.resource] ?? []).join(", ")})`
+                              : `${member.role} cannot reach ${mod.label}`}
+                            className={[
+                              "inline-flex w-5 h-5 rounded items-center justify-center border",
+                              enabled ? "bg-blue-600 border-blue-600" : "border-[#E2E8F0] bg-white",
+                            ].join(" ")}
+                          >
+                            {enabled && (
+                              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12">
+                                <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </span>
                         </td>
                       );
                     })}
-
-                    {/* Reset to role defaults */}
-                    <td className="px-3 py-3 text-center">
-                      {isOverridden ? (
-                        <button
-                          onClick={() => resetMemberToDefault(member.id)}
-                          className="text-xs text-[#94A3B8] hover:text-blue-600 underline underline-offset-2 transition-colors"
-                          title="Reset to role defaults"
-                        >
-                          Reset
-                        </button>
-                      ) : (
-                        <span className="text-xs text-gray-200">—</span>
-                      )}
-                    </td>
                   </tr>
                 );
               })}

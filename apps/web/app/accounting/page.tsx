@@ -12,13 +12,23 @@ import { api } from "@/lib/api";
 // (Client → Accounting), powered by the single backend reporting engine. The
 // firm's own books are the internal "practice" client. The old duplicate
 // firm-level accounting screens have been retired.
-const ADMIN_CARDS = [
+const ADMIN_CARDS: {
+  label: string; description: string; href: string;
+  icon: typeof Users; notShared?: boolean;
+}[] = [
   { label: "Supplier Master", description: "Manage supplier TDS sections, credit limits and payment terms", href: "/accounting/suppliers", icon: Users },
   { label: "Receivables Aging", description: "Outstanding invoices grouped by aging bucket", href: "/accounting/receivables", icon: Clock },
   { label: "Loans & FD", description: "Loans, EMI schedules and FD investments with maturity & TDS flags", href: "/accounting/loans", icon: Landmark },
-  { label: "Recurring Transactions", description: "Automate monthly, quarterly & yearly entries", href: "/accounting/recurring", icon: RefreshCw },
-  { label: "Budget vs Actuals", description: "Compare budgeted amounts with posted entries", href: "/accounting/budget", icon: Target },
-  { label: "Retainer Tracker", description: "Track monthly retainer clients and generate GST invoices", href: "/accounting/retainer", icon: IndianRupee },
+  // ACC-06. These three keep everything the CA enters in this browser's
+  // localStorage — no table, no RLS, no sharing, and nothing posts a due
+  // template. `notShared` says so on the card, because the description above
+  // it used to promise the opposite: "Automate monthly, quarterly & yearly
+  // entries" is a claim the screen cannot keep, and a partner who set a
+  // template up on their laptop would find nothing on the office machine.
+  // Real firm-scoped tables are the fix and need a migration.
+  { label: "Recurring Transactions", description: "Templates for monthly, quarterly & yearly entries", href: "/accounting/recurring", icon: RefreshCw, notShared: true },
+  { label: "Budget vs Actuals", description: "Compare budgeted amounts with posted entries", href: "/accounting/budget", icon: Target, notShared: true },
+  { label: "Retainer Tracker", description: "Track monthly retainer clients and generate GST invoices", href: "/accounting/retainer", icon: IndianRupee, notShared: true },
   { label: "MSME 43B(h) Tracker", description: "Track MSME vendor payments to avoid IT Act §43B(h) disallowance", href: "/accounting/msme-tracker", icon: FileText },
   { label: "Schedule III Statements", description: "Balance Sheet & P&L in Companies Act 2013 Schedule III format for MCA/ROC", href: "/accounting/schedule-iii", icon: ClipboardCheck },
   { label: "Trial Balance Import", description: "Import opening balances from Tally, Busy, QuickBooks, Zoho, Excel CSV", href: "/accounting/trial-balance-import", icon: Scale },
@@ -81,6 +91,12 @@ export default function AccountingHubPage() {
                 <div>
                   <p className="text-sm font-semibold text-[#0F172A]">{card.label}</p>
                   <p className="text-xs text-[#64748B] mt-0.5 leading-tight">{card.description}</p>
+                  {card.notShared && (
+                    <p className="text-[11px] text-amber-700 mt-1 leading-tight">
+                      Saved in this browser only — not shared with the firm, and not
+                      posted automatically.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>

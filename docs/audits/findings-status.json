@@ -231,10 +231,9 @@
       "needs": "ONE migration — vendors has 34 of the 36 columns already; only credit_limit_paise has no equivalent (payment_terms_days maps to credit_days). Repointing the screen without it would silently drop a recorded credit limit"
     },
     "ACC-06": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "components still hold recurring journal templates in localStorage — const LS_KEY = \"practicesync_recurring_templates\"",
-      "needs": "tables for the templates, budgets and retainers"
+      "status": "partial",
+      "verified_on": "2026-09-13",
+      "why": "THE HONESTY HALF IS DONE — the finding's own interim, in its words: 'until then the hub cards should say this device only'. One BrowserOnlyNotice component on all three screens, the hub cards carry the same warning, and the Recurring card no longer says 'Automate monthly, quarterly & yearly entries' — nothing posts a due template. Each screen also names what IT specifically cannot do (a retainer invoice is not a sales invoice; the budget's actuals are real and only the budgets are local). apps/web/scripts/a-browser-only-screen-says-so.test.ts states the RULE, so a fourth such screen fails rather than appearing quietly — and that sweep found the team-page permissions defect below. WHAT REMAINS is the fix itself: firm-scoped tables with RLS, CRUD behind rbac(), and jobs/scheduler.py posting due templates as DRAFTS. That is a migration."
     },
     "ACC-19": {
       "status": "open",
@@ -425,9 +424,9 @@
       "why": "Both GST tabs offer 'Mark as filed' on an approved return, through one MarkFiledDialog: the portal ARN (optional — a CA without it to hand must still be able to record reality) and the real filing DATE (required — the period lock and the §37(3) window are both measured from it). Both PATCHes now carry them, and both check res.success, which GSTR1Tab.updateStatus never did — the GST workspace answers a refusal as HTTP 200 with {success: false}. Frontend only; the endpoint has accepted arn and filed_date since migration 036's columns were written to."
     },
     "GST-28": {
-      "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "rule_37a is a live reason code in itc_register_service; the finding's report, the Rule 37 interest and the posting help are not built"
+      "status": "open",
+      "verified_on": "2026-09-13",
+      "why": "PROBED, and HALF THE FINDING'S OWN FIX CONFLICTS WITH A DOCUMENTED DECISION. It asks for a 'Post this reversal' action that 'creates the journal through the posting kernel and registers it in one step'. But services/itc_register_service.py's own docstring records the opposite choice deliberately: 'Giving credit back is a real movement — a credit to GST Input — and that posting already has a home: the CA raises it as a manual journal like any other entry', because a journal crediting GST Input could be a Rule 37 reversal, a Rule 42 apportionment or a §17(5) block, and only the CA knows which. A one-click poster would also have to choose the debit account, which is the judgement. That half is an owner decision, not a bug. THE OTHER HALF IS BUILDABLE AND UNAMBIGUOUS: Rule 37(1) requires the credit to be paid back 'along with interest payable thereon under section 50', and domain/gst/late_filing.py now computes §50 interest — so the Rule 37 report can state what each overdue bill's reversal costs. No migration. Rule 37A stays blocked on GST-04's supplier-filing status, as the finding says."
     },
     "PAY-15": {
       "status": "partial",
@@ -497,9 +496,9 @@
       "why": "routers/itr_workspace.py carries financial_year as a validated FYLabel AND assessment_year as its own field; the two are no longer one value doing both jobs"
     },
     "FA-19": {
-      "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "rule_43 is a live reversal reason in itc_register_service, so a CA can record an apportionment. The Rule 43 COMPUTATION — the 60-month capital-goods life, the monthly common-credit share — does not exist"
+      "status": "open",
+      "verified_on": "2026-09-13",
+      "why": "PROBED, and the blocker the finding names is GONE. It said 'once assets carry their tax split (FA-07)' — migration 343 added igst_paise / cgst_paise / sgst_paise to fixed_assets and FA-07 is closed, so they do. The other input is exempt turnover, which gstr3b_computer already computes (outward_nil_exempt, and supply_classification distinguishes exempt). So Rule 43's monthly 1/60th of common capital-goods credit apportioned by exempt turnover is DERIVABLE TODAY WITH NO MIGRATION — a domain module beside domain/gst/, read by the ITC reversal register, which already accepts rule_43 as a reversal reason. This is the largest no-migration build left in the backlog. Not started: it is a new statutory engine (Tc/Tm/Tr/Te over a 60-month life) rather than a wiring job."
     },
     "PUR-15": {
       "status": "partial",

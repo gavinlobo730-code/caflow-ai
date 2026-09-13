@@ -955,6 +955,23 @@ EXEMPT: dict[str, str] = {
     "/api/accounting/schedule-iii/captions":
         "a statutory vocabulary, not data: no table, no client_id, and the same "
         "captions for every firm. The PATCH that stores one is guarded.",
+    # ── /api/identity: the role matrix, which is about ROLES not clients ────
+    # What each of the five roles can reach, straight out of
+    # core/permissions.py's PERMISSIONS. It reads no table, takes no client_id,
+    # and returns the same answer for every firm in the product, because the
+    # matrix is a property of the CODE. A client guard here would have to
+    # invent a client to check.
+    #
+    # It exists so the Team screen stops holding its own copy: that copy had
+    # drifted in the expensive direction, showing an Executive as reaching
+    # Clients and Tasks only when PERMISSIONS gives them accounting, gst,
+    # income_tax, mca, report and tds besides. `rbac("team", "read")` gates it,
+    # and it is explicitly not a security boundary — rbac() on each endpoint is
+    # still the only thing that decides anything.
+    "/api/identity/role-matrix":
+        "the RBAC matrix itself, not data: no table, no client_id, and the "
+        "same answer for every firm. Gated on team:read; rbac() on each "
+        "endpoint is what actually decides access.",
     # ── /api/income-tax: the §44AB test, which reads nothing ────────────────
     # Arithmetic on figures the CALLER states — a turnover, a nature, three
     # optional cash aggregates. It opens no table, takes no client_id, and
