@@ -64,6 +64,7 @@ migration; a handful need a statutory document a person has to read.
 | **GST-11** | schema for a quarterly filing preference, plus IFF |
 | **GST-20** | a registrations table; clients.gstin is singular today |
 | **IT-19** | somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) — a migration |
+| **ACC-19** | an owner decision before any code. L3 is a per-client opt-in a CA would set, but turning it on alone changes nothing because the three are ANDed. L2 is documented as 'Commercial | is the practice entitled? (plan/beta)' — making it self-serve turns a commercial entitlement into a toggle the firm grants itself, which is a product call, not a code one. Half-building L3 is pointless; building both without deciding L2's nature is worse. |
 | **BANK-11** | a match_type column, or a second pattern column — the rule row has neither |
 | **BANK-21** | a migration; a card is a liability account whose statement signs are the mirror of a bank's |
 | **BANK-24** | a migration for the two fields |

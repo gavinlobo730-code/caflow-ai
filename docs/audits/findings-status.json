@@ -235,8 +235,9 @@
     },
     "ACC-19": {
       "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "multi_currency_platform_enabled exists in apps/api and nothing under app/settings can switch it on"
+      "verified_on": "2026-09-13",
+      "why": "RE-READ AND THE FINDING UNDERSTATES IT. All FIVE multi-currency phases are built — foreign documents, realized and unrealized FX, five /api/fx-reports endpoints, foreign bank accounts — and NONE of it can be switched on. resolve_currency_policy is `active = l1 AND l2 AND l3`. L1 is the env kill switch MULTI_CURRENCY_ENABLED, which is CORRECTLY env-driven and must not get a settings toggle (core/feature_flags says 'No DB dependency'); the finding names only that one. The real defect is L2 and L3: firms.multi_currency_entitled and clients.multi_currency_enabled are NOT NULL DEFAULT FALSE (migration 146), READ by policy.py and six routers — banking, currencies, purchase_bills, sales_invoices, purchase_payments and more — and WRITTEN BY NOTHING: no endpoint, no Pydantic field, no screen, no seed. Only a manual UPDATE can activate the feature.",
+      "needs": "an owner decision before any code. L3 is a per-client opt-in a CA would set, but turning it on alone changes nothing because the three are ANDed. L2 is documented as 'Commercial | is the practice entitled? (plan/beta)' — making it self-serve turns a commercial entitlement into a toggle the firm grants itself, which is a product call, not a code one. Half-building L3 is pointless; building both without deciding L2's nature is worse."
     },
     "GST-10": {
       "status": "partial",
