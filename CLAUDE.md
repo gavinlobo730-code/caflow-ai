@@ -194,6 +194,35 @@ change. The code is the authority; keep this file in step with it.
   option became the one to LEAVE the regime; which sub-section it now names
   could not be read. The rule is written as the effect, with the sub-section
   deliberately not guessed.
+- **THE FOUR REINVESTMENT SECTIONS ARE NOT ONE RULE WITH FOUR NAMES** (IT-19,
+  migration 385). `capital_gains_engine` computed the gain, the holding period
+  and the rate and stopped, so on a house sale — where the whole gain is
+  routinely exempt — the register showed tax on a gain the client may not owe
+  tax on at all. `domain/income_tax/reinvestment_exemption.py` is the
+  authority. **§54 exempts the LOWER of the gain and the cost; §54F is
+  PROPORTIONATE** — gain × cost ÷ NET CONSIDERATION — so on a ₹1 crore sale
+  with a ₹40 lakh gain and a ₹50 lakh house, §54's rule would exempt ₹40 lakh
+  and §54F exempts ₹20 lakh; applying the wrong one halves the tax.
+  **§54EC's ₹50 lakh spans the year of transfer AND the year after it
+  together** (the second proviso), so reading it as a per-year cap doubles the
+  exemption; its window is six months, and from 01-04-2018 it reaches only land
+  or building — a transfer before that keeps the wider section, the fork shape
+  again. **§54B is the one section a SHORT-TERM gain reaches**, because its
+  charging words describe the USE of the land in the two preceding years rather
+  than a holding period. The Finance Act 2023's ₹10 crore ceiling applies to
+  §54 and §54F from FY 2023-24 only. **Three facts are refused and NAMED, never
+  guessed**: what was SOLD (`capital_gains.transferred_asset_nature` — the
+  register's `asset_type` cannot tell a residential house from a plot), how many
+  other houses the assessee owned (§54F's own condition) and whether the land
+  was farmed (§54B's). **No exemption amount is stored** — the caps move by
+  Finance Act, so it is derived on every read, the same reason migration 278
+  made `outstanding_paise` generated. **The individual-or-HUF test is its own
+  tri-state and NOT `capital_gains_engine.ASSESSEE_TYPES`**, whose `other` means
+  "not a RESIDENT individual or HUF" — a NON-RESIDENT individual falls there and
+  §54 reaches them perfectly well. The fraction FLOORS, because the exemption is
+  what tax is not charged on. ⚠️ Every figure and window is `[S]`-graded: egress
+  is refused here, incometax.gov.in included, so a test pins each constant
+  exactly and the screen says so.
 - **An estimated Cost Inflation Index says so, and is not written into the
   register.** The CII for a year is notified partway through it, usually around
   June, so `cii_for` legitimately falls back for a sale in the first weeks of a

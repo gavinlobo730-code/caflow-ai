@@ -85,6 +85,9 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("fixed_assets", "disposal_gst_rate_bps"): "migration 383",
     ("fixed_assets", "disposal_is_interstate"): "migration 383",
     ("journal_lines", "line_order"): "migration 384",
+    ("capital_gains", "transferred_asset_nature"): "migration 385",
+    # public.capital_gain_reinvestments is a WHOLE new table (385) and
+    # needs no entry: a table the snapshot predates is skipped.
 }
 
 

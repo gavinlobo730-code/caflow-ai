@@ -21,6 +21,8 @@ from domain.income_tax.capital_gains_engine import (
     ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
 from domain.income_tax.assessee import AssesseeKind, assessee_kind_for_entity_type
+from domain.income_tax import reinvestment_exemption as rex
+from services import capital_gain_exemption_service as cgx
 from domain.income_tax.advance_tax_interest_engine import (
     compute_234a_interest, compute_234b_interest, compute_234c_interest,
     installment_schedule, installment_rules, InstallmentPayment, INSTALLMENT_RULES,
@@ -715,6 +717,20 @@ def list_capital_gains(
 class CreateCapitalGainsRequest(ComputeCapitalGainsRequest):
     client_id: str
     asset_description: str = Field(min_length=1)
+    # IT-19 — optional, because it decides no figure the create path computes.
+    # A gain recorded without it is a complete register entry; only the
+    # exemption working refuses, and it says what to record.
+    transferred_asset_nature: Optional[str] = None
+
+    @field_validator("transferred_asset_nature")
+    @classmethod
+    def known_nature(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if v not in rex.ASSET_NATURES:
+            raise ValueError(
+                f"transferred_asset_nature must be one of {sorted(rex.ASSET_NATURES)}")
+        return v
 
     @field_validator("asset_type")
     @classmethod
@@ -768,6 +784,12 @@ def create_capital_gains(
                                else result.indexed_cost_paise),
         "gain_type": "LTCG" if result.is_long_term else "STCG",
         "tax_rate_percent": result.tax_rate_percent,
+        # IT-19. What was SOLD, in the vocabulary the s.54 family charges on.
+        # `asset_type` cannot carry it: 'property' covers both a residential
+        # house and a plot, and s.54 reaches one while s.54F reaches the
+        # other. None is stored where the caller did not say, and the
+        # exemption working then REFUSES rather than guessing.
+        "transferred_asset_nature": req.transferred_asset_nature,
     }
     if not db:
         return api_response(True, {"id": "mock-id", **payload})
@@ -807,6 +829,208 @@ def delete_capital_gains(
     if not row.data:
         raise HTTPException(status_code=404, detail="Capital gains record not found")
     return api_response(True, {"id": record_id})
+
+
+# ── s.54 / 54B / 54EC / 54F reinvestment exemption (IT-19) ──────────────────
+# The engine is domain/income_tax/reinvestment_exemption.py and it computes
+# nothing here: this file reads the register entry and its claims and hands
+# them over. Every refusal comes back as a sentence, because a screen showing
+# a CA their register needs to say what to go and record.
+# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+
+
+class ReinvestmentIn(BaseModel):
+    section: str
+    new_asset_description: str = Field(min_length=1)
+    acquisition_kind: Optional[str] = None
+    acquisition_date: Optional[date] = None
+    cost_paise: int = Field(default=0, ge=0)
+    cgas_deposit_paise: int = Field(default=0, ge=0)
+    cgas_deposit_date: Optional[date] = None
+    # The two facts no ledger holds. Optional so a claim can be recorded
+    # before the CA has asked the client; the working then names the gap.
+    other_residential_houses_owned: Optional[int] = Field(default=None, ge=0)
+    agricultural_use_two_years: Optional[bool] = None
+    new_asset_transferred_on: Optional[date] = None
+    notes: Optional[str] = None
+
+    @field_validator("section")
+    @classmethod
+    def known_section(cls, v: str) -> str:
+        if v not in rex.SECTIONS:
+            raise ValueError(f"section must be one of {sorted(rex.SECTIONS)}")
+        return v
+
+    @field_validator("acquisition_kind")
+    @classmethod
+    def known_kind(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if v not in rex.ACQUISITION_KINDS:
+            raise ValueError(
+                f"acquisition_kind must be one of {sorted(rex.ACQUISITION_KINDS)}")
+        return v
+
+
+def _claim_response(c: rex.ClaimResult) -> dict:
+    return {
+        "section": c.section,
+        "heading": c.heading,
+        "allowed": c.allowed,
+        "exemption_paise": c.exemption_paise,
+        "amount_considered_paise": c.amount_considered_paise,
+        "deadline": c.deadline.isoformat() if c.deadline else None,
+        "within_time": c.within_time,
+        "working": c.working,
+        "gaps": c.gaps,
+        "caveats": c.caveats,
+    }
+
+
+def _exemption_response(r: rex.ExemptionResult, claim_rows: list[dict]) -> dict:
+    by_index = list(claim_rows)
+    claims = []
+    for i, c in enumerate(r.claims):
+        row = by_index[i] if i < len(by_index) else {}
+        claims.append({**_claim_response(c),
+                       "id": row.get("id"),
+                       "new_asset_description": row.get("new_asset_description")})
+    return {
+        "gain_paise": r.gain_paise,
+        "total_exemption_paise": r.total_exemption_paise,
+        "taxable_gain_paise": r.taxable_gain_paise,
+        "claims": claims,
+        "gaps": r.gaps,
+        "caveats": r.caveats,
+    }
+
+
+@router.get("/capital-gains/sections")
+def get_reinvestment_sections(
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The four sections and what each one reaches — served so the screen has
+    no second copy of the vocabulary to drift from."""
+    return api_response(True, {
+        "sections": [{
+            "section": r.section,
+            "heading": r.heading,
+            "reaches": list(r.reaches),
+            "requires_long_term": r.requires_long_term,
+            "new_asset": r.new_asset,
+            "proportionate": r.proportionate,
+            "cgas_available": r.cgas_available,
+            "invested_cap_paise": r.invested_cap_paise,
+            "lock_in_years": r.lock_in_years,
+        } for r in rex.RULES.values()],
+        "asset_natures": list(rex.ASSET_NATURES),
+        "acquisition_kinds": list(rex.ACQUISITION_KINDS),
+    })
+
+
+def _entry_and_claims(current_user: dict, record_id: str, db):
+    """The register entry, scope-checked, and its claims — or a 404."""
+    if db is None:
+        return None, []
+    row = (db.table("capital_gains").select("*").eq("id", record_id)
+           .eq("firm_id", current_user["firm_id"]).limit(1).execute())
+    entry = (row.data or [None])[0]
+    if not entry or not can_access_client(current_user, entry.get("client_id")):
+        raise HTTPException(status_code=404, detail="Capital gains record not found")
+    # THE PROJECTION IS SPELLED OUT rather than passed as `cgx.CLAIM_COLUMNS`,
+    # and that is not a style choice: `tests/test_backend_columns_exist_pg.py`
+    # reads every `.select()` against the real schema and can only do so on a
+    # literal — a constant is invisible to it and counts against the
+    # unreadable-reference budget. The service keeps CLAIM_COLUMNS as the
+    # documented projection and a test holds the two identical.
+    claims = (db.table("capital_gain_reinvestments").select(
+                  "id, capital_gain_id, section, new_asset_description, "
+                  "acquisition_kind, acquisition_date, cost_paise, "
+                  "cgas_deposit_paise, cgas_deposit_date, "
+                  "other_residential_houses_owned, agricultural_use_two_years, "
+                  "new_asset_transferred_on, notes, created_at")
+              .eq("capital_gain_id", record_id)
+              .eq("firm_id", current_user["firm_id"])
+              .order("created_at").execute())
+    return entry, (claims.data or [])
+
+
+@router.get("/capital-gains/{record_id}/exemption")
+def get_capital_gain_exemption(
+    record_id: str,
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """What s.54 / 54B / 54EC / 54F exempt on this transfer, claim by claim."""
+    db = _db()
+    if db is None:
+        return api_response(True, {"gain_paise": 0, "total_exemption_paise": 0,
+                                   "taxable_gain_paise": 0, "claims": [],
+                                   "gaps": [], "caveats": []})
+    entry, claim_rows = _entry_and_claims(current_user, record_id, db)
+    result = cgx.exemption_for_entry(entry, claim_rows,
+                                     client_id=entry["client_id"],
+                                     firm_id=current_user["firm_id"])
+    return api_response(True, _exemption_response(result, claim_rows))
+
+
+@router.post("/capital-gains/{record_id}/reinvestments")
+def add_capital_gain_reinvestment(
+    record_id: str,
+    req: ReinvestmentIn,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Record a claim against one register entry.
+
+    THE CLAIM IS RECORDED WHETHER OR NOT IT QUALIFIES, and the working says
+    which. A claim refused for a missing fact is the ordinary state of one
+    entered before the CA has asked the client how many other houses they own
+    — refusing the WRITE would leave them nowhere to put what they do know.
+    """
+    db = _db()
+    if db is None:
+        return api_response(True, {"id": "mock-id", **req.model_dump(mode="json")})
+    entry, _ = _entry_and_claims(current_user, record_id, db)
+    # Written inline for the same reason the projection above is: the column
+    # guard reads a literal dict and a `payload` variable is invisible to it.
+    row = db.table("capital_gain_reinvestments").insert({
+        "firm_id": current_user["firm_id"],
+        "client_id": entry["client_id"],
+        "capital_gain_id": record_id,
+        "section": req.section,
+        "new_asset_description": req.new_asset_description,
+        "acquisition_kind": req.acquisition_kind,
+        "acquisition_date": req.acquisition_date.isoformat() if req.acquisition_date else None,
+        "cost_paise": req.cost_paise,
+        "cgas_deposit_paise": req.cgas_deposit_paise,
+        "cgas_deposit_date": req.cgas_deposit_date.isoformat() if req.cgas_deposit_date else None,
+        "other_residential_houses_owned": req.other_residential_houses_owned,
+        "agricultural_use_two_years": req.agricultural_use_two_years,
+        "new_asset_transferred_on": (req.new_asset_transferred_on.isoformat()
+                                     if req.new_asset_transferred_on else None),
+        "notes": req.notes,
+        "created_by": current_user.get("id"),
+    }).execute()
+    return api_response(True, (row.data or [{}])[0])
+
+
+@router.delete("/capital-gains/{record_id}/reinvestments/{claim_id}")
+def delete_capital_gain_reinvestment(
+    record_id: str,
+    claim_id: str,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    db = _db()
+    if db is None:
+        return api_response(True, {"id": claim_id})
+    # Scope-checked through the parent entry, which is what carries the
+    # client_id — the same shape as _assert_capital_gains_scope.
+    _entry_and_claims(current_user, record_id, db)
+    row = (db.table("capital_gain_reinvestments").delete()
+           .eq("id", claim_id).eq("capital_gain_id", record_id)
+           .eq("firm_id", current_user["firm_id"]).execute())
+    if not row.data:
+        raise HTTPException(status_code=404, detail="Reinvestment claim not found")
+    return api_response(True, {"id": claim_id})
 
 
 # ── Advance tax interest (R3.13a) ───────────────────────────────────────────

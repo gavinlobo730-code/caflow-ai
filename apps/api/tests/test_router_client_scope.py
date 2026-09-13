@@ -563,7 +563,13 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # _assert_capital_gains_scope is the new resolver (can_access_client, one
     # fixed "Capital gains record not found" message, the year_end.py shape) —
     # a no-op in mock mode, which has no persistent store to protect.
-    "/api/income-tax": ("assert_client_access", "can_access_client", "_assert_capital_gains_scope"),
+    # IT-19 added a second row-addressed resolver, _entry_and_claims: it
+    # fetches the register entry by id, 404s on another firm's or an
+    # unassigned client's with the same fixed "Capital gains record not
+    # found" message, and returns its claims — so every s.54-family endpoint
+    # is scoped through the ENTRY, which is what carries the client_id.
+    "/api/income-tax": ("assert_client_access", "can_access_client",
+                        "_assert_capital_gains_scope", "_entry_and_claims"),
     # "/api/compliance" is a SHARED prefix — TWO DISTINCT FILES both declare
     # APIRouter(prefix="/api/compliance"): compliance.py (4 routes: /tasks,
     # /calendar, /seed, /due-dates/calculate — the older compliance_calendar
@@ -1416,6 +1422,12 @@ EXEMPT: dict[str, str] = {
     "/api/income-tax/capital-gains/cii-table":
         "the statutory Cost Inflation Index table (Section 48 2nd proviso) "
         "— identical for every firm and client, no stored data read.",
+    "/api/income-tax/capital-gains/sections":
+        "the four sections of the s.54 family and what each one reaches, out "
+        "of domain/income_tax/reinvestment_exemption.RULES — statutory "
+        "reference data, identical for every firm and client, no stored data "
+        "read and no client named. Served so the screen holds no second copy "
+        "of the vocabulary.",
     "/api/income-tax/capital-gains/compute":
         "ComputeCapitalGainsRequest has no client_id — a stateless "
         "estimator, does not persist anything (unlike POST /capital-gains, "

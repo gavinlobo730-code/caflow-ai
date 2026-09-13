@@ -300,6 +300,7 @@ export interface CapitalGainsRecord {
   indexed_cost_paise: number | null;
   gain_type: "STCG" | "LTCG" | null;
   tax_rate_percent: number | null;
+  transferred_asset_nature: TransferredAssetNature | null;
   created_at: string;
 }
 
@@ -332,6 +333,12 @@ export interface CreateCapitalGainRequest extends ComputeCapitalGainsRequest {
   client_id: string;
   asset_description: string;
   asset_type: CapitalGainsRegisterAssetType;
+  /** IT-19 — what was SOLD, in the vocabulary the s.54 family charges on.
+   *  `asset_type` cannot carry it: 'property' covers both a residential house
+   *  and a plot, and s.54 reaches one while s.54F reaches the other. Omitted
+   *  is a real answer (not recorded) and the exemption working then refuses
+   *  rather than guessing. */
+  transferred_asset_nature?: TransferredAssetNature | null;
 }
 
 /** Computes AND persists a register entry — gain_type/tax_rate_percent/
@@ -361,6 +368,112 @@ export async function getCiiTable(): Promise<{ ciiByFy: Record<string, number>; 
   const json = await res.json();
   if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load CII table: ${res.statusText}`);
   return { ciiByFy: json.data.cii_by_fy, latestVerifiedFy: json.data.latest_verified_fy };
+}
+
+// ── s.54 / 54B / 54EC / 54F reinvestment exemption (IT-19) ──────────────────
+// Everything here is READ from the backend. The four sections differ in ways
+// that decide the figure — s.54F apportions on net consideration where s.54
+// takes the lower of two amounts, s.54EC's Rs 50 lakh spans two financial
+// years, s.54B reaches a short-term gain — and
+// domain/income_tax/reinvestment_exemption.py is the one place that knows it.
+
+export type ReinvestmentSection = "54" | "54B" | "54EC" | "54F";
+export type AcquisitionKind = "purchase" | "construction" | "bonds";
+export type TransferredAssetNature =
+  "residential_house" | "agricultural_land" | "land_or_building" | "other";
+
+export interface ReinvestmentSectionInfo {
+  section: ReinvestmentSection;
+  heading: string;
+  reaches: TransferredAssetNature[];
+  requires_long_term: boolean;
+  new_asset: string;
+  proportionate: boolean;
+  cgas_available: boolean;
+  invested_cap_paise: number | null;
+  lock_in_years: number;
+}
+
+export interface ReinvestmentClaim {
+  id: string | null;
+  section: ReinvestmentSection;
+  heading: string;
+  new_asset_description: string | null;
+  allowed: boolean;
+  exemption_paise: number;
+  amount_considered_paise: number;
+  deadline: string | null;
+  within_time: boolean | null;
+  working: string[];
+  /** Facts nobody recorded. A claim with a gap is NOT allowed — and the
+   *  sentence says what to go and record. */
+  gaps: string[];
+  caveats: string[];
+}
+
+export interface CapitalGainExemption {
+  gain_paise: number;
+  total_exemption_paise: number;
+  taxable_gain_paise: number;
+  claims: ReinvestmentClaim[];
+  gaps: string[];
+  caveats: string[];
+}
+
+export interface ReinvestmentInput {
+  section: ReinvestmentSection;
+  new_asset_description: string;
+  acquisition_kind?: AcquisitionKind | null;
+  acquisition_date?: string | null;
+  cost_paise?: number;
+  cgas_deposit_paise?: number;
+  cgas_deposit_date?: string | null;
+  other_residential_houses_owned?: number | null;
+  agricultural_use_two_years?: boolean | null;
+  new_asset_transferred_on?: string | null;
+  notes?: string | null;
+}
+
+export async function getReinvestmentSections(): Promise<{
+  sections: ReinvestmentSectionInfo[];
+  asset_natures: TransferredAssetNature[];
+  acquisition_kinds: AcquisitionKind[];
+}> {
+  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains/sections`, {
+    headers: await _authHeaders(),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load the s.54 sections: ${res.statusText}`);
+  return json.data;
+}
+
+export async function getCapitalGainExemption(recordId: string): Promise<CapitalGainExemption> {
+  const res = await fetch(
+    `${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/exemption`,
+    { headers: await _authHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load the exemption working: ${res.statusText}`);
+  return json.data as CapitalGainExemption;
+}
+
+export async function addReinvestment(recordId: string, req: ReinvestmentInput): Promise<{ id: string }> {
+  const res = await fetch(
+    `${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/reinvestments`,
+    { method: "POST", headers: await _authHeaders(), body: JSON.stringify(req) });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to record the claim: ${res.statusText}`);
+  return json.data;
+}
+
+export async function deleteReinvestment(recordId: string, claimId: string): Promise<void> {
+  // One template literal, deliberately: the reachability scan matches the
+  // path as written, and a URL split across a concatenation reads to it as an
+  // endpoint no screen calls.
+  const path = `/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/reinvestments/${encodeURIComponent(claimId)}`;
+  const res = await fetch(`${API_BASE}${path}`,
+    { method: "DELETE", headers: await _authHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to delete the claim: ${res.statusText}`);
 }
 
 // ── Advance tax interest (R3.13a) ───────────────────────────────────────────
