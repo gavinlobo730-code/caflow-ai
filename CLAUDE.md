@@ -199,6 +199,28 @@ change. The code is the authority; keep this file in step with it.
   return back). **A filing that pins NOTHING is allowed through**: the column is
   nullable and a CA who computed outside the product has no snapshot to pin, so
   refusing would make the pin mandatory by accident.
+- **A RETURN OF INCOME HAS THREE KINDS, AND `itr_filings` HELD ONE** (IT-23,
+  migration 381). §139(1) is the ORIGINAL, §139(5) the REVISED and §139(8A) the
+  UPDATED return (ITR-U) — and the table could not have carried a second one
+  whatever the code did, because migration 319 declares
+  `UNIQUE (firm_id, client_id, financial_year, itr_form)`. A revised return
+  sits BESIDE the original: the original's acknowledgement number and date are
+  fields on the new return's own form. 381 narrows that constraint to
+  `WHERE return_type = 'original'` and adds no uniqueness to the other two —
+  §139(5) expressly allows a revised return to be revised again, and
+  §139(8A)'s once-only bar is about a return FURNISHED, which a constraint
+  cannot tell from a draft, so `itr_workflow.already_furnished_updated_return`
+  WARNS instead. **`domain/income_tax/return_type.py` is the authority** and
+  `GET /api/itr/return-kinds` serves it, so the filing screen holds labels and
+  no dates. The earlier receipt is READ off the original where this product
+  prepared it (the `domain/tds/deductor.resolve` shape) and REFUSED where
+  nobody holds it. ⚠️ **The two windows and §140B's bands are `[S]`**: §139(5)
+  is 31 December of the AY and NAMES the completion-of-assessment limb it
+  cannot see, §139(8A) reports BOTH the 48-month (Finance Act 2025) and
+  24-month dates and answers `is_open = None` where they disagree about today,
+  and §140B's 25/50/60/70 table is `verified=False` throughout and **REFUSES an
+  assessment year it does not hold** rather than falling back — the trap the
+  FY-versioned registries have, on money a client pays over.
 - **THE PAYROLL ACCRUAL HAS TWO DEBITS, AND THE EMPLOYER SHARE COMES OFF THE
   SLIPS** (PAY-25). Schedule III Division I Part II presents Employee Benefits
   Expense as (a) salaries and wages, (b) contribution to provident and other

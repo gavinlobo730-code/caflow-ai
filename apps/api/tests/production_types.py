@@ -93,6 +93,10 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("bank_matching_rules", "match_field"): "migration 380",
     ("bank_matching_rules", "match_operator"): "migration 380",
     ("bank_matching_rules", "description_patterns"): "migration 380",
+    ("itr_filings", "return_type"): "migration 381",
+    ("itr_filings", "original_filing_id"): "migration 381",
+    ("itr_filings", "original_acknowledgement_number"): "migration 381",
+    ("itr_filings", "original_filing_date"): "migration 381",
 }
 
 

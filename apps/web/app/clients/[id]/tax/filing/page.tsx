@@ -60,6 +60,34 @@ const FY_OPTIONS = financialYearChoicesAround(null);
 // (IT Act §2(9): the AY is the FY plus one).
 const AY_OPTIONS = assessmentYearChoicesAround(null);
 
+// The three kinds a return can be, and their sections. SERVED by
+// GET /api/itr/return-kinds — this is the fallback for the window where the
+// frontend has redeployed ahead of the backend, the same shape as the form
+// list above. It is a LABEL table only: every window and every s. 140B figure
+// comes from the server, because those are statute (IT-23, migration 381).
+const RETURN_KIND_FALLBACK: { return_type: string; section: string; needs_the_earlier_receipt: boolean }[] = [
+  { return_type: "original", section: "s. 139(1)", needs_the_earlier_receipt: false },
+  { return_type: "revised", section: "s. 139(5)", needs_the_earlier_receipt: true },
+  { return_type: "updated", section: "s. 139(8A)", needs_the_earlier_receipt: true },
+];
+const KIND_LABEL: Record<string, string> = {
+  original: "Original", revised: "Revised", updated: "Updated (ITR-U)",
+};
+
+interface ReturnWindow {
+  is_open: boolean | null;
+  closes_on: string | null;
+  alternative_closes_on: string | null;
+  caveats: string[];
+  gaps: string[];
+}
+interface ReturnKind {
+  return_type: string;
+  section: string;
+  needs_the_earlier_receipt: boolean;
+  window?: ReturnWindow | null;
+}
+
 interface Filing {
   id: string;
   itr_form: string;
@@ -69,6 +97,11 @@ interface Filing {
   acknowledgement_number: string | null;
   filing_date: string | null;
   created_at: string;
+  // Migration 381. Nullable in the type as well as the column: a row written
+  // before the migration has no value, and `?? "original"` is what it means.
+  return_type: string | null;
+  original_acknowledgement_number: string | null;
+  original_filing_date: string | null;
 }
 
 export default function ITRFilingPage() {
@@ -93,6 +126,10 @@ export default function ITRFilingPage() {
   const [ay, setAy] = useState(AY_OPTIONS[0]);
   const [form, setForm] = useState("ITR-6");
   const [forms, setForms] = useState<string[]>(ITR_FORMS_FALLBACK);
+  const [kind, setKind] = useState("original");
+  const [kinds, setKinds] = useState<ReturnKind[]>(RETURN_KIND_FALLBACK);
+  const [originalAck, setOriginalAck] = useState("");
+  const [originalAckDate, setOriginalAckDate] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -129,7 +166,7 @@ export default function ITRFilingPage() {
     try {
       const { data, error } = await supabase
         .from("itr_filings")
-        .select("id, itr_form, financial_year, assessment_year, status, acknowledgement_number, filing_date, created_at")
+        .select("id, itr_form, financial_year, assessment_year, status, acknowledgement_number, filing_date, created_at, return_type, original_acknowledgement_number, original_filing_date")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
       if (error) throw new Error(error.message || "Couldn't load ITR filings.");
@@ -164,6 +201,28 @@ export default function ITRFilingPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // The windows are STATUTE and are served, never derived here — the same rule
+  // the form list follows. Re-fetched when the assessment year changes,
+  // because s. 139(5)'s date and s. 139(8A)'s two dates are both functions
+  // of it.
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch(`/api/itr/return-kinds?assessment_year=${encodeURIComponent(ay)}`)
+      .then((r) => {
+        const served = (r?.data?.kinds ?? []) as ReturnKind[];
+        if (!cancelled && served.length) setKinds(served);
+      })
+      .catch(() => {
+        // The label fallback above stands, WITHOUT any window: a picker that
+        // empties itself because one request failed is worse than one showing
+        // the three kinds it already knows, and showing a date we could not
+        // fetch would be worse than showing none.
+      });
+    return () => { cancelled = true; };
+  }, [ay]);
+
+  const selectedKind = kinds.find((k) => k.return_type === kind);
+
   async function handleCreate() {
     setCreating(true);
     setCreateError(null);
@@ -175,10 +234,19 @@ export default function ITRFilingPage() {
           financial_year: fy,
           assessment_year: ay,
           itr_form: form,
+          return_type: kind,
+          // Sent only where the kind needs them. The server refuses a revised
+          // or updated return without the earlier receipt — the form carries
+          // it — so an empty string here would produce a refusal that reads
+          // like a bug rather than a missing field.
+          original_acknowledgement_number: originalAck.trim() || null,
+          original_filing_date: originalAckDate || null,
         }),
       });
       if (!res.success) throw new Error(res.error ?? "Failed");
       setShowCreate(false);
+      setOriginalAck("");
+      setOriginalAckDate("");
       await load();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed");
@@ -298,6 +366,71 @@ export default function ITRFilingPage() {
               </select>
             </div>
           </div>
+          <div>
+            <label className="text-[10px] text-[#64748B] mb-1 block">Kind of return</label>
+            <select value={kind} onChange={e => setKind(e.target.value)}
+              className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
+              {kinds.map(k => (
+                <option key={k.return_type} value={k.return_type}>
+                  {KIND_LABEL[k.return_type] ?? k.return_type} — {k.section}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* The window, exactly as the server states it — both dates where the
+              two readings of s. 139(8A) disagree, and every caveat. Rendering
+              one date and dropping the caveat is how a CA comes to rely on a
+              figure nobody verified. */}
+          {selectedKind?.window && (
+            <div className={`rounded-lg border px-3 py-2 space-y-1 ${
+              selectedKind.window.is_open === false
+                ? "bg-red-50 border-red-200"
+                : selectedKind.window.is_open === null
+                  ? "bg-amber-50 border-amber-200"
+                  : "bg-[#F8FAFC] border-[#E2E8F0]"
+            }`}>
+              <p className="text-[11px] font-medium text-[#334155]">
+                {selectedKind.window.is_open === false
+                  ? "This window has closed"
+                  : selectedKind.window.is_open === null
+                    ? "Whether this window is open is not settled"
+                    : "Window open"}
+                {selectedKind.window.closes_on && ` · closes ${selectedKind.window.closes_on}`}
+                {selectedKind.window.alternative_closes_on
+                  && ` (the other reading: ${selectedKind.window.alternative_closes_on})`}
+              </p>
+              {[...selectedKind.window.caveats, ...selectedKind.window.gaps].map((c, i) => (
+                <p key={i} className="text-[10px] text-[#64748B]">{c}</p>
+              ))}
+            </div>
+          )}
+
+          {selectedKind?.needs_the_earlier_receipt && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] text-[#64748B] mb-1 block">
+                  Earlier return&apos;s acknowledgement number
+                </label>
+                <input value={originalAck} onChange={e => setOriginalAck(e.target.value)}
+                  className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg font-mono"
+                  placeholder="e.g. 123456789012345" />
+              </div>
+              <div>
+                <label className="text-[10px] text-[#64748B] mb-1 block">
+                  Earlier return&apos;s filing date
+                </label>
+                <input type="date" value={originalAckDate}
+                  onChange={e => setOriginalAckDate(e.target.value)}
+                  className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg" />
+              </div>
+              <p className="col-span-2 text-[10px] text-[#94A3B8]">
+                Both are fields on the form itself, not bookkeeping: a revised
+                or updated return re-declares a year already declared and quotes
+                the earlier return&apos;s receipt.
+              </p>
+            </div>
+          )}
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded">Cancel</button>
@@ -335,12 +468,22 @@ export default function ITRFilingPage() {
             >
               <FileText size={16} className="text-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[#1E293B]">
+                <p className="text-xs font-semibold text-[#1E293B] flex items-center gap-1.5">
                   {f.itr_form} — FY {f.financial_year}
+                  {/* Only where it is NOT the original: a badge on every row
+                      says nothing, and the original is what a row without one
+                      has always been. */}
+                  {(f.return_type ?? "original") !== "original" && (
+                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                      {KIND_LABEL[f.return_type as string] ?? f.return_type}
+                    </span>
+                  )}
                 </p>
                 <p className="text-[10px] text-[#94A3B8]">
                   AY {f.assessment_year} · {new Date(f.created_at).toLocaleDateString("en-IN")}
                   {f.acknowledgement_number && ` · Ack: ${f.acknowledgement_number}`}
+                  {f.original_acknowledgement_number
+                    && ` · supersedes ${f.original_acknowledgement_number}`}
                 </p>
               </div>
               <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_COLOR[f.status]}`}>

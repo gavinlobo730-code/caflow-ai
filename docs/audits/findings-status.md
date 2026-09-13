@@ -7,15 +7,15 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **81** | re-read against the code. The defect is gone. |
+| closed | **82** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **11** | part of the finding is answered, part is not. Each says which. |
+| partial | **10** | part of the finding is answered, part is not. Each says which. |
 | open | **24** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 35 items — 24 open and 11 partial — not 254.**
+**The work left is 34 items — 24 open and 10 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -90,7 +90,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
-| medium | **IT-23** | The ITR filing workflow offers only ITR-3/5/6/7, has no revised or updated return path, and the  |
 | medium | **PAY-15** | Attendance and LOP cannot be entered from the client Payroll tab at all — they live on a firm-wi |
 | low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 
@@ -162,6 +161,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **GST-30** | A test encodes the assumption behind the reverse-charge underpayment, so the suite cannot catch  |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **INV-07** | Opening the Inventory tab walks the client's ENTIRE stock ledger |
+| medium | **IT-23** | The ITR filing workflow offers only ITR-3/5/6/7, has no revised or updated return path, and the  |
 | medium | **IT-24** | The Form 26AS parser is fixed-column and silently drops every line it cannot read, then marks th |
 | medium | **IT-25** | The ITR due date is chosen by entity type rather than by whether an audit applies, so a small fi |
 | medium | **IT-27** | The §115BAC(6) regime-election engine — Form 10-IEA, the due date, the once-only withdrawal lock |

@@ -7,9 +7,9 @@ IT Act 1961 — Sections 139, 140, 40A(3), 43B, 72, 74, 80C–80JJAA.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core.permissions import rbac
@@ -77,6 +77,17 @@ class CreateFilingRequest(BaseModel):
     itr_form: str = Field(..., description="ITR-1 … ITR-7")
     computation_snapshot_id: Optional[str] = None
     notes: Optional[str] = None
+    # WHICH KIND OF RETURN (IT-23, migration 381). Defaults to the original, so
+    # every caller written before this keeps creating exactly what it created.
+    # `return_type.validated_return_type` is the one place that decides; a
+    # Literal here would be a second copy to keep in step, the same argument
+    # `itr_form` above makes.
+    return_type: str = Field("original", description="original | revised | updated")
+    # The return this one supersedes, where it was prepared here. The receipt
+    # is READ off it when the caller does not send one.
+    original_filing_id: Optional[str] = None
+    original_acknowledgement_number: Optional[str] = None
+    original_filing_date: Optional[str] = None      # YYYY-MM-DD
 
 
 class TransitionFilingRequest(BaseModel):
@@ -242,12 +253,29 @@ def create_filing(
             created_by=current_user["id"],
             computation_snapshot_id=req.computation_snapshot_id,
             notes=req.notes,
+            return_type=req.return_type,
+            original_filing_id=req.original_filing_id,
+            original_acknowledgement_number=req.original_acknowledgement_number,
+            original_filing_date=req.original_filing_date,
         )
+        kind = filing.get("return_type") or "original"
+        # s. 139(8A) bars a SECOND updated return for an assessment year. A
+        # warning on the created row rather than a refusal — see
+        # `already_furnished_updated_return` for why the bar is not a
+        # constraint — and it travels in the response so the screen can show it.
+        if kind == "updated":
+            from domain.income_tax.itr_workflow import already_furnished_updated_return
+            warning = already_furnished_updated_return(
+                current_user["firm_id"], req.client_id, req.financial_year,
+                exclude_filing_id=filing.get("id"))
+            if warning:
+                filing = {**filing, "statutory_warnings": [warning]}
         timeline_service.log(
             client_id=req.client_id,
             category="tax",
             title="ITR filing created",
-            description=f"{req.itr_form} filing created for FY {req.financial_year}",
+            description=(f"{req.itr_form} {kind} filing created "
+                         f"for FY {req.financial_year}"),
             severity="info",
             firm_id=current_user["firm_id"],
             entity_type="itr_filing", entity_id=filing.get("id"),
@@ -284,6 +312,77 @@ def list_itr_forms(current_user: dict = Depends(rbac("income_tax", "read"))):
             }
             for f in supported_forms()
         ]
+    })
+
+
+@router.get("/return-kinds")
+def list_return_kinds(
+    assessment_year: Annotated[AYLabel, Query(...)],
+    furnished_on: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    tax_paise: int = Query(0, ge=0),
+    interest_paise: int = Query(0, ge=0),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The three kinds of return for an assessment year, with each window and
+    its caveats — and, where a date and the figures are given, s. 140B's
+    additional tax on an updated return.
+
+    SERVED rather than derived in the browser, the same rule the ITR form list
+    above follows: the windows are statute, and `domain/income_tax/return_type`
+    is the one place that reads them. Two of the three are `[S]`-graded, so
+    every entry carries the caveats and the s. 139(8A) one carries BOTH dates
+    where the two readings disagree — a CA who files on the strength of the
+    later date and is wrong has filed nothing.
+
+    s. 140B is answered only when asked for: the charge is a percentage of the
+    aggregate of TAX AND INTEREST, which this endpoint cannot compute and does
+    not guess. Given no figures it reports the band that would apply and
+    nothing more.
+    """
+    from datetime import date as _date
+
+    from domain.income_tax import return_type as RT
+
+    kinds = []
+    for kind in RT.RETURN_TYPES:
+        window = RT.window_for(kind, assessment_year)
+        kinds.append({
+            "return_type": kind,
+            "section": RT.SECTION_FOR_TYPE[kind],
+            "needs_the_earlier_receipt": kind in RT.NEEDS_THE_EARLIER_RECEIPT,
+            "window": None if window is None else {
+                "is_open": window.is_open,
+                "closes_on": window.closes_on,
+                "alternative_closes_on": window.alternative_closes_on,
+                "caveats": list(window.caveats),
+                "gaps": list(window.gaps),
+            },
+        })
+
+    additional_tax = None
+    if furnished_on:
+        try:
+            when = _date.fromisoformat(str(furnished_on)[:10])
+        except ValueError:
+            raise HTTPException(422, detail="furnished_on must be YYYY-MM-DD.")
+        result = RT.additional_tax(assessment_year, when, tax_paise, interest_paise)
+        additional_tax = {
+            "furnished_on": result.furnished_on,
+            "months_from_ay_end": result.months_from_ay_end,
+            "percent": result.percent,
+            "base_paise": result.base_paise,
+            "additional_tax_paise": result.additional_tax_paise,
+            "refusal": result.refusal,
+            "caveats": list(result.caveats),
+        }
+
+    return api_response(True, {
+        "assessment_year": assessment_year,
+        "kinds": kinds,
+        "additional_tax": additional_tax,
+        # Named on every answer, not only where a band is missing: no year in
+        # the s. 140B table has been confirmed against a Finance Act.
+        "additional_tax_verified_through_ay": RT.LATEST_VERIFIED_AY,
     })
 
 
