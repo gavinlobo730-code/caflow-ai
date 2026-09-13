@@ -16,7 +16,8 @@ import pytest
 from domain.gst.late_filing import (
     DAYS_IN_YEAR, GAP_LATE_FEE_RATES_NOT_HELD, LATE_FEE_RATES, LateFeeRate,
     SECTION_47_1_STATUTORY_CAP_PAISE, SECTION_47_1_STATUTORY_PER_DAY_PAISE,
-    SECTION_50_1_RATE_BPS, SECTION_50_3_RATE_BPS,
+    SECTION_50_1_RATE_BPS, SECTION_50_3_CEILING_BPS,
+    SECTION_50_3_NOTIFIED_RATE_BPS, GAP_SECTION_50_3_RATE_NOT_HELD,
     days_late, interest_on_late_return, interest_on_undeclared_tax,
     interest_on_wrongly_availed_credit, late_fee,
 )
@@ -24,9 +25,21 @@ from domain.gst.late_filing import (
 
 # ── the rates ────────────────────────────────────────────────────────────────
 
-def test_the_two_statutory_rates():
-    assert SECTION_50_1_RATE_BPS == 1800     # §50(1), Notification 13/2017-CT
-    assert SECTION_50_3_RATE_BPS == 2400     # §50(3) as substituted
+def test_the_one_rate_that_is_held_and_the_one_that_is_not():
+    """§50(1) is 18%, notified by 13/2017-CT and unmoved since.
+
+    §50(3) is a CORRECTION. This module first stated 24% as its rate, which is
+    what 13/2017-CT notified against the ORIGINAL sub-section — but the Finance
+    Act 2022 substituted §50(3) retrospectively from 01-07-2017, and the rate
+    for the substituted text appears to be 18% (Notification 09/2022-CT). The
+    two differ by a third of the charge, and unlike the §201(1A) month
+    convention the error direction is NOT benign: this is a sum a CA pays over
+    on the client's behalf, so over-stating takes money from somebody who does
+    not owe it. The Act's ceiling is held because it is in the Act; the
+    notified rate is a named gap."""
+    assert SECTION_50_1_RATE_BPS == 1800
+    assert SECTION_50_3_CEILING_BPS == 2400          # "not exceeding 24%"
+    assert SECTION_50_3_NOTIFIED_RATE_BPS is None    # not read, not guessed
     assert DAYS_IN_YEAR == 365
 
 
@@ -117,11 +130,13 @@ def test_undeclared_tax_bears_interest_on_the_whole_amount():
 
 # ── §50(3) — wrongly availed credit ──────────────────────────────────────────
 
-def test_credit_availed_but_never_utilised_is_refused_not_charged():
+def test_credit_availed_but_never_utilised_is_refused_not_charged(monkeypatch):
     """Rule 88B(3) charges on credit wrongly availed AND UTILISED. Substituting
     the availed figure would charge a taxpayer who owes nothing, at the higher
     of the two rates."""
-    out = interest_on_wrongly_availed_credit(
+    import domain.gst.late_filing as lf
+    monkeypatch.setattr(lf, "SECTION_50_3_NOTIFIED_RATE_BPS", 1800)
+    out = lf.interest_on_wrongly_availed_credit(
         utilised_on=None, reversed_on=None, utilised_paise=None,
         availed_paise=5_00_000_00)
     assert out["refused"] is True
@@ -129,23 +144,56 @@ def test_credit_availed_but_never_utilised_is_refused_not_charged():
     assert "₹5,00,000" in out["reason"], "the refusal names the figure it did NOT charge"
 
 
-def test_a_recorded_utilisation_is_charged_at_24_percent():
-    c = interest_on_wrongly_availed_credit(
+def test_a_recorded_utilisation_is_refused_because_the_RATE_is_not_held():
+    """Every fact §50(3) needs is stated here and it still refuses — on the
+    rate. The refusal names both notifications and the ceiling, so the reader
+    knows exactly what to go and read."""
+    out = interest_on_wrongly_availed_credit(
         utilised_on=date(2025, 5, 10), reversed_on=date(2025, 8, 10),
         utilised_paise=1_00_000_00)
-    assert c.rate_bps == 2400
+    assert out["refused"] is True
+    assert out["gap"] == GAP_SECTION_50_3_RATE_NOT_HELD
+    assert out["ceiling_bps"] == 2400
+    assert "13/2017" in out["reason"] and "09/2022" in out["reason"]
+
+
+def test_the_rate_refusal_comes_BEFORE_the_missing_facts():
+    """Order matters for what the CA is told to do. With no rate held there is
+    nothing to compute however complete the facts are, so asking them to record
+    a utilisation date first would send them off to fetch something that
+    changes nothing."""
+    out = interest_on_wrongly_availed_credit(
+        utilised_on=None, reversed_on=None, utilised_paise=None,
+        availed_paise=5_00_000_00)
+    assert out["gap"] == GAP_SECTION_50_3_RATE_NOT_HELD
+
+
+def test_the_engine_works_the_moment_the_rate_is_written_in(monkeypatch):
+    """The gap is data, not a missing implementation — the same property
+    LATE_FEE_RATES has. At 18% the arithmetic is ₹1,00,000 × 18% × 92/365,
+    rounded UP because interest is owed."""
+    import domain.gst.late_filing as lf
+    monkeypatch.setattr(lf, "SECTION_50_3_NOTIFIED_RATE_BPS", 1800)
+    c = lf.interest_on_wrongly_availed_credit(
+        utilised_on=date(2025, 5, 10), reversed_on=date(2025, 8, 10),
+        utilised_paise=1_00_000_00)
+    assert c.rate_bps == 1800
     assert c.days == 92
-    # ₹1,00,000 × 24% × 92/365 = ₹6,049.31…
-    assert c.interest_paise == 6_049_32
+    assert c.interest_paise == 4_536_99
+    assert "18% per annum" in c.basis, "the basis must state the rate it used"
 
 
 @pytest.mark.parametrize("missing", ["utilised_paise", "utilised_on", "reversed_on"])
-def test_each_missing_fact_is_named(missing):
+def test_each_missing_fact_is_named(missing, monkeypatch):
     kw = dict(utilised_on=date(2025, 5, 10), reversed_on=date(2025, 8, 10),
               utilised_paise=1_00_000_00)
     kw[missing] = None
-    out = interest_on_wrongly_availed_credit(**kw)
+    # With the rate held, the FACTS become the reason again.
+    import domain.gst.late_filing as lf
+    monkeypatch.setattr(lf, "SECTION_50_3_NOTIFIED_RATE_BPS", 1800)
+    out = lf.interest_on_wrongly_availed_credit(**kw)
     assert out["refused"] is True
+    assert "utilised" in out["reason"].lower()
 
 
 # ── §47 — the refusal ────────────────────────────────────────────────────────

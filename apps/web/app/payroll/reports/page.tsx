@@ -35,8 +35,7 @@ import type {
 } from "@/lib/payroll/types";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
-import { monthlyTdsPaiseNewRegime } from "@/lib/services/payrollTdsEstimate";
-import { api, type PayrollDepositDueDates_FY } from "@/lib/api";
+import { api, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -777,35 +776,53 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
 
 // ── 4. TDS Projection ─────────────────────────────────────────────────────
 
-function TdsProjectionTab({ employees, runs, fyOptions }: {
-  employees: Employee[]; runs: PayrollRun[]; fyOptions: string[];
+function TdsProjectionTab({ employees, fyOptions }: {
+  employees: Employee[]; fyOptions: string[];
 }) {
   const [selectedFy, setSelectedFy] = useState(fyOptions[0] ?? currentFy());
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id ?? "");
 
-  const months = fyMonths(selectedFy);
   const emp = employees.find(e => e.id === selectedEmpId);
-  // ONE employee. The projection reads their most recent slip and the months
-  // already paid this year; both are in this employee's own history.
-  const { slips, loading: slipsLoading, error: slipsError } = useSlips(
-    selectedEmpId ? { employee_id: selectedEmpId } : null, employees, runs);
 
-  const recentSlip = slips
-    .filter(s => s.employee_id === selectedEmpId)
-    .sort((a, b) => (b.run?.month ?? "").localeCompare(a.run?.month ?? ""))
-    .at(0);
+  // ── §192 IS COMPUTED IN apps/api, NOT HERE (PAY-10) ─────────────────────
+  // This tab used to call monthlyTdsPaiseNewRegime() from
+  // lib/services/payrollTdsEstimate.ts: its own slab ladder, its own §87A
+  // rebate and its own §2(29C) brackets, hard-coded to FY 2025-26 and
+  // deliberately not FY-versioned — so from 1 April it was last year's tax,
+  // stated confidently, with a footnote naming the wrong year. It had no old
+  // regime, read no declaration, and spread the year as annual/12, which is
+  // the arithmetic §192(3) exists to displace.
+  //
+  // GET /api/payroll/tds-projection answers off `_compute_slip`, the same
+  // function the payroll run pays from, so what this screen projects for
+  // November is what November's run will actually deduct.
+  const [proj, setProj] = useState<PayrollTdsProjection | null>(null);
+  const [projLoading, setProjLoading] = useState(false);
+  const [projError, setProjError] = useState<string | null>(null);
 
-  const estimatedMonthlyGross = recentSlip
-    ? recentSlip.gross_paise
-    : emp
-    ? emp.basic_paise +
-      Math.round((emp.basic_paise * emp.hra_percent) / 100) +
-      Math.round((emp.basic_paise * emp.da_percent) / 100) +
-      emp.other_allowances_paise
-    : 0;
+  useEffect(() => {
+    if (!emp || !selectedEmpId) { setProj(null); return; }
+    let cancelled = false;
+    setProjLoading(true);
+    setProjError(null);
+    api.payroll.tdsProjection(emp.client_id, selectedEmpId, selectedFy)
+      .then(r => {
+        if (cancelled) return;
+        if (r.success && r.data) setProj(r.data);
+        // Shown, never replaced by a guess: a projection the server declined
+        // is not a projection of zero.
+        else { setProj(null); setProjError(r.error ?? "Couldn't load the §192 projection."); }
+      })
+      .catch(() => { if (!cancelled) { setProj(null); setProjError("Couldn't load the §192 projection."); } })
+      .finally(() => { if (!cancelled) setProjLoading(false); });
+    return () => { cancelled = true; };
+  }, [emp, selectedEmpId, selectedFy]);
 
-  const estimatedAnnualGross = estimatedMonthlyGross * 12;
-  const estimatedAnnualTds = monthlyTdsPaiseNewRegime(estimatedAnnualGross) * 12;
+  const estimatedAnnualGross = proj?.estimated_annual_gross_paise ?? 0;
+  const estimatedAnnualTds = proj?.estimated_annual_tds_paise ?? 0;
+  const cumulativeActual = proj?.deducted_so_far_paise ?? 0;
+  const suggestedMonthlyTds = proj?.projected_monthly_paise ?? 0;
+  const remainingMonths = (proj?.months ?? []).filter(m => !m.actual).length;
 
   type ProjectionRow = {
     month: string;
@@ -818,34 +835,28 @@ function TdsProjectionTab({ employees, runs, fyOptions }: {
   };
 
   const projectionRows: ProjectionRow[] = [];
-  let cumulativeActual = 0;
-
-  const actualSlipsMap = new Map(
-    slips
-      .filter(s => s.employee_id === selectedEmpId)
-      .map(s => [s.run?.month ?? "", s]),
-  );
-
-  for (const month of months) {
-    const slip = actualSlipsMap.get(month);
-    const hasActual = !!slip;
-    const actualGross = slip?.gross_paise ?? 0;
-    const actualTds = slip?.tds_paise ?? 0;
-    const projectedTds = monthlyTdsPaiseNewRegime(estimatedAnnualGross);
-    cumulativeActual += actualTds;
-    const cumulativeRemaining = Math.max(0, estimatedAnnualTds - cumulativeActual);
-    projectionRows.push({ month, actualGross, actualTds, projectedTds, hasActual, cumulativeActual, cumulativeRemaining });
+  {
+    let running = 0;
+    for (const m of proj?.months ?? []) {
+      if (m.actual) running += m.tds_paise;
+      projectionRows.push({
+        month: m.month,
+        actualGross: m.actual ? m.gross_paise : 0,
+        actualTds: m.actual ? m.tds_paise : 0,
+        // A month with no released run carries the served §192(3) spread; one
+        // already run carries what it actually deducted, so the Variance
+        // column compares like with like.
+        projectedTds: m.actual ? m.tds_paise : (proj?.projected_monthly_paise ?? 0),
+        hasActual: m.actual,
+        cumulativeActual: running,
+        cumulativeRemaining: Math.max(0, estimatedAnnualTds - running),
+      });
+    }
   }
-
-  const remainingMonths = projectionRows.filter(r => !r.hasActual).length;
-  const suggestedMonthlyTds =
-    remainingMonths > 0
-      ? Math.round(Math.max(0, estimatedAnnualTds - cumulativeActual) / remainingMonths)
-      : 0;
 
   return (
     <>
-    <SliceState loading={slipsLoading} error={slipsError} />
+    <SliceState loading={projLoading} error={projError} />
     <div className="space-y-4">
       <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
         <AlertCircle size={15} className="text-amber-600 mt-0.5 flex-shrink-0" />
@@ -952,10 +963,22 @@ function TdsProjectionTab({ employees, runs, fyOptions }: {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-[#94A3B8] mt-3">
-            * Projected TDS based on estimated annual income at current salary using FY 2025-26 new-regime slabs (IT Act Section 192).
-            Rebate u/s 87A applied for taxable income ≤ ₹12,00,000 (Finance Act 2025). Consult employee&apos;s actual investment declarations for accuracy.
-          </p>
+          {/* The footnote used to name FY 2025-26 and the ₹12,00,000 rebate as
+              facts about every year. Both belong to the year actually asked
+              for, and the engine states them. */}
+          {proj && (
+            <p className="text-xs text-[#94A3B8] mt-3">
+              Projected under IT Act §192 for FY {proj.financial_year}, from the same
+              computation the payroll run pays from — the employee&apos;s own declaration
+              and regime, that year&apos;s rates, and §192(3) spreading what is left over
+              the {remainingMonths} month{remainingMonths === 1 ? "" : "s"} still to run.
+            </p>
+          )}
+          {(proj?.gaps ?? []).length > 0 && (
+            <ul className="text-xs text-[#94A3B8] mt-2 list-disc pl-4 space-y-1">
+              {proj!.gaps.map((g, i) => <li key={i}>{g}</li>)}
+            </ul>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -1450,7 +1473,7 @@ export default function PayrollReportsPage() {
             <CtcTab runs={runs} employees={employees} />
           </TabsContent>
           <TabsContent value="tds-projection">
-            <TdsProjectionTab employees={employees} runs={runs} fyOptions={fyOptions} />
+            <TdsProjectionTab employees={employees} fyOptions={fyOptions} />
           </TabsContent>
           <TabsContent value="year-end">
             <YearEndSummaryTab fyOptions={fyOptions} />

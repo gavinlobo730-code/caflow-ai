@@ -76,9 +76,32 @@ from domain.reporting.amount_words import indian_rupees
 
 # §50(1), notified at 18% per annum by Notification 13/2017-Central Tax.
 SECTION_50_1_RATE_BPS = 1800
-# §50(3) as substituted by the Finance Act 2022 — twenty-four per cent, on
-# input tax credit wrongly availed AND utilised.
-SECTION_50_3_RATE_BPS = 2400
+# §50(3) as substituted by the Finance Act 2022 charges interest on input tax
+# credit "wrongly availed and utilised" at "such rate not exceeding twenty-four
+# per cent as may be notified". The CEILING is in the Act and is held here.
+SECTION_50_3_CEILING_BPS = 2400
+#
+# ⚠️ THE NOTIFIED RATE IS NOT HELD, AND THAT IS A CORRECTION.
+#
+# This module first stated 24% as the rate, on the strength of Notification
+# 13/2017-Central Tax, which notified 24% against the ORIGINAL §50(3). But the
+# Finance Act 2022 SUBSTITUTED §50(3) with retrospective effect from
+# 01-07-2017, and the rate for the substituted sub-section appears to have been
+# notified separately — by Notification 09/2022-Central Tax — at 18%, not 24%.
+#
+# Which of the two governs a given period could not be read here: this
+# environment's proxy refuses every `.gov.in`. The two differ by a THIRD of the
+# charge, and unlike the §201(1A) month convention the error direction is not
+# benign — this is a sum a CA pays over on the client's behalf, so an
+# over-stated rate takes money from somebody who does not owe it. A figure that
+# might be a third too high is worse than a refusal that names the two
+# notifications to read.
+#
+# So the rate is a NAMED GAP, the same shape as LATE_FEE_RATES below and the
+# state professional-tax slabs. `interest_on_wrongly_availed_credit` refuses on
+# it, and the engine works the moment somebody writes the notified figure in.
+SECTION_50_3_NOTIFIED_RATE_BPS: Optional[int] = None
+GAP_SECTION_50_3_RATE_NOT_HELD = "gst_section_50_3_rate_not_held"
 # The portal's own divisor. See the leap-year caveat in the module docstring.
 DAYS_IN_YEAR = 365
 
@@ -216,15 +239,40 @@ def interest_on_wrongly_availed_credit(
     utilised_paise: Optional[int],
     availed_paise: int = 0,
 ) -> InterestCharge | dict:
-    """§50(3) with Rule 88B(3) — 24%, on the credit UTILISED, never the availed.
+    """§50(3) with Rule 88B(3) — on the credit UTILISED, never the availed.
 
-    Returns a REFUSAL (a dict with `refused`) rather than a charge where the
-    utilised portion or either date is not recorded. Credit wrongly availed and
-    never utilised bears no interest at all — Rule 88B(3)'s explanation is
-    about the balance in the electronic credit ledger falling below the wrongly
-    availed amount — so substituting the availed figure would charge a taxpayer
-    who owes nothing, at the higher of the two rates.
+    Returns a REFUSAL (a dict with `refused`) rather than a charge, on either
+    of two grounds.
+
+    THE RATE. It is not held — see SECTION_50_3_NOTIFIED_RATE_BPS above. The
+    Act's ceiling is 24% and the substituted sub-section may carry 18%; a third
+    of the charge separates them, and over-stating is the direction that takes
+    money from a taxpayer who does not owe it.
+
+    THE FACTS. Credit wrongly availed and never utilised bears no interest at
+    all — Rule 88B(3)'s explanation is about the balance in the electronic
+    credit ledger falling below the wrongly availed amount — so substituting
+    the availed figure would charge a taxpayer who owes nothing.
     """
+    if SECTION_50_3_NOTIFIED_RATE_BPS is None:
+        return {
+            "refused": True,
+            "section": "50(3)",
+            "gap": GAP_SECTION_50_3_RATE_NOT_HELD,
+            "ceiling_bps": SECTION_50_3_CEILING_BPS,
+            "reason": (
+                "The rate notified for §50(3) is not held in this product. The "
+                "sub-section's own ceiling is 24% (\"not exceeding twenty-four "
+                "per cent\"), Notification 13/2017-Central Tax notified 24% "
+                "against the ORIGINAL §50(3), and the Finance Act 2022 "
+                "substituted the sub-section retrospectively from 01-07-2017 — "
+                "for which Notification 09/2022-Central Tax appears to notify "
+                "18%. A third of the charge separates the two readings, and "
+                "this is a sum paid over on the client's behalf, so no figure "
+                "is guessed. Read the notification in force for the period and "
+                "record it in SECTION_50_3_NOTIFIED_RATE_BPS."
+            ),
+        }
     missing = []
     if utilised_paise is None:
         missing.append("how much of the credit was actually utilised")
@@ -237,7 +285,7 @@ def interest_on_wrongly_availed_credit(
             "refused": True,
             "section": "50(3)",
             "reason": (
-                "Section 50(3) charges 24% on input tax credit wrongly availed "
+                "Section 50(3) charges interest on input tax credit wrongly availed "
                 "AND UTILISED, from the date of utilisation to the date of "
                 "reversal (Rule 88B(3)). Credit availed and never utilised "
                 "bears no interest, so this is not computed from the availed "
@@ -246,12 +294,13 @@ def interest_on_wrongly_availed_credit(
         }
     return _charge(
         section="50(3)", base_paise=int(utilised_paise or 0),
-        rate_bps=SECTION_50_3_RATE_BPS,
+        rate_bps=SECTION_50_3_NOTIFIED_RATE_BPS,
         days=days_late(utilised_on, reversed_on), caveats=[],
         basis=(
-            "Section 50(3) with Rule 88B(3): 24% per annum on input tax credit "
-            "wrongly availed AND utilised, running from the date of "
-            "utilisation to the date of reversal or payment."
+            f"Section 50(3) with Rule 88B(3): "
+            f"{SECTION_50_3_NOTIFIED_RATE_BPS / 100:g}% per annum on input tax "
+            f"credit wrongly availed AND utilised, running from the date of "
+            f"utilisation to the date of reversal or payment."
         ),
     )
 

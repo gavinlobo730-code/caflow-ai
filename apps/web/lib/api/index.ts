@@ -129,6 +129,52 @@ export interface TaxAuditDueDates {
   basis: string;
 }
 
+/** GET /api/payroll/tds-projection — one employee's §192 withholding for a
+ *  financial year, month by month, from the SAME `_compute_slip` the payroll
+ *  run pays from.
+ *
+ *  It replaces `lib/services/payrollTdsEstimate.ts`, which carried its own
+ *  slab ladder hard-coded to FY 2025-26 with no old regime, no declaration
+ *  and no §192(3) (PAY-10). `gaps` says what a projection cannot see — a
+ *  month's attendance, and a bonus nobody has decided yet. */
+export interface PayrollTdsProjection {
+  financial_year: string;
+  employee_id: string;
+  months: { month: string; actual: boolean; gross_paise: number; tds_paise: number }[];
+  deducted_so_far_paise: number;
+  months_paid: number;
+  projected_monthly_paise: number;
+  projected_monthly_gross_paise: number;
+  estimated_annual_tds_paise: number;
+  estimated_annual_gross_paise: number;
+  gaps: string[];
+}
+
+/** GET /api/income-tax/tax-audit/applicability — whether §44AB requires an
+ *  audit, and on which limb.
+ *
+ *  THE NATURE OF THE ACTIVITY IS AN INPUT, NEVER INFERRED FROM THE AMOUNT.
+ *  This screen used to read it off the turnover — above ₹1 crore "business",
+ *  between ₹50 lakh and ₹1 crore "profession" — so a trader with ₹60 lakh was
+ *  told an audit was mandatory when §44AB(a) does not reach them (IT-11).
+ *
+ *  `required` answers the clause tested and nothing else: `limbs_not_tested`
+ *  names (c), (d) and (e), each of which compares DECLARED profit against a
+ *  deemed figure that no turnover box carries. */
+export interface TaxAuditApplicability {
+  financial_year: string;
+  required: boolean;
+  clause: string;
+  threshold_applied_paise: number;
+  enhanced_limit_applied: boolean;
+  basis: string;
+  caveats: string[];
+  limbs_not_tested: string[];
+  form_type: string | null;
+  report_due_date: string | null;
+  return_due_date: string | null;
+}
+
 /** GET /api/compliance/payroll-deposit-due-dates — what one payroll month owes.
  *  `gaps` names what is deliberately NOT dated (professional tax), because an
  *  absent row and a nil liability look the same on a calendar. */
@@ -1374,6 +1420,39 @@ export const api = {
       request<ApiResp<TaxAuditDueDates>>(
         `/api/compliance/tax-audit-due-dates?financial_year=${encodeURIComponent(financialYear)}`),
   },
+  incomeTax: {
+    /** Does §44AB require an audit? Asked, never decided here — the browser
+     *  copy of the thresholds (lib/income-tax/taxAuditThresholds.ts) is
+     *  deleted, and with it the rule that read the nature of the activity off
+     *  the amount.
+     *
+     *  The three cash figures are optional together: the proviso to §44AB(a)
+     *  reads the clause as ₹10 crore only where cash receipts AND cash
+     *  payments are each within 5% of their own aggregate, and the payments
+     *  side has its own denominator that turnover cannot supply. Send none of
+     *  them and the base figure applies, which is the safe direction. */
+    taxAuditApplicability: (q: {
+      nature: "business" | "profession";
+      turnover_paise: number;
+      financial_year?: string;
+      cash_receipts_paise?: number;
+      cash_payments_paise?: number;
+      total_payments_paise?: number;
+      is_company?: boolean;
+    }) => {
+      const p = new URLSearchParams({
+        nature: q.nature,
+        turnover_paise: String(q.turnover_paise),
+      });
+      if (q.financial_year) p.set("financial_year", q.financial_year);
+      if (q.cash_receipts_paise != null) p.set("cash_receipts_paise", String(q.cash_receipts_paise));
+      if (q.cash_payments_paise != null) p.set("cash_payments_paise", String(q.cash_payments_paise));
+      if (q.total_payments_paise != null) p.set("total_payments_paise", String(q.total_payments_paise));
+      if (q.is_company) p.set("is_company", "true");
+      return request<ApiResp<TaxAuditApplicability>>(
+        `/api/income-tax/tax-audit/applicability?${p.toString()}`);
+    },
+  },
   documents: {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),
     /** Put a file in the firm's store. Multipart, so the browser sets the
@@ -1974,6 +2053,14 @@ export const api = {
     // is the thing someone wires a button to next.
   },
   payroll: {
+    /** One employee's §192 projection for a financial year. Served, never
+     *  computed here — the browser's own ladder went stale the day the
+     *  Finance Act moved and said nothing. */
+    tdsProjection: (clientId: string, employeeId: string, financialYear: string) =>
+      request<ApiResp<PayrollTdsProjection>>(
+        `/api/payroll/tds-projection?client_id=${encodeURIComponent(clientId)}` +
+        `&employee_id=${encodeURIComponent(employeeId)}` +
+        `&financial_year=${encodeURIComponent(financialYear)}`),
     // client_id omitted -> every client in the firm (firm-wide dashboard);
     // client_id given -> scoped to one client (per-client workspace).
     listEmployees: (clientId?: string, includeInactive?: boolean) => {

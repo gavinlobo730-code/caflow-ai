@@ -99,6 +99,7 @@ from domain.income_tax.statutory_rates import (
     apply_surcharge_with_marginal_relief, cess_paise, current_fy,
 )
 from models.fy import FYLabel, OptionalFYLabel
+from services.compliance_obligation_service import fy_months
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
@@ -6014,6 +6015,173 @@ def verify_declaration(
 
 
 # ─── Statutory position, computed here rather than in the browser ─────────────
+
+@router.get("/tds-projection")
+def tds_projection(
+    client_id: str = Query(...),
+    employee_id: str = Query(...),
+    financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """One employee's §192 withholding for a financial year, month by month.
+
+    THIS EXISTS BECAUSE THE FRONTEND WAS COMPUTING IT (PAY-10), and the copy
+    it replaces is the same story /statutory-position tells one screen over.
+    `lib/services/payrollTdsEstimate.ts` carried its own slab ladder, its own
+    §87A rebate and its own §2(29C) surcharge brackets, hard-coded to FY
+    2025-26 and deliberately not FY-versioned — its own docstring said so.
+    Four things followed from that:
+
+      * IT IS LAST YEAR'S LADDER. Nothing moves those constants when a Finance
+        Act does, so from 1 April the projection is confidently wrong and
+        nothing says which year it computed.
+      * NO OLD REGIME. §115BAC(1A) makes the new regime the default, but an
+        employee who intimates the old one under CBDT Circular 04/2023 is
+        withheld on it, and this projected the new-regime figure for them.
+      * NO DECLARATION. §10(13A), §80C, §80D and the rest never entered it, so
+        an employee who had proved ₹1,50,000 of §80C was still shown the
+        undeclared figure.
+      * NO §192(3). The whole projection was annual-tax-over-twelve, which is
+        the arithmetic §192(3) exists to displace: it is the sub-section that
+        makes a December declaration work at all.
+
+    So this answers off `_compute_slip` — the SAME function the payroll run
+    pays from — rather than a second engine. What comes back is the run's own
+    figure for a month it has not run yet.
+
+    WHAT IT DOES NOT SEE, AND SAYS SO
+        A projection has no attendance, no one-time earnings not yet decided
+        and no perquisite not yet valued. Attendance is deliberate: LOP is a
+        fact about a month that has happened, and assuming a full month is the
+        only honest assumption about one that has not. The one-time and
+        perquisite figures ALREADY RECORDED for the year do reach it, through
+        the same readers the run uses; what cannot is a bonus nobody has
+        decided, and `gaps` says that rather than implying the year is settled.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    firm_id = current_user["firm_id"]
+    fy = financial_year
+
+    db = _db()
+    if not db:
+        return api_response(True, {
+            "financial_year": fy, "employee_id": employee_id,
+            "months": [], "estimated_annual_tds_paise": 0,
+            "deducted_so_far_paise": 0, "months_paid": 0,
+            "projected_monthly_paise": 0, "gaps": [],
+        })
+
+    emps = (db.table("payroll_employees").select("*")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("id", employee_id).execute().data) or []
+    if not emps:
+        return api_response(False, None, "Employee not found")
+
+    months = [f"{y:04d}-{m:02d}" for y, m in fy_months(fy)]
+    gaps: list[str] = []
+
+    # What each month of the year ACTUALLY carried, from released runs only.
+    # A draft run has deducted nothing (PAY-04) and showing its figure as
+    # actual would credit the employee with tax nobody withheld.
+    runs = (db.table("payroll_runs").select("id, month, status")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .in_("status", list(_PAYROLL_RELEASED)).execute().data) or []
+    run_month = {r["id"]: r.get("month") for r in runs
+                 if r.get("month") and _fy_for_month(r["month"]) == fy}
+    actual: dict[str, dict] = {}
+    if run_month:
+        slips = (db.table("payroll_slips")
+                 .select("run_id, employee_id, gross_paise, tds_paise")
+                 .in_("run_id", list(run_month))
+                 .eq("employee_id", employee_id).execute().data) or []
+        for sl in slips:
+            mo = run_month.get(sl.get("run_id"))
+            if mo:
+                actual[mo] = {"gross_paise": int(sl.get("gross_paise") or 0),
+                              "tds_paise": int(sl.get("tds_paise") or 0)}
+
+    # The FIRST month with no released slip is the one the projection is FOR.
+    # §192(3) spreads what is left over the months that remain, so that single
+    # figure IS the projection for every remaining month — computing each one
+    # separately would re-spread an already-spread number.
+    next_month = next((mo for mo in months if mo not in actual), None)
+
+    deducted = sum(a["tds_paise"] for a in actual.values())
+    months_paid = len(actual)
+
+    projected_monthly = 0
+    projected_gross = 0
+    if next_month is None:
+        gaps.append(
+            f"Every month of FY {fy} has a released payroll run, so there is "
+            f"nothing left to project — the figures below are what was actually "
+            f"deducted.")
+    else:
+        y, m = int(next_month[:4]), int(next_month[5:7])
+        emp = _pay_in_force(emps[0], _salary_in_force(db, firm_id, client_id, next_month))
+        declarations = _declarations_for_run(db, firm_id, client_id, fy)
+        decl = declarations.get(employee_id)
+        if decl is None:
+            gaps.append(
+                "No submitted §192 declaration for this employee, so the "
+                "projection is the §115BAC(1A) default — new regime, standard "
+                "deduction only. A declaration submitted later changes it, and "
+                "§192(3) then settles the difference inside the year.")
+        slip = _compute_slip(
+            emp, None, fy=fy, pt_month=m,
+            esi_covered_at_period_start=False,
+            declaration=decl,
+            tds_already_deducted_paise=deducted,
+            months_already_paid=months_paid,
+            gross_already_paid_paise=sum(a["gross_paise"] for a in actual.values()),
+            months_employed_in_fy=_months_employed_in_fy(emp.get("joining_date"), fy),
+            firm_pt_slabs=_read_firm_pt_slabs(db, firm_id),
+            pt_on=date(y, m, calendar.monthrange(y, m)[1]),
+            perquisites_paise=_perquisites_for_run(db, firm_id, client_id, fy).get(employee_id, 0),
+            one_time=None,
+        )
+        projected_monthly = int(slip.get("tds_paise") or 0)
+        # The GROSS the projection rests on, served too. The screen showed an
+        # "Est. Annual Gross" of its own — the last slip's gross times twelve,
+        # which is wrong for a mid-year joiner and for anyone whose pay was
+        # revised. This is the figure _compute_slip actually estimated on.
+        projected_gross = int(slip.get("gross_paise") or 0)
+        gaps.append(
+            "A projected month assumes a full month's attendance, and no "
+            "one-time earning or perquisite beyond what is already recorded "
+            "for the year. §192(1) estimates on salary, and a payment nobody "
+            "has decided yet is not salary — §192(3) picks it up in the month "
+            "it is actually paid.")
+
+    rows = []
+    for mo in months:
+        a = actual.get(mo)
+        rows.append({
+            "month": mo,
+            "actual": a is not None,
+            "gross_paise": a["gross_paise"] if a else projected_gross,
+            "tds_paise": a["tds_paise"] if a else projected_monthly,
+        })
+
+    remaining = sum(1 for r in rows if not r["actual"])
+    return api_response(True, {
+        "financial_year": fy,
+        "employee_id": employee_id,
+        "months": rows,
+        "deducted_so_far_paise": deducted,
+        "months_paid": months_paid,
+        "projected_monthly_paise": projected_monthly,
+        "projected_monthly_gross_paise": projected_gross,
+        # The year's estimate is what has been withheld plus what the spread
+        # will withhold — NOT twelve times the monthly figure, which double
+        # counts the months already run.
+        "estimated_annual_tds_paise": deducted + projected_monthly * remaining,
+        "estimated_annual_gross_paise": sum(r["gross_paise"] for r in rows),
+        "gaps": gaps,
+    })
+
 
 @router.get("/statutory-position")
 def statutory_position(

@@ -8,6 +8,7 @@ import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
+import { todayLocalISO } from "@/lib/dateMath";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -29,6 +30,98 @@ async function apiFetch(path: string, opts?: RequestInit) {
     },
   });
   return res.json();
+}
+
+/**
+ * Recording that a return was actually filed on the portal — the ARN and the
+ * DATE (GST-23).
+ *
+ * WHAT WAS WRONG
+ *     `PATCH /gst-workspace/{gstr1,gstr3b}/{id}/status` has accepted `arn` and
+ *     `filed_date` since the columns migration 036 created were finally
+ *     written to, and it calls `record_filing`, which writes the
+ *     `public.filings` row `journal_period_lock_reason` reads. But no screen
+ *     ever sent either field: both tabs PATCHed `{status, ca_approved}` and
+ *     nothing more, and the GSTR-1 tab had no submitted step at all — the
+ *     chain stopped at ca_approved. So a CA who filed on gst.gov.in had
+ *     nowhere to put the acknowledgement, and the period lock was created (if
+ *     at all) against no ARN and no real date.
+ *
+ *     The dates matter beyond the record: the FILED date is what closes the
+ *     §37(3) correction window under `compliance_engine`, and a lock dated
+ *     "whenever somebody got round to recording it" locks the wrong day.
+ *
+ * WHY IT IS A DIALOG AND NOT AN INLINE BUTTON
+ *     Marking a return filed is the act that LOCKS the period. It is worth a
+ *     deliberate step with the acknowledgement in front of the CA, and the
+ *     ARN is on their screen at that moment, not later.
+ *
+ * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This records a filing the CA
+ * performed on the portal. It transmits nothing.
+ */
+function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
+  period: string;
+  saving: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: (arn: string, filedDate: string) => void;
+}) {
+  const [arn, setArn] = useState("");
+  // Defaulted to today because that is the common case, and EDITABLE because
+  // recording here lags the portal by days more often than not.
+  const [filedDate, setFiledDate] = useState(todayLocalISO());
+  return (
+    <div className="border border-green-200 bg-green-50 rounded p-3 mb-3 space-y-2">
+      <p className="text-sm font-medium text-green-900">
+        Record the filing of {period}
+      </p>
+      <p className="text-xs text-green-800">
+        You filed this on the GST portal. Recording it here writes the acknowledgement
+        against the return and locks the period against further postings that would
+        change what was filed.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-[#334155] block mb-1">ARN from the portal</label>
+          <input
+            value={arn}
+            onChange={(e) => setArn(e.target.value)}
+            placeholder="AA0705230000123"
+            className="w-full border rounded px-2 py-1 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-[#334155] block mb-1">Date filed</label>
+          <input
+            type="date"
+            value={filedDate}
+            onChange={(e) => setFiledDate(e.target.value)}
+            className="w-full border rounded px-2 py-1 text-sm"
+          />
+        </div>
+      </div>
+      {/* The ARN is optional on the server and stays optional here: a CA
+          marking a return filed without the acknowledgement to hand must not
+          be blocked from recording reality. The DATE is not — it is what the
+          period lock and the §37(3) window key on. */}
+      <p className="text-xs text-[#64748B]">
+        The ARN can be left blank and added later. The date cannot: the correction
+        window under CGST §37(3) and the period lock are both measured from it.
+      </p>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={() => onConfirm(arn.trim(), filedDate)}
+          disabled={saving || !filedDate}
+          className="text-sm px-3 py-1 bg-green-700 text-white rounded disabled:opacity-50"
+        >
+          {saving ? "Recording…" : "Record as filed"}
+        </button>
+        <button onClick={onCancel} disabled={saving}
+          className="text-sm px-3 py-1 border rounded">Cancel</button>
+      </div>
+    </div>
+  );
 }
 
 function rupees(paise: number) {
@@ -405,6 +498,11 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [demoFlows, setDemoFlows] = useState<string[]>([]);
   const [demo, setDemo] = useState<{ id: string } | null>(null);
 
+  // Recording a filing performed on the portal (GST-23).
+  const [filingRow, setFilingRow] = useState<{ id: string; period: string } | null>(null);
+  const [markingFiled, setMarkingFiled] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
+
   const load = useCallback(() => {
     setLoading(true);
     // return_type=gstr1 — the gstr1_returns store also holds GSTR-9 annual
@@ -456,12 +554,29 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
     }
   }
 
-  async function updateStatus(id: string, status: string) {
-    await apiFetch(`/api/gst-workspace/gstr1/${id}/status`, {
+  // res.success IS CHECKED. The GST workspace router answers a refusal as
+  // HTTP 200 with {success: false} — a Manager-or-above check on approval, a
+  // books-check on a stale return — so an unchecked call showed the CA a
+  // status change the server had declined.
+  async function updateStatus(id: string, status: string,
+                              extra?: { arn?: string; filed_date?: string }) {
+    setRowError(null);
+    const r = await apiFetch(`/api/gst-workspace/gstr1/${id}/status`, {
       method: "PATCH",
-      body: JSON.stringify({ status, ca_approved: true }),
+      body: JSON.stringify({ status, ca_approved: true, ...(extra ?? {}) }),
     });
+    if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return false; }
     load();
+    return true;
+  }
+
+  /** Record what the CA filed on the portal — the ARN and the real date. */
+  async function markFiled(id: string, arn: string, filedDate: string) {
+    setMarkingFiled(true);
+    const ok = await updateStatus(id, "submitted",
+                                  { arn: arn || undefined, filed_date: filedDate });
+    setMarkingFiled(false);
+    if (ok) setFilingRow(null);
   }
 
   // CGST Act §37 — GSTR-1 derived ENTIRELY from posted sales invoices + issued
@@ -603,6 +718,21 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
         </div>
       )}
 
+      {filingRow && (
+        <MarkFiledDialog
+          period={filingRow.period}
+          saving={markingFiled}
+          error={rowError}
+          onCancel={() => { setFilingRow(null); setRowError(null); }}
+          onConfirm={(arn, filedDate) => markFiled(filingRow.id, arn, filedDate)}
+        />
+      )}
+      {rowError && !filingRow && (
+        <p className="text-sm text-red-600 border border-red-200 bg-red-50 rounded px-3 py-2 mb-3">
+          {rowError}
+        </p>
+      )}
+
       {loading ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -642,6 +772,21 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                       File (demo)
                     </button>
                   )}
+                  {/* The real thing: the CA filed on gst.gov.in and records
+                      the acknowledgement here. This is what writes the
+                      public.filings row the period lock reads. */}
+                  {r.status === "ca_approved" && (
+                    <button onClick={() => setFilingRow({ id: r.id as string,
+                                                          period: r.period as string })}
+                      className="text-xs px-2 py-0.5 border border-green-300 rounded hover:bg-green-50 text-green-800">
+                      Mark as filed
+                    </button>
+                  )}
+                  {r.status === "submitted" && (
+                    <span className="text-xs text-[#64748B]">
+                      {(r.arn as string) ? `ARN ${r.arn as string}` : "filed — no ARN recorded"}
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -679,6 +824,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   // does not freeze the table.
   const [freshness, setFreshness] = useState<Record<string, Staleness>>({});
   const [busyRow, setBusyRow] = useState<string | null>(null);
+  // Recording a filing performed on the portal (GST-23).
+  const [filingRow, setFilingRow] = useState<{ id: string; period: string } | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   // Distinguishes "fetch failed" from "no GSTR-3B returns yet".
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -743,7 +890,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
     }
   }
 
-  async function updateStatus(id: string, status: string) {
+  async function updateStatus(id: string, status: string,
+                              extra?: { arn?: string; filed_date?: string }) {
     // busyRow while in flight, for two reasons reported from the deployed app:
     // the API sleeps on Render's free tier, so a first click can take many
     // seconds while the instance wakes; and approving now runs a books-check
@@ -755,14 +903,25 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
     try {
       const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ status, ca_approved: true }),
+        body: JSON.stringify({ status, ca_approved: true, ...(extra ?? {}) }),
       });
       // The server refuses to APPROVE a return whose figures the books no longer
       // support. Surfacing that error is the whole point of the refusal — a
       // silent failure would leave the CA thinking they had approved it.
-      if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return; }
+      if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return false; }
       load();
+      return true;
     } finally { setBusyRow(null); }
+  }
+
+  /** Record what the CA filed on the portal — the ARN and the real date.
+   *  Same shape as the GSTR-1 tab above; the two returns lock the period
+   *  through the same `record_filing`, so recording one and not the other is
+   *  how a period comes to be half-locked (GST-23). */
+  async function markFiled(id: string, arn: string, filedDate: string) {
+    const ok = await updateStatus(id, "submitted",
+                                  { arn: arn || undefined, filed_date: filedDate });
+    if (ok) setFilingRow(null);
   }
 
   /** Ask whether a saved return still matches the books. Never writes. */
@@ -889,12 +1048,21 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       {/* Refusals from the row actions. The approval gate's message is the
           point of the gate — swallowing it would leave a CA believing they had
           approved a return the server declined. */}
-      {rowError && (
+      {rowError && !filingRow && (
         <div className="text-sm px-3 py-2 rounded bg-amber-50 text-amber-900 border border-amber-200 flex items-start justify-between gap-3">
           <span>{rowError}</span>
           <button onClick={() => setRowError(null)}
             className="text-xs underline shrink-0">Dismiss</button>
         </div>
+      )}
+      {filingRow && (
+        <MarkFiledDialog
+          period={filingRow.period}
+          saving={busyRow === filingRow.id}
+          error={rowError}
+          onCancel={() => { setFilingRow(null); setRowError(null); }}
+          onConfirm={(arn, filedDate) => markFiled(filingRow.id, arn, filedDate)}
+        />
       )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-3B Returns</h3>
@@ -1261,6 +1429,19 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     <button onClick={() => setDemo({ id: r.id as string })}
                       className="text-xs px-2 py-0.5 border border-amber-300 rounded hover:bg-amber-50 text-amber-800">
                       File (demo)
+                    </button>
+                  )}
+                  {/* The real thing. The CA files on gst.gov.in and records the
+                      acknowledgement here; this PATCH is what writes the
+                      public.filings row journal_period_lock_reason reads, and
+                      the ARN and date it carries are the ones the §37(3)
+                      correction window is measured from (GST-23). */}
+                  {r.status === "ca_approved" && (
+                    <button onClick={() => setFilingRow({ id: r.id as string,
+                                                          period: r.period as string })}
+                      disabled={busyRow === r.id}
+                      className="text-xs px-2 py-0.5 border border-green-300 rounded hover:bg-green-50 text-green-800 disabled:opacity-40">
+                      Mark as filed
                     </button>
                   )}
                   {/* Unfiled only. A submitted return carries its ARN and the

@@ -450,6 +450,28 @@ change. The code is the authority; keep this file in step with it.
   other. The §92E variant is deliberately not modelled — "one month prior" to
   30 November is 30 October by calendar arithmetic while professional sources
   commonly say 31 October, and that one-day difference is unconfirmed.
+- **WHETHER §44AB applies is `domain/income_tax/tax_audit.py`, and the NATURE
+  OF THE ACTIVITY is an input, never inferred from the amount.** §44AB(a)
+  reaches a person carrying on BUSINESS and §44AB(b) a person carrying on a
+  PROFESSION — different clauses, different figures, and which applies is a
+  fact about the client. The Tax Audit tracker used to decide it in three lines
+  of TypeScript: above ₹1 crore "business", between ₹50 lakh and ₹1 crore
+  "profession", so a trader with ₹60 lakh of turnover — whom clause (a) does
+  not reach at all — was told an audit was mandatory, and §271B charges 0.5% of
+  turnover capped at ₹1,50,000 on exactly that obligation. **The proviso to
+  §44AB(a) needs FOUR figures, not two**: cash receipts against turnover AND
+  cash payments against total payments, and the payments denominator cannot be
+  derived from turnover — so the ₹10 crore limb is applied only when all three
+  are stated, and the base figure stands otherwise, which is the direction that
+  cannot cause a missed audit. **Clauses (c), (d) and (e) are NOT tested and are
+  NAMED on every answer**, a "not required" one included: each compares DECLARED
+  profit against a figure deemed by §44AE/§44BB/§44BBB/§44ADA/§44AD(4), and no
+  turnover box carries that. ⚠️ Every year is `verified=False` — the figures are
+  `[S]`-graded, reconciled against `presumptive.py`'s 5% cash test rather than
+  read off a Finance Act. One reconciliation is worth keeping: **the Finance Act
+  2023's ₹75 lakh is §44ADA's PRESUMPTIVE limit, not §44AB(b)'s AUDIT
+  threshold** — `apps/web/lib/income-tax/taxAuditThresholds.ts` said otherwise
+  in its own comment and is deleted.
 - **Which ITR date applies is decided, or refused, in
   `compliance_obligation_service.itr_due_date_for_client`.** Explanation 2 to
   §139(1) settles it on facts the app holds in exactly three cases: (a)(i) a
@@ -523,10 +545,19 @@ change. The code is the authority; keep this file in step with it.
   6 pays the challan with. Rule 88B(2) is the other case — tax NOT declared in
   the return, found in a §73/§74 proceeding — and there it IS the whole tax
   from the date it fell due, so a caller that used the cash figure would
-  understate it. §50(3) is 24% on credit wrongly availed **AND UTILISED** (Rule
-  88B(3)) and REFUSES rather than substituting the availed figure: credit
+  understate it. **§50(3) REFUSES TWICE OVER.** Its base is credit wrongly
+  availed **AND UTILISED** (Rule 88B(3)), never the availed figure — credit
   availed and never utilised bears nothing, so the substitution would charge a
-  taxpayer who owes nothing at the higher of the two rates.
+  taxpayer who owes nothing. And **its RATE is a named gap, not 24%**: the
+  Act's own ceiling is "not exceeding twenty-four per cent" and Notification
+  13/2017-CT notified 24% against the ORIGINAL sub-section, but the Finance
+  Act 2022 substituted §50(3) retrospectively from 01-07-2017 and Notification
+  09/2022-CT appears to notify **18%** for the substituted text. A THIRD of
+  the charge separates the two and this is money a CA pays over on the
+  client's behalf, so over-stating takes it from somebody who does not owe it —
+  the opposite direction from the ESI rounding, and the reason this one refuses
+  where that one rounds up. `SECTION_50_3_NOTIFIED_RATE_BPS` is `None` and the
+  engine works the moment a figure is written in.
   **THE §47 LATE FEE IS NOT COMPUTED AT ALL.** The statutory ₹100 a day per Act
   capped at ₹5,000 is held so nobody has to look up what the notifications
   reduced, and is deliberately NOT a fallback — no registered person has paid
@@ -660,6 +691,17 @@ change. The code is the authority; keep this file in step with it.
   FORM 12BB statement is the evidence, and prescribes exactly four claims —
   §10(13A), §10(5), §24(b) and Chapter VI-A. `domain/payroll/declarations.py`
   keeps them apart; nothing sets one from another.
+- **A §192 PROJECTION IS THE RUN'S OWN FIGURE.**
+  `GET /api/payroll/tds-projection` answers off `_compute_slip` — the same
+  function the payroll run pays from — so what the screen projects for November
+  is what November's run deducts. It replaced `lib/services/payrollTdsEstimate.ts`,
+  a slab ladder with its own §87A rebate and §2(29C) brackets, hard-coded to FY
+  2025-26 and deliberately not FY-versioned: from 1 April it was last year's tax,
+  stated confidently, with no old regime, no declaration and annual-over-twelve
+  where §192(3) governs. A projected month assumes a FULL month's attendance and
+  no undecided bonus, and says so — LOP is a fact about a month that has
+  happened, and §192(1) estimates on salary, which a payment nobody has decided
+  is not.
 - **Under the new regime §115BAC(2) allows §16(ia) and nothing else from
   section 16** — professional tax under §16(iii) is NOT deductible, nor is
   §10(13A) HRA, §10(5) LTA, or any Chapter VI-A head except §80CCD(2) (and
@@ -738,6 +780,7 @@ a guess to a verified figure.**
 | `domain/tds/section_rates.py` | TDS rates AND per-section thresholds (`LATEST_VERIFIED_TDS_FY`) | Finance Act, and mid-year CBDT notifications |
 | `domain/tds/section_195_rates.py` | §195 rates on payments to non-residents, by NATURE of income (§115A), plus the two Part II surcharge ladders and cess | Finance Act. **Every year is currently `verified=False`** — reconciled, not confirmed line by line |
 | `domain/income_tax/capital_gains_engine.py` | `CII_BY_FY` + `LATEST_CII_FY` | one CBDT notification, usually around June |
+| `domain/income_tax/tax_audit.py` | §44AB(a)/(b) thresholds and the proviso's ₹10 crore limb (`LATEST_VERIFIED_FY` is `None` — **no year has been confirmed**) | Finance Act |
 
 CII is the odd one out: it is notified *partway through* the year it applies to,
 so at 1 April the entry legitimately does not exist yet. Check again mid-year.
@@ -874,6 +917,7 @@ the response. Adding any of them is a human step, like the ITR schemas.
 | a vendor's MSMED classification | `vendors.msme_status`, surfaced by `public.schedule_iii_ageing` | it is a fact about the SUPPLIER — their Udyam registration — that no ledger holds, and it is not presentational: §43B(h) (Finance Act 2023, AY 2024-25) disallows a deduction for sums payable to a micro or small enterprise beyond the MSMED §15 limit unless actually paid, so calling an unclassified vendor "Others" changes taxable income. The column has NO default; an unclassified balance is reported beside the payables table, never inside a row |
 | the DTAA rate for a payment to a non-resident | `public.dtaa_treaty_rates` (migration 310) — one row per (country, nature), firm-scoped; `vendors.treaty_rate_bps` is now only a per-vendor override. Refused on the purchase-bill path when a TRC is held and nothing is recorded | §194C, §194J and their neighbours charge, in their own words, sums paid "to a **resident**" — so for a non-resident payee they do not apply at all and §195 does, at rates in force under Part II of the First Schedule by NATURE of income, with surcharge and cess, displaced by the DTAA under §90(2) where a TRC and Form 10F are held. Nature of income × ninety-odd treaties × surcharge band cannot be written from memory, and §206AA's 20% floor has a non-resident carve-out (§206AA(7) with Rule 37BC) that residents do not get. Under-deducting disallows the WHOLE expenditure under §40(a)(i). The ACT side is now computed — `domain/tds/section_195_rates.py` holds §115A and Part II by nature of income, with surcharge and cess — but §90(2) gives the assessee whichever of the Act and the AGREEMENT is more beneficial, and the agreement cannot be: ninety-odd treaties, differing royalty/FTS/interest articles, MFN clauses needing their own §90(1) notification (*AO v. Nestle SA*, 2023), and several — the UAE and Singapore among them — with no FTS article at all. So a CA reads the agreement once per country and nature and records what they read (Settings → DTAA Treaty Rates); the engine then applies §90(2) to the two numbers it has, and REFUSES where a TRC is on file and nothing is recorded, because falling back to the Act rate would over-deduct exactly where somebody has established a treaty applies. **"No article" is an ANSWER, not a missing rate**: several agreements — the UAE and Singapore among them — have no FTS article, which makes the income Article 7 business profits and not taxable here without a PE, so it needs the same no-PE declaration chargeability does |
 | the §47 GST late-fee rates | `domain/gst/late_filing.LATE_FEE_RATES`, empty; the refusal reaches the screen as a sentence naming the notification | the statutory figure is ₹100 a day per Act capped at ₹5,000, and nobody has paid it since 2018 — Notifications 4/2018 and 76/2018 reduced it and 19/2021 and 20/2021 capped it by turnover band, so the figure in force depends on the return, the year AND the taxpayer's own turnover. This environment's proxy refuses every `.gov.in`, and a late fee written from memory is a number a CA would pay over. §50 INTEREST is computed — its rates are in the Act |
+| the §50(3) interest rate | `domain/gst/late_filing.SECTION_50_3_NOTIFIED_RATE_BPS`, `None`; the refusal names both notifications and the Act's ceiling | the sub-section charges "not exceeding twenty-four per cent as may be notified". Notification 13/2017-CT notified 24% against the ORIGINAL §50(3); the Finance Act 2022 substituted it retrospectively from 01-07-2017 and Notification 09/2022-CT appears to notify 18% for the substituted text. A THIRD of the charge separates them, egress is refused here, and this is a sum paid over on the client's behalf — over-stating takes money from a taxpayer who does not owe it. §50(1)'s 18% is held because 13/2017-CT notified it against text that has not moved |
 | which accounts hold unbilled dues | `chart_of_accounts.unbilled_dues_side` + `public.schedule_iii_unbilled_reviews` (migration 305) | both ageing notes end "Unbilled dues shall be disclosed separately", and an unbilled due has no document — having none is what makes it unbilled — so the figure is a BALANCE on accounts somebody marked. No account name decides it: "Accrued Interest" may be income receivable or an expense payable. And the review is a SECOND fact: the markings say which accounts hold them, only the review says there are no others, so an unreviewed client shows no figure rather than a zero that claims it has none |
 
 **§89 also refuses a year the rate registry does not hold**, and that is worth
