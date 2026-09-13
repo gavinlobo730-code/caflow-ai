@@ -9,18 +9,18 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 |---|---|---|
 | closed | **71** | re-read against the code. The defect is gone. |
 | closed_by_commit | **159** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **11** | part of the finding is answered, part is not. Each says which. |
-| open | **33** | re-read and still true. |
+| partial | **9** | part of the finding is answered, part is not. Each says which. |
+| open | **35** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 44 items — 33 open and 11 partial — not 254.**
+**The work left is 44 items — 35 open and 9 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 33 open, most are not code problems.** Nearly every one needs a
+**And of the 35 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -36,8 +36,10 @@ migration; a handful need a statutory document a person has to read.
 | medium | **BANK-24** | Bank-charge input tax credit is posted with no supplier GSTIN or invoice reference, so it can ne |
 | medium | **FA-08b** | No output tax on a fixed-asset disposal — the split half of FA-08 |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
+| medium | **FA-19** | Rule 43 capital-goods ITC apportionment does not exist |
 | medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
+| medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
 | medium | **INV-02** | Moving average is the only costing method — no FIFO and no standard cost |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
@@ -104,9 +106,7 @@ migration; a handful need a statutory document a person has to read.
 | high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
-| medium | **FA-19** | Rule 43 capital-goods ITC apportionment does not exist |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
-| medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **PAY-15** | Attendance and LOP cannot be entered from the client Payroll tab at all — they live on a firm-wi |
 | low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 
