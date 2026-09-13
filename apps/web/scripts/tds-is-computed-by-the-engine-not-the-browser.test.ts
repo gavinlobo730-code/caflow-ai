@@ -57,14 +57,21 @@ const RATE_HOLDERS: Record<string, string> = {
     "engine the way a hardcoded table does. Display-only: the figure is rendered " +
     "and never saved. It is labelled \"manual rate\" on screen. Revisit with " +
     "Phase 4's unknown-section work (§194IA and friends).",
-  "lib/services/payrollTdsEstimate.ts":
-    "§192 SALARY TDS, not Chapter XVII-B — a different engine " +
-    "(routers/payroll.py::_compute_tds_192) and a different finding. The " +
-    "module's own docstring already declares itself a standing CLAUDE.md " +
-    "violation tracked as roadmap R2.10 (move payroll compute server-side), " +
-    "and says any FY rate change must update both it and statutory_rates.py. " +
-    "Absorbing it into this phase would hide an item that is already named.",
 };
+
+// The allowlist SHRANK, and this is the record of it. `payrollTdsEstimate.ts`
+// held §192's slab ladder, §87A rebate and §2(29C) brackets, hard-coded to FY
+// 2025-26 and deliberately not FY-versioned; its own docstring called itself a
+// standing CLAUDE.md violation, tracked as roadmap R2.10. PAY-10 closed it:
+// GET /api/payroll/tds-projection answers off `_compute_slip`, the same
+// function the payroll run pays from.
+test("the §192 browser estimator is gone, and stays gone", () => {
+  assert.equal(fs.existsSync(path.join(WEB, "lib/services/payrollTdsEstimate.ts")), false,
+    "lib/services/payrollTdsEstimate.ts is back — §192 is computed in " +
+    "routers/payroll.py::_compute_slip and served by /api/payroll/tds-projection");
+  assert.equal("lib/services/payrollTdsEstimate.ts" in RATE_HOLDERS, false,
+    "the allowlist may only shrink");
+});
 
 test("no screen carries its own table of TDS rates", () => {
   // A rate table is a map from a section number to a percentage. Spelling it as

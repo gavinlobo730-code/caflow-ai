@@ -504,6 +504,64 @@ def resolve_assessee_kind(
     })
 
 
+@router.get("/tax-audit/applicability")
+def tax_audit_applicability(
+    nature: str = Query(..., description="business | profession — the ACTIVITY, never inferred from the amount"),
+    turnover_paise: int = Query(..., ge=0, description="Sales/turnover for a business, gross receipts for a profession"),
+    financial_year: Annotated[OptionalFYLabel, Query()] = None,
+    cash_receipts_paise: Optional[int] = Query(None, ge=0),
+    cash_payments_paise: Optional[int] = Query(None, ge=0),
+    total_payments_paise: Optional[int] = Query(None, ge=0),
+    is_company: bool = Query(False),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """Whether §44AB requires a tax audit, on the facts stated.
+
+    THE SCREEN USED TO DECIDE THIS ITSELF, AND GOT IT BACKWARDS (IT-11). The
+    Tax Audit tracker read the NATURE of the activity off the AMOUNT — above
+    ₹1 crore it said "business", between ₹50 lakh and ₹1 crore it said
+    "profession" — so a trader with ₹60 lakh of turnover was told an audit was
+    mandatory when clause (a) does not reach them at all. It also never
+    applied the proviso to §44AB(a), so a client with ₹4 crore of turnover and
+    2% of it in cash was told the same. CLAUDE.md: statutory rules live in
+    apps/api.
+
+    Reads nothing and writes nothing — this is arithmetic on figures the
+    caller states, like the §32 and HRA endpoints beside it. It does NOT
+    decide the ITR due date: `compliance_obligation_service.itr_due_date_for_client`
+    is the authority for that and deliberately refuses where no audit
+    engagement is recorded, because an applicability ANSWER is not the same
+    fact as an audit actually being carried out.
+    """
+    from domain.income_tax import tax_audit as ta
+    try:
+        result = ta.answer(
+            nature=nature,
+            turnover_paise=turnover_paise,
+            financial_year=financial_year,
+            cash_receipts_paise=cash_receipts_paise,
+            cash_payments_paise=cash_payments_paise,
+            total_payments_paise=total_payments_paise,
+            is_company=is_company,
+        )
+    except ValueError as e:
+        return api_response(False, None, str(e))
+
+    data = result.to_dict()
+    # The SPECIFIED DATE, derived rather than restated — Explanation (ii) to
+    # §44AB is one month before the §139(1) date, and compliance_engine owns
+    # both so a CBDT extension of one moves the other.
+    if result.required:
+        from services import compliance_engine as ce
+        fye = fy_end_year(result.financial_year)
+        data["report_due_date"] = ce.tax_audit_report_due_date(fye).isoformat()
+        data["return_due_date"] = ce.itr_due_date(fye, is_audit=True).isoformat()
+    else:
+        data["report_due_date"] = None
+        data["return_due_date"] = None
+    return api_response(True, data)
+
+
 @router.post("/hra/compute")
 def compute_hra(
     basic_salary_paise: int,

@@ -105,9 +105,15 @@ type LeaveBalance = {
   id?: string;
   employee_id: string;
   year: number;
-  casual_leave_balance: number;
-  sick_leave_balance: number;
-  earned_leave_balance: number;
+  // NULL where no leave_balances row exists for this employee and year — an
+  // entitlement nobody has recorded, which is not the same fact as an
+  // entitlement of zero and is certainly not the same as 12 (PAY-24). The
+  // loader used to substitute 12/12/15 here, so a CA could not tell an
+  // allotment their firm had agreed from one this screen had invented, and
+  // "Remaining" was computed against the invention.
+  casual_leave_balance: number | null;
+  sick_leave_balance: number | null;
+  earned_leave_balance: number | null;
   // Used — derived from attendance records
   casual_used?: number;
   sick_used?: number;
@@ -313,9 +319,13 @@ export default function AttendancePage() {
         id: existing?.id,
         employee_id: emp.id,
         year: leaveYear,
-        casual_leave_balance: existing?.casual_leave_balance ?? 12,
-        sick_leave_balance: existing?.sick_leave_balance ?? 12,
-        earned_leave_balance: existing?.earned_leave_balance ?? 15,
+        // ?? null, NOT ?? 12. See the type above: an unrecorded entitlement
+        // is reported as unrecorded. Nothing in this product accrues leave or
+        // carries a balance forward, so there is no figure to derive either —
+        // the CA records what the employment contract says.
+        casual_leave_balance: existing?.casual_leave_balance ?? null,
+        sick_leave_balance: existing?.sick_leave_balance ?? null,
+        earned_leave_balance: existing?.earned_leave_balance ?? null,
         casual_used: used.casual,
         sick_used: used.sick,
         earned_used: used.earned,
@@ -600,14 +610,25 @@ export default function AttendancePage() {
 
   async function saveLeaveBalance(lb: LeaveBalance) {
     if (!firmId) return;
+    // Nothing typed writes nothing. An upsert of three nulls would create a
+    // row that says "recorded" and holds no entitlement, which is the same
+    // ambiguity the invented 12/12/15 created, one table down.
+    if (lb.casual_leave_balance == null
+        && lb.sick_leave_balance == null
+        && lb.earned_leave_balance == null) {
+      setEditingLeave(null);
+      return;
+    }
     const sb = getSupabaseClient();
     await sb.from("leave_balances").upsert({
       firm_id: firmId,
       employee_id: lb.employee_id,
       year: lb.year,
-      casual_leave_balance: lb.casual_leave_balance,
-      sick_leave_balance: lb.sick_leave_balance,
-      earned_leave_balance: lb.earned_leave_balance,
+      // A blank box is 0, not null: the CA opened the row and left this type
+      // out, which for a leave register means none of it.
+      casual_leave_balance: lb.casual_leave_balance ?? 0,
+      sick_leave_balance: lb.sick_leave_balance ?? 0,
+      earned_leave_balance: lb.earned_leave_balance ?? 0,
     }, { onConflict: "employee_id,year" });
     setEditingLeave(null);
     loadLeaveBalances();
@@ -853,6 +874,18 @@ export default function AttendancePage() {
                 <p className="text-xs text-[#64748B] mt-0.5">
                   Used leave is aggregated from attendance records. Edit the annual allocation per employee.
                 </p>
+                {/* PAY-24. The screen used to fill an unrecorded entitlement
+                    with 12 casual, 12 sick and 15 earned, so a CA could not
+                    tell a figure their firm had agreed from one this page had
+                    invented — and the invented figure was what "Remaining"
+                    was measured against. It shows an em dash now, and says
+                    what the product does not do rather than papering over it. */}
+                <p className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                  An allocation shown as “—” has not been recorded for {leaveYear}; it is not
+                  zero and it is not a default. Nothing here accrues leave monthly or carries a
+                  balance into the next year — the figure is what the employment contract or
+                  the firm’s policy says, entered once a year.
+                </p>
               </CardHeader>
               <CardContent className="p-0">
                 {leaveLoadFailed ? (
@@ -890,9 +923,15 @@ export default function AttendancePage() {
                         const emp = employees.find(e => e.id === lb.employee_id);
                         const isEditing = editingLeave === lb.employee_id;
                         const form = isEditing ? editLeaveForm : lb;
-                        const clRem = (form.casual_leave_balance ?? lb.casual_leave_balance) - (lb.casual_used ?? 0);
-                        const slRem = (form.sick_leave_balance ?? lb.sick_leave_balance) - (lb.sick_used ?? 0);
-                        const elRem = (form.earned_leave_balance ?? lb.earned_leave_balance) - (lb.earned_used ?? 0);
+                        // NULL where the entitlement is unrecorded. "Remaining"
+                        // against an allotment nobody set is not a smaller
+                        // number, it is not a number — and rendering 12 minus
+                        // the days taken was the invention this replaced.
+                        const rem = (allotted: number | null | undefined, used: number | undefined) =>
+                          allotted == null ? null : allotted - (used ?? 0);
+                        const clRem = rem(form.casual_leave_balance ?? lb.casual_leave_balance, lb.casual_used);
+                        const slRem = rem(form.sick_leave_balance ?? lb.sick_leave_balance, lb.sick_used);
+                        const elRem = rem(form.earned_leave_balance ?? lb.earned_leave_balance, lb.earned_used);
                         return (
                           <tr key={lb.employee_id} className="border-b hover:bg-[#F8FAFC]">
                             <td className="py-3 px-4 font-medium">{emp?.name ?? lb.employee_id}</td>
@@ -901,45 +940,60 @@ export default function AttendancePage() {
                               {isEditing ? (
                                 <input
                                   type="number" min={0}
-                                  value={editLeaveForm.casual_leave_balance ?? lb.casual_leave_balance}
-                                  onChange={e => setEditLeaveForm(f => ({ ...f, casual_leave_balance: parseInt(e.target.value) || 0 }))}
+                                  value={editLeaveForm.casual_leave_balance ?? lb.casual_leave_balance ?? ""}
+                                  placeholder="not set"
+                                  onChange={e => setEditLeaveForm(f => ({ ...f, casual_leave_balance: e.target.value === "" ? null : (parseInt(e.target.value) || 0) }))}
                                   className="w-14 border rounded px-2 py-1 text-center text-xs"
                                 />
-                              ) : <span>{lb.casual_leave_balance}</span>}
+                              ) : lb.casual_leave_balance == null
+                                  ? <span className="text-[#94A3B8]" title="No entitlement recorded for this year">—</span>
+                                  : <span>{lb.casual_leave_balance}</span>}
                             </td>
                             <td className="py-2 px-2 text-center text-[#64748B]">{lb.casual_used ?? 0}</td>
                             <td className="py-2 px-2 text-center">
-                              <span className={clRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{clRem}</span>
+                              {clRem == null
+                                ? <span className="text-[#94A3B8]">—</span>
+                                : <span className={clRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{clRem}</span>}
                             </td>
                             {/* SL */}
                             <td className="py-2 px-2 text-center">
                               {isEditing ? (
                                 <input
                                   type="number" min={0}
-                                  value={editLeaveForm.sick_leave_balance ?? lb.sick_leave_balance}
-                                  onChange={e => setEditLeaveForm(f => ({ ...f, sick_leave_balance: parseInt(e.target.value) || 0 }))}
+                                  value={editLeaveForm.sick_leave_balance ?? lb.sick_leave_balance ?? ""}
+                                  placeholder="not set"
+                                  onChange={e => setEditLeaveForm(f => ({ ...f, sick_leave_balance: e.target.value === "" ? null : (parseInt(e.target.value) || 0) }))}
                                   className="w-14 border rounded px-2 py-1 text-center text-xs"
                                 />
-                              ) : <span>{lb.sick_leave_balance}</span>}
+                              ) : lb.sick_leave_balance == null
+                                  ? <span className="text-[#94A3B8]" title="No entitlement recorded for this year">—</span>
+                                  : <span>{lb.sick_leave_balance}</span>}
                             </td>
                             <td className="py-2 px-2 text-center text-[#64748B]">{lb.sick_used ?? 0}</td>
                             <td className="py-2 px-2 text-center">
-                              <span className={slRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{slRem}</span>
+                              {slRem == null
+                                ? <span className="text-[#94A3B8]">—</span>
+                                : <span className={slRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{slRem}</span>}
                             </td>
                             {/* EL */}
                             <td className="py-2 px-2 text-center">
                               {isEditing ? (
                                 <input
                                   type="number" min={0}
-                                  value={editLeaveForm.earned_leave_balance ?? lb.earned_leave_balance}
-                                  onChange={e => setEditLeaveForm(f => ({ ...f, earned_leave_balance: parseInt(e.target.value) || 0 }))}
+                                  value={editLeaveForm.earned_leave_balance ?? lb.earned_leave_balance ?? ""}
+                                  placeholder="not set"
+                                  onChange={e => setEditLeaveForm(f => ({ ...f, earned_leave_balance: e.target.value === "" ? null : (parseInt(e.target.value) || 0) }))}
                                   className="w-14 border rounded px-2 py-1 text-center text-xs"
                                 />
-                              ) : <span>{lb.earned_leave_balance}</span>}
+                              ) : lb.earned_leave_balance == null
+                                  ? <span className="text-[#94A3B8]" title="No entitlement recorded for this year">—</span>
+                                  : <span>{lb.earned_leave_balance}</span>}
                             </td>
                             <td className="py-2 px-2 text-center text-[#64748B]">{lb.earned_used ?? 0}</td>
                             <td className="py-2 px-2 text-center">
-                              <span className={elRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{elRem}</span>
+                              {elRem == null
+                                ? <span className="text-[#94A3B8]">—</span>
+                                : <span className={elRem < 0 ? "text-red-600 font-semibold" : "text-green-700 font-semibold"}>{elRem}</span>}
                             </td>
                             <td className="py-2 px-4">
                               {isEditing ? (

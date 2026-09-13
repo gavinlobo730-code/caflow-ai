@@ -2,7 +2,8 @@
 
 /**
  * Tax Audit Tracker — IT Act Section 44AB
- * Required if turnover > ₹1 crore (business) or ₹50 lakh (profession)
+ * Applicability is decided by apps/api/domain/income_tax/tax_audit.py — §44AB(a)
+ * for a business, §44AB(b) for a profession, on figures this file does not hold
  * Form 3CA-3CD (for companies audited u/s 44AB(a)) or 3CB-3CD (others)
  * # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
  *
@@ -21,11 +22,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
-import {
-  THRESHOLD_BUSINESS_PAISE as THRESHOLD_BUSINESS,
-  THRESHOLD_PROFESSION_PAISE as THRESHOLD_PROFESSION,
-} from "@/lib/income-tax/taxAuditThresholds";
-import { api, type TaxAuditDueDates } from "@/lib/api";
+import { api, type TaxAuditDueDates, type TaxAuditApplicability } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 
@@ -88,6 +85,13 @@ interface AuditFormState {
   udin: string;
   ackNumber: string;
   turnoverRs: string;
+  // NOT persisted — tax_audits has no column for any of these, and they are
+  // inputs to a live §44AB check rather than facts about the engagement. The
+  // answer states what it was computed on, so nothing is lost by asking again.
+  nature: "business" | "profession";
+  cashReceiptsRs: string;
+  cashPaymentsRs: string;
+  totalPaymentsRs: string;
 }
 
 const BLANK: AuditFormState = {
@@ -101,6 +105,13 @@ const BLANK: AuditFormState = {
   udin: "",
   ackNumber: "",
   turnoverRs: "",
+  // No default. §44AB(a) and (b) are different clauses and the app does not
+  // hold which one a client is on, so the CA says — guessing "business" is
+  // exactly the inference this replaced, moved one step earlier.
+  nature: "business",
+  cashReceiptsRs: "",
+  cashPaymentsRs: "",
+  totalPaymentsRs: "",
 };
 
 function AuditModal({ clients, editAudit, onClose, onSaved }: {
@@ -122,14 +133,68 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
       udin: editAudit.udin ?? "",
       ackNumber: editAudit.ack_number ?? "",
       turnoverRs: editAudit.turnover_paise > 0 ? (editAudit.turnover_paise / 100).toFixed(2) : "",
+      nature: "business",
+      cashReceiptsRs: "",
+      cashPaymentsRs: "",
+      totalPaymentsRs: "",
     };
   });
 
-  // The live threshold badge. null (not an amount) reads as nothing entered
-  // rather than as a turnover under the threshold — the save path says why.
-  const turnoverPreviewPaise = paiseFromRupeeInput(form.turnoverRs || "0") ?? 0;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── §44AB applicability, ASKED not decided (IT-11) ───────────────────────
+  // The badge under the turnover box used to be three lines of TypeScript
+  // comparing the amount against two constants, and it read the NATURE of the
+  // activity off the AMOUNT: above ₹1 crore it said "business", between
+  // ₹50 lakh and ₹1 crore it said "profession". So a trader with ₹60 lakh of
+  // turnover — whom §44AB(a) does not reach — was told an audit was
+  // mandatory, and it never applied the proviso to §44AB(a) at all.
+  // domain/income_tax/tax_audit.py is the authority now; this asks it.
+  const [applicability, setApplicability] = useState<TaxAuditApplicability | null>(null);
+  const [applicabilityError, setApplicabilityError] = useState<string | null>(null);
+  const [showProviso, setShowProviso] = useState(false);
+
+  const cashReceiptsPaise = form.cashReceiptsRs ? paiseFromRupeeInput(form.cashReceiptsRs) : null;
+  const cashPaymentsPaise = form.cashPaymentsRs ? paiseFromRupeeInput(form.cashPaymentsRs) : null;
+  const totalPaymentsPaise = form.totalPaymentsRs ? paiseFromRupeeInput(form.totalPaymentsRs) : null;
+
+  const client = clients.find(c => c.id === form.clientId);
+  const isCompany = /company|pvt|private limited|limited/i.test(String(client?.entity_type ?? ""));
+
+  useEffect(() => {
+    // Nothing typed is not the same as zero: an empty box asks nothing.
+    const typed = paiseFromRupeeInput(form.turnoverRs);
+    if (!form.turnoverRs || typed === null) {
+      setApplicability(null);
+      setApplicabilityError(null);
+      return;
+    }
+    let cancelled = false;
+    // Debounced — the box is typed a digit at a time and each keystroke would
+    // otherwise be a request, with the answers arriving out of order.
+    const t = setTimeout(() => {
+      api.incomeTax.taxAuditApplicability({
+        nature: form.nature,
+        turnover_paise: typed,
+        financial_year: form.financialYear,
+        cash_receipts_paise: cashReceiptsPaise ?? undefined,
+        cash_payments_paise: cashPaymentsPaise ?? undefined,
+        total_payments_paise: totalPaymentsPaise ?? undefined,
+        is_company: isCompany,
+      }).then(r => {
+        if (cancelled) return;
+        if (r.success && r.data) { setApplicability(r.data); setApplicabilityError(null); }
+        // A refusal is SHOWN. The old badge could not fail, so it always said
+        // something — which is how it came to say something wrong.
+        else { setApplicability(null); setApplicabilityError(r.error ?? "Couldn't check §44AB."); }
+      }).catch(() => {
+        if (!cancelled) { setApplicability(null); setApplicabilityError("Couldn't check §44AB."); }
+      });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [form.turnoverRs, form.nature, form.financialYear,
+      cashReceiptsPaise, cashPaymentsPaise, totalPaymentsPaise, isCompany]);
 
   function upd(patch: Partial<AuditFormState>) { setForm(f => ({ ...f, ...patch })); }
   const inputCls = "w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500";
@@ -215,19 +280,104 @@ function AuditModal({ clients, editAudit, onClose, onSaved }: {
               </select>
             </div>
           </div>
-          <div>
-            <label className={lbl}>Turnover / Gross Receipts (₹)</label>
-            <input type="number" min="0" step="0.01" value={form.turnoverRs} onChange={e => upd({ turnoverRs: e.target.value })} className={inputCls} placeholder="Enter turnover for threshold check" />
-            {form.turnoverRs && (
-              <p className="text-xs mt-1 text-[#64748B]">
-                {turnoverPreviewPaise >= THRESHOLD_BUSINESS
-                  ? "✓ Exceeds ₹1 crore — tax audit mandatory (business)"
-                  : turnoverPreviewPaise >= THRESHOLD_PROFESSION
-                  ? "✓ Exceeds ₹50 lakh — tax audit mandatory (profession)"
-                  : "Below threshold — verify if audit is required"}
-              </p>
-            )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Turnover / Gross Receipts (₹)</label>
+              <input type="number" min="0" step="0.01" value={form.turnoverRs} onChange={e => upd({ turnoverRs: e.target.value })} className={inputCls} placeholder="Enter turnover for threshold check" />
+            </div>
+            <div>
+              {/* §44AB(a) and (b) are different clauses. Which applies is a
+                  fact about the client, and the CA states it — the screen used
+                  to infer it from the amount, which is how a ₹60 lakh trader
+                  was told a profession's threshold applied to them. */}
+              <label className={lbl}>Nature of activity (§44AB)</label>
+              <select value={form.nature} onChange={e => upd({ nature: e.target.value as "business" | "profession" })} className={inputCls}>
+                <option value="business">Business — §44AB(a)</option>
+                <option value="profession">Profession — §44AB(b)</option>
+              </select>
+            </div>
           </div>
+
+          {/* THE PROVISO TO §44AB(a), behind a disclosure because most clients
+              do not need it and an always-open block of three more amount
+              boxes is how a form stops being read. Absent, the base figure
+              applies — the direction that cannot cause a missed audit. */}
+          {form.nature === "business" && (
+            <div className="border border-[#E2E8F0] rounded-lg">
+              <button
+                type="button"
+                onClick={() => setShowProviso(v => !v)}
+                className="w-full text-left px-3 py-2 text-xs font-medium text-[#334155] flex items-center justify-between"
+              >
+                <span>Cash receipts and payments (the proviso to §44AB(a))</span>
+                <span className="text-[#94A3B8]">{showProviso ? "−" : "+"}</span>
+              </button>
+              {showProviso && (
+                <div className="px-3 pb-3 space-y-3">
+                  <p className="text-xs text-[#64748B]">
+                    The proviso reads clause (a) with a higher figure where cash receipts
+                    AND cash payments are each within a small share of their own aggregate.
+                    Both sides are needed — the payments side has its own denominator,
+                    which turnover cannot supply — and leaving any of the three blank
+                    applies the base figure, which is the direction that cannot cause a
+                    missed audit. A cheque or bank draft that is not account payee counts
+                    as cash for this test. The answer below states the figures it used.
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className={lbl}>Cash receipts (₹)</label>
+                      <input type="number" min="0" step="0.01" value={form.cashReceiptsRs} onChange={e => upd({ cashReceiptsRs: e.target.value })} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={lbl}>Cash payments (₹)</label>
+                      <input type="number" min="0" step="0.01" value={form.cashPaymentsRs} onChange={e => upd({ cashPaymentsRs: e.target.value })} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={lbl}>Total payments (₹)</label>
+                      <input type="number" min="0" step="0.01" value={form.totalPaymentsRs} onChange={e => upd({ totalPaymentsRs: e.target.value })} className={inputCls} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {applicabilityError && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {applicabilityError}
+            </p>
+          )}
+          {applicability && (
+            <div className={`rounded-lg border px-3 py-2 space-y-2 ${
+              applicability.required
+                ? "bg-amber-50 border-amber-200"
+                : "bg-[#F8FAFC] border-[#E2E8F0]"}`}>
+              <p className="text-xs font-medium text-[#0F172A]">{applicability.basis}</p>
+              {applicability.required && applicability.report_due_date && (
+                <p className="text-xs text-[#334155]">
+                  Report (Form {applicability.form_type}) due {applicability.report_due_date};
+                  return due {applicability.return_due_date}. Explanation (ii) to §44AB puts
+                  the report one month before the §139(1) date.
+                </p>
+              )}
+              {applicability.caveats.length > 0 && (
+                <ul className="text-xs text-[#64748B] list-disc pl-4 space-y-1">
+                  {applicability.caveats.map((c, i) => <li key={i}>{c}</li>)}
+                </ul>
+              )}
+              {/* Always shown, including on a "not required" answer: §44AB is
+                  not exhausted by clauses (a) and (b), and an answer that
+                  reads as if it were is the one a CA would rely on. */}
+              <details className="text-xs text-[#64748B]">
+                <summary className="cursor-pointer">
+                  Limbs not tested here ({applicability.limbs_not_tested.length})
+                </summary>
+                <ul className="list-disc pl-4 mt-1 space-y-1">
+                  {applicability.limbs_not_tested.map((l, i) => <li key={i}>{l}</li>)}
+                </ul>
+              </details>
+            </div>
+          )}
           <div>
             <label className={lbl}>Status</label>
             <select value={form.status} onChange={e => upd({ status: e.target.value as AuditStatus })} className={inputCls}>
@@ -350,8 +500,9 @@ export default function TaxAuditPage() {
       <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 flex items-start gap-3">
         <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
         <p className="text-sm text-amber-800">
-          Tax audit threshold: Business turnover &gt; ₹1 crore, Profession gross receipts &gt; ₹50 lakh.
-          UDIN required from ICAI portal for every audit report.
+          §44AB(a) reaches a business and §44AB(b) a profession, on different figures —
+          enter the turnover and say which, and the check below states the answer and
+          what it rests on. UDIN required from the ICAI portal for every audit report.
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
         </p>
       </div>

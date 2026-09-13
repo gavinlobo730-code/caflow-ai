@@ -226,13 +226,25 @@ def test_the_reports_page_no_longer_fetches_every_payslip():
 
 
 def test_every_reports_tab_asks_for_one_thing():
-    """Four narrow reads and one aggregate — the five questions the tabs ask."""
+    """Three narrow slip reads, one aggregate, and one served projection.
+
+    The TDS Projection tab used to be the fourth slip read —
+    `useSlips({ employee_id: selectedEmpId })` — and it pulled that employee's
+    whole history so the BROWSER could estimate §192 from its own slab ladder
+    (PAY-10). It asks the server for the projection now, which is one narrow
+    question about one employee and one year, so the rule this test states is
+    unchanged and the shape of the answer is not.
+    """
     page = _web("app", "payroll", "reports", "page.tsx")
     for slice_ in ("{ run_id: selectedRunId }",
                    "{ employee_id: selectedEmpId, financial_year: selectedFy }",
-                   "{ month: selectedMonth }",
-                   "{ employee_id: selectedEmpId }"):
+                   "{ month: selectedMonth }"):
         assert slice_ in page, f"no tab asks for {slice_}"
+    assert "api.payroll.tdsProjection(emp.client_id, selectedEmpId, selectedFy)" in page, (
+        "the projection tab must ask the server for one employee and one year")
+    assert "payrollTdsEstimate" not in page.replace(
+        "lib/services/payrollTdsEstimate.ts", ""), (
+        "the browser §192 estimator is back")
 
 
 def test_a_failed_slice_is_not_an_empty_table():

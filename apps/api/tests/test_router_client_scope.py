@@ -955,6 +955,22 @@ EXEMPT: dict[str, str] = {
     "/api/accounting/schedule-iii/captions":
         "a statutory vocabulary, not data: no table, no client_id, and the same "
         "captions for every firm. The PATCH that stores one is guarded.",
+    # ── /api/income-tax: the §44AB test, which reads nothing ────────────────
+    # Arithmetic on figures the CALLER states — a turnover, a nature, three
+    # optional cash aggregates. It opens no table, takes no client_id, and
+    # returns the same answer for the same numbers whoever asks, because they
+    # come out of §44AB rather than out of anybody's ledger. A client guard
+    # here would have to invent a client to check.
+    #
+    # It exists so the Tax Audit tracker stops deciding this itself: the badge
+    # under the turnover box read the NATURE OF THE ACTIVITY off the AMOUNT,
+    # so a ₹60 lakh business was told a profession's threshold applied to it
+    # (IT-11). The row the answer is recorded against — tax_audits — is written
+    # over PostgREST under RLS, and the writes that touch it are elsewhere.
+    "/api/income-tax/tax-audit/applicability":
+        "a statutory test, not data: no table, no client_id, and the same "
+        "answer for the same figures. The turnover it is asked about is "
+        "supplied by the caller, not read from a client.",
     # ── /api/payroll: the firm's own reading of a state notification ────────
     # firm_pt_slabs has firm_id and NO client_id (migration 327), and that is
     # the whole point of it: professional tax is levied by the STATE, so the

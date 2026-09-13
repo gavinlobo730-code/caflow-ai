@@ -257,24 +257,24 @@
       "why": "moving average is still the only costing method. FIFO appears in the module only as prose"
     },
     "PAY-24": {
-      "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "leave tables exist in the migrations; what the finding names — accrual, carry-forward and encashment against a real balance — needs a read to score"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "The finding's own first option, which it calls the honest one. An unrecorded leave entitlement is NULL and renders as '—' rather than being filled in with 12/12/15; Remaining is null against it rather than measured off the invention; an upsert of three nulls writes nothing; and the screen says in words that an em dash is neither zero nor a default, and that nothing accrues monthly or carries forward. The employee portal half was already honest — it renders only real rows. A per-client leave POLICY with server-side accrual is the other option the finding offers and is not built; it needs a migration."
     },
     "PUR-18": {
-      "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "bill_of_entry appears in the tree; whether the IGST paid to customs reaches GSTR-3B Table 4(A) needs a read"
+      "status": "open",
+      "verified_on": "2026-09-13",
+      "why": "PROBED, and the 'appears in the tree' note was wrong. bill_of_entry occurs ONLY in domain/gst/gstr2b.py as a section of the PORTAL's own file — there is no Bill of Entry document type in the product. gstr3b_computer's _table_4a_rows emits IMPG and IMPS as hard zeros with a comment saying nothing upstream distinguishes an import. Needs a migration (a new document table)."
     },
     "PUR-27": {
-      "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "expense_claim appears in the tree; scope of what exists needs a read"
+      "status": "open",
+      "verified_on": "2026-09-13",
+      "why": "PROBED, and the 'appears in the tree' note was wrong: expense_claim / ExpenseClaim occurs nowhere in apps/api or apps/web. Needs a migration. The finding itself says to check with the owner whether the banking voucher path is sufficient before building — that question is in docs/audits/questions-for-the-owner.md."
     },
     "IT-11": {
       "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "Form 3CD appears in the tree; the s.44AB applicability test is decided by compliance_obligation_service and refuses rather than guessing (see CLAUDE.md). Needs a read to score the 3CD half"
+      "verified_on": "2026-09-13",
+      "why": "THE §44AB APPLICABILITY HALF IS CLOSED. domain/income_tax/tax_audit.py decides clauses (a) and (b) and names (c)/(d)/(e) as untested; GET /api/income-tax/tax-audit/applicability serves it and the Tax Audit tracker asks. The nature of the activity is an INPUT now — the screen read it off the amount and told a ₹60 lakh business that a profession's threshold applied. The proviso to §44AB(a) is applied where all three cash figures are stated and refused otherwise. apps/web/lib/income-tax/taxAuditThresholds.ts is deleted. WHAT REMAINS is Form 3CD itself — a clause workspace, which needs a migration."
     },
     "IT-19": {
       "status": "open",
@@ -420,9 +420,9 @@
       "why": "the AR/AP/bank legs are still the only party-wise opening path, but services/trial_balance_import_service.py opens every other account from a trial balance. The finding's 'no way in' half is false"
     },
     "GST-23": {
-      "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "the client GST screen RENDERS an ARN column; whether a CA can record the real ARN and filing date from there needs a read of the write path"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "Both GST tabs offer 'Mark as filed' on an approved return, through one MarkFiledDialog: the portal ARN (optional — a CA without it to hand must still be able to record reality) and the real filing DATE (required — the period lock and the §37(3) window are both measured from it). Both PATCHes now carry them, and both check res.success, which GSTR1Tab.updateStatus never did — the GST workspace answers a refusal as HTTP 200 with {success: false}. Frontend only; the endpoint has accepted arn and filed_date since migration 036's columns were written to."
     },
     "GST-28": {
       "status": "partial",
@@ -435,9 +435,9 @@
       "why": "the client payroll tab names 'attendance nobody entered' as a gap it reports; entering it there is still not possible"
     },
     "PAY-10": {
-      "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "the declarations screen's own comment says the s.115BAC(2) exclusions and the Rule 26C particulars live in apps/api. Whether any slab arithmetic remains in the projection screen needs a read"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "GET /api/payroll/tds-projection answers off `_compute_slip`, the same function the payroll run pays from — so the old regime, the employee's declaration and §192(3) all reach it, and the year's rates come from the FY-versioned registry. lib/services/payrollTdsEstimate.ts is deleted and its allowlist entry in tds-is-computed-by-the-engine-not-the-browser.test.ts removed, with the deletion pinned from both suites."
     },
     "BANK-11": {
       "status": "open",
@@ -503,8 +503,8 @@
     },
     "PUR-15": {
       "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "the statutory side is answered: vendors.msme_status has no default and public.schedule_iii_ageing rows (i)/(iii) on MSMED s.2(n), with s.43B(h) cited in domain/reporting/ageing.py. What survives is the finding's other half — /accounting/msme-tracker still writes a re-keyed msme_payments side table over PostgREST"
+      "verified_on": "2026-09-13",
+      "why": "PROBED. The statutory side is answered (vendors.msme_status has no default; public.schedule_iii_ageing rows (i)/(iii) on MSMED s.2(n); s.43B(h) cited in domain/reporting/ageing.py). What survives: /accounting/msme-tracker still INSERTs into msme_payments over PostgREST (page.tsx:164) and reads it back (:269), so the §43B(h) working is a re-keyed side table rather than derived from purchase_bills + purchase_payments. Deriving it is no-migration work; DROPping the table is not."
     },
     "PUR-22": {
       "status": "open",
@@ -518,9 +518,9 @@
       "why": "numbering goes through services/numbering.next_sequence, which reads back the HIGHEST number in the series (max+1, not count+1) behind migration 159's UNIQUE (firm_id, payment_no), with a 23505 retry"
     },
     "SALES-18": {
-      "status": "partial",
-      "verified_on": "2026-09-12",
-      "why": "apps/web/lib/gst holds gstin.ts (a sanctioned keystroke mirror pinned by a shared fixture), period.ts, filingPeriod.ts and rule37Period.ts. Which of the last three carry a statutory RULE rather than date arithmetic needs a read of each"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "Re-read all four named items. ewayEligibility decides through assessEway, which is pinned to the backend by shared/eway-parity-vectors.json and prefers the SERVED assessment — the finding's own second option. The third GSTIN regex is gone (lib/gst/gstin.ts is the sanctioned mirror, pinned by a shared fixture). period.ts, filingPeriod.ts and rule37Period.ts carry FORMAT arithmetic only and each says in its own docstring that the statutory answer is the backend's — filingPeriod's 'WHAT IS NOT HERE' names compliance_engine, rule37Period defers the period to itc_reversal_service.rule37_report. irnEligibility is Rule 46 field presence plus a posted-status check, and leaves the turnover threshold as an explicit warning rather than computing it."
     },
     "SALES-24": {
       "status": "closed",

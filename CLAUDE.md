@@ -450,6 +450,28 @@ change. The code is the authority; keep this file in step with it.
   other. The §92E variant is deliberately not modelled — "one month prior" to
   30 November is 30 October by calendar arithmetic while professional sources
   commonly say 31 October, and that one-day difference is unconfirmed.
+- **WHETHER §44AB applies is `domain/income_tax/tax_audit.py`, and the NATURE
+  OF THE ACTIVITY is an input, never inferred from the amount.** §44AB(a)
+  reaches a person carrying on BUSINESS and §44AB(b) a person carrying on a
+  PROFESSION — different clauses, different figures, and which applies is a
+  fact about the client. The Tax Audit tracker used to decide it in three lines
+  of TypeScript: above ₹1 crore "business", between ₹50 lakh and ₹1 crore
+  "profession", so a trader with ₹60 lakh of turnover — whom clause (a) does
+  not reach at all — was told an audit was mandatory, and §271B charges 0.5% of
+  turnover capped at ₹1,50,000 on exactly that obligation. **The proviso to
+  §44AB(a) needs FOUR figures, not two**: cash receipts against turnover AND
+  cash payments against total payments, and the payments denominator cannot be
+  derived from turnover — so the ₹10 crore limb is applied only when all three
+  are stated, and the base figure stands otherwise, which is the direction that
+  cannot cause a missed audit. **Clauses (c), (d) and (e) are NOT tested and are
+  NAMED on every answer**, a "not required" one included: each compares DECLARED
+  profit against a figure deemed by §44AE/§44BB/§44BBB/§44ADA/§44AD(4), and no
+  turnover box carries that. ⚠️ Every year is `verified=False` — the figures are
+  `[S]`-graded, reconciled against `presumptive.py`'s 5% cash test rather than
+  read off a Finance Act. One reconciliation is worth keeping: **the Finance Act
+  2023's ₹75 lakh is §44ADA's PRESUMPTIVE limit, not §44AB(b)'s AUDIT
+  threshold** — `apps/web/lib/income-tax/taxAuditThresholds.ts` said otherwise
+  in its own comment and is deleted.
 - **Which ITR date applies is decided, or refused, in
   `compliance_obligation_service.itr_due_date_for_client`.** Explanation 2 to
   §139(1) settles it on facts the app holds in exactly three cases: (a)(i) a
@@ -660,6 +682,17 @@ change. The code is the authority; keep this file in step with it.
   FORM 12BB statement is the evidence, and prescribes exactly four claims —
   §10(13A), §10(5), §24(b) and Chapter VI-A. `domain/payroll/declarations.py`
   keeps them apart; nothing sets one from another.
+- **A §192 PROJECTION IS THE RUN'S OWN FIGURE.**
+  `GET /api/payroll/tds-projection` answers off `_compute_slip` — the same
+  function the payroll run pays from — so what the screen projects for November
+  is what November's run deducts. It replaced `lib/services/payrollTdsEstimate.ts`,
+  a slab ladder with its own §87A rebate and §2(29C) brackets, hard-coded to FY
+  2025-26 and deliberately not FY-versioned: from 1 April it was last year's tax,
+  stated confidently, with no old regime, no declaration and annual-over-twelve
+  where §192(3) governs. A projected month assumes a FULL month's attendance and
+  no undecided bonus, and says so — LOP is a fact about a month that has
+  happened, and §192(1) estimates on salary, which a payment nobody has decided
+  is not.
 - **Under the new regime §115BAC(2) allows §16(ia) and nothing else from
   section 16** — professional tax under §16(iii) is NOT deductible, nor is
   §10(13A) HRA, §10(5) LTA, or any Chapter VI-A head except §80CCD(2) (and
@@ -738,6 +771,7 @@ a guess to a verified figure.**
 | `domain/tds/section_rates.py` | TDS rates AND per-section thresholds (`LATEST_VERIFIED_TDS_FY`) | Finance Act, and mid-year CBDT notifications |
 | `domain/tds/section_195_rates.py` | §195 rates on payments to non-residents, by NATURE of income (§115A), plus the two Part II surcharge ladders and cess | Finance Act. **Every year is currently `verified=False`** — reconciled, not confirmed line by line |
 | `domain/income_tax/capital_gains_engine.py` | `CII_BY_FY` + `LATEST_CII_FY` | one CBDT notification, usually around June |
+| `domain/income_tax/tax_audit.py` | §44AB(a)/(b) thresholds and the proviso's ₹10 crore limb (`LATEST_VERIFIED_FY` is `None` — **no year has been confirmed**) | Finance Act |
 
 CII is the odd one out: it is notified *partway through* the year it applies to,
 so at 1 April the entry legitimately does not exist yet. Check again mid-year.
