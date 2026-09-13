@@ -9,8 +9,12 @@
  * journals created by the person who trusted it (migration 322,
  * docs/architecture/09-bank-entries.md). Un-trusting stops it at once.
  *
- * Precedence is creation order: the first rule that fires wins, so write the
- * specific ones before the broad ones.
+ * Precedence is the PRIORITY column, lower first, with creation order as the
+ * tiebreak (BANK-11, migration 380). The first rule that fires wins, so a
+ * narrow rule needs a smaller number than the broad one it sits under — until
+ * this existed the only way past a broad rule written early was to delete and
+ * re-create it, which loses its trusted flag. The list below is served in
+ * evaluation order, so what a CA reads top to bottom is what the queue does.
  */
 import { useCallback, useEffect, useState } from "react";
 import { Pencil, Plus, ShieldCheck, X } from "lucide-react";
@@ -28,6 +32,12 @@ interface BankRule {
   amount_min_paise: number | null;
   amount_max_paise: number | null;
   txn_type: "debit" | "credit" | "any";
+  // BANK-11 / migration 380. Every default reproduces the old behaviour, so a
+  // rule saved before this reads and behaves exactly as it did.
+  priority: number | null;
+  match_field: "description" | "reference_no" | "payee_name" | "any" | null;
+  match_operator: "contains" | "starts_with" | "equals" | null;
+  description_patterns: string[] | null;
   suggested_category: string | null;
   suggested_account_id: string | null;
   suggested_narration: string | null;
@@ -42,6 +52,14 @@ interface BankRule {
 const BLANK_RULE = {
   rule_name: "", description_pattern: "", amount_min: "", amount_max: "",
   txn_type: "any" as "debit" | "credit" | "any",
+  // Lower runs first. 100 is the column default, so a new rule sits with the
+  // existing ones and a CA who wants it to win types a smaller number.
+  priority: "100",
+  match_field: "description" as "description" | "reference_no" | "payee_name" | "any",
+  match_operator: "contains" as "contains" | "starts_with" | "equals",
+  // One per line in the textarea. Blank lines are dropped by the server, which
+  // matters: an empty pattern would match every transaction.
+  description_patterns: "",
   suggested_category: "", suggested_account_id: "", suggested_narration: "",
   // "" = the rule says nothing about GST. "0" = it says the charge carries none.
   suggested_gst_rate_bps: "", suggested_is_interstate: false,
@@ -90,6 +108,10 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
       amount_min: r.amount_min_paise != null ? (r.amount_min_paise / 100).toFixed(2) : "",
       amount_max: r.amount_max_paise != null ? (r.amount_max_paise / 100).toFixed(2) : "",
       txn_type: r.txn_type ?? "any",
+      priority: String(r.priority ?? 100),
+      match_field: r.match_field ?? "description",
+      match_operator: r.match_operator ?? "contains",
+      description_patterns: (r.description_patterns ?? []).join("\n"),
       suggested_category: r.suggested_category ?? "",
       suggested_account_id: r.suggested_account_id ?? "",
       suggested_narration: r.suggested_narration ?? "",
@@ -113,6 +135,13 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
       amount_min_paise: boundToPaise(form.amount_min),
       amount_max_paise: boundToPaise(form.amount_max),
       txn_type: form.txn_type,
+      // A whole number, and NOT rsToP: this is an ordering key, not money.
+      priority: Number.isFinite(Number(form.priority)) && form.priority.trim() !== ""
+        ? Math.trunc(Number(form.priority)) : 100,
+      match_field: form.match_field,
+      match_operator: form.match_operator,
+      description_patterns: form.description_patterns
+        .split("\n").map((t) => t.trim()).filter(Boolean),
       suggested_category: form.suggested_category || null,
       suggested_account_id: form.suggested_account_id || null,
       suggested_narration: form.suggested_narration.trim() || null,
@@ -127,7 +156,11 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
     if (form.amount_max.trim() !== "" && payload.amount_max_paise === null) {
       setFormError("The maximum amount isn't a number. Type it in rupees, like 25000 or 25000.50."); return;
     }
-    const hasCondition = payload.description_pattern || payload.amount_min_paise != null
+    if (form.priority.trim() !== "" && !Number.isFinite(Number(form.priority))) {
+      setFormError("Priority must be a whole number. Lower runs first."); return;
+    }
+    const hasCondition = payload.description_pattern || payload.description_patterns.length > 0
+      || payload.amount_min_paise != null
       || payload.amount_max_paise != null || payload.txn_type !== "any";
     if (!hasCondition) {
       setFormError("Add at least one condition — a narration phrase, an amount range, or money-in/money-out. A rule with no conditions would match every line.");
@@ -187,9 +220,24 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
     if (r.suggested_gst_rate_bps === 0) return "no GST";
     return `${r.suggested_gst_rate_bps / 100}% ${r.suggested_is_interstate ? "IGST" : "CGST+SGST"}`;
   }
+  const FIELD_LABEL: Record<string, string> = {
+    description: "narration", reference_no: "reference", payee_name: "payee",
+    any: "narration, reference or payee",
+  };
+  const OP_LABEL: Record<string, string> = {
+    contains: "contains", starts_with: "starts with", equals: "is",
+  };
   function conditionSummary(r: BankRule) {
     const bits: string[] = [];
-    if (r.description_pattern) bits.push(`narration contains “${r.description_pattern}”`);
+    // The summary must say WHICH field and WHICH comparison, or two rules that
+    // read identically here behave differently in the queue — and the queue is
+    // where a trusted rule posts.
+    const field = FIELD_LABEL[r.match_field ?? "description"] ?? "narration";
+    const op = OP_LABEL[r.match_operator ?? "contains"] ?? "contains";
+    const alts = r.description_patterns ?? [];
+    const all = [r.description_pattern, ...alts].filter(Boolean) as string[];
+    if (all.length === 1) bits.push(`${field} ${op} “${all[0]}”`);
+    else if (all.length > 1) bits.push(`${field} ${op} any of ${all.length}: “${all.slice(0, 2).join("”, “")}”…`);
     if (r.amount_min_paise != null && r.amount_max_paise != null) bits.push(`${fmt(r.amount_min_paise)}–${fmt(r.amount_max_paise)}`);
     else if (r.amount_min_paise != null) bits.push(`≥ ${fmt(r.amount_min_paise)}`);
     else if (r.amount_max_paise != null) bits.push(`≤ ${fmt(r.amount_max_paise)}`);
@@ -232,11 +280,47 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. HDFC bank charges" />
           </div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8] pt-1">When</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Look at</label>
+              <select value={form.match_field}
+                onChange={(e) => setForm((f) => ({ ...f, match_field: e.target.value as typeof f.match_field }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm">
+                <option value="description">The narration</option>
+                <option value="reference_no">The reference / UTR</option>
+                <option value="payee_name">The payee name</option>
+                <option value="any">Any of the three</option>
+              </select>
+              <p className="text-[10px] text-[#94A3B8] mt-1">
+                The reference is often the only part a bank does not rewrite each month.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Which</label>
+              <select value={form.match_operator}
+                onChange={(e) => setForm((f) => ({ ...f, match_operator: e.target.value as typeof f.match_operator }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm">
+                <option value="contains">contains</option>
+                <option value="starts_with">starts with</option>
+                <option value="equals">is exactly</option>
+              </select>
+            </div>
+          </div>
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Narration contains</label>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Text to match</label>
             <input value={form.description_pattern} onChange={(e) => setForm((f) => ({ ...f, description_pattern: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. BANK CHARGES" />
             <p className="text-[10px] text-[#94A3B8] mt-1">Plain text, not case-sensitive. No wildcards.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Or any of these (one per line)</label>
+            <textarea value={form.description_patterns} rows={3}
+              onChange={(e) => setForm((f) => ({ ...f, description_patterns: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
+              placeholder={"ACME TRADERS\nACME EXPORTS\nACME PVT LTD"} />
+            <p className="text-[10px] text-[#94A3B8] mt-1">
+              Matched the same way, against the same field. Three customers, one rule.
+            </p>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
@@ -258,6 +342,16 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                 <option value="debit">Money out (Payment)</option>
               </select>
             </div>
+          </div>
+          <div className="w-40">
+            <label className="block text-xs font-medium text-[#475569] mb-1">Priority</label>
+            <input type="number" step="1" value={form.priority}
+              onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="100" />
+            <p className="text-[10px] text-[#94A3B8] mt-1">
+              Lower runs first. The first rule that fires wins, so give a narrow
+              rule a smaller number than the broad one it sits under.
+            </p>
           </div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8] pt-1">Propose</p>
           <div className="grid grid-cols-2 gap-2">
@@ -337,6 +431,16 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className={`text-xs font-medium truncate ${r.is_active ? "text-[#1E293B]" : "text-[#94A3B8]"}`}>{r.rule_name}</p>
                   {!r.is_active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#94A3B8]">Off</span>}
+                  {/* Only when it is NOT the default. The number on the left is
+                      already the evaluation position — this says which rules
+                      were deliberately moved, which is the question a CA asks
+                      when one rule beats another. */}
+                  {r.priority != null && r.priority !== 100 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] font-mono"
+                      title="Lower runs first. The first rule that fires wins.">
+                      priority {r.priority}
+                    </span>
+                  )}
                   {r.is_trusted && (
                     <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200"
                       title={r.trusted_at ? `Trusted on ${r.trusted_at.slice(0, 10)}` : "Trusted"}>

@@ -448,6 +448,21 @@ class MatchingRuleIn(BaseModel):
     amount_min_paise: Optional[int] = None
     amount_max_paise: Optional[int] = None
     txn_type: str = "any"            # debit | credit | any (matches table CHECK)
+    # BANK-11 / migration 380. Every default reproduces today's behaviour, so
+    # an existing rule and a caller that sends none of these are unchanged.
+    #
+    # `priority` is LOWER FIRST and defaults to 100 so a CA can put a rule above
+    # the existing ones without renumbering — the shadowing rule is usually the
+    # old one, and until now the only way past it was to delete and re-create
+    # it, which loses its trusted flag.
+    priority: int = 100
+    # Which text of the line the pattern reads. `reference_no` is often the only
+    # stable part of a narration the bank rewrites monthly.
+    match_field: str = "description"
+    match_operator: str = "contains"
+    # FURTHER alternatives, ORed with description_pattern against the same field
+    # and operator — "any of these three customers" is one rule, not three.
+    description_patterns: Optional[list[str]] = None
     suggested_account_id: Optional[str] = None
     suggested_category: Optional[str] = None
     suggested_narration: Optional[str] = None
@@ -479,6 +494,21 @@ class MatchingRuleIn(BaseModel):
     def known_txn_type(cls, v: str) -> str:
         return _validate_txn_type(v)
 
+    @field_validator("match_field")
+    @classmethod
+    def known_match_field(cls, v):
+        return _validate_match_field(v)
+
+    @field_validator("match_operator")
+    @classmethod
+    def known_match_operator(cls, v):
+        return _validate_match_operator(v)
+
+    @field_validator("description_patterns")
+    @classmethod
+    def clean_patterns(cls, v):
+        return _validate_patterns(v)
+
     @model_validator(mode="after")
     def coherent(self):
         return _validate_rule_shape(self)
@@ -492,6 +522,10 @@ class MatchingRuleUpdateIn(BaseModel):
     amount_min_paise: Optional[int] = None
     amount_max_paise: Optional[int] = None
     txn_type: Optional[str] = None
+    priority: Optional[int] = None
+    match_field: Optional[str] = None
+    match_operator: Optional[str] = None
+    description_patterns: Optional[list[str]] = None
     suggested_account_id: Optional[str] = None
     suggested_category: Optional[str] = None
     suggested_narration: Optional[str] = None
@@ -524,6 +558,23 @@ class MatchingRuleUpdateIn(BaseModel):
     @classmethod
     def known_txn_type(cls, v: Optional[str]) -> Optional[str]:
         return _validate_txn_type(v) if v is not None else None
+
+    # The same three as MatchingRuleIn. A validator only on the create door is
+    # one PATCH from being none — the lesson `domain/payroll/identity` records.
+    @field_validator("match_field")
+    @classmethod
+    def known_match_field(cls, v):
+        return _validate_match_field(v)
+
+    @field_validator("match_operator")
+    @classmethod
+    def known_match_operator(cls, v):
+        return _validate_match_operator(v)
+
+    @field_validator("description_patterns")
+    @classmethod
+    def clean_patterns(cls, v):
+        return _validate_patterns(v)
 
     @model_validator(mode="after")
     def coherent(self):
@@ -577,11 +628,51 @@ def _validate_gst_rate_bps(v: Optional[int]) -> Optional[int]:
     return value
 
 
+def _validate_match_field(value):
+    """The four the CHECK allows, or a refusal naming them.
+
+    Read off `domain/banking/rules.MATCH_FIELDS` rather than restated: the
+    engine's map and the database's CHECK are the two things this has to agree
+    with, and a third list here is the one that would drift.
+    """
+    if value is None:
+        return None
+    from domain.banking.rules import MATCH_FIELDS
+    v = str(value).strip().lower()
+    if v not in MATCH_FIELDS:
+        raise ValueError("Match on one of: " + ", ".join(sorted(MATCH_FIELDS)))
+    return v
+
+
+def _validate_match_operator(value):
+    if value is None:
+        return None
+    from domain.banking.rules import MATCH_OPERATORS
+    v = str(value).strip().lower()
+    if v not in MATCH_OPERATORS:
+        raise ValueError("Comparison must be one of: " + ", ".join(MATCH_OPERATORS))
+    return v
+
+
+def _validate_patterns(value):
+    """Blank alternatives are DROPPED, not stored.
+
+    An empty string in the list would be a pattern that matches everything —
+    so one stray blank row on the form would turn a narrow rule into a rule
+    that fires on every transaction, and if that rule is trusted it posts them.
+    """
+    if value is None:
+        return None
+    return [t for t in ((p or "").strip() for p in value) if t]
+
+
 def _validate_rule_shape(rule) -> object:
     lo, hi = rule.amount_min_paise, rule.amount_max_paise
     if lo is not None and hi is not None and lo > hi:
         raise ValueError("Minimum amount cannot exceed the maximum amount.")
-    if not any([rule.description_pattern, lo is not None, hi is not None,
+    if not any([rule.description_pattern,
+                getattr(rule, "description_patterns", None),
+                lo is not None, hi is not None,
                 (rule.txn_type or "any") != "any"]):
         # A rule with no conditions fires on EVERY transaction, which is never
         # what anyone means and would mask every rule created after it.

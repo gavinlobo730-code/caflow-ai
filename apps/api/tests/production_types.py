@@ -89,6 +89,10 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("vendors", "credit_limit_paise"): "migration 378",
     ("purchase_bills", "recurring_template_id"): "migration 379",
     ("purchase_bills", "recurring_occurrence"): "migration 379",
+    ("bank_matching_rules", "priority"): "migration 380",
+    ("bank_matching_rules", "match_field"): "migration 380",
+    ("bank_matching_rules", "match_operator"): "migration 380",
+    ("bank_matching_rules", "description_patterns"): "migration 380",
 }
 
 

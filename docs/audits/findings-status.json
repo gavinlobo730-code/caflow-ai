@@ -439,10 +439,10 @@
       "why": "GET /api/payroll/tds-projection answers off `_compute_slip`, the same function the payroll run pays from — so the old regime, the employee's declaration and §192(3) all reach it, and the year's rates come from the FY-versioned registry. lib/services/payrollTdsEstimate.ts is deleted and its allowlist entry in tds-is-computed-by-the-engine-not-the-browser.test.ts removed, with the deletion pinned from both suites."
     },
     "BANK-11": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "domain/banking/rules.py still matches on one lower-cased substring plus an amount range and a direction",
-      "needs": "a match_type column, or a second pattern column — the rule row has neither"
+      "status": "partial",
+      "verified_on": "2026-09-13",
+      "why": "migration 380 gives the rule row priority, match_field, match_operator and description_patterns, and domain/banking/rules.py reads all four: precedence is priority then created_at, a pattern can be read against the reference_no or the payee_name or all three, contains/starts_with/equals, and one rule can carry several alternatives. Every default reproduces the old behaviour exactly, so no existing rule changes which transactions it fires on or which rule it beats",
+      "what_is_left": "step 3 only — widening what a rule may PROPOSE (split legs, a party, a TDS treatment). That is an owner decision, not a matching improvement: a trusted rule passes its lines with no click (migration 322), so a wider payload widens what happens with nobody watching. A guard asserts RuleSuggestion gained no field"
     },
     "IT-31": {
       "status": "closed",

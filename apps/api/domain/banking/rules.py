@@ -1,10 +1,28 @@
 """
 Rule-based auto-categorization (Banking B.2.3) — SUGGESTIONS ONLY.
 
-A rule fires when the narration contains its pattern, the amount is within its
-range, and the transaction type matches. The first active rule (caller order)
-that fires supplies the suggestion. Rules never auto-post and never write
-anything — they only annotate the work queue.
+A rule fires when its pattern hits the line, the amount is within its range,
+and the transaction type matches. The first active rule BY PRECEDENCE supplies
+the suggestion. Rules never auto-post and never write anything HERE — they only
+annotate the work queue; a rule a Manager has marked TRUSTED is passed by
+`bank_entry_service`, which is a separate and deliberate decision.
+
+WHAT A RULE CAN MATCH ON (migration 380, BANK-11)
+    Until then it was one case-insensitive substring of the narration, and that
+    failed a practice two ways. PRECEDENCE was creation order with no way to
+    change it, so a broad rule written in April permanently shadowed the narrow
+    one written in July — `by_precedence` reads the `priority` column now, with
+    `created_at` as the tiebreak so nothing existing moves. And ONE PATTERN
+    against ONE FIELD meant "NEFT from any of these three customers" was three
+    rules, and a UTR or cheque number in `reference_no` — often the only stable
+    part of a line whose narration the bank rewrites monthly — could not be
+    matched at all. `match_field`, `match_operator` and `description_patterns`
+    answer those; every default reproduces the old behaviour exactly.
+
+    WHAT A RULE MAY PROPOSE IS UNCHANGED, and that is the line. A trusted rule
+    posts unattended, so widening the PAYLOAD — split legs, a party, a TDS
+    treatment — widens what happens with nobody watching. That is BANK-11's
+    step 3 and is an owner decision, not a side effect of better matching.
 
 WHAT A RULE CAN SUGGEST
     A rule carries three payload fields, all optional and all stored since
@@ -49,12 +67,73 @@ class RuleSuggestion:
         return not (self.category or self.account_id or self.narration)
 
 
-def rule_matches(rule: dict, narration: str, amount_paise: int, is_debit: bool) -> bool:
-    """True if `rule` applies to a transaction. All present conditions must hold."""
+#: Which text of the transaction a pattern is read against (migration 380).
+#: 'any' is the three together — what a CA means by "this appears somewhere on
+#: the line". The keys are the RULE's own values; the values are the keys of the
+#: transaction dict the callers pass, so a caller that renames a field breaks
+#: here rather than silently matching nothing.
+MATCH_FIELDS: dict[str, tuple[str, ...]] = {
+    "description": ("narration",),
+    "reference_no": ("reference_no",),
+    "payee_name": ("payee_name",),
+    "any": ("narration", "reference_no", "payee_name"),
+}
+
+MATCH_OPERATORS: tuple[str, ...] = ("contains", "starts_with", "equals")
+
+
+def _compares(operator: str, haystack: str, needle: str) -> bool:
+    if operator == "starts_with":
+        return haystack.startswith(needle)
+    if operator == "equals":
+        return haystack == needle
+    return needle in haystack          # 'contains', and the fallback
+
+
+def _text_matches(rule: dict, fields: dict) -> bool:
+    """Does this rule's pattern (or any of its alternatives) hit the line?
+
+    A rule with NO pattern at all matches every transaction, which is what it
+    has always done and what makes an amount-only or direction-only rule
+    possible. Everything else is OR over the alternatives and OR over the
+    fields, so "any of these three customers, wherever the bank puts the name"
+    is one rule.
+    """
+    patterns = [(rule.get("description_pattern") or "").strip().lower()]
+    for extra in (rule.get("description_patterns") or []):
+        text = (extra or "").strip().lower()
+        if text:
+            patterns.append(text)
+    patterns = [p for p in patterns if p]
+    if not patterns:
+        return True
+
+    field = (rule.get("match_field") or "description").strip().lower()
+    keys = MATCH_FIELDS.get(field) or MATCH_FIELDS["description"]
+    operator = (rule.get("match_operator") or "contains").strip().lower()
+    if operator not in MATCH_OPERATORS:
+        operator = "contains"
+
+    haystacks = [(fields.get(k) or "").strip().lower() for k in keys]
+    return any(_compares(operator, h, p) for h in haystacks if h for p in patterns)
+
+
+def rule_matches(rule: dict, narration: str, amount_paise: int, is_debit: bool,
+                 *, reference_no: str = "", payee_name: str = "") -> bool:
+    """True if `rule` applies to a transaction. All present conditions must hold.
+
+    `reference_no` and `payee_name` are keyword-only and default to empty, so
+    every existing caller keeps compiling and keeps behaving identically — a
+    rule left at `match_field = 'description'` never looks at them. A rule that
+    DOES name one and is asked by a caller that did not supply it simply does
+    not fire, which is the safe direction: a rule that may be trusted posts
+    unattended, so failing to match is cheaper than matching wrongly.
+    """
     if not rule.get("is_active", True):
         return False
-    pattern = (rule.get("description_pattern") or "").strip().lower()
-    if pattern and pattern not in (narration or "").lower():
+    if not _text_matches(rule, {"narration": narration,
+                                "reference_no": reference_no,
+                                "payee_name": payee_name}):
         return False
     lo, hi = rule.get("amount_min_paise"), rule.get("amount_max_paise")
     if lo is not None and amount_paise < int(lo):
@@ -69,17 +148,41 @@ def rule_matches(rule: dict, narration: str, amount_paise: int, is_debit: bool) 
     return True
 
 
+def by_precedence(rules: list[dict]) -> list[dict]:
+    """The evaluation order: `priority` ascending, then `created_at` (BANK-11).
+
+    Precedence used to be creation order alone, with no way to change it, so a
+    broad rule written in April permanently shadowed the narrow one written in
+    July — `match_rule` takes the FIRST firing rule. `created_at` stays the
+    tiebreak, so at the column's default of 100 the order is exactly what it
+    was and no existing rule changes which transactions it wins.
+
+    Sorted HERE as well as in the three queries that fetch rules, because the
+    ordering is a property of the rules and not of one SQL statement: a caller
+    that assembles a list itself (mock mode, a test double, a future in-memory
+    path) gets the same answer.
+    """
+    return sorted(
+        rules,
+        key=lambda r: (int(r.get("priority") if r.get("priority") is not None else 100),
+                       str(r.get("created_at") or ""),
+                       str(r.get("id") or "")),
+    )
+
+
 def match_rule(narration: str, amount_paise: int, is_debit: bool,
-               rules: list[dict]) -> Optional[RuleSuggestion]:
+               rules: list[dict], *,
+               reference_no: str = "", payee_name: str = "") -> Optional[RuleSuggestion]:
     """The first active, matching rule that actually proposes something.
 
-    Rules are evaluated in the order given — the caller decides precedence. A
-    rule that matches but carries no payload at all is skipped rather than
+    Evaluated by `by_precedence` — priority first, then creation order. A rule
+    that matches but carries no payload at all is skipped rather than
     swallowing the transaction: it would otherwise block a later, useful rule
     while contributing nothing.
     """
-    for rule in rules:
-        if not rule_matches(rule, narration, amount_paise, is_debit):
+    for rule in by_precedence(rules):
+        if not rule_matches(rule, narration, amount_paise, is_debit,
+                            reference_no=reference_no, payee_name=payee_name):
             continue
         rate = rule.get("suggested_gst_rate_bps")
         suggestion = RuleSuggestion(
@@ -99,8 +202,10 @@ def match_rule(narration: str, amount_paise: int, is_debit: bool,
 
 
 def suggest_category(narration: str, amount_paise: int, is_debit: bool,
-                     rules: list[dict]) -> Optional[str]:
+                     rules: list[dict], *,
+                     reference_no: str = "", payee_name: str = "") -> Optional[str]:
     """The firing rule's suggested_category (or None). Thin wrapper over
     `match_rule` — kept because the category alone is what most callers want."""
-    hit = match_rule(narration, amount_paise, is_debit, rules)
+    hit = match_rule(narration, amount_paise, is_debit, rules,
+                     reference_no=reference_no, payee_name=payee_name)
     return hit.category if hit else None

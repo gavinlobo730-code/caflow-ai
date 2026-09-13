@@ -1919,6 +1919,32 @@ where the FX gain or loss leg lands, and `_create_journal`'s balance assertion i
 exactly what an unbalanced FX leg breaks. `docs/audits/` and
 the batch completion reports are historical records, not current specs.
 
+**A MATCHING RULE SAYS WHICH FIELD IT READS AND WHICH RULE WINS** (migration
+380, BANK-11 steps 1 and 2). Until then `domain/banking/rules.rule_matches` was
+one case-insensitive substring of the NARRATION plus an amount range and a
+direction, and precedence was creation order with **no way to change it** — so a
+broad rule written in April permanently shadowed the narrow one written in July,
+and the only remedy was to delete and re-create the broad rule, which loses its
+TRUSTED flag. The row now carries `priority` (lower first, default 100),
+`match_field` (`description | reference_no | payee_name | any`), `match_operator`
+(`contains | starts_with | equals`) and `description_patterns`, so "NEFT from any
+of these three customers" is one rule and a UTR or cheque number is matchable at
+all. **Every default reproduces the old behaviour exactly** — `by_precedence` is
+`(priority, created_at, id)`, so at the default the order is still creation
+order and no existing rule changes which transactions it fires on or which rule
+it beats. `MATCH_FIELDS` maps the rule's own value to the KEYS of the
+transaction dict, so a caller that renames a field breaks there rather than
+silently matching nothing; a rule naming a field its caller did not supply does
+not fire, which is the safe direction. **WHAT A RULE MAY PROPOSE IS UNCHANGED
+and that is deliberate**: a trusted rule posts unattended, so widening the
+PAYLOAD — split legs, a party, a TDS treatment — widens what happens with nobody
+watching. That is step 3, an owner decision, and a guard asserts
+`RuleSuggestion` gained no field. Matching wider is different in kind: a CA
+types every pattern, and the widest case was always reachable (an empty pattern
+matches everything). Both doors validate — a validator only on create is one
+PATCH from being none — and both read the ENGINE's own maps rather than a third
+list.
+
 **`docs/audits/findings-status.md` is where to start on any "what is left"
 question, and it is the ONLY status record that is kept up to date.** Every
 other document below is a SNAPSHOT taken on a date and never amended, which is

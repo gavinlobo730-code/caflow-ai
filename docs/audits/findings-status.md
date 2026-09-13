@@ -9,18 +9,18 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 |---|---|---|
 | closed | **81** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **10** | part of the finding is answered, part is not. Each says which. |
-| open | **25** | re-read and still true. |
+| partial | **11** | part of the finding is answered, part is not. Each says which. |
+| open | **24** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 35 items — 25 open and 10 partial — not 254.**
+**The work left is 35 items — 24 open and 11 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 25 open, most are not code problems.** Nearly every one needs a
+**And of the 24 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -31,7 +31,6 @@ migration; a handful need a statutory document a person has to read.
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
 | medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
-| medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **BANK-21** | Credit-card accounts are not supported at all |
 | medium | **BANK-24** | Bank-charge input tax credit is posted with no supplier GSTIN or invoice reference, so it can ne |
 | medium | **FA-08b** | No output tax on a fixed-asset disposal — the split half of FA-08 |
@@ -61,7 +60,6 @@ migration; a handful need a statutory document a person has to read.
 | **GST-20** | a registrations table; clients.gstin is singular today |
 | **IT-19** | somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) — a migration |
 | **ACC-19** | an owner decision before any code. L3 is a per-client opt-in a CA would set, but turning it on alone changes nothing because the three are ANDed. L2 is documented as 'Commercial | is the practice entitled? (plan/beta)' — making it self-serve turns a commercial entitlement into a toggle the firm grants itself, which is a product call, not a code one. Half-building L3 is pointless; building both without deciding L2's nature is worse. |
-| **BANK-11** | a match_type column, or a second pattern column — the rule row has neither |
 | **BANK-21** | a migration; a card is a liability account whose statement signs are the mirror of a bank's |
 | **BANK-24** | ONE FACT SETTLED FIRST, and it decides the schema. A bank does not issue an invoice per charge — the ordinary practice is a MONTHLY CONSOLIDATED GST invoice covering the month's charges, which reaches GSTR-2B as a single B2B document. If that is right, the finding's 'two fields on the charge' is the wrong shape: the GSTIN belongs on the RULE (constant per bank, beside 254's two columns) and the document reference belongs once per (bank account, month), with the matcher comparing the month's aggregate against one 2B row. Per-charge references would make every charge an unmatched document and leave the register noisier than it is now. ⚠️ [S] — the monthly-consolidated practice is written from knowledge; this environment's proxy refuses every egress, so it was not confirmed. Check one real bank GST invoice before choosing the shape. |
 | **FA-08b** | a migration for the disposal's tax split, and a decision on CGST s.18(6) |
@@ -88,6 +86,7 @@ migration; a handful need a statutory document a person has to read.
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
+| medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |

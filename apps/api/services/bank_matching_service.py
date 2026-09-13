@@ -636,12 +636,14 @@ class BankMatchingService:
         # a narration-contains match on that client's own vendor name) could
         # surface as a suggested category on an unrelated client's transaction.
         #
-        # Ordered by created_at so precedence is deterministic: match_rule takes
-        # the FIRST firing rule, and an unordered fetch made "first" depend on
-        # whatever order Postgres happened to return.
+        # Ordered by PRECEDENCE — priority, then created_at (migration 380) —
+        # so it is deterministic: match_rule takes the FIRST firing rule, and an
+        # unordered fetch made "first" depend on whatever order Postgres
+        # happened to return. by_precedence re-sorts anyway, so this is the
+        # belt to that braces rather than the only guarantee.
         rules = (db.table("bank_matching_rules").select("*")
                  .eq("firm_id", firm_id).eq("is_active", True)
-                 .order("created_at").execute().data or [])
+                 .order("priority").order("created_at").execute().data or [])
         rules_by_client: dict = {}
         for r in rules:
             rules_by_client.setdefault(r.get("client_id"), []).append(r)
@@ -661,7 +663,9 @@ class BankMatchingService:
         for t in txns:
             amount, is_credit = _txn_amount(t)
             client_rules = rules_by_client.get(t.get("client_id"), [])
-            hit = match_rule(t.get("description"), amount, not is_credit, client_rules)
+            hit = match_rule(t.get("description"), amount, not is_credit, client_rules,
+                             reference_no=t.get("reference_no") or "",
+                             payee_name=t.get("payee_name") or "")
             # An existing category always wins over a rule's suggestion — the
             # rule proposes, the CA disposes.
             t["suggested_category"] = t.get("category") or (hit.category if hit else None)

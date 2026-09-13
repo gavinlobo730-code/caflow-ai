@@ -2358,14 +2358,16 @@ def list_rules(
     """Every rule for the client — INACTIVE ONES INCLUDED. The rules screen has
     to show a deactivated rule to let anyone reactivate it; the queue applies its
     own is_active filter (bank_matching_service.queue), so nothing is applied
-    that shouldn't be. Ordered by created_at, which is also the precedence."""
+    that shouldn't be. Ordered by PRECEDENCE — priority, then created_at — which
+    is the order domain.banking.rules.by_precedence evaluates them in, so the
+    screen shows which rule wins rather than merely when it was written."""
     assert_client_access(current_user, client_id)
     db = _db()
     if not db:
         return api_response(True, [])
     res = (db.table("bank_matching_rules").select("*")
            .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
-           .order("created_at").execute())
+           .order("priority").order("created_at").execute())
     return api_response(True, res.data or [])
 
 
@@ -2447,8 +2449,14 @@ def update_rule(
            .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
     # What the rule proposes may have changed; what it is trusted to do has not
     # changed which lines it covers, so only a payload edit re-proposes.
-    if any(k in fields for k in ("description_pattern", "amount_min_paise", "amount_max_paise",
-                                 "txn_type", "suggested_account_id", "suggested_category",
+    # BANK-11: `priority`, `match_field`, `match_operator` and
+    # `description_patterns` all change WHICH lines this rule covers or which
+    # rule wins, so each of them re-proposes for the same reason the pattern
+    # does. Leaving them out would show the CA an old draft under a new rule.
+    if any(k in fields for k in ("description_pattern", "description_patterns",
+                                 "amount_min_paise", "amount_max_paise",
+                                 "txn_type", "priority", "match_field", "match_operator",
+                                 "suggested_account_id", "suggested_category",
                                  "suggested_gst_rate_bps", "suggested_is_interstate", "is_active")):
         bank_entry_service.mark_stale(db, current_user["firm_id"], rule["client_id"])
     return api_response(True, (row.data or [{}])[0])
