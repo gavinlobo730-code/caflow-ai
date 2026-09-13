@@ -5,6 +5,7 @@
  * so audit logging and dependency checks are enforced server-side.
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "./getFirmId";
 import { api } from "@/lib/api";
 import type { Client } from "@/lib/types";
 
@@ -66,22 +67,17 @@ export async function getClients(filter: ClientFilter = "active"): Promise<Clien
 export async function createClient(input: CreateClientInput): Promise<Client> {
   const sb = getSupabaseClient();
 
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-
-  const { data: userData, error: userErr } = await sb
-    .from("users")
-    .select("firm_id")
-    .eq("auth_user_id", session.user.id)
-    .single();
-
-  if (userErr || !userData) throw new Error("User not found in firm");
+  // One firm-id lookup, cached — this was the last of twelve hand-rolled copies, and
+  // it used .single(), which returns a PostgREST error on zero rows rather than
+  // null, so a user with no firm got "User not found in firm" where the helper
+  // says what to do about it.
+  const firmId = await getFirmId();
 
   const { data, error } = await sb
     .from("clients")
     .insert({
       ...input,
-      firm_id: userData.firm_id,
+      firm_id: firmId,
       status: "active",
     })
     .select()

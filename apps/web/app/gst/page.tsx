@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
@@ -589,19 +590,12 @@ export default function GSTPage() {
         const sb = getSupabaseClient();
 
         // Resolve firm_id from authenticated user
-        const {
-          data: { session },
-        } = await sb.auth.getSession();
-
-        let resolvedFirmId = "";
-        if (session?.user?.id) {
-          const { data: userData } = await sb
-            .from("users")
-            .select("firm_id")
-            .eq("auth_user_id", session.user.id)
-            .single();
-          resolvedFirmId = userData?.firm_id ?? "";
-        }
+        // lib/data/getFirmId is the one firm-id lookup, and it caches for five
+        // minutes; this was another of the twelve hand-rolled copies. It throws where this
+        // screen wants "" — the guards below already treat the empty string as
+        // "no firm, render nothing" — so the throw is caught rather than the
+        // helper changed.
+        const resolvedFirmId = await getFirmId().catch(() => "");
         setFirmId(resolvedFirmId);
 
         const cls = await getClients().catch(() => [] as Client[]);

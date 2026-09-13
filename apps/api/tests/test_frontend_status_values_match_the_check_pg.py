@@ -37,6 +37,12 @@ HOW IT DECIDES, AND WHERE IT IS DELIBERATELY BLUNT
     of that file would have to check by hand. KNOWN below carries what it
     currently finds so the number can only fall.
 
+    AND WHERE IT CANNOT SEE AT ALL, IT SAYS SO. A file whose tables carry no
+    `status` CHECK has an empty union, so it is skipped — meaning a file can
+    leave KNOWN by losing its last measurable table instead of by being fixed,
+    which is what moving a screen onto the API does. UNMEASURED records those,
+    asserted in both directions, so a drop in coverage cannot read as progress.
+
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI job.
 """
 from __future__ import annotations
@@ -77,7 +83,6 @@ pytestmark = pytest.mark.skipif(
 # A ratchet, not an exemption: test_no_known_entry_is_stale fails the moment a
 # file stops reporting, so this list can only shrink.
 KNOWN: dict[str, set[str]] = {
-    "app/accounting/recurring/page.tsx": {"Active", "Paused", "posted"},
     "app/client-portal/page.tsx": {"overdue", "posted"},
     "app/clients/[id]/accounting/page.tsx": {"failed"},
     "app/clients/[id]/lifecycle/page.tsx": {"done", "skipped"},
@@ -95,11 +100,58 @@ KNOWN: dict[str, set[str]] = {
     # payload had desynchronised it (see _frontend_select_parser.blank_comments).
     # Blanking comments before the walk removed the false positive.
     "app/clients/[id]/sales/page.tsx": {"failed", "generated", "paused"},
-    "app/gst/page.tsx": {"Filed", "Overdue", "Pending", "pending"},
-    "app/income-tax/page.tsx": {"filed", "pending"},
     "app/mca/page.tsx": {"Filed", "Overdue", "Pending"},
     "app/payroll/declarations/page.tsx": {"rejected", "verified"},
     "app/payroll/reports/page.tsx": {"due-soon", "overdue"},
+}
+
+#: Files that READ a table and USE a status literal, but whose tables carry no
+#: `status` CHECK — so this check has nothing to measure them against.
+#:
+#: WHY THIS LIST EXISTS, AND IT IS NOT A SECOND EXEMPTION. `_scan` skips a file
+#: with an empty union, which means a file can LEAVE the KNOWN ratchet above by
+#: going blind rather than by being fixed — and "the list can only shrink" then
+#: stops being true. That is not hypothetical: it happened on 13-09-2026.
+#: Replacing eleven hand-rolled copies of `getFirmId` with the shared cached one
+#: removed the last `.from("users")` read from `app/gst/page.tsx` and
+#: `app/income-tax/page.tsx`. `users.status` was the ONLY status CHECK either
+#: file had ever been measured against — neither has anything to do with a
+#: user's status — so both silently stopped reporting, and
+#: test_no_known_entry_is_stale asked for their entries to be deleted as though
+#: three real defects had been fixed.
+#:
+#: Recording them keeps the fact visible: these files use a status vocabulary
+#: nothing checks. Growing this list is a REGRESSION in coverage even when it
+#: comes from good work elsewhere, so it is asserted in both directions.
+#:
+#: FIVE OF THE SEVEN WERE ALREADY BLIND before that change and nobody knew,
+#: which is the better argument for the list than the two that arrived with it.
+#:
+#: Every entry below was checked by hand against the table that really holds the
+#: value, and all seven are correct today. That is the point: the check could
+#: not have told anyone so, and cannot tell anyone when one stops being correct.
+UNMEASURED: dict[str, set[str]] = {
+    # recurring_journal_templates.status ('active'|'paused'|'archived') and
+    # recurring_journal_runs.status ('generated'|'skipped'|'failed'), migration
+    # 377. The screen reads both through GET /api/recurring-journals and touches
+    # only chart_of_accounts directly, which has no status column.
+    "app/accounting/recurring/page.tsx": {"active", "generated"},
+    # mca_filings.status allows all three; the page reads mca_companies only.
+    "app/clients/[id]/compliance/mca/page.tsx": {"filed", "in_progress", "not_started"},
+    # compliance_tasks.status allows 'filed'; the page reads government_notices.
+    "app/clients/[id]/compliance/page.tsx": {"filed"},
+    # `GSTFiling.status` is DERIVED in the browser by computeOverdueStatus and
+    # never written — compliance_calendar has no `status` column at all, and the
+    # column the screen does write is `filing_status`, whose 'pending' is
+    # reported here only through the documented `status:` left-boundary
+    # limitation. Renaming the derived field is the real fix and is separate.
+    "app/gst/page.tsx": {"Filed", "Overdue", "Pending", "pending"},
+    # Same shape as the GST screen, lower-cased; compliance_tasks allows both.
+    "app/income-tax/page.tsx": {"filed", "pending"},
+    # client_sales_invoices.status and purchase_bills.status both allow 'draft'.
+    # Each editor reads service_catalogue, which has no status column.
+    "components/invoices/InvoiceEditor.tsx": {"draft"},
+    "components/purchases/PurchaseBillEditor.tsx": {"draft"},
 }
 
 _SKIP_DIRS = {"node_modules", ".next", "out", ".vercel"}
@@ -202,9 +254,16 @@ def allowed_status(pg_template):
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
 
 
-def _reports(allowed: dict[str, set[str]]) -> dict[str, set[str]]:
-    """relpath → the status values that file uses and no table it reads allows."""
+def _scan(allowed: dict[str, set[str]]) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """(reports, unmeasured).
+
+    reports    — relpath → status values that file uses and no table it reads allows.
+    unmeasured — relpath → status values in a file that DOES read a table but
+                 whose tables carry no `status` CHECK, so there is nothing to
+                 measure against. See test_no_file_becomes_unmeasurable_quietly.
+    """
     found: dict[str, set[str]] = {}
+    blind: dict[str, set[str]] = {}
     for path in sorted(WEB.rglob("*.ts*")):
         parts = set(path.relative_to(WEB).parts)
         if parts & _SKIP_DIRS or path.name.endswith(".test.ts"):
@@ -213,17 +272,23 @@ def _reports(allowed: dict[str, set[str]]) -> dict[str, set[str]]:
         tables = set(_FROM.findall(src))
         if not tables:
             continue                      # not a database screen; its status is its own
+        used = {m.group(1) for m in _COMPARE.finditer(src)}
+        used |= {m.group(1) for m in _WRITE.finditer(src)}
         union: set[str] = set()
         for t in tables:
             union |= allowed.get(t, set())
         if not union:
+            if used:
+                blind[str(path.relative_to(WEB))] = used
             continue                      # no CHECK to measure against
-        used = {m.group(1) for m in _COMPARE.finditer(src)}
-        used |= {m.group(1) for m in _WRITE.finditer(src)}
         outside = used - union
         if outside:
             found[str(path.relative_to(WEB))] = outside
-    return found
+    return found, blind
+
+
+def _reports(allowed: dict[str, set[str]]) -> dict[str, set[str]]:
+    return _scan(allowed)[0]
 
 
 def test_no_new_screen_uses_a_status_the_check_forbids(allowed_status):
@@ -263,6 +328,30 @@ def test_no_known_entry_is_stale(allowed_status):
     assert not narrowed, (
         "these KNOWN values are no longer used — remove them individually, so "
         f"a partial fix is recorded rather than lost: {narrowed}")
+
+
+def test_no_file_becomes_unmeasurable_quietly(allowed_status):
+    """Leaving KNOWN by going blind is not the same as being fixed.
+
+    A file whose tables carry no `status` CHECK is skipped by `_scan`, so it
+    reports nothing however wrong its values are. Deleting a table read — which
+    is what moving a screen onto the API does — can therefore look exactly like
+    a fix. Assert the blind set both ways: nothing new may join it, and an entry
+    that stops being blind must leave.
+    """
+    _, blind = _scan(allowed_status)
+    joined = {f: sorted(v) for f, v in blind.items() if f not in UNMEASURED}
+    assert not joined, (
+        "these files read a table, use a status value, and have no CHECK to be "
+        "measured against — coverage went DOWN:\n  "
+        + "\n  ".join(f"{f}: {', '.join(v)}" for f, v in sorted(joined.items()))
+        + "\n\nEither give the value a table this check can see, or rename the "
+          "field if it is computed in the browser and is not a database status. "
+          "Recording it in UNMEASURED is the last resort and needs a reason."
+    )
+    left = sorted(f for f in UNMEASURED if f not in blind)
+    assert not left, (
+        f"these files are measurable again — delete their UNMEASURED entries: {left}")
 
 
 def test_the_scan_still_sees_the_files_it_is_meant_to_police(allowed_status):

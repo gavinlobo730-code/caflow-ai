@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
@@ -224,9 +225,12 @@ export default function DashboardContent() {
       setLoading(true);
       setLoadFailed(false);
       try {
-        const { data: userData } = await supabase
-          .from("users").select("firm_id").eq("auth_user_id", user!.id).maybeSingle();
-        const firmId: string | null = userData?.firm_id ?? null;
+        // lib/data/getFirmId is the one firm-id lookup, and it caches for five
+        // minutes; this used to be one of twelve hand-rolled copies. It THROWS
+        // where this screen wants a null — an unprovisioned user gets the empty
+        // dashboard below, not an error — so the throw is caught here rather
+        // than the helper being made to return null for everyone.
+        const firmId: string | null = await getFirmId().catch(() => null);
         if (!firmId) {
           setKpis({ totalClients: 0, pendingTasks: 0, filingsDueThisMonth: 0, overdueFilings: 0 });
           setRecentClients([]); setRecentTasks([]); setLoading(false); return;

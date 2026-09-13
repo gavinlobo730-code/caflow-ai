@@ -29,6 +29,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, GitBranch, AlertCircle } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 
@@ -55,14 +56,6 @@ interface CaptionsResponse {
 
 const UNMAPPED = "__unmapped__";
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-  if (!data?.firm_id) throw new Error("No firm found");
-  return data.firm_id as string;
-}
 
 export default function ScheduleIIIMappingPage() {
   const [accounts, setAccounts] = useState<CoaRow[]>([]);

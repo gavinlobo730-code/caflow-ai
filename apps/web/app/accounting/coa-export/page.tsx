@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, Download, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { todayLocalISO } from "@/lib/dateMath";
 
 interface CoaRow {
@@ -18,14 +19,6 @@ interface CoaRow {
   is_active: boolean;
 }
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-  if (!data?.firm_id) throw new Error("No firm found");
-  return data.firm_id as string;
-}
 
 function toCSV(rows: CoaRow[]): string {
   const headers = ["account_code", "account_name", "account_type", "account_subtype", "parent_group", "sub_group", "tax_category", "schedule_iii_mapping", "is_active"];

@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import Link from "next/link";
 import { ChevronLeft, Upload, CheckCircle, AlertCircle, X, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 
 type AccountType = "Asset" | "Liability" | "Equity" | "Revenue" | "Expense";
 const VALID_TYPES = new Set<AccountType>(["Asset", "Liability", "Equity", "Revenue", "Expense"]);
@@ -22,14 +23,6 @@ interface ImportRow {
 interface ImportError { row: number; message: string; }
 interface ImportResult { inserted: number; skipped: number; errors: ImportError[]; }
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-  if (!data?.firm_id) throw new Error("No firm found");
-  return data.firm_id as string;
-}
 
 function parseCSV(text: string): string[][] {
   return text.trim().split(/\r?\n/).map(line => {

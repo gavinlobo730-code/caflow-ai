@@ -12,6 +12,7 @@ import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { api, type RecurringJournalTemplate, type RecurringJournalRun } from "@/lib/api";
@@ -86,14 +87,6 @@ const EMPTY_FORM: TemplateForm = {
   end_date: "",
 };
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-  if (!data?.firm_id) throw new Error("No firm found — please complete onboarding");
-  return data.firm_id as string;
-}
 
 export default function RecurringPage() {
   const [templates, setTemplates] = useState<RecurringJournalTemplate[]>([]);
