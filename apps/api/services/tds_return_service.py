@@ -312,6 +312,20 @@ def _section_labels(fy: str, sections) -> tuple[dict[str, str], list[str]]:
     return labels, gaps
 
 
+def _accumulate_note_totals(rows, bucket: dict) -> None:
+    """Sum the ISSUED, undeleted notes' taxable value per bill.
+
+    The one place the "which notes count" rule lives for both note kinds — a
+    draft note has reversed nothing and a soft-deleted one was a mistake, and
+    spelling that twice is how the two sides come to disagree about a draft.
+    """
+    for r in rows:
+        if (r.get("status") or "") != "issued" or r.get("deleted_at"):
+            continue
+        k = r.get("purchase_bill_id")
+        bucket[k] = bucket.get(k, 0) + int(r.get("taxable_amount_paise") or 0)
+
+
 def _credit_moved_gaps(db, firm_id: str, events: list[dict]) -> list[str]:
     """A purchase return, or a §34(3) undercharge note, against a bill in this
     quarter that already withheld (PUR-23 ≡ TDS-32).
@@ -341,24 +355,38 @@ def _credit_moved_gaps(db, firm_id: str, events: list[dict]) -> list[str]:
     ids = list(bills)
     returned: dict[str, int] = {}
     increased: dict[str, int] = {}
-    for table, bucket in (("debit_notes", returned), ("purchase_credit_notes", increased)):
-        for i in range(0, len(ids), 200):
-            chunk = ids[i:i + 200]
-            try:
-                rows = _paginate_all(lambda table=table, chunk=chunk: db.table(table)
-                        .select("id, purchase_bill_id, taxable_amount_paise, status, deleted_at")
-                        .eq("firm_id", firm_id).in_("purchase_bill_id", chunk))
-            except Exception as e:                              # noqa: BLE001
-                # A gap that cannot be measured is reported as absent rather
-                # than failing the whole return build. The quarter still
-                # assembles; what is lost is one warning, and the log says so.
-                _logger.error("could not read %s against this quarter's bills: %s", table, e)
-                continue
-            for r in rows:
-                if (r.get("status") or "") != "issued" or r.get("deleted_at"):
-                    continue
-                k = r.get("purchase_bill_id")
-                bucket[k] = bucket.get(k, 0) + int(r.get("taxable_amount_paise") or 0)
+    # THE TABLE NAME IS A LITERAL AT EACH READ, and that is not style.
+    # `tests/test_backend_columns_exist_pg.py` can only check a column against
+    # the real schema when it can READ the table name — `db.table(table)` with
+    # a variable is invisible to it, and the first draft of this function put
+    # both reads inside one `for table, bucket in (...)` loop, which took ten
+    # column references out of that check's coverage and tripped its
+    # unreadable-reference budget. Two spellings of the same three lines is the
+    # price of keeping the coverage; the SHAPE is shared in `_note_totals`
+    # below, so the rule itself still exists once.
+    for i in range(0, len(ids), 200):
+        chunk = ids[i:i + 200]
+        try:
+            rows = _paginate_all(lambda chunk=chunk: db.table("debit_notes")
+                    .select("id, purchase_bill_id, taxable_amount_paise, status, deleted_at")
+                    .eq("firm_id", firm_id).in_("purchase_bill_id", chunk))
+        except Exception as e:                                  # noqa: BLE001
+            # A gap that cannot be measured is reported as absent rather than
+            # failing the whole return build. The quarter still assembles; what
+            # is lost is one warning, and the log says so.
+            _logger.error("could not read debit_notes against this quarter's bills: %s", e)
+            rows = []
+        _accumulate_note_totals(rows, returned)
+
+        try:
+            rows = _paginate_all(lambda chunk=chunk: db.table("purchase_credit_notes")
+                    .select("id, purchase_bill_id, taxable_amount_paise, status, deleted_at")
+                    .eq("firm_id", firm_id).in_("purchase_bill_id", chunk))
+        except Exception as e:                                  # noqa: BLE001
+            _logger.error("could not read purchase_credit_notes against this "
+                          "quarter's bills: %s", e)
+            rows = []
+        _accumulate_note_totals(rows, increased)
 
     out: list[str] = []
     for bill_id, e in bills.items():
