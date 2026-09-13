@@ -2224,8 +2224,15 @@ class Phase2JournalService:
             if not entry_resp.data:
                 raise RuntimeError(f"Failed to insert journal_entry for ref={reference_no}")
             entry_id = entry_resp.data[0]["id"]
+            # `line_order` is the position in the array, which is what
+            # post_journal_atomic's WITH ORDINALITY records on the RPC path
+            # (migration 384). Stamped here too so a database double without
+            # `rpc` produces the same rows the real one does — otherwise every
+            # mock-mode voucher falls back to the derived order and the tests
+            # cannot see the column working.
             db.table("journal_lines").insert(
-                [{**lp, "journal_entry_id": entry_id} for lp in line_payloads]
+                [{**lp, "journal_entry_id": entry_id, "line_order": i}
+                 for i, lp in enumerate(line_payloads)]
             ).execute()
 
         _logger.info(

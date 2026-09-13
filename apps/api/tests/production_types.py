@@ -84,6 +84,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("fixed_assets", "disposal_is_supply"): "migration 383",
     ("fixed_assets", "disposal_gst_rate_bps"): "migration 383",
     ("fixed_assets", "disposal_is_interstate"): "migration 383",
+    ("journal_lines", "line_order"): "migration 384",
 }
 
 

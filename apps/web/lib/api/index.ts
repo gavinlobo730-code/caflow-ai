@@ -722,6 +722,21 @@ export type JournalLineIO = {
   narration?: string | null;
 };
 
+/** GET /api/currencies/policy. `gates` is the half that matters: `active`
+ *  alone could not say WHICH of three switches was down, which is why the
+ *  feature was unusable (ACC-19). */
+export type CurrencyPolicy = {
+  active: boolean;
+  functional_currency: string;
+  gates: {
+    platform: { on: boolean; settable: boolean; why?: string };
+    firm: { on: boolean; settable: boolean };
+    client: { on: boolean; settable: boolean };
+    functional_currency_supported: boolean;
+    functional_currency: string;
+  };
+};
+
 /**
  * GET /api/accounting/journal/{id}. Beyond the row itself this carries the two
  * fields the editor is built around:
@@ -1935,7 +1950,25 @@ export const api = {
   // Multi-Currency (Phase 1/5) — currency master + resolved policy (gates FX UI).
   currencies: {
     list: (params?: Record<string, string>) => request(`/api/currencies${params ? "?" + new URLSearchParams(params) : ""}`),
-    policy: (params: Record<string, string>) => request(`/api/currencies/policy?${new URLSearchParams(params)}`),
+    policy: (params: Record<string, string>) =>
+      request<ApiResp<CurrencyPolicy>>(`/api/currencies/policy?${new URLSearchParams(params)}`),
+    // ACC-19 — the two gates that were READ by six routers and WRITTEN BY
+    // NOTHING. `setEntitlement` is the firm switch (L2), `setClientPolicy` the
+    // per-client one (L3). The platform gate is an environment kill switch and
+    // deliberately has no setter.
+    // The firm gate on its own, with no client in the request — a firm with no
+    // clients yet cannot read it off a client's policy, and that firm is
+    // exactly the one a Partner is switching this on for.
+    entitlement: () =>
+      request<ApiResp<{ platform: { on: boolean; why?: string }; firm: { on: boolean } }>>(
+        "/api/currencies/entitlement"),
+    setEntitlement: (enabled: boolean) =>
+      request<ApiResp<{ multi_currency_entitled: boolean }>>("/api/currencies/entitlement",
+        { method: "PUT", body: JSON.stringify({ enabled }) }),
+    setClientPolicy: (clientId: string, enabled: boolean) =>
+      request<ApiResp<{ multi_currency_enabled: boolean }>>(
+        `/api/currencies/policy?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PUT", body: JSON.stringify({ enabled }) }),
   },
   // Banking (Phase B.0): all bank mutations go through the backend banking
   // service — the frontend never writes bank rows or journals to Supabase.

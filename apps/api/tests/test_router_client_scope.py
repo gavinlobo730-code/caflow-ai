@@ -1626,6 +1626,16 @@ EXEMPT: dict[str, str] = {
         "the global ISO 4217 currency master (currency_service.list_currencies "
         "takes no firm_id or client_id at all) — reference data shared by every "
         "firm, with no client to scope to.",
+    "/api/currencies/entitlement":
+        "firms.multi_currency_entitled is a column on FIRMS (migration 146) "
+        "and both methods here scope to `current_user['firm_id']` — there is "
+        "no client_id in the request and none could be checked. It is the L2 "
+        "gate of resolve_currency_policy: a firm-wide switch, Partner-only to "
+        "write through rbac('settings', 'write'). The GET exists precisely "
+        "BECAUSE it has no client: a firm with no clients yet could not read "
+        "its own gate off a client's policy. The L3 gate beside it, PUT "
+        "/api/currencies/policy, IS per-client and does call "
+        "assert_client_access, which is why only this one is here.",
     "/api/team/{user_id}/role":
         "users has a firm_id and NO client_id column (migration 003) — "
         "addressed by a STAFF user_id, and already firm-membership checked. "

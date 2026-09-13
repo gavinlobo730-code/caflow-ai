@@ -7,20 +7,20 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **85** | re-read against the code. The defect is gone. |
+| closed | **87** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | partial | **10** | part of the finding is answered, part is not. Each says which. |
-| open | **20** | re-read and still true. |
+| open | **18** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 30 items — 20 open and 10 partial — not 254.**
+**The work left is 28 items — 18 open and 10 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 20 open, most are not code problems.** Nearly every one needs a
+**And of the 18 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -30,7 +30,6 @@ migration; a handful need a statutory document a person has to read.
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
-| medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
 | medium | **BANK-21** | Credit-card accounts are not supported at all |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
@@ -46,7 +45,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PUR-25** | No purchase orders, goods receipt notes or three-way matching |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
-| low | **ACC-16** | Journal lines have no ordering column, so a voucher's Dr/Cr lines display in arbitrary order and |
 
 ### What actually blocks each of them
 
@@ -55,7 +53,6 @@ migration; a handful need a statutory document a person has to read.
 | **GST-11** | schema for a quarterly filing preference, plus IFF |
 | **GST-20** | a registrations table; clients.gstin is singular today |
 | **IT-19** | somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) — a migration |
-| **ACC-19** | the two endpoints and the two controls. The owner decision the finding was blocked on is taken. |
 | **BANK-21** | a migration; a card is a liability account whose statement signs are the mirror of a bank's |
 | **FA-11** | a migration per item. One hazard the finding does not name: a shift multiplier folded into wdv_rate_percent would make schedule_ii_departure report every double-shift asset as a Part C departure, so it must be its own column |
 | **GST-25** | schema per return type |
@@ -69,7 +66,6 @@ migration; a handful need a statutory document a person has to read.
 | **PUR-25** | three new document types |
 | **SALES-21** | four new document types |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |
-| **ACC-16** | a migration adding the nullable column, and the read-time ordering. The backfill the finding asks for is deliberately NOT done. |
 
 ## Partial
 
@@ -143,6 +139,7 @@ migration; a handful need a statutory document a person has to read.
 | high | **TDS-11** | tds_deductions and tds_returns are written directly from the browser with no role check, and the |
 | medium | **ACC-11** | POST /api/accounting/accounts cannot set account_subtype, so every account a CA creates lands in |
 | medium | **ACC-15** | A discarded draft journal can be resurrected and posted, because post_draft never selects delete |
+| medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
 | medium | **BANK-18** | The import module's most important refusals reach the CA as raw JSON: "API error 422: {\"detail\ |
 | medium | **BANK-19** | Two banking screens parse typed rupees outside lib/money/rupeeInput, against the "one parser, an |
 | medium | **BANK-24** | Bank-charge input tax credit is posted with no supplier GSTIN or invoice reference, so it can ne |
@@ -185,6 +182,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **TDS-19** | The 26AS parser mislabels Part B (TCS) as TDS and Part D (refunds) as self-assessment tax, and n |
 | medium | **TDS-20** | The 26AS pipeline accepts only pasted tab/pipe-delimited text and offers no current-year option  |
 | medium | **TDS-32** | Purchase debit and credit notes never reverse TDS, so a return after deduction leaves the regist |
+| low | **ACC-16** | Journal lines have no ordering column, so a voucher's Dr/Cr lines display in arbitrary order and |
 | low | **GST-23** | GSTR-1 has no way to record the real ARN and filing date from the client workspace, so its perio |
 | low | **PUR-29** | Reverse charge and §17(5) eligibility have no test coverage on the purchase-bill compute path at |
 | low | **PUR-30** | A dead _TDS_DEFAULT_BPS table at the top of purchase_bills.py carries a §194H rate that is 2.5x  |

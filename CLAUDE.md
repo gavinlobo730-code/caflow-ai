@@ -55,6 +55,26 @@ change. The code is the authority; keep this file in step with it.
   inserting. Sales, purchases, receipts, payments, credit/debit notes, banking, payroll,
   fixed assets, opening balances, manual journals and reversals all route through it. Do
   not add a second write path.
+- **A VOUCHER'S LINES HAVE AN ORDER AND TWO FUNCTIONS RECORD IT** (ACC-16, migration
+  384). `journal_lines.line_order` is the zero-based position the line held in the
+  jsonb array the posting was called with, read out with `WITH ORDINALITY` by
+  `post_journal_atomic` AND by `edit_posted_journal` — the second matters because a
+  correction DELETEs every line and re-inserts them, so leaving it alone would have
+  lost the CA's order the first time they fixed the voucher, silently. Taking the
+  order from the array is what let every posting function stay unchanged: a field
+  every caller must set is a field some caller will not. **Nothing already posted is
+  backfilled** and that is a decision — migration 251 makes a posted line immutable,
+  so a backfill would mean disabling that trigger against production for a DISPLAY
+  order. An existing line keeps `line_order` NULL and
+  `domain/accounting/line_order.py` orders it at read time: debits before credits,
+  then `created_at`, then `id`. That chain is TOTAL, which is the property that
+  matters — the same voucher renders the same way on every read. **There is
+  deliberately no TypeScript mirror**: the one place a CA sees a voucher's lines is
+  `GET /api/accounting/journal/{id}`, and the browser's own `journal_lines` embed
+  only SUMS debits. A guard fails if `apps/web` ever mentions the column, because
+  PostgREST can express neither "debits before credits" nor a fallback chain as an
+  `ORDER BY` and the rule would then need mirroring —
+  `tests/fixtures/journal_line_order.json` is already the table for it.
 - The live GL is `journal_entries` + `journal_lines` only. A posted entry can never be
   hard-DELETEd or rewritten in place (DB triggers), and a correction to a real
   transaction is an append-only reversal. But immutability is not absolute, and the
@@ -1969,6 +1989,24 @@ no failing check to point at. Filter inside, in the `scope` job, as these workfl
   against the live Supabase project on every push to `main`, once tests and the
   migration ratchet pass. There is no manual review step in between. See
   `docs/deploy-migrations.md`.
+- **`CREATE OR REPLACE FUNCTION` REPLACES THE WHOLE DEFINITION, so derive the new
+  body from the migration that LAST defined that function — found by NUMBER, not
+  from memory and not from the one you happen to be reading.** A replacement either
+  carries every earlier change forward or silently reverts it, and the revert
+  compiles, deploys and passes a mock suite. Migration 384 got this wrong twice
+  before the real-Postgres suite caught it: the first attempt was hand-written and
+  lost the balance guard, the `jsonb_populate_record` column list and the
+  `deleted_at` filter; the second was derived faithfully from migration 243 — and
+  243 was the WRONG ANCESTOR, because 271 had made `post_journal_atomic` SECURITY
+  DEFINER and 274 had folded in the reversal stamp. Merging it would have
+  reproduced exactly the production incident 274's own header records:
+  `permission denied for table journal_entries`, 42501, the reversal committed and
+  its original left unflagged. `grep -ln "FUNCTION.*<name>" migrations/*.sql | sort
+  | tail -1` is the answer. The guard shape that survives is in
+  `tests/test_a_voucher_shows_its_lines_in_order.py`: it reconstructs the ancestor
+  by scanning the migration directory, so it cannot be pointed at a stale one, and
+  a parametrised clause test names the privilege model and every invariant a
+  careless rewrite drops.
 - `core/schema_guard.py` is the boot-time backstop: it surfaces code/schema drift loudly
   instead of letting writes fail silently behind broad `try/except`.
 
@@ -2046,6 +2084,29 @@ receipt/payment creation and is the path that already works; teaching
 where the FX gain or loss leg lands, and `_create_journal`'s balance assertion is
 exactly what an unbalanced FX leg breaks. `docs/audits/` and
 the batch completion reports are historical records, not current specs.
+
+**MULTI-CURRENCY HAS THREE GATES AND TWO OF THEM ARE NOW WRITABLE** (ACC-19).
+`resolve_currency_policy` is `active = L1 AND L2 AND L3` — the environment kill
+switch `MULTI_CURRENCY_ENABLED`, `firms.multi_currency_entitled` and
+`clients.multi_currency_enabled`. All five multi-currency phases are BUILT and
+none of it could be switched on: L2 and L3 (migration 146) were READ by policy.py
+and six routers and **WRITTEN BY NOTHING** — no endpoint, no Pydantic field, no
+screen, no seed — so only a manual UPDATE against the database could activate
+any of it. `PUT /api/currencies/entitlement` and
+`PUT /api/currencies/policy?client_id=` write them, Partner-only, and
+`/settings/multi-currency` is the screen. **SELF-SERVE is an owner decision of
+13-09-2026**: there is no billing or entitlement machinery in this product, so a
+commercial gate has nothing to hang off; if it is ever sold the column does not
+move and a plan check goes in FRONT of the endpoint. **The platform gate is shown
+and never offered** — `core/feature_flags` says "No DB dependency", which is the
+point of a kill switch. **The read says WHICH gate is down**, because `active:
+false` alone is what made the feature unusable: a Partner ticked something and
+could not tell. Turning a client ON is REFUSED with a sentence where it would be
+inert — the firm is not entitled, or the client's functional currency is not INR,
+Capability B (presentation and translation) being unbuilt — while turning it OFF
+is never refused. `GET /api/currencies/entitlement` answers the firm gate with no
+client in the request, because a firm with no clients yet is exactly the firm
+this gets switched on for.
 
 **A MATCHING RULE SAYS WHICH FIELD IT READS AND WHICH RULE WINS** (migration
 380, BANK-11 steps 1 and 2). Until then `domain/banking/rules.rule_matches` was

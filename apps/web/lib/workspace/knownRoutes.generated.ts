@@ -144,6 +144,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["settings","firm-hsn-library"],
   ["settings","invoice-settings"],
   ["settings","invoice-templates"],
+  ["settings","multi-currency"],
   ["settings","scheduled-reports"],
   ["settings","security"],
   ["settings","statutory-values"],

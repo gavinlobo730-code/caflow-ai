@@ -29,6 +29,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from domain.accounting import journal_source as JS
+from domain.accounting import line_order
 
 from services.phase2_journal_service import phase2_journal_service
 from services import period_lock_service
@@ -187,14 +188,20 @@ class ManualJournalService:
         rows = (db.table("journal_entries")
                 .select("id, client_id, entry_date, reference_no, narration, entry_type, "
                         "is_posted, is_reversed, source_type, created_at, "
-                        "lines:journal_lines(id, account_id, debit_paise, credit_paise, narration)")
+                        "lines:journal_lines(id, account_id, debit_paise, credit_paise, "
+                        "narration, line_order, created_at)")
                 .eq("id", entry_id).eq("firm_id", firm_id)
                 .is_("deleted_at", None).limit(1).execute().data) or []
         if not rows:
             raise HTTPException(status_code=404, detail="Journal entry not found.")
         entry = rows[0]
 
-        lines = entry.get("lines") or []
+        # ACC-16 — the voucher's own order, or the conventional one derived for
+        # a line written before migration 384. PostgREST cannot express "debits
+        # before credits" as an ORDER BY (no expression ordering, no boolean
+        # column), so the sort happens here, in the one rule both sides share.
+        lines = line_order.in_display_order(entry.get("lines") or [])
+        entry["lines"] = lines
         entry["total_debit_paise"] = sum(int(l.get("debit_paise") or 0) for l in lines)
         entry["total_credit_paise"] = sum(int(l.get("credit_paise") or 0) for l in lines)
         entry["status"] = "posted" if entry.get("is_posted") else "draft"
@@ -341,13 +348,20 @@ class ManualJournalService:
                 db.table("journal_entries").update(header).eq("id", entry_id).eq("firm_id", firm_id).execute()
             if lines is not None:
                 db.table("journal_lines").delete().eq("journal_entry_id", entry_id).execute()
+                # `line_order` is the position in the array the CA saved, the
+                # same thing post_journal_atomic's WITH ORDINALITY records on
+                # the create path (migration 384). Written here because this
+                # path does its own INSERT and does not go through the RPC —
+                # without it an EDITED voucher would fall back to the derived
+                # order while the one beside it kept the order it was typed in.
                 db.table("journal_lines").insert([{
                     "journal_entry_id": entry_id,
                     "account_id": l["account_id"],
                     "debit_paise": int(l.get("debit_paise") or 0),
                     "credit_paise": int(l.get("credit_paise") or 0),
                     "narration": l.get("narration") or "",
-                } for l in lines]).execute()
+                    "line_order": i,
+                } for i, l in enumerate(lines)]).execute()
 
         return self.get(db, firm_id, entry_id)
 
