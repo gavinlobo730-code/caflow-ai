@@ -11,6 +11,7 @@ All amounts are integer paise. Never float.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Optional, Sequence
 
 # GSTR-3B is declared and paid in WHOLE rupees (CGST Act §170) — not the 2-decimal
@@ -178,6 +179,43 @@ class AdvanceTaxOnReceipts:
     def is_empty(self) -> bool:
         return not any(self.net(k) for k in
                        ("taxable_paise", "igst_paise", "cgst_paise", "sgst_paise"))
+
+
+def _interest_5_1(result: "GSTR3BResult", period: str,
+                  filed_on: "date | None") -> dict:
+    """Table 5.1's four interest cells, in whole rupees.
+
+    Zeros where no filing date is given — a return being PREPARED has none, and
+    putting today's on the form would give it a figure that changes every day
+    it is not filed.
+
+    The due date is derived from the period rather than passed in, so one
+    answer cannot disagree with the compliance calendar's; `compliance_engine`
+    is the single source for every statutory date (CLAUDE.md). The MONTHLY due
+    date is used: a QRMP taxpayer's 3B is quarterly and this computer is handed
+    a monthly period string, so the two cannot be told apart here — and the
+    monthly date is the EARLIER of the two, which over-states the delay rather
+    than hiding it.
+    """
+    zeros = {"iamt": 0, "camt": 0, "samt": 0, "csamt": 0}
+    if filed_on is None or len(period) != 6 or not period.isdigit():
+        return zeros
+    from services.compliance_engine import gstr3b_due_date
+    from domain.gst.late_filing import interest_on_late_return
+
+    due = gstr3b_due_date(int(period[2:]), int(period[:2]))
+    per_head = {
+        "iamt": result.cash_payable_igst,
+        "camt": result.cash_payable_cgst,
+        "samt": result.cash_payable_sgst,
+        "csamt": result.cash_payable_cess,
+    }
+    out = {}
+    for key, cash in per_head.items():
+        charge = interest_on_late_return(
+            due_date=due, filed_on=filed_on, cash_payable_paise=cash)
+        out[key] = paise_to_rupees_whole(charge.interest_paise)
+    return out
 
 
 @dataclass
@@ -550,7 +588,8 @@ class GSTR3BResult:
         reported as a refund."""
         return max(self.itc_available_paise - self.itc_consumed_paise, 0)
 
-    def as_gstn_payload(self, gstin: str, period: str) -> dict:
+    def as_gstn_payload(self, gstin: str, period: str,
+                        filed_on: "date | None" = None) -> dict:
         """Return GSTN-compatible GSTR-3B JSON.
 
         Format follows GSTN API specification v1.3. Every monetary field is in
@@ -558,6 +597,14 @@ class GSTR3BResult:
         declared and paid in whole rupees (CGST Act §170, round half up). Finding
         F16: the earlier version emitted raw paise, making every amount 100x too
         large.
+
+        `filed_on` fills TABLE 5.1's interest (GST-21). Omit it and 5.1 stays
+        zeros, exactly as before — a return being prepared has no filing date,
+        and inventing today's would put a figure on the form that changes every
+        day it is not filed. The LATE FEE stays zero whatever is passed: §47's
+        notified rates are not held, and the refusal is reported beside the
+        payload rather than inside it, because a GSTN payload has nowhere to
+        carry a sentence. See domain/gst/late_filing.
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         """
         r = paise_to_rupees_whole
@@ -728,8 +775,21 @@ class GSTR3BResult:
                     {"ty": "OTH", "iamt": 0, "camt": 0, "samt": 0, "csamt": 0},
                 ],
             },
+            # Table 5.1 — interest and late fee.
+            #
+            # PER HEAD, on the CASH figure for that head. Rule 88B(1) charges
+            # interest only on tax "paid by debiting the electronic cash
+            # ledger", so a head whose liability the credit ledger discharged
+            # in full bears none however late the return is — and charging on
+            # the gross output tax would demand several times what is due.
+            # cash_payable_* is the same figure Table 6 pays the challan with.
+            #
+            # The fee stays zero: §47's NOTIFIED rates are not held (see
+            # domain/gst/late_filing), and the statutory ₹200/day is four times
+            # what a registered person has actually paid since 2018, so it is
+            # not used as a fallback.
             "intr_ltfee": {
-                "intr_details": {"iamt": 0, "camt": 0, "samt": 0, "csamt": 0},
+                "intr_details": _interest_5_1(self, period, filed_on),
                 "fee_details": {"iamt": 0, "camt": 0, "samt": 0, "csamt": 0},
             },
         }

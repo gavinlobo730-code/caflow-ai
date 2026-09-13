@@ -92,6 +92,7 @@ export interface JournalEditorProps {
   onSave: (mode: JournalSaveMode, payload: {
     entry_date: string; entry_type: string; reference_no: string;
     narration: string; lines: JournalLineIO[];
+    attachments: { name: string; url: string }[];
   }) => void;
   onCancel: () => void;
 }
@@ -113,6 +114,23 @@ export function JournalEditor({
   const [narration, setNarration] = useState(existing?.narration ?? "");
   const [lines, setLines] = useState<FormLine[]>(() =>
     existing ? toFormLines(existing.lines) : [newLine(), newLine()]);
+  // ACC-25 — the supporting documents. `journal_entries.attachments` has
+  // existed since migration 138 and the kernel writes whatever it is handed;
+  // nothing on this screen ever sent one, so the reason for a coding lived in
+  // somebody's email and was lost when they moved on.
+  //
+  // A LINK only, deliberately. The other kind an attachment can be — a
+  // document in the firm's own store — is referenced by id, and offering an
+  // upload here without the store's picker would be a second, weaker way to
+  // do the same thing. The server refuses anything that is not http or https
+  // (`domain/attachments`), so the browser does not need its own copy of that
+  // rule; what it must do is not silently drop what the CA typed.
+  const [attachments, setAttachments] = useState<{ name: string; url: string }[]>(
+    () => (existing?.attachments ?? [])
+      .filter((a) => !!a.url)
+      .map((a) => ({ name: a.name, url: a.url as string })));
+  const [attachName, setAttachName] = useState("");
+  const [attachUrl, setAttachUrl] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
   // Every amount parsed once, exactly, in integer paise. `null` marks a cell
@@ -158,6 +176,7 @@ export function JournalEditor({
       reference_no: referenceNo.trim(),
       narration: narration.trim(),
       lines: out,
+      attachments,
     };
   }
 
@@ -245,6 +264,64 @@ export function JournalEditor({
           <input id="je-narration" value={narration} disabled={readOnly}
                  placeholder="Being goods sold to ABC Ltd…"
                  onChange={(e) => setNarration(e.target.value)} className={field} />
+        </div>
+
+        {/* SUPPORTING DOCUMENTS (ACC-25). The receipt, the vendor invoice, the
+            board note — the thing that justifies the coding. Without it the
+            reason for an entry lives in somebody's email and is gone the day
+            they leave, which is exactly what a reader of the audit trail needs
+            it for. The column has existed since migration 138; nothing on this
+            screen ever sent one. */}
+        <div>
+          <p className="block text-xs font-medium text-[#475569] mb-1">Supporting documents</p>
+          {attachments.length > 0 && (
+            <ul className="mb-2 space-y-1">
+              {attachments.map((a, i) => (
+                <li key={`${a.url}-${i}`}
+                    className="flex items-center gap-2 text-xs text-[#334155] bg-[#F8FAFC] rounded-lg px-2.5 py-1.5">
+                  {/* rel="noreferrer" because the link is somebody else's host
+                      and window.opener would hand it this app's tab. */}
+                  <a href={a.url} target="_blank" rel="noreferrer"
+                     className="text-blue-700 hover:underline truncate">{a.name}</a>
+                  <span className="text-[#94A3B8] truncate flex-1">{a.url}</span>
+                  {!readOnly && (
+                    <button type="button" aria-label={`Remove ${a.name}`}
+                            onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}
+                            className="text-[#94A3B8] hover:text-red-600">×</button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!readOnly && (
+            <div className="flex gap-2">
+              <input value={attachName} aria-label="Document name"
+                     placeholder="Receipt from ABC Ltd"
+                     onChange={(e) => setAttachName(e.target.value)}
+                     className={`${field} flex-1`} />
+              <input value={attachUrl} aria-label="Document link"
+                     placeholder="https://…"
+                     onChange={(e) => setAttachUrl(e.target.value)}
+                     className={`${field} flex-1`} />
+              <button
+                type="button"
+                disabled={!attachName.trim() || !attachUrl.trim()}
+                onClick={() => {
+                  setAttachments([...attachments,
+                    { name: attachName.trim(), url: attachUrl.trim() }]);
+                  setAttachName(""); setAttachUrl("");
+                }}
+                className="px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F1F5F9] disabled:opacity-40"
+              >
+                Attach
+              </button>
+            </div>
+          )}
+          <p className="text-[10px] text-[#94A3B8] mt-1">
+            A link to the document — the server accepts http and https only, and
+            refuses anything else because a stored link is one a colleague will
+            click.
+          </p>
         </div>
 
         <div className="overflow-x-auto">

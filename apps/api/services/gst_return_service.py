@@ -20,6 +20,8 @@ from __future__ import annotations
 import calendar
 from datetime import date
 
+from core.ist_clock import ist_fy_label
+
 import services.gst_2b_reconciliation_service as gst_2b_reconciliation_service
 import services.gst_advance_service as gst_advance_service
 import services.itc_register_service as itc_register_service
@@ -653,8 +655,79 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
     }
 
 
-def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str) -> dict:
-    """Compute GSTR-3B from posted books and reconcile to the General Ledger."""
+def _late_filing_block(result, period: str, filed_on) -> dict:
+    """§50 interest and the §47 refusal, for one period (GST-21).
+
+    `available: false` where no filing date was given, so a screen can say
+    "tell me when you filed and I will compute it" rather than showing a nil
+    that reads as "nothing is owed".
+
+    The interest is computed PER HEAD off `cash_payable_*`, which is what
+    Rule 88B(1) charges on. `domain/gst/late_filing` explains why using the
+    gross output tax instead would demand several times what is due.
+    """
+    if filed_on is None or len(period) != 6 or not period.isdigit():
+        return {
+            "available": False,
+            "reason": ("Interest and the late fee are computed once the filing "
+                       "date is known. A return being prepared has none, and "
+                       "using today's date would give the figure a value that "
+                       "changes every day the return is not filed."),
+        }
+    from services.compliance_engine import gstr3b_due_date
+    from domain.gst import late_filing as _lf
+
+    due = gstr3b_due_date(int(period[2:]), int(period[:2]))
+    heads = [
+        ("igst", result.cash_payable_igst),
+        ("cgst", result.cash_payable_cgst),
+        ("sgst", result.cash_payable_sgst),
+        ("cess", result.cash_payable_cess),
+    ]
+    charges = []
+    total = 0
+    caveats: list[str] = []
+    period_start = date(int(period[2:]), int(period[:2]), 1)
+    for head, cash in heads:
+        c = _lf.interest_on_late_return(
+            due_date=due, filed_on=filed_on, cash_payable_paise=cash,
+            period_start=period_start)
+        total += c.interest_paise
+        charges.append({"head": head, **c.as_dict()})
+        for note in c.caveats:
+            if note not in caveats:
+                caveats.append(note)
+    # THE FY OF THE RETURN PERIOD, not of the due date. March 2026's 3B is due
+    # on 20 April 2026, which falls in FY 2026-27 — so keying the late fee off
+    # the due date would look up the wrong year's notification on every March
+    # return, which is the one month a firm files late most often.
+    fee = _lf.late_fee(return_type="gstr3b",
+                       financial_year=ist_fy_label(period_start.isoformat()),
+                       due_date=due, filed_on=filed_on)
+    return {
+        "available": True,
+        "due_date": due.isoformat(),
+        "filed_on": filed_on.isoformat(),
+        "days_late": _lf.days_late(due, filed_on),
+        "interest_by_head": charges,
+        "interest_total_paise": total,
+        # A dict with `refused` where the year's §47 notification is not
+        # recorded, which is every year today. The sentence names what to read.
+        "late_fee": fee if isinstance(fee, dict) else fee.as_dict(),
+        "caveats": caveats,
+    }
+
+
+def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
+                      filed_on: "date | None" = None) -> dict:
+    """Compute GSTR-3B from posted books and reconcile to the General Ledger.
+
+    `filed_on` is the date the return is (or will be) filed, and it is
+    OPTIONAL for a reason: a return being prepared has no filing date, and
+    substituting today would give Table 5.1 a figure that changes every day
+    the return is not filed. Give it and §50(1) interest is computed per
+    head; omit it and 5.1 is zeros, as before.
+    """
     start, end = _period_bounds(period)
 
     invoices_3b = _posted_sales(db, firm_id, client_id, start, end)
@@ -997,7 +1070,13 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str)
         # is the client's money. Computed in apps/api like every other
         # statutory figure — the screen renders it and derives nothing.
         "itc_carried_forward_paise": result.itc_carried_forward_paise,
-        "payload": result.as_gstn_payload(gstin, period),
+        "payload": result.as_gstn_payload(gstin, period, filed_on=filed_on),
+        # WHAT BEING LATE COSTS (GST-21). Absent until a filing date is given —
+        # a return being prepared has none, and computing interest against
+        # today would give the screen a figure that changes every day the
+        # return is not filed. The LATE FEE is a refusal with a named gap: §47's
+        # notified rates are not held here. See domain/gst/late_filing.
+        "late_filing": _late_filing_block(result, period, filed_on),
         "working": {
             "outward": {
                 "taxable_value_paise": result.outward_taxable_value,

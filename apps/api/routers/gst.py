@@ -8,6 +8,9 @@ Data is passed in from frontend (which reads Supabase directly).
 """
 from __future__ import annotations
 
+from datetime import date
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -357,6 +360,15 @@ class FromBooksRequest(BaseModel):
     client_id: str
     period: str  # MMYYYY
     aggregate_turnover_paise: int = 0
+    # The date the return is (or will be) filed — GST-21. OPTIONAL, and that is
+    # the point: a return being prepared has no filing date, and substituting
+    # today would give Table 5.1 an interest figure that changes every day it
+    # is not filed. Given, §50(1) interest is computed per head off the CASH
+    # payable (Rule 88B(1)); omitted, 5.1 stays zeros as it always was.
+    #
+    # GSTR-1 has no interest or late-fee table of its own, so this reaches the
+    # 3B path only.
+    filed_on: Optional[date] = None
 
 
 def _client_gstin(db, firm_id: str, client_id: str) -> str:
@@ -386,7 +398,8 @@ def gstr3b_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depen
     if errs:
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
     try:
-        data = gst_return_service.gstr3b_from_books(db, firm_id, req.client_id, req.period, gstin)
+        data = gst_return_service.gstr3b_from_books(
+            db, firm_id, req.client_id, req.period, gstin, filed_on=req.filed_on)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     return api_response(True, data)

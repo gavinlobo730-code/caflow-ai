@@ -697,10 +697,11 @@
       ]
     },
     "ACC-25": {
-      "status": "open",
+      "status": "partial",
       "verified_on": "2026-09-13",
-      "why": "the journal editor sends no attachments, though the kernel, the model and the database all take them",
-      "needs": "no migration. But the probe pass is emphatic that the finding's suggested {name, url} payload is the expiring-signed-URL and stored-XSS hole domain/banking/attachments.py was written to close — reuse that module, do not re-invent the payload"
+      "why": "The journal editor collects supporting documents and the CREATE path sends them; JournalEntryIn validates each through domain/attachments, which is moved out of the banking namespace now that a second subsystem needs it (domain/banking/attachments re-exports it). The 12 September probe pass was right that the finding's own {name, url} payload is the hole that module exists to close — so the rule is reused rather than re-invented.",
+      "also_fixed": "A live stored-XSS hole with no finding: JournalEntryIn.attachments was a bare list[dict], so a javascript: or data: URL went into the GL entry and executed in the app's own origin the moment a CA clicked the 'supporting document' on a voucher.",
+      "what_is_left": "The EDIT path. JournalEntryUpdateIn has no attachments field, and adding one for a POSTED entry means widening the edit_posted_journal RPC's parameter list — a migration. A draft-only control would be worse than none: a CA would find it disappears on the entries that matter. Also not built: attaching a document from the firm's own store by id (the module takes it; the picker is not on this screen)."
     },
     "ACC-26": {
       "status": "closed_by_commit",
@@ -1173,9 +1174,10 @@
       ]
     },
     "GST-21": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "no s.50 interest and no s.47 late fee anywhere in domain/gst"
+      "status": "partial",
+      "verified_on": "2026-09-13",
+      "why": "The INTEREST is built and shown. domain/gst/late_filing.py computes s.50(1) per head on the CASH payable (Rule 88B(1)), s.50(1) with Rule 88B(2) on undeclared tax, and s.50(3) at 24% on credit wrongly availed AND UTILISED — refusing rather than substituting the availed figure. GSTR-3B Table 5.1 carries it once a filing date is given, and the client GST screen asks for one and renders the per-head working.",
+      "what_is_left": "The s.47 LATE FEE, deliberately. LATE_FEE_RATES is empty and the engine refuses with a sentence naming the notification to read: the statutory Rs 100/day per Act capped at Rs 5,000 has not been what anyone pays since Notifications 4/2018 and 76/2018, and 19/2021 and 20/2021 capped it by turnover band. This environment cannot reach a .gov.in, and Rs 200/day where Rs 50 is notified is four times a figure a CA would pay over. Adding a row is a human step, like the state professional-tax slabs — see docs/audits/questions-for-the-owner.md #2."
     },
     "GST-22": {
       "status": "closed_by_commit",

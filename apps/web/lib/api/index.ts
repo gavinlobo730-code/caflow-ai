@@ -661,6 +661,20 @@ export type JournalEntryDetail = {
   status: "posted" | "draft";
   editable: boolean;
   lock_reason: string | null;
+  /** Supporting documents (migration 138). A name and EITHER a pasted
+   *  http(s) link OR the id of a document in the firm's store — never both:
+   *  the store's own URLs are signed and expire in an hour, so an uploaded
+   *  document is referenced by id and a fresh link minted when someone opens
+   *  it. `domain/attachments` is the rule and REFUSES anything else, including
+   *  a `javascript:` or `data:` link, which is stored XSS delivered as a
+   *  "receipt". */
+  attachments?: JournalAttachment[];
+};
+
+export type JournalAttachment = {
+  name: string;
+  url?: string;
+  document_id?: string;
 };
 
 /** PATCH body. Every field optional; `lines` replaces the whole set. */
