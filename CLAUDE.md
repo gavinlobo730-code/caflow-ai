@@ -626,6 +626,40 @@ change. The code is the authority; keep this file in step with it.
   has no filing date, and defaulting to today would put a figure on Table 5.1
   that changes every day the return is not filed.
 
+- **COMPENSATION CESS HAS TWO LIMBS, ITS OWN LEDGERS, AND IS NEVER PART OF
+  `total_gst_paise`.** GST (Compensation to States) Act 2017 §8(2) levies "on
+  the basis of VALUE, QUANTITY or on such basis", and real Schedule entries use
+  each: aerated waters and motor vehicles ad valorem, coal at so much per
+  tonne, cigarettes a percentage PLUS a figure per thousand. So a line carries
+  `cess_rate_bps` AND `cess_specific_paise_per_unit` (migration 374, the second
+  named to match `firm_hsn_rate_history`'s column from migration 181) and the
+  charge is their SUM — a single percentage column silently under-charges coal
+  and tobacco. `domain/gst/compensation_cess.py` is the authority and
+  `apps/web/lib/money/cessLine.ts` the keystroke mirror, pinned by
+  `shared/gst-parity-vectors.json`. **The AMOUNT is derived, never typed**, for
+  the reason cgst/sgst/igst are derived from `gst_rate_percent`. **Both
+  roundings match the GST heads** — floor the ad valorem limb, truncate the
+  per-unit one — because §11(2) applies the CGST Act mutatis mutandis and a
+  cess rounding the other way would disagree with the GST on its own line.
+  **§11(2)'s proviso is what keeps it separate all the way down**: credit of
+  this cess "shall be utilised only towards payment of cess", so it has its own
+  asset (`Compensation Cess Input Credit`) and its own liability
+  (`Compensation Cess Payable`) rather than the GST Input/Output ledgers,
+  `gstr3b_computer` keeps the head out of the §49(5) set-off ladder, and it is
+  in `total_paise` (the customer owes it) and NOT in `total_gst_paise` (what
+  Table 6 sets off). **The two ledger NAMES avoid the substrings "GST Input"
+  and "GST Output" deliberately** — those are `_find_account`'s ILIKE
+  fallbacks, matched `.limit(1)` with no ordering, so a cess account matching
+  one could be returned for a CGST lookup on any chart without per-head
+  accounts, which is every chart this product seeds. The per-unit figure is per
+  the LINE'S OWN UQC; nothing converts tonnes to kilograms. **No rate table is
+  held**: which cess reaches which HSN is Schedule data that moves by Council
+  notification, the same human step as the state PT slabs. Three things are
+  named rather than modelled — a "whichever is HIGHER" Schedule entry (record
+  the limb that applies), the four §34 NOTE tables (they have no cess column,
+  so a note against a cess-bearing invoice is reported in the return's
+  `cess_gaps` rather than silently declaring nil), and no upper bound on the
+  rate, because Schedule column (4) carries entries above 100%.
 - **A discount on the invoice reduces the value of supply; a discount after it
   does not, and the two are different sections.** §15(3)(a) excludes a discount
   "given before or at the time of the supply if such discount has been **duly

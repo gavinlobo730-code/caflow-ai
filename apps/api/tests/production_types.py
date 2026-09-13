@@ -85,6 +85,14 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("payroll_slips", "perquisites_in_tds_estimate_paise"): "migration 368",
     ("fixed_assets", "rule_43_use"): "migration 372",
     ("vendors", "msmed_agreement_days"): "migration 373",
+    ("client_sales_invoices", "cess_paise"): "migration 374",
+    ("client_sales_invoice_lines", "cess_rate_bps"): "migration 374",
+    ("client_sales_invoice_lines", "cess_specific_paise_per_unit"): "migration 374",
+    ("client_sales_invoice_lines", "cess_paise"): "migration 374",
+    ("purchase_bills", "cess_paise"): "migration 374",
+    ("purchase_bill_lines", "cess_rate_bps"): "migration 374",
+    ("purchase_bill_lines", "cess_specific_paise_per_unit"): "migration 374",
+    ("purchase_bill_lines", "cess_paise"): "migration 374",
 }
 
 

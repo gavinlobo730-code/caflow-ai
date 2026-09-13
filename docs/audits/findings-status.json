@@ -184,10 +184,9 @@
       "needs": "document series and templates"
     },
     "PUR-20": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "no cess field on a purchase line (repo-wide probe, 2026-09-12)",
-      "needs": "cess columns on the line tables"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "Closed 2026-09-13. Compensation cess is recordable on a purchase bill: migration 374 adds cess_rate_bps, cess_specific_paise_per_unit and cess_paise to purchase_bill_lines and cess_paise to purchase_bills; domain/gst/compensation_cess.py is the authority (two limbs, s.8(2) \"on the basis of value, quantity or on such basis\", added not compared, both floored like the GST heads); the bill's payable and net_payable carry it; s.17(5) blocked cess finally has a figure for migration 240's ineligible_itc_cess_paise; the receive journal debits a SEPARATE Compensation Cess Input Credit ledger (s.11(2) proviso ring-fences the credit) and still foots; GSTR-3B picks up itc_cess and, new, rcm_cess for Table 3.1(d). The two ledgers are seeded for new firms and backfilled for existing ones, mirroring migration 174."
     },
     "PUR-25": {
       "status": "open",
@@ -1811,12 +1810,9 @@
       ]
     },
     "SALES-20": {
-      "status": "closed_by_commit",
-      "verified_on": null,
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
-      "commits": [
-        "c3c63c35 Phase 13 — the verification pass, and every fix it produced (#493)"
-      ]
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "Closed 2026-09-13 with PUR-20 — the outward half of the same absence. client_sales_invoices and client_sales_invoice_lines carry the cess columns (migration 374), the sales create AND edit paths compute it on the post-s.15(3)(a) taxable value, the invoice total carries it while total_gst_paise deliberately does not, journal_for_sales_invoice credits Compensation Cess Payable, GSTR-1 csamt now has data on every table including table 12's HSN summary, and the Rule 46(m) cess row prints on the customer's copy. NOT extended to the four s.34 note tables, which have no cess column: a note against a cess-bearing invoice is NAMED in the return's cess_gaps rather than silently declaring nil."
     },
     "SALES-22": {
       "status": "not_a_defect_as_stated",

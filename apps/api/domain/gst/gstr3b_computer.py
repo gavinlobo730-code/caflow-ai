@@ -281,6 +281,13 @@ class GSTR3BResult:
     rcm_igst: int = 0
     rcm_cgst: int = 0
     rcm_sgst: int = 0
+    # Compensation cess self-assessed on a reverse-charge inward supply.
+    # s.11(2) of the GST (Compensation to States) Act 2017 applies the CGST
+    # Act to this levy mutatis mutandis, s.9(3)/(4) included, so an RCM supply
+    # of cess goods carries cess the recipient must declare in Table 3.1(d)
+    # and pay in cash. Held apart from rcm_igst/cgst/sgst because it discharges
+    # a different head.
+    rcm_cess: int = 0
 
     # Table 4: ITC available
     itc_igst: int = 0
@@ -431,18 +438,19 @@ class GSTR3BResult:
         isrc_i = min(self.rcm_igst, self.itc_avail_igst)
         isrc_c = min(self.rcm_cgst, self.itc_avail_cgst)
         isrc_s = min(self.rcm_sgst, self.itc_avail_sgst)
+        isrc_x = min(self.rcm_cess, self.itc_avail_cess)
         return [
             ("IMPG", 0, 0, 0, 0),
             ("IMPS", 0, 0, 0, 0),
             # Reverse-charge tax is self-assessed by the recipient and taken as
             # credit in the same return (CGST Act §9(3)/(4) with §16).
-            ("ISRC", isrc_i, isrc_c, isrc_s, 0),
+            ("ISRC", isrc_i, isrc_c, isrc_s, isrc_x),
             ("ISD", 0, 0, 0, 0),
             ("OTH",
              self.itc_avail_igst - isrc_i,
              self.itc_avail_cgst - isrc_c,
              self.itc_avail_sgst - isrc_s,
-             self.itc_avail_cess),
+             self.itc_avail_cess - isrc_x),
         ]
 
     # Table 6: tax on OUTWARD supplies still payable after the §49 set-off.
@@ -505,7 +513,7 @@ class GSTR3BResult:
     @property
     def rcm_cash_paise(self) -> int:
         """Table 3.1(d) tax — payable in cash, no set-off available."""
-        return self.rcm_igst + self.rcm_cgst + self.rcm_sgst
+        return self.rcm_igst + self.rcm_cgst + self.rcm_sgst + self.rcm_cess
 
     @property
     def cash_payable_igst(self) -> int:
@@ -524,8 +532,11 @@ class GSTR3BResult:
 
     @property
     def cash_payable_cess(self) -> int:
-        """No reverse-charge cess is modelled, so this is the set-off residue."""
-        return self.net_cess
+        """Set-off residue plus the reverse-charge cess, which s.49(4) with
+        s.2(82) never lets credit discharge — same reasoning as the three
+        heads above, and the cess head has the extra bar of the s.11(2)
+        proviso on top of it."""
+        return self.net_cess + self.rcm_cess
 
     @property
     def cash_payable_paise(self) -> int:
@@ -668,7 +679,7 @@ class GSTR3BResult:
                     "iamt": r(self.rcm_igst),
                     "camt": r(self.rcm_cgst),
                     "samt": r(self.rcm_sgst),
-                    "csamt": 0,
+                    "csamt": r(self.rcm_cess),
                 },
                 # 3.1(e). Value only — a supply outside the levy bears no tax,
                 # so the form has no tax columns here.
@@ -966,6 +977,13 @@ def compute_gstr3b(
             result.rcm_igst += p.igst_paise
             result.rcm_cgst += p.cgst_paise
             result.rcm_sgst += p.sgst_paise
+            # Compensation cess follows the three heads onto 3.1(d). s.11(2)
+            # of the Compensation Act applies the CGST Act to this levy
+            # mutatis mutandis, s.9(3)/(4) included. Its credit is already in
+            # `book_cess` below, which sums every purchase — the same
+            # count-once rule the GST heads follow, and the reason this loop
+            # only adds the LIABILITY.
+            result.rcm_cess += p.cess_paise
 
     # ── Table 4: ITC available ───────────────────────────────────────────────
     # C4 fix: each purchase's tax is counted ONCE. RCM ITC is already included in

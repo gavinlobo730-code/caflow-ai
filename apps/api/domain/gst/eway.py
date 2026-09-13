@@ -63,9 +63,11 @@ class EwayLine:
     cgst_paise: int = 0
     sgst_paise: int = 0
     igst_paise: int = 0
-    #: GST compensation cess. Explanation 2 includes it expressly. A sales line
-    #: does not carry one today (SALES-20), so this is 0 on every real invoice
-    #: — present because the rule names it, not because the column exists.
+    #: GST compensation cess. Explanation 2 includes it expressly. Live since
+    #: migration 374 gave `client_sales_invoice_lines` a cess column
+    #: (SALES-20); `routers/sales_invoices._eway_assessment` populates it, so a
+    #: cess-bearing consignment is measured at what the document actually
+    #: charges rather than short of the limit by the cess.
     cess_paise: int = 0
     #: Basis points, so 0 means a nil-rated line and 1800 means 18%.
     gst_rate_bps: int = 0

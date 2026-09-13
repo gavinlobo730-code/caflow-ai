@@ -1,4 +1,206 @@
 {
+  "cess": [
+    {
+      "label": "ad valorem 12% \u2014 aerated waters",
+      "qty": "1",
+      "rate": "1000.00",
+      "gst_rate_percent": 28,
+      "cess_rate_bps": 1200,
+      "cess_specific_paise_per_unit": 0,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 100000,
+        "gst_rate_bps": 2800
+      },
+      "expected": {
+        "taxable_paise": 100000,
+        "ad_valorem_paise": 12000,
+        "specific_paise": 0,
+        "cess_paise": 12000,
+        "line_total_paise": 140000
+      }
+    },
+    {
+      "label": "ad valorem floors, never rounds",
+      "qty": "1",
+      "rate": "333.33",
+      "gst_rate_percent": 18,
+      "cess_rate_bps": 333,
+      "cess_specific_paise_per_unit": 0,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 33333,
+        "gst_rate_bps": 1800
+      },
+      "expected": {
+        "taxable_paise": 33333,
+        "ad_valorem_paise": 1109,
+        "specific_paise": 0,
+        "cess_paise": 1109,
+        "line_total_paise": 40441
+      }
+    },
+    {
+      "label": "specific per unit \u2014 coal Rs.400/tonne",
+      "qty": "2.5",
+      "rate": "5000.00",
+      "gst_rate_percent": 5,
+      "cess_rate_bps": 0,
+      "cess_specific_paise_per_unit": 40000,
+      "payload": {
+        "quantity": 2.5,
+        "rate_paise": 500000,
+        "gst_rate_bps": 500
+      },
+      "expected": {
+        "taxable_paise": 1250000,
+        "ad_valorem_paise": 0,
+        "specific_paise": 100000,
+        "cess_paise": 100000,
+        "line_total_paise": 1412500
+      }
+    },
+    {
+      "label": "specific with a fractional quantity",
+      "qty": "0.335",
+      "rate": "100.00",
+      "gst_rate_percent": 18,
+      "cess_rate_bps": 0,
+      "cess_specific_paise_per_unit": 100,
+      "payload": {
+        "quantity": 0.335,
+        "rate_paise": 10000,
+        "gst_rate_bps": 1800
+      },
+      "expected": {
+        "taxable_paise": 3350,
+        "ad_valorem_paise": 0,
+        "specific_paise": 33,
+        "cess_paise": 33,
+        "line_total_paise": 3986
+      }
+    },
+    {
+      "label": "both limbs \u2014 cigarettes 5% + per 1000",
+      "qty": "1000",
+      "rate": "10.00",
+      "gst_rate_percent": 28,
+      "cess_rate_bps": 500,
+      "cess_specific_paise_per_unit": 207,
+      "payload": {
+        "quantity": 1000.0,
+        "rate_paise": 1000,
+        "gst_rate_bps": 2800
+      },
+      "expected": {
+        "taxable_paise": 1000000,
+        "ad_valorem_paise": 50000,
+        "specific_paise": 207000,
+        "cess_paise": 257000,
+        "line_total_paise": 1537000
+      }
+    },
+    {
+      "label": "no cess at all is nil, not an error",
+      "qty": "1",
+      "rate": "1000.00",
+      "gst_rate_percent": 18,
+      "cess_rate_bps": 0,
+      "cess_specific_paise_per_unit": 0,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 100000,
+        "gst_rate_bps": 1800
+      },
+      "expected": {
+        "taxable_paise": 100000,
+        "ad_valorem_paise": 0,
+        "specific_paise": 0,
+        "cess_paise": 0,
+        "line_total_paise": 118000
+      }
+    },
+    {
+      "label": "cess above 100% \u2014 tobacco entries",
+      "qty": "1",
+      "rate": "1000.00",
+      "gst_rate_percent": 28,
+      "cess_rate_bps": 29000,
+      "cess_specific_paise_per_unit": 0,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 100000,
+        "gst_rate_bps": 2800
+      },
+      "expected": {
+        "taxable_paise": 100000,
+        "ad_valorem_paise": 290000,
+        "specific_paise": 0,
+        "cess_paise": 290000,
+        "line_total_paise": 418000
+      }
+    },
+    {
+      "label": "cess on a zero taxable value",
+      "qty": "0",
+      "rate": "1000.00",
+      "gst_rate_percent": 18,
+      "cess_rate_bps": 1200,
+      "cess_specific_paise_per_unit": 4000,
+      "payload": {
+        "quantity": 0.0,
+        "rate_paise": 100000,
+        "gst_rate_bps": 1800
+      },
+      "expected": {
+        "taxable_paise": 0,
+        "ad_valorem_paise": 0,
+        "specific_paise": 0,
+        "cess_paise": 0,
+        "line_total_paise": 0
+      }
+    },
+    {
+      "label": "odd ad valorem: 1 paise of taxable",
+      "qty": "1",
+      "rate": "0.01",
+      "gst_rate_percent": 18,
+      "cess_rate_bps": 1200,
+      "cess_specific_paise_per_unit": 0,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 1,
+        "gst_rate_bps": 1800
+      },
+      "expected": {
+        "taxable_paise": 1,
+        "ad_valorem_paise": 0,
+        "specific_paise": 0,
+        "cess_paise": 0,
+        "line_total_paise": 1
+      }
+    },
+    {
+      "label": "large: 1 crore at 22%",
+      "qty": "1",
+      "rate": "10000000.00",
+      "gst_rate_percent": 28,
+      "cess_rate_bps": 2200,
+      "cess_specific_paise_per_unit": 0,
+      "payload": {
+        "quantity": 1.0,
+        "rate_paise": 1000000000,
+        "gst_rate_bps": 2800
+      },
+      "expected": {
+        "taxable_paise": 1000000000,
+        "ad_valorem_paise": 220000000,
+        "specific_paise": 0,
+        "cess_paise": 220000000,
+        "line_total_paise": 1500000000
+      }
+    }
+  ],
   "discounts": [
     {
       "label": "5% line discount, one line",

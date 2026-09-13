@@ -25,7 +25,8 @@ import { formatMoney } from "@/lib/services/formatting";
 import { estimateBaseMinor } from "@/lib/services/currencyPreview";
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { computeLineGst, discountPaise, gstRateBpsFromPercent,
-         splitLineGst } from "@/lib/money/gstLine";
+         quantityFromInput, splitLineGst } from "@/lib/money/gstLine";
+import { lineCess } from "@/lib/money/cessLine";
 import { bpsFromPercentInput, paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import {
   PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel,
@@ -97,6 +98,14 @@ function detailLinesToEditorLines(lines: InvoiceDetail["lines"]): EditorLine[] {
     // to change.
     discountPercent: l.discount_percent_bps == null
       ? undefined : String(l.discount_percent_bps / 100),
+    // Compensation cess (migration 374), rehydrated for exactly the reason
+    // the discount above is: update_invoice deletes and reinserts every line
+    // from whatever is sent back, so a cess the editor did not carry would be
+    // silently dropped on the next save — under-declaring a tax the client
+    // still owes, on an invoice nobody meant to change.
+    cessPercent: !l.cess_rate_bps ? undefined : String(l.cess_rate_bps / 100),
+    cessPerUnit: !l.cess_specific_paise_per_unit
+      ? undefined : String(l.cess_specific_paise_per_unit / 100),
     id: l.id,
     _k: i,
   }));
@@ -250,6 +259,14 @@ export function InvoiceEditor({
   });
   const [notes, setNotes] = useState(existing?.notes ?? duplicateSeed?.notes ?? "");
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
+  // Compensation cess reaches a handful of trades — aerated waters, pan
+  // masala, tobacco, coal, motor vehicles — so its two columns are revealed
+  // rather than always shown; six extra cells on every line of every invoice
+  // would cost every other client to serve those. ON from the start whenever
+  // the invoice being edited already carries cess, so the fields can never be
+  // hidden from the document that has them.
+  const [showCess, setShowCess] = useState<boolean>(
+    () => initialLines.some((l) => l.cessPercent || l.cessPerUnit));
   const keyRef = useRef(initialLines.length); // next stable row key
   const nextKey = () => keyRef.current++;
   const [saving, setSaving] = useState<SaveAction | null>(null);
@@ -816,6 +833,13 @@ export function InvoiceEditor({
           <Row label={uniformRate != null ? `SGST @ ${uniformRate / 2}%` : "SGST"} value={fmtAmt(totals.sgst_paise)} />
         </>
       )}
+      {/* Its own row, below the three GST heads and never folded into them:
+          GST (Compensation to States) Act 2017 s.11(2), proviso — credit of
+          this cess "shall be utilised only towards payment of cess", so it is
+          a separate head all the way to the challan. */}
+      {totals.cess_paise > 0 && (
+        <Row label="Compensation cess" value={fmtAmt(totals.cess_paise)} />
+      )}
       {!isForeign && roundOffEnabled && totals.round_off_paise !== 0 && (
         <Row label="Round-off" value={`${totals.round_off_paise < 0 ? "-" : ""}${fmt(Math.abs(totals.round_off_paise))}`} />
       )}
@@ -1114,7 +1138,20 @@ export function InvoiceEditor({
             first field is the Product/Service selector, never a blank
             Description box. */}
         <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <h2 className="text-xs font-semibold text-[#334155] mb-2">Line items</h2>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold text-[#334155]">Line items</h2>
+            {!isLocked && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showCess}
+                  onChange={(e) => setShowCess(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-[#CBD5E1] accent-[#0F172A]"
+                />
+                <span className="text-[11px] text-[#475569]">Compensation cess</span>
+              </label>
+            )}
+          </div>
           {isLocked && (
             <p className="mb-2 text-[10px] text-[#94A3B8]">
               Frozen once issued — issue a Credit Note to correct a quantity, rate, or item (CGST Act §34). Units stay editable.
@@ -1137,6 +1174,18 @@ export function InvoiceEditor({
                       comes off a price list; the API also takes a flat amount,
                       for an importer or an integration. */}
                   <th className="pb-2 text-right font-semibold w-20">Disc %</th>
+                  {/* GST (Compensation to States) Act 2017 s.8(2) levies "on
+                      the basis of VALUE, QUANTITY or on such basis" — hence
+                      two columns, added rather than compared. Coal is per
+                      tonne, aerated waters are a percentage, cigarettes are
+                      both. Per unit of THIS LINE'S UQC: nothing converts
+                      tonnes to kilograms. */}
+                  {showCess && (
+                    <>
+                      <th className="pb-2 text-right font-semibold w-20" title="Compensation cess, ad valorem">Cess %</th>
+                      <th className="pb-2 text-right font-semibold w-24" title="Compensation cess per unit of this line's UQC">Cess/unit</th>
+                    </>
+                  )}
                   <th className="pb-2 text-right font-semibold w-24">Amount</th>
                   <th className="pb-2 w-6" />
                 </tr>
@@ -1156,15 +1205,32 @@ export function InvoiceEditor({
                   const lineTotal = (() => {
                     const heads = computeLineGst(line, isInterstate);
                     const bps = percentBpsOf(line.discountPercent);
-                    if (bps === null) return heads.line_total_paise;
+                    // Compensation cess rides on whatever taxable value the
+                    // §15(3)(a) branch below settles on, and is added to the
+                    // Amount column because the customer pays it. Omitting it
+                    // would make this column disagree with the summary the
+                    // moment a cess rate was typed — the same trap the
+                    // discount comment above records.
+                    const cessOn = (taxable: number) => lineCess(
+                      taxable,
+                      quantityFromInput(line.qty),
+                      percentBpsOf(line.cessPercent) ?? 0,
+                      line.cessPerUnit?.trim()
+                        ? (paiseFromRupeeInput(line.cessPerUnit.trim()) ?? 0) : 0,
+                    ).cess_paise;
+                    if (bps === null) {
+                      return heads.line_total_paise + cessOn(heads.taxable_paise);
+                    }
                     const d = discountPaise(heads.taxable_paise, bps);
-                    if (d === null) return heads.line_total_paise;
+                    if (d === null) {
+                      return heads.line_total_paise + cessOn(heads.taxable_paise);
+                    }
                     const net = splitLineGst(
                       heads.taxable_paise - d,
                       gstRateBpsFromPercent(line.gst_rate),
                       isInterstate,
                     );
-                    return net.line_total_paise;
+                    return net.line_total_paise + cessOn(heads.taxable_paise - d);
                   })();
                   const invalid = !isLocked && attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
@@ -1261,6 +1327,26 @@ export function InvoiceEditor({
                           placeholder="0" aria-label={`Line ${idx + 1} discount percent`}
                           className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
                       </td>
+                      {showCess && (
+                        <>
+                          <td className="py-1.5 pr-2">
+                            <input type="number" min="0" step="0.01"
+                              value={line.cessPercent ?? ""}
+                              onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
+                              onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked}
+                              placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
+                              className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                          </td>
+                          <td className="py-1.5 pr-2">
+                            <input type="number" min="0" step="0.01"
+                              value={line.cessPerUnit ?? ""}
+                              onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
+                              onKeyDown={(e) => onLineKeyDown(e, idx)} disabled={isLocked}
+                              placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}
+                              className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]" />
+                          </td>
+                        </>
+                      )}
                       <td className="py-1.5 px-2 text-right font-mono text-[#334155]">{lineTotal > 0 ? fmtAmt(lineTotal) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && !isLocked && (

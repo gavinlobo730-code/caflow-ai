@@ -562,6 +562,19 @@ def summary_lines(invoice: dict, lines: list, amount_paise: int, gst_paise: int,
     if igst_paise:
         out.append((_head_label("IGST", False), _paise_to_rupee_str(igst_paise)))
 
+    # CGST Rule 46(m) requires "amount of tax charged in respect of taxable
+    # goods or services (central tax, State tax, integrated tax, Union
+    # territory tax or CESS)" — the cess is named in the rule alongside the
+    # three heads, so a cess-bearing invoice that omits it is not a compliant
+    # tax invoice, and the recipient cannot claim the credit from a document
+    # that does not show the charge. No rate label: the levy has TWO limbs
+    # (GST (Compensation to States) Act 2017 s.8(2) — value AND quantity) and
+    # a single percentage beside a figure that includes a per-unit component
+    # would be the same defect `_head_label` exists to prevent.
+    cess_paise = int(invoice.get("cess_paise", 0) or 0)
+    if cess_paise:
+        out.append(("Compensation Cess", _paise_to_rupee_str(cess_paise)))
+
     # Invoice-level round-off line (nearest ₹1) — shown only when non-zero so the
     # taxable + GST rows still reconcile to the printed Total. CGST Act §15.
     round_off_paise = int(invoice.get("round_off_paise", 0) or 0)

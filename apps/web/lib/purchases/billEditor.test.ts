@@ -27,12 +27,37 @@ test("isValidBillLine requires positive qty, positive rate and a Product/Service
 
 test("previewBillTotals: intra-state splits 18% into 9% CGST + 9% SGST, no round-off", () => {
   const t = previewBillTotals([line({ qty: "2", rate: "500", gst_rate: 18 })], false);
-  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 9000, sgst_paise: 9000, igst_paise: 0, gst_paise: 18000, grand_total_paise: 118000 });
+  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 9000, sgst_paise: 9000, igst_paise: 0, gst_paise: 18000, cess_paise: 0, grand_total_paise: 118000 });
 });
 
 test("previewBillTotals: inter-state applies the full rate as IGST", () => {
   const t = previewBillTotals([line({ qty: "2", rate: "500", gst_rate: 18 })], true);
-  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 0, sgst_paise: 0, igst_paise: 18000, gst_paise: 18000, grand_total_paise: 118000 });
+  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 0, sgst_paise: 0, igst_paise: 18000, gst_paise: 18000, cess_paise: 0, grand_total_paise: 118000 });
+});
+
+test("previewBillTotals: compensation cess is its own figure and rides the grand total", () => {
+  // GST (Compensation to States) Act 2017 s.8(2), value limb: 12% of Rs.1,000.
+  // s.11(2)'s proviso ring-fences the credit, so it is NOT in gst_paise — but
+  // the vendor is owed it, so it IS in the grand total.
+  const t = previewBillTotals(
+    [line({ qty: "2", rate: "500", gst_rate: 18, cessPercent: "12" })], false);
+  assert.equal(t.cess_paise, 12000);
+  assert.equal(t.gst_paise, 18000);
+  assert.equal(t.grand_total_paise, 130000);
+});
+
+test("previewBillTotals: the per-unit limb counts the line's own quantity", () => {
+  // Rs.400 per tonne on 2.5 tonnes. s.8(2), quantity limb.
+  const t = previewBillTotals(
+    [line({ qty: "2.5", rate: "5000", gst_rate: 5, cessPerUnit: "400" })], false);
+  assert.equal(t.cess_paise, 100000);
+});
+
+test("previewBillTotals: both limbs are added, never compared", () => {
+  const t = previewBillTotals(
+    [line({ qty: "1000", rate: "10", gst_rate: 28,
+            cessPercent: "5", cessPerUnit: "2.07" })], false);
+  assert.equal(t.cess_paise, 50000 + 207000);
 });
 
 test("previewBillTotals sums multiple valid lines and skips invalid ones", () => {

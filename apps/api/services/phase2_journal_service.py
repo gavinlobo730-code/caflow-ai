@@ -68,6 +68,8 @@ class Phase2JournalService:
         Dr Trade Receivables = total_paise
         Cr Sales Revenue     = taxable_amount_paise
         Cr GST Output (CGST/SGST/IGST) as applicable — per-head accounts.
+        Cr Compensation Cess Payable = cess_paise (its own ledger — GST
+           (Compensation to States) Act 2017 s.8 with s.11(2), proviso).
         CGST Act §9: GST on taxable outward supplies.
         CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
         """
@@ -132,6 +134,24 @@ class Phase2JournalService:
                     "debit_paise": 0,
                     "credit_paise": invoice["igst_paise"],
                     "narration": "IGST output tax payable",
+                })
+
+            # GST compensation cess — its OWN liability ledger, never the GST
+            # Output account. GST (Compensation to States) Act 2017 s.11(2),
+            # proviso: credit of this cess "shall be utilised only towards
+            # payment of cess". Booking it into GST Output would put it where
+            # the s.49(5) set-off can reach it in the books, asserting an
+            # offset the electronic credit ledger will not perform.
+            if invoice.get("cess_paise", 0) > 0:
+                cess_id = self._find_account(
+                    db, firm_id, client_id, "%Compensation Cess Payable%",
+                    system_key="gst_cess_output",
+                )
+                lines.append({
+                    "account_id": cess_id,
+                    "debit_paise": 0,
+                    "credit_paise": invoice["cess_paise"],
+                    "narration": "Compensation cess payable — Compensation Act s.8",
                 })
 
             # Invoice-level round-off — post the nearest-₹1 adjustment to the
@@ -622,6 +642,8 @@ class Phase2JournalService:
         """
         Dr Purchases/Expense account = taxable_amount_paise
         Dr GST Input Tax Credit (CGST/SGST/IGST) as applicable
+        Dr Compensation Cess Input Credit = creditable cess (its own ledger —
+           GST (Compensation to States) Act 2017 s.11(2), proviso)
         Cr Trade Payables = net_payable_paise  (total - tds)
         Cr TDS Payable    = tds_paise (if >0)
         IT Act §194C/194I/194J: TDS deducted at source.
@@ -660,7 +682,8 @@ class Phase2JournalService:
             # Purchases/Expense account. Grouping keeps one debit per distinct account.
             line_rows = (db.table("purchase_bill_lines")
                          .select("expense_account_id, taxable_amount_paise, "
-                                 "itc_eligible, cgst_paise, sgst_paise, igst_paise")
+                                 "itc_eligible, cgst_paise, sgst_paise, igst_paise, "
+                                 "cess_paise")
                          .eq("bill_id", bill.get("id")).execute().data) or []
             by_account: dict = {}
             for lr in line_rows:
@@ -696,9 +719,16 @@ class Phase2JournalService:
             # the per-line split cannot be trusted, so the blocked tax goes to
             # the one resolved expense account; the total is right either way,
             # and the alternative (leaving it on GST Input) is the defect.
+            # Compensation cess is in this sum for the same reason the three GST
+            # heads are: s.11(2) of the Compensation Act applies the CGST Act
+            # to this levy mutatis mutandis, s.17(5) included, so a blocked
+            # line's cess is equally unrecoverable and equally part of what the
+            # supply cost. `ineligible_itc_cess_paise` has existed since
+            # migration 240 and had no figure to hold until now.
             blocked_total = (int(bill.get("ineligible_itc_cgst_paise") or 0)
                              + int(bill.get("ineligible_itc_sgst_paise") or 0)
-                             + int(bill.get("ineligible_itc_igst_paise") or 0))
+                             + int(bill.get("ineligible_itc_igst_paise") or 0)
+                             + int(bill.get("ineligible_itc_cess_paise") or 0))
             if blocked_total:
                 per_line_blocked: dict = {}
                 for lr in line_rows:
@@ -708,7 +738,8 @@ class Phase2JournalService:
                     per_line_blocked[acc] = per_line_blocked.get(acc, 0) + (
                         int(lr.get("cgst_paise") or 0)
                         + int(lr.get("sgst_paise") or 0)
-                        + int(lr.get("igst_paise") or 0))
+                        + int(lr.get("igst_paise") or 0)
+                        + int(lr.get("cess_paise") or 0))
                 if sum(per_line_blocked.values()) != blocked_total:
                     # The header is the authority — it is what the return reads
                     # (migration 240 keeps it as the lines' sum precisely so
@@ -755,6 +786,26 @@ class Phase2JournalService:
                     "narration": "IGST input tax credit",
                 })
 
+            # Compensation cess credit is its OWN asset, never GST Input.
+            # s.11(2) of the Compensation Act, proviso: it "shall be utilised
+            # only towards payment of cess". One ledger for both would let the
+            # books show a set-off the electronic credit ledger refuses, and
+            # GSTR-3B keeps the head separate for exactly that reason. The
+            # s.17(5) portion is already on the expense accounts above.
+            creditable_cess = (int(bill.get("cess_paise") or 0)
+                               - int(bill.get("ineligible_itc_cess_paise") or 0))
+            if creditable_cess > 0:
+                cess_input_id = self._find_account(
+                    db, firm_id, client_id, "%Compensation Cess Input%",
+                    system_key="gst_cess_input",
+                )
+                lines.append({
+                    "account_id": cess_input_id,
+                    "debit_paise": creditable_cess,
+                    "credit_paise": 0,
+                    "narration": "Compensation cess input credit — Compensation Act s.8",
+                })
+
             net_payable = bill.get("net_payable_paise", bill["total_paise"])
             lines.append({
                 "account_id": payables_id,
@@ -796,6 +847,24 @@ class Phase2JournalService:
                             "credit_paise": amt,
                             "narration": f"{head} payable under reverse charge — CGST Act §9(3)/(4)",
                         })
+                # The cess on a reverse-charge inward supply is self-assessed
+                # the same way, and to its own ledger — see the creditable-cess
+                # comment above for why it is never the GST Output account.
+                # total_paise excludes it on an RCM bill (the vendor charged
+                # nothing), so this credit is what balances the Dr above.
+                _rcm_cess = int(bill.get("cess_paise") or 0)
+                if _rcm_cess > 0:
+                    cess_out_id = self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Payable%",
+                        system_key="gst_cess_output",
+                    )
+                    lines.append({
+                        "account_id": cess_out_id,
+                        "debit_paise": 0,
+                        "credit_paise": _rcm_cess,
+                        "narration": ("Compensation cess payable under reverse charge "
+                                      "— Compensation Act s.8 with s.11(2)"),
+                    })
 
             section_note = bill.get("tds_section", "194C") if tds_paise > 0 else "NA"
             rcm_note = " (reverse charge, CGST Act §9)" if bill.get("is_reverse_charge") else ""

@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
 from dataclasses import asdict
 from domain.purchases import near_duplicate
+from domain.gst import compensation_cess
 from models.common import api_response
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
 from core.authz import assert_client_access
@@ -322,6 +323,11 @@ def preview_purchase_bill_tds(
             "taxable_amount_paise": computed["taxable_amount_paise"],
             "total_paise":          computed["total_paise"],
             "total_gst_paise":      computed["total_gst_paise"],
+            # Compensation cess is in total_paise and NOT in total_gst_paise
+            # (Compensation Act s.8 is its own levy and s.11(2)'s proviso
+            # ring-fences its credit), so the preview has to state it or the
+            # CA cannot see why the total exceeds taxable + GST.
+            "cess_paise":           computed["cess_paise"],
             "tds_paise":            computed["tds_paise"],
             "tds_rate_bps":         computed["tds_rate_bps"],
             "tds_section":          computed["tds_section"],
@@ -474,6 +480,15 @@ def _compute_bill_lines_and_totals(
     total_ineligible_cgst = 0
     total_ineligible_sgst = 0
     total_ineligible_igst = 0
+    # GST (Compensation to States) Act 2017 s.8 — a fourth head, kept apart from
+    # the three above the whole way. s.11(2)'s proviso ring-fences its credit
+    # ("shall be utilised only towards payment of cess"), so it must never be
+    # folded into total_gst_paise, which is what GSTR-3B Table 6 sets off.
+    # s.17(5) reaches it exactly as it reaches the GST heads: the blocked
+    # portion is a cost, not a credit, and migration 240's
+    # `ineligible_itc_cess_paise` has been waiting for the figure.
+    total_cess            = 0
+    total_ineligible_cess = 0
 
     for ln in lines_data:
         qty          = ln.get("quantity", 1)
@@ -483,16 +498,27 @@ def _compute_bill_lines_and_totals(
         gst_rate_bps = int(round(gst_rate_percent * 100))
         taxable      = int(Decimal(str(qty)) * rate_paise)
         cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
+        # Compensation cess, on the same base and through the same authority the
+        # sales side uses (domain/gst/compensation_cess.py).
+        _cess = compensation_cess.line_cess(
+            taxable_paise=taxable,
+            quantity=qty,
+            cess_rate_bps=int(ln.get("cess_rate_bps") or 0),
+            cess_specific_paise_per_unit=int(ln.get("cess_specific_paise_per_unit") or 0),
+        )
+        cess = _cess.cess_paise
         itc_eligible = ln.get("itc_eligible", True)
 
         total_taxable += taxable
         total_cgst    += cgst
         total_sgst    += sgst
         total_igst    += igst
+        total_cess    += cess
         if not itc_eligible:
             total_ineligible_cgst += cgst
             total_ineligible_sgst += sgst
             total_ineligible_igst += igst
+            total_ineligible_cess += cess
 
         computed_lines.append({
             "description":          ln.get("description", ""),
@@ -506,9 +532,16 @@ def _compute_bill_lines_and_totals(
             "cgst_paise":           cgst,
             "sgst_paise":           sgst,
             "igst_paise":           igst,
+            "cess_rate_bps":        int(ln.get("cess_rate_bps") or 0),
+            "cess_specific_paise_per_unit": int(ln.get("cess_specific_paise_per_unit") or 0),
+            "cess_paise":           cess,
             # RCM: the vendor's line total excludes the self-assessed GST
-            # (CGST Act §9(3)/(4) — see the docstring above).
-            "line_total_paise":     taxable if is_reverse_charge else taxable + cgst + sgst + igst,
+            # (CGST Act §9(3)/(4) — see the docstring above). The cess follows
+            # the same rule and for the same reason: on a reverse-charge inward
+            # supply the vendor charges no tax of any head, so it is not part of
+            # what they are owed. The self-assessed cess still lives in
+            # cess_paise for 3B Table 3.1(d), the credit and the journal.
+            "line_total_paise":     taxable if is_reverse_charge else taxable + cgst + sgst + igst + cess,
             "service_catalogue_id": ln.get("service_catalogue_id"),
             "itc_eligible":         itc_eligible,
             "blocked_credit_reason": ln.get("blocked_credit_reason"),
@@ -520,19 +553,24 @@ def _compute_bill_lines_and_totals(
     # INR-equivalent taxable.
     txn_taxable   = total_taxable
     txn_total_gst = total_cgst + total_sgst + total_igst
+    txn_cess      = total_cess
     # RCM: the vendor never charged the GST, so the bill total (what the
     # vendor is owed) is the taxable value alone — the self-assessed GST
     # lives in the cgst/sgst/igst columns for 3B/ITC/journal, not in the AP.
-    txn_total     = txn_taxable if is_reverse_charge else txn_taxable + txn_total_gst
+    txn_total     = txn_taxable if is_reverse_charge else txn_taxable + txn_total_gst + txn_cess
     total_taxable = dc.to_base(total_taxable)
     total_cgst    = dc.to_base(total_cgst)
     total_sgst    = dc.to_base(total_sgst)
     total_igst    = dc.to_base(total_igst)
+    total_cess    = dc.to_base(total_cess)
     total_ineligible_cgst = dc.to_base(total_ineligible_cgst)
     total_ineligible_sgst = dc.to_base(total_ineligible_sgst)
     total_ineligible_igst = dc.to_base(total_ineligible_igst)
+    total_ineligible_cess = dc.to_base(total_ineligible_cess)
     total_gst_sum = total_cgst + total_sgst + total_igst
-    total_paise   = total_taxable if is_reverse_charge else total_taxable + total_gst_sum
+    # Cess is part of what the vendor is owed (and so of net_payable_paise and
+    # of migration 278's outstanding_paise), and is NOT part of total_gst_sum.
+    total_paise   = total_taxable if is_reverse_charge else total_taxable + total_gst_sum + total_cess
 
     # ── TDS — routed through the central engine (domain/tds/tds_computer).
     # No inline rate maths: the engine owns thresholds, FY aggregation, payee-type
@@ -612,6 +650,7 @@ def _compute_bill_lines_and_totals(
         "cgst_paise":           total_cgst,
         "sgst_paise":           total_sgst,
         "igst_paise":           total_igst,
+        "cess_paise":           total_cess,
         "total_paise":          total_paise,
         "total_gst_paise":      total_gst_paise,
         # CGST Act §17(5) — blocked credit, excluded from the GSTR-3B ITC
@@ -619,6 +658,9 @@ def _compute_bill_lines_and_totals(
         "ineligible_itc_cgst_paise": total_ineligible_cgst,
         "ineligible_itc_sgst_paise": total_ineligible_sgst,
         "ineligible_itc_igst_paise": total_ineligible_igst,
+        # Migration 240 added this column in 2025 and nothing has ever written
+        # to it, because no cess could be recorded to be blocked.
+        "ineligible_itc_cess_paise": total_ineligible_cess,
         # On a s.195 bill tds_paise is the TOTAL withheld (base + surcharge +
         # cess) while tds_rate_bps is the BASE rate, so the two no longer
         # satisfy tds_paise = taxable * rate / 10000 the way every
@@ -656,6 +698,7 @@ def _compute_bill_lines_and_totals(
         # Currency columns (INR identity leaves them inert).
         "txn_taxable":          txn_taxable,
         "txn_total_gst":        txn_total_gst,
+        "txn_cess":             txn_cess,
         "txn_total":            txn_total,
         "txn_net_payable":      txn_total - dc.to_txn(tds_paise),
     }
@@ -790,6 +833,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     total_cgst        = computed["cgst_paise"]
     total_sgst        = computed["sgst_paise"]
     total_igst        = computed["igst_paise"]
+    total_cess        = computed["cess_paise"]
     total_paise       = computed["total_paise"]
     if total_paise <= 0:
         raise HTTPException(status_code=422, detail="Purchase bill total must be positive.")
@@ -797,6 +841,7 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
     ineligible_itc_cgst_paise = computed["ineligible_itc_cgst_paise"]
     ineligible_itc_sgst_paise = computed["ineligible_itc_sgst_paise"]
     ineligible_itc_igst_paise = computed["ineligible_itc_igst_paise"]
+    ineligible_itc_cess_paise = computed["ineligible_itc_cess_paise"]
     tds_paise         = computed["tds_paise"]
     tds_rate_bps      = computed["tds_rate_bps"]
     tds_section       = computed["tds_section"]
@@ -863,11 +908,13 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "cgst_paise":            total_cgst,
             "sgst_paise":            total_sgst,
             "igst_paise":            total_igst,
+            "cess_paise":            total_cess,
             "total_paise":           total_paise,
             "total_gst_paise":       total_gst_paise,
             "ineligible_itc_cgst_paise": ineligible_itc_cgst_paise,
             "ineligible_itc_sgst_paise": ineligible_itc_sgst_paise,
             "ineligible_itc_igst_paise": ineligible_itc_igst_paise,
+            "ineligible_itc_cess_paise": ineligible_itc_cess_paise,
             "tds_paise":             tds_paise,
             "tds_rate_bps":          tds_rate_bps,
             "tds_section":           tds_section,
@@ -917,11 +964,13 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
         "cgst_paise":            total_cgst,
         "sgst_paise":            total_sgst,
         "igst_paise":            total_igst,
+        "cess_paise":            total_cess,
         "total_paise":           total_paise,
         "total_gst_paise":       total_gst_paise,
         "ineligible_itc_cgst_paise": ineligible_itc_cgst_paise,
         "ineligible_itc_sgst_paise": ineligible_itc_sgst_paise,
         "ineligible_itc_igst_paise": ineligible_itc_igst_paise,
+        "ineligible_itc_cess_paise": ineligible_itc_cess_paise,
         "tds_paise":             tds_paise,
         "tds_rate_bps":          tds_rate_bps,
         "tds_section":           tds_section,
@@ -989,6 +1038,9 @@ def _create_purchase_bill_core(data: dict, current_user: dict, bulk_cache: Optio
             "cgst_paise":            ln["cgst_paise"],
             "sgst_paise":            ln["sgst_paise"],
             "igst_paise":            ln["igst_paise"],
+            "cess_rate_bps":         ln["cess_rate_bps"],
+            "cess_specific_paise_per_unit": ln["cess_specific_paise_per_unit"],
+            "cess_paise":            ln["cess_paise"],
             "line_total_paise":      ln["line_total_paise"],
             # BUG FIX (audit): this key was missing entirely, so a product
             # picked via ServiceCataloguePicker on a Purchase Bill line never
@@ -1442,11 +1494,13 @@ def update_purchase_bill(
                             "cgst_paise":            computed["cgst_paise"],
                             "sgst_paise":            computed["sgst_paise"],
                             "igst_paise":            computed["igst_paise"],
+                            "cess_paise":            computed["cess_paise"],
                             "total_paise":           computed["total_paise"],
                             "total_gst_paise":       computed["total_gst_paise"],
                             "ineligible_itc_cgst_paise": computed["ineligible_itc_cgst_paise"],
                             "ineligible_itc_sgst_paise": computed["ineligible_itc_sgst_paise"],
                             "ineligible_itc_igst_paise": computed["ineligible_itc_igst_paise"],
+                            "ineligible_itc_cess_paise": computed["ineligible_itc_cess_paise"],
                             "tds_paise":             computed["tds_paise"],
                             "tds_rate_bps":          computed["tds_rate_bps"],
                             "tds_section":           computed["tds_section"],
@@ -1551,6 +1605,9 @@ def update_purchase_bill(
                     "cgst_paise":            ln["cgst_paise"],
                     "sgst_paise":            ln["sgst_paise"],
                     "igst_paise":            ln["igst_paise"],
+                    "cess_rate_bps":         ln["cess_rate_bps"],
+                    "cess_specific_paise_per_unit": ln["cess_specific_paise_per_unit"],
+                    "cess_paise":            ln["cess_paise"],
                     "line_total_paise":      ln["line_total_paise"],
                     "service_catalogue_id":  ln.get("service_catalogue_id"),
                     "itc_eligible":          ln.get("itc_eligible", True),
@@ -1564,11 +1621,13 @@ def update_purchase_bill(
                 "cgst_paise":            computed["cgst_paise"],
                 "sgst_paise":            computed["sgst_paise"],
                 "igst_paise":            computed["igst_paise"],
+                "cess_paise":            computed["cess_paise"],
                 "total_paise":           computed["total_paise"],
                 "total_gst_paise":       computed["total_gst_paise"],
                 "ineligible_itc_cgst_paise": computed["ineligible_itc_cgst_paise"],
                 "ineligible_itc_sgst_paise": computed["ineligible_itc_sgst_paise"],
                 "ineligible_itc_igst_paise": computed["ineligible_itc_igst_paise"],
+                "ineligible_itc_cess_paise": computed["ineligible_itc_cess_paise"],
                 "tds_paise":             computed["tds_paise"],
                 "tds_rate_bps":          computed["tds_rate_bps"],
                 "tds_section":           computed["tds_section"],

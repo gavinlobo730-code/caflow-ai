@@ -22,6 +22,7 @@ import pytest
 
 from routers.sales_invoices import _compute_line_gst, _round_off_paise
 from domain.gst import discount as gst_discount
+from domain.gst import compensation_cess
 
 _FIXTURE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -35,6 +36,7 @@ with open(_FIXTURE) as _fh:
 VECTORS = _DATA["vectors"]
 DOCUMENTS = _DATA["documents"]
 DISCOUNTS = _DATA["discounts"]
+CESS = _DATA["cess"]
 
 
 def _ids(items):
@@ -177,3 +179,58 @@ def test_every_ui_gst_slab_is_covered():
     ui_slabs = {0, 0.1, 0.25, 1, 1.5, 3, 5, 6, 7.5, 12, 18, 28}
     covered = {v["gst_rate_percent"] for v in VECTORS}
     assert ui_slabs <= covered, f"uncovered slabs: {sorted(ui_slabs - covered)}"
+
+
+# ── GST compensation cess ───────────────────────────────────────────────────
+# GST (Compensation to States) Act 2017 s.8(2). Same coupling as everything
+# above: the fixture is generated from domain/gst/compensation_cess.py and the
+# browser mirror (apps/web/lib/money/cessLine.ts) asserts the same numbers, so
+# neither side can move alone.
+
+@pytest.mark.parametrize("v", CESS, ids=_ids(CESS))
+def test_compensation_cess_matches_the_fixture(v):
+    taxable = int(Decimal(str(v["payload"]["quantity"])) * v["payload"]["rate_paise"])
+    assert taxable == v["expected"]["taxable_paise"], v["label"]
+    got = compensation_cess.line_cess(
+        taxable_paise=taxable,
+        quantity=v["payload"]["quantity"],
+        cess_rate_bps=v["cess_rate_bps"],
+        cess_specific_paise_per_unit=v["cess_specific_paise_per_unit"],
+    )
+    e = v["expected"]
+    assert got.ad_valorem_paise == e["ad_valorem_paise"], v["label"]
+    assert got.specific_paise == e["specific_paise"], v["label"]
+    assert got.cess_paise == e["cess_paise"], v["label"]
+    # The two limbs are ADDED, never compared — s.8(2) charges "on the basis of
+    # value, QUANTITY or on such basis", and cigarettes carry both at once.
+    assert got.cess_paise == got.ad_valorem_paise + got.specific_paise, v["label"]
+
+
+def test_the_cess_fixture_exercises_both_limbs_and_both_together():
+    """A fixture with only ad valorem cases would pass while the per-unit limb
+    was silently dropped, which is the half that reaches coal and tobacco."""
+    assert len(CESS) >= 8
+    assert any(c["cess_rate_bps"] and not c["cess_specific_paise_per_unit"]
+               for c in CESS), "no ad valorem-only case"
+    assert any(c["cess_specific_paise_per_unit"] and not c["cess_rate_bps"]
+               for c in CESS), "no specific-only case"
+    assert any(c["cess_rate_bps"] and c["cess_specific_paise_per_unit"]
+               for c in CESS), "no both-limbs case (cigarettes)"
+    # Above 100%: Schedule column (4) really does go there, and a ceiling
+    # written from intuition would refuse a lawful charge.
+    assert any(c["cess_rate_bps"] > 10_000 for c in CESS), "no rate above 100%"
+    # A fractional quantity on the per-unit limb, so the truncation is pinned
+    # rather than assumed to be irrelevant.
+    assert any(c["cess_specific_paise_per_unit"] and float(c["qty"]) % 1
+               for c in CESS), "no fractional quantity on the specific limb"
+
+
+def test_cess_floors_like_the_gst_heads_and_not_the_other_way():
+    """The direction is not arbitrary. `_compute_line_gst` floors with
+    `// 10000`, and s.11(2) applies the CGST Act to this levy mutatis mutandis
+    — a cess that rounded up would disagree with the GST on its own line for no
+    statutory reason."""
+    by_label = {c["label"]: c for c in CESS}
+    v = by_label["ad valorem floors, never rounds"]
+    # 33333 x 333 / 10000 = 1109.98..., so flooring gives 1109 and rounding 1110.
+    assert v["expected"]["ad_valorem_paise"] == 1109

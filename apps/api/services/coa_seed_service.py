@@ -54,6 +54,16 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("1201", "Trade Receivables",            "Asset", "Receivable"),    # %Trade Receivable%
     ("1202", "Inventory",                    "Asset", "Inventory"),     # %Inventor% (domain/inventory_service.py)
     ("1301", "GST Input Tax Credit",         "Asset", "Tax"),           # %GST Input%
+    # GST (Compensation to States) Act 2017 s.11(2), proviso: credit of this
+    # cess "shall be utilised only towards payment of cess". Its own asset,
+    # never folded into GST Input — a set-off the electronic credit ledger
+    # will not perform must not be performed in the books. The NAME avoids
+    # the substring "GST Input" deliberately: _find_account's ILIKE fallback
+    # for the CGST/SGST/IGST heads is "%GST Input%" with .limit(1) and no
+    # ordering, so a cess account matching it could be returned for a CGST
+    # lookup on any chart without per-head accounts — which is every chart
+    # this list seeds. Migration 374 backfills it for existing firms.
+    ("1302", "Compensation Cess Input Credit", "Asset", "Tax"),         # gst_cess_input
     ("1401", "TDS Receivable",               "Asset", "Tax"),
     ("1402", "Advance Tax Paid",             "Asset", "Tax"),
     ("1403", "Prepaid Expenses",             "Asset", "Current Asset"),
@@ -67,6 +77,9 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     # ── Liabilities ──
     ("2001", "Trade Payables",               "Liability", "Payable"),           # %Trade Payable%
     ("2002", "GST Output Tax Payable",       "Liability", "Current Liability"),  # %GST Output%
+    # The outward half of the cess. Same reasoning as 1302, and the same
+    # reason the name avoids "GST Output".
+    ("2010", "Compensation Cess Payable",    "Liability", "Current Liability"),  # gst_cess_output
     ("2003", "TDS Payable",                  "Liability", "Current Liability"),  # %TDS Payable%
     ("2004", "TDS Payable - Salary",         "Liability", "Current Liability"),  # %TDS Payable - Salary%
     ("2005", "PF Payable",                   "Liability", "Current Liability"),  # %PF Payable%

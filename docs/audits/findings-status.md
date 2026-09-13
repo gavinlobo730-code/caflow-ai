@@ -7,20 +7,20 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **73** | re-read against the code. The defect is gone. |
-| closed_by_commit | **159** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
+| closed | **75** | re-read against the code. The defect is gone. |
+| closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | partial | **9** | part of the finding is answered, part is not. Each says which. |
-| open | **33** | re-read and still true. |
+| open | **32** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 42 items — 33 open and 9 partial — not 254.**
+**The work left is 41 items — 32 open and 9 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 33 open, most are not code problems.** Nearly every one needs a
+**And of the 32 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -51,7 +51,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PUR-16** | A second, orphaned vendor master at /accounting/suppliers that no purchase path reads |
 | medium | **PUR-18** | Import of goods has no path — no Bill of Entry, so the IGST paid to customs cannot be recorded a |
 | medium | **PUR-19** | Reverse-charge bills produce no self-invoice (§31(3)(f)) and no payment voucher (§31(3)(g)) |
-| medium | **PUR-20** | GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client |
 | medium | **PUR-22** | One payment settling several bills is not reachable from the Purchases screen — the multi-bill a |
 | medium | **PUR-25** | No purchase orders, goods receipt notes or three-way matching |
 | medium | **PUR-26** | No recurring purchase bills, though recurring sales invoices are fully built |
@@ -85,7 +84,6 @@ migration; a handful need a statutory document a person has to read.
 | **PAY-27** | each bank's own file format |
 | **PUR-16** | ONE migration — vendors has 34 of the 36 columns already; only credit_limit_paise has no equivalent (payment_terms_days maps to credit_days). Repointing the screen without it would silently drop a recorded credit limit |
 | **PUR-19** | document series and templates |
-| **PUR-20** | cess columns on the line tables |
 | **PUR-22** | no migration (226 already has the table), but it is NOT the frontend-only change an earlier reading of this called it. The right shape is to make the router route to create_payment_core with a one-element allocation for the single-bill case, unifying the two paths — a change to a money path that posts to the GL, and one to make with the owner reachable rather than overnight |
 | **PUR-25** | three new document types |
 | **PUR-26** | a schedule table; the sales side is the pattern to copy |
@@ -185,9 +183,11 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PAY-18** | `logger` is undefined in the /employee-exceptions error path — a failed declarations read raises |
 | medium | **PAY-24** | Leave is half-built: balances are invented in TypeScript as 12/12/15, nothing accrues or carries |
 | medium | **PUR-12** | The reconciliation screen tells the CA that ITC is restricted to 105% of GSTR-2A — a cushion rep |
+| medium | **PUR-20** | GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client |
 | medium | **PUR-23** | Issuing a debit note (purchase return) does not resync the TDS register, so 26Q keeps reporting  |
 | medium | **PUR-24** | AP ageing lists only bills, so unallocated vendor advances are invisible and the ageing total do |
 | medium | **PUR-28** | Client-assignment scope is enforced on every purchase API endpoint and on none of the Purchases  |
+| medium | **SALES-20** | No GST compensation cess on a sales line |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **SALES-24** | Receipt and credit-note numbers take their financial year from today's date, not the document da |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |

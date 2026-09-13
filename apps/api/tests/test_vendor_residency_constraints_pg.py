@@ -227,17 +227,31 @@ def test_the_three_evidence_flags_default_to_false_not_null(db):
 def test_the_bill_and_the_deduction_carry_the_surcharge_and_cess_split(db):
     """Form 27Q reports tax, surcharge and cess in separate columns of the
     deductee annexure, so the split has to survive from the bill to the
-    register. Both default to 0, which is what a resident-section bill is."""
-    for table in ("purchase_bills", "tds_deductions"):
+    register. Both default to 0, which is what a resident-section bill is.
+
+    EACH TABLE IS ASKED FOR ITS OWN TWO COLUMNS BY NAME. This used to send one
+    four-name `IN` list to both tables and assert it matched exactly twice —
+    which worked only because the s.195 cess happens to be `tds_cess_paise` on
+    the bill and `cess_paise` on the register. Migration 374 then gave
+    `purchase_bills` a `cess_paise` of its own — the GST COMPENSATION cess, an
+    entirely different tax under the GST (Compensation to States) Act 2017 —
+    and the loose list counted three. The count was never the point: the point
+    is that each table carries the two columns Form 27Q needs, defaulted to 0.
+    """
+    for table, columns in (
+        ("purchase_bills", ("tds_surcharge_paise", "tds_cess_paise")),
+        ("tds_deductions", ("surcharge_paise", "cess_paise")),
+    ):
+        wanted = ", ".join(f"'{c}'" for c in columns)
         cols = _psql(db, f"""
             SELECT column_name || ':' || column_default
               FROM information_schema.columns
              WHERE table_schema='public' AND table_name='{table}'
-               AND column_name IN ('tds_surcharge_paise','tds_cess_paise',
-                                   'surcharge_paise','cess_paise')
+               AND column_name IN ({wanted})
              ORDER BY 1;""", tuples=True)
         lines = [l for l in cols.stdout.strip().split("\n") if l]
-        assert len(lines) == 2, f"{table}: {lines}"
+        assert len(lines) == len(columns), (
+            f"{table}: expected {list(columns)}, got {lines}")
         for line in lines:
             assert line.endswith(":0"), f"{table} {line} — must default to 0"
 
