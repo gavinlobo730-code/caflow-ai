@@ -287,6 +287,32 @@ change. The code is the authority; keep this file in step with it.
   fork**, so `statutory_rates.FYTaxRates` (one CG rate set per FY) cannot
   represent that year — it holds only post-fork years today, and adding 2024-25
   needs pre/post buckets, as the ITR form itself splits them.
+- **A FIRM PAYING ITS OWN PARTNER DEDUCTS UNDER §194T, AND A SECTION WITH NO
+  RESIDENT LIMB IS A THIRD STATE** (TDS-23). §194T was inserted by the Finance
+  (No. 2) Act 2024 w.e.f. 01-04-2025 — `section_rates.py`'s FIRST year, whose
+  header claims that very Act — so its absence was a hole in a year marked
+  `verified=True`, and every partnership and LLP client has the obligation.
+  10%, **both limbs at ₹20,000** ("such amount OR THE AGGREGATE"), NOT on the
+  share of profit (§10(2A)), and `SECTION_194T_FIRST_FY` names the
+  commencement so a later FY 2024-25 entry cannot back-date it.
+  **`domain/tds/residency` now has THREE lists, not two.** The first two answer
+  one question — do the section's own charging words limit it to a resident —
+  and §194T's do not ("to a partner of the firm"), so it cannot join
+  `RESIDENT_ONLY_SECTIONS`, whose every entry quotes the limitation it is
+  listed for. `SECTIONS_REACHING_NON_RESIDENTS` would assert something else
+  again: that 10% flat on a 27Q row is RIGHT, when §195 charges the rates in
+  force with surcharge and cess and no threshold — 10% is the SMALLER figure
+  and an under-deduction disallows the whole expenditure under §40(a)(i). So
+  `SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT` REFUSES it with the reason, **asked
+  BEFORE the resident-only lookup**: a section in it is by construction absent
+  from that map, so falling through reaches the deliberate silence for
+  unclassified sections and would allow the deduction. **§194R stays out and
+  says why** — its routing is fine, but whether the Finance Act 2025 moved its
+  ₹20,000 could not be confirmed here and the benefit is often IN KIND, a base
+  no bill line holds. §194-IA/§194-IB/§194M stay refused for the probe pass's
+  reason: Form 26QB/26QC/26QD are challan-cum-statements this product does not
+  produce, and `return_type_for` routes on residency alone against migration
+  014's four-value CHECK.
 - **§206C IS IN THE TDS REGISTRY AND A VENDOR MAY NEVER CARRY IT.** TCS is tax
   COLLECTED by a seller from a buyer and reported on **Form 27EQ**; the
   registry entry exists as reference data and says so in its own comment
