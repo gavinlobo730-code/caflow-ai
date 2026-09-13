@@ -1,117 +1,74 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ChevronLeft, Plus, Play, Pause, Trash2, AlertCircle, CheckCircle2, Download } from "lucide-react";
+import {
+  ChevronLeft, Plus, Play, Pause, Trash2, AlertCircle, CheckCircle2,
+  Download, X, History, ExternalLink,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { api } from "@/lib/api";
-import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { api, type RecurringJournalTemplate, type RecurringJournalRun } from "@/lib/api";
+import { todayLocalISO } from "@/lib/dateMath";
 import type { Account, Client } from "@/lib/types";
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import BrowserOnlyNotice from "@/components/BrowserOnlyNotice";
+import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+// ─── What changed here, and why (ACC-06) ────────────────────────────────────
+//
+// This screen kept every template in
+// `localStorage["practicesync_recurring_templates"]`, worked out the next due
+// date in the browser, and the hub card promised "Automate monthly, quarterly
+// & yearly entries" while nothing anywhere posted a due template. Four things
+// were wrong and only the first was in the finding.
+//
+//   1. The templates reached no database. Another device, another user, or a
+//      cleared site-data, and the firm's recurring journals were gone.
+//
+//   2. NOTHING WAS AUTOMATIC. There was no scheduler, no job, no server-side
+//      anything — only a "Post Now" button a CA had to remember to press.
+//
+//   3. "POST NOW" POSTED STRAIGHT TO THE LEDGER, with `status: "posted"`, and
+//      dated the entry TODAY rather than the occurrence. A rent journal due on
+//      the 1st and remembered on the 7th landed on the 7th, in whatever period
+//      that was.
+//
+//   4. `nextDueDate()` and `isDueToday()` were business logic in the browser —
+//      a second cadence engine beside the one the recurring INVOICES already
+//      had, free to disagree with it about which month is due.
+//
+// All four are the same fix: `recurring_journal_templates` (migration 377),
+// `services/recurring_journal_service.py`, the daily sweep, and one cadence
+// engine in `domain/recurrence.py` that both features import. Generating
+// produces a DRAFT the CA reviews and issues — this product acts unprompted in
+// exactly one place, a bank rule a Manager has marked trusted, and that was a
+// recorded owner decision rather than a default to copy.
 
-type Frequency = "Monthly" | "Quarterly" | "Yearly";
-type RecurringStatus = "Active" | "Paused";
+const FREQUENCIES = [
+  { value: "monthly", label: "Monthly" },
+  { value: "quarterly", label: "Quarterly" },
+  { value: "half_yearly", label: "Half-yearly" },
+  { value: "yearly", label: "Yearly" },
+] as const;
 
-interface RecurringTemplate {
-  id: string;
-  client_id: string;            // journal_entries.client_id is a required FK
-  name: string;
-  frequency: Frequency;
-  day_of_month: number;        // 1–28
-  debit_account_id: string;
-  credit_account_id: string;
-  amount_paise: number;        // integer paise — no floating point
-  narration: string;
-  start_date: string;          // YYYY-MM-DD
-  end_date: string;            // YYYY-MM-DD or ""
-  status: RecurringStatus;
-  last_posted_date: string;    // YYYY-MM-DD or ""
+function freqLabel(v: string): string {
+  return FREQUENCIES.find(f => f.value === v)?.label ?? v;
 }
-
-// ─── Helpers ───────────────────────────────────────────────────────────────
-
-const LS_KEY = "practicesync_recurring_templates";
-
-function loadTemplates(): RecurringTemplate[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(LS_KEY) ?? "[]") as RecurringTemplate[];
-  } catch {
-    return [];
-  }
-}
-
-function saveTemplates(tpls: RecurringTemplate[]): void {
-  localStorage.setItem(LS_KEY, JSON.stringify(tpls));
-}
-
-function todayISO(): string {
-  return todayLocalISO();
-}
-
-/** Compute next due date for a template from today's perspective */
-function nextDueDate(tpl: RecurringTemplate): string {
-  const today = todayISO();
-  const last = tpl.last_posted_date || tpl.start_date;
-
-  // Local-midnight parse to match the local setMonth/setDate below and the
-  // local toLocalISO at the end — see lib/dateMath's header. `new Date(last)`
-  // on a bare "YYYY-MM-DD" is UTC midnight, so the arithmetic ran one frame
-  // and the formatting another.
-  const d = new Date(last + "T00:00:00");
-  switch (tpl.frequency) {
-    case "Monthly":
-      d.setMonth(d.getMonth() + 1);
-      break;
-    case "Quarterly":
-      d.setMonth(d.getMonth() + 3);
-      break;
-    case "Yearly":
-      d.setFullYear(d.getFullYear() + 1);
-      break;
-  }
-  d.setDate(Math.min(tpl.day_of_month, 28));
-  const iso = toLocalISO(d);
-  // If we haven't posted yet and start_date is today or past, it's due now
-  if (!tpl.last_posted_date && tpl.start_date <= today) return tpl.start_date;
-  return iso;
-}
-
-function isDueToday(tpl: RecurringTemplate): boolean {
-  if (tpl.status !== "Active") return false;
-  const due = nextDueDate(tpl);
-  return due <= todayISO();
-}
-
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-  if (!data?.firm_id) throw new Error("No firm found — please complete onboarding");
-  return data.firm_id as string;
-}
-
-// ─── Empty form ────────────────────────────────────────────────────────────
 
 interface TemplateForm {
   client_id: string;
   name: string;
-  frequency: Frequency;
+  frequency: string;
   day_of_month: number;
   debit_account_id: string;
   credit_account_id: string;
-  amount_rupees: string;   // user types rupees, we convert to paise on save
+  amount_rupees: string;
   narration: string;
   start_date: string;
   end_date: string;
@@ -120,511 +77,629 @@ interface TemplateForm {
 const EMPTY_FORM: TemplateForm = {
   client_id: "",
   name: "",
-  frequency: "Monthly",
+  frequency: "monthly",
   day_of_month: 1,
   debit_account_id: "",
   credit_account_id: "",
   amount_rupees: "",
   narration: "",
-  start_date: todayISO(),
+  start_date: todayLocalISO(),
   end_date: "",
 };
 
-// ─── Component ─────────────────────────────────────────────────────────────
 
 export default function RecurringPage() {
-  const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
+  const [templates, setTemplates] = useState<RecurringJournalTemplate[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [loadingAccounts, setLoadingAccounts] = useState(true);
-  const [firmId, setFirmId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<RecurringJournalTemplate | null>(null);
   const [form, setForm] = useState<TemplateForm>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
-  const [postingId, setPostingId] = useState<string | null>(null);
-  const [postSuccess, setPostSuccess] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const [runs, setRuns] = useState<RecurringJournalRun[]>([]);
 
-  // Load accounts + clients from Supabase. A recurring template posts a real
-  // journal_entries row, which requires a client_id (NOT NULL FK) — so every
-  // template must be associated with the client it belongs to.
-  const loadAccounts = useCallback(async () => {
-    setLoadingAccounts(true);
+  const accountName = useCallback(
+    (id: string) => accounts.find(a => a.id === id)?.account_name ?? "—",
+    [accounts]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const fid = await getFirmId();
-      setFirmId(fid);
-      const sb = getSupabaseClient();
-      const { data } = await sb
-        // chart_of_accounts, the base table. The "accounts" view (migration
-        // 016) also works and is a plain SELECT * of it; naming the table
-        // avoids a second name for one thing.
-        .from("chart_of_accounts")
-        .select("*")
-        .eq("firm_id", fid)
-        .eq("is_active", true)
-        .order("account_name");
-      setAccounts((data ?? []) as Account[]);
-    } catch {
-      // silently degrade — accounts just won't populate dropdowns
+      const res = await api.recurringJournals.list();
+      if (!res.success) throw new Error(res.error ?? "Failed to load templates");
+      setTemplates(res.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
-      setLoadingAccounts(false);
-    }
-  }, []);
-
-  const loadClients = useCallback(async () => {
-    try {
-      setClients(await getClients());
-    } catch {
-      // silently degrade — client dropdown just won't populate
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    setTemplates(loadTemplates());
-    loadAccounts();
-    loadClients();
-  }, [loadAccounts, loadClients]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const fid = await getFirmId();
+        const sb = getSupabaseClient();
+        const { data } = await sb.from("chart_of_accounts").select("*")
+          .eq("firm_id", fid).eq("is_active", true).order("account_name");
+        if (!cancelled) setAccounts((data ?? []) as Account[]);
+      } catch { /* the dropdowns degrade; the list above still loads */ }
+      try {
+        const cs = await getClients();
+        if (!cancelled) setClients(cs);
+      } catch { /* same */ }
+    })();
+    load();
+    return () => { cancelled = true; };
+  }, [load]);
 
-  // ── Modal open/close ───────────────────────────────────────────────────
+  // ── Modal ──────────────────────────────────────────────────────────────
 
-  function openModal() {
-    setForm({ ...EMPTY_FORM, start_date: todayISO() });
+  function openCreate() {
+    setEditing(null);
+    setForm({ ...EMPTY_FORM, start_date: todayLocalISO() });
     setFormError(null);
     setModalOpen(true);
   }
 
-  function closeModal() {
-    setModalOpen(false);
+  function openEdit(t: RecurringJournalTemplate) {
+    const dr = t.lines.find(l => l.debit_paise > 0);
+    const cr = t.lines.find(l => l.credit_paise > 0);
+    setEditing(t);
+    setForm({
+      client_id: t.client_id,
+      name: t.name,
+      frequency: t.frequency,
+      day_of_month: t.day_of_month,
+      debit_account_id: dr?.account_id ?? "",
+      credit_account_id: cr?.account_id ?? "",
+      amount_rupees: rupeeInputFromPaise(dr?.debit_paise ?? 0),
+      narration: t.narration ?? "",
+      start_date: t.start_date,
+      end_date: t.end_date ?? "",
+    });
+    setFormError(null);
+    setModalOpen(true);
   }
 
-  // ── Save template ──────────────────────────────────────────────────────
-
-  function handleSave() {
+  async function handleSave() {
     if (!form.client_id) { setFormError("Client is required"); return; }
     if (!form.name.trim()) { setFormError("Name is required"); return; }
     if (!form.debit_account_id) { setFormError("Debit account is required"); return; }
     if (!form.credit_account_id) { setFormError("Credit account is required"); return; }
-    if (form.debit_account_id === form.credit_account_id) { setFormError("Debit and credit accounts must differ"); return; }
+    if (form.debit_account_id === form.credit_account_id) {
+      setFormError("Debit and credit accounts must differ"); return;
+    }
     // Integer paise through the one parser. This was
     // `Math.round(parseFloat(form.amount_rupees) * 100)`, and
     // parseFloat("1,25,000") is 1 — a recurring entry a CA set up for
-    // ₹1,25,000 a month posted ₹1 a month, every month, unattended.
-    const amount_paise = paiseFromRupeeInput(form.amount_rupees);
-    if (amount_paise === null) { setFormError("Amount isn't a number. Type it in rupees, like 125000 or 125000.50."); return; }
-    if (amount_paise <= 0) { setFormError("Enter a valid amount"); return; }
+    // ₹1,25,000 a month would have posted ₹1 a month, unattended.
+    const amount = paiseFromRupeeInput(form.amount_rupees);
+    if (amount === null || amount <= 0) {
+      setFormError("Amount isn't a number. Type it in rupees, like 125000 or 125000.50.");
+      return;
+    }
     if (!form.start_date) { setFormError("Start date is required"); return; }
 
-    const newTpl: RecurringTemplate = {
-      id: crypto.randomUUID(),
+    // The screen writes two lines; the model holds N (migration 377), so a
+    // rent journal with its GST needs no schema change when the form grows.
+    const body = {
       client_id: form.client_id,
       name: form.name.trim(),
       frequency: form.frequency,
       day_of_month: form.day_of_month,
-      debit_account_id: form.debit_account_id,
-      credit_account_id: form.credit_account_id,
-      amount_paise,
-      narration: form.narration.trim(),
+      narration: form.narration.trim() || null,
       start_date: form.start_date,
-      end_date: form.end_date,
-      status: "Active",
-      last_posted_date: "",
+      end_date: form.end_date || null,
+      lines: [
+        { account_id: form.debit_account_id, debit_paise: amount, credit_paise: 0,
+          narration: form.narration.trim() || null },
+        { account_id: form.credit_account_id, debit_paise: 0, credit_paise: amount,
+          narration: form.narration.trim() || null },
+      ],
     };
 
-    const updated = [...templates, newTpl];
-    setTemplates(updated);
-    saveTemplates(updated);
-    closeModal();
-  }
-
-  // ── Toggle status ──────────────────────────────────────────────────────
-
-  function toggleStatus(id: string) {
-    const updated = templates.map(t =>
-      t.id === id ? { ...t, status: t.status === "Active" ? "Paused" as RecurringStatus : "Active" as RecurringStatus } : t
-    );
-    setTemplates(updated);
-    saveTemplates(updated);
-  }
-
-  // ── Delete template ────────────────────────────────────────────────────
-
-  function deleteTemplate(id: string) {
-    if (!confirm("Delete this recurring template?")) return;
-    const updated = templates.filter(t => t.id !== id);
-    setTemplates(updated);
-    saveTemplates(updated);
-  }
-
-  // ── Post Now ───────────────────────────────────────────────────────────
-
-  async function postNow(tpl: RecurringTemplate) {
-    if (!firmId) return;
-    setPostingId(tpl.id);
-    setPostSuccess(null);
-    const today = todayISO();
+    setBusyId("save");
     try {
-      // Posts through the backend's single posting kernel (manual_journal_service
-      // → phase2_journal_service._create_journal — the same atomic-transaction
-      // engine every other journal-posting flow uses), instead of writing
-      // journal_entries/journal_entry_lines directly: journal_entry_lines is a
-      // read-only JOIN view (not a real, writable table), so a direct insert
-      // here always failed, and total_debit_paise/total_credit_paise are
-      // computed response fields, not real journal_entries columns.
-      await api.accounting.createJournalEntry({
-        client_id: tpl.client_id,
-        entry_date: today,
-        reference_no: `REC-${tpl.id.slice(0, 8).toUpperCase()}`,
-        narration: tpl.narration || tpl.name,
-        entry_type: "Journal",
-        status: "posted",
-        lines: [
-          { account_id: tpl.debit_account_id, debit_paise: tpl.amount_paise, credit_paise: 0, narration: tpl.narration || tpl.name },
-          { account_id: tpl.credit_account_id, debit_paise: 0, credit_paise: tpl.amount_paise, narration: tpl.narration || tpl.name },
-        ],
-      });
-
-      // Update last posted date
-      const updated = templates.map(t =>
-        t.id === tpl.id ? { ...t, last_posted_date: today } : t
-      );
-      setTemplates(updated);
-      saveTemplates(updated);
-      setPostSuccess(`"${tpl.name}" posted to Journal Entries for ${today}`);
+      const res = editing
+        ? await api.recurringJournals.update(editing.id, body)
+        : await api.recurringJournals.create(body);
+      if (!res.success) throw new Error(res.error ?? "Failed to save");
+      setModalOpen(false);
+      await load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to post");
+      setFormError(e instanceof Error ? e.message : "Failed to save");
     } finally {
-      setPostingId(null);
+      setBusyId(null);
+    }
+  }
+
+  async function toggleStatus(t: RecurringJournalTemplate) {
+    setBusyId(t.id);
+    setError(null);
+    try {
+      const res = await api.recurringJournals.update(t.id, {
+        status: t.status === "active" ? "paused" : "active",
+      });
+      if (!res.success) throw new Error(res.error ?? "Failed to update");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function remove(t: RecurringJournalTemplate) {
+    if (!confirm(`Delete "${t.name}"? The journals it already generated are not affected.`)) return;
+    setBusyId(t.id);
+    try {
+      const res = await api.recurringJournals.remove(t.id);
+      if (!res.success) throw new Error(res.error ?? "Failed to delete");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function generate(t: RecurringJournalTemplate) {
+    setBusyId(t.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await api.recurringJournals.generate(t.id);
+      if (!res.success) throw new Error(res.error ?? "Failed to generate");
+      const out = res.data;
+      setNotice(out.created
+        ? `Draft journal created for "${t.name}". Review and post it from Journal Entries — nothing reaches the ledger until you do.`
+        : out.reason === "already generated"
+          ? `That occurrence already has a draft. Nothing was created.`
+          : `Could not generate: ${out.reason}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to generate");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function runAll() {
+    setBusyId("run");
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await api.recurringJournals.runDue();
+      if (!res.success) throw new Error(res.error ?? "Failed to run");
+      const d = res.data;
+      setNotice(
+        `${d.generated_count} draft${d.generated_count === 1 ? "" : "s"} created, ` +
+        `${d.skipped_count} already existed` +
+        (d.failed_count ? `, ${d.failed_count} failed: ${d.failed.map(f => f.error).join("; ")}` : "") +
+        `. Drafts are in Journal Entries — nothing is posted until a CA posts it.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to run");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function openHistory(t: RecurringJournalTemplate) {
+    setHistoryFor(t.id);
+    setRuns([]);
+    // Disabled while in flight like every other server call on this screen.
+    // A read, so a second click costs only a wasted round trip — but the rule
+    // `scripts/concurrent-actions.test.ts` states is about the BUTTON, not
+    // about which verb is behind it, and an exception for "it is only a read"
+    // is how the next Delete slips through.
+    setBusyId(t.id);
+    try {
+      const res = await api.recurringJournals.history(t.id);
+      if (res.success) setRuns(res.data ?? []);
+    } catch {
+      /* the panel shows nothing rather than breaking the page */
+    } finally {
+      setBusyId(null);
     }
   }
 
   // ── Computed ───────────────────────────────────────────────────────────
 
-  const dueTemplates = templates.filter(isDueToday);
-
-  function accountName(id: string): string {
-    return accounts.find(a => a.id === id)?.account_name ?? id;
-  }
-
-  const exportColumns: { key: string; header: string; accessor: (row: RecurringTemplate) => unknown }[] = [
-    { key: "name", header: "Name", accessor: (tpl) => tpl.name },
-    { key: "frequency", header: "Frequency", accessor: (tpl) => tpl.frequency },
-    { key: "next_due", header: "Next Due", accessor: (tpl) => nextDueDate(tpl) },
-    { key: "debit_account", header: "Debit Account", accessor: (tpl) => accountName(tpl.debit_account_id) },
-    { key: "credit_account", header: "Credit Account", accessor: (tpl) => accountName(tpl.credit_account_id) },
-    { key: "amount", header: "Amount (₹)", accessor: (tpl) => (tpl.amount_paise / 100).toFixed(2) },
-    { key: "narration", header: "Narration", accessor: (tpl) => tpl.narration },
-    { key: "start_date", header: "Start Date", accessor: (tpl) => tpl.start_date },
-    { key: "end_date", header: "End Date", accessor: (tpl) => tpl.end_date },
-    { key: "status", header: "Status", accessor: (tpl) => tpl.status },
-  ];
-
-  const freqBadge: Record<Frequency, string> = {
-    Monthly: "bg-blue-100 text-blue-700",
-    Quarterly: "bg-purple-100 text-purple-700",
-    Yearly: "bg-orange-100 text-orange-700",
-  };
-
-  // ─── Render ──────────────────────────────────────────────────────────────
+  const today = todayLocalISO();
+  const active = templates.filter(t => t.status === "active");
+  const dueNow = active.filter(t => t.next_run_date && t.next_run_date <= today);
+  const monthlyValue = useMemo(
+    () => active.reduce((sum, t) => sum + t.lines.reduce((s, l) => s + l.debit_paise, 0), 0),
+    [active]);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3">
+    <div className="p-6 max-w-7xl mx-auto space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
         <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
           <ChevronLeft size={18} />
         </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-[#0F172A]">Recurring Transactions</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">{templates.filter(t => t.status === "Active").length} active templates</p>
+        <div className="flex-1 min-w-[220px]">
+          <h1 className="text-xl font-semibold text-[#0F172A]">Recurring Journals</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">
+            Templates saved for the firm. Each due occurrence becomes a DRAFT journal —
+            nothing reaches the ledger until a CA posts it.
+          </p>
         </div>
         <button
-          onClick={() => downloadCsv("recurring-templates.csv", toCsv(templates, exportColumns))}
-          disabled={templates.length === 0}
-          className="flex items-center gap-1.5 text-xs border border-[#E2E8F0] text-[#475569] px-3 py-1.5 rounded-md hover:bg-[#F8FAFC] disabled:opacity-50"
+          onClick={runAll}
+          disabled={busyId !== null || dueNow.length === 0}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC] disabled:opacity-40"
         >
-          <Download size={13} /> Export
+          <Play size={14} /> Generate {dueNow.length} due
         </button>
         <button
-          onClick={openModal}
-          className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700"
+          onClick={() => downloadCsv("recurring-journals.csv", toCsv(templates, [
+            { key: "client", header: "Client", accessor: (t: RecurringJournalTemplate) =>
+                clients.find(c => c.id === t.client_id)?.client_name ?? t.client_id },
+            { key: "name", header: "Name", accessor: (t: RecurringJournalTemplate) => t.name },
+            { key: "frequency", header: "Frequency", accessor: (t: RecurringJournalTemplate) => freqLabel(t.frequency) },
+            { key: "next_due", header: "Next due", accessor: (t: RecurringJournalTemplate) => t.next_run_date },
+            { key: "status", header: "Status", accessor: (t: RecurringJournalTemplate) => t.status },
+            { key: "amount", header: "Amount (₹)", accessor: (t: RecurringJournalTemplate) =>
+                (t.lines.reduce((s, l) => s + l.debit_paise, 0) / 100).toFixed(2) },
+          ]))}
+          disabled={templates.length === 0}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC] disabled:opacity-40"
         >
-          <Plus size={13} /> New Template
+          <Download size={14} /> Export
+        </button>
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >
+          <Plus size={14} /> New template
         </button>
       </div>
 
-      <BrowserOnlyNotice
-        what="recurring templates"
-        alsoNot={"Nothing posts a due template either. When one falls due the entry still " +
-                 "has to be raised through the client's journal — this screen is the " +
-                 "reminder, not the posting."}
-      />
-
-      {/* Due Today Banner */}
-      {dueTemplates.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
-          <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-amber-800">
-              {dueTemplates.length} recurring {dueTemplates.length === 1 ? "entry" : "entries"} due today or overdue
-            </p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              {dueTemplates.map(t => t.name).join(", ")}
-            </p>
-          </div>
+      {error && (
+        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+      {notice && (
+        <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-blue-800">
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{notice}</span>
         </div>
       )}
 
-      {/* Post success */}
-      {postSuccess && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2">
-          <CheckCircle2 size={14} className="text-green-600 shrink-0" />
-          <p className="text-sm text-green-800">{postSuccess}</p>
-          <button onClick={() => setPostSuccess(null)} className="ml-auto text-xs text-green-600 hover:underline">Dismiss</button>
-        </div>
-      )}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        {[
+          { label: "Active templates", value: String(active.length) },
+          { label: "Due to generate", value: String(dueNow.length) },
+          { label: "Value per cycle", value: formatPaise(monthlyValue) },
+        ].map(s => (
+          <Card key={s.label}>
+            <CardContent className="pt-4 pb-3">
+              <p className="text-lg font-bold tabular-nums text-[#0F172A]">{loading ? "—" : s.value}</p>
+              <p className="text-xs text-[#64748B] mt-0.5">{s.label}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-      {/* Templates table */}
-      {templates.length === 0 ? (
-        <div className="text-center py-16">
-          <p className="text-sm text-[#64748B] mb-3">No recurring templates yet</p>
-          <button onClick={openModal} className="text-sm bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
-            Add First Template
-          </button>
-        </div>
-      ) : (
+      <Card>
+        <CardContent className="p-0 overflow-x-auto">
+          <table className="w-full text-sm min-w-[860px]">
+            <thead>
+              <tr className="text-xs text-[#94A3B8] border-b border-[#F1F5F9]">
+                <th className="px-5 py-2.5 text-left font-medium">Template</th>
+                <th className="px-3 py-2.5 text-left font-medium">Client</th>
+                <th className="px-3 py-2.5 text-left font-medium">Posting</th>
+                <th className="px-3 py-2.5 text-right font-medium">Amount</th>
+                <th className="px-3 py-2.5 text-left font-medium">Cycle</th>
+                <th className="px-3 py-2.5 text-left font-medium">Next due</th>
+                <th className="px-5 py-2.5 text-left font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
+              {loading ? (
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-[#94A3B8]">Loading…</td></tr>
+              ) : templates.length === 0 ? (
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-[#94A3B8]">
+                  No recurring journals yet.
+                </td></tr>
+              ) : templates.map(t => {
+                const dr = t.lines.find(l => l.debit_paise > 0);
+                const cr = t.lines.find(l => l.credit_paise > 0);
+                const amount = t.lines.reduce((s, l) => s + l.debit_paise, 0);
+                const busy = busyId === t.id;
+                const due = t.status === "active" && !!t.next_run_date && t.next_run_date <= today;
+                return (
+                  <tr key={t.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-5 py-2.5">
+                      <p className="font-medium text-[#0F172A]">{t.name}</p>
+                      {t.narration && <p className="text-[11px] text-[#94A3B8]">{t.narration}</p>}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-[#475569]">
+                      {clients.find(c => c.id === t.client_id)?.client_name ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-[#475569]">
+                      {t.lines.length > 2
+                        ? `${t.lines.length} lines`
+                        : <>Dr {accountName(dr?.account_id ?? "")} / Cr {accountName(cr?.account_id ?? "")}</>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-medium">{formatPaise(amount)}</td>
+                    <td className="px-3 py-2.5 text-xs text-[#475569]">{freqLabel(t.frequency)}</td>
+                    <td className="px-3 py-2.5 text-xs">
+                      <span className={due ? "text-amber-700 font-medium" : "text-[#475569]"}>
+                        {t.next_run_date}
+                      </span>
+                      {t.status !== "active" && (
+                        <Badge className="ml-2 bg-[#F1F5F9] text-[#64748B]">{t.status}</Badge>
+                      )}
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-3">
+                        {t.status === "active" && (
+                          <button
+                            onClick={() => generate(t)}
+                            disabled={busy}
+                            className="text-xs text-green-700 hover:text-green-900 font-medium disabled:opacity-40"
+                          >
+                            {busy ? "Working…" : "Generate draft"}
+                          </button>
+                        )}
+                        <button onClick={() => openEdit(t)} className="text-xs text-blue-600 hover:text-blue-800">
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleStatus(t)}
+                          disabled={busy}
+                          className="text-xs text-[#94A3B8] hover:text-[#475569] flex items-center gap-1 disabled:opacity-40"
+                        >
+                          {t.status === "active" ? <Pause size={12} /> : <Play size={12} />}
+                          {t.status === "active" ? "Pause" : "Resume"}
+                        </button>
+                        <button
+                          onClick={() => openHistory(t)}
+                          disabled={busy}
+                          className="text-xs text-[#94A3B8] hover:text-[#475569] flex items-center gap-1 disabled:opacity-40"
+                        >
+                          <History size={12} /> History
+                        </button>
+                        <button
+                          onClick={() => remove(t)}
+                          disabled={busy}
+                          className="text-xs text-red-600 hover:text-red-800 disabled:opacity-40"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      {historyFor && (
         <Card>
+          <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-[#0F172A]">
+              History — {templates.find(t => t.id === historyFor)?.name}
+            </h2>
+            <button onClick={() => setHistoryFor(null)} className="text-[#94A3B8] hover:text-[#475569]">
+              <X size={14} />
+            </button>
+          </div>
           <CardContent className="p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-[#94A3B8] border-b border-[#F1F5F9]">
-                  <th className="px-5 py-2.5 text-left font-medium">Name</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Frequency</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Next Due</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Debit</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Credit</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Amount</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Status</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
-                {templates.map(tpl => {
-                  const due = nextDueDate(tpl);
-                  const overdue = tpl.status === "Active" && due <= todayISO();
-                  return (
-                    <tr key={tpl.id} className="hover:bg-[#F8FAFC]">
-                      <td className="px-5 py-3 font-medium text-[#0F172A] max-w-[160px] truncate">{tpl.name}</td>
-                      <td className="px-3 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${freqBadge[tpl.frequency]}`}>
-                          {tpl.frequency}
-                        </span>
+            {runs.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-[#94A3B8]">Nothing generated yet.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-[#94A3B8] border-b border-[#F1F5F9]">
+                    <th className="px-5 py-2 text-left font-medium">Occurrence</th>
+                    <th className="px-3 py-2 text-left font-medium">Result</th>
+                    <th className="px-5 py-2 text-left font-medium">Journal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F8FAFC]">
+                  {runs.map(r => (
+                    <tr key={r.id}>
+                      <td className="px-5 py-2 text-xs text-[#475569]">{r.occurrence_date}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {r.status === "generated"
+                          ? <span className="text-green-700">Draft created</span>
+                          : <span className="text-red-600">
+                              {r.status}
+                              {r.detail && typeof r.detail.error === "string" ? ` — ${r.detail.error}` : ""}
+                            </span>}
                       </td>
-                      <td className={`px-3 py-3 text-xs tabular-nums ${overdue ? "text-red-600 font-semibold" : "text-[#475569]"}`}>
-                        {due}
-                        {overdue && " (overdue)"}
-                      </td>
-                      <td className="px-3 py-3 text-xs text-[#64748B] max-w-[120px] truncate">{accountName(tpl.debit_account_id)}</td>
-                      <td className="px-3 py-3 text-xs text-[#64748B] max-w-[120px] truncate">{accountName(tpl.credit_account_id)}</td>
-                      <td className="px-3 py-3 text-right tabular-nums text-[#0F172A] font-medium">
-                        {formatPaise(tpl.amount_paise)}
-                      </td>
-                      <td className="px-3 py-3">
-                        <Badge className={tpl.status === "Active" ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}>
-                          {tpl.status}
-                        </Badge>
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => postNow(tpl)}
-                            disabled={postingId === tpl.id || tpl.status === "Paused"}
-                            className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 disabled:opacity-40"
-                            title="Post Now"
-                          >
-                            <Play size={11} />
-                            {postingId === tpl.id ? "Posting…" : "Post Now"}
-                          </button>
-                          <button
-                            onClick={() => toggleStatus(tpl.id)}
-                            className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#94A3B8] hover:text-[#334155]"
-                            title={tpl.status === "Active" ? "Pause" : "Resume"}
-                          >
-                            <Pause size={12} />
-                          </button>
-                          <button
-                            onClick={() => deleteTemplate(tpl.id)}
-                            className="p-1.5 rounded hover:bg-red-50 text-[#94A3B8] hover:text-red-600"
-                            title="Delete"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
+                      <td className="px-5 py-2 text-xs">
+                        {r.journal_entry_id
+                          ? <Link href="/accounting/journal" className="text-blue-600 hover:underline inline-flex items-center gap-1">
+                              Open <ExternalLink size={11} />
+                            </Link>
+                          : <span className="text-[#CBD5E1]">—</span>}
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Add Template Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h2 className="text-sm font-semibold text-[#0F172A] mb-4">New Recurring Template</h2>
-            <div className="space-y-3">
-
-              {/* Client */}
-              <div>
-                <label className="text-xs text-[#64748B] font-medium">Client *</label>
-                <div className="mt-1">
-                  <ClientLookup
-                    clients={clients}
-                    value={form.client_id}
-                    onChange={(id) => setForm({ ...form, client_id: id })}
-                    ariaLabel="Client"
-                    placeholder="Select client…"
-                  />
-                </div>
-              </div>
-
-              {/* Name */}
-              <div>
-                <label className="text-xs text-[#64748B] font-medium">Name *</label>
-                <input
-                  value={form.name}
-                  onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder='e.g. "Monthly Office Rent"'
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Frequency + Day */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[#64748B] font-medium">Frequency *</label>
-                  <select
-                    value={form.frequency}
-                    onChange={e => setForm({ ...form, frequency: e.target.value as Frequency })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option>Monthly</option>
-                    <option>Quarterly</option>
-                    <option>Yearly</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-[#64748B] font-medium">Day of Month (1–28) *</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={28}
-                    value={form.day_of_month}
-                    onChange={e => setForm({ ...form, day_of_month: Math.min(28, Math.max(1, parseInt(e.target.value) || 1)) })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Accounts */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[#64748B] font-medium">Debit Account *</label>
-                  <select
-                    value={form.debit_account_id}
-                    onChange={e => setForm({ ...form, debit_account_id: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={loadingAccounts}
-                  >
-                    <option value="">— Select account —</option>
-                    {accounts.map(a => (
-                      <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-[#64748B] font-medium">Credit Account *</label>
-                  <select
-                    value={form.credit_account_id}
-                    onChange={e => setForm({ ...form, credit_account_id: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={loadingAccounts}
-                  >
-                    <option value="">— Select account —</option>
-                    {accounts.map(a => (
-                      <option key={a.id} value={a.id}>{a.account_code} · {a.account_name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Amount */}
-              <div>
-                <label className="text-xs text-[#64748B] font-medium">Amount (₹) *</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={form.amount_rupees}
-                  onChange={e => setForm({ ...form, amount_rupees: e.target.value })}
-                  placeholder="e.g. 25000"
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-xs text-[#94A3B8] mt-0.5">Stored as integer paise internally</p>
-              </div>
-
-              {/* Narration */}
-              <div>
-                <label className="text-xs text-[#64748B] font-medium">Narration</label>
-                <input
-                  value={form.narration}
-                  onChange={e => setForm({ ...form, narration: e.target.value })}
-                  placeholder="e.g. Office rent for the month"
-                  className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Dates */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[#64748B] font-medium">Start Date *</label>
-                  <input
-                    type="date"
-                    value={form.start_date}
-                    onChange={e => setForm({ ...form, start_date: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-[#64748B] font-medium">End Date (optional)</label>
-                  <input
-                    type="date"
-                    value={form.end_date}
-                    onChange={e => setForm({ ...form, end_date: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
+        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-[#0F172A]">
+                {editing ? "Edit" : "New"} recurring journal
+              </h3>
+              <button onClick={() => setModalOpen(false)} className="text-[#94A3B8] hover:text-[#475569]" aria-label="Close">
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {formError && (
-              <p className="mt-3 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-md">{formError}</p>
-            )}
+            <div>
+              <label className="text-xs font-medium text-[#334155] block mb-1">Client</label>
+              <ClientLookup
+                clients={clients}
+                value={form.client_id}
+                onChange={id => setForm(f => ({ ...f, client_id: id }))}
+                size="sm"
+                ariaLabel="Client"
+                placeholder="Select a client"
+                disabled={!!editing}
+              />
+              {editing && (
+                <p className="text-[10px] text-[#94A3B8] mt-1">
+                  A template cannot move to another client — its generated journals
+                  would still belong to this one.
+                </p>
+              )}
+            </div>
 
-            <div className="flex gap-2 mt-5">
-              <button
-                onClick={closeModal}
-                className="flex-1 text-sm text-[#475569] border border-[#E2E8F0] py-2 rounded-md hover:bg-[#F8FAFC]"
-              >
+            <div>
+              <label htmlFor="rj-name" className="text-xs font-medium text-[#334155] block mb-1">Name</label>
+              <input
+                id="rj-name"
+                type="text"
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Monthly office rent"
+                value={form.name}
+                onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setFormError(null); }}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="rj-dr" className="text-xs font-medium text-[#334155] block mb-1">Debit account</label>
+                <select
+                  id="rj-dr"
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={form.debit_account_id}
+                  onChange={e => setForm(f => ({ ...f, debit_account_id: e.target.value }))}
+                >
+                  <option value="">Select…</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="rj-cr" className="text-xs font-medium text-[#334155] block mb-1">Credit account</label>
+                <select
+                  id="rj-cr"
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={form.credit_account_id}
+                  onChange={e => setForm(f => ({ ...f, credit_account_id: e.target.value }))}
+                >
+                  <option value="">Select…</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.account_code} — {a.account_name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="rj-amount" className="text-xs font-medium text-[#334155] block mb-1">Amount (₹)</label>
+                <input
+                  id="rj-amount"
+                  type="text"
+                  inputMode="decimal"
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="125000"
+                  value={form.amount_rupees}
+                  onChange={e => { setForm(f => ({ ...f, amount_rupees: e.target.value })); setFormError(null); }}
+                />
+              </div>
+              <div>
+                <label htmlFor="rj-freq" className="text-xs font-medium text-[#334155] block mb-1">Frequency</label>
+                <select
+                  id="rj-freq"
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={form.frequency}
+                  onChange={e => setForm(f => ({ ...f, frequency: e.target.value }))}
+                >
+                  {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label htmlFor="rj-day" className="text-xs font-medium text-[#334155] block mb-1">Day of month</label>
+                <select
+                  id="rj-day"
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={form.day_of_month}
+                  onChange={e => setForm(f => ({ ...f, day_of_month: parseInt(e.target.value, 10) }))}
+                >
+                  {/* 1–28 only: 29, 30 and 31 do not exist in every month, and
+                      a template that slides to the 28th in February posts on a
+                      date nobody chose. The CHECK in migration 377 says the
+                      same thing. */}
+                  {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="rj-start" className="text-xs font-medium text-[#334155] block mb-1">Starts</label>
+                <input
+                  id="rj-start"
+                  type="date"
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={form.start_date}
+                  onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label htmlFor="rj-end" className="text-xs font-medium text-[#334155] block mb-1">Ends (optional)</label>
+                <input
+                  id="rj-end"
+                  type="date"
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={form.end_date}
+                  onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="rj-narr" className="text-xs font-medium text-[#334155] block mb-1">Narration</label>
+              <input
+                id="rj-narr"
+                type="text"
+                className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Office rent for the month"
+                value={form.narration}
+                onChange={e => setForm(f => ({ ...f, narration: e.target.value }))}
+              />
+            </div>
+
+            {formError && <p className="text-[11px] text-red-600">{formError}</p>}
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setModalOpen(false)} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]">
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 text-sm bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700"
+                disabled={busyId === "save"}
+                className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                Add Template
+                {busyId === "save" ? "Saving…" : "Save template"}
               </button>
             </div>
           </div>

@@ -300,7 +300,93 @@ def create_schedule(firm_id: str, data: dict, created_by: Optional[str]) -> dict
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
         MOCK_BILLING_SCHEDULES.append(payload)
         return payload
-    return _db().table("billing_schedules").insert(payload).execute().data[0]
+    # The INSERT names its columns in a LITERAL so
+    # tests/test_backend_columns_exist_pg.py can check every one against the
+    # real schema — a payload passed by name is invisible to it, and a wrong
+    # key does not fail one column: PostgREST rejects the whole row with
+    # PGRST204. `update_schedule` cannot do this (a PATCH's key set is
+    # variable), so it closes the chain from the other end instead: its
+    # `editable` tuple is asserted to be a subset of these names.
+    return _db().table("billing_schedules").insert({
+        "firm_id": payload["firm_id"],
+        "client_id": payload["client_id"],
+        "arrangement": payload["arrangement"],
+        "service_id": payload["service_id"],
+        "amount_paise": payload["amount_paise"],
+        "gst_rate": payload["gst_rate"],
+        "cadence": payload["cadence"],
+        "next_run_date": payload["next_run_date"],
+        "is_active": payload["is_active"],
+        "created_by": payload["created_by"],
+    }).execute().data[0]
+
+
+def update_schedule(firm_id: str, schedule_id: str, data: dict,
+                    actor_id: Optional[str] = None, db=None) -> Optional[dict]:
+    """Change a schedule in place. Returns None when there is no such schedule
+    for this firm, so the router can 404 rather than silently succeeding.
+
+    WHY THIS EXISTS. There was no update path at all — create, list, get,
+    generate and run, and nothing to change a fee with. A retainer whose fee
+    goes up is the ordinary case, and without this the only way to record it
+    was a second schedule, which then bills the client twice.
+
+    ONLY THE FIELDS A CA CHANGES. `client_id` is not among them: moving a
+    schedule to another client would silently re-point every invoice already
+    generated against it, and `_find_generated`'s idempotency key is
+    (schedule, period) — so the new client's first period would be treated as
+    already billed. Raise a new schedule for a new client.
+    """
+    # NOT `description` or `due_date`. `BillingScheduleIn` accepts both and
+    # `billing_schedules` HAS NEITHER COLUMN (migration 073, unchanged since):
+    # create_schedule silently drops them, and `generate_for_schedule` then
+    # reads `schedule.get("description")` / `.get("due_date")` and always finds
+    # None — so every generated invoice line says "Professional fees" and
+    # carries no due date. That is a pre-existing gap and adding the columns is
+    # a migration; what must not happen here is WRITING them, because
+    # PostgREST rejects the whole row on an unknown key (PGRST204) — so a CA
+    # editing a fee and typing a description would have the fee change fail
+    # silently. `test_every_updatable_field_is_a_column_the_create_path_writes`
+    # holds this list to the columns create_schedule actually writes.
+    editable = ("arrangement", "cadence", "amount_paise", "gst_rate",
+                "service_id", "next_run_date", "is_active")
+    fields = {k: data[k] for k in editable if k in data and data[k] is not None}
+    if "amount_paise" in fields:
+        fields["amount_paise"] = int(fields["amount_paise"])
+    if "gst_rate" in fields:
+        fields["gst_rate"] = float(fields["gst_rate"])
+    if "is_active" in fields:
+        fields["is_active"] = bool(fields["is_active"])
+    # The filter above is `is not None`, NOT truthiness, and that is the whole
+    # point: `is_active: False` and `amount_paise: 0` are real values a caller
+    # means, and `if data[k]` would silently drop both — the first making it
+    # impossible to pause a retainer at all.
+    if not fields:
+        return get_schedule(firm_id, schedule_id)
+
+    # `db` is injectable so the DATABASE branch below can be exercised without
+    # one: it is the only statement of the firm filter that mock mode cannot
+    # reach, and a negative control that deleted it passed the whole suite.
+    # Same convention recurring_invoice_service states for the same reason.
+    if _USE_MOCK and db is None:
+        row = next((s for s in MOCK_BILLING_SCHEDULES
+                    if s["id"] == schedule_id and s["firm_id"] == firm_id), None)
+        if row is None:
+            return None
+        row.update(fields)
+        row["updated_at"] = datetime.now(timezone.utc).isoformat()
+        return row
+
+    fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+    # ONE mechanism, not two. The `.eq("firm_id", …)` on the UPDATE is what
+    # scopes this — a schedule belonging to another firm matches no row, so
+    # `res.data` is empty and the caller gets None. A `get_schedule` pre-check
+    # would say the same thing a round trip earlier and, being the only
+    # statement of the rule that mock mode cannot reach, would go untested:
+    # a negative control that deleted it passed the whole suite.
+    res = ((db or _db()).table("billing_schedules").update(fields)
+           .eq("id", schedule_id).eq("firm_id", firm_id).execute())
+    return res.data[0] if res.data else None
 
 
 def preview_due(firm_id: str, as_of: Optional[str] = None) -> list[dict]:

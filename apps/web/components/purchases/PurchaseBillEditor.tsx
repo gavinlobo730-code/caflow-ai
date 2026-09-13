@@ -133,6 +133,11 @@ export interface PurchaseBillLineDetail {
   /** CGST Act §17(5), migration 240. Absent on a row written before the column
    *  existed — read as eligible, which is the column's own default. */
   itc_eligible?: boolean | null;
+  /** GST compensation cess, migration 374 — both limbs and the amount they
+   *  produce. See lib/purchases/billEditor.ts's PurchaseBillLine. */
+  cess_rate_bps?: number | null;
+  cess_specific_paise_per_unit?: number | null;
+  cess_paise?: number | null;
   blocked_credit_reason?: string | null;
 }
 
@@ -199,6 +204,13 @@ function detailLinesToEditorLines(lines: PurchaseBillDetail["lines"]): EditorLin
     service_catalogue_id: l.service_catalogue_id ?? "",
     itc_eligible: l.itc_eligible ?? true,
     blocked_credit_reason: l.blocked_credit_reason ?? "",
+    // Compensation cess (migration 374). Rehydrated because update_purchase_bill
+    // deletes and reinserts every line from whatever is sent back, so a cess
+    // the editor did not carry would be silently dropped on the next save —
+    // understating both the vendor payable and the ITC claim.
+    cessPercent: !l.cess_rate_bps ? undefined : String(l.cess_rate_bps / 100),
+    cessPerUnit: !l.cess_specific_paise_per_unit
+      ? undefined : String(l.cess_specific_paise_per_unit / 100),
     _k: i,
   }));
 }
@@ -262,6 +274,13 @@ export function PurchaseBillEditor({
   // it rejected on save.
   const isLocked = isEdit && existing?.status !== "draft";
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
+  // Compensation cess reaches a handful of trades — aerated waters, pan
+  // masala, tobacco, coal, motor vehicles — so its two columns are revealed
+  // rather than always shown. ON from the start whenever the bill already
+  // carries cess, so the fields can never be hidden from the document that
+  // has them. Same shape as the sales InvoiceEditor.
+  const [showCess, setShowCess] = useState<boolean>(
+    () => initialLines.some((l) => l.cessPercent || l.cessPerUnit));
   const keyRef = useRef(initialLines.length);
   const nextKey = () => keyRef.current++;
   const [saving, setSaving] = useState(false);
@@ -720,6 +739,13 @@ export function PurchaseBillEditor({
           <Row label="SGST" value={fmtAmt(totals.sgst_paise)} />
         </>
       )}
+      {/* Its own row, never folded into the GST heads: GST (Compensation to
+          States) Act 2017 s.11(2), proviso — credit of this cess "shall be
+          utilised only towards payment of cess", so it stays a separate head
+          from the bill all the way to GSTR-3B. */}
+      {totals.cess_paise > 0 && (
+        <Row label="Compensation cess" value={fmtAmt(totals.cess_paise)} />
+      )}
       <p className="text-[10px] text-[#94A3B8]">
         {gstAuto ? `${isInterstate ? "Interstate" : "Intra-state"} — ${isInterstate ? "IGST" : "CGST + SGST"} (CGST Act §8)` : "Pick a vendor to preview CGST/SGST vs IGST."}
       </p>
@@ -1076,7 +1102,20 @@ export function PurchaseBillEditor({
 
         {/* Line items */}
         <section className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <h2 className="text-xs font-semibold text-[#334155] mb-2">Line items</h2>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold text-[#334155]">Line items</h2>
+            {!isLocked && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showCess}
+                  onChange={(e) => setShowCess(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-[#CBD5E1] accent-[#0F172A]"
+                />
+                <span className="text-[11px] text-[#475569]">Compensation cess</span>
+              </label>
+            )}
+          </div>
           {isLocked && (
             <p className="mb-2 text-[10px] text-[#94A3B8]">
               Frozen once received — issue a Debit Note to correct a quantity, rate, or item (CGST Act §34).
@@ -1099,6 +1138,16 @@ export function PurchaseBillEditor({
                   <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate ({isForeign ? currency : "₹"})</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
+                  {/* GST (Compensation to States) Act 2017 s.8(2) — "on the
+                      basis of VALUE, QUANTITY or on such basis". Two limbs,
+                      added: coal is per tonne, aerated waters a percentage,
+                      cigarettes both. Per unit of THIS LINE'S UQC. */}
+                  {showCess && (
+                    <>
+                      <th className="pb-2 text-right font-semibold w-20" title="Compensation cess, ad valorem">Cess %</th>
+                      <th className="pb-2 text-right font-semibold w-24" title="Compensation cess per unit of this line's UQC">Cess/unit</th>
+                    </>
+                  )}
                   <th className="pb-2 text-right font-semibold w-24">Amount</th>
                   <th className="pb-2 w-6" />
                 </tr>
@@ -1200,6 +1249,24 @@ export function PurchaseBillEditor({
                           {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
+                      {showCess && (
+                        <>
+                          <td className="py-1.5 px-1">
+                            <input type="number" min="0" step="0.01"
+                              value={line.cessPercent ?? ""}
+                              onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
+                              placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
+                              className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          </td>
+                          <td className="py-1.5 px-1">
+                            <input type="number" min="0" step="0.01"
+                              value={line.cessPerUnit ?? ""}
+                              onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
+                              placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}
+                              className="w-full px-2 py-1 border border-[#E2E8F0] rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right text-xs" />
+                          </td>
+                        </>
+                      )}
                       <td className="py-1.5 px-2 text-right font-mono text-[#334155]">{g.grand_total_paise > 0 ? fmtAmt(g.grand_total_paise) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && (

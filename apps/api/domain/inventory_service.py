@@ -969,11 +969,59 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
         )
 
 
+def _blocked_tax_on_line(line: dict) -> int:
+    """The part of a purchase line's GST that belongs in the COST of the goods.
+
+    AS-2 (and Ind AS 2) paragraph 6: the cost of purchase comprises the price
+    plus "duties and taxes (OTHER THAN THOSE SUBSEQUENTLY RECOVERABLE by the
+    enterprise from the taxing authorities)". Creditable GST is recoverable, so
+    it is excluded and always was. Credit BLOCKED by CGST Act §17(5) is not
+    recoverable from anyone — so it is part of what the goods cost, and
+    capitalising it is not an option the standard offers.
+
+    WHAT IT WAS DOING INSTEAD (INV-05). `apply_purchase_to_inventory` costed a
+    receipt at `taxable_amount_paise` alone, while the purchase-bill journal
+    had already debited the blocked tax to the line's EXPENSE account
+    (phase2_journal_service, the `blocked_total` block). The inventory receipt
+    journal then moved only the taxable value out of that expense account and
+    into Inventory, so the blocked tax stayed behind:
+
+        Rs 1,000 of goods, Rs 180 of blocked tax
+          bill        Dr Expense 1,180                Cr Payables 1,180
+          receipt     Dr Inventory 1,000              Cr Expense 1,000
+          left with   Inventory 1,000, Expense 180
+
+    Closing stock was understated by the blocked tax and the period's expense
+    overstated by it, on every goods purchase carrying blocked credit — and
+    because the moving average is computed off the same figure, every later
+    COGS was wrong too.
+
+    THE CREDIT SIDE NEEDS NOTHING NEW. The expense account already holds the
+    blocked tax, so relieving it in full keeps the receipt journal balanced
+    against the account it was posted to. That is also what keeps
+    `stock_position_as_at` tying to the Inventory control account: the ledger's
+    `value_delta_paise` and the journal's debit are the same number by
+    construction, and this changes both at once.
+
+    NULL `itc_eligible` IS TREATED AS ELIGIBLE, matching migration 240's
+    `NOT NULL DEFAULT true` and the pre-existing behaviour: a line nobody has
+    flagged carries recoverable credit and nothing is capitalised.
+    """
+    if line.get("itc_eligible", True) is not False:
+        return 0
+    return (int(line.get("cgst_paise") or 0)
+            + int(line.get("sgst_paise") or 0)
+            + int(line.get("igst_paise") or 0)
+            + int(line.get("cess_paise") or 0))
+
+
 def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict, created_by: Optional[str] = None) -> None:
     try:
         lines = (
             db.table("purchase_bill_lines")
-            .select("id, description, quantity, taxable_amount_paise, expense_account_id, service_catalogue_id")
+            .select("id, description, quantity, taxable_amount_paise, expense_account_id, "
+                    "service_catalogue_id, itc_eligible, cgst_paise, sgst_paise, igst_paise, "
+                    "cess_paise")
             .eq("bill_id", bill["id"])
             .execute().data
         ) or []
@@ -997,7 +1045,8 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
         for line in lines:
             item = goods_by_id.get(line.get("service_catalogue_id"))
             qty = line.get("quantity")
-            cost_paise = int(line.get("taxable_amount_paise") or 0)
+            cost_paise = (int(line.get("taxable_amount_paise") or 0)
+                          + _blocked_tax_on_line(line))
             if not item or not qty or float(qty) <= 0 or cost_paise <= 0:
                 continue
             movement = record_stock_in(

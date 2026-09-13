@@ -41,6 +41,7 @@ KNOWN_JOBS = [
     "invoice_overdue",
     "collections",
     "recurring_invoices",
+    "recurring_journals",
     "compliance_generation",
     "compliance_escalations",
     "balance_cache_audit",
@@ -241,6 +242,46 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
                 _log_run("recurring_invoices", fid, "failed", {"error": str(e)}, started_at=t0)
         else:
             firm_result["recurring_invoices"] = {"skipped": "already ran today"}
+
+        # 5b. Recurring JOURNALS (ACC-06). Generates DRAFT manual journals for
+        #     every due template and never posts one — this product acts
+        #     unprompted only where a Manager marked a bank rule trusted. A
+        #     template that fails is recorded and does NOT advance, so the
+        #     occurrence stays owed rather than being skipped silently.
+        if force or not _already_ran_today("recurring_journals", fid):
+            t0 = _now_iso()
+            try:
+                from services.recurring_journal_service import run_due as _run_journals
+                outcome = _run_journals(fid)
+                firm_result["recurring_journals"] = outcome
+                _log_run("recurring_journals", fid, "success", outcome, started_at=t0)
+            except Exception as e:
+                logger.error(f"Recurring journals job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["recurring_journals"] = {"error": str(e)}
+                _log_run("recurring_journals", fid, "failed", {"error": str(e)}, started_at=t0)
+        else:
+            firm_result["recurring_journals"] = {"skipped": "already ran today"}
+
+        # 5c. Recurring PURCHASE BILLS (PUR-26). Generates DRAFT supplier bills
+        #     — rent, retainers, utilities — and never RECEIVES one: receiving
+        #     is what posts the AP journal, withholds the TDS and claims the
+        #     credit. Same catch-up and same non-advancing failure as 5 and 5b.
+        #     It matters more than a convenience: most of the s.194 series
+        #     charges on the YEAR'S aggregate, so a month nobody entered
+        #     changes what the next bill should withhold.
+        if force or not _already_ran_today("recurring_purchase_bills", fid):
+            t0 = _now_iso()
+            try:
+                from services.recurring_purchase_bill_service import generate_due_recurring_bills
+                outcome = generate_due_recurring_bills(fid)
+                firm_result["recurring_purchase_bills"] = outcome
+                _log_run("recurring_purchase_bills", fid, "success", outcome, started_at=t0)
+            except Exception as e:
+                logger.error(f"Recurring purchase bills job failed for firm {fid}: {e}", exc_info=True)
+                firm_result["recurring_purchase_bills"] = {"error": str(e)}
+                _log_run("recurring_purchase_bills", fid, "failed", {"error": str(e)}, started_at=t0)
+        else:
+            firm_result["recurring_purchase_bills"] = {"skipped": "already ran today"}
 
         # 6. Compliance obligation generation (H7) — idempotently materialise the
         #    statutory obligations (GST/TDS/ITR/ROC) for every active engagement so

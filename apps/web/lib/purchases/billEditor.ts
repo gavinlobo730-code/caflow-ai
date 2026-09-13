@@ -12,6 +12,8 @@
  * round_off_paise column).
  */
 import { parseLineAmounts } from "../money/lineInput.ts";
+import { bpsFromPercentInput, paiseFromRupeeInput } from "../money/rupeeInput.ts";
+import { lineCess } from "../money/cessLine.ts";
 import { dnLineGst } from "./debitNoteGst.ts";
 
 export interface PurchaseBillLine {
@@ -37,6 +39,22 @@ export interface PurchaseBillLine {
   /** The §17(5) clause, when itc_eligible is false. Free text by design
    *  (migration 240): the CA-facing wording may change without a migration. */
   blocked_credit_reason?: string;
+  /**
+   * GST compensation cess — GST (Compensation to States) Act 2017 s.8(2),
+   * which levies "on the basis of VALUE, QUANTITY or on such basis". Two
+   * fields because real Schedule entries use each and cigarettes use both:
+   * `cessPercent` is the ad valorem limb as typed, `cessPerUnit` the specific
+   * limb in RUPEES PER UNIT of this line's own UQC (nothing here converts
+   * tonnes to kilograms — only the CA knows what the line counts).
+   *
+   * The AMOUNT is derived by the server from these two, the same way
+   * cgst/sgst/igst are derived from `gst_rate_percent`. `itc_eligible` above
+   * governs the cess too: s.11(2) of the Compensation Act applies the CGST
+   * Act to this levy mutatis mutandis, s.17(5) included, so a blocked line's
+   * cess is a cost rather than a credit.
+   */
+  cessPercent?: string;
+  cessPerUnit?: string;
 }
 
 /** A line is "valid" (postable) when it has positive qty & rate and a linked
@@ -72,6 +90,11 @@ export interface BillLinePayload {
   service_catalogue_id?: string;
   itc_eligible?: boolean;
   blocked_credit_reason?: string;
+  /** Compensation cess, ad valorem limb, in basis points. Omitted where the
+   *  CA typed nothing, which is the truth for every line that bears no cess. */
+  cess_rate_bps?: number;
+  /** Compensation cess, quantity limb, in paise per unit of the line's UQC. */
+  cess_specific_paise_per_unit?: number;
 }
 
 export function buildLinePayload(lines: PurchaseBillLine[]): BillLinePayload[] {
@@ -94,7 +117,25 @@ export function buildLinePayload(lines: PurchaseBillLine[]): BillLinePayload[] {
     itc_eligible: lineIsItcEligible(l),
     blocked_credit_reason: lineIsItcEligible(l)
       ? undefined : (l.blocked_credit_reason || undefined),
+    // Compensation cess, through the two shared parsers. Both REFUSE a
+    // non-amount rather than coercing it to 0 — a cess silently read as zero
+    // is a bill whose payable understates what the vendor charged and whose
+    // ITC understates what the client may claim.
+    ...(cessBps(l.cessPercent) === null
+      ? {} : { cess_rate_bps: cessBps(l.cessPercent) as number }),
+    ...(cessPerUnitPaise(l.cessPerUnit) === null
+      ? {} : { cess_specific_paise_per_unit: cessPerUnitPaise(l.cessPerUnit) as number }),
   }));
+}
+
+function cessBps(typed?: string): number | null {
+  if (typed === undefined || typed === null || typed.trim() === "") return null;
+  return bpsFromPercentInput(typed.trim());
+}
+
+function cessPerUnitPaise(typed?: string): number | null {
+  if (typed === undefined || typed === null || typed.trim() === "") return null;
+  return paiseFromRupeeInput(typed.trim());
 }
 
 export interface BillPreviewTotals {
@@ -103,11 +144,15 @@ export interface BillPreviewTotals {
   sgst_paise: number;
   igst_paise: number;
   gst_paise: number;
+  /** GST compensation cess (Compensation Act s.8). Its own figure and NOT part
+   *  of gst_paise — a separate levy whose credit s.11(2)'s proviso ring-fences
+   *  — but part of grand_total_paise, because the vendor is owed it. */
+  cess_paise: number;
   grand_total_paise: number;
 }
 
 export function previewBillTotals(lines: PurchaseBillLine[], isInterstate: boolean): BillPreviewTotals {
-  let taxable = 0, cgst = 0, sgst = 0, igst = 0;
+  let taxable = 0, cgst = 0, sgst = 0, igst = 0, cess = 0;
   for (const l of lines) {
     const parsed = parseLineAmounts(l.qty, l.rate);
     if (!parsed || !l.service_catalogue_id) continue;
@@ -124,9 +169,19 @@ export function previewBillTotals(lines: PurchaseBillLine[], isInterstate: boole
       isInterstate,
     );
     taxable += g.taxable_paise; cgst += g.cgst_paise; sgst += g.sgst_paise; igst += g.igst_paise;
+    // Compensation cess on the same taxable base, through the same mirror the
+    // sales preview uses (lib/money/cessLine.ts), which
+    // shared/gst-parity-vectors.json pins to the Python authority.
+    cess += lineCess(
+      g.taxable_paise,
+      parsed.quantity,
+      cessBps(l.cessPercent) ?? 0,
+      cessPerUnitPaise(l.cessPerUnit) ?? 0,
+    ).cess_paise;
   }
   const gst_paise = cgst + sgst + igst;
-  return { taxable_paise: taxable, cgst_paise: cgst, sgst_paise: sgst, igst_paise: igst, gst_paise, grand_total_paise: taxable + gst_paise };
+  return { taxable_paise: taxable, cgst_paise: cgst, sgst_paise: sgst, igst_paise: igst,
+           gst_paise, cess_paise: cess, grand_total_paise: taxable + gst_paise + cess };
 }
 
 // ── Editor validation ────────────────────────────────────────────────────────

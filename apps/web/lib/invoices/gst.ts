@@ -10,7 +10,8 @@
  * authority; this just stops the two from ever disagreeing.
  */
 
-import { bpsFromPercentInput } from "../money/rupeeInput.ts";
+import { bpsFromPercentInput, paiseFromRupeeInput } from "../money/rupeeInput.ts";
+import { lineCess } from "../money/cessLine.ts";
 import { applyDiscountsToLines, computeLineGst, taxablePaise,
          quantityFromInput, ratePaiseFromRupees, splitLineGst,
          gstRateBpsFromPercent } from "../money/gstLine.ts";
@@ -126,6 +127,20 @@ export interface InvoiceLine {
    * recipient's ITC reversal, and is the §34 note itself, not a field on it.
    */
   discountPercent?: string;
+  /**
+   * GST compensation cess — GST (Compensation to States) Act 2017 s.8(2),
+   * which levies "on the basis of VALUE, QUANTITY or on such basis". Two
+   * fields because real Schedule entries use each and cigarettes use both:
+   * `cessPercent` is the ad valorem limb as typed, `cessPerUnit` the specific
+   * limb in RUPEES PER UNIT of this line's own UQC.
+   *
+   * Absent on a credit or debit note, which share this type: migration 374
+   * gave the invoice and the purchase bill a cess column and deliberately did
+   * not give the four s.34 note tables one, so a value typed on a note would
+   * be silently dropped by the server's own model.
+   */
+  cessPercent?: string;
+  cessPerUnit?: string;
 }
 
 /** A document-level discount, already resolved to the units the server takes. */
@@ -156,6 +171,12 @@ export interface ServerInvoiceLine {
    *  typed on the line itself, which is why an edit rehydrates that one. */
   discount_paise?: number | null;
   discount_percent_bps?: number | null;
+  /** GST compensation cess, migration 374. Both limbs plus the derived
+   *  amount: the ad valorem rate in bps, the specific rate in paise per unit
+   *  of this line's UQC, and the paise they produce together. */
+  cess_rate_bps?: number | null;
+  cess_specific_paise_per_unit?: number | null;
+  cess_paise?: number | null;
 }
 
 /** Full invoice detail (header + lines + accounting + customer embed). */
@@ -281,6 +302,11 @@ export function computeGst(
   /** Gross before any §15(3)(a) discount — taxable + discount, by construction. */
   gross_paise: number;
   discount_paise: number;
+  /** GST compensation cess. Its own figure and NOT part of gst_paise, because
+   *  it is its own levy (Compensation Act s.8, not CGST s.9) and s.11(2)'s
+   *  proviso ring-fences its credit out of the Table 6 set-off. It IS part of
+   *  total_paise, because the customer pays it. */
+  cess_paise: number;
 } {
   let taxable_paise = 0;
   let cgst_paise = 0;
@@ -288,6 +314,7 @@ export function computeGst(
   let igst_paise = 0;
   let gross_paise = 0;
   let discount_paise = 0;
+  let cess_paise = 0;
 
   // §15(3)(a): the discount is excluded from the VALUE of supply, so it comes
   // off before the tax. Resolved for the whole document at once because a
@@ -317,6 +344,7 @@ export function computeGst(
       cgst_paise += h.cgst_paise;
       sgst_paise += h.sgst_paise;
       igst_paise += h.igst_paise;
+      cess_paise += cessOf(line, r.taxable_paise);
       return;
     }
     // The server would refuse this discount (larger than the line, or than the
@@ -329,12 +357,33 @@ export function computeGst(
     cgst_paise    += g.cgst_paise;
     sgst_paise    += g.sgst_paise;
     igst_paise    += g.igst_paise;
+    cess_paise    += cessOf(line, g.taxable_paise);
   });
 
   const gst_paise = igst_paise + cgst_paise + sgst_paise;
-  const total_paise = taxable_paise + gst_paise;
+  // Cess is in the total (the customer owes it) and out of gst_paise (Table 6
+  // never sets it off). Adding it here rather than at the caller is what keeps
+  // the round-off previewing on the same base the server rounds.
+  const total_paise = taxable_paise + gst_paise + cess_paise;
   return { taxable_paise, cgst_paise, sgst_paise, igst_paise, total_paise,
-           gross_paise, discount_paise };
+           gross_paise, discount_paise, cess_paise };
+}
+
+/** One line's compensation cess, on the taxable value already settled by
+ *  §15(3)(a). Delegates to lib/money/cessLine.ts, which is the mirror of
+ *  apps/api/domain/gst/compensation_cess.py and is pinned to it by
+ *  shared/gst-parity-vectors.json. */
+function cessOf(line: InvoiceLine, taxablePaiseValue: number): number {
+  const bps = percentBpsOf(line.cessPercent);
+  const perUnitRupees = line.cessPerUnit?.trim();
+  const perUnit = perUnitRupees ? paiseFromRupeeInput(perUnitRupees) : null;
+  if (bps === null && perUnit === null) return 0;
+  return lineCess(
+    taxablePaiseValue,
+    quantityFromInput(line.qty),
+    bps ?? 0,
+    perUnit ?? 0,
+  ).cess_paise;
 }
 
 /**
@@ -380,6 +429,9 @@ export interface PreviewTotals {
   sgst_paise: number;
   igst_paise: number;
   gst_paise: number;
+  /** GST compensation cess (Compensation Act s.8). Separate from gst_paise
+   *  and included in grand_total_paise — see computeGst. */
+  cess_paise: number;
   round_off_paise: number;
   grand_total_paise: number;
   /** Gross before any §15(3)(a) discount. Absent on callers that predate it. */
@@ -412,6 +464,7 @@ export function previewTotals(
     sgst_paise: g.sgst_paise,
     igst_paise: g.igst_paise,
     gst_paise: gst,
+    cess_paise: g.cess_paise,
     round_off_paise: round_off,
     grand_total_paise: g.total_paise + round_off,
     gross_paise: g.gross_paise,

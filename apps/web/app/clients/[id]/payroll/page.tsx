@@ -771,6 +771,21 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
               The run is a draft — nothing is posted or paid. Fix these and create it again,
               or finalise it if the figures are right.
             </p>
+            {/* PAY-15: this panel NAMED the attendance nobody had entered and
+                offered no way to enter it, so the one instruction it gave —
+                "fix these" — could not be followed from here. The editor is
+                `/payroll/attendance`; there is deliberately no second one on
+                this tab, because two editors of one table drift. The link
+                carries the client and the month so it opens on this roster and
+                not the whole firm's. */}
+            {runGaps.some(g => g.toLowerCase().includes("attendance")) && (
+              <a
+                href={`/payroll/attendance?client=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`}
+                className="inline-flex items-center gap-1 mt-2 text-[11px] font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950"
+              >
+                Enter attendance for {month} →
+              </a>
+            )}
           </div>
         )}
       </div>

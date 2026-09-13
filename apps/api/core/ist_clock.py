@@ -55,6 +55,29 @@ def fy_bounds(fy_label: str) -> tuple[str, str]:
     return f"{start_year}-04-01", f"{start_year + 1}-03-31"
 
 
+def fy_quarters(fy_label: str) -> list[tuple[str, str, str]]:
+    """The four quarters of an Indian financial year as
+    (label, start_iso, end_iso), Q1 first.
+
+    Derived from `fy_bounds` rather than restating April, so a change to what a
+    financial year IS cannot leave the quarters describing the old one.
+
+    Every bound is a MONTH boundary — 1 Apr / 30 Jun, 1 Jul / 30 Sep, and so on
+    — which is the property the callers depend on: a whole-month window can be
+    answered exactly from `account_period_balances`, with no partial edge month
+    to replay. Do not add a "quarter to date" variant here; that window is not
+    month-aligned and needs the reporting engine's edge-month path.
+    """
+    start_iso, _ = fy_bounds(fy_label)
+    y = int(start_iso[:4])
+    return [
+        ("Q1", f"{y}-04-01", f"{y}-06-30"),
+        ("Q2", f"{y}-07-01", f"{y}-09-30"),
+        ("Q3", f"{y}-10-01", f"{y}-12-31"),
+        ("Q4", f"{y + 1}-01-01", f"{y + 1}-03-31"),
+    ]
+
+
 _FY_LABEL = re.compile(r"^\s*(\d{4})\s*[-/]\s*(\d{2}|\d{4})\s*$")
 
 

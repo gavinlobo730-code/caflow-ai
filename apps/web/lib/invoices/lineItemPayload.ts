@@ -11,7 +11,7 @@
  */
 
 import { ratePaiseFromRupees } from "../money/gstLine.ts";
-import { bpsFromPercentInput } from "../money/rupeeInput.ts";
+import { bpsFromPercentInput, paiseFromRupeeInput } from "../money/rupeeInput.ts";
 
 export interface InvoiceLineInput {
   description: string;
@@ -36,6 +36,24 @@ export interface InvoiceLineInput {
    * never set it.
    */
   discountPercent?: string;
+  /**
+   * GST compensation cess, ad valorem limb, as a PERCENTAGE as typed.
+   * GST (Compensation to States) Act 2017 s.8(2) levies "on the basis of
+   * VALUE, quantity or on such basis" — this is the value basis.
+   *
+   * Sales invoices and purchase bills only. `SalesInvoiceLineIn` and
+   * `PurchaseBillLineIn` are the two models that have it; the s.34 note models
+   * deliberately do not, because the four note tables have no cess column and
+   * a field Pydantic silently drops is exactly the trap this module's header
+   * describes.
+   */
+  cessPercent?: string;
+  /**
+   * The quantity limb of the same levy, in RUPEES PER UNIT as typed — per unit
+   * of this line's own UQC, because that is the only quantity the line has.
+   * Coal at Rs.400 per tonne on a line kept in KGS is 0.40 here.
+   */
+  cessPerUnit?: string;
 }
 
 export interface InvoiceLinePayload {
@@ -49,6 +67,11 @@ export interface InvoiceLinePayload {
   /** Basis points: 500 = 5.00%. Omitted entirely when no discount was typed —
    *  the server then charges on the whole value, which is the truth. */
   discount_percent_bps?: number;
+  /** Compensation cess, ad valorem limb, in basis points. Omitted when the CA
+   *  typed nothing, which is the truth for every line that bears no cess. */
+  cess_rate_bps?: number;
+  /** Compensation cess, quantity limb, in paise per unit of this line's UQC. */
+  cess_specific_paise_per_unit?: number;
 }
 
 export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload {
@@ -69,7 +92,22 @@ export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload
     ...(discountBps(line.discountPercent) === null
       ? {}
       : { discount_percent_bps: discountBps(line.discountPercent) as number }),
+    // Compensation cess, both limbs, through the same two parsers and for the
+    // same reason: `bpsFromPercentInput` and `paiseFromRupeeInput` REFUSE a
+    // non-amount rather than coercing it to 0, and a cess silently read as
+    // zero is an invoice under-charging a tax the client still owes.
+    ...(discountBps(line.cessPercent) === null
+      ? {}
+      : { cess_rate_bps: discountBps(line.cessPercent) as number }),
+    ...(perUnitPaise(line.cessPerUnit) === null
+      ? {}
+      : { cess_specific_paise_per_unit: perUnitPaise(line.cessPerUnit) as number }),
   };
+}
+
+function perUnitPaise(typed?: string): number | null {
+  if (typed === undefined || typed === null || typed.trim() === "") return null;
+  return paiseFromRupeeInput(typed.trim());
 }
 
 function discountBps(typed?: string): number | null {

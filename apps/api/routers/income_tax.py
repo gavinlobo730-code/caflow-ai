@@ -31,7 +31,7 @@ from domain.income_tax.presumptive import (
     compute_44ad, compute_44ada, compute_44ae, GoodsCarriage,
 )
 from services.compliance_obligation_service import itr_due_date_for_client, fy_end_year
-from models.fy import FYLabel, OptionalFYLabel
+from models.fy import AYLabel, FYLabel, OptionalAYLabel, OptionalFYLabel
 
 router = APIRouter(prefix="/api/income-tax", tags=["income-tax"])
 
@@ -102,8 +102,8 @@ class BroughtForwardLossInput(BaseModel):
     """
     loss_type: str
     amount_paise: int = Field(ge=0)
-    assessment_year: Optional[str] = None
-    expiry_assessment_year: Optional[str] = None
+    assessment_year: OptionalAYLabel = None
+    expiry_assessment_year: OptionalAYLabel = None
     is_expired: bool = False
     source_itr_ack: Optional[str] = None
 
@@ -1166,12 +1166,16 @@ def compute_presumptive_44ae(
 # emits without that registration is not a file the portal will take. See
 # docs/compliance/07-getting-permission-to-file.md.
 
-_ITR_FORMS = ("ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6", "ITR-7")
+# The list is `itr_json`'s, derived from its own `ITRForm` Literal — the
+# same seven the field mappings and the committed Department schemas are
+# keyed on. It was restated here, which is one more copy to keep in step
+# (IT-23: the filing SCREEN's copy had already fallen behind at four).
+from domain.income_tax.itr_json import ITR_FORMS as _ITR_FORMS
 
 
 class ITRFieldPlacementsRequest(BaseModel):
     form: str
-    assessment_year: str = "2026-27"
+    assessment_year: AYLabel = "2026-27"
     gross_total_income_paise: int = Field(default=0, ge=0)
     total_deductions_paise: int = Field(default=0, ge=0)
     total_income_paise: int = Field(default=0, ge=0)

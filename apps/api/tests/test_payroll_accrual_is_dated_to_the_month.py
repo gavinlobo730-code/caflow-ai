@@ -79,14 +79,50 @@ def _run(month="2026-08"):
     }
 
 
+class _Slips:
+    """A client that serves the run's slip row.
+
+    Since PAY-25 the accrual sums the employer's own PF and ESI off
+    `payroll_slips` — `payroll_runs` stores only the combined totals — and
+    checks that gross plus that share equals the payable credits. A double that
+    cannot serve the read is not a smaller stand-in but an incomplete one:
+    `object()` used to be enough, and now the read raises before the DATE this
+    file is about is ever chosen; an EMPTY page is worse still, because the
+    identity then refuses a run whose header says it has PF and ESI.
+
+    So it serves the one slip `_run()` implies: employer PF 12,000 and employer
+    ESI 3,250, the halves of its 24,000 and 4,000 totals.
+    """
+    def table(self, name):
+        assert name == "payroll_slips", name
+        return self
+
+    def select(self, *a, **k): return self
+    def eq(self, *a, **k): return self
+    def gt(self, *a, **k): return self
+    def order(self, *a, **k): return self
+    def limit(self, *a, **k): return self
+
+    def execute(self):
+        # One page, then nothing — `fetch_all` stops on a short page, and a
+        # double that returned the same row for ever would loop.
+        if getattr(self, "_served", False):
+            return type("R", (), {"data": []})()
+        self._served = True
+        return type("R", (), {"data": [{
+            "id": "slip-1", "pf_employer_paise": 12_000,
+            "esi_employer_paise": 3_250,
+        }]})()
+
+
 @pytest.fixture
 def posted(monkeypatch):
     """journal_for_payroll returns early under _USE_MOCK (no SUPABASE_URL), so
-    the real branch is reached by turning that off and standing in for the two
-    things it needs: the client and the account lookups."""
+    the real branch is reached by turning that off and standing in for the
+    things it needs: the client, the slip read and the account lookups."""
     import services.phase2_journal_service as mod
     monkeypatch.setattr(mod, "_USE_MOCK", False)
-    monkeypatch.setattr("core.supabase_client.get_supabase", lambda: object(), raising=False)
+    monkeypatch.setattr("core.supabase_client.get_supabase", lambda: _Slips(), raising=False)
     svc = Phase2JournalService()
     rec = _Recorder()
     monkeypatch.setattr(svc, "_create_journal", rec)

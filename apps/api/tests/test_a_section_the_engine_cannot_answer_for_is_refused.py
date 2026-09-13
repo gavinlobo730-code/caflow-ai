@@ -221,7 +221,14 @@ def test_the_section_list_a_screen_is_served_offers_only_what_the_save_accepts(f
 def test_a_section_outside_the_registry_is_refused_with_a_usable_sentence(fy):
     """Named properties, not the literal wording — rewording the sentence must
     not break this, but dropping the section number or the alternatives must."""
-    for section in ("194IA", "194R", "194T", "194M", "194ZZ"):
+    # s.194T LEFT THIS LIST on 2026-09-13 (TDS-23) and that is the point of the
+    # ratchet: it is in the registry now — the Finance (No. 2) Act 2024
+    # inserted it with effect from 01-04-2025, which is this registry's own
+    # first year — so refusing it would be refusing a section the engine can
+    # compute. What it is NOT is unconditional: a NON-RESIDENT partner is still
+    # refused, by `residency.section_refusal`, which is a different question
+    # and a different function. See the test below.
+    for section in ("194IA", "194R", "194M", "194ZZ"):
         message = deduction_section_refusal(section, fy)
         assert message, f"{section} is not in the registry and must be refused"
         assert section in message, "the CA must be told WHICH section"
@@ -229,6 +236,46 @@ def test_a_section_outside_the_registry_is_refused_with_a_usable_sentence(fy):
         assert SECTION_192_SALARY not in message.split("The sections it can compute are:")[1].split(".")[0], (
             "s.192 must not be offered as an alternative — it is refused two "
             "branches above, and suggesting it answers one refusal with another")
+
+
+@pytest.mark.parametrize("fy", FYS)
+def test_a_firm_paying_its_own_partner_is_computed_not_refused(fy):
+    """s.194T, the section this list used to contain (TDS-23).
+
+    Inserted by the Finance (No. 2) Act 2024 w.e.f. 01-04-2025 — the first
+    year this registry holds — so its absence was a hole in a year whose own
+    header claims that Act, and every partnership and LLP client has the
+    obligation. It reached the CA as the bare string "Unknown TDS section
+    '194T'" at the first bill, long after the vendor was saved.
+    """
+    from domain.tds.section_rates import SECTION_194T_FIRST_FY, tds_rates_for
+
+    assert deduction_section_refusal("194T", fy) is None
+    rule = tds_rates_for(fy).sections["194T"]
+    assert rule.individual_rate_bps == 1000 and rule.company_rate_bps == 1000
+    # BOTH LIMBS. Twelve monthly ₹15,000 remuneration payments must withhold on
+    # the year, not nothing: "such amount OR THE AGGREGATE of such amounts ...
+    # during the financial year exceeds twenty thousand rupees".
+    assert rule.single_threshold_paise == 20_000_00
+    assert rule.aggregate_threshold_paise == 20_000_00
+    # Commencement is NAMED, not left implicit in which years the dict happens
+    # to hold — an FY 2024-25 entry added later for a belated 26Q must not
+    # silently acquire a section that did not exist.
+    assert SECTION_194T_FIRST_FY == "2025-26"
+
+
+@pytest.mark.parametrize("fy", FYS)
+def test_a_benefit_in_kind_is_refused_with_its_two_reasons(fy):
+    """s.194R stays out, and the refusal says WHY rather than only that a rate
+    is missing — the same distinction the property sections get. Its routing is
+    fine (26Q, resident); what is missing is a threshold nobody has read off
+    the Finance Act 2025, and a base the ledger does not hold because the
+    benefit is often in kind."""
+    message = deduction_section_refusal("194R", fy)
+    assert message
+    assert "not been confirmed" in message or "has not been confirmed" in message
+    assert "KIND" in message or "kind" in message
+    assert "outside the bill" in message, "the CA must be told what to do instead"
 
 
 def test_a_property_section_says_it_cannot_be_FILED_not_merely_that_a_rate_is_missing():

@@ -51,15 +51,32 @@ from domain.payroll.statutory import admin_charge_for_establishment, rates_for
 from services.phase2_journal_service import Phase2JournalService
 
 ACCOUNTS = {"salary_exp": "A-EXP", "net": "A-NET", "pf": "A-PF", "esi": "A-ESI",
-            "pt": "A-PT", "tds": "A-TDS", "loans": "A-LOAN"}
+            "pt": "A-PT", "tds": "A-TDS", "loans": "A-LOAN",
+            "employer_contribution": "A-CONTRIB"}
+
+#: The employer's own PF on this fixture — ₹1,800, the 12% at the ceiling.
+EMPLOYER_PF = 180_000
 
 
 def _run(**kw) -> dict:
-    """A one-member month at the PF ceiling, with the figures a real run has."""
+    """A one-member month at the PF ceiling, with the figures a real run has.
+
+    `total_net_paise` WAS 4,640,000 here and that was not a possible run.
+    The payroll identity is net = gross - employee deductions, and the only
+    deduction on this fixture is the employee's own ₹1,800 of PF, so net is
+    ₹48,200. The old figure had subtracted BOTH halves of the 12%, deducting
+    the employer's contribution from the employee's pay.
+
+    It passed because the guard it was written against was a RANGE — anything
+    in [gross, gross + pf + esi + edli + admin] was accepted, and 5,000,000 sat
+    exactly on the floor of it. PAY-25 made the identity exact and the fixture
+    failed immediately. Nothing about EDLI or the admin charge changes; the
+    figures below are the same month, correctly stated.
+    """
     base = {
         "month": "2026-06",
         "total_gross_paise": 5_000_000,      # ₹50,000
-        "total_net_paise": 4_640_000,
+        "total_net_paise": 4_820_000,        # ₹50,000 less the employee's ₹1,800
         "total_pf_paise": 360_000,           # employee 1,800 + employer 1,800
         "total_esi_paise": 0,
         "total_pt_paise": 0,
@@ -72,8 +89,20 @@ def _run(**kw) -> dict:
     return base
 
 
-def _lines(run: dict) -> list[dict]:
-    return Phase2JournalService._build_payroll_lines(ACCOUNTS, run)
+def _employer_share(run: dict) -> int:
+    """What `journal_for_payroll` sums off the slips, for this fixture: the
+    employer 12%, plus EDLI and the admin charge, which are employer cost by
+    definition and are run-level figures (the admin charge carries a
+    per-establishment floor that cannot be reconstructed per member)."""
+    return (EMPLOYER_PF
+            + int(run.get("total_edli_paise") or 0)
+            + int(run.get("total_pf_admin_paise") or 0))
+
+
+def _lines(run: dict, employer: int = None) -> list[dict]:
+    return Phase2JournalService._build_payroll_lines(
+        ACCOUNTS, run,
+        _employer_share(run) if employer is None else employer)
 
 
 def _credit_to(lines: list[dict], account_id: str) -> int:
@@ -94,12 +123,20 @@ def test_pf_payable_carries_edli_and_the_admin_charge():
 
 
 def test_the_employer_cost_rises_by_exactly_them():
-    """The debit is DEFINED as the sum of the credits, so adding them to PF
-    Payable raises Salaries Expense by the same amount and the entry stays
-    balanced by construction."""
+    """Adding them to the PF Payable credit raises the employer's total cost by
+    the same amount, and since PAY-25 that rise lands on the CONTRIBUTION head
+    rather than on salaries and wages — EDLI and the administrative charge are
+    employer cost, not the employee's pay."""
     without = _lines(_run(total_edli_paise=0, total_pf_admin_paise=0))
     with_ = _lines(_run())
-    assert _debit_to(with_, "A-EXP") - _debit_to(without, "A-EXP") == 7_500 + 50_000
+
+    def _total_debit(lines):
+        return sum(l["debit_paise"] for l in lines)
+
+    assert _total_debit(with_) - _total_debit(without) == 7_500 + 50_000
+    assert _debit_to(with_, "A-CONTRIB") - _debit_to(without, "A-CONTRIB") == 7_500 + 50_000
+    # Salaries and wages is gross either way — neither is a payment to anybody.
+    assert _debit_to(with_, "A-EXP") == _debit_to(without, "A-EXP") == 5_000_000
 
 
 def test_the_entry_still_balances():
@@ -130,7 +167,10 @@ def test_a_run_from_before_the_columns_posts_exactly_what_it_did():
     A run carrying zeros must therefore produce the old entry unchanged."""
     old = _run(total_edli_paise=0, total_pf_admin_paise=0)
     assert _credit_to(_lines(old), "A-PF") == 360_000
-    assert _debit_to(_lines(old), "A-EXP") == 4_640_000 + 360_000
+    # The employer's total cost is unchanged; only its presentation is split.
+    assert sum(l["debit_paise"] for l in _lines(old)) == 4_820_000 + 360_000
+    assert _debit_to(_lines(old), "A-EXP") == 5_000_000
+    assert _debit_to(_lines(old), "A-CONTRIB") == EMPLOYER_PF
 
 
 def test_a_run_with_the_keys_absent_altogether_is_treated_as_zero():
@@ -143,29 +183,23 @@ def test_a_run_with_the_keys_absent_altogether_is_treated_as_zero():
 
 # ── the invariant ────────────────────────────────────────────────────────────
 
-def test_the_identity_guard_ceiling_includes_the_new_cost():
-    """The guard's ceiling was gross + pf + esi, and EDLI and the admin charge
-    sit ON TOP of that.
-
-    Honest about what this proves: with real figures the guard would not fire
-    anyway, because an employee's own deductions always exceed the ~1% these two
-    add. The widened ceiling is defensive — it is there so a future run whose
-    employee deductions are small (everyone excluded from PF but the
-    establishment still owing the ₹500 floor, say) does not trip a guard meant
-    to catch a MISSING credit leg. Asserted on the expression rather than on a
-    contrived run, because a contrived one would be asserting my arithmetic
-    rather than the rule.
+def test_the_identity_counts_edli_and_the_admin_charge_as_employer_cost():
+    """This test used to assert the guard's CEILING expression, because the
+    guard was a range and EDLI and the admin charge sat on top of it. PAY-25
+    made the identity exact, so the same rule is now assertable on the figures
+    rather than on the source: both are employer cost, so they must be inside
+    the contribution the identity balances against, and a run that omits them
+    from it is refused.
     """
-    import inspect
-    src = inspect.getsource(Phase2JournalService._build_payroll_lines)
-    assert "ceiling = gross + pf + esi + edli + pf_admin" in src
-    assert _lines(_run()), "and a normal run still posts"
+    run = _run()
+    assert _lines(run), "the correct employer share posts"
+    with pytest.raises(ValueError, match="identity violated"):
+        _lines(run, employer=EMPLOYER_PF)          # EDLI and admin left out
 
 
 def test_the_identity_guard_still_catches_a_missing_credit_leg():
     """The other half. A net reduced by a deduction with no matching credit
-    would silently understate salary expense, and the balance check cannot see
-    it because the debit is defined as the sum of the credits."""
+    would silently understate salary expense."""
     with pytest.raises(ValueError, match="identity violated"):
         _lines(_run(total_net_paise=1_000_000))
 

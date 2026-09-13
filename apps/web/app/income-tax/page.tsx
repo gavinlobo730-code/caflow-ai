@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { request, type ApiResp } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
@@ -156,20 +157,6 @@ const ORDINALS = ["1st", "2nd", "3rd", "4th"];
 // getFirmId helper (same pattern as compliance.ts)
 // ---------------------------------------------------------------------------
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const {
-    data: { session },
-  } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb
-    .from("users")
-    .select("firm_id")
-    .eq("auth_user_id", session.user.id)
-    .single();
-  if (!data?.firm_id) throw new Error("Firm not found — please complete onboarding.");
-  return data.firm_id;
-}
 
 // ---------------------------------------------------------------------------
 // Bulk Mark as Filed modal — batch reference-entry

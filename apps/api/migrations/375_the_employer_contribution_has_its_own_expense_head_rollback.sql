@@ -1,0 +1,15 @@
+-- Rollback for migration 375.
+--
+-- The account is NOT dropped. A payroll accrual posted against it cannot be
+-- un-posted (migration 251's immutability triggers), so removing the row would
+-- orphan its journal lines; and an unused account costs nothing but a row in
+-- the chart. Deactivate it by hand if it is genuinely unwanted:
+--
+--   UPDATE public.chart_of_accounts SET is_active = FALSE
+--    WHERE client_id IS NULL
+--      AND account_name ILIKE '%Contribution to Provident%';
+--
+-- Reverting the CODE without reverting this migration is safe and is the
+-- actual rollback: `journal_for_payroll` resolves the account only when the
+-- employer contribution is non-zero, so an unused seeded account is inert.
+SELECT 1;

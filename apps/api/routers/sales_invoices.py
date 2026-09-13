@@ -16,6 +16,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
+from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
@@ -858,6 +859,11 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     total_cgst_paise    = 0
     total_sgst_paise    = 0
     total_igst_paise    = 0
+    # GST (Compensation to States) Act 2017 s.8 — its own head, kept apart from
+    # the three above all the way through, because s.11(2)'s proviso ring-fences
+    # its credit ("shall be utilised only towards payment of cess") and
+    # gstr3b_computer's s.49(5) set-off ladder must never see it.
+    total_cess_paise    = 0
 
     # ── §15(3)(a): THE DISCOUNT COMES OFF BEFORE THE TAX ────────────────────
     # "The value of the supply shall not include any discount which is given
@@ -904,11 +910,23 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         cgst_paise, sgst_paise, igst_paise = _compute_line_gst(
             taxable_paise, gst_rate_bps, is_interstate
         )
+        # Compensation cess, on the SAME base the GST heads use — the value of
+        # supply after the s.15(3)(a) discount. Compensation Act s.11(1) applies
+        # CGST s.15 to this levy, so charging it on the gross would take cess on
+        # money the customer was never asked for.
+        _cess = compensation_cess.line_cess(
+            taxable_paise=taxable_paise,
+            quantity=qty,
+            cess_rate_bps=int(ln.get("cess_rate_bps") or 0),
+            cess_specific_paise_per_unit=int(ln.get("cess_specific_paise_per_unit") or 0),
+        )
+        cess_paise = _cess.cess_paise
 
         total_taxable_paise += taxable_paise
         total_cgst_paise    += cgst_paise
         total_sgst_paise    += sgst_paise
         total_igst_paise    += igst_paise
+        total_cess_paise    += cess_paise
 
         computed_lines.append({
             "description":    ln.get("description", ""),
@@ -929,7 +947,14 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "cgst_paise":     cgst_paise,
             "sgst_paise":     sgst_paise,
             "igst_paise":     igst_paise,
-            "line_total_paise": taxable_paise + cgst_paise + sgst_paise + igst_paise,
+            # The two limbs are stored, not just the amount: a CA checking a
+            # cigarette line against the Schedule needs to see the percentage
+            # and the per-thousand separately, and an amount no rate produces
+            # cannot be re-derived on an edit.
+            "cess_rate_bps":  int(ln.get("cess_rate_bps") or 0),
+            "cess_specific_paise_per_unit": int(ln.get("cess_specific_paise_per_unit") or 0),
+            "cess_paise":     cess_paise,
+            "line_total_paise": taxable_paise + cgst_paise + sgst_paise + igst_paise + cess_paise,
             # Pure traceability (migration 184) — see InvoiceLineIn.service_catalogue_id.
             "service_catalogue_id": ln.get("service_catalogue_id"),
         })
@@ -940,13 +965,18 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     # account. For INR, dc is the identity ⇒ base == txn and nothing changes.
     txn_taxable   = total_taxable_paise
     txn_total_gst = total_cgst_paise + total_sgst_paise + total_igst_paise
-    txn_total     = txn_taxable + txn_total_gst
+    # Cess is part of what the customer OWES, so it is in the invoice total and
+    # therefore in outstanding_paise (migration 278) — but it is NOT part of
+    # `total_gst_paise`, which is the three s.9 heads and is what Table 6 sets
+    # off. Folding cess into that figure would offer it to the s.49(5) ladder.
+    txn_total     = txn_taxable + txn_total_gst + total_cess_paise
     base_taxable  = dc.to_base(total_taxable_paise)
     base_cgst     = dc.to_base(total_cgst_paise)
     base_sgst     = dc.to_base(total_sgst_paise)
     base_igst     = dc.to_base(total_igst_paise)
+    base_cess     = dc.to_base(total_cess_paise)
     base_total_gst = base_cgst + base_sgst + base_igst
-    base_total     = base_taxable + base_total_gst
+    base_total     = base_taxable + base_total_gst + base_cess
     # Invoice-level round-off (nearest ₹1) — OPT-IN per invoice (migration 247)
     # and INR only. When enabled it absorbs the sub-rupee GST remainder so the
     # payable total is a clean rupee, and the delta is posted to the 'Round Off'
@@ -965,6 +995,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     total_cgst_paise    = base_cgst
     total_sgst_paise    = base_sgst
     total_igst_paise    = base_igst
+    total_cess_paise    = base_cess
     total_paise         = base_total + round_off_paise
     if total_paise <= 0:
         raise HTTPException(status_code=422, detail="Invoice total must be positive.")
@@ -1066,6 +1097,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "cgst_paise":            total_cgst_paise,
             "sgst_paise":            total_sgst_paise,
             "igst_paise":            total_igst_paise,
+            "cess_paise":            total_cess_paise,
             "total_paise":           total_paise,
             "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
             "round_off_paise":       round_off_paise,
@@ -1119,6 +1151,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         "cgst_paise":            total_cgst_paise,
         "sgst_paise":            total_sgst_paise,
         "igst_paise":            total_igst_paise,
+        "cess_paise":            total_cess_paise,
         "total_paise":           total_paise,
         "total_gst_paise":       total_cgst_paise + total_sgst_paise + total_igst_paise,
         "round_off_paise":       round_off_paise,
@@ -1167,6 +1200,9 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "cgst_paise":            ln["cgst_paise"],
             "sgst_paise":            ln["sgst_paise"],
             "igst_paise":            ln["igst_paise"],
+            "cess_rate_bps":         ln["cess_rate_bps"],
+            "cess_specific_paise_per_unit": ln["cess_specific_paise_per_unit"],
+            "cess_paise":            ln["cess_paise"],
             "line_total_paise":      ln["line_total_paise"],
             "service_catalogue_id":  ln["service_catalogue_id"],
         })
@@ -1362,6 +1398,12 @@ def _eway_assessment(lines: list) -> dict:
             cgst_paise=int(ln.get("cgst_paise") or 0),
             sgst_paise=int(ln.get("sgst_paise") or 0),
             igst_paise=int(ln.get("igst_paise") or 0),
+            # Rule 138's Explanation 2 measures the consignment value
+            # INCLUDING the cess charged in the document, and the field has
+            # been on EwayLine since SALES-17 waiting for a column. Migration
+            # 374 gives it one, so a cess-bearing consignment is no longer
+            # measured short of the ₹50,000 limit by the cess.
+            cess_paise=int(ln.get("cess_paise") or 0),
             gst_rate_bps=int(ln.get("gst_rate_bps") or 0),
         )
         for ln in (lines or [])
@@ -1583,6 +1625,7 @@ def update_invoice(
             total_cgst    = 0
             total_sgst    = 0
             total_igst    = 0
+            total_cess    = 0
             total_discount = 0
 
             # §15(3)(a), identically to the create path and through the same
@@ -1618,12 +1661,23 @@ def update_invoice(
                 line_discount = int(_d["discount_paise"])
                 taxable      = int(_d["taxable_paise"])
                 cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
+                # Compensation cess, through the same module the create path
+                # uses. Two implementations of a levy is how an edited invoice
+                # comes to disagree with the one that was issued.
+                _cess = compensation_cess.line_cess(
+                    taxable_paise=taxable,
+                    quantity=qty,
+                    cess_rate_bps=int(ln.get("cess_rate_bps") or 0),
+                    cess_specific_paise_per_unit=int(ln.get("cess_specific_paise_per_unit") or 0),
+                )
+                cess = _cess.cess_paise
 
                 total_discount += line_discount
                 total_taxable += taxable
                 total_cgst    += cgst
                 total_sgst    += sgst
                 total_igst    += igst
+                total_cess    += cess
 
                 computed_lines.append({
                     # FK column per migration 050 is sales_invoice_id (not invoice_id)
@@ -1643,7 +1697,10 @@ def update_invoice(
                     "cgst_paise":           cgst,
                     "sgst_paise":           sgst,
                     "igst_paise":           igst,
-                    "line_total_paise":     taxable + cgst + sgst + igst,
+                    "cess_rate_bps":        int(ln.get("cess_rate_bps") or 0),
+                    "cess_specific_paise_per_unit": int(ln.get("cess_specific_paise_per_unit") or 0),
+                    "cess_paise":           cess,
+                    "line_total_paise":     taxable + cgst + sgst + igst + cess,
                     # Pure traceability (migration 184) — see InvoiceLineIn.service_catalogue_id.
                     # Must be carried through here too: this is a delete-then-
                     # reinsert, so any line the frontend re-sends without it
@@ -1674,13 +1731,17 @@ def update_invoice(
             # leaving them stale from creation.
             txn_taxable    = total_taxable
             txn_total_gst  = total_cgst + total_sgst + total_igst
-            txn_total      = txn_taxable + txn_total_gst
+            txn_total      = txn_taxable + txn_total_gst + total_cess
             base_taxable   = dc.to_base(total_taxable)
             base_cgst      = dc.to_base(total_cgst)
             base_sgst      = dc.to_base(total_sgst)
             base_igst      = dc.to_base(total_igst)
+            base_cess      = dc.to_base(total_cess)
             base_total_gst = base_cgst + base_sgst + base_igst
-            base_total     = base_taxable + base_total_gst
+            # Cess is in the payable total and NOT in total_gst_paise — the
+            # three s.9 heads are what Table 6 sets off, and s.11(2)'s proviso
+            # ring-fences cess credit out of that ladder.
+            base_total     = base_taxable + base_total_gst + base_cess
             # Invoice-level round-off (nearest ₹1), mirroring the create path:
             # opt-in per invoice (migration 247) and INR only. Honour a toggle in
             # this request, else keep whatever the invoice already had — without
@@ -1704,6 +1765,7 @@ def update_invoice(
             data["cgst_paise"]           = base_cgst
             data["sgst_paise"]           = base_sgst
             data["igst_paise"]           = base_igst
+            data["cess_paise"]           = base_cess
             data["total_gst_paise"]      = base_total_gst
             data["round_off_paise"]      = round_off_edit
             data["total_paise"]          = base_total + round_off_edit
@@ -1725,6 +1787,11 @@ def update_invoice(
                 + int(inv.get("cgst_paise") or 0)
                 + int(inv.get("sgst_paise") or 0)
                 + int(inv.get("igst_paise") or 0)
+                # Compensation cess is part of what the customer owes, so it is
+                # part of the figure being rounded. Omitting it here would drop
+                # the cess out of total_paise the moment a CA toggled rounding
+                # on a cess invoice, without touching a single line.
+                + int(inv.get("cess_paise") or 0)
             )
             is_inr = (inv.get("txn_currency") or "INR") == "INR"
             round_off_edit = (

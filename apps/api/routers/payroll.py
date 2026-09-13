@@ -2912,12 +2912,18 @@ def finalize_run(
     Finalize payroll run — Partner only. Immutable after this point.
     Creates journal entry per Product Bible immutability rules:
 
-    Dr  Salaries Expense        (gross wages + employer PF/ESI = total cost)
+    Dr  Salaries Expense        (gross wages — IT Act s.17(1))
+    Dr  Contribution to Provident and Other Funds
+                                (employer PF + EDLI + admin charge + employer ESI)
       Cr  Net Salary Payable    (total net pay)
-      Cr  PF Payable            (employee + employer PF)
+      Cr  PF Payable            (employee + employer PF, EDLI, admin charge)
       Cr  ESI Payable           (employee + employer ESI)
       Cr  PT Payable
       Cr  TDS Payable - Salary  (feeds 24Q)
+
+    TWO debits since PAY-25 — Schedule III Part II presents Employee Benefits
+    Expense split, and one combined line made "contribution to provident and
+    other funds" nil on every payroll client's note.
 
     IT Act §192 TDS recorded for 24Q return. The run is marked finalized ONLY if
     the journal actually posts, so a posting failure leaves the run re-runnable

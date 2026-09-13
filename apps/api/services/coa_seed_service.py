@@ -54,6 +54,16 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("1201", "Trade Receivables",            "Asset", "Receivable"),    # %Trade Receivable%
     ("1202", "Inventory",                    "Asset", "Inventory"),     # %Inventor% (domain/inventory_service.py)
     ("1301", "GST Input Tax Credit",         "Asset", "Tax"),           # %GST Input%
+    # GST (Compensation to States) Act 2017 s.11(2), proviso: credit of this
+    # cess "shall be utilised only towards payment of cess". Its own asset,
+    # never folded into GST Input — a set-off the electronic credit ledger
+    # will not perform must not be performed in the books. The NAME avoids
+    # the substring "GST Input" deliberately: _find_account's ILIKE fallback
+    # for the CGST/SGST/IGST heads is "%GST Input%" with .limit(1) and no
+    # ordering, so a cess account matching it could be returned for a CGST
+    # lookup on any chart without per-head accounts — which is every chart
+    # this list seeds. Migration 374 backfills it for existing firms.
+    ("1302", "Compensation Cess Input Credit", "Asset", "Tax"),         # gst_cess_input
     ("1401", "TDS Receivable",               "Asset", "Tax"),
     ("1402", "Advance Tax Paid",             "Asset", "Tax"),
     ("1403", "Prepaid Expenses",             "Asset", "Current Asset"),
@@ -67,6 +77,9 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     # ── Liabilities ──
     ("2001", "Trade Payables",               "Liability", "Payable"),           # %Trade Payable%
     ("2002", "GST Output Tax Payable",       "Liability", "Current Liability"),  # %GST Output%
+    # The outward half of the cess. Same reasoning as 1302, and the same
+    # reason the name avoids "GST Output".
+    ("2010", "Compensation Cess Payable",    "Liability", "Current Liability"),  # gst_cess_output
     ("2003", "TDS Payable",                  "Liability", "Current Liability"),  # %TDS Payable%
     ("2004", "TDS Payable - Salary",         "Liability", "Current Liability"),  # %TDS Payable - Salary%
     ("2005", "PF Payable",                   "Liability", "Current Liability"),  # %PF Payable%
@@ -108,6 +121,15 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     ("5013", "Staff Welfare",                "Expense", "Staff Welfare"),
     ("5014", "Interest on Loans",            "Expense", "Finance Cost"),
     ("5015", "Round Off",                    "Expense", "Overhead"),           # %Round Off% (invoice round-off; migration 174)
+    # Schedule III Part II presents Employee Benefits Expense split into
+    # (a) salaries and wages, (b) contribution to provident and other funds,
+    # (c) share based payments and (d) staff welfare. The payroll accrual used
+    # to debit one Salaries Expense line for gross AND the employer's PF/ESI,
+    # which made (b) nil on every payroll client's note (PAY-25). The subtype
+    # carries "Employee" so domain/reporting/schedule_iii.py buckets it under
+    # the same caption as 5002 — the caption total is unchanged, only the
+    # note's sub-split. Migration 375 backfills it for existing firms.
+    ("5016", "Contribution to Provident and Other Funds", "Expense", "Employee Benefits"),  # %Contribution to Provident%
     ("5901", "Loss on Asset Disposal",       "Expense", "Other Expense"),      # %Loss on Asset Disposal%
 ]
 

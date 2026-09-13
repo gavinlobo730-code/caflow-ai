@@ -20,6 +20,7 @@ from domain.tds.residency import (
     FORM_26Q, FORM_27Q, GAP_27Q_IDENTIFIERS_MISSING,
     GAP_RESIDENCY_NOT_CLASSIFIED, NON_RESIDENT, RESIDENT,
     RESIDENT_ONLY_SECTIONS, SECTIONS_REACHING_NON_RESIDENTS,
+    SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT,
     is_classified, is_non_resident, missing_27q_identifiers,
     return_type_for, section_refusal,
 )
@@ -40,7 +41,8 @@ def test_every_section_the_registry_computes_is_classified_one_way_or_the_other(
     # in this codebase computes — see section_rates.py's own comment.
     computed -= {"192", "206C"}
     unclassified = sorted(
-        computed - set(RESIDENT_ONLY_SECTIONS) - set(SECTIONS_REACHING_NON_RESIDENTS))
+        computed - set(RESIDENT_ONLY_SECTIONS) - set(SECTIONS_REACHING_NON_RESIDENTS)
+        - set(SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT))
     assert not unclassified, (
         f"these TDS sections are in the rate registry but nobody has recorded "
         f"whether they reach a non-resident payee: {unclassified}. Read the "
@@ -63,6 +65,43 @@ def test_the_resident_only_list_quotes_the_section_it_relies_on():
         assert "resident" in citation.lower(), (
             f"{code}'s citation does not show the resident limitation it is "
             f"listed for: {citation!r}")
+
+
+def test_a_section_with_no_resident_limb_is_not_silently_allowed():
+    """THE THIRD STATE (TDS-23). The two lists above answer one question — do
+    the section's own words limit it to a resident — and s.194T's do not: it
+    charges a firm paying "a partner of the firm". So it cannot join
+    RESIDENT_ONLY_SECTIONS, whose every entry quotes the limitation it is
+    listed for and whose test above enforces that.
+
+    Nor can it join SECTIONS_REACHING_NON_RESIDENTS, which asserts something
+    else again: that 10% flat on a 27Q row is RIGHT. s.195 charges a payment to
+    a non-resident at the rates in force with surcharge and cess and no
+    threshold; 10% is the SMALLER figure, and an under-deduction on a foreign
+    payment disallows the whole expenditure under s.40(a)(i).
+
+    So it is refused, with the reason, and the refusal must fire BEFORE the
+    resident-only lookup — a section in the third dict is by construction
+    absent from the first, so falling through reaches the deliberate silence
+    for unclassified sections and ALLOWS the deduction, which is exactly the
+    outcome the dict exists to prevent."""
+    assert "194T" in SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT
+    assert "194T" not in RESIDENT_ONLY_SECTIONS
+    assert "194T" not in SECTIONS_REACHING_NON_RESIDENTS
+
+    refusal = section_refusal("194T", NON_RESIDENT)
+    assert refusal and "NON-RESIDENT" in refusal
+    assert "195" in refusal and "40(a)(i)" in refusal
+    # And it does NOT refuse a resident partner, which is the ordinary case.
+    assert section_refusal("194T", RESIDENT) is None
+    assert section_refusal("194T", None) is None
+
+
+def test_every_unsettled_entry_cites_the_section_it_is_about():
+    for code, why in SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT.items():
+        assert f"s.{code}".lower() in why.lower(), f"{code} does not cite itself"
+        assert "195" in why, (
+            f"{code}'s reason must say what the CA should deduct under instead")
 
 
 def test_194b_is_not_treated_as_resident_only():

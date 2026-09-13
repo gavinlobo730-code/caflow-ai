@@ -23,7 +23,7 @@ from core.authz import assert_client_access, can_access_client, filter_by_client
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
-from services import ageing_schedule_service, ratio_analysis_service
+from services import ageing_schedule_service, ratio_analysis_service, budget_service
 from models.fy import FYLabel, OptionalFYLabel
 from core.ist_clock import ist_fy_label
 
@@ -1410,6 +1410,70 @@ def get_schedule_iii_trend(
     fy_labels = [f"{y}-{str(y + 1)[2:]}" for y in range(start_year, start_year + years)]
     return api_response(True, _reporting_service(current_user).multi_year_trend(
         current_user["firm_id"], client_id, fy_labels))
+
+
+class AccountBudgetIn(BaseModel):
+    """One account's budget for one client-year, or its removal.
+
+    `budget_paise: null` DELETES the row. Clearing the box is not the same as
+    budgeting nil — see budget_service.clear_budget — so the two cannot share a
+    representation, and 0 is a real figure that computes a real variance.
+    """
+    client_id: str
+    fy: FYLabel
+    account_id: str
+    budget_paise: Optional[int] = None
+
+
+@router.get("/budgets")
+def get_budgets(
+    client_id: str = Query(..., description="Budgets are per client, like every other report"),
+    fy: Annotated[OptionalFYLabel, Query()] = None,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Budget versus actuals for one client and one financial year.
+
+    The actuals come from `account_period_balances` through
+    ReportingService.period_net_by_account — ONE bucket read covering all four
+    quarters. `/accounting/budget` used to compute them in the browser with
+    four unpaged reads of `journal_lines`, which PostgREST truncates at ~1000
+    rows without saying so, and it did that firm-wide across every client's
+    accounts at once (ACC-06).
+
+    `client_id` is REQUIRED here, unlike the reporting endpoints that treat its
+    absence as "all clients": account_period_balances.client_id is NOT NULL, so
+    a firm-wide budget has nothing to be compared against.
+    """
+    assert_client_access(current_user, client_id)
+    out = budget_service.budget_vs_actuals(
+        _reporting_service(current_user), current_user["firm_id"], client_id,
+        fy or ist_fy_label(), db=_prod_db())
+    return api_response(True, out)
+
+
+@router.put("/budgets")
+def put_budget(
+    data: AccountBudgetIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Record or clear one account's budget for the year."""
+    assert_client_access(current_user, data.client_id)
+    if data.budget_paise is None:
+        removed = budget_service.clear_budget(
+            current_user["firm_id"], data.client_id, data.account_id, data.fy,
+            db=_prod_db())
+        out = {"account_id": data.account_id, "fy": data.fy, "budget_paise": None,
+               "removed": removed}
+        action = "account_budget_cleared"
+    else:
+        out = budget_service.set_budget(
+            current_user["firm_id"], data.client_id, data.account_id, data.fy,
+            data.budget_paise, actor_id=current_user.get("id"), db=_prod_db())
+        action = "account_budget_recorded"
+    log_event(current_user["firm_id"], "client", data.client_id, action,
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=out)
+    return api_response(True, out)
 
 
 @router.get("/cash-flow")

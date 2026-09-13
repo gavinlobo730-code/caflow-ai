@@ -394,7 +394,7 @@ class BankEntryService:
         if rows:
             rules = (db.table("bank_matching_rules").select("*")
                      .eq("firm_id", firm_id).eq("client_id", client_id).eq("is_active", True)
-                     .order("created_at").execute().data or [])
+                     .order("priority").order("created_at").execute().data or [])
             index = bank_payee_service.history_index(db, firm_id, client_id)
             candidates = bank_matching_service.suggestions_for_many(
                 db, firm_id, client_id,
@@ -430,7 +430,9 @@ class BankEntryService:
     def _draft_for(self, t, rules, index, candidates, pairs, bank_names, account_names) -> Optional[E.Draft]:
         amount = max(int(t.get("debit_paise") or 0), int(t.get("credit_paise") or 0))
         is_debit = int(t.get("credit_paise") or 0) == 0
-        hit = match_rule(t.get("description"), amount, is_debit, rules)
+        hit = match_rule(t.get("description"), amount, is_debit, rules,
+                         reference_no=t.get("reference_no") or "",
+                         payee_name=t.get("payee_name") or "")
         rule_d = E.from_rule(hit, account_names.get(hit.account_id) if hit else None)
         doc_d = E.from_documents(candidates.get(str(t.get("id")), []))
         learned = bank_payee_service.suggest_for(t, index)

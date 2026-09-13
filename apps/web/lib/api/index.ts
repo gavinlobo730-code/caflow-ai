@@ -947,6 +947,147 @@ export type ScheduleIiiRatioNote = {
   gaps: { code: string; message: string }[];
 };
 
+// ── Recurring journals ───────────────────────────────────────────────────────
+// Templates the FIRM owns (`recurring_journal_templates`, migration 377).
+// Generating produces a DRAFT manual journal through the one posting kernel
+// and never posts one. Amounts are integer paise; each line is a debit OR a
+// credit, never both.
+
+export type RecurringJournalLine = {
+  id?: string;
+  account_id: string;
+  debit_paise: number;
+  credit_paise: number;
+  narration?: string | null;
+  sort_order?: number;
+};
+
+export type RecurringJournalTemplate = {
+  id: string;
+  client_id: string;
+  name: string;
+  frequency: string;
+  day_of_month: number;
+  narration: string | null;
+  start_date: string;
+  end_date: string | null;
+  next_run_date: string;
+  status: string;
+  lines: RecurringJournalLine[];
+};
+
+export type RecurringJournalRun = {
+  id: string;
+  template_id: string;
+  occurrence_date: string;
+  journal_entry_id: string | null;
+  status: string;
+  detail: Record<string, unknown> | null;
+  created_at?: string;
+};
+
+// ── Vendors — THE supplier master ────────────────────────────────────────────
+// `public.vendors` (migration 049). Every purchase path reads it. The fields a
+// CA sets on the Supplier Master screen are here and NOT on the retired
+// `public.suppliers`, whose column names differed on three of them:
+// supplier_name -> name, payment_terms_days -> credit_days, and
+// tds_rate_percent -> tds_rate_bps, which is BASIS POINTS (1000 = 10.00%).
+
+export type Vendor = {
+  id: string;
+  client_id: string;
+  firm_id?: string;
+  name: string;
+  gstin: string | null;
+  pan: string | null;
+  state_code?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  tds_applicable: boolean;
+  tds_section: string | null;
+  tds_rate_bps: number | null;
+  credit_days: number | null;
+  /** Migration 378. Null = no limit recorded, which is NOT a recorded zero
+   *  (that means no credit at all). Recorded, never enforced — nothing blocks
+   *  or warns on a bill that would exceed it. */
+  credit_limit_paise: number | null;
+  is_active: boolean;
+  created_at?: string;
+};
+
+/** The subset the Supplier Master screen writes. Everything else on a vendor —
+ *  residency, s.195 nature of income, the treaty fields, MSMED status — is set
+ *  on the client workspace's Vendors tab, and a PATCH that omits a field leaves
+ *  it alone. */
+export type VendorWrite = {
+  name?: string;
+  gstin?: string | null;
+  pan?: string | null;
+  state_code?: string;
+  tds_applicable?: boolean;
+  tds_section?: string | null;
+  tds_rate_bps?: number;
+  credit_days?: number | null;
+  credit_limit_paise?: number | null;
+  is_active?: boolean;
+};
+
+// ── Billing schedules ────────────────────────────────────────────────────────
+// The practice's own fee arrangements (`billing_schedules`, migration 073).
+// `arrangement` is 'retainer' | 'one_time' | 'package'; the Retainer Tracker
+// reads the first. `gst_rate` is a PERCENTAGE, not basis points — that is the
+// column's own unit.
+
+export type BillingSchedule = {
+  id: string;
+  client_id: string;
+  arrangement: string;
+  cadence: string;
+  amount_paise: number;
+  gst_rate: number;
+  service_id: string | null;
+  next_run_date: string | null;
+  description: string | null;
+  is_active: boolean;
+};
+
+export type BillingGenerateResult = {
+  invoice: { id?: string; invoice_no?: string } | null;
+  period: string;
+  created: boolean;
+  idempotent: boolean;
+};
+
+// ── Budget versus actuals ────────────────────────────────────────────────────
+// NOT a statutory statement — no return reads a budget and nothing is
+// journalised from one. Amounts are integer paise.
+//
+// `budget_paise` is NULL where the CA has not budgeted that account, which is
+// a DIFFERENT fact from a budget of zero: only the second produces a variance,
+// and `variance_paise` is null alongside it. Revenue actuals arrive as
+// POSITIVE magnitudes — the backend flips the debit-minus-credit sign once, by
+// the account's own type — so a Revenue row and an Expense row can be compared
+// against a budget typed the same way.
+
+export type BudgetRow = {
+  account_id: string;
+  account_code: string | null;
+  account_name: string | null;
+  account_type: string | null;
+  budget_paise: number | null;
+  actuals: Record<string, number>;
+  actual_paise: number;
+  variance_paise: number | null;
+};
+
+export type BudgetVsActuals = {
+  fy: string;
+  client_id: string;
+  quarters: { label: string; start: string; end: string }[];
+  rows: BudgetRow[];
+  totals: { budget_paise: number; actual_paise: number };
+};
+
 // ── The multi-year trend ─────────────────────────────────────────────────────
 // NOT a statutory statement. Schedule III General Instructions para 5 requires
 // the corresponding amounts for the IMMEDIATELY PRECEDING period only — one
@@ -1676,6 +1817,28 @@ export const api = {
      * computed server-side, so the 25% variance test the statute requires is a
      * fact rather than something the CA re-derives.
      */
+    /**
+     * Budget versus actuals for one client-year. The ACTUALS come from
+     * `account_period_balances` server-side — one bucket read covering all
+     * four quarters. The screen used to compute them itself with four unpaged
+     * reads of `journal_lines`, which PostgREST truncates at ~1000 rows
+     * without saying so, and it did that across every client at once (ACC-06).
+     * `client_id` is required: the buckets are per client.
+     */
+    budgets: (clientId: string, fy?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (fy) q.set("fy", fy);
+      return request<ApiResp<BudgetVsActuals>>(`/api/accounting/budgets?${q}`);
+    },
+    /**
+     * Record or clear one account's budget. `budget_paise: null` DELETES it —
+     * "not budgeted" and "budgeted at nil" are different statements and only
+     * the second produces a variance.
+     */
+    saveBudget: (body: {
+      client_id: string; fy: string; account_id: string; budget_paise: number | null;
+    }) => request<ApiResp<{ account_id: string; fy: string; budget_paise: number | null }>>(
+      "/api/accounting/budgets", { method: "PUT", body: JSON.stringify(body) }),
     scheduleIiiRatios: (clientId: string, fy?: string) => {
       const q = new URLSearchParams({ client_id: clientId });
       if (fy) q.set("fy", fy);
@@ -2941,15 +3104,84 @@ export const api = {
       { method: "POST" },
     ),
   },
+  /**
+   * Recurring journal templates (ACC-06). The screen used to keep these in
+   * localStorage, work out the next due date in the browser, and post
+   * nothing. Generating now raises a DRAFT manual journal through the one
+   * posting kernel; nothing is ever posted unprompted.
+   */
+  recurringJournals: {
+    list: (params?: { client_id?: string; status?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.client_id) q.set("client_id", params.client_id);
+      if (params?.status) q.set("status", params.status);
+      const qs = q.toString();
+      return request<ApiResp<RecurringJournalTemplate[]>>(
+        `/api/recurring-journals${qs ? `?${qs}` : ""}`);
+    },
+    create: (body: unknown) =>
+      request<ApiResp<RecurringJournalTemplate>>("/api/recurring-journals",
+        { method: "POST", body: JSON.stringify(body) }),
+    get: (id: string) =>
+      request<ApiResp<RecurringJournalTemplate>>(`/api/recurring-journals/${id}`),
+    update: (id: string, body: unknown) =>
+      request<ApiResp<RecurringJournalTemplate>>(`/api/recurring-journals/${id}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    remove: (id: string) =>
+      request<ApiResp<{ deleted: boolean; id: string }>>(`/api/recurring-journals/${id}`,
+        { method: "DELETE" }),
+    history: (id: string) =>
+      request<ApiResp<RecurringJournalRun[]>>(`/api/recurring-journals/${id}/history`),
+    /** The next few dates this template will generate on. Writes nothing. */
+    preview: (id: string, count = 5) =>
+      request<ApiResp<{ template_id: string; occurrences: string[] }>>(
+        `/api/recurring-journals/${id}/preview?count=${count}`),
+    /** One occurrence, on demand. Idempotent — a second call returns the first draft. */
+    generate: (id: string, occurrence?: string) =>
+      request<ApiResp<{ created: boolean; journal_entry_id: string | null; reason: string | null }>>(
+        `/api/recurring-journals/${id}/generate${occurrence ? `?occurrence=${occurrence}` : ""}`,
+        { method: "POST" }),
+    /** Every due template. Idempotent; the daily sweep calls the same service. */
+    runDue: (clientId?: string) =>
+      request<ApiResp<{ generated_count: number; skipped_count: number; failed_count: number;
+                        failed: { template_id: string; occurrence: string; error: string }[] }>>(
+        `/api/recurring-journals/run${clientId ? `?client_id=${clientId}` : ""}`,
+        { method: "POST" }),
+  },
   billing: {
     listSchedules: (activeOnly?: boolean) =>
-      request(`/api/billing/schedules${activeOnly ? "?active_only=true" : ""}`),
+      request<ApiResp<BillingSchedule[]>>(
+        `/api/billing/schedules${activeOnly ? "?active_only=true" : ""}`),
     createSchedule: (body: unknown) =>
-      request("/api/billing/schedules", { method: "POST", body: JSON.stringify(body) }),
+      request<ApiResp<BillingSchedule>>("/api/billing/schedules",
+        { method: "POST", body: JSON.stringify(body) }),
+    /**
+     * Change a schedule's fee, cadence, service or active flag. There was no
+     * update path at all until ACC-06 — a retainer whose fee went up could
+     * only be recorded as a SECOND schedule, which then bills twice.
+     * `client_id` is deliberately not updatable.
+     */
+    updateSchedule: (scheduleId: string, body: unknown) =>
+      request<ApiResp<BillingSchedule>>(`/api/billing/schedules/${scheduleId}`, {
+        method: "PATCH", body: JSON.stringify(body),
+      }),
+    /**
+     * The practice's OWN service catalogue — what a retainer can bill for.
+     * `billing_schedules.service_id` is mandatory (migration 206) and the
+     * catalogue is client-owned, so the server resolves the firm's internal
+     * client and answers from that one. `internal_client_id: null` means the
+     * practice client is not provisioned, which is what `generate` 409s on.
+     */
+    serviceOptions: () => request<ApiResp<{
+      internal_client_id: string | null;
+      services: { id: string; name: string; hsn_sac: string | null;
+                  default_rate_paise: number | null; gst_rate_bps: number | null }[];
+    }>>("/api/billing/service-options"),
     previewRun: (asOf?: string) =>
       request(`/api/billing/preview-run${asOf ? `?as_of=${asOf}` : ""}`, { method: "POST" }),
     generate: (scheduleId: string) =>
-      request(`/api/billing/schedules/${scheduleId}/generate`, { method: "POST" }),
+      request<ApiResp<BillingGenerateResult>>(
+        `/api/billing/schedules/${scheduleId}/generate`, { method: "POST" }),
     run: () => request("/api/billing/run", { method: "POST" }),
     arAging: () => request("/api/billing/ar-aging"),
     dashboard: (params?: Record<string, string>) =>
@@ -3293,6 +3525,29 @@ export const api = {
       if (asOf) q.set("as_of", asOf);
       return request<ApiResp<AgeingDetail<"bills">>>(`/api/vendors/ap-aging?${q}`);
     },
+  },
+
+  /** THE supplier master. `public.suppliers` (migration 030) looked like a
+   *  second one and was written only by /accounting/suppliers; migration 378
+   *  retired it. Every purchase path — bill creation, TDS withholding, AP
+   *  ageing, the Schedule III payables note, GSTR-2B matching, s.43B(h) —
+   *  reads `vendors`, so a TDS section recorded anywhere else withholds nothing
+   *  and s.40(a)(ia) disallows the whole expenditure. PUR-16. */
+  vendors: {
+    list: (clientId: string, includeInactive = false) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (includeInactive) q.set("include_inactive", "true");
+      return request<ApiResp<Vendor[]>>(`/api/vendors/?${q}`);
+    },
+    create: (body: VendorWrite & { client_id: string }) =>
+      request<ApiResp<Vendor & { duplicate?: boolean }>>("/api/vendors/",
+        { method: "POST", body: JSON.stringify(body) }),
+    /** PATCH. NOTE: the server drops nulls (`model_dump(exclude_none=True)`),
+     *  so an optional field cannot be CLEARED back to unset through here — a
+     *  pre-existing property of every optional vendor field, not of this one. */
+    update: (id: string, body: VendorWrite) =>
+      request<ApiResp<Vendor>>(`/api/vendors/${id}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
   },
 
   reports: {

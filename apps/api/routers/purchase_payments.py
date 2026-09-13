@@ -254,6 +254,63 @@ def _assert_payment_scope(current_user: dict, payment_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Which payments settled ONE bill — and both shapes count (PUR-22)
+# ---------------------------------------------------------------------------
+
+def _allocations_for_bill(db, purchase_bill_id: str) -> dict:
+    """{purchase_payment_id: allocated_paise} for one bill, voided rows out.
+
+    A voided row is a reversed payment's allocation
+    (`reversal_service.reverse_payment` sets `is_voided` rather than deleting),
+    and the filter is applied in PYTHON rather than as `.eq("is_voided", False)`
+    because a row that predates the column, or one whose value is NULL, must
+    read as NOT voided — the same guard reverse_payment itself carries, and the
+    lesson of tasks #145/#148.
+    """
+    rows = (db.table("purchase_payment_allocations")
+            .select("purchase_payment_id, allocated_paise, is_voided")
+            .eq("purchase_bill_id", purchase_bill_id)
+            .execute().data) or []
+    out: dict = {}
+    for r in rows:
+        if r.get("is_voided"):
+            continue
+        pid = r.get("purchase_payment_id")
+        if pid:
+            out[pid] = out.get(pid, 0) + int(r.get("allocated_paise") or 0)
+    return out
+
+
+def _settles_bill(payment: dict, purchase_bill_id: str) -> bool:
+    """Mock-mode twin of the query above: the legacy FK, or an allocation."""
+    if payment.get("purchase_bill_id") == purchase_bill_id:
+        return True
+    return any(a.get("purchase_bill_id") == purchase_bill_id
+               and not a.get("is_voided")
+               for a in (payment.get("allocations") or []))
+
+
+def _with_allocated_to(payment: dict, purchase_bill_id: str,
+                       allocated: Optional[dict] = None) -> dict:
+    """Stamp what this payment put against THIS bill.
+
+    `amount_paise` is the whole payment and stops being the bill's figure the
+    moment one payment settles several. A legacy single-bill payment allocated
+    all of itself, which is what `_claim_bill_outstanding` reserved.
+    """
+    if payment.get("purchase_bill_id") == purchase_bill_id:
+        amt = int(payment.get("amount_paise") or 0)
+    elif allocated is not None:
+        amt = int(allocated.get(payment.get("id"), 0))
+    else:
+        amt = sum(int(a.get("allocated_paise") or 0)
+                  for a in (payment.get("allocations") or [])
+                  if a.get("purchase_bill_id") == purchase_bill_id
+                  and not a.get("is_voided"))
+    return {**payment, "allocated_to_bill_paise": amt}
+
+
+# ---------------------------------------------------------------------------
 # List
 # ---------------------------------------------------------------------------
 
@@ -276,7 +333,8 @@ def list_purchase_payments(
         if vendor_id:
             results = [p for p in results if p.get("vendor_id") == vendor_id]
         if purchase_bill_id:
-            results = [p for p in results if p.get("purchase_bill_id") == purchase_bill_id]
+            results = [_with_allocated_to(p, purchase_bill_id) for p in results
+                       if _settles_bill(p, purchase_bill_id)]
         if from_date:
             results = [p for p in results if p.get("payment_date", "") >= from_date]
         if to_date:
@@ -295,14 +353,39 @@ def list_purchase_payments(
         )
         if vendor_id:
             query = query.eq("vendor_id", vendor_id)
+        allocated_to_bill: dict = {}
         if purchase_bill_id:
-            query = query.eq("purchase_bill_id", purchase_bill_id)
+            # A BILL'S PAYMENTS ARE BOTH SHAPES (PUR-22). The legacy single-bill
+            # payment carries `purchase_bill_id`; a payment that settled this
+            # bill among several carries a `purchase_payment_allocations` row
+            # instead and this column is NULL. Filtering on the column alone
+            # showed the bill as unpaid-by-anything while its `paid_paise` said
+            # otherwise — and "no payments" reads as a missing record, not as a
+            # query that could not see one.
+            allocated_to_bill = _allocations_for_bill(db, purchase_bill_id)
+            ids = list(allocated_to_bill)
+            if ids:
+                # PostgREST `or` — quoting each id keeps a comma-free UUID safe
+                # and is what the client builds for an in-list anyway.
+                quoted = ",".join(f'"{i}"' for i in ids)
+                query = query.or_(
+                    f"purchase_bill_id.eq.{purchase_bill_id},id.in.({quoted})")
+            else:
+                query = query.eq("purchase_bill_id", purchase_bill_id)
         if from_date:
             query = query.gte("payment_date", from_date)
         if to_date:
             query = query.lte("payment_date", to_date)
         resp = query.range(offset, offset + limit - 1).execute()
-        return api_response(True, resp.data or [])
+        rows = resp.data or []
+        if purchase_bill_id:
+            # WHAT THIS PAYMENT PUT AGAINST THIS BILL, which is not
+            # `amount_paise` once one payment settles several: a Rs 4,50,000
+            # NEFT listed against a Rs 50,000 bill without this reads as a
+            # gross overpayment.
+            rows = [_with_allocated_to(r, purchase_bill_id, allocated_to_bill)
+                    for r in rows]
+        return api_response(True, rows)
     except Exception as e:
         _logger.error("list_purchase_payments error: %s", e)
         return api_response(False, None,
@@ -360,6 +443,33 @@ def create_purchase_payment(
     payment_mode = data.get("payment_mode", "bank")
     payment_date = data.get("payment_date", str(datetime.now(timezone.utc).date()))
     purchase_bill_id = data.get("purchase_bill_id")
+    allocations = data.get("allocations") or []
+
+    # ── ONE PAYMENT, SEVERAL BILLS (PUR-22) ─────────────────────────────────
+    # A practice settles a month's supplier bills with one NEFT.
+    # `purchase_payment_service.create_payment_core` has done exactly that
+    # since migration 226 — per-bill CAS, every allocation pre-validated
+    # against live outstanding BEFORE anything posts, the whole settlement
+    # compensated if any part of it fails — and until now its only caller was
+    # the bank match queue. From the Purchases screen the CA had to record six
+    # payments against one bank line (six fabricated references, six journal
+    # entries) or one unallocated payment that left all six bills showing as
+    # outstanding in the AP ageing.
+    #
+    # The single-bill path below is UNCHANGED and is still what a single-bill
+    # request takes. That is deliberate, and the reason is
+    # `reversal_service.reverse_payment`: it branches on
+    # `purchase_payments.purchase_bill_id`, rolling the bill back by the
+    # payment's whole AP relief where that column is set and by each
+    # allocation's own amount where it is NULL. So the column says WHICH SHAPE
+    # this payment is, not merely which bill it happened to pay — writing it
+    # from the allocation path would send a PARTLY allocated payment down the
+    # legacy branch and roll back more than the payment ever settled.
+    if allocations and purchase_bill_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Send either purchase_bill_id or allocations, not both — "
+                   "they are two shapes of the same fact.")
 
     # Validate posting date is not in a locked financial year (migration 020)
     period_validation_service.validate_posting_date(firm_id, payment_date)
@@ -385,6 +495,20 @@ def create_purchase_payment(
             "created_at": _now_iso(),
             "updated_at": _now_iso(),
         }
+        # `unallocated_paise` is what this payment has NOT discharged — the
+        # figure the AP ageing's advances section and `update_allocations_core`
+        # both read. Computed the same way create_payment_core computes it, so
+        # mock mode and the real path agree about what an advance is.
+        _allocated = sum(int(a.get("allocated_paise") or 0) for a in allocations)
+        if _allocated > amount_paise:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Total allocated ({_allocated} paise) exceeds payment "
+                       f"amount ({amount_paise} paise).")
+        payment["unallocated_paise"] = (
+            0 if purchase_bill_id else amount_paise - _allocated)
+        if allocations:
+            payment["allocations"] = [dict(a) for a in allocations]
         MOCK_PURCHASE_PAYMENTS.append(payment)
         return api_response(True, payment)
 
@@ -407,6 +531,19 @@ def create_purchase_payment(
         if _v[0].get("is_active") is False:
             raise HTTPException(status_code=422, detail="This vendor is inactive. Reactivate the vendor before recording a payment.")
         vendor = _v[0]
+        # PUR-22: from here the multi-bill engine owns everything — its own
+        # foreign-currency dispatch, the per-bill CAS settlement and the
+        # compensation. It repeats the vendor lookup above and that is cheap;
+        # doing it here first keeps "this vendor is not part of this client's
+        # books" a single sentence whichever shape the request took.
+        if allocations:
+            return api_response(True, purchase_payment_service.create_payment_core(
+                firm_id, data,
+                {"id": current_user.get("id"),
+                 "auth_user_id": current_user.get("auth_user_id"),
+                 "email": current_user.get("email")},
+                db,
+            ))
         # ── Multi-Currency (Phase 4): a foreign payment runs a dedicated realized-FX
         # path — the bill is relieved at ITS booked rate, cash at the payment's rate,
         # and the difference posts to Realized FX Gain/Loss. INR path below unchanged.

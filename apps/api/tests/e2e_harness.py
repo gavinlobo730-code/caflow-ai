@@ -360,6 +360,16 @@ class _Query:
             # silently drop it, which is how a wrong filter passes as a pass.
             raise NotImplementedError(f"FakeDB or() term not understood: {term!r}")
         c, op, v = parts
+        if op == "in":
+            # `col.in.("a","b")` — PostgREST's in-list inside an or(). The
+            # commas sit inside the parens, so _split_top has already kept the
+            # whole thing as ONE term. Each element may be quoted (which is how
+            # a value containing a comma is escaped) and is coerced the same
+            # way a scalar is, so `id.in.(1,2)` compares as ints.
+            if not (v.startswith("(") and v.endswith(")")):
+                raise NotImplementedError(f"FakeDB or() in-list not understood: {v!r}")
+            vals = [cls._coerce(e.strip().strip('"')) for e in v[1:-1].split(",") if e.strip()]
+            return row.get(c) in vals
         if op not in cls._OR_OPS:
             raise NotImplementedError(f"FakeDB or() operator not implemented: {op!r}")
         return cls._term(row, op, c, cls._coerce(v))

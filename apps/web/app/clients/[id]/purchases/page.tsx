@@ -39,6 +39,7 @@ import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { RecurringBills } from "@/components/purchases/RecurringBills";
 
 import { todayLocalISO } from "@/lib/dateMath";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -139,9 +140,10 @@ async function getAuthToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
-type PurchaseTab = "bills" | "vendors" | "payments" | "debit-notes" | "credit-notes";
+type PurchaseTab = "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes";
 const TABS: { id: PurchaseTab; label: string }[] = [
   { id: "bills", label: "Purchase Bills" },
+  { id: "recurring", label: "Recurring" },
   { id: "vendors", label: "Vendors" },
   { id: "payments", label: "Payments" },
   { id: "debit-notes", label: "Debit Notes" },
@@ -249,6 +251,7 @@ export default function PurchasesPage() {
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
         {tab === "bills" && <PurchaseBills clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "recurring" && <RecurringBills clientId={clientId} />}
         {tab === "vendors" && <Vendors clientId={clientId} />}
         {tab === "payments" && <Payments clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
         {tab === "debit-notes" && <DebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
@@ -2155,6 +2158,12 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [openBills, setOpenBills] = useState<{
     id: string; our_reference: string; bill_no: string | null; net_payable_paise: number;
+    // What is STILL PAYABLE — migration 278's generated column, read rather
+    // than re-subtracted (CLAUDE.md: the formula lives once, in the schema),
+    // and the same figure create_payment_core validates each allocation
+    // against, so what the CA is offered and what the server accepts agree.
+    outstanding_paise?: number | null;
+    bill_date?: string | null;
     txn_currency?: string | null; exchange_rate?: string | null; txn_net_payable?: number | null;
   }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2167,6 +2176,11 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
 
   const [vendorId, setVendorId] = useState("");
   const [billId, setBillId] = useState("");
+  // ONE PAYMENT, SEVERAL BILLS (PUR-22) — bill id -> the rupees typed against
+  // it, as text, because lib/money/rupeeInput is the only thing that turns a
+  // typed amount into paise and it takes the string. An absent or blank entry
+  // is "nothing against this bill", which is NOT the same as a typed 0.
+  const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [payDate, setPayDate] = useState(toDate());
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState("bank");
@@ -2226,6 +2240,53 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
     return isForeign ? (b.txn_net_payable ?? 0) : b.net_payable_paise;
   }
 
+  // ── One payment, several bills (PUR-22) ──────────────────────────────────
+  // Oldest first, which is both the order a practice settles in and the order
+  // "Apply oldest first" fills.
+  const allocatableBills = isForeign ? [] : [...visibleBills].sort(
+    (a, b) => (a.bill_date ?? "").localeCompare(b.bill_date ?? ""));
+
+  function billOpen(b: { outstanding_paise?: number | null; net_payable_paise: number }): number {
+    // A bill loaded before migration 278 reached this deployment has no
+    // column; falling back to net payable can only offer MORE than is open,
+    // and the server refuses an over-allocation, so the CA sees a refusal
+    // rather than a silent overpayment.
+    return Number(b.outstanding_paise ?? b.net_payable_paise ?? 0);
+  }
+
+  /** Paise typed against one bill; null when the text is not an amount. */
+  function allocPaise(billIdKey: string): number | null {
+    const typed = (alloc[billIdKey] ?? "").trim();
+    if (!typed) return 0;
+    return paiseFromRupeeInput(typed);
+  }
+
+  const allocEntries = allocatableBills
+    .map((b) => ({ bill: b, paise: allocPaise(b.id) }))
+    .filter((e) => e.paise === null || e.paise > 0);
+  const allocInvalid = allocEntries.some((e) => e.paise === null);
+  const allocTotal = allocEntries.reduce((s, e) => s + (e.paise ?? 0), 0);
+  const amountPaiseTyped = paiseFromRupeeInput((amount || "0").trim());
+  const unallocatedPaise = (amountPaiseTyped ?? 0) - allocTotal;
+
+  /** Fill the payment down the open bills, oldest first, until it runs out. */
+  function applyOldestFirst() {
+    let left = amountPaiseTyped ?? 0;
+    if (left <= 0) return;
+    const next: Record<string, string> = {};
+    for (const b of allocatableBills) {
+      if (left <= 0) break;
+      const take = Math.min(left, billOpen(b));
+      if (take <= 0) continue;
+      // Paise -> the rupee text the box holds. Integer division and remainder,
+      // never a float divide: 118000 paise is "1180.00", and 1e-2 arithmetic
+      // on a bigint is how a rounding error gets into a settlement.
+      next[b.id] = `${Math.trunc(take / 100)}.${String(take % 100).padStart(2, "0")}`;
+      left -= take;
+    }
+    setAlloc(next);
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     setLoadFailed(false);
@@ -2263,7 +2324,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
     const supabase = getSupabaseClient();
     const { data } = await selectAll(() => supabase
       .from("purchase_bills")
-      .select("id, our_reference, bill_no, net_payable_paise, txn_currency, exchange_rate, txn_net_payable")
+      .select("id, our_reference, bill_no, net_payable_paise, outstanding_paise, bill_date, txn_currency, exchange_rate, txn_net_payable")
       .eq("client_id", clientId)
       .eq("vendor_id", vId)
       .in("status", ["received", "partially_paid"])
@@ -2271,6 +2332,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
       .order("id"));
     setOpenBills(data ?? []);
     setBillId("");
+    setAlloc({});
   }
 
   async function handleSave() {
@@ -2287,6 +2349,22 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
       setMsg({ type: "err", text: `Enter a valid exchange rate for ${currency} → INR` });
       return;
     }
+    // PUR-22. The server refuses an over-allocation too (create_payment_core
+    // checks the sum before it posts anything, then each bill against its live
+    // outstanding), so this is the same refusal said sooner — not the rule.
+    if (allocInvalid) {
+      setMsg({ type: "err", text: "An allocation must be a number of rupees, e.g. 125000 or "
+                                  + "125000.50 — without commas." });
+      return;
+    }
+    if (!isForeign && allocTotal > amtPaise) {
+      setMsg({ type: "err", text: `Allocated ${fmt(allocTotal)} is more than the payment of `
+                                  + `${fmt(amtPaise)}. Reduce an allocation, or raise the amount.` });
+      return;
+    }
+    const allocations = isForeign ? [] : allocEntries.map((e) => ({
+      purchase_bill_id: e.bill.id, allocated_paise: e.paise as number,
+    }));
     setSaving(true); setMsg(null);
     try {
       const token = await getAuthToken();
@@ -2300,7 +2378,13 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
           amount_paise: amtPaise,
           payment_mode: mode,
           reference_no: refNo || undefined,
-          purchase_bill_id: billId || undefined,
+          // The two shapes are mutually exclusive and the server refuses both
+          // together: `purchase_bill_id` for the single foreign settlement
+          // (which has no multi-bill path), `allocations` for INR. An INR
+          // payment with nothing ticked sends neither and is a pure advance,
+          // which §194/§195 charge at payment as the earlier event.
+          purchase_bill_id: isForeign ? (billId || undefined) : undefined,
+          allocations: allocations.length ? allocations : undefined,
           currency: isForeign ? currency : undefined,
           exchange_rate: isForeign ? exchangeRate : undefined,
         },
@@ -2326,7 +2410,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
           : `Payment recorded.${gapText ? " " + gapText : ""}`,
       });
       setShowForm(false);
-      setVendorId(""); setBillId(""); setAmount(""); setRefNo(""); setMode("bank");
+      setVendorId(""); setBillId(""); setAlloc({}); setAmount(""); setRefNo(""); setMode("bank");
       setCurrency(""); setExchangeRate("");
       load();
     } catch (e) {
@@ -2471,26 +2555,26 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
                 />
               </div>
             )}
-            <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">
-                Against Bill {isForeign ? "*" : "(optional)"}
-              </label>
-              <EntityLookup
-                items={visibleBills}
-                value={billId}
-                onChange={setBillId}
-                getId={(b) => b.id}
-                getLabel={(b) => b.our_reference ?? b.bill_no ?? "—"}
-                getSecondary={(b) => fmtAmt(billDisplayAmt(b))}
-                getSearchFields={(b) => [b.our_reference ?? "", b.bill_no ?? ""]}
-                clearable={!isForeign}
-                placeholder={isForeign ? "— Select the bill this settles —" : "— Advance / Select bill —"}
-                ariaLabel="Against bill"
-              />
-              {isForeign && (
-                <p className="mt-1 text-[10px] text-[#94A3B8]">A foreign payment must be linked to the bill it settles — no unlinked foreign advance.</p>
-              )}
-            </div>
+            {isForeign && (
+              <div>
+                <label className="block text-xs font-medium text-[#475569] mb-1">
+                  Against Bill *
+                </label>
+                <EntityLookup
+                  items={visibleBills}
+                  value={billId}
+                  onChange={setBillId}
+                  getId={(b) => b.id}
+                  getLabel={(b) => b.our_reference ?? b.bill_no ?? "—"}
+                  getSecondary={(b) => fmtAmt(billDisplayAmt(b))}
+                  getSearchFields={(b) => [b.our_reference ?? "", b.bill_no ?? ""]}
+                  clearable={false}
+                  placeholder="— Select the bill this settles —"
+                  ariaLabel="Against bill"
+                />
+                <p className="mt-1 text-[10px] text-[#94A3B8]">A foreign payment must be linked to the bill it settles — no unlinked foreign advance, and one bill per payment.</p>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Date *</label>
               <input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -2510,6 +2594,102 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
               <input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
+
+          {/* ONE PAYMENT, SEVERAL BILLS (PUR-22). A practice settles a month's
+              supplier bills with one NEFT; six payments against one bank line
+              means six fabricated references and six journal entries. What is
+              not put against a bill is a vendor ADVANCE, and §194/§195 charge
+              at credit or payment whichever is earlier, so the server
+              withholds on the remainder — which is why it is shown. */}
+          {!isForeign && vendorId && (
+            <div className="border border-[#F1F5F9] rounded-lg">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-[#F1F5F9] bg-[#F8FAFC] rounded-t-lg">
+                <p className="text-xs font-semibold text-[#334155]">
+                  Settle bills{allocatableBills.length ? ` (${allocatableBills.length} open)` : ""}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={applyOldestFirst}
+                    disabled={!allocatableBills.length || !((amountPaiseTyped ?? 0) > 0)}
+                    className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] bg-white rounded-md hover:bg-[#F1F5F9] disabled:opacity-40"
+                  >
+                    Apply oldest first
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAlloc({})}
+                    disabled={!Object.keys(alloc).length}
+                    className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] bg-white rounded-md hover:bg-[#F1F5F9] disabled:opacity-40"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              {allocatableBills.length === 0 ? (
+                <p className="px-3 py-3 text-[11px] text-[#94A3B8]">
+                  This vendor has no open bills. The whole payment is recorded as an advance.
+                </p>
+              ) : (
+                <div className="max-h-56 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-[10px] uppercase tracking-wide text-[#94A3B8]">
+                      <tr>
+                        <th className="text-left font-medium px-3 py-1.5">Bill</th>
+                        <th className="text-left font-medium px-3 py-1.5">Date</th>
+                        <th className="text-right font-medium px-3 py-1.5">Open</th>
+                        <th className="text-right font-medium px-3 py-1.5 w-36">Allocate (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allocatableBills.map((b) => {
+                        const open = billOpen(b);
+                        const typed = alloc[b.id] ?? "";
+                        const bad = typed.trim() !== "" && paiseFromRupeeInput(typed) === null;
+                        return (
+                          <tr key={b.id} className="border-t border-[#F8FAFC]">
+                            <td className="px-3 py-1.5 text-[#1E293B]">{b.our_reference ?? b.bill_no ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-[#64748B]">{b.bill_date ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-[#475569]">{fmt(open)}</td>
+                            <td className="px-3 py-1.5 text-right">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={typed}
+                                onChange={(e) => setAlloc((a) => ({ ...a, [b.id]: e.target.value }))}
+                                placeholder="0.00"
+                                aria-label={`Allocate to ${b.our_reference ?? b.bill_no ?? "bill"}`}
+                                aria-invalid={bad || undefined}
+                                className={`w-32 px-2 py-1 text-xs border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${bad ? "border-red-400 bg-red-50" : "border-[#E2E8F0]"}`}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="flex items-center justify-between px-3 py-2 border-t border-[#F1F5F9] text-xs">
+                <span className="text-[#64748B]">Allocated</span>
+                <span className="tabular-nums font-semibold text-[#1E293B]">{fmt(allocTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2 border-t border-[#F1F5F9] text-xs rounded-b-lg">
+                <span className="text-[#64748B]">
+                  Unallocated {unallocatedPaise > 0 ? "(recorded as an advance)" : ""}
+                </span>
+                <span className={`tabular-nums font-semibold ${unallocatedPaise < 0 ? "text-red-600" : "text-[#1E293B]"}`}>
+                  {fmt(unallocatedPaise)}
+                </span>
+              </div>
+              {unallocatedPaise < 0 && (
+                <p className="px-3 pb-2 text-[10px] text-red-600">
+                  More is allocated than the payment is for.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-3 justify-end">
             <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
             <button onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">{saving ? "Saving…" : "Record Payment"}</button>

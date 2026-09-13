@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from routers.sales_invoices import _compute_line_gst, _round_off_paise  # noqa: E402
 from domain.gst import discount as gst_discount  # noqa: E402
+from domain.gst import compensation_cess  # noqa: E402
 
 # .../apps/api/tests/<this file> -> repo root
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
@@ -237,7 +238,57 @@ def build():
             },
         })
 
+    # ── GST compensation cess ───────────────────────────────────────────────
+    # GST (Compensation to States) Act 2017 s.8(2) levies "on the basis of
+    # value, quantity or on such basis", so the two limbs are pinned
+    # separately AND together. The browser mirror is
+    # apps/web/lib/money/cessLine.lineCess.
+    #
+    # (label, qty, rate-in-rupees, gst%, cess_rate_bps, cess_specific_paise_per_unit)
+    CESS_CASES = [
+        ("ad valorem 12% — aerated waters",      "1", "1000.00", 28, 1200, 0),
+        ("ad valorem floors, never rounds",      "1", "333.33", 18, 333, 0),
+        ("specific per unit — coal Rs.400/tonne","2.5", "5000.00", 5, 0, 40000),
+        ("specific with a fractional quantity",  "0.335", "100.00", 18, 0, 100),
+        ("both limbs — cigarettes 5% + per 1000","1000", "10.00", 28, 500, 207),
+        ("no cess at all is nil, not an error",  "1", "1000.00", 18, 0, 0),
+        ("cess above 100% — tobacco entries",    "1", "1000.00", 28, 29000, 0),
+        ("cess on a zero taxable value",         "0", "1000.00", 18, 1200, 4000),
+        ("odd ad valorem: 1 paise of taxable",   "1", "0.01", 18, 1200, 0),
+        ("large: 1 crore at 22%",                "1", "10000000.00", 28, 2200, 0),
+    ]
+    cess = []
+    for label, qty_str, rate_str, gst_pct, rate_bps, per_unit in CESS_CASES:
+        quantity = float(qty_str)
+        rate_paise = js_round(float(rate_str) * 100)
+        bps = int(round(float(gst_pct) * 100))
+        taxable = int(Decimal(str(quantity)) * rate_paise)
+        c, sg, ig = _compute_line_gst(taxable, bps, False)
+        lc = compensation_cess.line_cess(
+            taxable_paise=taxable, quantity=quantity,
+            cess_rate_bps=rate_bps, cess_specific_paise_per_unit=per_unit)
+        cess.append({
+            "label": label,
+            "qty": qty_str,
+            "rate": rate_str,
+            "gst_rate_percent": gst_pct,
+            "cess_rate_bps": rate_bps,
+            "cess_specific_paise_per_unit": per_unit,
+            "payload": {"quantity": quantity, "rate_paise": rate_paise,
+                        "gst_rate_bps": bps},
+            "expected": {
+                "taxable_paise": taxable,
+                "ad_valorem_paise": lc.ad_valorem_paise,
+                "specific_paise": lc.specific_paise,
+                "cess_paise": lc.cess_paise,
+                # What the line is worth once every head is on it — the figure
+                # the editor foots the invoice from.
+                "line_total_paise": taxable + c + sg + ig + lc.cess_paise,
+            },
+        })
+
     return {
+        "cess": cess,
         "discounts": discounts,
         "documents": documents,
         "_comment": (
@@ -258,4 +309,4 @@ if __name__ == "__main__":
         fh.write("\n")
     d = build()
     print(f"wrote {len(d['vectors'])} vectors + {len(d['documents'])} documents "
-          f"+ {len(d['discounts'])} discounts -> {FIXTURE}")
+          f"+ {len(d['discounts'])} discounts + {len(d['cess'])} cess -> {FIXTURE}")

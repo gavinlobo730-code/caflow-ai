@@ -86,6 +86,13 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client", "effective_client_ids",
         "_assert_template_scope",
     ),
+    # ACC-06's last screen. `_scoped` resolves the template and asserts the
+    # caller may reach its client in one step, so no endpoint can load a
+    # template without asking — the shape /api/billing's `_assert_invoice_scope`
+    # uses, for the same reason.
+    "/api/recurring-journals": (
+        "assert_client_access", "filter_by_client", "_scoped",
+    ),
     "/api/memory": (
         "assert_client_access", "filter_by_client",
         "_assert_trigger_scope", "_assert_anomaly_scope", "_assert_firmwide",
@@ -955,6 +962,31 @@ EXEMPT: dict[str, str] = {
     "/api/accounting/schedule-iii/captions":
         "a statutory vocabulary, not data: no table, no client_id, and the same "
         "captions for every firm. The PATCH that stores one is guarded.",
+    # ── /api/itr: the list of ITR forms, which is the Department's not ours ──
+    # The seven forms the product can prepare, derived from `itr_json.ITRForm`
+    # and paired with the committed Department schema backing each. It reads no
+    # table, takes no client_id, and returns the same seven for every firm in
+    # India. A client guard here would have to invent a client to check.
+    #
+    # Same reason as the captions above, and the same history: the filing SCREEN
+    # held its own list of four while the mappings and schemas existed for all
+    # seven, so a salaried (ITR-1/2) or presumptive (ITR-4) client could not
+    # have a filing record created at all. POST /api/itr/filings — the path that
+    # USES a form — is client-guarded where it belongs.
+    "/api/itr/forms":
+        "the Department's form list, not data: no table, no client_id, and the "
+        "same seven for every firm. The POST that stores one is guarded.",
+    # ── /api/itr: the three KINDS of return, which are the Act's not ours ────
+    # s. 139(1), s. 139(5) and s. 139(8A), their windows and s. 140B's bands.
+    # Pure statute over an assessment year — it reads no table, takes no
+    # client_id, and answers the same for every firm in India. The s. 140B
+    # figures it can be given (tax, interest, a filing date) come from the
+    # CALLER and are computed on, never fetched: nothing about a client is read
+    # or written. POST /api/itr/filings, which records the kind against a
+    # client, is client-guarded where it belongs.
+    "/api/itr/return-kinds":
+        "the Act's own return kinds and windows: no table, no client_id, and "
+        "the same answer for every firm. The POST that records one is guarded.",
     # ── /api/identity: the role matrix, which is about ROLES not clients ────
     # What each of the five roles can reach, straight out of
     # core/permissions.py's PERMISSIONS. It reads no table, takes no client_id,
@@ -1628,6 +1660,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/clients/{client_id}/knowledge": 1,
               "/api/lifecycle": 19, "/api/payroll": 16,
               "/api/recurring-invoices": 11,
+              "/api/recurring-journals": 9,
               "/api/memory": 14,
               "/api/tasks": 15, "/api/task-recurring": 9,
               "/api/tds-workspace": 12,
@@ -1863,6 +1896,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.purchase_bills", "routers.engagement_letters",
                    "routers.workflow_builder", "routers.lifecycle",
                    "routers.payroll", "routers.recurring_invoices",
+                   "routers.recurring_journals",
                    "routers.memory_intelligence", "routers.tasks",
                    "routers.task_extras", "routers.task_recurring",
                    "routers.tds_workspace", "routers.tds",

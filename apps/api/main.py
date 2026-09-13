@@ -81,6 +81,8 @@ from routers import inventory  # Stock register + per-item ledger (migration 188
 from routers import firm_hsn_library  # Firm-owned, CA-curated HSN/SAC library (HSN/SAC redesign)
 from routers import firm_hsn_rate_history  # Per-firm rate history, mechanism only (Decision D)
 from routers import recurring_invoices
+from routers import recurring_purchase_bills
+from routers import recurring_journals
 from routers import compliance_ops
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
 from routers import party_credits
@@ -363,6 +365,8 @@ app.include_router(sales_debit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_credit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(customer_statements.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_invoices.router, dependencies=_CLIENT_GUARD)
+app.include_router(recurring_purchase_bills.router, dependencies=_CLIENT_GUARD)
+app.include_router(recurring_journals.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_ops.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_bills.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_payments.router, dependencies=_CLIENT_GUARD)

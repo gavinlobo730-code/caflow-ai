@@ -27,6 +27,7 @@ import {
   splitLineGst,
   taxablePaise,
 } from "./gstLine.ts";
+import { lineCess } from "./cessLine.ts";
 import { previewTotals } from "../invoices/gst.ts";
 import { toInvoiceLinePayload } from "../invoices/lineItemPayload.ts";
 
@@ -277,4 +278,68 @@ test("the payload builder and the preview share one rupee→paise conversion", (
     });
     assert.equal(payload.rate_paise, ratePaiseFromRupees(rate), `rate ${rate}`);
   }
+});
+
+// ── GST compensation cess ───────────────────────────────────────────────────
+// GST (Compensation to States) Act 2017 s.8(2). The same coupling as every
+// block above: these numbers are generated from
+// apps/api/domain/gst/compensation_cess.py and asserted there too, so the
+// browser and the server cannot disagree about a levy by a paise.
+
+for (const v of fixture.cess as Array<Record<string, never>>) {
+  const c = v as unknown as {
+    label: string;
+    qty: string;
+    rate: string;
+    cess_rate_bps: number;
+    cess_specific_paise_per_unit: number;
+    payload: { quantity: number; rate_paise: number };
+    expected: {
+      taxable_paise: number;
+      ad_valorem_paise: number;
+      specific_paise: number;
+      cess_paise: number;
+    };
+  };
+  test(`cess parity: ${c.label}`, () => {
+    const taxable = taxablePaise(
+      quantityFromInput(c.qty),
+      ratePaiseFromRupees(c.rate),
+    );
+    assert.equal(taxable, c.expected.taxable_paise, "taxable");
+    const got = lineCess(
+      taxable,
+      quantityFromInput(c.qty),
+      c.cess_rate_bps,
+      c.cess_specific_paise_per_unit,
+    );
+    assert.equal(got.ad_valorem_paise, c.expected.ad_valorem_paise, "ad valorem");
+    assert.equal(got.specific_paise, c.expected.specific_paise, "specific");
+    assert.equal(got.cess_paise, c.expected.cess_paise, "cess");
+  });
+}
+
+test("cess floors like the GST heads — 333.33 @ 3.33% is 1109 paise, not 1110", () => {
+  assert.equal(lineCess(33_333, 1, 333, 0).cess_paise, 1109);
+});
+
+test("the two limbs are added, never compared", () => {
+  // Cigarettes: 5% of value PLUS a figure per thousand sticks. A max() would
+  // under-charge every such line by whichever limb it discarded.
+  const both = lineCess(1_000_000, 1000, 500, 207);
+  assert.equal(both.ad_valorem_paise, 50_000);
+  assert.equal(both.specific_paise, 207_000);
+  assert.equal(both.cess_paise, 257_000);
+});
+
+test("a half-typed field previews nil rather than throwing", () => {
+  // The server refuses these with a 422 on submit; the preview must not blow
+  // up while the CA is still typing.
+  for (const bad of [NaN, -1, Infinity]) {
+    assert.equal(lineCess(100_000, 1, bad, 0).cess_paise, 0);
+    assert.equal(lineCess(100_000, 1, 0, bad).cess_paise, 0);
+    assert.equal(lineCess(bad, 1, 1200, 0).cess_paise, 0);
+    assert.equal(lineCess(100_000, bad, 0, 4000).cess_paise, 0);
+  }
+  assert.equal(lineCess(100_000, 1, null, undefined).cess_paise, 0);
 });

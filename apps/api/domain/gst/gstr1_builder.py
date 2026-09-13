@@ -780,8 +780,9 @@ def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int)
             "qty": round(data["qty"], 3),
             # csamt was omitted here while every other table's `val` includes
             # cess, so an HSN row's value understated a cess-bearing supply.
-            # Latent today — client_sales_invoice_lines has no cess column, so
-            # line cess is always 0 — but wrong the moment one is added.
+            # Latent until migration 374 gave `client_sales_invoice_lines` a
+            # cess column (SALES-20) and `gst_return_service._document_lines`
+            # started reading it; live now.
             "val": _paise_to_rupees(data["txval"] + data["iamt"] + data["camt"]
                                     + data["samt"] + data["csamt"]),
             "txval": _paise_to_rupees(data["txval"]),

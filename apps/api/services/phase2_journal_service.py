@@ -68,6 +68,8 @@ class Phase2JournalService:
         Dr Trade Receivables = total_paise
         Cr Sales Revenue     = taxable_amount_paise
         Cr GST Output (CGST/SGST/IGST) as applicable — per-head accounts.
+        Cr Compensation Cess Payable = cess_paise (its own ledger — GST
+           (Compensation to States) Act 2017 s.8 with s.11(2), proviso).
         CGST Act §9: GST on taxable outward supplies.
         CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
         """
@@ -132,6 +134,24 @@ class Phase2JournalService:
                     "debit_paise": 0,
                     "credit_paise": invoice["igst_paise"],
                     "narration": "IGST output tax payable",
+                })
+
+            # GST compensation cess — its OWN liability ledger, never the GST
+            # Output account. GST (Compensation to States) Act 2017 s.11(2),
+            # proviso: credit of this cess "shall be utilised only towards
+            # payment of cess". Booking it into GST Output would put it where
+            # the s.49(5) set-off can reach it in the books, asserting an
+            # offset the electronic credit ledger will not perform.
+            if invoice.get("cess_paise", 0) > 0:
+                cess_id = self._find_account(
+                    db, firm_id, client_id, "%Compensation Cess Payable%",
+                    system_key="gst_cess_output",
+                )
+                lines.append({
+                    "account_id": cess_id,
+                    "debit_paise": 0,
+                    "credit_paise": invoice["cess_paise"],
+                    "narration": "Compensation cess payable — Compensation Act s.8",
                 })
 
             # Invoice-level round-off — post the nearest-₹1 adjustment to the
@@ -622,6 +642,8 @@ class Phase2JournalService:
         """
         Dr Purchases/Expense account = taxable_amount_paise
         Dr GST Input Tax Credit (CGST/SGST/IGST) as applicable
+        Dr Compensation Cess Input Credit = creditable cess (its own ledger —
+           GST (Compensation to States) Act 2017 s.11(2), proviso)
         Cr Trade Payables = net_payable_paise  (total - tds)
         Cr TDS Payable    = tds_paise (if >0)
         IT Act §194C/194I/194J: TDS deducted at source.
@@ -660,7 +682,8 @@ class Phase2JournalService:
             # Purchases/Expense account. Grouping keeps one debit per distinct account.
             line_rows = (db.table("purchase_bill_lines")
                          .select("expense_account_id, taxable_amount_paise, "
-                                 "itc_eligible, cgst_paise, sgst_paise, igst_paise")
+                                 "itc_eligible, cgst_paise, sgst_paise, igst_paise, "
+                                 "cess_paise")
                          .eq("bill_id", bill.get("id")).execute().data) or []
             by_account: dict = {}
             for lr in line_rows:
@@ -696,9 +719,16 @@ class Phase2JournalService:
             # the per-line split cannot be trusted, so the blocked tax goes to
             # the one resolved expense account; the total is right either way,
             # and the alternative (leaving it on GST Input) is the defect.
+            # Compensation cess is in this sum for the same reason the three GST
+            # heads are: s.11(2) of the Compensation Act applies the CGST Act
+            # to this levy mutatis mutandis, s.17(5) included, so a blocked
+            # line's cess is equally unrecoverable and equally part of what the
+            # supply cost. `ineligible_itc_cess_paise` has existed since
+            # migration 240 and had no figure to hold until now.
             blocked_total = (int(bill.get("ineligible_itc_cgst_paise") or 0)
                              + int(bill.get("ineligible_itc_sgst_paise") or 0)
-                             + int(bill.get("ineligible_itc_igst_paise") or 0))
+                             + int(bill.get("ineligible_itc_igst_paise") or 0)
+                             + int(bill.get("ineligible_itc_cess_paise") or 0))
             if blocked_total:
                 per_line_blocked: dict = {}
                 for lr in line_rows:
@@ -708,7 +738,8 @@ class Phase2JournalService:
                     per_line_blocked[acc] = per_line_blocked.get(acc, 0) + (
                         int(lr.get("cgst_paise") or 0)
                         + int(lr.get("sgst_paise") or 0)
-                        + int(lr.get("igst_paise") or 0))
+                        + int(lr.get("igst_paise") or 0)
+                        + int(lr.get("cess_paise") or 0))
                 if sum(per_line_blocked.values()) != blocked_total:
                     # The header is the authority — it is what the return reads
                     # (migration 240 keeps it as the lines' sum precisely so
@@ -755,6 +786,26 @@ class Phase2JournalService:
                     "narration": "IGST input tax credit",
                 })
 
+            # Compensation cess credit is its OWN asset, never GST Input.
+            # s.11(2) of the Compensation Act, proviso: it "shall be utilised
+            # only towards payment of cess". One ledger for both would let the
+            # books show a set-off the electronic credit ledger refuses, and
+            # GSTR-3B keeps the head separate for exactly that reason. The
+            # s.17(5) portion is already on the expense accounts above.
+            creditable_cess = (int(bill.get("cess_paise") or 0)
+                               - int(bill.get("ineligible_itc_cess_paise") or 0))
+            if creditable_cess > 0:
+                cess_input_id = self._find_account(
+                    db, firm_id, client_id, "%Compensation Cess Input%",
+                    system_key="gst_cess_input",
+                )
+                lines.append({
+                    "account_id": cess_input_id,
+                    "debit_paise": creditable_cess,
+                    "credit_paise": 0,
+                    "narration": "Compensation cess input credit — Compensation Act s.8",
+                })
+
             net_payable = bill.get("net_payable_paise", bill["total_paise"])
             lines.append({
                 "account_id": payables_id,
@@ -796,6 +847,24 @@ class Phase2JournalService:
                             "credit_paise": amt,
                             "narration": f"{head} payable under reverse charge — CGST Act §9(3)/(4)",
                         })
+                # The cess on a reverse-charge inward supply is self-assessed
+                # the same way, and to its own ledger — see the creditable-cess
+                # comment above for why it is never the GST Output account.
+                # total_paise excludes it on an RCM bill (the vendor charged
+                # nothing), so this credit is what balances the Dr above.
+                _rcm_cess = int(bill.get("cess_paise") or 0)
+                if _rcm_cess > 0:
+                    cess_out_id = self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Payable%",
+                        system_key="gst_cess_output",
+                    )
+                    lines.append({
+                        "account_id": cess_out_id,
+                        "debit_paise": 0,
+                        "credit_paise": _rcm_cess,
+                        "narration": ("Compensation cess payable under reverse charge "
+                                      "— Compensation Act s.8 with s.11(2)"),
+                    })
 
             section_note = bill.get("tds_section", "194C") if tds_paise > 0 else "NA"
             rcm_note = " (reverse charge, CGST Act §9)" if bill.get("is_reverse_charge") else ""
@@ -921,28 +990,92 @@ class Phase2JournalService:
             raise
 
     @staticmethod
-    def _build_payroll_lines(account_ids: dict, run: dict) -> list[dict]:
-        """Build a BALANCED payroll-accrual journal (fixes F13).
+    def _payroll_employer_contribution(db, run: dict) -> int:
+        """The employer's own contribution for a run, summed off its SLIPS.
 
-        The employer's total cost of employment = gross wages + employer PF/ESI.
-        By the payroll identity (net = gross − employee PF − employee ESI − PT −
-        TDS, and total_pf/total_esi carry employee+employer), that total equals
-        (net + PF + ESI + PT + TDS) — i.e. the sum of every payable credit. Booking
-        the Salaries Expense debit as that sum makes the entry balance by
-        construction, whatever the mix of contributions. The prior code debited
-        only `gross`, leaving it short by the employer PF/ESI, so _create_journal's
-        balance check raised and finalization 500'd on essentially every run.
+        Schedule III Part II (b). `payroll_runs` carries only the combined
+        `total_pf_paise` and `total_esi_paise`, so the employer half cannot be
+        recovered from the header at all — it is on `payroll_slips` per member
+        (migrations 054/093), plus the two run-level figures that are employer
+        cost by definition: EDLI and the EPF administrative charge (migration
+        329, and the admin charge carries a per-ESTABLISHMENT floor settled on
+        the run rather than per slip, which is why it is not summed here).
 
-        Employer PF/ESI is folded into Salaries Expense here (matching the module's
-        single-expense-account design). A future enhancement could split it into a
-        dedicated "Contribution to PF & Other Funds" account for the Schedule III
-        employee-benefit sub-classification — see roadmap.
+        Paged, because a large client's run legitimately exceeds PostgREST's
+        1000-row cap and a truncated read here would silently understate the
+        contribution — and the identity check in `_build_payroll_lines` would
+        then refuse the whole finalisation, which is the right failure but a
+        baffling one to meet.
+        """
+        run_id = run.get("id")
+        if not run_id:
+            return 0
+        from core.db_paging import fetch_all
+        rows = fetch_all(
+            lambda: db.table("payroll_slips")
+                      .select("id, pf_employer_paise, esi_employer_paise")
+                      .eq("run_id", run_id),
+            label="payroll_slips.employer_contribution",
+        )
+        per_member = sum(int(r.get("pf_employer_paise") or 0)
+                         + int(r.get("esi_employer_paise") or 0) for r in rows)
+        return (per_member
+                + int(run.get("total_edli_paise") or 0)
+                + int(run.get("total_pf_admin_paise") or 0))
 
-        EDLI AND THE ADMIN CHARGE ARE PART OF THAT COST TOO (migration 329), and
-        were not here at all until then. Because the debit is DEFINED as the sum
-        of the credits, adding them to the PF Payable credit raises the salary
-        expense by the same amount automatically — the entry stays balanced by
-        construction and the employer's cost stops being understated.
+    @staticmethod
+    def _build_payroll_lines(account_ids: dict, run: dict,
+                             employer_contribution_paise: int) -> list[dict]:
+        """Build a payroll-accrual journal with the employee-benefit heads SPLIT.
+
+        Dr Salaries and Wages                    = gross (IT Act s.17(1))
+        Dr Contribution to Provident and Other Funds = employer PF + EDLI +
+                                                   admin charge + employer ESI
+          Cr the payables
+
+        WHY TWO DEBITS (PAY-25)
+
+        Schedule III to the Companies Act 2013, Division I, Part II requires
+        "Employee Benefits Expense" to be presented as (a) salaries and wages,
+        (b) contribution to provident and other funds, (c) share based payments
+        and (d) staff welfare expenses. One combined debit makes (b) NIL on
+        every payroll client's note and overstates (a) by exactly the employer's
+        contribution — a wrong disclosure, monthly, in books this product
+        produces.
+
+        WHAT THE SECOND DEBIT HOLDS, AND ONE THING IT ARGUABLY SHOULD NOT.
+        Employer PF (12%), EDLI (0.5%, EDLI 1976) and employer ESI (3.25%) are
+        contributions. The EPF ADMINISTRATIVE CHARGE is strictly a fee to the
+        EPFO rather than a contribution to a fund — it is grouped here because
+        it is remitted on the same monthly challan, is universally presented
+        with PF in Indian statements, and splitting it would need a fourth
+        account for a figure that is 0.5% of PF wages.
+
+        THE INVARIANT CHANGED SHAPE, AND THAT IS THE POINT. The debit used to be
+        DEFINED as sum(credits), so the entry balanced whatever the run held and
+        the kernel's balance check could not catch a mis-computed run — the old
+        comment said so, and a range guard stood in for it. Now the salaries
+        debit is `gross` and the contribution debit comes from the SLIPS, so the
+        two sides are computed independently and `_create_journal`'s assertion
+        does its job again. The explicit identity below fires first so a CA gets
+        a sentence naming the discrepancy rather than a kernel assertion.
+
+        `employer_contribution_paise` is passed in rather than read off `run`
+        because `payroll_runs` stores only the COMBINED `total_pf_paise` and
+        `total_esi_paise`; the employer share lives on `payroll_slips`
+        (`pf_employer_paise`, `esi_employer_paise` — migrations 054/093).
+        `journal_for_payroll` sums them. Keeping this function pure keeps it
+        unit-testable, which is how F13 and migration 329's omission were both
+        caught.
+
+        HISTORIC ENTRIES KEEP THE ONE-LINE SHAPE. A posted journal cannot be
+        rewritten (migration 251), so every run finalised before this change
+        stays as a single Salaries Expense debit. Anything reading the ledger
+        for the Schedule III note therefore meets both shapes, and the caption
+        is the same for both accounts (`domain/reporting/schedule_iii.py`
+        buckets any subtype containing "employee", "salary", "wages" or "staff"
+        into Employee Benefits Expense) — so the CAPTION total is right on both
+        sides of the change and only the note's sub-split differs.
         """
         net = run["total_net_paise"]
         pf = run["total_pf_paise"]
@@ -996,30 +1129,49 @@ class Phase2JournalService:
                             "Advances recovered from net pay — reduces the receivable"))
 
         total_cost = sum(amount for _, amount, _ in credits)  # = gross + employer PF/ESI
-
-        # Defensive invariant (fail loud instead of posting a wrong-but-balanced
-        # journal): because the debit is DEFINED as sum(credits), the kernel's
-        # balance check can no longer catch a mis-computed run. total_cost must equal
-        # gross + employer PF/ESI, hence lie in [gross, gross + PF + ESI]. A value
-        # below gross means `net` was reduced by a deduction with no matching credit
-        # leg here (e.g. a future loan/advance recovery) — which would silently
-        # understate salary expense. Guarded so that regression surfaces immediately.
         gross = int(run.get("total_gross_paise") or 0)
-        # The upper bound widened with migration 329: EDLI and the admin charge
-        # are employer cost on top of the 12%, so the total legitimately exceeds
-        # gross + pf + esi by exactly them. Widening it by anything less would
-        # make this guard fire on every correct run.
-        ceiling = gross + pf + esi + edli + pf_admin
-        if gross and not (gross <= total_cost <= ceiling):
+        contribution = int(employer_contribution_paise or 0)
+
+        # THE EXACT IDENTITY, replacing the range guard this used to need.
+        #
+        # By the payroll identity — net = gross - employee PF - employee ESI -
+        # PT - TDS - recoveries, with total_pf/total_esi carrying employee AND
+        # employer — the sum of the payable credits is exactly
+        # gross + employer PF + EDLI + admin + employer ESI. So the two debits
+        # below must foot to it, and a run where they do not is mis-computed:
+        # a deduction with no credit leg here, or an employer share the slips
+        # and the run header disagree about.
+        #
+        # The old form could only be a RANGE, because the debit was defined as
+        # sum(credits) and there was nothing independent to compare it with.
+        if gross and gross + contribution != total_cost:
             raise ValueError(
-                f"Payroll journal identity violated: total_cost={total_cost} outside "
-                f"[{gross}, {ceiling}] — a deduction is missing a credit leg."
+                f"Payroll journal identity violated: gross {gross} + employer "
+                f"contribution {contribution} = {gross + contribution}, but the "
+                f"payable credits total {total_cost}. A deduction is missing a "
+                f"credit leg, or the slips and the run header disagree about the "
+                f"employer share."
             )
+        # A run with no stored gross (older fixtures, and mock-mode doubles)
+        # keeps the old behaviour rather than being refused: put everything on
+        # salaries, which is exactly what this entry did before PAY-25.
+        salaries = (gross if gross else total_cost - contribution)
 
         lines: list[dict] = [{
-            "account_id": account_ids["salary_exp"], "debit_paise": total_cost, "credit_paise": 0,
-            "narration": f"Salaries + employer statutory contributions for {month} — IT Act §192",
+            "account_id": account_ids["salary_exp"], "debit_paise": salaries, "credit_paise": 0,
+            "narration": f"Salaries and wages for {month} — IT Act §192",
         }]
+        # Schedule III Part II (b). Omitted entirely when nil, so a client with
+        # no PF or ESI keeps the two-line entry it has always had and is never
+        # asked to hold an account it will never post to.
+        if contribution > 0:
+            lines.append({
+                "account_id": account_ids["employer_contribution"],
+                "debit_paise": contribution,
+                "credit_paise": 0,
+                "narration": (f"Employer PF, EDLI, administrative charge and ESI "
+                              f"for {month} — EPF Act, EDLI 1976, ESI Act"),
+            })
         for account_id, amount, narration in credits:
             lines.append({"account_id": account_id, "debit_paise": 0, "credit_paise": amount,
                           "narration": narration})
@@ -1054,17 +1206,20 @@ class Phase2JournalService:
         EPF Act: PF Payable (employer + employee combined).
         ESI Act: ESI Payable. PT: state-wise Professional Tax Payable.
 
-        Dr  Salaries Expense        (gross wages + employer PF/ESI = total cost)
+        Dr  Salaries Expense        (gross wages — IT Act s.17(1))
+        Dr  Contribution to PF and Other Funds  (employer PF + EDLI + admin + ESI)
           Cr  Net Salary Payable    (net pay)
-          Cr  PF Payable            (employee + employer PF)
+          Cr  PF Payable            (employee + employer PF, EDLI, admin charge)
           Cr  ESI Payable           (employee + employer ESI)
           Cr  PT Payable
           Cr  TDS Payable - Salary
 
-        The debit is the employer's TOTAL cost of employment, so the entry
-        balances (see _build_payroll_lines). A prior version debited only `gross`,
-        which is short by the employer PF/ESI, so every finalization with the
-        default contributions failed the posting-kernel balance check (F13).
+        TWO DEBITS, because Schedule III Part II presents "Employee Benefits
+        Expense" split into salaries and wages, contribution to provident and
+        other funds, share based payments and staff welfare — see
+        _build_payroll_lines for why one combined debit made (b) nil on every
+        payroll client's note. The employer share is summed off the SLIPS,
+        which are the only place it is stored per member.
         """
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_payroll: %s", run.get("month"))
@@ -1077,6 +1232,24 @@ class Phase2JournalService:
             # Payroll accounts use name matching only — no system_account_key for these
             salary_exp_id  = self._find_account(db, firm_id, client_id, "%Salaries Expense%")
             net_sal_id     = self._find_account(db, firm_id, client_id, "%Net Salary Payable%")
+            # THE EMPLOYER SHARE COMES OFF THE SLIPS, not the run header.
+            # `payroll_runs` stores `total_pf_paise` and `total_esi_paise`
+            # COMBINED (employee + employer), and there is no column for either
+            # employer half — the split lives on `payroll_slips`
+            # (`pf_employer_paise`, `esi_employer_paise`, migrations 054/093).
+            # Reading the slips rather than adding two cached columns to the
+            # header means an OLD run finalised after this change splits
+            # correctly too, and there is no second figure to drift.
+            employer_contribution = self._payroll_employer_contribution(db, run)
+            # Resolved only when there IS one. _find_account RAISES on a missing
+            # account, and a client with no PF or ESI must not be required to
+            # hold a contribution ledger it will never post to — the same
+            # reasoning as the loans account below, and the reason migration 375
+            # backfills the account rather than this failing closed.
+            employer_contribution_id = None
+            if employer_contribution > 0:
+                employer_contribution_id = self._find_account(
+                    db, firm_id, client_id, "%Contribution to Provident%")
             # Looked up only when there IS a recovery. _find_account raises when
             # an account is missing, and a run that recovers nothing must not
             # require a receivable account it never touches — every firm whose
@@ -1094,8 +1267,10 @@ class Phase2JournalService:
                     "salary_exp": salary_exp_id, "net": net_sal_id, "pf": pf_id,
                     "esi": esi_id, "pt": pt_id, "tds": tds_sal_id,
                     "loans": loans_id,
+                    "employer_contribution": employer_contribution_id,
                 },
                 run,
+                employer_contribution,
             )
 
             return self._create_journal(

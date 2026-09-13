@@ -7,20 +7,20 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **73** | re-read against the code. The defect is gone. |
-| closed_by_commit | **159** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **9** | part of the finding is answered, part is not. Each says which. |
-| open | **33** | re-read and still true. |
+| closed | **83** | re-read against the code. The defect is gone. |
+| closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
+| partial | **10** | part of the finding is answered, part is not. Each says which. |
+| open | **23** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 42 items — 33 open and 9 partial — not 254.**
+**The work left is 33 items — 23 open and 10 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 33 open, most are not code problems.** Nearly every one needs a
+**And of the 23 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -31,34 +31,24 @@ migration; a handful need a statutory document a person has to read.
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
 | medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
-| medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **BANK-21** | Credit-card accounts are not supported at all |
 | medium | **BANK-24** | Bank-charge input tax credit is posted with no supplier GSTIN or invoice reference, so it can ne |
 | medium | **FA-08b** | No output tax on a fixed-asset disposal — the split half of FA-08 |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
-| medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
 | medium | **INV-02** | Moving average is the only costing method — no FIFO and no standard cost |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
-| medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
 | medium | **INV-08** | Physical verification is one item at a time, with no count sheet and no session |
-| medium | **IT-23** | The ITR filing workflow offers only ITR-3/5/6/7, has no revised or updated return path, and the  |
 | medium | **PAY-23** | Statutory bonus is computed only inside a leaver's settlement — there is no annual bonus run for |
-| medium | **PAY-25** | The payroll journal posts one Salaries Expense account and defines the debit as the sum of the c |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
-| medium | **PUR-16** | A second, orphaned vendor master at /accounting/suppliers that no purchase path reads |
 | medium | **PUR-18** | Import of goods has no path — no Bill of Entry, so the IGST paid to customs cannot be recorded a |
 | medium | **PUR-19** | Reverse-charge bills produce no self-invoice (§31(3)(f)) and no payment voucher (§31(3)(g)) |
-| medium | **PUR-20** | GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client |
-| medium | **PUR-22** | One payment settling several bills is not reachable from the Purchases screen — the multi-bill a |
 | medium | **PUR-25** | No purchase orders, goods receipt notes or three-way matching |
-| medium | **PUR-26** | No recurring purchase bills, though recurring sales invoices are fully built |
 | medium | **PUR-27** | No expense claim or petty cash module — every small expense needs a vendor and a purchase bill |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
-| medium | **TDS-23** | Eight commonly-used TDS sections are absent from the registry, including §194T on payments to pa |
 | low | **ACC-16** | Journal lines have no ordering column, so a voucher's Dr/Cr lines display in arbitrary order and |
 
 ### What actually blocks each of them
@@ -68,44 +58,37 @@ migration; a handful need a statutory document a person has to read.
 | **GST-11** | schema for a quarterly filing preference, plus IFF |
 | **GST-20** | a registrations table; clients.gstin is singular today |
 | **IT-19** | somewhere to record the reinvestment (the new asset, its date and cost, and the CGAS deposit) — a migration |
-| **BANK-11** | a match_type column, or a second pattern column — the rule row has neither |
+| **ACC-19** | an owner decision before any code. L3 is a per-client opt-in a CA would set, but turning it on alone changes nothing because the three are ANDed. L2 is documented as 'Commercial | is the practice entitled? (plan/beta)' — making it self-serve turns a commercial entitlement into a toggle the firm grants itself, which is a product call, not a code one. Half-building L3 is pointless; building both without deciding L2's nature is worse. |
 | **BANK-21** | a migration; a card is a liability account whose statement signs are the mirror of a bank's |
-| **BANK-24** | a migration for the two fields |
+| **BANK-24** | ONE FACT SETTLED FIRST, and it decides the schema. A bank does not issue an invoice per charge — the ordinary practice is a MONTHLY CONSOLIDATED GST invoice covering the month's charges, which reaches GSTR-2B as a single B2B document. If that is right, the finding's 'two fields on the charge' is the wrong shape: the GSTIN belongs on the RULE (constant per bank, beside 254's two columns) and the document reference belongs once per (bank account, month), with the matcher comparing the month's aggregate against one 2B row. Per-charge references would make every charge an unmatched document and leave the register noisier than it is now. ⚠️ [S] — the monthly-consolidated practice is written from knowledge; this environment's proxy refuses every egress, so it was not confirmed. Check one real bank GST invoice before choosing the shape. |
 | **FA-08b** | a migration for the disposal's tax split, and a decision on CGST s.18(6) |
 | **FA-11** | a migration per item. One hazard the finding does not name: a shift multiplier folded into wdv_rate_percent would make schedule_ii_departure report every double-shift asset as a Part C departure, so it must be its own column |
 | **GST-25** | schema per return type |
 | **GST-32** | the IRP schema, and the 30-day reporting-window rule |
 | **INV-03** | substantial inventory schema |
-| **INV-05** | apportionable-cost columns, and the same amount must flow into the inventory journal or stock_position_as_at stops tying to the control account |
 | **INV-08** | a session table |
-| **IT-23** | a status and a pointer to the original acknowledgement — a migration |
 | **PAY-23** | a bonus register, and the state minimum wage the Act computes on |
-| **PAY-25** | a per-department or per-account split needs somewhere to record the mapping |
 | **PAY-26** | schema for claims |
 | **PAY-27** | each bank's own file format |
-| **PUR-16** | ONE migration — vendors has 34 of the 36 columns already; only credit_limit_paise has no equivalent (payment_terms_days maps to credit_days). Repointing the screen without it would silently drop a recorded credit limit |
 | **PUR-19** | document series and templates |
-| **PUR-20** | cess columns on the line tables |
-| **PUR-22** | no migration (226 already has the table), but it is NOT the frontend-only change an earlier reading of this called it. The right shape is to make the router route to create_payment_core with a one-element allocation for the single-bill case, unifying the two paths — a change to a money path that posts to the GL, and one to make with the owner reachable rather than overnight |
 | **PUR-25** | three new document types |
-| **PUR-26** | a schedule table; the sales side is the pattern to copy |
 | **SALES-21** | four new document types |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |
-| **TDS-23** | the probe pass's warning stands: adding 194-IA/194-IB/194M to the registry turns a visible 422 into a silently mis-routed 26Q row, against two pinning tests and a documented refusal. Whatever is added needs the routing decided at the same time |
 | **ACC-16** | a migration adding the column, plus a backfill — and the probe pass warns migration 251's immutability trigger REFUSES that backfill outright, which the finding does not mention |
 
 ## Partial
 
 | severity | finding | what it is |
 |---|---|---|
-| high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
+| medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
-| medium | **PAY-15** | Attendance and LOP cannot be entered from the client Payroll tab at all — they live on a firm-wi |
+| medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
+| medium | **TDS-23** | Eight commonly-used TDS sections are absent from the registry, including §194T on payments to pa |
 | low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 
 
@@ -146,6 +129,7 @@ migration; a handful need a statutory document a person has to read.
 | critical | **SALES-02** | Invoice PDF prints a hardcoded 18% / 9% / 9% tax rate on every invoice regardless of the actual  |
 | critical | **TDS-01** | Annual-aggregate thresholds are not modelled for §194J, §194H, §194A, §194D, §194G or §194Q — th |
 | critical | **TDS-02** | §194Q withholds 0.1% of the whole invoice instead of 0.1% of the sum exceeding ₹50 lakh — a six- |
+| high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **BANK-07** | The Bank Book fetches every transaction on the account and computes the running balance in Pytho |
 | high | **FA-03** | The Depreciation tab recomputes the annual charge in TypeScript with the exact bug the backend f |
 | high | **FA-08** | Disposal does not charge depreciation up to the disposal date, so the gain/loss on every mid-yea |
@@ -170,10 +154,12 @@ migration; a handful need a statutory document a person has to read.
 | medium | **FA-19** | Rule 43 capital-goods ITC apportionment does not exist |
 | medium | **GST-17** | The HSN digit requirement is computed and then never applied or warned about, and the thresholds |
 | medium | **GST-18** | GSTR-1 Table 13 (documents issued) is missing the serial-number range the form requires |
+| medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |
 | medium | **GST-27** | The 2A/2B reconciliation engine is business logic in TypeScript and parses money with parseFloat |
 | medium | **GST-30** | A test encodes the assumption behind the reverse-charge underpayment, so the suite cannot catch  |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **INV-07** | Opening the Inventory tab walks the client's ENTIRE stock ledger |
+| medium | **IT-23** | The ITR filing workflow offers only ITR-3/5/6/7, has no revised or updated return path, and the  |
 | medium | **IT-24** | The Form 26AS parser is fixed-column and silently drops every line it cannot read, then marks th |
 | medium | **IT-25** | The ITR due date is chosen by entity type rather than by whether an audit applies, so a small fi |
 | medium | **IT-27** | The §115BAC(6) regime-election engine — Form 10-IEA, the due date, the once-only withdrawal lock |
@@ -181,13 +167,20 @@ migration; a handful need a statutory document a person has to read.
 | medium | **IT-31** | 26AS reconciliation never feeds the computation — the TDS credit on the return is a number the C |
 | medium | **PAY-10** | The TDS projection screen computes §192 in TypeScript with hardcoded FY 2025-26 new-regime rates |
 | medium | **PAY-13** | The client workspace's own employee form collects neither PAN, joining date, UAN, ESIC number, b |
+| medium | **PAY-15** | Attendance and LOP cannot be entered from the client Payroll tab at all — they live on a firm-wi |
 | medium | **PAY-17** | Annual professional tax for §16(iii) is estimated as this month's PT × 12 — six times the year's |
 | medium | **PAY-18** | `logger` is undefined in the /employee-exceptions error path — a failed declarations read raises |
 | medium | **PAY-24** | Leave is half-built: balances are invented in TypeScript as 12/12/15, nothing accrues or carries |
+| medium | **PAY-25** | The payroll journal posts one Salaries Expense account and defines the debit as the sum of the c |
 | medium | **PUR-12** | The reconciliation screen tells the CA that ITC is restricted to 105% of GSTR-2A — a cushion rep |
+| medium | **PUR-16** | A second, orphaned vendor master at /accounting/suppliers that no purchase path reads |
+| medium | **PUR-20** | GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client |
+| medium | **PUR-22** | One payment settling several bills is not reachable from the Purchases screen — the multi-bill a |
 | medium | **PUR-23** | Issuing a debit note (purchase return) does not resync the TDS register, so 26Q keeps reporting  |
 | medium | **PUR-24** | AP ageing lists only bills, so unallocated vendor advances are invisible and the ageing total do |
+| medium | **PUR-26** | No recurring purchase bills, though recurring sales invoices are fully built |
 | medium | **PUR-28** | Client-assignment scope is enforced on every purchase API endpoint and on none of the Purchases  |
+| medium | **SALES-20** | No GST compensation cess on a sales line |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **SALES-24** | Receipt and credit-note numbers take their financial year from today's date, not the document da |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |

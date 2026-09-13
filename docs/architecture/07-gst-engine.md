@@ -16,6 +16,12 @@ Indian GST is **statutory and filed in INR**. The engine computes tax at source 
 - **CGST Act §8** place-of-supply split: **intra-state → CGST + SGST** (half each); **inter-state → IGST**. Determined by comparing supplier vs customer state code.
 - Stored on the invoice: `taxable_amount_paise, cgst_paise, sgst_paise, igst_paise, total_gst_paise, total_paise` (and per line).
 
+### Compensation cess
+
+A fourth head, and deliberately not folded into the three above. GST (Compensation to States) Act 2017 §8(2) levies it "on the basis of **value, quantity or on such basis**", so a line carries `cess_rate_bps` (ad valorem) AND `cess_specific_paise_per_unit`, and the charge is their **sum** — coal is per tonne, aerated waters a percentage, cigarettes both (migration 374). `domain/gst/compensation_cess.py` is the authority; `apps/web/lib/money/cessLine.ts` mirrors it and `shared/gst-parity-vectors.json` pins the two. The amount is derived from the rates, never typed, and both roundings match `_compute_line_gst` because §11(2) applies the CGST Act mutatis mutandis.
+
+§11(2)'s proviso — credit of this cess "shall be utilised only towards payment of cess" — is why it stays separate all the way down: its own ledgers (`Compensation Cess Input Credit` / `Compensation Cess Payable`, keys `gst_cess_input` / `gst_cess_output`), out of the §49(5) set-off ladder in Table 6, in `total_paise` and NOT in `total_gst_paise`. On a reverse-charge inward supply it is self-assessed onto Table 3.1(d) like the other heads (`rcm_cess`) and paid in cash. No rate table is held — which cess reaches which HSN is Schedule data a human records. The four §34 note tables have no cess column; a note against a cess-bearing invoice is named in the return's `cess_gaps`.
+
 Every GST posting reaches the ledger through the single kernel (`journal_for_sales_invoice` / `journal_for_credit_note` → `_create_journal`), crediting the GST output heads. GST control accounts resolve via `system_account_key`: `gst_output`, `gst_cgst`, `gst_sgst`, `gst_igst`, `gst_input`.
 
 ## Returns

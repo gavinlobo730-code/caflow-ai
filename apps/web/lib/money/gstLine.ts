@@ -36,70 +36,13 @@
  * CGST Act §8: intra-state supply attracts CGST+SGST, inter-state attracts IGST.
  */
 
-const B_ZERO = BigInt(0);
-const B_ONE = BigInt(1);
-const B_TEN = BigInt(10);
+import { decimalTruncate, floorDivBigInt } from "./decimalMath.ts";
 
-/** 10^n as a bigint. Written as a loop rather than `10n ** BigInt(n)` because
- *  the project's tsconfig sets no `target`, so TS defaults to ES5 and rejects
- *  bigint literals and bigint exponentiation. The runtime supports both. */
-function pow10(n: number): bigint {
-  let out = B_ONE;
-  for (let i = 0; i < n; i++) out *= B_TEN;
-  return out;
-}
-
-/**
- * Decompose a JS number into the exact (unscaled integer, decimal scale) pair
- * that Python's `Decimal(str(x))` would see.
- *
- * `String(x)` and Python's `repr(float)` both emit the shortest decimal string
- * that round-trips the same IEEE-754 double, so the two agree on every value a
- * quantity field can realistically hold. Exponent form is expanded rather than
- * trusted to parse, so very small/large quantities behave too.
- */
-function decimalParts(value: number): { unscaled: bigint; scale: number } {
-  if (!Number.isFinite(value)) return { unscaled: B_ZERO, scale: 0 };
-
-  let s = String(value);
-  let exponent = 0;
-  const eIdx = s.search(/[eE]/);
-  if (eIdx !== -1) {
-    exponent = parseInt(s.slice(eIdx + 1), 10);
-    s = s.slice(0, eIdx);
-  }
-
-  let sign = B_ONE;
-  if (s.startsWith("-")) {
-    sign = -B_ONE;
-    s = s.slice(1);
-  } else if (s.startsWith("+")) {
-    s = s.slice(1);
-  }
-
-  let scale = 0;
-  const dot = s.indexOf(".");
-  if (dot !== -1) {
-    scale = s.length - dot - 1;
-    s = s.slice(0, dot) + s.slice(dot + 1);
-  }
-  scale -= exponent;
-
-  let unscaled = BigInt(s === "" ? "0" : s) * sign;
-  if (scale < 0) {
-    unscaled *= pow10(-scale);
-    scale = 0;
-  }
-  return { unscaled, scale };
-}
-
-/** Floor division on BigInt (Python's `//`). BigInt `/` truncates toward zero,
- *  which differs for negative operands — amounts are non-negative in practice,
- *  but matching the operator exactly keeps this a true mirror. */
-function floorDiv(a: bigint, b: bigint): bigint {
-  const q = a / b;
-  return a % b !== B_ZERO && a < B_ZERO !== b < B_ZERO ? q - B_ONE : q;
-}
+/** Python's `//`. Re-exported name kept local so the arithmetic below reads
+ *  the same as it did when these primitives lived in this file; the
+ *  implementation moved to ./decimalMath so cessLine.ts shares it rather than
+ *  keeping a second copy of a truncation rule. */
+const floorDiv = floorDivBigInt;
 
 /**
  * Rupees (as typed in the form) → integer paise, exactly as the API payload
@@ -136,10 +79,7 @@ export function gstRateBpsFromPercent(gstRatePercent: number): number {
  * Exact decimal multiplication, then TRUNCATION toward zero — not rounding.
  */
 export function taxablePaise(quantity: number, ratePaise: number): number {
-  const { unscaled, scale } = decimalParts(quantity);
-  const product = unscaled * BigInt(Math.trunc(ratePaise));
-  // Python's int() truncates toward zero; BigInt division does the same.
-  return Number(product / pow10(scale));
+  return decimalTruncate(quantity, ratePaise);
 }
 
 /**

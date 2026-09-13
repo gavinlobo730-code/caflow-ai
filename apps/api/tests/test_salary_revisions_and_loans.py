@@ -168,7 +168,8 @@ def test_the_payroll_journal_balances_with_a_loan_recovery():
     from services.phase2_journal_service import Phase2JournalService
 
     ids = {"salary_exp": "exp", "net": "net", "pf": "pf", "esi": "esi",
-           "pt": "pt", "tds": "tds", "loans": "loans"}
+           "pt": "pt", "tds": "tds", "loans": "loans",
+           "employer_contribution": "employer"}
     # gross 10,00,000; PF 1,20,000 (60,000 employee + 60,000 employer);
     # PT 2,400; TDS 1,00,000 -> net is 8,37,600 before any recovery, and
     # 8,17,600 after recovering 20,000.
@@ -178,7 +179,9 @@ def test_the_payroll_journal_balances_with_a_loan_recovery():
            "total_tds_paise": 1_00_000_00,
            "total_loan_recovery_paise": 20_000_00}
 
-    lines = Phase2JournalService._build_payroll_lines(ids, run)
+    # The employer's own contribution — 60,000 of PF, no ESI. Passed in since
+    # PAY-25 because it lives on the SLIPS, not the run header.
+    lines = Phase2JournalService._build_payroll_lines(ids, run, 60_000_00)
     debits = sum(l["debit_paise"] for l in lines)
     credits = sum(l["credit_paise"] for l in lines)
     assert debits == credits, "the payroll accrual must balance"
@@ -187,6 +190,10 @@ def test_the_payroll_journal_balances_with_a_loan_recovery():
     # would understate both the expense and the receivable, and the two errors
     # would hide each other.
     assert debits == 10_60_000_00
+    # Split across the two Schedule III heads, and the recovery touches neither:
+    # it is a credit leg, so gross is unmoved.
+    assert sum(l["debit_paise"] for l in lines if l["account_id"] == "exp") == 10_00_000_00
+    assert sum(l["debit_paise"] for l in lines if l["account_id"] == "employer") == 60_000_00
 
     loan_line = [l for l in lines if l["account_id"] == "loans"]
     assert len(loan_line) == 1
@@ -200,13 +207,14 @@ def test_a_run_with_no_recovery_posts_exactly_as_before():
     from services.phase2_journal_service import Phase2JournalService
 
     ids = {"salary_exp": "exp", "net": "net", "pf": "pf", "esi": "esi",
-           "pt": "pt", "tds": "tds", "loans": None}
+           "pt": "pt", "tds": "tds", "loans": None,
+           "employer_contribution": "employer"}
     run = {"month": "2026-07", "total_gross_paise": 10_00_000_00,
            "total_net_paise": 8_37_600_00, "total_pf_paise": 1_20_000_00,
            "total_esi_paise": 0, "total_pt_paise": 2_400_00,
            "total_tds_paise": 1_00_000_00, "total_loan_recovery_paise": 0}
 
-    lines = Phase2JournalService._build_payroll_lines(ids, run)
+    lines = Phase2JournalService._build_payroll_lines(ids, run, 60_000_00)
     assert sum(l["debit_paise"] for l in lines) == sum(l["credit_paise"] for l in lines)
     assert not [l for l in lines if l["account_id"] is None]
 

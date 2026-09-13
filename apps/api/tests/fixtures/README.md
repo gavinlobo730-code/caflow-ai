@@ -415,3 +415,52 @@ own test has no ten-migration cap, because the columns added since are declared
 one by one in `production_types.ADDED_AFTER_THE_SNAPSHOT` — a list somebody
 must edit, which is its own ratchet. Refreshing it is a separate capture on its
 own cycle, as the note in its `.meta.json` says.
+
+## Refreshed 13 September 2026 (16:40 IST), after migration 373
+
+`ADDED_AFTER_THE_SNAPSHOT` had reached NINE migrations — one over the cap its
+own guard sets — and five of them (359, 364, 368, 372, 373) were not "in
+flight" at all: they were merged, applied, and only the snapshot was stale.
+That is the cap working exactly as written, for the second time: it says
+refresh, not add a tenth entry.
+
+Route again: no libpq to production, only the SQL console. So the twelve tables
+that had moved were taken from a MIGRATION-BUILT template and then PROVED equal
+to production rather than trusted:
+
+1. the local file was hashed with the format below and reproduced the recorded
+   `032ab2c4faf8496eefc6ff2fae0148a1` exactly, which is what proves the local
+   string format is the same question production is being asked;
+2. production's PER-TABLE digest (`count(*)` and an md5 of each table's own
+   columns) was pulled for all 277 tables and diffed against the file. Three
+   tables were new — `payroll_loan_recoveries`, `statutory_remittances`,
+   `tds_lower_deduction_certificates` — nine differed, and none were missing.
+   Asking per table rather than per migration is what makes step 3 exhaustive:
+   a table nobody remembered a migration touching would still show up here;
+3. a scratch database was built from migrations 001-373 (`--with-compat
+   --only-schema --continue-on-error`, the same shape CI builds), and its
+   per-table digest for those twelve **matched production's byte for byte**.
+   So the twelve were taken from it and REPLACED wholesale, not merged column
+   by column — a column DROPPED from one of them would disappear here too;
+4. the rebuilt file was hashed the same way and compared with production.
+
+Both sides `337e17e6246ef4b49d129934d61219cb`, over **4,137 columns in 277
+tables** — 4,081 + 56. That covers every column, not only the twelve tables
+touched, so an unrelated out-of-band change anywhere in the schema would have
+failed the comparison rather than passing silently. The rebuild asserts the
+hash BEFORE writing, so a mismatch leaves the old file in place.
+
+    -- in production
+    SELECT md5(string_agg(
+             table_name||'|'||column_name||'|'||data_type||'|'||is_nullable
+             ||'|'||COALESCE(column_default,''),
+             E'\n' ORDER BY table_name, column_name))
+    FROM information_schema.columns WHERE table_schema = 'public';
+
+The diff is 286 insertions and NO deletions, which is the second check on step
+3: every table that moved gained columns and none lost any.
+
+`production_guards_2026-09-03.json` is NOT refreshed with it. It was captured
+separately earlier the same day at migration 371, and its own in-flight
+exclusion covers 372 and 373. The two run on their own cycles — which is why
+the capture date lives in each `.meta.json` rather than in the filename.

@@ -51,11 +51,18 @@ validates a number a CA obtained rather than minting one.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, get_args
 
 from domain.income_tax.itr_schema import SCHEMA_FILES
 
 ITRForm = Literal["ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6", "ITR-7"]
+
+#: The same seven as a tuple, DERIVED from the Literal rather than restated —
+#: a second list is a second thing to keep in step, which is exactly how the
+#: filing screen came to offer four (IT-23) while this module held field
+#: mappings and a committed JSON schema for all seven. Every place that needs
+#: to VALIDATE or OFFER a form reads this.
+ITR_FORMS: tuple[str, ...] = get_args(ITRForm)
 
 
 @dataclass(frozen=True)

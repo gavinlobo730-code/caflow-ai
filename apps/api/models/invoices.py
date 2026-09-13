@@ -211,6 +211,32 @@ class SalesInvoiceLineIn(InvoiceLineIn):
                              "is money taken off.")
         return v
 
+    # ── GST compensation cess ───────────────────────────────────────────────
+    # GST (Compensation to States) Act 2017 s.8(2): the cess is levied "on the
+    # basis of VALUE, QUANTITY or on such basis". Two limbs, because real
+    # Schedule entries use each and one uses both — aerated waters ad valorem,
+    # coal per tonne, cigarettes a percentage PLUS a figure per thousand. The
+    # AMOUNT is derived from these by domain/gst/compensation_cess.py and is
+    # never accepted from the caller, for the same reason cgst/sgst/igst are
+    # derived from gst_rate_percent.
+    #
+    # ON THIS CLASS AND NOT ON InvoiceLineIn, deliberately, and for the same
+    # kind of reason as the discount above: the shared parent is what the s.34
+    # credit- and debit-note routes use, and the four note tables have no cess
+    # columns. A field the note path accepted and then dropped would let a CA
+    # believe they had reversed a cess charge they had not.
+    cess_rate_bps: Optional[int] = None
+    cess_specific_paise_per_unit: Optional[int] = None
+
+    @field_validator("cess_rate_bps", "cess_specific_paise_per_unit")
+    @classmethod
+    def cess_non_negative(cls, v: Optional[int]) -> Optional[int]:
+        # No upper bound on the rate: Schedule column (4) carries entries above
+        # 100%, so a ceiling would be invented and would refuse a lawful charge.
+        if v is not None and v < 0:
+            raise ValueError("A compensation cess rate cannot be negative.")
+        return v
+
 
 class SalesInvoiceIn(BaseModel):
     """Create a new sales invoice. CGST Act §31."""
@@ -437,6 +463,19 @@ class PurchaseBillLineIn(BaseModel):
     # ITC claim (routers/purchase_bills.py._compute_bill_lines_and_totals).
     itc_eligible: bool = True
     blocked_credit_reason: Optional[str] = None
+    # GST compensation cess — the inward half. Same two limbs and the same
+    # derivation as SalesInvoiceLineIn; see the comment there. On a bill the
+    # s.17(5) `itc_eligible` flag above governs the cess exactly as it governs
+    # the GST heads, so a blocked line's cess is a cost and not a credit.
+    cess_rate_bps: Optional[int] = None
+    cess_specific_paise_per_unit: Optional[int] = None
+
+    @field_validator("cess_rate_bps", "cess_specific_paise_per_unit")
+    @classmethod
+    def cess_non_negative(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 0:
+            raise ValueError("A compensation cess rate cannot be negative.")
+        return v
 
     @field_validator("quantity")
     @classmethod
@@ -727,6 +766,18 @@ class ReceiptAllocationsUpdateIn(BaseModel):
     allocations: list[ReceiptAllocationIn]
 
 
+class PurchasePaymentAllocationIn(BaseModel):
+    purchase_bill_id: str
+    allocated_paise: int
+
+    @field_validator("allocated_paise")
+    @classmethod
+    def non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("allocated_paise must be non-negative.")
+        return v
+
+
 class PurchasePaymentIn(BaseModel):
     """Record a vendor payment. TDS already deducted at bill stage — payment is net."""
     client_id: str
@@ -745,25 +796,17 @@ class PurchasePaymentIn(BaseModel):
     # that currency's minor units. Settlement uses the bill's frozen rate.
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
-
-    @field_validator("amount_paise")
-    @classmethod
-    def positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("Payment amount must be positive.")
-        return v
-
-
-class PurchasePaymentAllocationIn(BaseModel):
-    purchase_bill_id: str
-    allocated_paise: int
-
-    @field_validator("allocated_paise")
-    @classmethod
-    def non_negative(cls, v: int) -> int:
-        if v < 0:
-            raise ValueError("allocated_paise must be non-negative.")
-        return v
+    # ONE PAYMENT, SEVERAL BILLS (PUR-22). A practice settles a month's
+    # supplier bills with one NEFT; recording six payments against one bank
+    # line means six fabricated references and six journal entries.
+    # `services/purchase_payment_service.create_payment_core` has done the
+    # multi-bill settlement since migration 226 — CAS-guarded per bill, live
+    # outstanding pre-validated, compensated on failure — and the only caller
+    # was the bank match queue. Sending this list routes the request there.
+    # Mutually exclusive with `purchase_bill_id`: the two say the same thing
+    # in two shapes, and a request carrying both is a caller who does not know
+    # which one it means.
+    allocations: Optional[list[PurchasePaymentAllocationIn]] = None
 
 
 class PurchasePaymentAllocationsUpdateIn(BaseModel):

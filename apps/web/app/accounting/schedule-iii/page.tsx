@@ -15,6 +15,7 @@ import { StatementSkeleton } from "@/components/ui/skeleton";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { api } from "@/lib/api";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 
@@ -71,14 +72,6 @@ interface Comparatives {
 
 // ─── Data fetching ────────────────────────────────────────────────────────────
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-  if (!data?.firm_id) throw new Error("No firm found — please complete onboarding");
-  return data.firm_id as string;
-}
 
 interface ScheduleData {
   balanceSheet: {

@@ -33,6 +33,7 @@ from fastapi import HTTPException
 # typed to the sales-invoice line, which is the one that may carry a
 # §15(3)(a) discount. See models/invoices.SalesInvoiceLineIn for why the
 # credit and debit notes deliberately cannot.
+from domain import recurrence as _rec
 from models.invoices import SalesInvoiceIn, SalesInvoiceLineIn
 from services.numbering import draft_placeholder_invoice_no
 
@@ -40,7 +41,7 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.recurring")
 
 DEFAULT_CREDIT_DAYS = 30          # firm default when customer.credit_days is absent (Decision 4)
-MAX_CATCHUP_PER_RUN = 120         # safety bound on back-dated catch-up per template per run
+MAX_CATCHUP_PER_RUN = _rec.MAX_CATCHUP_PER_RUN   # safety bound on back-dated catch-up
 # GSTR-1 classification vocabularies. Kept identical to migration 270's CHECK
 # constraints, which are identical to migration 268's on client_sales_invoices.
 # Validated HERE, at save time, rather than left to the database: a template
@@ -49,8 +50,9 @@ MAX_CATCHUP_PER_RUN = 120         # safety bound on back-dated catch-up per temp
 _SUPPLY_TYPES = ("taxable", "zero_rated", "nil_rated", "exempt", "non_gst")
 _INVOICE_TYPES = ("Regular", "SEZ_with_payment", "SEZ_without_payment", "Deemed_export")
 
-_FREQUENCIES = ("weekly", "monthly", "quarterly", "half_yearly", "yearly")
-_MONTHS = {"monthly": 1, "quarterly": 3, "half_yearly": 6, "yearly": 12}
+# From domain/recurrence, for the same reason the functions are.
+_FREQUENCIES = _rec.FREQUENCIES
+_MONTHS = _rec.MONTHS
 
 # Mock stores (mock mode only).
 MOCK_RECURRING_TEMPLATES: list[dict] = []
@@ -62,95 +64,31 @@ def _db():
     return get_supabase()
 
 
-def _d(v) -> date:
-    return v if isinstance(v, date) else date.fromisoformat(str(v)[:10])
+#: One date parser, in domain/recurrence, for the same reason the cadence is.
+_d = _rec.to_date
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# ── Pure cadence engine (deterministic, month-end clamped) ───────────────────
-
-def _add_months_clamped(d: date, months: int) -> date:
-    """Add `months` to d, clamping the day to the last valid day of the target
-    month (e.g. Jan-31 + 1 month -> Feb-28/29). Anchored to the original day."""
-    m = d.month - 1 + months
-    y = d.year + m // 12
-    month = m % 12 + 1
-    last = monthrange(y, month)[1]
-    return date(y, month, min(d.day, last))
-
-
-def occurrence(frequency: str, start_date, n: int) -> date:
-    """The n-th occurrence (n=0 is start_date). Strictly increasing in n."""
-    start = _d(start_date)
-    if frequency == "weekly":
-        return start + timedelta(days=7 * n)
-    if frequency not in _MONTHS:
-        raise ValueError(f"Unsupported frequency: {frequency}")
-    return _add_months_clamped(start, _MONTHS[frequency] * n)
-
-
-def _index_floor(frequency: str, start: date, ref: date) -> int:
-    """A lower-bound estimate of the occurrence index at/just before `ref`."""
-    if frequency == "weekly":
-        return max(0, (ref - start).days // 7)
-    return max(0, ((ref.year - start.year) * 12 + (ref.month - start.month)) // _MONTHS[frequency])
-
-
-def occurrence_on_or_after(frequency: str, start_date, ref) -> date:
-    """Smallest occurrence date >= ref (the first occurrence is start_date)."""
-    start, ref = _d(start_date), _d(ref)
-    if ref <= start:
-        return start
-    n = _index_floor(frequency, start, ref)
-    while n > 0 and occurrence(frequency, start, n - 1) >= ref:
-        n -= 1
-    while occurrence(frequency, start, n) < ref:
-        n += 1
-    return occurrence(frequency, start, n)
-
-
-def next_occurrence(frequency: str, start_date, after=None) -> date:
-    """Smallest occurrence strictly AFTER `after` (or the first occurrence =
-    start_date when `after` is None or precedes start_date). Pure + deterministic."""
-    start = _d(start_date)
-    if after is None:
-        return start
-    after = _d(after)
-    if after < start:
-        return start
-    n = _index_floor(frequency, start, after)
-    while n > 0 and occurrence(frequency, start, n - 1) > after:
-        n -= 1
-    while occurrence(frequency, start, n) <= after:
-        n += 1
-    return occurrence(frequency, start, n)
-
-
-def preview_occurrences(template: dict, count: int = 5, from_date=None) -> list[str]:
-    """The next `count` occurrence dates from the template's next_run_date,
-    stopping at end_date. Read-only preview (no writes)."""
-    freq = template["frequency"]
-    start = template["start_date"]
-    end = _d(template["end_date"]) if template.get("end_date") else None
-    cur = _d(template.get("next_run_date") or start)
-    if from_date:
-        cur = occurrence_on_or_after(freq, start, max(_d(from_date), _d(start)))
-    out: list[str] = []
-    n = 0
-    while len(out) < max(count, 0) and n < MAX_CATCHUP_PER_RUN:
-        if end and cur > end:
-            break
-        out.append(cur.isoformat())
-        nxt = next_occurrence(freq, start, cur)
-        if nxt is None or nxt <= cur:
-            break
-        cur = nxt
-        n += 1
-    return out
-
+# ── Pure cadence engine — MOVED, not copied ──────────────────────────────────
+#
+# `domain/recurrence.py` owns this now, because recurring JOURNALS (ACC-06,
+# migration 377) need the same answers and CLAUDE.md's rule for that case is
+# one line: when a rule has to exist in two places, MOVE it. A cadence engine
+# drifting means one feature posts in a month the other skips.
+#
+# Re-exported under the names this module has always used, so its callers and
+# tests are untouched — the shape routers/fixed_assets.py took when Schedule II
+# moved into domain/fixed_assets/.
+from domain.recurrence import (                                    # noqa: E402
+    add_months_clamped as _add_months_clamped,
+    occurrence,
+    occurrence_on_or_after,
+    next_occurrence,
+    preview_occurrences,
+)
 
 # ── Due date (Decision 4) ────────────────────────────────────────────────────
 

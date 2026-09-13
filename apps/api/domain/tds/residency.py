@@ -154,6 +154,42 @@ RESIDENT_ONLY_SECTIONS: dict[str, str] = {
 # inheriting whichever list it was pasted next to.
 SECTIONS_REACHING_NON_RESIDENTS = frozenset({"194B"})
 
+#: A THIRD STATE, and it exists because §194T would not fit either list
+#: honestly (TDS-23).
+#:
+#: The two lists above answer one question — do the section's own charging
+#: words limit it to a resident payee — and for §194T the answer is no: "Any
+#: person, being a firm, responsible for paying any sum in the nature of
+#: salary, remuneration, commission, bonus or interest to A PARTNER OF THE
+#: FIRM". No resident limb. So it cannot go in RESIDENT_ONLY_SECTIONS, whose
+#: every entry quotes the limitation it is listed for.
+#:
+#: But putting it in SECTIONS_REACHING_NON_RESIDENTS asserts something else
+#: again: that withholding a flat 10% and stamping the row 27Q is RIGHT for a
+#: non-resident partner. §195 charges a payment to a non-resident at the rates
+#: in force under Part II with surcharge and cess and NO threshold, and which
+#: provision governs where a §194-series section carries no resident limb
+#: could not be settled here — egress is refused at this environment's proxy.
+#: 10% flat is the LOWER figure, and under-deduction on a foreign payment
+#: disallows the WHOLE expenditure under §40(a)(i).
+#:
+#: So the section is REFUSED against a non-resident payee, with the reason.
+#: The CA computes §195 outside the bill, which is the higher withholding and
+#: the direction that cannot cost the client their deduction. Settling the
+#: question later is deleting one entry from this dict.
+SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT: dict[str, str] = {
+    "194T": (
+        "s.194T charges a firm paying 'a partner of the firm' and carries no "
+        "resident limitation, so unlike s.194C it is not simply inapplicable "
+        "to a non-resident partner — but s.195 charges a payment to a "
+        "non-resident at the rates in force with surcharge and cess and no "
+        "threshold, and which of the two governs has not been settled here. "
+        "10% flat is the smaller figure and an under-deduction disallows the "
+        "whole payment under s.40(a)(i), so this software will not compute it: "
+        "work out s.195 on this payment and deduct outside the bill."
+    ),
+}
+
 # The charging section for a payment to a non-resident.
 SECTION_195 = "195"
 
@@ -318,8 +354,13 @@ def section_refusal(section: Optional[str],
                     residential_status: Optional[str]) -> Optional[str]:
     """Why this section cannot be recorded against this payee, or None.
 
-    One refusal: a RESIDENT-ONLY section on a payee recorded as a non-resident.
-    s.194C and its neighbours do not reach a non-resident at all; s.195 does.
+    TWO refusals, and they are different claims. A RESIDENT-ONLY section on a
+    payee recorded as a non-resident: s.194C and its neighbours do not reach
+    one at all; s.195 does. And a section in
+    SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT, where the words carry no resident
+    limb but whether s.195 displaces them was not settled here — refused
+    because the section's own rate is the LOWER one and an under-deduction on
+    a foreign payment disallows the whole expenditure under s.40(a)(i).
 
     s.195 itself is NOT refused here any more. It was, while nothing could rate
     it; domain/tds/section_195.py now does, and that module raises its own
@@ -334,6 +375,14 @@ def section_refusal(section: Optional[str],
 
     if not is_non_resident(residential_status):
         return None
+
+    unsettled = SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT.get(code)
+    if unsettled:
+        # Asked BEFORE the resident-only lookup, and it has to be: a section in
+        # this dict is by definition NOT in that one, so falling through would
+        # reach the "nobody has classified it" silence below and allow the
+        # deduction — which is the outcome the dict exists to prevent.
+        return f"This vendor is recorded as a NON-RESIDENT. {unsettled}"
 
     citation = RESIDENT_ONLY_SECTIONS.get(code)
     if citation is None:
@@ -366,6 +415,33 @@ SECTION_192_SALARY = "192"
 #: as a set rather than tested by name in the message, so adding s.194-IC or
 #: s.194M later is a one-line change beside the reason rather than a new branch.
 _PROPERTY_SECTIONS = frozenset({"194IA", "194-IA", "194IB", "194-IB"})
+
+#: A SECTION WHOSE ROUTING IS FINE AND WHOSE FIGURE IS NOT (TDS-23).
+#:
+#: §194R — a benefit or perquisite arising from business or profession, 10%,
+#: with a ₹20,000 threshold — is reported on Form 26Q against a resident, so
+#: unlike the property sections above it has nowhere wrong to go. It is
+#: withheld from the registry for two DIFFERENT reasons, and both are said to
+#: the CA rather than hidden behind "no rate held":
+#:
+#:   * ⚠️ The Finance Act 2025 rationalised a long list of TDS thresholds and
+#:     whether §194R's ₹20,000 was among them could not be confirmed here —
+#:     egress is refused at this environment's proxy. FY 2025-26 in
+#:     `section_rates.py` is marked `verified=True`, and dropping an
+#:     unconfirmed figure into a verified year weakens what that flag asserts
+#:     about every OTHER section in it. Same call as
+#:     `late_filing.LATE_FEE_RATES`, which holds the statutory figure so
+#:     nobody has to look it up and still refuses to compute with it.
+#:
+#:   * The benefit is frequently IN KIND, and §194R(1)'s proviso requires the
+#:     tax to be paid before it is released. A purchase-bill line carries a
+#:     money amount; nothing here holds the value of a car, a trip or a
+#:     product given away, so even a confirmed rate would be applied to a base
+#:     the ledger does not have.
+#:
+#: Named as a set rather than tested inline, so confirming the threshold is
+#: one line here and one line in the registry.
+_UNCONFIRMED_THRESHOLD_SECTIONS = frozenset({"194R"})
 
 #: TCS, which is not a deduction and does not belong on a vendor.
 #:
@@ -486,6 +562,21 @@ def deduction_section_refusal(section: Optional[str],
         f"cannot work out what to withhold on a bill for this vendor. The "
         f"sections it can compute are: {known}. "
     )
+    if code in _UNCONFIRMED_THRESHOLD_SECTIONS:
+        # NOT the property case: this one goes on 26Q perfectly well. What is
+        # missing is a figure nobody has read off the Act, and a base the
+        # ledger does not hold. Saying which is what lets a CA act on it.
+        return why + (
+            f"Section {code} is 10% on a benefit or perquisite from business "
+            f"or profession, with a ₹20,000 threshold — but whether the "
+            f"Finance Act 2025's threshold rationalisation moved that figure "
+            f"has not been confirmed against the Act, and it is not written in "
+            f"from memory into a year this software calls verified. The "
+            f"benefit is also often in KIND, and no bill line here carries the "
+            f"value of one. Deduct under section {code} outside the bill, and "
+            f"record the challan on the TDS workspace."
+        )
+
     if code in _PROPERTY_SECTIONS:
         # Named, because these two are the ones a CA reaches for first and a
         # rate alone would not fix them. Only what this repository proves is

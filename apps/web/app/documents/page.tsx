@@ -11,6 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
@@ -93,20 +94,6 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
-async function getFirmId(): Promise<string> {
-  const sb = getSupabaseClient();
-  const {
-    data: { session },
-  } = await sb.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
-  const { data } = await sb
-    .from("users")
-    .select("firm_id")
-    .eq("auth_user_id", session.user.id)
-    .single();
-  if (!data) throw new Error("User not found");
-  return data.firm_id as string;
-}
 
 function formatBytes(bytes: number | null): string {
   if (bytes === null || bytes === undefined) return "—";

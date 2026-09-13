@@ -259,7 +259,44 @@ UNFIXED: dict[str, str] = {}
 # 446 -> 447 on 2026-09-11. The tree stood at 445 against a budget of 446, so
 # the two writes above took the one unit of slack and one more; raised in the
 # same commit that added them, which is what the budget is for.
-MAX_UNREADABLE = 447
+#
+# 447 -> 448 on 2026-09-13 for ONE write:
+# `services/recurring_journal_service.update_template`'s `.update(fields)`
+# (ACC-06, migration 377). A PATCH's key set is variable, so its payload
+# cannot be a dict literal and this check cannot read it.
+#
+# The chain closes from the other end rather than leaving those columns
+# unchecked — the same shape the remittance payload uses above:
+# `create_template`'s INSERT and `_insert_lines`' are both literals, so THEIR
+# columns are verified against the real schema, and
+# `test_a_recurring_journal_is_a_template_not_a_browser_note.py` asserts the
+# update's field set is a SUBSET of the create's. That test is also what would
+# catch a field the table has no column for — which is exactly how the
+# `description` / `due_date` gap on `billing_schedules` was found the same day.
+#
+# The same reasoning applies to `billing_service.update_schedule`, which took
+# NO unit: its create path was made a literal in the same commit, freeing one.
+#
+# 448 -> 449 on 2026-09-13 for ONE write, and for exactly the reason above:
+# `services/recurring_purchase_bill_service.update_template`'s `.update(fields)`
+# (PUR-26, migration 379). A PATCH's key set is variable, so its payload cannot
+# be a dict literal.
+#
+# The other SIX that service arrived with took no unit at all — they were made
+# readable in the same commit rather than budgeted, which is the order this
+# check asks for. `create_template`'s INSERT names its columns at the call site
+# (`payload` is mutated by the mock branch, so even the payload parser's
+# local-binding pass cannot read it); `_insert_lines` is the one place the line
+# columns are named, as a comprehension over dict literals, and both the create
+# and the update replacement go through it; and `set_status`, `_stamp_recurring`
+# and `_record_run` write their fixed key sets inline.
+#
+# The chain closes from the other end for the survivor, the same way the
+# recurring-journal one does:
+# `test_a_recurring_bill_is_a_template_the_firm_owns.py` asserts the update's
+# field set is a SUBSET of the create INSERT's, whose columns ARE verified
+# against the real schema here.
+MAX_UNREADABLE = 449
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

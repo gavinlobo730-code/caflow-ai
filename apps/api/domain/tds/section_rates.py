@@ -353,6 +353,28 @@ _SECTIONS_2025_26: dict[str, TDSSectionRule] = {
     # AGGREGATE AMOUNT of such payments to a resident during the financial year
     # does not exceed five lakh rupees" — one amount, both limbs.
     "194LA": TDSSectionRule(5_00_000_00, 1000, 1000, aggregate_threshold_paise=5_00_000_00),
+    # A FIRM PAYING ITS OWN PARTNER (TDS-23). Inserted by the Finance (No. 2)
+    # Act 2024 and in force from 01-04-2025 — this registry's FIRST year — so
+    # it was missing from a year whose own header claims that Act. Every
+    # partnership and LLP client has this obligation now, and until this entry
+    # existed `resolve_tds` raised "Unknown TDS section '194T'" at the first
+    # bill and the vendor master had accepted it silently.
+    #
+    # 10% on salary, remuneration, commission, bonus or interest paid or
+    # credited to a partner. NOT on the partner's SHARE OF PROFIT, which is
+    # exempt under s.10(2A) and is a distribution rather than a payment for
+    # anything — nothing here can tell the two apart, so it is the CA who marks
+    # the vendor, exactly as with s.194Q's turnover test.
+    #
+    # Both limbs, both ₹20,000: "where such amount or the AGGREGATE of such
+    # amounts credited or paid ... during the financial year exceeds twenty
+    # thousand rupees". Without the aggregate limb, twelve monthly ₹15,000
+    # remuneration payments would withhold nothing against a ₹1,80,000 year.
+    #
+    # Commencement is named as SECTION_194T_FIRST_FY below rather than left
+    # implicit in which years this dict happens to cover: an FY 2024-25 entry
+    # added later must not silently back-date a section that did not exist.
+    "194T":  TDSSectionRule(20_000_00, 1000, 1000, aggregate_threshold_paise=20_000_00),
     # Purchase of goods — unchanged ₹50L, 0.1%, charged on the EXCESS: s. 194Q(1)
     # says "a sum equal to 0.1 per cent of such sum exceeding fifty lakh rupees",
     # so a ₹60,00,000 purchase bears ₹1,000 (0.1% of the ₹10,00,000 excess) and
@@ -433,6 +455,19 @@ TDS_RATES_BY_FY: dict[str, FYTDSRates] = {
 #: Named rather than buried in a branch so confirming it is a one-line change,
 #: exactly as `tds_validator.SECTION_206AB_OMITTED_FROM_FY` is.
 SECTION_206C_1H_CEASED_FROM_FY = "2025-26"
+
+#: THE FIRST FINANCIAL YEAR §194T REACHES (TDS-23).
+#:
+#: Inserted by the Finance (No. 2) Act 2024 with effect from 01-04-2025, so a
+#: firm's payment to its partner before that date carries no §194T at all — a
+#: belated or revised 26Q for FY 2024-25 must not acquire one. The same fork
+#: shape as `SECTION_206C_1H_CEASED_FROM_FY` above and
+#: `tds_validator.SECTION_206AB_OMITTED_FROM_FY`, and named for the same
+#: reason: this registry holds only 2025-26 onwards TODAY, so the constraint is
+#: currently vacuous, and the moment somebody adds FY 2024-25 for a belated
+#: return it stops being. A rule that holds only by accident of which years the
+#: dict contains is not a rule.
+SECTION_194T_FIRST_FY = "2025-26"
 
 LATEST_VERIFIED_TDS_FY = "2025-26"
 

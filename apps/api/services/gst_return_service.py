@@ -247,6 +247,32 @@ def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
     return live + cancelled_later
 
 
+def _import_of_services_vendors(db, firm_id, client_id) -> set:
+    """Vendor ids whose supplies are an IMPORT OF SERVICES when reverse-charged.
+
+    GSTR-3B Table 4(A) gives an import of services its own line, 4(A)(2), and
+    the only thing separating it from a domestic §9(3)/(4) supply on the books
+    is WHERE THE SUPPLIER IS. `vendors.residential_status` (migration 308) is
+    the one place that is recorded.
+
+    `residency.is_non_resident` rather than `== "non_resident"` because NULL is
+    a real third state — "nobody has said" — and that module is where the
+    codebase already decides what it means. A NULL vendor stays on 4(A)(3),
+    which is where every one of them is today, so an unstated residency cannot
+    move a figure.
+
+    One read of the client's vendor list per return, not one per bill: this is
+    a few dozen rows against a register of thousands, and CLAUDE.md's rule is
+    that what crosses the wire is proportional to the ANSWER.
+    """
+    from domain.tds.residency import is_non_resident
+
+    rows = _paginate_all(lambda: db.table("vendors").select("id, residential_status")
+            .eq("firm_id", firm_id).eq("client_id", client_id))
+    return {r["id"] for r in (rows or [])
+            if r.get("id") and is_non_resident(r.get("residential_status"))}
+
+
 def _issued_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
     return _paginate_all(lambda: db.table("debit_notes").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -280,10 +306,13 @@ def _document_lines(db, table: str, fk: str, doc_ids: list[str]) -> dict[str, li
         4 above ₹1.5 crore (CGST Rule 59 / the CBIC HSN notifications). The
         digit count was computed correctly and then had nothing to truncate.
 
-    None of the three line tables has a cess column, so cess_paise is 0 here.
-    That is their shape, not an assumption about cess: a document carrying cess
-    would need a line-level column before table 12 could apportion it.
-    """
+    CESS IS READ FROM THE LINE WHERE THE LINE HAS IT, AND IS 0 WHERE IT DOES
+    NOT. Migration 374 gave `client_sales_invoice_lines` a `cess_paise`; the
+    two s.34 NOTE line tables this same function reads (`credit_note_lines`,
+    `sales_debit_note_lines`) still have none, so a note against a
+    cess-bearing invoice contributes nothing to table 12's `csamt`.
+    `_note_cess_not_carried` in `gstr1_from_books` names that on the return
+    rather than leaving the reader to infer it from a nil."""
     if not doc_ids:
         return {}
     from domain.gst.gstr1_builder import InvoiceLine
@@ -306,7 +335,7 @@ def _document_lines(db, table: str, fk: str, doc_ids: list[str]) -> dict[str, li
             cgst_paise=int(r.get("cgst_paise") or 0),
             sgst_paise=int(r.get("sgst_paise") or 0),
             igst_paise=int(r.get("igst_paise") or 0),
-            cess_paise=0,
+            cess_paise=int(r.get("cess_paise") or 0),
         ))
     return by_doc
 
@@ -342,10 +371,41 @@ def _classification_by_parent_invoice(db, firm_id: str, note_rows: list[dict]) -
     parent_ids = {r.get("sales_invoice_id") for r in note_rows if r.get("sales_invoice_id")}
     if not parent_ids:
         return {}
+    # `cess_paise` is here for a different reason from the three classification
+    # fields: it is not inherited, it is REPORTED. Migration 374 gave the
+    # invoice a compensation cess and deliberately did NOT give the four s.34
+    # note tables one, so a note against a cess-bearing invoice adjusts the
+    # value and the GST and leaves the cess untouched. `_note_cess_not_carried`
+    # names that on the return rather than letting a CA read a nil `csamt` on
+    # table 9B as an assertion that nothing was owed.
     rows = _paginate_all(lambda: db.table("client_sales_invoices")
-                         .select("id, supply_type, invoice_type, is_reverse_charge")
+                         .select("id, supply_type, invoice_type, is_reverse_charge, "
+                                 "cess_paise")
                          .eq("firm_id", firm_id).in_("id", list(parent_ids)))
     return {r["id"]: r for r in (rows or []) if r.get("id")}
+
+
+def _note_cess_not_carried(note_rows: list[dict], parents: dict[str, dict]) -> list[str]:
+    """One sentence per s.34 note whose parent invoice carried compensation cess.
+
+    The note tables have no cess column (migration 374 covers the invoice and
+    the purchase bill only), so such a note reverses or adds the taxable value
+    and the three GST heads and NOT the cess. That is a real short declaration
+    and the CA has to make it on the portal, so the return says which documents
+    are affected instead of showing a nil that reads as "none due".
+    """
+    out: list[str] = []
+    for r in note_rows:
+        parent = parents.get(r.get("sales_invoice_id") or "") or {}
+        if int(parent.get("cess_paise") or 0) <= 0:
+            continue
+        ref = (r.get("credit_note_no") or r.get("debit_note_no") or r.get("id") or "")
+        out.append(
+            f"Note {ref} adjusts an invoice that carried "
+            f"{int(parent['cess_paise'])} paise of compensation cess. The s.34 "
+            "note tables hold no cess column, so this note declares none — "
+            "adjust the cess on the portal.")
+    return out
 
 
 def _note_classification(row: dict, parents: dict[str, dict]) -> dict:
@@ -859,6 +919,34 @@ def outward_turnover(db, firm_id: str, client_id: str, period: str) -> dict:
     }
 
 
+def _table_4a_gaps() -> list[dict]:
+    """The 4(A) rows this product cannot derive, each with the reason.
+
+    Not a caveat about a figure that might be wrong — both are correctly zero
+    for every client that has neither. It is a statement that if the client DID
+    have one, nothing here would know: the document that carries it does not
+    exist in this product, so the CA has to add the figure on the portal.
+    """
+    return [
+        {
+            "row": "4(A)(1)",
+            "label": "Import of goods",
+            "reason": ("IGST on imported goods is paid at customs against a BILL OF "
+                       "ENTRY, not self-assessed on a purchase bill, and this product "
+                       "has no Bill of Entry document type. The credit is in GSTR-2B's "
+                       "own `impg` section, which the 2B reconciliation parses — but "
+                       "nothing feeds it into the return. Enter it on the portal."),
+        },
+        {
+            "row": "4(A)(4)",
+            "label": "Inward supplies from ISD",
+            "reason": ("An Input Service Distributor invoice is a document type this "
+                       "product does not model, so a distribution from a head office "
+                       "reaches no register here. Enter it on the portal."),
+        },
+    ]
+
+
 def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                       filed_on: "date | None" = None) -> dict:
     """Compute GSTR-3B from posted books and reconcile to the General Ledger.
@@ -872,6 +960,12 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     start, end = _period_bounds(period)
 
     sales = _outward_transactions(db, firm_id, client_id, start, end)
+
+    # Table 4(A)(2). Resolved once for the whole return — see
+    # _import_of_services_vendors — and applied to bills AND to the notes that
+    # adjust them, so a debit note against an imported service reduces the row
+    # it was declared on rather than the domestic one beside it.
+    imps_vendors = _import_of_services_vendors(db, firm_id, client_id)
 
     purchases: list[PurchaseTransaction] = []
     for b in _posted_bills(db, firm_id, client_id, start, end):
@@ -887,6 +981,7 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             ineligible_cgst_paise=int(b.get("ineligible_itc_cgst_paise") or 0),
             ineligible_sgst_paise=int(b.get("ineligible_itc_sgst_paise") or 0),
             ineligible_cess_paise=int(b.get("ineligible_itc_cess_paise") or 0),
+            is_import_of_services=b.get("vendor_id") in imps_vendors,
         ))
     # Debit notes (purchase returns) REVERSE ITC — they credit gst_input in the GL, so
     # the return's ITC must net them or it over-claims (mirror of credit notes reducing
@@ -899,6 +994,7 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             igst_paise=-int(dn.get("igst_paise") or 0),
             cess_paise=-int(dn.get("cess_paise") or 0),
             is_reverse_charge=bool(dn.get("is_reverse_charge", False)),
+            is_import_of_services=dn.get("vendor_id") in imps_vendors,
         ))
     # Purchase credit notes (purchase_credit_notes table) — in this codebase's
     # convention (routers/purchase_credit_notes.py) these are an INCREASE to
@@ -918,6 +1014,7 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             igst_paise=int(pcn.get("igst_paise") or 0),
             cess_paise=int(pcn.get("cess_paise") or 0),
             is_reverse_charge=bool(pcn.get("is_reverse_charge", False)),
+            is_import_of_services=pcn.get("vendor_id") in imps_vendors,
         ))
 
     # ── Table 4(B): credit given back in this period ────────────────────────
@@ -1162,6 +1259,12 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # return is not filed. The LATE FEE is a refusal with a named gap: §47's
         # notified rates are not held here. See domain/gst/late_filing.
         "late_filing": _late_filing_block(result, period, filed_on),
+        # TWO OF TABLE 4(A)'S FIVE ROWS ARE STRUCTURALLY NIL, and a nil that
+        # means "this product cannot see it" is not the same as a nil that
+        # means "this client had none". 4(A)(2) is filled from the books now
+        # (GST-24); these two cannot be, and say so rather than reading as an
+        # answer. Same shape as `cess_gaps` and `payload_gaps`.
+        "table_4a_gaps": _table_4a_gaps(),
         "working": {
             "outward": {
                 "taxable_value_paise": result.outward_taxable_value,
@@ -1564,6 +1667,10 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # gap is a document that is NOT in the return at all. Filing short is
         # the failure a CA finds out about from the recipient.
         "payload_gaps": payload.gaps,
+        # Compensation cess a s.34 note in this period could not carry, because
+        # the note tables have no cess column. Empty on every return whose
+        # notes adjust cess-free invoices, which is almost all of them.
+        "cess_gaps": _note_cess_not_carried(cns_raw + sdns_raw, note_parents),
         "reconciliation": {
             "net_output_gst": {
                 "books_paise": net_books_output,
