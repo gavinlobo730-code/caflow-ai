@@ -9,18 +9,18 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 |---|---|---|
 | closed | **83** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **9** | part of the finding is answered, part is not. Each says which. |
-| open | **24** | re-read and still true. |
+| partial | **10** | part of the finding is answered, part is not. Each says which. |
+| open | **23** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 33 items — 24 open and 9 partial — not 254.**
+**The work left is 33 items — 23 open and 10 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 24 open, most are not code problems.** Nearly every one needs a
+**And of the 23 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -49,7 +49,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PUR-27** | No expense claim or petty cash module — every small expense needs a vendor and a purchase bill |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
-| medium | **TDS-23** | Eight commonly-used TDS sections are absent from the registry, including §194T on payments to pa |
 | low | **ACC-16** | Journal lines have no ordering column, so a voucher's Dr/Cr lines display in arbitrary order and |
 
 ### What actually blocks each of them
@@ -75,7 +74,6 @@ migration; a handful need a statutory document a person has to read.
 | **PUR-25** | three new document types |
 | **SALES-21** | four new document types |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |
-| **TDS-23** | the probe pass's warning stands: adding 194-IA/194-IB/194M to the registry turns a visible 422 into a silently mis-routed 26Q row, against two pinning tests and a documented refusal. Whatever is added needs the routing decided at the same time |
 | **ACC-16** | a migration adding the column, plus a backfill — and the probe pass warns migration 251's immutability trigger REFUSES that backfill outright, which the finding does not mention |
 
 ## Partial
@@ -90,6 +88,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
+| medium | **TDS-23** | Eight commonly-used TDS sections are absent from the registry, including §194T on payments to pa |
 | low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 
 

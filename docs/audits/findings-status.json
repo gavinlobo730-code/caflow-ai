@@ -2013,10 +2013,10 @@
       "needs": "the concessional RATES themselves — s.194I(a) plant and machinery, s.194J(a) technical services — read off the Finance Act by a person. Nothing in the module states 2%, deliberately: an under-deduction disallows the whole expenditure under s.40(a)(ia) while an excess is the payee's to reclaim"
     },
     "TDS-23": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "no s.194T in section_rates.py, and seven more sections absent",
-      "needs": "the probe pass's warning stands: adding 194-IA/194-IB/194M to the registry turns a visible 422 into a silently mis-routed 26Q row, against two pinning tests and a documented refusal. Whatever is added needs the routing decided at the same time"
+      "status": "partial",
+      "verified_on": "2026-09-13",
+      "why": "s.194T IS IN THE REGISTRY. The Finance (No. 2) Act 2024 inserted it with effect from 01-04-2025 — this registry's own FIRST year, whose header claims that Act — so its absence was a hole in a verified year, and every partnership and LLP client has the obligation. It reached the CA as the bare string \"Unknown TDS section '194T'\" at the first bill, long after the vendor master had saved it silently. 10% with BOTH limbs at ₹20,000, and `SECTION_194T_FIRST_FY` names the commencement rather than leaving it implicit in which years the dict happens to hold. A THIRD residency state came with it: s.194T's words carry no resident limb, so it cannot join RESIDENT_ONLY_SECTIONS (whose every entry quotes the limitation it is listed for), and putting it in SECTIONS_REACHING_NON_RESIDENTS would assert that 10% flat on a 27Q row is right when s.195 charges the rates in force with surcharge and cess and no threshold. `SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT` refuses it against a non-resident with the reason, asked BEFORE the resident-only lookup because falling through reaches the deliberate silence for unclassified sections and would allow the deduction. s.194R is refused with ITS two reasons rather than a bare 'no rate held': whether the Finance Act 2025 moved its ₹20,000 could not be confirmed here, and the benefit is often in KIND, a base no bill line holds.",
+      "what_is_left": "s.194-IA, s.194-IB and s.194M, which the probe pass's warning is about and which stands: they are reported on Form 26QB / 26QC / 26QD, challan-cum-statements this product does not produce, and `residency.return_type_for` routes on RESIDENCY alone against migration 014's CHECK of ('24Q','26Q','27Q','27EQ') — so adding a rate turns a visible 422 into a silently mis-routed 26Q row. The routing has to be decided at the same time, which is a build and not a registry entry. s.194R needs its threshold read off the Finance Act 2025 and a column for a benefit's value."
     },
     "TDS-24": {
       "status": "closed_by_commit",
