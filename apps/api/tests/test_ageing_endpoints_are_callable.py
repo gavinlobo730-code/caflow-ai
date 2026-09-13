@@ -308,7 +308,7 @@ def test_an_account_can_be_unmarked():
     assert out["set"] == {"unbilled_dues_side": None}
 
 
-def test_the_review_endpoint_is_callable_both_ways():
+def test_the_review_endpoint_is_callable_both_ways(monkeypatch):
     """Recording the review is what makes a nil printable; withdrawing it puts
     the disclosure back into its gap."""
     import routers.accounting as ac
@@ -322,22 +322,18 @@ def test_the_review_endpoint_is_callable_both_ways():
         def execute(self): return type("R", (), {"data": []})()
 
     db = _DB()
-    ac._prod_db_backup = ac._prod_db
-    try:
-        ac._prod_db = lambda: db
-        out = ac.put_unbilled_review(
-            ac.UnbilledReviewIn(client_id=CLIENT, reviewed=True, note="Reviewed at year end"),
-            current_user=USER)
-        assert out["success"] and out["data"]["reviewed"] is True
-        assert out["data"]["reviewed_on"], "the note carries the date it was reviewed"
-        assert any(o[0] == "upsert" for o in db.ops if isinstance(o, tuple))
+    monkeypatch.setattr(ac, "_prod_db", lambda: db)
+    out = ac.put_unbilled_review(
+        ac.UnbilledReviewIn(client_id=CLIENT, reviewed=True, note="Reviewed at year end"),
+        current_user=USER)
+    assert out["success"] and out["data"]["reviewed"] is True
+    assert out["data"]["reviewed_on"], "the note carries the date it was reviewed"
+    assert any(o[0] == "upsert" for o in db.ops if isinstance(o, tuple))
 
-        out = ac.put_unbilled_review(
-            ac.UnbilledReviewIn(client_id=CLIENT, reviewed=False), current_user=USER)
-        assert out["data"]["reviewed"] is False and out["data"]["reviewed_on"] is None
-        assert "delete" in db.ops
-    finally:
-        ac._prod_db = ac._prod_db_backup
+    out = ac.put_unbilled_review(
+        ac.UnbilledReviewIn(client_id=CLIENT, reviewed=False), current_user=USER)
+    assert out["data"]["reviewed"] is False and out["data"]["reviewed_on"] is None
+    assert "delete" in db.ops
 
 
 def test_the_review_date_is_ist_not_utc():

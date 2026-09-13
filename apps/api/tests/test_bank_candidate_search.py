@@ -581,7 +581,7 @@ def test_a_short_result_set_is_not_flagged_as_truncated():
     assert svc.search(db, FIRM, "t1")["truncated"] is False
 
 
-def test_the_endpoint_forwards_every_filter_it_accepts():
+def test_the_endpoint_forwards_every_filter_it_accepts(monkeypatch):
     """Eight query parameters is exactly where one gets dropped in the wiring and
     the box silently stops narrowing."""
     import routers.banking as rb
@@ -593,17 +593,14 @@ def test_the_endpoint_forwards_every_filter_it_accepts():
             seen.update(kw, firm_id=firm_id, txn_id=txn_id)
             return {"results": [], "total": 0}
 
-    real_svc, real_db = rb.bank_candidate_search_service, rb._db
-    rb.bank_candidate_search_service = _Spy()
-    rb._db = lambda: FakeDB(_store())   # the router's scope guard reads it first
-    try:
-        out = rb.transaction_candidate_search(
-            "t1", q="acme", date_from="2026-04-01", date_to="2026-04-30",
-            min_amount_paise=100, max_amount_paise=900, entity_type="sales_invoice",
-            party_id="cust-1", limit=5, offset=10,
-            current_user=USER)
-    finally:
-        rb.bank_candidate_search_service, rb._db = real_svc, real_db
+    monkeypatch.setattr(rb, "bank_candidate_search_service", _Spy())
+    # the router's scope guard reads _db first
+    monkeypatch.setattr(rb, "_db", lambda: FakeDB(_store()))
+    out = rb.transaction_candidate_search(
+        "t1", q="acme", date_from="2026-04-01", date_to="2026-04-30",
+        min_amount_paise=100, max_amount_paise=900, entity_type="sales_invoice",
+        party_id="cust-1", limit=5, offset=10,
+        current_user=USER)
 
     assert out["success"] is True and out["error"] is None
     assert seen == {

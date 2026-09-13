@@ -193,7 +193,7 @@ def test_the_guard_reads_one_row_and_only_the_column_it_needs():
     assert len(db.log) == 1
 
 
-def test_posting_refuses_before_it_can_write_a_journal(deny):
+def test_posting_refuses_before_it_can_write_a_journal(deny, monkeypatch):
     """The endpoint that made this worth fixing. The scope check has to come
     before the service is called at all — a journal written and then rejected is
     not the same as one never written."""
@@ -204,15 +204,11 @@ def test_posting_refuses_before_it_can_write_a_journal(deny):
             reached.append(a)
             return {}
 
-    real_svc, real_db = rb.bank_posting_service, rb._db
-    rb.bank_posting_service = _Spy()
-    rb._db = lambda: _db_with("bank_transactions", "t1")
-    try:
-        from models.banking import PostBankTxnIn
-        with pytest.raises(HTTPException) as e:
-            rb.post_transaction("t1", PostBankTxnIn(), current_user=USER)
-    finally:
-        rb.bank_posting_service, rb._db = real_svc, real_db
+    monkeypatch.setattr(rb, "bank_posting_service", _Spy())
+    monkeypatch.setattr(rb, "_db", lambda: _db_with("bank_transactions", "t1"))
+    from models.banking import PostBankTxnIn
+    with pytest.raises(HTTPException) as e:
+        rb.post_transaction("t1", PostBankTxnIn(), current_user=USER)
 
     assert e.value.status_code == 404
     assert reached == [], "the posting service was reached despite the refusal"

@@ -186,7 +186,7 @@ def _no_side_effects(monkeypatch):
     yield
 
 
-def test_create_run_concurrent_insert_collision_returns_friendly_409():
+def test_create_run_concurrent_insert_collision_returns_friendly_409(monkeypatch):
     db = _payroll_client(FakeDB())
     monkeypatch_db = db
     # No existing row — the app-level duplicate SELECT genuinely finds
@@ -194,35 +194,27 @@ def test_create_run_concurrent_insert_collision_returns_friendly_409():
     # between this SELECT and this request's own INSERT).
     db.control["fail_next_run_insert"] = True
     import routers.payroll as pr_mod
-    orig_db = pr_mod._db
-    pr_mod._db = lambda: monkeypatch_db
-    try:
-        with pytest.raises(HTTPException) as exc_info:
-            pr_mod.create_run(PayrollRunIn(client_id=CLIENT, month="2026-06"), USER)
-        assert exc_info.value.status_code == 409
-        assert "already exists" in exc_info.value.detail
-    finally:
-        pr_mod._db = orig_db
+    monkeypatch.setattr(pr_mod, "_db", lambda: monkeypatch_db)
+    with pytest.raises(HTTPException) as exc_info:
+        pr_mod.create_run(PayrollRunIn(client_id=CLIENT, month="2026-06"), USER)
+    assert exc_info.value.status_code == 409
+    assert "already exists" in exc_info.value.detail
     # No orphan run row left behind by the failed insert.
     assert db.store.get("payroll_runs", []) == []
 
 
-def test_create_run_happy_path_still_works_with_the_new_try_except():
+def test_create_run_happy_path_still_works_with_the_new_try_except(monkeypatch):
     db = _payroll_client(FakeDB())
     import routers.payroll as pr_mod
-    orig_db = pr_mod._db
-    pr_mod._db = lambda: db
-    try:
-        result = pr_mod.create_run(PayrollRunIn(client_id=CLIENT, month="2026-07"), USER)
-    finally:
-        pr_mod._db = orig_db
+    monkeypatch.setattr(pr_mod, "_db", lambda: db)
+    result = pr_mod.create_run(PayrollRunIn(client_id=CLIENT, month="2026-07"), USER)
     assert result["success"] is True
     assert result["data"]["month"] == "2026-07"
     assert result["data"]["status"] == "draft"
     assert len(db.store["payroll_runs"]) == 1
 
 
-def test_create_run_other_db_errors_still_propagate_unmasked():
+def test_create_run_other_db_errors_still_propagate_unmasked(monkeypatch):
     """A non-unique-violation insert failure must NOT be swallowed into the
     friendly 409 — only a genuine constraint collision should be reinterpreted."""
     db = FakeDB()
@@ -239,15 +231,11 @@ def test_create_run_other_db_errors_still_propagate_unmasked():
 
     boom_db = _payroll_client(_BoomDB())
     import routers.payroll as pr_mod
-    orig_db = pr_mod._db
-    pr_mod._db = lambda: boom_db
-    try:
-        with pytest.raises(Exception) as exc_info:
-            pr_mod.create_run(PayrollRunIn(client_id=CLIENT, month="2026-08"), USER)
-        assert not isinstance(exc_info.value, HTTPException)
-        assert "connection reset" in str(exc_info.value)
-    finally:
-        pr_mod._db = orig_db
+    monkeypatch.setattr(pr_mod, "_db", lambda: boom_db)
+    with pytest.raises(Exception) as exc_info:
+        pr_mod.create_run(PayrollRunIn(client_id=CLIENT, month="2026-08"), USER)
+    assert not isinstance(exc_info.value, HTTPException)
+    assert "connection reset" in str(exc_info.value)
 
 
 # ── Findings #5-7: EmployeeIn / EmployeeUpdateIn validation gaps ──────────────

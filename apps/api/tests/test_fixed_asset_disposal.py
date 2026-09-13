@@ -123,10 +123,10 @@ def _disposal(**overrides):
     return DisposalIn(**payload)
 
 
-def test_successful_disposal_posts_journal_and_marks_disposed():
+def test_successful_disposal_posts_journal_and_marks_disposed(monkeypatch):
     db = FakeDB()
     _seed_asset(db)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-1"
 
     result = fa_router.dispose_asset("asset-1", _disposal(), {"firm_id": FIRM, "id": "u1"})
@@ -137,13 +137,13 @@ def test_successful_disposal_posts_journal_and_marks_disposed():
     assert asset["notes"] == "disposed"
 
 
-def test_failed_disposal_rolls_back_and_never_orphans_a_journal():
+def test_failed_disposal_rolls_back_and_never_orphans_a_journal(monkeypatch):
     """A None journal_id (simulated here directly; in the real service this
     now only occurs in _USE_MOCK mode — see module docstring) must roll the
     claim back — the asset must NOT end up disposed."""
     db = FakeDB()
     _seed_asset(db)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: None
 
     with pytest.raises(HTTPException) as exc:
@@ -157,10 +157,10 @@ def test_failed_disposal_rolls_back_and_never_orphans_a_journal():
     assert asset["notes"] == "original note"  # rolled back, not the attempted "disposed"
 
 
-def test_retry_after_failure_succeeds_cleanly_with_exactly_one_journal():
+def test_retry_after_failure_succeeds_cleanly_with_exactly_one_journal(monkeypatch):
     db = FakeDB()
     _seed_asset(db)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
 
     calls = []
     def flaky_journal(*a, **k):
@@ -178,10 +178,10 @@ def test_retry_after_failure_succeeds_cleanly_with_exactly_one_journal():
     assert db.store["fixed_assets"][0]["is_disposed"] is True
 
 
-def test_already_disposed_asset_is_rejected_before_any_journal_call():
+def test_already_disposed_asset_is_rejected_before_any_journal_call(monkeypatch):
     db = FakeDB()
     _seed_asset(db, is_disposed=True)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     called = []
     fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: called.append(1) or "je-x"
 
@@ -191,12 +191,12 @@ def test_already_disposed_asset_is_rejected_before_any_journal_call():
     assert called == []  # the ledger must never be touched for an already-disposed asset
 
 
-def test_repeated_disposal_attempts_never_create_more_than_one_journal():
+def test_repeated_disposal_attempts_never_create_more_than_one_journal(monkeypatch):
     """Simulates two back-to-back requests for the same asset (e.g. a
     double-click or a client retry) — only the first may succeed."""
     db = FakeDB()
     _seed_asset(db)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     posted = []
     def journal(*a, **k):
         posted.append(1)
@@ -212,9 +212,9 @@ def test_repeated_disposal_attempts_never_create_more_than_one_journal():
     assert len(posted) == 1  # the second attempt never reached the journal service
 
 
-def test_asset_not_found_raises_404():
+def test_asset_not_found_raises_404(monkeypatch):
     db = FakeDB()
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     with pytest.raises(HTTPException) as exc:
         fa_router.dispose_asset("missing-asset", _disposal(), {"firm_id": FIRM, "id": "u1"})
     assert exc.value.status_code == 404
@@ -250,10 +250,10 @@ def _held_asset(db, **overrides):
     return _seed_asset(db, **fields)
 
 
-def test_disposing_with_months_unposted_is_refused_and_names_them():
+def test_disposing_with_months_unposted_is_refused_and_names_them(monkeypatch):
     db = FakeDB()
     _held_asset(db)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     called = []
     fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: called.append(1) or "je-x"
 
@@ -270,13 +270,13 @@ def test_disposing_with_months_unposted_is_refused_and_names_them():
     assert db.store["fixed_assets"][0]["is_disposed"] is False
 
 
-def test_the_disposal_month_itself_is_not_required():
+def test_the_disposal_month_itself_is_not_required(monkeypatch):
     """Depreciation to a disposal DATE is a part month, and the engine posts
     whole months only. Requiring the disposal month would make every mid-month
     sale unpostable."""
     db = FakeDB()
     _held_asset(db, depreciation_posted_through="2026-10-31")
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-2"
 
     result = fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-11-20"),
@@ -287,10 +287,10 @@ def test_the_disposal_month_itself_is_not_required():
         "1-20 November is not charged and the CA has to be told")
 
 
-def test_a_disposal_on_a_charged_month_end_leaves_nothing_uncharged():
+def test_a_disposal_on_a_charged_month_end_leaves_nothing_uncharged(monkeypatch):
     db = FakeDB()
     _held_asset(db, depreciation_posted_through="2026-11-30")
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-3"
 
     result = fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-11-30"),
@@ -300,13 +300,13 @@ def test_a_disposal_on_a_charged_month_end_leaves_nothing_uncharged():
     assert result["data"]["part_month_depreciation_not_charged"] is False
 
 
-def test_an_asset_never_depreciated_at_all_is_refused_from_its_purchase_month():
+def test_an_asset_never_depreciated_at_all_is_refused_from_its_purchase_month(monkeypatch):
     """The commonest shape of the defect, and the one FA-01 changed the look of:
     accumulated depreciation of 0 used to be every asset's state."""
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-10",
                 accumulated_depreciation_paise=0)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-4"
 
     with pytest.raises(HTTPException) as exc:
@@ -318,12 +318,12 @@ def test_an_asset_never_depreciated_at_all_is_refused_from_its_purchase_month():
     assert "2026-07" not in exc.value.detail, "the disposal month is a part month"
 
 
-def test_a_disposal_in_the_purchase_month_needs_nothing_posted():
+def test_a_disposal_in_the_purchase_month_needs_nothing_posted(monkeypatch):
     """Bought and sold inside one month: there is no WHOLE month to charge, so
     refusing would make the sale unpostable for no gain."""
     db = FakeDB()
     _seed_asset(db, purchase_date="2026-04-10", accumulated_depreciation_paise=0)
-    fa_router._db = lambda: db
+    monkeypatch.setattr(fa_router, "_db", lambda: db)
     fa_router._journal_svc.journal_for_asset_disposal = lambda *a, **k: "je-5"
 
     result = fa_router.dispose_asset("asset-1", _disposal(disposal_date="2026-04-25"),
