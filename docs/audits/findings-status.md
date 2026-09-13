@@ -7,15 +7,15 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **82** | re-read against the code. The defect is gone. |
+| closed | **83** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **10** | part of the finding is answered, part is not. Each says which. |
+| partial | **9** | part of the finding is answered, part is not. Each says which. |
 | open | **24** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 34 items — 24 open and 10 partial — not 254.**
+**The work left is 33 items — 24 open and 9 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -90,7 +90,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
-| medium | **PAY-15** | Attendance and LOP cannot be entered from the client Payroll tab at all — they live on a firm-wi |
 | low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 
 
@@ -169,6 +168,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **IT-31** | 26AS reconciliation never feeds the computation — the TDS credit on the return is a number the C |
 | medium | **PAY-10** | The TDS projection screen computes §192 in TypeScript with hardcoded FY 2025-26 new-regime rates |
 | medium | **PAY-13** | The client workspace's own employee form collects neither PAN, joining date, UAN, ESIC number, b |
+| medium | **PAY-15** | Attendance and LOP cannot be entered from the client Payroll tab at all — they live on a firm-wi |
 | medium | **PAY-17** | Annual professional tax for §16(iii) is estimated as this month's PT × 12 — six times the year's |
 | medium | **PAY-18** | `logger` is undefined in the /employee-exceptions error path — a failed declarations read raises |
 | medium | **PAY-24** | Leave is half-built: balances are invented in TypeScript as 12/12/15, nothing accrues or carries |

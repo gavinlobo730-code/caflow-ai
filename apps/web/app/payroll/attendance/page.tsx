@@ -201,6 +201,13 @@ export default function AttendancePage() {
   const [entered, setEntered] = useState<Set<string>>(new Set());
   /** Employees the CA actually edited. Only these are sent. */
   const [touched, setTouched] = useState<Set<string>>(new Set());
+  /** WHICH CLIENT'S ROSTER IS ON SCREEN (PAY-15). "" is every client, which is
+   *  what this page has always shown — and for a firm running payroll for
+   *  several clients that is a list nobody can work through. A payroll run is
+   *  per client and per month, so the gap it reports is too; arriving from one
+   *  client's payroll tab has to land on that client's roster and not on the
+   *  whole firm's. */
+  const [attClient, setAttClient] = useState<string>("");
   const [editingLeave, setEditingLeave] = useState<string | null>(null);
   const [editLeaveForm, setEditLeaveForm] = useState<Partial<LeaveBalance>>({});
 
@@ -220,6 +227,26 @@ export default function AttendancePage() {
   const [earnSaving, setEarnSaving] = useState(false);
   const [earnMsg, setEarnMsg] = useState("");
   const [earnLoading, setEarnLoading] = useState(false);
+
+  // ARRIVING FROM A CLIENT'S PAYROLL TAB (PAY-15). `?client=` and `?month=`
+  // land the CA on the roster and the month the gap was reported for. Read off
+  // `window.location` rather than `useSearchParams`, matching app/sign and the
+  // client sales tab: apps/web is a static export, and useSearchParams forces
+  // a Suspense boundary on a page that otherwise needs none.
+  //
+  // Once, on mount, and never written back: after this the pickers are the
+  // CA's, and re-reading the URL would fight them.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const client = p.get("client");
+    if (client) setAttClient(client);
+    const month = p.get("month");
+    const m = /^(\d{4})-(\d{2})$/.exec(month || "");
+    if (m) {
+      setAttYear(Number(m[1]));
+      setAttMonth(Number(m[2]));
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -517,6 +544,15 @@ export default function AttendancePage() {
     }
   }
 
+  /** The roster on screen. ONE derivation, because the table, the CSV export
+   *  and the empty state must agree — an export that quietly carried the whole
+   *  firm while the table showed one client is the shape of a data leak
+   *  between clients, not a cosmetic difference. Save is unaffected: it sends
+   *  only `touched` rows and already groups them by their own client. */
+  const rosterOnScreen = attClient
+    ? employees.filter(e => e.client_id === attClient)
+    : employees;
+
   function updateAtt(empId: string, field: keyof Omit<AttendanceRow, "employee_id">, value: number) {
     setAttendance(prev => ({
       ...prev,
@@ -703,6 +739,21 @@ export default function AttendancePage() {
                         max={2099}
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
+                      <select
+                        className="border rounded-lg px-3 py-2 text-sm"
+                        value={attClient}
+                        onChange={e => setAttClient(e.target.value)}
+                      >
+                        <option value="">All clients</option>
+                        {Array.from(new Set(employees.map(e => e.client_id)))
+                          .sort((a, b) => (clientNames[a] ?? a).localeCompare(clientNames[b] ?? b))
+                          .map(cid => (
+                            <option key={cid} value={cid}>{clientNames[cid] ?? cid}</option>
+                          ))}
+                      </select>
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => setShowImport(true)} className="flex items-center gap-1.5">
@@ -711,9 +762,9 @@ export default function AttendancePage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={employees.length === 0}
+                      disabled={rosterOnScreen.length === 0}
                       onClick={() => {
-                        const exportRows: AttendanceExportRow[] = employees.map(emp => {
+                        const exportRows: AttendanceExportRow[] = rosterOnScreen.map(emp => {
                           const row = attendance[emp.id] ?? {
                             employee_id: emp.id,
                             working_days: 26, days_present: 26,
@@ -732,7 +783,8 @@ export default function AttendancePage() {
                           };
                         });
                         downloadCsv(
-                          `attendance-${attYear}-${String(attMonth).padStart(2, "0")}.csv`,
+                          `attendance-${attClient ? `${(clientNames[attClient] ?? attClient).replace(/[^A-Za-z0-9]+/g, "-")}-` : ""}`
+                          + `${attYear}-${String(attMonth).padStart(2, "0")}.csv`,
                           toCsv(exportRows, ATTENDANCE_EXPORT_COLUMNS),
                         );
                       }}
@@ -756,8 +808,12 @@ export default function AttendancePage() {
               </CardContent>
             </Card>
 
-            {employees.length === 0 ? (
-              <Card><CardContent className="py-12 text-center text-[#94A3B8]">No employees found. Add employees in Payroll first.</CardContent></Card>
+            {rosterOnScreen.length === 0 ? (
+              <Card><CardContent className="py-12 text-center text-[#94A3B8]">
+                {employees.length === 0
+                  ? "No employees found. Add employees in Payroll first."
+                  : `No employees on ${clientNames[attClient] ?? "this client"}'s roster. Add them in Payroll first, or choose another client.`}
+              </CardContent></Card>
             ) : (
               <Card>
                 <CardContent className="p-0">
@@ -776,7 +832,7 @@ export default function AttendancePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {employees.map(emp => {
+                        {rosterOnScreen.map(emp => {
                           const row = attendance[emp.id] ?? {
                             employee_id: emp.id,
                             working_days: 26, days_present: 26,
