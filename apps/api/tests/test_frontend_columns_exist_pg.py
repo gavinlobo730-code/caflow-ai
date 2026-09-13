@@ -322,7 +322,21 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     # payload used to desynchronise _skip_args and drop the whole call — and
     # the count went from ~230 to 256. Leaving the floor at 200 would let the
     # fix be reverted without this noticing.
-    assert len(scan_writes(WEB)) >= 250, "write scan found too little — parser likely broke"
+    #
+    # LOWERED from 250 to 242 on 2026-09-13. PUR-15 rewrote
+    # app/accounting/msme-tracker/page.tsx to render a server-computed §43B(h)
+    # working instead of asking the CA to re-key every bill into
+    # `msme_payments` over PostgREST, which deleted that page's eight writes —
+    # the whole point of the finding. The floor still protects what it was
+    # raised for: reverting blank_comments() drops ~26, which lands below 242.
+    #
+    # A drop here is not by itself a broken parser. Diagnose it the way that
+    # one was — tally scan_writes() PER FILE against the previous commit and
+    # see whether the delta is one page that legitimately stopped writing (fix
+    # the floor, and say which page) or a spread across many (fix the parser):
+    #
+    #   collections.Counter(path for path, _, _ in scan_writes(WEB))
+    assert len(scan_writes(WEB)) >= 242, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG
