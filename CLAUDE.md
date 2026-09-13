@@ -503,6 +503,31 @@ change. The code is the authority; keep this file in step with it.
   ACCEPTANCE and the books hold the BILL DATE; the proxy gives the earliest due
   date and so the largest disallowance, which puts the item in front of the CA
   rather than hiding it, and every answer says so.
+- **A VENDOR PAYMENT RECORDS WHICH BILLS IT SETTLED IN TWO SHAPES, AND EVERY
+  READER MUST KNOW BOTH** (PUR-22). `purchase_payments.purchase_bill_id` is the
+  legacy single-bill FK, written with NO allocation row;
+  `purchase_payment_allocations` (migration 226) is the multi-bill shape,
+  written with that column NULL. **The column says which SHAPE a payment is,
+  not merely which bill it happened to pay** — `reversal_service.reverse_payment`
+  branches on it, rolling the bill back by the payment's whole AP relief where
+  it is set and by each allocation's own amount where it is NULL, so writing it
+  from the allocation path would send a PARTLY allocated payment down the legacy
+  branch and roll back more than it settled. That is why both shapes survive,
+  why `POST /api/purchase-payments` refuses a request carrying both, and why the
+  single-bill path was left exactly as it was when the endpoint learned to take
+  `allocations` and hand them to `purchase_payment_service.create_payment_core`
+  — the multi-bill engine whose only caller had been the bank match queue, so
+  one NEFT against six bills meant six payments, six fabricated references and
+  six journal entries. **A reader that knows one shape is silently wrong about
+  the other**, and one was: `msme_43bh_service._payments` read only the bridge
+  table, so §43B(h) saw every bill paid from the Purchases screen as NEVER PAID
+  and added a timely payment back to taxable income — invisibly, because "no
+  payment found" and "paid late" produce the same disallowance. Each shape has
+  its own not-undone test: `is_voided` on the allocation row, `is_reversed` on
+  the payment row, both filtered in PYTHON so a row lacking the key reads as
+  live. `GET /api/purchase-payments?purchase_bill_id=` unions the two and
+  stamps `allocated_to_bill_paise`, because `amount_paise` stops being the
+  bill's figure the moment one payment settles several.
 - **A capital LOSS does not relieve other income** (§71(3), §74), and **§80G has
   a ceiling** (§80G(4): 10% of adjusted gross total income, where adjusted GTI
   is GTI less the capital-gains buckets and less every other Chapter VI-A

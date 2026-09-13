@@ -766,6 +766,18 @@ class ReceiptAllocationsUpdateIn(BaseModel):
     allocations: list[ReceiptAllocationIn]
 
 
+class PurchasePaymentAllocationIn(BaseModel):
+    purchase_bill_id: str
+    allocated_paise: int
+
+    @field_validator("allocated_paise")
+    @classmethod
+    def non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("allocated_paise must be non-negative.")
+        return v
+
+
 class PurchasePaymentIn(BaseModel):
     """Record a vendor payment. TDS already deducted at bill stage — payment is net."""
     client_id: str
@@ -784,25 +796,17 @@ class PurchasePaymentIn(BaseModel):
     # that currency's minor units. Settlement uses the bill's frozen rate.
     currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
-
-    @field_validator("amount_paise")
-    @classmethod
-    def positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("Payment amount must be positive.")
-        return v
-
-
-class PurchasePaymentAllocationIn(BaseModel):
-    purchase_bill_id: str
-    allocated_paise: int
-
-    @field_validator("allocated_paise")
-    @classmethod
-    def non_negative(cls, v: int) -> int:
-        if v < 0:
-            raise ValueError("allocated_paise must be non-negative.")
-        return v
+    # ONE PAYMENT, SEVERAL BILLS (PUR-22). A practice settles a month's
+    # supplier bills with one NEFT; recording six payments against one bank
+    # line means six fabricated references and six journal entries.
+    # `services/purchase_payment_service.create_payment_core` has done the
+    # multi-bill settlement since migration 226 — CAS-guarded per bill, live
+    # outstanding pre-validated, compensated on failure — and the only caller
+    # was the bank match queue. Sending this list routes the request there.
+    # Mutually exclusive with `purchase_bill_id`: the two say the same thing
+    # in two shapes, and a request carrying both is a caller who does not know
+    # which one it means.
+    allocations: Optional[list[PurchasePaymentAllocationIn]] = None
 
 
 class PurchasePaymentAllocationsUpdateIn(BaseModel):

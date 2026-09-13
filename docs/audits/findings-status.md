@@ -7,20 +7,20 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **79** | re-read against the code. The defect is gone. |
+| closed | **80** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | partial | **9** | part of the finding is answered, part is not. Each says which. |
-| open | **28** | re-read and still true. |
+| open | **27** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 37 items — 28 open and 9 partial — not 254.**
+**The work left is 36 items — 27 open and 9 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 28 open, most are not code problems.** Nearly every one needs a
+**And of the 27 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -47,7 +47,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 | medium | **PUR-18** | Import of goods has no path — no Bill of Entry, so the IGST paid to customs cannot be recorded a |
 | medium | **PUR-19** | Reverse-charge bills produce no self-invoice (§31(3)(f)) and no payment voucher (§31(3)(g)) |
-| medium | **PUR-22** | One payment settling several bills is not reachable from the Purchases screen — the multi-bill a |
 | medium | **PUR-25** | No purchase orders, goods receipt notes or three-way matching |
 | medium | **PUR-26** | No recurring purchase bills, though recurring sales invoices are fully built |
 | medium | **PUR-27** | No expense claim or petty cash module — every small expense needs a vendor and a purchase bill |
@@ -78,7 +77,6 @@ migration; a handful need a statutory document a person has to read.
 | **PAY-26** | schema for claims |
 | **PAY-27** | each bank's own file format |
 | **PUR-19** | document series and templates |
-| **PUR-22** | no migration (226 already has the table), but it is NOT the frontend-only change an earlier reading of this called it. The right shape is to make the router route to create_payment_core with a one-element allocation for the single-bill case, unifying the two paths — a change to a money path that posts to the GL, and one to make with the owner reachable rather than overnight |
 | **PUR-25** | three new document types |
 | **PUR-26** | a schedule table; the sales side is the pattern to copy |
 | **SALES-21** | four new document types |
@@ -182,6 +180,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PUR-12** | The reconciliation screen tells the CA that ITC is restricted to 105% of GSTR-2A — a cushion rep |
 | medium | **PUR-16** | A second, orphaned vendor master at /accounting/suppliers that no purchase path reads |
 | medium | **PUR-20** | GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client |
+| medium | **PUR-22** | One payment settling several bills is not reachable from the Purchases screen — the multi-bill a |
 | medium | **PUR-23** | Issuing a debit note (purchase return) does not resync the TDS register, so 26Q keeps reporting  |
 | medium | **PUR-24** | AP ageing lists only bills, so unallocated vendor advances are invisible and the ageing total do |
 | medium | **PUR-28** | Client-assignment scope is enforced on every purchase API endpoint and on none of the Purchases  |

@@ -76,12 +76,34 @@ def _vendors(db, firm_id: str, client_id: str) -> dict:
 
 
 def _payments(db, firm_id: str, bill_ids: list) -> dict:
-    """Allocations against each bill, with the DATE the money moved.
+    """What was paid against each bill, with the DATE the money moved.
+
+    A PAYMENT SETTLES A BILL IN ONE OF TWO SHAPES AND THIS READS BOTH. The
+    multi-bill engine (`purchase_payment_service.create_payment_core`, migration
+    226) writes a `purchase_payment_allocations` row per bill and leaves
+    `purchase_payments.purchase_bill_id` NULL; the single-bill path
+    (`routers/purchase_payments.create_purchase_payment`, which is what the
+    Purchases screen and the bill drawer have always posted to) writes that
+    column and NO allocation row. Reading only the bridge table therefore saw
+    nothing at all for a bill paid the ordinary way — and §43B(h) disallows the
+    deduction for a sum payable to a micro or small enterprise that was not
+    ACTUALLY PAID within the MSMED §15 limit, so a bill paid on time was added
+    back to taxable income. Wrong in the direction that costs the client money,
+    and invisible, because "no payment found" and "paid late" produce the same
+    disallowance.
 
     The date is on `purchase_payments`, not on the allocation, so the two are
     read together. A VOIDED allocation is a reversed payment and did not settle
     anything — counting it would show a bill as paid in time that was never
-    paid at all.
+    paid at all. The single-bill shape's twin of that is `is_reversed` on the
+    payment row itself (`reversal_service.reverse_payment` branches on exactly
+    the same column this function does), and both filters run in PYTHON: a row
+    lacking the key must read as NOT voided and NOT reversed, which
+    `.eq(..., False)` gets backwards.
+
+    A legacy single-bill payment settles the WHOLE of itself against its bill —
+    that is what `_claim_bill_outstanding` reserved when it was recorded — so
+    `amount_paise` is its allocated figure.
     """
     if not bill_ids:
         return {}
@@ -92,6 +114,11 @@ def _payments(db, firm_id: str, bill_ids: list) -> dict:
                  .in_("purchase_bill_id", bill_ids)),
         label="msme_43bh.allocations")
     allocs = [a for a in allocs if not a.get("is_voided")]
+    legacy = [p for p in fetch_all(
+        lambda: (db.table("purchase_payments")
+                 .select("id, purchase_bill_id, payment_date, amount_paise, is_reversed")
+                 .eq("firm_id", firm_id).in_("purchase_bill_id", bill_ids)),
+        label="msme_43bh.single_bill_payments") if not p.get("is_reversed")]
     pay_ids = sorted({str(a.get("purchase_payment_id")) for a in allocs
                       if a.get("purchase_payment_id")})
     dates: dict = {}
@@ -107,6 +134,10 @@ def _payments(db, firm_id: str, bill_ids: list) -> dict:
         out.setdefault(str(a.get("purchase_bill_id")), []).append(
             rule.Payment(paid_on=dates.get(str(a.get("purchase_payment_id"))),
                          amount_paise=int(a.get("allocated_paise") or 0)))
+    for p in legacy:
+        out.setdefault(str(p.get("purchase_bill_id")), []).append(
+            rule.Payment(paid_on=_iso(p.get("payment_date")),
+                         amount_paise=int(p.get("amount_paise") or 0)))
     return out
 
 
