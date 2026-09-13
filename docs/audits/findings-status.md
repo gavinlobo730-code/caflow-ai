@@ -7,15 +7,15 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **72** | re-read against the code. The defect is gone. |
+| closed | **73** | re-read against the code. The defect is gone. |
 | closed_by_commit | **159** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **9** | part of the finding is answered, part is not. Each says which. |
+| partial | **8** | part of the finding is answered, part is not. Each says which. |
 | open | **34** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 43 items — 34 open and 9 partial — not 254.**
+**The work left is 42 items — 34 open and 8 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -102,7 +102,6 @@ migration; a handful need a statutory document a person has to read.
 | high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
-| high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
@@ -157,6 +156,7 @@ migration; a handful need a statutory document a person has to read.
 | high | **PAY-03** | The payslip PDF is headed with the CA FIRM's name, not the client company that actually employs  |
 | high | **PAY-06** | The §10(13A) HRA salary base is annualised as this month × 12 regardless of how many months the  |
 | high | **PUR-13** | §194Q deducts 0.1% on the whole purchase value instead of on the value exceeding ₹50 lakh, and h |
+| high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **SALES-03** | Invoice PDF always states "tax payable on reverse charge basis: No", and never prints the place  |
 | high | **SALES-06** | Goa, Puducherry, Ladakh, Dadra & Nagar Haveli and Daman & Diu, Lakshadweep and Andaman & Nicobar |
 | high | **SALES-09** | GSTR-1 Table 11A/11B (tax on advances, §13(2)) is unreachable — the three columns it needs are n |

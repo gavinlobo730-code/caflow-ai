@@ -175,6 +175,48 @@ export interface TaxAuditApplicability {
   return_due_date: string | null;
 }
 
+/** GET /api/income-tax/msme-43bh — what §43B(h) adds back this year, DERIVED
+ *  from the purchase ledger rather than from a table the CA re-keys (PUR-15).
+ *
+ *  THE LIMIT IS FIFTEEN DAYS unless a written agreement says otherwise
+ *  (MSMED §2(b)), and at most forty-five even then (the proviso to §15).
+ *  Forty-five is the number every article quotes and it is the exception.
+ *
+ *  `allowed_on_payment_paise` is the other direction: an EARLIER year's bill
+ *  that was disallowed then and was actually paid during this year comes back
+ *  as a deduction now. */
+export interface MSME43BHBill {
+  bill_id: string;
+  bill_no: string | null;
+  vendor_name: string;
+  bill_date: string | null;
+  limit_days: number | null;
+  limit_source: string;
+  due_by: string | null;
+  total_paise: number;
+  deductible_paise: number;
+  paid_in_time_paise: number;
+  paid_late_paise: number;
+  paid_late_in_fys: string[];
+  unpaid_paise: number;
+  disallowed_paise: number;
+  reason: string;
+  included: boolean;
+}
+
+export interface MSME43BHWorking {
+  financial_year: string;
+  applicable: boolean;
+  disallowed_paise: number;
+  allowed_on_payment_paise: number;
+  bills: MSME43BHBill[];
+  /** One sentence per vendor whose MSMED classification is not recorded. */
+  gaps: string[];
+  caveats: string[];
+  source: string;
+  ca_review_required: true;
+}
+
 /** GET /api/compliance/payroll-deposit-due-dates — what one payroll month owes.
  *  `gaps` names what is deliberately NOT dated (professional tax), because an
  *  absent row and a nil liability look the same on a calendar. */
@@ -1452,6 +1494,16 @@ export const api = {
       return request<ApiResp<TaxAuditApplicability>>(
         `/api/income-tax/tax-audit/applicability?${p.toString()}`);
     },
+    /** The §43B(h) working for one client and one previous year.
+     *
+     *  Derived from purchase_bills, their payment allocations and
+     *  vendors.msme_status — the screen renders it and computes nothing. The
+     *  browser used to hold the whole rule and read a hand-keyed side table
+     *  (PUR-15). */
+    msme43bh: (client_id: string, fy: string) =>
+      request<ApiResp<MSME43BHWorking>>(
+        `/api/income-tax/msme-43bh?client_id=${encodeURIComponent(client_id)}` +
+        `&fy=${encodeURIComponent(fy)}`),
   },
   documents: {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),

@@ -1368,6 +1368,52 @@ class Section32BlockIn(BaseModel):
     notes: Optional[str] = None
 
 
+@router.get("/msme-43bh")
+def msme_section_43bh(
+    client_id: str,
+    fy: Annotated[FYLabel, Query(description="YYYY-YY, e.g. 2025-26")],
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """What §43B(h) adds back this year, and what it releases — DERIVED (PUR-15).
+
+    The Finance Act 2023 inserted clause (h) with effect from AY 2024-25: a sum
+    payable to a MICRO or SMALL enterprise beyond the MSMED §15 time limit is
+    deductible only in the year it is actually paid. **The first proviso to
+    §43B does not reach clause (h)**, so paying before the §139(1) return date
+    does not save it — the commonest mistake with this clause, and it is on
+    every answer.
+
+    THE LIMIT IS FIFTEEN DAYS unless a written agreement says otherwise
+    (MSMED §2(b)), and at most forty-five even then (the proviso to §15).
+    Forty-five is the number everybody quotes and it is the exception.
+
+    Read from `purchase_bills`, their payment allocations and
+    `vendors.msme_status` — not from a table the CA re-keys. Correct a bill and
+    this figure changes with it. A vendor whose MSMED classification is not
+    recorded is NAMED, never assumed either way: whether a supplier is micro or
+    small is a fact about their Udyam registration that no ledger holds.
+
+    Every live bill is read, not only the year's own — an earlier year's bill
+    paid late during this year comes back as a deduction now.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal. This
+    # computes a working for the tax computation; it writes nothing.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, {
+            "financial_year": fy, "applicable": True, "disallowed_paise": 0,
+            "allowed_on_payment_paise": 0, "bills": [], "gaps": [],
+            "caveats": [], "source": "mock", "ca_review_required": True})
+    from services.msme_43bh_service import MSME43BHError, for_financial_year
+    try:
+        return api_response(True, for_financial_year(
+            db, current_user["firm_id"], client_id, fy))
+    except MSME43BHError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.get("/section-32")
 def section_32_depreciation(
     client_id: str,

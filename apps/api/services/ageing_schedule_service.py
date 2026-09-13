@@ -245,7 +245,8 @@ def schedule(db, firm_id: str, client_id: str, as_of: Optional[str] = None) -> d
 _ALLOWED_FIELDS = {
     "invoice": {"is_disputed", "considered_doubtful"},
     "bill":    {"is_disputed"},
-    "vendor":  {"msme_status", "msme_registration_no"},
+    "vendor":  {"msme_status", "msme_registration_no",
+                "msmed_agreement_days"},
     # Which GL accounts hold unbilled dues. The database CHECK also refuses a
     # side that does not match the account's own type, so a revenue account
     # cannot be marked at all — see migration 305.
@@ -303,11 +304,37 @@ def _write(db, target: str, target_id: str, firm_id: str, client_id: str, update
 
     # A registration number is EVIDENCE for a classification, so it never
     # travels without one — classify() refuses that combination before we get
-    # here, which is also what keeps this branch's payload literal.
-    if "msme_registration_no" in update:
+    # here. `msmed_agreement_days` travels alone or with either, so the vendor
+    # write has five shapes. Written out rather than built, for the reason at
+    # the top of this function: the column check can only read a literal, and
+    # a payload it cannot read is a column nobody is checking against the real
+    # schema.
+    has_status = "msme_status" in update
+    has_reg = "msme_registration_no" in update
+    has_days = "msmed_agreement_days" in update
+
+    if has_status and has_reg and has_days:
+        return (db.table("vendors")
+                .update({"msme_status": update["msme_status"],
+                         "msme_registration_no": update["msme_registration_no"],
+                         "msmed_agreement_days": update["msmed_agreement_days"]})
+                .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                .execute())
+    if has_status and has_reg:
         return (db.table("vendors")
                 .update({"msme_status": update["msme_status"],
                          "msme_registration_no": update["msme_registration_no"]})
+                .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                .execute())
+    if has_status and has_days:
+        return (db.table("vendors")
+                .update({"msme_status": update["msme_status"],
+                         "msmed_agreement_days": update["msmed_agreement_days"]})
+                .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                .execute())
+    if has_days:
+        return (db.table("vendors")
+                .update({"msmed_agreement_days": update["msmed_agreement_days"]})
                 .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id)
                 .execute())
     return (db.table("vendors")
@@ -374,6 +401,35 @@ def classify(db, firm_id: str, client_id: str, target: str, target_id: str,
             update[k] = v
         elif k == "msme_registration_no":
             update[k] = (str(v).strip() or None) if v is not None else None
+        elif k == "msmed_agreement_days":
+            # None un-records the written agreement, and it MUST stay
+            # available: MSMED §2(b)'s fifteen days is the statutory default,
+            # so a period recorded by mistake gives a supplier grace the Act
+            # does not and understates the §43B(h) disallowance. A CA who
+            # typed 45 by mistake has to be able to take it back.
+            #
+            # NOT capped at 45 here. The proviso to §15 makes a longer period
+            # ineffective, not the contract void, so what the contract says is
+            # what is stored and domain/income_tax/section_43b_h.limit_days
+            # applies the cap and SAYS it applied it.
+            if v is None:
+                update[k] = None
+            else:
+                try:
+                    days = int(v)
+                except (TypeError, ValueError):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="msmed_agreement_days must be a whole number of "
+                               "days or null.")
+                if days <= 0:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="msmed_agreement_days must be a positive number "
+                               "of days, or null where there is no WRITTEN "
+                               "agreement — MSMED §2(b) then gives fifteen "
+                               "days from acceptance.")
+                update[k] = days
         else:
             update[k] = bool(v)
 

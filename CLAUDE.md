@@ -425,6 +425,34 @@ change. The code is the authority; keep this file in step with it.
   FY-versioned authority and a second one in SQL is what the posting-kernel
   rule exists to prevent. A DROP is the right end state and needs the
   production-fixture refresh in `docs/schema-drift.md`.
+- **§43B(h) IS DERIVED FROM THE PURCHASE LEDGER, AND THE LIMIT IS FIFTEEN DAYS**
+  (PUR-15). The Finance Act 2023 inserted clause (h) with effect from AY
+  2024-25: a sum payable to a MICRO or SMALL enterprise beyond the MSMED §15
+  time limit is deductible only in the previous year it is ACTUALLY PAID.
+  **The first proviso to §43B does not reach clause (h)** — paying before the
+  §139(1) return date saves every other §43B item and not this one, which is
+  the commonest mistake with it and is on every answer.
+  `domain/income_tax/section_43b_h.py` is the rule,
+  `services/msme_43bh_service.py` fetches its inputs, and
+  `GET /api/income-tax/msme-43bh` serves it. `/accounting/msme-tracker` renders
+  it and computes nothing: it used to ask the CA to re-key every bill into
+  `msme_payments` over PostgREST — so the figure drifted from the books,
+  `rbac()` never ran, and the whole statutory rule lived in TypeScript, where
+  it read the agreement type off a per-invoice dropdown. **`msme_payments` is
+  no longer read or written**; dropping it is a migration and an owner
+  decision. Two directions, both computed: what accrued this year and missed
+  its limit is added back, and an EARLIER year's disallowance actually paid
+  during this year comes back as a deduction — so every live bill is read, not
+  only the year's own. **Micro and small only** (MSMED §2(n)); an unclassified
+  vendor is named, never assumed. **The disallowance is the DEDUCTION** —
+  taxable value plus §17(5)-blocked tax — not the gross invoice, because
+  creditable GST is credit and not an expense; and a bill capitalised into a
+  fixed asset is reported with nothing disallowed, since only the depreciation
+  is claimed. **TDS withheld counts as paid to the supplier**, the same §199
+  reasoning `domain/gst/itc_reversal.py` applies to Rule 37. ⚠️ §15 runs from
+  ACCEPTANCE and the books hold the BILL DATE; the proxy gives the earliest due
+  date and so the largest disallowance, which puts the item in front of the CA
+  rather than hiding it, and every answer says so.
 - **A capital LOSS does not relieve other income** (§71(3), §74), and **§80G has
   a ceiling** (§80G(4): 10% of adjusted gross total income, where adjusted GTI
   is GTI less the capital-gains buckets and less every other Chapter VI-A
@@ -915,6 +943,7 @@ the response. Adding any of them is a human step, like the ITR schemas.
 | an earlier year's total income for §89 | `domain/payroll/arrears.py` | comes off the employee's return; the employer never held it |
 | prior gratuity / leave exemption used | `gratuity.py`, `leave_encashment.py` | §10(10) and §10(10AA) are LIFETIME limits across employers |
 | a vendor's MSMED classification | `vendors.msme_status`, surfaced by `public.schedule_iii_ageing` | it is a fact about the SUPPLIER — their Udyam registration — that no ledger holds, and it is not presentational: §43B(h) (Finance Act 2023, AY 2024-25) disallows a deduction for sums payable to a micro or small enterprise beyond the MSMED §15 limit unless actually paid, so calling an unclassified vendor "Others" changes taxable income. The column has NO default; an unclassified balance is reported beside the payables table, never inside a row |
+| whether a supplier has a WRITTEN payment agreement, and for how long | `vendors.msmed_agreement_days` (migration 373), recorded on the Schedule III ageing screen | MSMED §15 requires payment "on or before the date agreed upon ... IN WRITING, or, where there is no agreement in this behalf, before the appointed day", and §2(b) makes the appointed day fifteen days from acceptance. So the limit is **FIFTEEN days by default and forty-five only under a written agreement** — forty-five is the number every article quotes and it is the exception. Whether such an agreement exists is a fact about a contract no ledger holds, and `credit_days` is NOT evidence of one: it is a commercial term, and reading it as the §15 period would give 30 days where the Act gives 15 on every vendor carrying the default. NULL means no written agreement, which is the statutory default rather than an absence. A recorded period above 45 is STORED as the contract says and capped by the engine, which says it capped |
 | the DTAA rate for a payment to a non-resident | `public.dtaa_treaty_rates` (migration 310) — one row per (country, nature), firm-scoped; `vendors.treaty_rate_bps` is now only a per-vendor override. Refused on the purchase-bill path when a TRC is held and nothing is recorded | §194C, §194J and their neighbours charge, in their own words, sums paid "to a **resident**" — so for a non-resident payee they do not apply at all and §195 does, at rates in force under Part II of the First Schedule by NATURE of income, with surcharge and cess, displaced by the DTAA under §90(2) where a TRC and Form 10F are held. Nature of income × ninety-odd treaties × surcharge band cannot be written from memory, and §206AA's 20% floor has a non-resident carve-out (§206AA(7) with Rule 37BC) that residents do not get. Under-deducting disallows the WHOLE expenditure under §40(a)(i). The ACT side is now computed — `domain/tds/section_195_rates.py` holds §115A and Part II by nature of income, with surcharge and cess — but §90(2) gives the assessee whichever of the Act and the AGREEMENT is more beneficial, and the agreement cannot be: ninety-odd treaties, differing royalty/FTS/interest articles, MFN clauses needing their own §90(1) notification (*AO v. Nestle SA*, 2023), and several — the UAE and Singapore among them — with no FTS article at all. So a CA reads the agreement once per country and nature and records what they read (Settings → DTAA Treaty Rates); the engine then applies §90(2) to the two numbers it has, and REFUSES where a TRC is on file and nothing is recorded, because falling back to the Act rate would over-deduct exactly where somebody has established a treaty applies. **"No article" is an ANSWER, not a missing rate**: several agreements — the UAE and Singapore among them — have no FTS article, which makes the income Article 7 business profits and not taxable here without a PE, so it needs the same no-PE declaration chargeability does |
 | the §47 GST late-fee rates | `domain/gst/late_filing.LATE_FEE_RATES`, empty; the refusal reaches the screen as a sentence naming the notification | the statutory figure is ₹100 a day per Act capped at ₹5,000, and nobody has paid it since 2018 — Notifications 4/2018 and 76/2018 reduced it and 19/2021 and 20/2021 capped it by turnover band, so the figure in force depends on the return, the year AND the taxpayer's own turnover. This environment's proxy refuses every `.gov.in`, and a late fee written from memory is a number a CA would pay over. §50 INTEREST is computed — its rates are in the Act |
 | the §50(3) interest rate | `domain/gst/late_filing.SECTION_50_3_NOTIFIED_RATE_BPS`, `None`; the refusal names both notifications and the Act's ceiling | the sub-section charges "not exceeding twenty-four per cent as may be notified". Notification 13/2017-CT notified 24% against the ORIGINAL §50(3); the Finance Act 2022 substituted it retrospectively from 01-07-2017 and Notification 09/2022-CT appears to notify 18% for the substituted text. A THIRD of the charge separates them, egress is refused here, and this is a sum paid over on the client's behalf — over-stating takes money from a taxpayer who does not owe it. §50(1)'s 18% is held because 13/2017-CT notified it against text that has not moved |

@@ -1184,6 +1184,10 @@ class AgeingClassifyIn(BaseModel):
     considered_doubtful: Optional[bool] = None
     msme_status: Optional[str] = None             # micro | small | medium | not_registered
     msme_registration_no: Optional[str] = None
+    #: The payment period agreed with this supplier IN WRITING, under the
+    #: proviso to MSMED §15 (migration 373). None un-records it, and §2(b)'s
+    #: fifteen days applies — which is the statutory default, not an absence.
+    msmed_agreement_days: Optional[int] = None
     unbilled_dues_side: Optional[str] = None      # receivable | payable
     # msme_status = None is a legitimate value (it puts a vendor back into the
     # unclassified gap), so the presence of the key has to be distinguishable

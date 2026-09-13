@@ -205,13 +205,20 @@ GST, Income Tax, MCA, Reports and TDS as well.
   purchase path reads — every one of them reads `public.vendors`. The TDS
   section and credit limit a CA records there reach nothing. The finding says
   "remove the route, or redirect it to the client's Vendors tab".
-- **`/accounting/msme-tracker`** (PUR-15) writes a hand-keyed `msme_payments`
-  side table, while §43B(h) is derivable from `purchase_bills` +
-  `purchase_payments` for vendors whose `msme_status` is micro or small.
+- **`/accounting/msme-tracker`** (PUR-15) wrote a hand-keyed `msme_payments`
+  side table. **UPDATE, 13 September:** the screen is now a rendering of
+  `GET /api/income-tax/msme-43bh`, which derives §43B(h) from `purchase_bills`,
+  their payment allocations and `vendors.msme_status`. It reads and writes
+  `msme_payments` no longer — but the TABLE is still there, with whatever rows
+  a CA typed into it, and DROPPING it is a migration and your call. The screen
+  itself I would now keep: it is the right place for the figure, it just
+  needed to stop inventing it.
 
-I have not touched either. `/gst/reconciliation` was deleted on your decision
-and I am treating these the same way. Deriving the §43B(h) figure needs no
-migration and I can do it whenever you say; DROPPING either table does.
+I have not deleted either screen. `/gst/reconciliation` was deleted on your
+decision and I am treating these the same way. What is left here is two DROPs
+— `public.suppliers` and `public.msme_payments` — and one repoint
+(`/accounting/suppliers` → the client's Vendors tab, which needs
+`credit_limit_paise` on `vendors` first).
 
 ---
 
