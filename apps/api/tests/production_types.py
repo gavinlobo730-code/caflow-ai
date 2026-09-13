@@ -70,21 +70,14 @@ _NUMERIC_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 # Keep this SHORT. A long list means the snapshot needs refreshing, not that the
 # list needs another entry.
 ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
-    # Migrations 344-358 were all HERE until the snapshot was refreshed on
-    # 10 September 2026 — nine of them, one past the cap below, which is the
-    # cap doing its job. The fixture now matches production column for column
-    # (md5 032ab2c4faf8496eefc6ff2fae0148a1 over 4,081 columns in 274 tables,
+    # Migrations 359-373 were all HERE until the snapshot was refreshed on
+    # 13 September 2026 — nine entries over five migrations, which took the
+    # list to nine MIGRATIONS, one past the cap below. That is the cap doing
+    # its job for the second time: it says refresh the fixture, not add a
+    # tenth entry. The fixture now matches production column for column
+    # (md5 337e17e6246ef4b49d129934d61219cb over 4,137 columns in 277 tables,
     # verified against the live database), so the only entries left are the
-    # migration this branch has not merged yet.
-    ("purchase_bills", "tds_certificate_no"): "migration 359",
-    ("purchase_payments", "tds_certificate_no"): "migration 359",
-    ("client_sales_invoices", "discount_paise"): "migration 364",
-    ("client_sales_invoices", "discount_percent_bps"): "migration 364",
-    ("client_sales_invoice_lines", "discount_paise"): "migration 364",
-    ("client_sales_invoice_lines", "discount_percent_bps"): "migration 364",
-    ("payroll_slips", "perquisites_in_tds_estimate_paise"): "migration 368",
-    ("fixed_assets", "rule_43_use"): "migration 372",
-    ("vendors", "msmed_agreement_days"): "migration 373",
+    # migrations this branch has not merged yet.
     ("client_sales_invoices", "cess_paise"): "migration 374",
     ("client_sales_invoice_lines", "cess_rate_bps"): "migration 374",
     ("client_sales_invoice_lines", "cess_specific_paise_per_unit"): "migration 374",

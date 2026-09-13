@@ -2374,6 +2374,11 @@
    "nullable": "NO",
    "type": "uuid"
   },
+  "coded_by_a_human": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
   "created_at": {
    "default": "now()",
    "nullable": "NO",
@@ -3683,6 +3688,16 @@
    "nullable": "NO",
    "type": "text"
   },
+  "discount_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "discount_percent_bps": {
+   "default": "",
+   "nullable": "YES",
+   "type": "integer"
+  },
   "gst_rate_bps": {
    "default": "1800",
    "nullable": "NO",
@@ -3819,6 +3834,16 @@
    "default": "",
    "nullable": "YES",
    "type": "timestamp with time zone"
+  },
+  "discount_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "discount_percent_bps": {
+   "default": "",
+   "nullable": "YES",
+   "type": "integer"
   },
   "due_date": {
    "default": "",
@@ -8724,6 +8749,11 @@
    "nullable": "YES",
    "type": "date"
   },
+  "rule_43_use": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
   "salvage_value_paise": {
    "default": "0",
    "nullable": "NO",
@@ -11343,6 +11373,11 @@
    "nullable": "NO",
    "type": "text"
   },
+  "reclaimable": {
+   "default": "",
+   "nullable": "YES",
+   "type": "boolean"
+  },
   "reverses_id": {
    "default": "",
    "nullable": "YES",
@@ -13599,6 +13634,63 @@
    "type": "uuid"
   }
  },
+ "payroll_loan_recoveries": {
+  "amount_paise": {
+   "default": "",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "closed_the_loan": {
+   "default": "false",
+   "nullable": "NO",
+   "type": "boolean"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "created_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "employee_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "uuid_generate_v4()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "kind": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "loan_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "run_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  }
+ },
  "payroll_loans": {
   "client_id": {
    "default": "",
@@ -14297,6 +14389,11 @@
    "type": "bigint"
   },
   "other_allowances_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "perquisites_in_tds_estimate_paise": {
    "default": "0",
    "nullable": "NO",
    "type": "bigint"
@@ -15059,6 +15156,11 @@
    "nullable": "YES",
    "type": "text"
   },
+  "tds_certificate_no": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
   "tds_cess_paise": {
    "default": "0",
    "nullable": "NO",
@@ -15510,6 +15612,11 @@
    "type": "bigint"
   },
   "tds_basis": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "tds_certificate_no": {
    "default": "",
    "nullable": "YES",
    "type": "text"
@@ -17281,6 +17388,108 @@
    "type": "text"
   }
  },
+ "statutory_remittances": {
+  "amount_paise": {
+   "default": "0",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "challan_date": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "challan_number": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "contribution_period": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "deleted_at": {
+   "default": "",
+   "nullable": "YES",
+   "type": "timestamp with time zone"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "journal_entry_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "notes": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "paid_on": {
+   "default": "",
+   "nullable": "YES",
+   "type": "date"
+  },
+  "recorded_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "run_id": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "scheme": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "state": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "status": {
+   "default": "'submitted'::text",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "submitted_on": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "wage_month": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  }
+ },
  "suppliers": {
   "client_id": {
    "default": "",
@@ -18841,6 +19050,78 @@
    "type": "timestamp with time zone"
   }
  },
+ "tds_lower_deduction_certificates": {
+  "ceiling_paise": {
+   "default": "",
+   "nullable": "NO",
+   "type": "bigint"
+  },
+  "certificate_no": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "client_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "created_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "created_by": {
+   "default": "",
+   "nullable": "YES",
+   "type": "uuid"
+  },
+  "firm_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "id": {
+   "default": "gen_random_uuid()",
+   "nullable": "NO",
+   "type": "uuid"
+  },
+  "notes": {
+   "default": "",
+   "nullable": "YES",
+   "type": "text"
+  },
+  "rate_bps": {
+   "default": "",
+   "nullable": "NO",
+   "type": "integer"
+  },
+  "section": {
+   "default": "",
+   "nullable": "NO",
+   "type": "text"
+  },
+  "updated_at": {
+   "default": "now()",
+   "nullable": "NO",
+   "type": "timestamp with time zone"
+  },
+  "valid_from": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "valid_to": {
+   "default": "",
+   "nullable": "NO",
+   "type": "date"
+  },
+  "vendor_id": {
+   "default": "",
+   "nullable": "NO",
+   "type": "uuid"
+  }
+ },
  "tds_returns": {
   "ack_number": {
    "default": "",
@@ -19355,6 +19636,11 @@
    "default": "",
    "nullable": "YES",
    "type": "text"
+  },
+  "msmed_agreement_days": {
+   "default": "",
+   "nullable": "YES",
+   "type": "integer"
   },
   "name": {
    "default": "",
