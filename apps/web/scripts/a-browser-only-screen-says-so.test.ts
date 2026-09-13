@@ -80,8 +80,11 @@ test("the three known browser-only screens are exactly these three", () => {
   // per-viewer convenience (allowlist it with the reason) or is it somebody's
   // work (it needs the notice, and really it needs a table).
   const found = pagesTouchingLocalStorage().filter((p) => !(p in CONVENIENCE_ONLY));
+  // TWO, not three. `/accounting/budget` was moved onto `account_budgets`
+  // (migration 376) and reads its actuals from the backend, so it is no longer
+  // one of these — see MOVED_TO_THE_DATABASE below, which is the half of this
+  // guard that stops it coming back.
   assert.deepEqual(found, [
-    "app/accounting/budget/page.tsx",
     "app/accounting/recurring/page.tsx",
     "app/accounting/retainer/page.tsx",
   ]);
@@ -138,9 +141,31 @@ test("the team page stores no permissions of its own", () => {
     "the screen must say access is decided by role");
 });
 
+// A screen that HAS been moved onto the database. It must never reappear
+// above, and it must not keep the notice — a warning that is no longer true is
+// its own kind of wrong, and a CA who reads one stops believing the next.
+const MOVED_TO_THE_DATABASE: Record<string, string> = {
+  "app/accounting/budget/page.tsx":
+    "ACC-06. `account_budgets` (migration 376) holds the figures and " +
+    "GET /api/accounting/budgets serves them with the actuals read once from " +
+    "account_period_balances. The old screen ALSO computed those actuals in " +
+    "the browser, firm-wide, with four unpaged reads of journal_lines — " +
+    "PostgREST truncates at ~1000 rows and says nothing, so every variance on " +
+    "a real client was wrong.",
+};
+
+test("a screen already moved onto the database does not come back", () => {
+  for (const [rel, why] of Object.entries(MOVED_TO_THE_DATABASE)) {
+    const src = code(read(rel));
+    assert.doesNotMatch(src, /localStorage\.(getItem|setItem)/,
+      `${rel} is storing work in this browser again — ${why}`);
+    assert.doesNotMatch(src, /<BrowserOnlyNotice/,
+      `${rel} keeps a warning that is no longer true`);
+  }
+});
+
 test("each of them renders the notice", () => {
-  for (const p of ["app/accounting/budget/page.tsx",
-                   "app/accounting/recurring/page.tsx",
+  for (const p of ["app/accounting/recurring/page.tsx",
                    "app/accounting/retainer/page.tsx"]) {
     const src = code(read(p));
     assert.match(src, /<BrowserOnlyNotice/, `${p} does not say where its data lives`);
@@ -152,8 +177,7 @@ test("there is ONE notice, not three copies of a sentence", () => {
   const c = code(read("components/BrowserOnlyNotice.tsx"));
   assert.match(c, /Saved in this browser only/);
   // The sentence must not be spelled out again on any page.
-  for (const p of ["app/accounting/budget/page.tsx",
-                   "app/accounting/recurring/page.tsx",
+  for (const p of ["app/accounting/recurring/page.tsx",
                    "app/accounting/retainer/page.tsx"]) {
     assert.doesNotMatch(code(read(p)), /Saved in this browser only/,
       `${p} carries its own copy of the sentence`);
@@ -172,8 +196,6 @@ test("each screen also names what IT specifically does not do", () => {
   // is the one that stops a CA relying on the wrong thing.
   const recurring = code(read("app/accounting/recurring/page.tsx"));
   assert.match(recurring, /Nothing posts a due template/);
-  const budget = code(read("app/accounting/budget/page.tsx"));
-  assert.match(budget, /ACTUALS beside them are read from the ledger and are real/);
   const retainer = code(read("app/accounting/retainer/page.tsx"));
   assert.match(retainer, /not a sales invoice in the books/);
 });
@@ -182,8 +204,9 @@ test("the hub card no longer promises automation it cannot deliver", () => {
   const hub = code(read("app/accounting/page.tsx"));
   assert.doesNotMatch(hub, /Automate monthly, quarterly & yearly entries/,
     "the Recurring card promised automation; nothing posts a due template");
-  // All three cards carry the flag, and the flag is rendered.
-  assert.equal((hub.match(/notShared: true/g) ?? []).length, 3);
+  // TWO cards carry the flag now — Budget vs Actuals is on the database —
+  // and the flag is still rendered.
+  assert.equal((hub.match(/notShared: true/g) ?? []).length, 2);
   assert.match(hub, /card\.notShared && \(/);
   assert.match(hub, /Saved in this browser only — not shared with the firm/);
 });

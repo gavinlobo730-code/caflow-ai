@@ -19,6 +19,35 @@ One engine (`apps/api/domain/reporting/`) computes all five financial statements
 
 Exposed at `GET /api/accounting/{ledger,trial-balance,balance-sheet,profit-loss,cash-flow}`. All amounts are raw integer `*_paise`; formatting to ₹ happens in the frontend.
 
+### `period_net_by_account` — N windows, one fetch
+
+Not a report; the primitive a report made of several windows is built on.
+`ReportingService.period_net_by_account(firm_id, client_id, windows)` takes
+`[(label, start, end), …]` and returns the net movement per account for each,
+fetching the chart and the `account_period_balances` buckets **once** and
+projecting every window through the same `_passbook_lines` the Trial Balance
+uses.
+
+It exists because Budget vs Actuals needs the same accounts over the four
+quarters of a financial year, and four `trial_balance` calls would be eight
+Singapore-to-Mumbai round trips for one screen. `trial_balance`'s own docstring
+had already stated the rule — *adding a period must not add a Mumbai round trip
+to a report that already has one* — and Cash Flow was the first caller to need
+two windows off one fetch, which is why `_passbook_lines` was split out of
+`_passbook_accrual_lines`. This is the same seam used for N.
+
+Windows should be **month-aligned** for the fast path to be exact with no edge
+month to replay; `core.ist_clock.fy_quarters` guarantees that for the four
+quarters, deriving them from `fy_bounds` rather than restating April. A window
+that is not aligned is still correct — `_passbook_lines` replays the partial
+edge months — it simply costs more.
+
+**Budgets** (`account_budgets`, migration 376; `services/budget_service.py`;
+`GET`/`PUT /api/accounting/budgets`) are the first caller. The screen used to
+compute its own actuals in the browser with four unpaged reads of
+`journal_lines`, firm-wide — PostgREST truncates at ~1000 rows and reports
+nothing, so every variance on a real client was wrong (ACC-06).
+
 ## Accrual vs cash
 
 Both bases run through the **same** builders over one source. Cash basis is derived from real allocation links via `CashBasisProjector` (`projector.py`) and is **management reporting only** (IT Act §145) — it never affects GST/ITR filings, which stay invoice-based.

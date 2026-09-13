@@ -7,11 +7,16 @@ import { AlertTriangle } from "lucide-react";
  * says so (ACC-06).
  *
  * WHY IT EXISTS
- *     `/accounting/recurring`, `/accounting/budget` and `/accounting/retainer`
- *     store everything in localStorage: no table, no RLS, no sharing, no
- *     scheduler. A partner who sets a recurring template up on their laptop
- *     finds nothing on the office machine, a second user sees an empty screen,
- *     and clearing site data loses the lot with no warning and no backup.
+ *     `/accounting/recurring` and `/accounting/retainer` store everything in
+ *     localStorage: no table, no RLS, no sharing, no scheduler. A partner who
+ *     sets a recurring template up on their laptop finds nothing on the office
+ *     machine, a second user sees an empty screen, and clearing site data
+ *     loses the lot with no warning and no backup.
+ *
+ *     `/accounting/budget` WAS the third and no longer is: `account_budgets`
+ *     (migration 376) holds the figures and the actuals come from
+ *     `account_period_balances` through the API. It is off this notice, and
+ *     `scripts/a-browser-only-screen-says-so.test.ts` keeps it off.
  *
  *     None of that was stated anywhere. The Recurring card on the accounting
  *     hub said "Automate monthly, quarterly & yearly entries" — a promise the

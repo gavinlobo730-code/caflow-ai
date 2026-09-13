@@ -947,6 +947,36 @@ export type ScheduleIiiRatioNote = {
   gaps: { code: string; message: string }[];
 };
 
+// ── Budget versus actuals ────────────────────────────────────────────────────
+// NOT a statutory statement — no return reads a budget and nothing is
+// journalised from one. Amounts are integer paise.
+//
+// `budget_paise` is NULL where the CA has not budgeted that account, which is
+// a DIFFERENT fact from a budget of zero: only the second produces a variance,
+// and `variance_paise` is null alongside it. Revenue actuals arrive as
+// POSITIVE magnitudes — the backend flips the debit-minus-credit sign once, by
+// the account's own type — so a Revenue row and an Expense row can be compared
+// against a budget typed the same way.
+
+export type BudgetRow = {
+  account_id: string;
+  account_code: string | null;
+  account_name: string | null;
+  account_type: string | null;
+  budget_paise: number | null;
+  actuals: Record<string, number>;
+  actual_paise: number;
+  variance_paise: number | null;
+};
+
+export type BudgetVsActuals = {
+  fy: string;
+  client_id: string;
+  quarters: { label: string; start: string; end: string }[];
+  rows: BudgetRow[];
+  totals: { budget_paise: number; actual_paise: number };
+};
+
 // ── The multi-year trend ─────────────────────────────────────────────────────
 // NOT a statutory statement. Schedule III General Instructions para 5 requires
 // the corresponding amounts for the IMMEDIATELY PRECEDING period only — one
@@ -1676,6 +1706,28 @@ export const api = {
      * computed server-side, so the 25% variance test the statute requires is a
      * fact rather than something the CA re-derives.
      */
+    /**
+     * Budget versus actuals for one client-year. The ACTUALS come from
+     * `account_period_balances` server-side — one bucket read covering all
+     * four quarters. The screen used to compute them itself with four unpaged
+     * reads of `journal_lines`, which PostgREST truncates at ~1000 rows
+     * without saying so, and it did that across every client at once (ACC-06).
+     * `client_id` is required: the buckets are per client.
+     */
+    budgets: (clientId: string, fy?: string) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (fy) q.set("fy", fy);
+      return request<ApiResp<BudgetVsActuals>>(`/api/accounting/budgets?${q}`);
+    },
+    /**
+     * Record or clear one account's budget. `budget_paise: null` DELETES it —
+     * "not budgeted" and "budgeted at nil" are different statements and only
+     * the second produces a variance.
+     */
+    saveBudget: (body: {
+      client_id: string; fy: string; account_id: string; budget_paise: number | null;
+    }) => request<ApiResp<{ account_id: string; fy: string; budget_paise: number | null }>>(
+      "/api/accounting/budgets", { method: "PUT", body: JSON.stringify(body) }),
     scheduleIiiRatios: (clientId: string, fy?: string) => {
       const q = new URLSearchParams({ client_id: clientId });
       if (fy) q.set("fy", fy);

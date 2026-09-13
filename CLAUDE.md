@@ -1350,6 +1350,24 @@ applied to the rows it got BACK, never inside the paged query; and sort keys are
 coalesced, because a nullable column such as `fixed_assets.asset_code` raises
 `TypeError` in Python where the database sorted it happily.
 
+**THE RULE IS ABOUT THE BROWSER TOO, and that is where it was still being
+broken.** Everything above is written for `apps/api`, and the frontend reaches
+~83 tables directly over PostgREST — where the same ~1000-row cap applies, with
+the same silence. `/accounting/budget` read `journal_lines` joined to
+`journal_entries`, FIRM-WIDE, once per quarter, unpaged, and computed the
+actuals in the browser: on any client with real volume every figure was short
+by an unknown amount and every variance wrong, confidently, with no error
+(ACC-06). The answer is one row per Revenue and Expense account — about fifty —
+so it is now `GET /api/accounting/budgets`, reading `account_period_balances`
+through **`ReportingService.period_net_by_account`**, which is the primitive to
+reach for whenever one screen needs SEVERAL windows over the same accounts: it
+fetches the chart and the buckets ONCE and projects each window through the
+same `_passbook_lines` the Trial Balance uses. Four `trial_balance` calls would
+have been eight Singapore-to-Mumbai round trips for one screen.
+`core.ist_clock.fy_quarters` keeps the windows month-aligned (derived from
+`fy_bounds`, never restating April), which is what lets the pre-aggregated
+buckets answer exactly with no edge month to replay.
+
 **Closing stock as at a date is the same shape, and it also carries a rule about
 WHICH COLUMN answers a dated question.** `public.stock_position_as_at`
 (migration 363) sums `inventory_stock_ledger`'s DELTAS to a date — one row per

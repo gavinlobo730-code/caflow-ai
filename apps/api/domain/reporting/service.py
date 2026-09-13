@@ -287,6 +287,78 @@ class ReportingService:
 
         return self._serve(("trial_balance", firm_id, client_id, as_of, start), fast, legacy)
 
+    def period_net_by_account(self, firm_id: str, client_id: Optional[str],
+                              windows: list[tuple[str, str, str]],
+                              basis: str = "accrual") -> dict:
+        """Net movement per account for SEVERAL windows, from ONE bucket read.
+
+        `windows` is [(label, start_iso, end_iso), ...]; the answer is
+        {"accounts": {id: {code, name, type, subtype}},
+         "net_paise": {label: {account_id: debit - credit}}}.
+
+        WHY THIS EXISTS RATHER THAN N CALLS TO `trial_balance`. Budget-vs-actual
+        wants the same accounts over the four quarters of a financial year.
+        Four `trial_balance` calls would fetch the chart four times and the
+        buckets four times — eight Singapore-to-Mumbai round trips for one
+        screen — and `trial_balance`'s own docstring already states the rule
+        this follows: "Adding a period must not add a Mumbai round trip to a
+        report that already has one." Cash flow was the first caller to need
+        two windows off one fetch, which is why `_passbook_lines` was split out
+        of `_passbook_accrual_lines`; this is the same seam, used for N.
+
+        WHAT CROSSES THE WIRE IS THE ANSWER, NOT THE LEDGER. The buckets are
+        `account_period_balances` (migrations 227/228) — one row per account
+        per month — so a client with 12,836 journal entries costs the same as
+        one with ten. The browser used to do this itself, reading `journal_lines`
+        joined to `journal_entries` once per quarter with no paging: PostgREST
+        caps a response at ~1000 rows and reports nothing when it does, so on
+        any real client every actual was silently truncated and every variance
+        wrong (ACC-06).
+
+        THE WINDOWS MUST BE MONTH-ALIGNED for the fast path to be exact, and
+        the four quarters of an Indian financial year are — `core.ist_clock.
+        fy_quarters` says so in its own docstring. A window that is not simply
+        costs an edge-month replay, which `_passbook_lines` already handles, so
+        this is a performance property and not a correctness one.
+        """
+        def net_from(lines) -> dict[str, int]:
+            out: dict[str, int] = {}
+            for ln in lines:
+                out[ln.account_id] = (out.get(ln.account_id, 0)
+                                      + ln.debit_paise - ln.credit_paise)
+            return out
+
+        def described(accounts: dict) -> dict:
+            return {aid: {"account_code": a.code, "account_name": a.name,
+                          "account_type": a.type, "account_subtype": a.subtype}
+                    for aid, a in accounts.items()}
+
+        def legacy():
+            accounts: dict = {}
+            nets: dict[str, dict[str, int]] = {}
+            for label, start, end in windows:
+                snap = self.source.snapshot(firm_id, client_id, start, end)
+                # Later windows must not drop an account only the first saw.
+                accounts = {**accounts, **snap.accounts}
+                nets[label] = net_from(self._lines(snap, basis))
+            return {"accounts": described(accounts), "net_paise": nets}
+
+        if not self._passbook_applicable(basis, client_id):
+            return legacy()
+
+        def fast():
+            accounts = self.source._accounts(firm_id, client_id)
+            buckets = self.source.fetch_buckets(firm_id, client_id)
+            nets = {
+                label: net_from(
+                    self._passbook_lines(firm_id, client_id, start, end, buckets))
+                for label, start, end in windows
+            }
+            return {"accounts": described(accounts), "net_paise": nets}
+
+        return self._serve(("period_net_by_account", firm_id, client_id,
+                            tuple(w[0] for w in windows)), fast, legacy)
+
     def ledger(self, firm_id: str, client_id: Optional[str], account_id: str,
                start_date: Optional[str] = None, end_date: Optional[str] = None,
                limit: Optional[int] = None, offset: int = 0) -> dict:
