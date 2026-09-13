@@ -899,8 +899,8 @@
     "BANK-24": {
       "status": "open",
       "verified_on": "2026-09-13",
-      "why": "domain/banking/charge_gst.py records no supplier GSTIN or invoice reference against a bank charge, so the ITC cannot be matched to GSTR-2B",
-      "needs": "a migration for the two fields"
+      "why": "Confirmed and sharpened. NO bank table holds a GSTIN at all — not bank_accounts, not bank_matching_rules, not bank_transactions — and domain/gst/itc_matching.py and gst_2b_reconciliation_service know nothing about bank charges. Migration 254 gave the RULE the two facts a split needs (suggested_gst_rate_bps, suggested_is_interstate) and stopped there, so the credit is booked under §16 and can never be tied to the 2B row that §16(2)(aa) makes it conditional on.",
+      "needs": "ONE FACT SETTLED FIRST, and it decides the schema. A bank does not issue an invoice per charge — the ordinary practice is a MONTHLY CONSOLIDATED GST invoice covering the month's charges, which reaches GSTR-2B as a single B2B document. If that is right, the finding's 'two fields on the charge' is the wrong shape: the GSTIN belongs on the RULE (constant per bank, beside 254's two columns) and the document reference belongs once per (bank account, month), with the matcher comparing the month's aggregate against one 2B row. Per-charge references would make every charge an unmatched document and leave the register noisier than it is now. ⚠️ [S] — the monthly-consolidated practice is written from knowledge; this environment's proxy refuses every egress, so it was not confirmed. Check one real bank GST invoice before choosing the shape."
     },
     "BANK-25": {
       "status": "closed_by_commit",
