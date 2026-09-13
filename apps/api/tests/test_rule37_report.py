@@ -316,3 +316,84 @@ def test_the_notes_are_read_in_bulk_not_once_per_bill(db):
         f"{calls['n']} note reads for 25 bills — one per note table is the "
         "budget, whatever the book size"
     )
+
+
+# ── What being late COSTS (GST-28) ───────────────────────────────────────────
+#
+# Rule 37(1) requires the credit to be paid back "along with interest payable
+# thereon under section 50", and this report used to state the reversal and
+# stop there — so a CA reading it saw the tax and not the charge that had been
+# running since. domain/gst/late_filing.py computes §50 interest, so the report
+# can now say what each overdue bill costs.
+#
+# THE OTHER HALF OF GST-28 IS NOT BUILT AND IS NOT A BUG. The finding asks for
+# a "Post this reversal" action that creates the journal and registers it in
+# one step. services/itc_register_service.py records the opposite choice in its
+# own docstring, with the reason: a journal crediting GST Input could be a Rule
+# 37 reversal, a Rule 42 apportionment or a §17(5) block, only the CA knows
+# which, and a one-click poster would also have to choose the debit account.
+# That is an owner decision to re-take, not a defect to fix.
+
+def test_every_overdue_bill_says_what_the_delay_costs(db):
+    _bill(db, "B-1")
+    row = _report(db)["bills"][0]
+    assert row["interest"]["from_availment"]["interest_paise"] > 0
+    assert row["interest"]["from_expiry"]["interest_paise"] > 0
+
+
+def test_the_rate_is_50_1_and_not_50_3(db):
+    """§50(3) charges credit 'wrongly availed AND UTILISED'. Rule 37 credit was
+    VALIDLY availed — what changed is that the consideration went unpaid — so
+    §50(1)'s 18% applies. That matters twice over: §50(3)'s own notified rate
+    is a named gap in this codebase (two notifications differ by a third), so
+    reading Rule 37 as a §50(3) charge would make it uncomputable as well as
+    wrong."""
+    _bill(db, "B-1")
+    for k in ("from_availment", "from_expiry"):
+        charge = _report(db)["bills"][0]["interest"][k]
+        assert charge["section"] == "50(1)"
+        assert charge["rate_bps"] == 1800
+
+
+def test_the_two_clocks_differ_by_the_180_days(db):
+    """The omitted Rule 37(3) ran interest from the date of availing; the
+    substituted rule says only 'under section 50' and leaves the start open.
+    The availment reading is always the longer one, by exactly the window."""
+    _bill(db, "B-1")
+    i = _report(db)["bills"][0]["interest"]
+    assert i["from_availment"]["days"] - i["from_expiry"]["days"] == 180
+    assert i["from_availment"]["interest_paise"] > i["from_expiry"]["interest_paise"]
+
+
+def test_neither_clock_is_presented_as_the_answer(db):
+    """Picking one silently would over- or under-state a sum the client pays
+    over. The report names the substitution that removed the answer."""
+    _bill(db, "B-1")
+    out = _report(db)
+    assert len(out["interest_caveats"]) == 1
+    caveat = out["interest_caveats"][0]
+    assert "19/2022" in caveat
+    assert "01-10-2022" in caveat
+    assert "date of availing credit" in caveat
+
+
+def test_the_interest_totals_sum_the_same_bills(db):
+    _bill(db, "B-1")
+    _bill(db, "B-2", total=236_000_00, cgst=18_000_00, sgst=18_000_00)
+    out = _report(db)
+    assert out["bill_count"] == 2
+    for k, tk in (("from_availment", "from_availment_paise"),
+                  ("from_expiry", "from_expiry_paise")):
+        assert out["interest_totals"][tk] == sum(
+            b["interest"][k]["interest_paise"] for b in out["bills"])
+
+
+def test_a_client_with_nothing_overdue_gets_nil_totals_and_the_caveat(db):
+    """The caveat is about the RULE, not about a bill, so it travels even on an
+    empty report — a CA who sees no interest should know which reading a figure
+    would have taken if there had been one."""
+    out = _report(db)
+    assert out["bill_count"] == 0
+    assert out["interest_totals"] == {"from_availment_paise": 0,
+                                      "from_expiry_paise": 0}
+    assert len(out["interest_caveats"]) == 1

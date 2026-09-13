@@ -28,6 +28,7 @@ import logging
 from typing import Optional
 
 from core.ist_clock import ist_today
+import domain.gst.late_filing as late_filing
 from domain.gst.itc_reversal import (
     days_outstanding, is_overdue, parse_iso, payment_due_by, reversal_for_bill,
     reversal_period,
@@ -220,6 +221,31 @@ def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
             "reverse_in_period": reversal_period(bill_date),
             "reversal": {k: v for k, v in reversal.items()
                          if k not in ("unpaid_paise", "supply_value_paise")},
+            # WHAT BEING LATE COSTS (GST-28). Rule 37(1) requires the credit to
+            # be paid back "along with interest payable thereon under section
+            # 50", and the report used to state the reversal and stop there —
+            # so a CA reading it saw the tax and not the charge that has been
+            # running since.
+            #
+            # TWO figures, because the rule no longer says which. Both are
+            # §50(1) at 18% on the same base; only the window differs, and the
+            # caveat beside them names the substitution that removed the
+            # answer. Showing one silently would over- or under-state a sum the
+            # client pays over.
+            "interest": {
+                "from_availment": late_filing.interest_on_rule_37_reversal(
+                    reversal_paise=reversal["total_paise"],
+                    from_date=bill_date, to_date=today,
+                    clock="from the date the credit was availed, which is the "
+                          "clock the omitted Rule 37(3) stated",
+                ).as_dict(),
+                "from_expiry": late_filing.interest_on_rule_37_reversal(
+                    reversal_paise=reversal["total_paise"],
+                    from_date=payment_due_by(bill_date), to_date=today,
+                    clock="from the day the 180 days expired, which is the "
+                          "reading the substituted rule leaves open",
+                ).as_dict(),
+            },
         })
         for head in totals:
             totals[head] += reversal[head]
@@ -234,6 +260,15 @@ def rule37_report(db, firm_id: str, client_id: Optional[str] = None,
         "bills": items,
         "bill_count": len(items),
         "totals": totals,
+        # Summed over the same bills, so a CA can see the whole exposure
+        # without adding a column up. Both readings, same as each row.
+        "interest_totals": {
+            "from_availment_paise": sum(
+                i["interest"]["from_availment"]["interest_paise"] for i in items),
+            "from_expiry_paise": sum(
+                i["interest"]["from_expiry"]["interest_paise"] for i in items),
+        },
+        "interest_caveats": [late_filing.RULE_37_CLOCK_NOT_STATED],
         # CA REVIEW REQUIRED — this reports what the rule requires; it posts
         # nothing and files nothing.
         "ca_review_required": True,

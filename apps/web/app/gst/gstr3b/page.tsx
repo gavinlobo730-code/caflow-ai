@@ -804,6 +804,15 @@ export default function GSTR3BPage() {
               splitRule37Bills(rule37!.bills, toPeriod(yearMonth));
             const dueTotal = due.reduce((t, b) => t + b.reversal.total_paise, 0);
             const earlierTotal = overdueEarlier.reduce((t, b) => t + b.reversal.total_paise, 0);
+            // Rule 37(1) requires the credit back "along with interest payable
+            // thereon under section 50", and this panel used to state the tax
+            // and stop (GST-28). Summed over the bills THIS return carries,
+            // not over every overdue bill: the earlier ones belong to a return
+            // already filed and their interest is that return's problem.
+            const dueInterest = due.reduce((t, b) => ({
+              availment: t.availment + b.interest.from_availment.interest_paise,
+              expiry: t.expiry + b.interest.from_expiry.interest_paise,
+            }), { availment: 0, expiry: 0 });
 
             if (due.length === 0 && overdueEarlier.length === 0) {
               return (
@@ -851,10 +860,32 @@ export default function GSTR3BPage() {
                               {b.bill_date} · {b.days_outstanding} days · {r(b.unpaid_paise)} unpaid
                             </span>
                           </span>
-                          <span className="font-mono shrink-0">{r(b.reversal.total_paise)}</span>
+                            <span className="font-mono shrink-0">{r(b.reversal.total_paise)}</span>
                         </li>
                       ))}
                     </ul>
+
+                    {/* §50 interest. Two figures because the rule no longer
+                        says which clock, and showing one would over- or
+                        under-state a sum the client pays over. */}
+                    <div className="mt-4 pt-3 border-t border-amber-200">
+                      <p className="text-xs text-amber-900 font-semibold mb-1.5">
+                        Interest under §50(1) on that reversal, to {rule37!.as_of}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-white/70 border border-amber-200 px-3 py-2">
+                          <p className="text-[10px] text-amber-700">From the date the credit was availed</p>
+                          <p className="font-mono text-sm text-amber-900">{r(dueInterest.availment)}</p>
+                        </div>
+                        <div className="rounded-lg bg-white/70 border border-amber-200 px-3 py-2">
+                          <p className="text-[10px] text-amber-700">From the day the 180 days expired</p>
+                          <p className="font-mono text-sm text-amber-900">{r(dueInterest.expiry)}</p>
+                        </div>
+                      </div>
+                      {rule37!.interest_caveats.map((c, i) => (
+                        <p key={i} className="text-[11px] text-amber-700 mt-2">{c}</p>
+                      ))}
+                    </div>
                   </div>
                 )}
 
