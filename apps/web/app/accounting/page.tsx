@@ -28,7 +28,7 @@ const ADMIN_CARDS: {
   // Real firm-scoped tables are the fix and need a migration.
   { label: "Recurring Transactions", description: "Templates for monthly, quarterly & yearly entries", href: "/accounting/recurring", icon: RefreshCw, notShared: true },
   { label: "Budget vs Actuals", description: "Compare budgeted amounts with posted entries", href: "/accounting/budget", icon: Target },
-  { label: "Retainer Tracker", description: "Track monthly retainer clients and generate GST invoices", href: "/accounting/retainer", icon: IndianRupee, notShared: true },
+  { label: "Retainer Tracker", description: "Fixed-fee arrangements, and a draft invoice per period", href: "/accounting/retainer", icon: IndianRupee },
   { label: "MSME 43B(h) Tracker", description: "Track MSME vendor payments to avoid IT Act §43B(h) disallowance", href: "/accounting/msme-tracker", icon: FileText },
   { label: "Schedule III Statements", description: "Balance Sheet & P&L in Companies Act 2013 Schedule III format for MCA/ROC", href: "/accounting/schedule-iii", icon: ClipboardCheck },
   { label: "Trial Balance Import", description: "Import opening balances from Tally, Busy, QuickBooks, Zoho, Excel CSV", href: "/accounting/trial-balance-import", icon: Scale },

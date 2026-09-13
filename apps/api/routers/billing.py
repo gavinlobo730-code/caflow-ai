@@ -112,6 +112,127 @@ def create_schedule(body: BillingScheduleIn,
     return api_response(True, sched)
 
 
+class BillingScheduleUpdateIn(BaseModel):
+    """A partial update to a schedule. Every field optional; omitted means
+    unchanged.
+
+    `client_id` is deliberately absent. Moving a schedule to another client
+    would re-point every invoice already generated against it, and
+    `_find_generated`'s idempotency key is (schedule, period), so the new
+    client's first period would read as already billed. Raise a new schedule.
+    """
+    arrangement: Optional[str] = None
+    cadence: Optional[str] = None
+    amount_paise: Optional[int] = None
+    gst_rate: Optional[float] = None
+    service_id: Optional[str] = None
+    next_run_date: Optional[str] = None
+    is_active: Optional[bool] = None
+    # No `description` / `due_date`. `billing_schedules` has neither column
+    # (migration 073) — `BillingScheduleIn` accepts them and create_schedule
+    # drops them, which is a gap of its own, but OFFERING them on a PATCH
+    # would be worse: PostgREST rejects the whole row on an unknown key, so
+    # sending one would silently fail the fee change beside it.
+
+    @field_validator("arrangement")
+    @classmethod
+    def _arr(cls, v):
+        if v is not None and v not in ("retainer", "one_time", "package"):
+            raise ValueError("arrangement must be retainer | one_time | package")
+        return v
+
+    @field_validator("cadence")
+    @classmethod
+    def _cad(cls, v):
+        if v is not None and v not in ("monthly", "quarterly", "annual", "one_time"):
+            raise ValueError("cadence must be monthly | quarterly | annual | one_time")
+        return v
+
+    @field_validator("amount_paise")
+    @classmethod
+    def _amt(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("amount_paise must be non-negative")
+        return v
+
+    @field_validator("service_id")
+    @classmethod
+    def _service(cls, v):
+        # Not required on an update — omitting it leaves the stored one — but a
+        # caller sending a blank string is clearing a field migration 206 made
+        # mandatory, which is a different thing and is refused.
+        if v is not None and not v.strip():
+            raise ValueError("Product/Service is required.")
+        return v
+
+
+@router.patch("/schedules/{schedule_id}")
+def update_schedule(schedule_id: str = Path(...),
+                    body: BillingScheduleUpdateIn = ...,
+                    current_user: dict = Depends(rbac("billing", "write"))):
+    """Change a schedule's fee, cadence, service or active flag.
+
+    There was no update path at all until now, and a retainer whose fee goes up
+    is the ordinary case — without this the only way to record it was a second
+    schedule, which then bills the client twice.
+    """
+    sched = billing_service.get_schedule(current_user["firm_id"], schedule_id)
+    if not sched:
+        raise HTTPException(status_code=404, detail="Billing schedule not found")
+    # Same guard as create_schedule and generate: get_schedule firm-scopes its
+    # query, and nothing asserted the CLIENT-scope invariant at the router.
+    assert_client_access(current_user, sched.get("client_id"))
+    out = billing_service.update_schedule(
+        current_user["firm_id"], schedule_id,
+        body.model_dump(exclude_unset=True), current_user.get("id"))
+    if out is None:
+        raise HTTPException(status_code=404, detail="Billing schedule not found")
+    return api_response(True, out)
+
+
+@router.get("/service-options")
+def service_options(current_user: dict = Depends(rbac("billing", "read"))):
+    """The practice's OWN service catalogue — what a retainer can bill for.
+
+    `billing_schedules.service_id` has been mandatory since migration 206, and
+    the catalogue is CLIENT-owned (migration 182: "Client B must never inherit
+    Client A's products"). The practice bills out of its INTERNAL client's
+    books — `generate_for_schedule` resolves that client itself — so the right
+    catalogue is that one, and answering here keeps the internal-client concept
+    out of the browser entirely.
+
+    An empty list is a real answer: a firm that has recorded no services yet
+    has none, and the screen says so rather than offering a blank dropdown.
+    Not provisioned yet is the same shape — `get_internal_client_id` returns
+    None and the caller gets `[]` with `internal_client_id: null`, which is
+    what `generate` would 409 on.
+    """
+    from services.internal_client_service import get_internal_client_id
+    firm_id = current_user["firm_id"]
+    internal_id = get_internal_client_id(firm_id)
+    if not internal_id:
+        return api_response(True, {"internal_client_id": None, "services": []})
+    # SCOPED, not exempted. The client is resolved server-side and cannot be
+    # steered by the caller, but the handler still reads one client's rows, so
+    # it goes through the same check every other billing endpoint does —
+    # `create_schedule` and `generate` carry the identical guard with the
+    # identical reasoning: a no-op while "billing" is Partner-only, and the
+    # thing that keeps it right if it is ever opened to Manager or Executive.
+    assert_client_access(current_user, internal_id)
+    from core.supabase_client import get_supabase
+    import os
+    if not os.environ.get("SUPABASE_URL"):
+        return api_response(True, {"internal_client_id": internal_id, "services": []})
+    # Columns as migration 176 declares them: `gst_rate_bps` (basis points, a
+    # hint only) and `is_active`, not the `gst_rate_percent` / `is_archived`
+    # the models layer speaks in.
+    rows = (get_supabase().table("service_catalogue")
+            .select("id, name, hsn_sac, default_rate_paise, gst_rate_bps")
+            .eq("firm_id", firm_id).eq("client_id", internal_id)
+            .eq("is_active", True).order("name").execute().data or [])
+    return api_response(True, {"internal_client_id": internal_id, "services": rows})
+
+
 @router.post("/preview-run")
 def preview_run(as_of: Optional[str] = Query(None, description="YYYY-MM-DD; defaults to today"),
                 current_user: dict = Depends(rbac("billing", "read"))):

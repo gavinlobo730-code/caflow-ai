@@ -1132,6 +1132,29 @@ PostgREST. That is why:
 - **Renaming or dropping a column can break the frontend while backend CI stays green.**
   `tests/test_frontend_columns_exist_pg.py` parses those select lists and checks them
   against the real schema. Run it when you touch a migration.
+- **A THIRD path exists and it is not a database at all: `localStorage`.** Three
+  screens kept the CA's work in the browser (ACC-06) and two are now on tables —
+  `/accounting/budget` on `account_budgets` (migration 376) and
+  `/accounting/retainer` on `billing_schedules`, **which was already built**.
+  That second one is the lesson, and it inverts the argument
+  `components/BrowserOnlyNotice.tsx` used to make: the notice's own docstring
+  said these screens "have no alternative", and the retainer tracker had one a
+  single call away — `arrangement IN ('retainer','one_time','package')` since
+  migration 073, `billing_service.generate_for_schedule` producing a DRAFT
+  through the sales engine, and three methods in `lib/api` with no callers. So
+  it was exactly the pattern CLAUDE.md warns about at `/gst/reconciliation`: a
+  banner disowning a rival implementation. **Before writing a browser-only
+  notice onto a fourth screen, grep the backend for what it duplicates.**
+  What the retainer screen did in the meantime is worth knowing as a class of
+  defect: it RENDERED a document headed TAX INVOICE under the firm's own
+  GSTIN, numbered from a browser-local counter (two devices collide, so Rule
+  46(b)'s "unique for a financial year" cannot hold), taxed at a hardcoded CGST
+  9% + SGST 9% — the wrong tax for every inter-state client — and offered
+  Print. `apps/web/scripts/a-browser-only-screen-says-so.test.ts` now holds
+  both halves: which screens are still browser-only, and that a screen already
+  moved may not come back OR keep a warning that is no longer true.
+  **`/accounting/recurring` is the one that remains**, and there the original
+  argument does hold: nothing anywhere posts a recurring journal.
 - **The migrations and production have drifted before, in both halves of the
   schema.** `tests/test_schema_matches_production_pg.py` (columns) and
   `tests/test_guards_match_production_pg.py` (RLS switches, policies,

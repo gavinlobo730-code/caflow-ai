@@ -7,16 +7,19 @@ import { AlertTriangle } from "lucide-react";
  * says so (ACC-06).
  *
  * WHY IT EXISTS
- *     `/accounting/recurring` and `/accounting/retainer` store everything in
- *     localStorage: no table, no RLS, no sharing, no scheduler. A partner who
- *     sets a recurring template up on their laptop finds nothing on the office
- *     machine, a second user sees an empty screen, and clearing site data
- *     loses the lot with no warning and no backup.
+ *     `/accounting/recurring` stores everything in localStorage: no table, no
+ *     RLS, no sharing, no scheduler. A partner who sets a recurring template
+ *     up on their laptop finds nothing on the office machine, a second user
+ *     sees an empty screen, and clearing site data loses the lot with no
+ *     warning and no backup.
  *
- *     `/accounting/budget` WAS the third and no longer is: `account_budgets`
- *     (migration 376) holds the figures and the actuals come from
- *     `account_period_balances` through the API. It is off this notice, and
- *     `scripts/a-browser-only-screen-says-so.test.ts` keeps it off.
+ *     There were THREE. `/accounting/budget` now writes to `account_budgets`
+ *     (migration 376) and reads its actuals from `account_period_balances`;
+ *     `/accounting/retainer` now writes to `billing_schedules`, which was
+ *     already built and had no caller. Both are off this notice and
+ *     `scripts/a-browser-only-screen-says-so.test.ts` keeps them off — a
+ *     warning that is no longer true is its own kind of wrong, and a CA who
+ *     reads one stops believing the next.
  *
  *     None of that was stated anywhere. The Recurring card on the accounting
  *     hub said "Automate monthly, quarterly & yearly entries" — a promise the
@@ -30,13 +33,22 @@ import { AlertTriangle } from "lucide-react";
  *     it merges. The finding names this notice as the interim in its own
  *     words: "until then the hub cards should say 'this device only'".
  *
- *     This is deliberately NOT the pattern CLAUDE.md warns about, where
- *     `/gst/reconciliation` "carried a banner disowning itself, which is a
- *     warning label rather than a fix". That screen was a DUPLICATE and a
- *     working alternative existed one tab over, so the honest act was to
- *     delete it. These three have no alternative: the work they do is real and
- *     the only thing wrong is where it is kept. Saying where is the whole of
- *     what can be said truthfully today.
+ *     ⚠️ THAT ARGUMENT WAS WRONG ABOUT ONE OF THEM, and the correction is
+ *     worth keeping. It used to read: "This is deliberately NOT the pattern
+ *     CLAUDE.md warns about, where `/gst/reconciliation` carried a banner
+ *     disowning itself... These three have no alternative: the work they do is
+ *     real and the only thing wrong is where it is kept."
+ *
+ *     The retainer tracker DID have an alternative, one call away, and nobody
+ *     had looked: `billing_schedules` with `arrangement = 'retainer'`,
+ *     `billing_service.generate_for_schedule`, and three methods already
+ *     sitting in `lib/api` with no callers. So it was exactly the pattern —
+ *     a banner on a rival implementation. Before writing this notice onto a
+ *     fourth screen, grep the backend for what it is duplicating.
+ *
+ *     For `/accounting/recurring` the original argument does hold: nothing
+ *     posts a recurring journal anywhere, so saying where the templates live
+ *     is the whole of what can be said truthfully today.
  */
 export default function BrowserOnlyNotice({ what, alsoNot }: {
   /** What this screen keeps — e.g. "recurring templates". */

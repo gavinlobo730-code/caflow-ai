@@ -80,14 +80,12 @@ test("the three known browser-only screens are exactly these three", () => {
   // per-viewer convenience (allowlist it with the reason) or is it somebody's
   // work (it needs the notice, and really it needs a table).
   const found = pagesTouchingLocalStorage().filter((p) => !(p in CONVENIENCE_ONLY));
-  // TWO, not three. `/accounting/budget` was moved onto `account_budgets`
-  // (migration 376) and reads its actuals from the backend, so it is no longer
-  // one of these — see MOVED_TO_THE_DATABASE below, which is the half of this
-  // guard that stops it coming back.
-  assert.deepEqual(found, [
-    "app/accounting/recurring/page.tsx",
-    "app/accounting/retainer/page.tsx",
-  ]);
+  // ONE, not three. `/accounting/budget` moved onto `account_budgets`
+  // (migration 376) and `/accounting/retainer` onto `billing_schedules`, which
+  // was already built — see MOVED_TO_THE_DATABASE below, which is the half of
+  // this guard that stops either coming back. Recurring journals are the only
+  // genuine build left.
+  assert.deepEqual(found, ["app/accounting/recurring/page.tsx"]);
   // Every allowlist entry must still be a page that exists, so a deleted
   // screen cannot leave a stale exemption behind for the next one to inherit.
   for (const rel of Object.keys(CONVENIENCE_ONLY)) {
@@ -152,6 +150,17 @@ const MOVED_TO_THE_DATABASE: Record<string, string> = {
     "the browser, firm-wide, with four unpaged reads of journal_lines — " +
     "PostgREST truncates at ~1000 rows and says nothing, so every variance on " +
     "a real client was wrong.",
+  "app/accounting/retainer/page.tsx":
+    "ACC-06, and this one was never a missing feature. `billing_schedules` " +
+    "(migration 073) has carried arrangement IN ('retainer','one_time'," +
+    "'package') since 2024, billing_service generates a DRAFT invoice per " +
+    "schedule per period THROUGH THE SALES ENGINE, and " +
+    "api.billing.listSchedules/createSchedule/generate were already in the " +
+    "frontend client with no callers. What the screen did instead was mint a " +
+    "document headed TAX INVOICE under the firm's own GSTIN, numbered from a " +
+    "browser-local counter (so two devices collide and Rule 46(b) cannot " +
+    "hold) and taxed at a hardcoded CGST 9% + SGST 9% (so wrong for every " +
+    "inter-state client), with a Print button — and saved it to localStorage.",
 };
 
 test("a screen already moved onto the database does not come back", () => {
@@ -165,8 +174,7 @@ test("a screen already moved onto the database does not come back", () => {
 });
 
 test("each of them renders the notice", () => {
-  for (const p of ["app/accounting/recurring/page.tsx",
-                   "app/accounting/retainer/page.tsx"]) {
+  for (const p of ["app/accounting/recurring/page.tsx"]) {
     const src = code(read(p));
     assert.match(src, /<BrowserOnlyNotice/, `${p} does not say where its data lives`);
     assert.match(src, /import BrowserOnlyNotice from "@\/components\/BrowserOnlyNotice"/, p);
@@ -177,8 +185,7 @@ test("there is ONE notice, not three copies of a sentence", () => {
   const c = code(read("components/BrowserOnlyNotice.tsx"));
   assert.match(c, /Saved in this browser only/);
   // The sentence must not be spelled out again on any page.
-  for (const p of ["app/accounting/recurring/page.tsx",
-                   "app/accounting/retainer/page.tsx"]) {
+  for (const p of ["app/accounting/recurring/page.tsx"]) {
     assert.doesNotMatch(code(read(p)), /Saved in this browser only/,
       `${p} carries its own copy of the sentence`);
   }
@@ -196,17 +203,37 @@ test("each screen also names what IT specifically does not do", () => {
   // is the one that stops a CA relying on the wrong thing.
   const recurring = code(read("app/accounting/recurring/page.tsx"));
   assert.match(recurring, /Nothing posts a due template/);
-  const retainer = code(read("app/accounting/retainer/page.tsx"));
-  assert.match(retainer, /not a sales invoice in the books/);
 });
 
 test("the hub card no longer promises automation it cannot deliver", () => {
   const hub = code(read("app/accounting/page.tsx"));
   assert.doesNotMatch(hub, /Automate monthly, quarterly & yearly entries/,
     "the Recurring card promised automation; nothing posts a due template");
-  // TWO cards carry the flag now — Budget vs Actuals is on the database —
-  // and the flag is still rendered.
-  assert.equal((hub.match(/notShared: true/g) ?? []).length, 2);
+  // ONE card carries the flag now — Budget vs Actuals and the Retainer
+  // Tracker are both on the database — and the flag is still rendered.
+  assert.equal((hub.match(/notShared: true/g) ?? []).length, 1);
   assert.match(hub, /card\.notShared && \(/);
   assert.match(hub, /Saved in this browser only — not shared with the firm/);
+});
+
+
+test("the retainer screen raises a real draft, not a rendered one", () => {
+  // The specific things the old screen did, each forbidden by name because
+  // each was independently wrong.
+  const src = code(read("app/accounting/retainer/page.tsx"));
+  assert.doesNotMatch(src, /TAX INVOICE/,
+    "the screen must not render a tax invoice — POST /api/billing/schedules/" +
+    "{id}/generate raises a real draft through the sales engine, and the CA " +
+    "issues it from Billing");
+  assert.doesNotMatch(src, /window\.print/,
+    "and must not offer to print one");
+  assert.doesNotMatch(src, /\bcgst\b|\bsgst\b/i,
+    "GST on the practice's own invoice is computed by the sales engine from " +
+    "the place of supply — a hardcoded CGST 9% + SGST 9% is the wrong tax for " +
+    "every inter-state client");
+  assert.doesNotMatch(src, /generateInvoiceNo/,
+    "the invoice number comes from the firm's own series, not a browser " +
+    "counter — CGST Rule 46(b) requires it unique for a financial year");
+  assert.match(src, /api\.billing\.generate\(/);
+  assert.match(src, /api\.billing\.listSchedules\(/);
 });

@@ -1,428 +1,219 @@
 "use client";
 
-/**
- * Monthly Retainer Tracker — CA firms charge fixed monthly fees for services
- * GST on professional services (CA fees): CGST Act Section 9 read with Notification 11/2017-CT(Rate)
- * GST rate on CA services: 18% (CGST 9% + SGST 9%)
- * Invoice must show GSTIN of supplier and recipient — CGST Act Section 31
- */
-
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import Link from "next/link";
 import {
-  IndianRupee,
-  Users,
-  FileText,
-  CheckCircle,
-  ChevronDown,
-  ChevronUp,
-  X,
-  Printer,
-  AlertCircle,
-  Plus,
+  ChevronLeft, Plus, Pencil, FileText, AlertCircle, CheckCircle2,
+  IndianRupee, Users, ExternalLink, X, Power,
 } from "lucide-react";
-import { getClients } from "@/lib/data/clients";
 import { formatPaise } from "@/lib/services/formatting";
-import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { getClients } from "@/lib/data/clients";
+import { api, type BillingSchedule } from "@/lib/api";
 import type { Client } from "@/lib/types";
-import BrowserOnlyNotice from "@/components/BrowserOnlyNotice";
+import { paiseFromRupeeInput, rupeeInputFromPaise, bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { todayLocalISO } from "@/lib/dateMath";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── What changed here, and why (ACC-06) ────────────────────────────────────
+//
+// This screen used to keep retainers, a work checklist and "invoices" in three
+// localStorage keys, and that was the least of it. It MINTED a document:
+//
+//   * headed TAX INVOICE, under the firm's own name and GSTIN;
+//   * numbered `CAF/<year>/NNNN` from a counter over the browser's own list,
+//     so two devices produce the same number and CGST Rule 46(b)'s "consecutive
+//     serial number ... unique for a financial year" cannot hold;
+//   * taxed at a hardcoded CGST 9% + SGST 9%, so it was simply the wrong tax
+//     for any client outside the firm's own state, where IGST 18% applies;
+//   * with a Print button, and "Save Invoice" saving it to localStorage.
+//
+// A CA could hand that to a client. It existed in no ledger, no GSTR-1 and no
+// receivable.
+//
+// NONE OF IT NEEDED BUILDING. `billing_schedules` (migration 073) has carried
+// `arrangement IN ('retainer','one_time','package')` since 2024;
+// `services/billing_service.py` generates a DRAFT invoice per schedule per
+// period, idempotently, THROUGH THE SALES ENGINE — so GST, place of supply and
+// the firm's real numbering series are the real ones — and
+// `api.billing.listSchedules / createSchedule / generate` were already in the
+// frontend client with no callers. This screen now calls them.
+//
+// The WORK CHECKLIST is not rebuilt here. Four booleans per client per month
+// about whether GSTR-1, GSTR-3B and the TDS return were filed is
+// `compliance_obligations`, which is built and is per client — so the screen
+// links to the client's own Compliance tab instead of keeping a second,
+// private answer to a question the platform already answers.
 
-const SERVICES = [
-  "GST Returns",
-  "TDS Returns",
-  "ITR Filing",
-  "Accounting",
-  "MCA Filings",
-  "Payroll",
-  "Audit Support",
-  "Other",
+const CADENCES = [
+  { value: "monthly", label: "Monthly" },
+  { value: "quarterly", label: "Quarterly" },
+  { value: "annual", label: "Annual" },
 ] as const;
 
-type Service = (typeof SERVICES)[number];
-
-const WORK_ITEMS = [
-  { key: "gstr1", label: "GSTR-1 Filed" },
-  { key: "gstr3b", label: "GSTR-3B Filed" },
-  { key: "tds", label: "TDS Return Filed" },
-  { key: "books", label: "Books Updated" },
-] as const;
-
-type WorkItemKey = (typeof WORK_ITEMS)[number]["key"];
-
-const LS_RETAINERS = "practicesync_retainers";
-const LS_INVOICES = "practicesync_invoices";
-const LS_WORK = "practicesync_retainer_work";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface RetainerConfig {
-  feePaise: number; // stored as integer paise — never floating point
-  services: Service[];
-  invoiceDay: number; // day of month to raise invoice
-}
-
-interface WorkStatus {
-  [workKey: string]: boolean;
-}
-
-interface StoredInvoice {
-  id: string;
-  invoiceNo: string;
-  clientId: string;
-  clientName: string;
-  amountPaise: number; // base fee in paise
-  gstPaise: number;    // 18% GST in paise
-  totalPaise: number;
-  date: string;        // ISO date string
-  month: string;       // "2026-06" — to detect same-month duplicates
-}
-
-// ─── localStorage helpers ─────────────────────────────────────────────────────
-
-function loadRetainers(): Record<string, RetainerConfig> {
-  try {
-    return JSON.parse(localStorage.getItem(LS_RETAINERS) ?? "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveRetainers(data: Record<string, RetainerConfig>) {
-  localStorage.setItem(LS_RETAINERS, JSON.stringify(data));
-}
-
-function loadWork(): Record<string, WorkStatus> {
-  try {
-    return JSON.parse(localStorage.getItem(LS_WORK) ?? "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveWork(data: Record<string, WorkStatus>) {
-  localStorage.setItem(LS_WORK, JSON.stringify(data));
-}
-
-function loadInvoices(): StoredInvoice[] {
-  try {
-    return JSON.parse(localStorage.getItem(LS_INVOICES) ?? "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveInvoices(data: StoredInvoice[]) {
-  localStorage.setItem(LS_INVOICES, JSON.stringify(data));
-}
-
-// ─── Utility ──────────────────────────────────────────────────────────────────
-
-function currentMonthKey(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function generateInvoiceNo(existingInvoices: StoredInvoice[]): string {
-  const prefix = "CAF";
-  const year = new Date().getFullYear();
-  const count = existingInvoices.filter(inv => inv.invoiceNo.startsWith(`${prefix}/${year}/`)).length + 1;
-  return `${prefix}/${year}/${String(count).padStart(4, "0")}`;
-}
-
-// Integer paise arithmetic — CGST Act Section 9 read with Notification 11/2017-CT(Rate)
-// GST on CA professional services: 18% (CGST 9% + SGST 9%)
-function calcGST(feePaise: number): { cgst: number; sgst: number; total: number } {
-  // Use integer arithmetic to avoid floating point errors
-  const cgst = Math.round(feePaise * 9 / 100);
-  const sgst = Math.round(feePaise * 9 / 100);
-  return { cgst, sgst, total: cgst + sgst };
-}
+type ServiceOption = { id: string; name: string };
 
 // ─── SetRetainerModal ─────────────────────────────────────────────────────────
 
-interface SetRetainerModalProps {
+function SetRetainerModal({
+  client, existing, services, onSaved, onClose,
+}: {
   client: Client;
-  existing: RetainerConfig | undefined;
-  onSave: (config: RetainerConfig) => void;
+  existing: BillingSchedule | undefined;
+  services: ServiceOption[];
+  onSaved: () => void;
   onClose: () => void;
-}
-
-function SetRetainerModal({ client, existing, onSave, onClose }: SetRetainerModalProps) {
+}) {
   const [feeRupees, setFeeRupees] = useState(
-    existing ? rupeeInputFromPaise(existing.feePaise) : ""
-  );
-  const [feeError, setFeeError] = useState<string | null>(null);
-  const [selectedServices, setSelectedServices] = useState<Service[]>(existing?.services ?? []);
-  const [invoiceDay, setInvoiceDay] = useState(existing?.invoiceDay ?? 1);
+    existing ? rupeeInputFromPaise(existing.amount_paise) : "");
+  const [gstPercent, setGstPercent] = useState(
+    existing ? String(existing.gst_rate) : "18");
+  const [cadence, setCadence] = useState<string>(existing?.cadence ?? "monthly");
+  const [serviceId, setServiceId] = useState<string>(existing?.service_id ?? "");
+  const [nextRun, setNextRun] = useState<string>(existing?.next_run_date ?? todayLocalISO());
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function toggleService(s: Service) {
-    setSelectedServices(prev =>
-      prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
-    );
-  }
-
-  function handleSave() {
-    // Through the one parser. parseInt(feeRupees, 10) * 100 read "1,25,000" as
-    // ₹1 and silently threw away the paise of "15000.50"; a retainer is billed
-    // every month unattended, so a fee read wrong is wrong twelve times.
-    const feePaise = paiseFromRupeeInput(feeRupees.replace(/[,\s₹]/g, ""));
-    if (feePaise === null) {
-      setFeeError("That isn't an amount — enter rupees, like 15000 or 15000.50.");
+  async function handleSave() {
+    // Through the one parser. parseFloat("1,25,000") is 1, and a retainer is
+    // billed unattended every month, so a fee read wrong is wrong twelve times.
+    const feePaise = paiseFromRupeeInput(feeRupees);
+    if (feePaise === null || feePaise <= 0) {
+      setError("That isn't an amount — enter rupees, like 15000 or 15000.50.");
       return;
     }
-    if (feePaise <= 0) {
-      setFeeError("Monthly fee must be more than zero.");
+    const gstBps = bpsFromPercentInput(gstPercent);
+    if (gstBps === null || gstBps < 0) {
+      setError("GST rate must be a percentage, like 18.");
       return;
     }
-    setFeeError(null);
-    onSave({ feePaise, services: selectedServices, invoiceDay });
-    onClose();
+    if (!serviceId) {
+      setError("Choose the product or service this retainer bills for.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {
+        arrangement: "retainer",
+        cadence,
+        amount_paise: feePaise,
+        gst_rate: gstBps / 100,
+        service_id: serviceId,
+        next_run_date: nextRun || null,
+        // NO `description`. `billing_schedules` has no such column (migration
+        // 073); `BillingScheduleIn` accepts one and the service drops it, so a
+        // box here would take a CA's words and discard them — and on the PATCH
+        // path PostgREST would reject the whole row, failing the fee change
+        // beside it. The generated line reads "Professional fees" until the
+        // column exists.
+      };
+      const res = existing
+        ? await api.billing.updateSchedule(existing.id, body)
+        : await api.billing.createSchedule({ ...body, client_id: client.id });
+      if (!res.success) throw new Error(res.error ?? "Failed to save");
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Set Retainer — {client.client_name}</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]">
+          <h3 className="text-sm font-semibold text-[#0F172A]">
+            {existing ? "Edit" : "Set"} Retainer — {client.client_name}
+          </h3>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Monthly Fee */}
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">Monthly Fee (₹)</label>
+          <label htmlFor="retainer-fee" className="text-xs font-medium text-[#334155] block mb-1">Fee per period (₹)</label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8] text-sm">₹</span>
             <input
+              id="retainer-fee"
               type="text"
               inputMode="decimal"
               className="w-full border border-[#E2E8F0] rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="15000"
               value={feeRupees}
-              onChange={e => { setFeeRupees(e.target.value); setFeeError(null); }}
+              onChange={e => { setFeeRupees(e.target.value); setError(null); }}
             />
           </div>
-          {feeError
-            ? <p className="text-[10px] text-red-600 mt-1">{feeError}</p>
-            : <p className="text-[10px] text-[#94A3B8] mt-1">Stored as paise internally — integer arithmetic</p>}
+          <p className="text-[10px] text-[#94A3B8] mt-1">Stored as integer paise</p>
         </div>
 
-        {/* Services */}
-        <div>
-          <label className="text-xs font-medium text-[#334155] block mb-2">Services Included</label>
-          <div className="grid grid-cols-2 gap-2">
-            {SERVICES.map(s => (
-              <label key={s} className="flex items-center gap-2 text-xs text-[#334155] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedServices.includes(s)}
-                  onChange={() => toggleService(s)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                {s}
-              </label>
-            ))}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="retainer-cadence" className="text-xs font-medium text-[#334155] block mb-1">Billing cycle</label>
+            <select
+              id="retainer-cadence"
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={cadence}
+              onChange={e => setCadence(e.target.value)}
+            >
+              {CADENCES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="retainer-gst" className="text-xs font-medium text-[#334155] block mb-1">GST rate (%)</label>
+            <input
+              id="retainer-gst"
+              type="text"
+              inputMode="decimal"
+              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={gstPercent}
+              onChange={e => { setGstPercent(e.target.value); setError(null); }}
+            />
           </div>
         </div>
 
-        {/* Invoice Day */}
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">Invoice Day of Month</label>
+          <label htmlFor="retainer-service" className="text-xs font-medium text-[#334155] block mb-1">Product / Service</label>
           <select
+            id="retainer-service"
             className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={invoiceDay}
-            onChange={e => setInvoiceDay(parseInt(e.target.value, 10))}
+            value={serviceId}
+            onChange={e => { setServiceId(e.target.value); setError(null); }}
           >
-            {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
-              <option key={d} value={d}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"} of month</option>
-            ))}
+            <option value="">Select…</option>
+            {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+          <p className="text-[10px] text-[#94A3B8] mt-1">
+            The invoice line comes from the practice&apos;s own service catalogue, so
+            the SAC and rate are the ones already recorded.
+          </p>
         </div>
+
+        <div>
+          <label htmlFor="retainer-next" className="text-xs font-medium text-[#334155] block mb-1">Next invoice due</label>
+          <input
+            id="retainer-next"
+            type="date"
+            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={nextRun}
+            onChange={e => setNextRun(e.target.value)}
+          />
+        </div>
+
+        {error && <p className="text-[11px] text-red-600">{error}</p>}
 
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]">
             Cancel
           </button>
           <button
-            disabled={!feeRupees || parseInt(feeRupees, 10) <= 0}
+            disabled={saving}
             onClick={handleSave}
             className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            Save Retainer
+            {saving ? "Saving…" : "Save Retainer"}
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── InvoiceModal ─────────────────────────────────────────────────────────────
-
-interface InvoiceModalProps {
-  client: Client;
-  config: RetainerConfig;
-  workStatus: WorkStatus;
-  invoiceNo: string;
-  firmName: string;
-  firmGstin: string | null;
-  onClose: () => void;
-  onConfirm: (invoice: StoredInvoice) => void;
-  alreadyGenerated: boolean;
-}
-
-function InvoiceModal({
-  client,
-  config,
-  workStatus,
-  invoiceNo,
-  firmName,
-  firmGstin,
-  onClose,
-  onConfirm,
-  alreadyGenerated,
-}: InvoiceModalProps) {
-  const today = new Date();
-  const dateStr = today.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  const monthKey = currentMonthKey();
-  const { cgst, sgst, total: gstTotal } = calcGST(config.feePaise);
-  const grandTotal = config.feePaise + gstTotal;
-
-  const completedWork = WORK_ITEMS.filter(w => workStatus[w.key]);
-
-  function handlePrint() {
-    window.print();
-  }
-
-  function handleConfirm() {
-    const inv: StoredInvoice = {
-      id: crypto.randomUUID(),
-      invoiceNo,
-      clientId: client.id,
-      clientName: client.client_name,
-      amountPaise: config.feePaise,
-      gstPaise: gstTotal,
-      totalPaise: grandTotal,
-      date: today.toISOString(),
-      month: monthKey,
-    };
-    onConfirm(inv);
-  }
-
-  return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        {/* Print-friendly invoice body */}
-        <div id="invoice-print-area" className="p-8 space-y-5">
-          {/* Header */}
-          <div className="flex items-start justify-between border-b border-[#E2E8F0] pb-5">
-            <div>
-              <h2 className="text-lg font-bold text-[#0F172A]">{firmName}</h2>
-              {firmGstin && <p className="text-xs text-[#64748B] mt-0.5">GSTIN: {firmGstin}</p>}
-            </div>
-            <div className="text-right">
-              <p className="text-base font-semibold text-blue-700">TAX INVOICE</p>
-              <p className="text-xs text-[#64748B] mt-0.5">No: {invoiceNo}</p>
-              <p className="text-xs text-[#64748B]">Date: {dateStr}</p>
-            </div>
-          </div>
-
-          {/* Bill To */}
-          <div className="grid grid-cols-2 gap-4 text-xs">
-            <div>
-              <p className="font-semibold text-[#334155] mb-1">Bill To</p>
-              <p className="text-[#0F172A] font-medium">{client.client_name}</p>
-              {client.gstin && <p className="text-[#64748B] font-mono">GSTIN: {client.gstin}</p>}
-              {client.pan && <p className="text-[#64748B] font-mono">PAN: {client.pan}</p>}
-              {client.address_line1 && <p className="text-[#64748B]">{client.address_line1}</p>}
-              {client.city && <p className="text-[#64748B]">{client.city}{client.state ? `, ${client.state}` : ""}</p>}
-            </div>
-            <div className="text-right">
-              <p className="font-semibold text-[#334155] mb-1">Invoice Details</p>
-              <p className="text-[#475569]">Month: {today.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</p>
-            </div>
-          </div>
-
-          {/* Line Items */}
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-[#F8FAFC] rounded">
-                <th className="text-left font-semibold text-[#475569] px-3 py-2">Description</th>
-                <th className="text-right font-semibold text-[#475569] px-3 py-2">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F1F5F9]">
-              <tr>
-                <td className="px-3 py-2">
-                  <p className="font-medium text-[#0F172A]">Monthly Retainer Fee</p>
-                  <p className="text-[#64748B] text-[10px] mt-0.5">
-                    Services: {config.services.length > 0 ? config.services.join(", ") : "As agreed"}
-                  </p>
-                  {completedWork.length > 0 && (
-                    <p className="text-[#94A3B8] text-[10px] mt-0.5">
-                      Completed: {completedWork.map(w => w.label).join(", ")}
-                    </p>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-right font-medium text-[#0F172A]">{formatPaise(config.feePaise)}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* GST breakdown — CGST Act Section 9, Notification 11/2017-CT(Rate), 18% on CA services */}
-          <div className="border-t border-[#F1F5F9] pt-3 space-y-1.5 text-xs">
-            <div className="flex justify-between text-[#475569]">
-              <span>Subtotal</span>
-              <span>{formatPaise(config.feePaise)}</span>
-            </div>
-            {firmGstin && (
-              <>
-                {/* CGST Act Section 9 — CGST 9% on professional services */}
-                <div className="flex justify-between text-[#475569]">
-                  <span>CGST @ 9%</span>
-                  <span>{formatPaise(cgst)}</span>
-                </div>
-                {/* CGST Act Section 9 — SGST 9% on professional services (intra-state) */}
-                <div className="flex justify-between text-[#475569]">
-                  <span>SGST @ 9%</span>
-                  <span>{formatPaise(sgst)}</span>
-                </div>
-              </>
-            )}
-            <div className="flex justify-between font-bold text-[#0F172A] text-sm border-t border-[#E2E8F0] pt-2 mt-2">
-              <span>Total</span>
-              <span>{formatPaise(firmGstin ? grandTotal : config.feePaise)}</span>
-            </div>
-          </div>
-
-          <p className="text-[10px] text-[#94A3B8] text-center border-t border-[#F1F5F9] pt-3">
-            {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
-            This invoice is generated by PracticeSync AI. Review before sending to client.
-          </p>
-        </div>
-
-        {/* Action buttons — hidden during print */}
-        <div className="px-6 pb-6 flex gap-2 print:hidden">
-          <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]">
-            Close
-          </button>
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 px-4 border border-[#E2E8F0] text-[#334155] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]"
-          >
-            <Printer className="w-4 h-4" />
-            Print
-          </button>
-          {!alreadyGenerated && (
-            <button
-              onClick={handleConfirm}
-              className="flex-1 bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700"
-            >
-              Save Invoice
-            </button>
-          )}
         </div>
       </div>
     </div>
@@ -433,117 +224,113 @@ function InvoiceModal({
 
 export default function RetainerPage() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [schedules, setSchedules] = useState<BillingSchedule[]>([]);
+  const [services, setServices] = useState<ServiceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [firmName, setFirmName] = useState("Your CA Firm");
-  const [firmGstin, setFirmGstin] = useState<string | null>(null);
-
-  // localStorage state
-  const [retainers, setRetainers] = useState<Record<string, RetainerConfig>>({});
-  const [workMap, setWorkMap] = useState<Record<string, WorkStatus>>({});
-  const [invoices, setInvoices] = useState<StoredInvoice[]>([]);
-
-  // UI state
+  const [notice, setNotice] = useState<string | null>(null);
   const [modalClient, setModalClient] = useState<Client | null>(null);
-  const [expandedWork, setExpandedWork] = useState<string | null>(null);
-  const [invoiceClient, setInvoiceClient] = useState<Client | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [practiceProvisioned, setPracticeProvisioned] = useState<boolean | null>(null);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    setRetainers(loadRetainers());
-    setWorkMap(loadWork());
-    setInvoices(loadInvoices());
-  }, []);
-
-  // Load clients and firm info from Supabase
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        const cls = await getClients();
-        setClients(cls);
-
-        // Load firm info for invoice header
-        const sb = getSupabaseClient();
-        const { data: { session } } = await sb.auth.getSession();
-        if (session) {
-          const { data: userData } = await sb.from("users").select("firm_id").eq("auth_user_id", session.user.id).maybeSingle();
-          if (userData?.firm_id) {
-            const { data: firmData } = await sb.from("firms").select("name, gstin").eq("id", userData.firm_id).single();
-            if (firmData) {
-              setFirmName((firmData as { name: string; gstin?: string }).name ?? "Your CA Firm");
-              setFirmGstin((firmData as { name: string; gstin?: string | null }).gstin ?? null);
-            }
-          }
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load data");
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [cs, res] = await Promise.all([getClients(), api.billing.listSchedules()]);
+      setClients(cs);
+      if (!res.success) throw new Error(res.error ?? "Failed to load retainers");
+      setSchedules(((res.data ?? []) as BillingSchedule[]).filter(s => s.arrangement === "retainer"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
 
-  const saveRetainerConfig = useCallback((clientId: string, config: RetainerConfig) => {
-    setRetainers(prev => {
-      const updated = { ...prev, [clientId]: config };
-      saveRetainers(updated);
-      return updated;
-    });
+  useEffect(() => { load(); }, [load]);
+
+  // The practice bills its own clients out of its INTERNAL client's books, so
+  // the catalogue a retainer picks from is that client's. The server resolves
+  // which client that is — the browser never learns the internal-client
+  // concept — and `internal_client_id: null` means it is not provisioned,
+  // which is exactly what `generate` would 409 on, so the screen says it now
+  // rather than at the click.
+  useEffect(() => {
+    let cancelled = false;
+    api.billing.serviceOptions()
+      .then(res => {
+        if (cancelled || !res.success) return;
+        setServices((res.data.services ?? []).map(x => ({ id: x.id, name: x.name })));
+        setPracticeProvisioned(res.data.internal_client_id !== null);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
   }, []);
 
-  const toggleWorkItem = useCallback((clientId: string, workKey: WorkItemKey) => {
-    setWorkMap(prev => {
-      const clientWork = prev[clientId] ?? {};
-      const updated = {
-        ...prev,
-        [clientId]: { ...clientWork, [workKey]: !clientWork[workKey] },
-      };
-      saveWork(updated);
-      return updated;
-    });
-  }, []);
+  const byClient = useMemo(() => {
+    const m = new Map<string, BillingSchedule>();
+    for (const s of schedules) if (!m.has(s.client_id)) m.set(s.client_id, s);
+    return m;
+  }, [schedules]);
 
-  const handleInvoiceConfirm = useCallback((inv: StoredInvoice) => {
-    setInvoices(prev => {
-      const updated = [inv, ...prev];
-      saveInvoices(updated);
-      return updated;
-    });
-    setInvoiceClient(null);
-  }, []);
+  const active = schedules.filter(s => s.is_active);
+  const totalPerPeriod = active.reduce((sum, s) => sum + s.amount_paise, 0);
+  const dueNow = active.filter(s => s.next_run_date && s.next_run_date <= todayLocalISO());
 
-  // Clients that have a retainer configured
-  const retainerClients = clients.filter(c => retainers[c.id]);
-  const monthKey = currentMonthKey();
+  async function generate(schedule: BillingSchedule) {
+    setBusyId(schedule.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await api.billing.generate(schedule.id);
+      if (!res.success) throw new Error(res.error ?? "Failed to generate");
+      const out = res.data;
+      setNotice(out.created
+        ? `Draft invoice created for ${out.period}. Review and issue it from Billing — nothing is posted or sent until you do.`
+        : `An invoice for ${out.period} already exists. Nothing was created.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to generate");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
-  // Summary calculations — integer paise arithmetic
-  const totalRevenuePaise = retainerClients.reduce((sum, c) => sum + (retainers[c.id]?.feePaise ?? 0), 0);
-  const invoicesThisMonth = invoices.filter(inv => inv.month === monthKey).length;
-  const invoicedClientIds = new Set(invoices.filter(inv => inv.month === monthKey).map(inv => inv.clientId));
-  const outstandingCount = retainerClients.filter(c => !invoicedClientIds.has(c.id)).length;
-
-  // Clients with retainer configured that are not yet invoiced this month
-  const pendingInvoiceClients = retainerClients.filter(c => !invoicedClientIds.has(c.id));
-
-  // Generate invoice number for selected client
-  const currentInvoiceNo = invoiceClient ? generateInvoiceNo(invoices) : "";
+  async function toggleActive(schedule: BillingSchedule) {
+    setBusyId(schedule.id);
+    setError(null);
+    try {
+      const res = await api.billing.updateSchedule(schedule.id, { is_active: !schedule.is_active });
+      if (!res.success) throw new Error(res.error ?? "Failed to update");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-[#0F172A]">Monthly Retainer Tracker</h1>
-        <p className="text-sm text-[#64748B] mt-0.5">Track fixed-fee retainer clients, work done, and generate invoices</p>
+      <div className="flex items-center gap-3">
+        <Link href="/accounting" className="text-[#94A3B8] hover:text-[#475569]">
+          <ChevronLeft size={18} />
+        </Link>
+        <div className="flex-1">
+          <h1 className="text-xl font-semibold text-[#0F172A]">Monthly Retainer Tracker</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">
+            Fixed-fee arrangements, saved for the firm. Generating raises a real draft
+            invoice in the practice&apos;s books.
+          </p>
+        </div>
+        <Link
+          href="/billing"
+          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-md hover:bg-[#F8FAFC]"
+        >
+          Billing <ExternalLink size={13} />
+        </Link>
       </div>
-
-      <BrowserOnlyNotice
-        what="retainers, the work logged against them and the invoices raised here"
-        alsoNot={"An invoice raised on this screen is not a sales invoice in the books. " +
-                 "Raise it in the client's Sales tab for it to reach the ledger, GSTR-1 " +
-                 "and the receivables."}
-      />
 
       {error && (
         <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700">
@@ -551,65 +338,80 @@ export default function RetainerPage() {
           <span>{error}</span>
         </div>
       )}
+      {notice && (
+        <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-blue-800">
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{notice}</span>
+        </div>
+      )}
 
-      {/* Monthly Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {practiceProvisioned === false && (
+        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-amber-900">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            The firm&apos;s own practice client is not provisioned, so an invoice
+            has no books to be raised in. Retainers can be recorded; generating
+            one will be refused until it exists.
+          </span>
+        </div>
+      )}
+      {practiceProvisioned === true && services.length === 0 && (
+        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-amber-900">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            The practice&apos;s service catalogue is empty. A retainer bills a
+            recorded product or service — add one before setting a fee, so the
+            invoice line carries the SAC you actually use.
+          </span>
+        </div>
+      )}
+
+      {/* Summary */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
               <Users className="w-4 h-4 text-blue-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Retainer Clients</span>
+            <span className="text-xs text-[#64748B]">Active retainers</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : retainerClients.length}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">of {clients.length} total clients</p>
+          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : active.length}</p>
+          <p className="text-xs text-[#94A3B8] mt-0.5">of {clients.length} clients</p>
         </div>
-
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
               <IndianRupee className="w-4 h-4 text-green-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Monthly Revenue</span>
+            <span className="text-xs text-[#64748B]">Fees per period</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : formatPaise(totalRevenuePaise)}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">Sum of all retainer fees</p>
+          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : formatPaise(totalPerPeriod)}</p>
+          <p className="text-xs text-[#94A3B8] mt-0.5">Sum of active retainers, before GST</p>
         </div>
-
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
-              <FileText className="w-4 h-4 text-purple-600" />
-            </div>
-            <span className="text-xs text-[#64748B]">Invoiced This Month</span>
-          </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{invoicesThisMonth}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">{monthKey}</p>
-        </div>
-
         <div className="bg-white rounded-xl border border-[#F1F5F9] p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <FileText className="w-4 h-4 text-amber-600" />
             </div>
-            <span className="text-xs text-[#64748B]">Outstanding</span>
+            <span className="text-xs text-[#64748B]">Due to invoice</span>
           </div>
-          <p className="text-lg font-semibold text-[#0F172A]">{outstandingCount}</p>
-          <p className="text-xs text-[#94A3B8] mt-0.5">Not yet invoiced</p>
+          <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : dueNow.length}</p>
+          <p className="text-xs text-[#94A3B8] mt-0.5">Next run date reached</p>
         </div>
       </div>
 
-      {/* Retainer Clients Table */}
+      {/* Table */}
       <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-[#0F172A]">Retainer Clients</h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">Click &quot;Set Retainer&quot; to configure a client</p>
-          </div>
+        <div className="px-5 py-4 border-b border-gray-50">
+          <h2 className="text-sm font-semibold text-[#0F172A]">Retainer clients</h2>
+          <p className="text-xs text-[#94A3B8] mt-0.5">
+            Generating creates a DRAFT — review and issue it from Billing. Nothing is
+            posted to the ledger or sent to the client until you do.
+          </p>
         </div>
 
         {loading ? (
-          <div className="px-5 py-8 text-center text-sm text-[#94A3B8]">Loading clients...</div>
+          <div className="px-5 py-8 text-center text-sm text-[#94A3B8]">Loading…</div>
         ) : clients.length === 0 ? (
           <div className="px-5 py-8 text-center text-sm text-[#94A3B8]">No clients found — add clients first</div>
         ) : (
@@ -617,132 +419,80 @@ export default function RetainerPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-50">
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-5 py-3">Client Name</th>
-                  <th className="text-right text-xs font-medium text-[#94A3B8] px-3 py-3">Monthly Fee</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Services</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Work Status</th>
-                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Invoice Status</th>
+                  <th className="text-left text-xs font-medium text-[#94A3B8] px-5 py-3">Client</th>
+                  <th className="text-right text-xs font-medium text-[#94A3B8] px-3 py-3">Fee</th>
+                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Cycle</th>
+                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Next due</th>
+                  <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Compliance</th>
                   <th className="text-left text-xs font-medium text-[#94A3B8] px-5 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
                 {clients.map(client => {
-                  const config = retainers[client.id];
-                  const work = workMap[client.id] ?? {};
-                  const completedCount = WORK_ITEMS.filter(w => work[w.key]).length;
-                  const isExpanded = expandedWork === client.id;
-                  const isInvoiced = invoicedClientIds.has(client.id);
-
+                  const sched = byClient.get(client.id);
+                  const busy = sched ? busyId === sched.id : false;
                   return (
-                    <>
-                      <tr key={client.id} className="hover:bg-[#F8FAFC]/50">
-                        <td className="px-5 py-3">
-                          <p className="text-sm font-medium text-[#0F172A]">{client.client_name}</p>
-                          {client.gstin && (
-                            <p className="text-[10px] font-mono text-[#94A3B8]">{client.gstin}</p>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 text-right">
-                          {config ? (
-                            <span className="text-sm font-semibold text-[#0F172A]">{formatPaise(config.feePaise)}</span>
-                          ) : (
-                            <span className="text-xs text-[#CBD5E1]">Not set</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3">
-                          {config && config.services.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {config.services.slice(0, 2).map(s => (
-                                <span key={s} className="text-[10px] bg-blue-50 text-blue-700 rounded px-1.5 py-0.5">{s}</span>
-                              ))}
-                              {config.services.length > 2 && (
-                                <span className="text-[10px] text-[#94A3B8]">+{config.services.length - 2} more</span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-[#CBD5E1]">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3">
-                          {config ? (
-                            <button
-                              onClick={() => setExpandedWork(isExpanded ? null : client.id)}
-                              className="flex items-center gap-1 text-xs text-[#475569] hover:text-[#0F172A]"
-                            >
-                              <span className={`text-[10px] rounded-full px-1.5 py-0.5 font-medium ${completedCount === WORK_ITEMS.length ? "bg-green-100 text-green-700" : completedCount > 0 ? "bg-amber-100 text-amber-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
-                                {completedCount}/{WORK_ITEMS.length}
-                              </span>
-                              {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                            </button>
-                          ) : (
-                            <span className="text-xs text-[#CBD5E1]">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3">
-                          {isInvoiced ? (
-                            <span className="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 rounded-full px-2 py-0.5">
-                              <CheckCircle className="w-3 h-3" />
-                              Invoiced
+                    <tr key={client.id} className="hover:bg-[#F8FAFC]/50">
+                      <td className="px-5 py-3">
+                        <p className="text-sm font-medium text-[#0F172A]">{client.client_name}</p>
+                        {client.gstin && <p className="text-[10px] font-mono text-[#94A3B8]">{client.gstin}</p>}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        {sched
+                          ? <span className={`text-sm font-semibold ${sched.is_active ? "text-[#0F172A]" : "text-[#94A3B8] line-through"}`}>
+                              {formatPaise(sched.amount_paise)}
                             </span>
-                          ) : config ? (
-                            <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">Pending</span>
-                          ) : (
-                            <span className="text-xs text-[#CBD5E1]">—</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2">
+                          : <span className="text-xs text-[#CBD5E1]">Not set</span>}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-[#475569]">
+                        {sched ? (CADENCES.find(c => c.value === sched.cadence)?.label ?? sched.cadence) : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-[#475569]">
+                        {sched?.next_run_date ?? "—"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {/* Whether this month's returns are filed is
+                            compliance_obligations, per client — not four
+                            booleans kept in one browser. */}
+                        <Link
+                          href={`/clients/${client.id}/compliance`}
+                          className="text-xs text-blue-600 hover:text-blue-800 inline-flex items-center gap-1"
+                        >
+                          View <ExternalLink size={11} />
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => setModalClient(client)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap flex items-center gap-1"
+                          >
+                            {sched ? <Pencil className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                            {sched ? "Edit" : "Set"} retainer
+                          </button>
+                          {sched && sched.is_active && (
                             <button
-                              onClick={() => setModalClient(client)}
-                              className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap flex items-center gap-1"
+                              disabled={busy}
+                              onClick={() => generate(sched)}
+                              className="text-xs text-green-700 hover:text-green-900 font-medium whitespace-nowrap flex items-center gap-1 disabled:opacity-40"
                             >
-                              <Plus className="w-3 h-3" />
-                              {config ? "Edit" : "Set"} Retainer
+                              <FileText className="w-3 h-3" />
+                              {busy ? "Working…" : "Generate draft invoice"}
                             </button>
-                            {config && !isInvoiced && (
-                              <button
-                                onClick={() => setInvoiceClient(client)}
-                                className="text-xs text-green-600 hover:text-green-800 font-medium whitespace-nowrap flex items-center gap-1"
-                              >
-                                <FileText className="w-3 h-3" />
-                                Generate Invoice
-                              </button>
-                            )}
-                            {config && isInvoiced && (
-                              <button
-                                onClick={() => setInvoiceClient(client)}
-                                className="text-xs text-[#94A3B8] hover:text-[#475569] font-medium whitespace-nowrap"
-                              >
-                                View Invoice
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-
-                      {/* Work Done Expansion Row */}
-                      {isExpanded && config && (
-                        <tr key={`${client.id}-work`} className="bg-blue-50/30">
-                          <td colSpan={6} className="px-5 py-3">
-                            <p className="text-[11px] font-semibold text-[#475569] mb-2">Work Done This Month</p>
-                            <div className="flex flex-wrap gap-3">
-                              {WORK_ITEMS.map(item => (
-                                <label key={item.key} className="flex items-center gap-2 text-xs text-[#334155] cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={work[item.key] ?? false}
-                                    onChange={() => toggleWorkItem(client.id, item.key as WorkItemKey)}
-                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                  />
-                                  {item.label}
-                                  {work[item.key] && <CheckCircle className="w-3 h-3 text-green-500" />}
-                                </label>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
+                          )}
+                          {sched && (
+                            <button
+                              disabled={busy}
+                              onClick={() => toggleActive(sched)}
+                              className="text-xs text-[#94A3B8] hover:text-[#475569] whitespace-nowrap flex items-center gap-1 disabled:opacity-40"
+                            >
+                              <Power className="w-3 h-3" />
+                              {sched.is_active ? "Pause" : "Resume"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
@@ -751,103 +501,13 @@ export default function RetainerPage() {
         )}
       </div>
 
-      {/* Invoice History */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-        <div
-          className="px-5 py-4 border-b border-gray-50 flex items-center justify-between cursor-pointer"
-          onClick={() => setShowHistory(h => !h)}
-        >
-          <div>
-            <h2 className="text-sm font-semibold text-[#0F172A]">Invoice History</h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">{invoices.length} invoices generated</p>
-          </div>
-          {showHistory ? <ChevronUp className="w-4 h-4 text-[#94A3B8]" /> : <ChevronDown className="w-4 h-4 text-[#94A3B8]" />}
-        </div>
-        {showHistory && (
-          invoices.length === 0 ? (
-            <div className="px-5 py-6 text-sm text-[#94A3B8] text-center">No invoices generated yet</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-50">
-                    <th className="text-left text-xs font-medium text-[#94A3B8] px-5 py-3">Invoice No</th>
-                    <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Client</th>
-                    <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Month</th>
-                    <th className="text-right text-xs font-medium text-[#94A3B8] px-3 py-3">Amount</th>
-                    <th className="text-right text-xs font-medium text-[#94A3B8] px-3 py-3">GST</th>
-                    <th className="text-right text-xs font-medium text-[#94A3B8] px-5 py-3">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {invoices.map(inv => (
-                    <tr key={inv.id} className="hover:bg-[#F8FAFC]/50">
-                      <td className="px-5 py-3 text-xs font-mono text-blue-700">{inv.invoiceNo}</td>
-                      <td className="px-3 py-3 text-sm text-[#0F172A]">{inv.clientName}</td>
-                      <td className="px-3 py-3 text-xs text-[#64748B]">{inv.month}</td>
-                      <td className="px-3 py-3 text-right text-sm text-[#0F172A]">{formatPaise(inv.amountPaise)}</td>
-                      <td className="px-3 py-3 text-right text-xs text-[#64748B]">{formatPaise(inv.gstPaise)}</td>
-                      <td className="px-5 py-3 text-right text-sm font-semibold text-[#0F172A]">{formatPaise(inv.totalPaise)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-[#F1F5F9] bg-[#F8FAFC]/50">
-                    <td colSpan={3} className="px-5 py-3 text-xs font-medium text-[#64748B]">Total</td>
-                    <td className="px-3 py-3 text-right text-sm font-semibold text-[#0F172A]">
-                      {formatPaise(invoices.reduce((s, inv) => s + inv.amountPaise, 0))}
-                    </td>
-                    <td className="px-3 py-3 text-right text-xs font-semibold text-[#64748B]">
-                      {formatPaise(invoices.reduce((s, inv) => s + inv.gstPaise, 0))}
-                    </td>
-                    <td className="px-5 py-3 text-right text-sm font-semibold text-[#0F172A]">
-                      {formatPaise(invoices.reduce((s, inv) => s + inv.totalPaise, 0))}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )
-        )}
-      </div>
-
-      {/* Pending Invoices reminder */}
-      {pendingInvoiceClients.length > 0 && (
-        <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 flex gap-2">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-amber-800">
-              {pendingInvoiceClients.length} client{pendingInvoiceClients.length > 1 ? "s" : ""} not yet invoiced this month
-            </p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              {pendingInvoiceClients.map(c => c.client_name).join(", ")}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Set Retainer Modal */}
       {modalClient && (
         <SetRetainerModal
           client={modalClient}
-          existing={retainers[modalClient.id]}
-          onSave={config => saveRetainerConfig(modalClient.id, config)}
+          existing={byClient.get(modalClient.id)}
+          services={services}
+          onSaved={load}
           onClose={() => setModalClient(null)}
-        />
-      )}
-
-      {/* Generate Invoice Modal */}
-      {invoiceClient && retainers[invoiceClient.id] && (
-        <InvoiceModal
-          client={invoiceClient}
-          config={retainers[invoiceClient.id]}
-          workStatus={workMap[invoiceClient.id] ?? {}}
-          invoiceNo={currentInvoiceNo}
-          firmName={firmName}
-          firmGstin={firmGstin}
-          onClose={() => setInvoiceClient(null)}
-          onConfirm={handleInvoiceConfirm}
-          alreadyGenerated={invoicedClientIds.has(invoiceClient.id)}
         />
       )}
     </div>

@@ -947,6 +947,32 @@ export type ScheduleIiiRatioNote = {
   gaps: { code: string; message: string }[];
 };
 
+// ── Billing schedules ────────────────────────────────────────────────────────
+// The practice's own fee arrangements (`billing_schedules`, migration 073).
+// `arrangement` is 'retainer' | 'one_time' | 'package'; the Retainer Tracker
+// reads the first. `gst_rate` is a PERCENTAGE, not basis points — that is the
+// column's own unit.
+
+export type BillingSchedule = {
+  id: string;
+  client_id: string;
+  arrangement: string;
+  cadence: string;
+  amount_paise: number;
+  gst_rate: number;
+  service_id: string | null;
+  next_run_date: string | null;
+  description: string | null;
+  is_active: boolean;
+};
+
+export type BillingGenerateResult = {
+  invoice: { id?: string; invoice_no?: string } | null;
+  period: string;
+  created: boolean;
+  idempotent: boolean;
+};
+
 // ── Budget versus actuals ────────────────────────────────────────────────────
 // NOT a statutory statement — no return reads a budget and nothing is
 // journalised from one. Amounts are integer paise.
@@ -2995,13 +3021,38 @@ export const api = {
   },
   billing: {
     listSchedules: (activeOnly?: boolean) =>
-      request(`/api/billing/schedules${activeOnly ? "?active_only=true" : ""}`),
+      request<ApiResp<BillingSchedule[]>>(
+        `/api/billing/schedules${activeOnly ? "?active_only=true" : ""}`),
     createSchedule: (body: unknown) =>
-      request("/api/billing/schedules", { method: "POST", body: JSON.stringify(body) }),
+      request<ApiResp<BillingSchedule>>("/api/billing/schedules",
+        { method: "POST", body: JSON.stringify(body) }),
+    /**
+     * Change a schedule's fee, cadence, service or active flag. There was no
+     * update path at all until ACC-06 — a retainer whose fee went up could
+     * only be recorded as a SECOND schedule, which then bills twice.
+     * `client_id` is deliberately not updatable.
+     */
+    updateSchedule: (scheduleId: string, body: unknown) =>
+      request<ApiResp<BillingSchedule>>(`/api/billing/schedules/${scheduleId}`, {
+        method: "PATCH", body: JSON.stringify(body),
+      }),
+    /**
+     * The practice's OWN service catalogue — what a retainer can bill for.
+     * `billing_schedules.service_id` is mandatory (migration 206) and the
+     * catalogue is client-owned, so the server resolves the firm's internal
+     * client and answers from that one. `internal_client_id: null` means the
+     * practice client is not provisioned, which is what `generate` 409s on.
+     */
+    serviceOptions: () => request<ApiResp<{
+      internal_client_id: string | null;
+      services: { id: string; name: string; hsn_sac: string | null;
+                  default_rate_paise: number | null; gst_rate_bps: number | null }[];
+    }>>("/api/billing/service-options"),
     previewRun: (asOf?: string) =>
       request(`/api/billing/preview-run${asOf ? `?as_of=${asOf}` : ""}`, { method: "POST" }),
     generate: (scheduleId: string) =>
-      request(`/api/billing/schedules/${scheduleId}/generate`, { method: "POST" }),
+      request<ApiResp<BillingGenerateResult>>(
+        `/api/billing/schedules/${scheduleId}/generate`, { method: "POST" }),
     run: () => request("/api/billing/run", { method: "POST" }),
     arAging: () => request("/api/billing/ar-aging"),
     dashboard: (params?: Record<string, string>) =>
