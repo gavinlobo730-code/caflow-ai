@@ -7,10 +7,11 @@
     "blocked": "cannot be closed by code alone — it needs a registration, a state notification, or a figure only a person holds.",
     "unverified": "not re-read since the date named. Treat as unknown, NOT as open.",
     "closed_by_commit": "named in a merged commit AND in an in-code comment that says what it closed. Two independent traces; not a re-read.",
-    "closed_by_commit_only": "named in a merged commit and nowhere else. The weakest state in this file — read these before quoting them as done."
+    "closed_by_commit_only": "named in a merged commit and nowhere else. The weakest state in this file — read these before quoting them as done.",
+    "partial": "verified against the code: part of the finding is fixed and part is still true. `why` says which part is closed and `what_is_left` says what is not. Never quote one of these as done."
   },
   "_the_stale_problem_this_exists_to_end": "docs/audits/2026-09-11-the-verification-pass.md measured the backlog ~10% stale. Five days later docs/audits/2026-09-12-the-probe-pass/ measured the same backlog 38-59% stale by subsystem, because five tranches had landed and nothing re-scored. On 12 September a further hand-check found INV-04, INV-07, FA-03, FA-16, FA-18, PAY-17, PAY-18, PUR-30, TDS-31, GST-03 and PUR-12 all recorded open and all in fact closed. A status that is only ever written by an audit is a status that is wrong by the time it is read.",
-  "verified_on": "2026-09-12",
+  "verified_on": "2026-09-13",
   "findings": {
     "INV-04": {
       "status": "closed",
@@ -483,10 +484,11 @@
       "why": "tests/test_a_purchase_bill_computes_rcm_and_blocked_credit.py exercises both rules on _compute_bill_lines_and_totals — 10 tests, and all six negative controls (charge the vendor the RCM tax, include it in the total, stop computing it, stop tracking blocked credit, treat a silent line as blocked, drop blocked tax off the bill) fail against them"
     },
     "INV-05": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "inventory_service still costs a receipt at taxable_amount_paise alone: no freight, no duty, no blocked tax",
-      "needs": "apportionable-cost columns, and the same amount must flow into the inventory journal or stock_position_as_at stops tying to the control account"
+      "status": "partial",
+      "verified_on": "2026-09-13",
+      "why": "THE BLOCKED-TAX HALF IS CLOSED. AS-2 (and Ind AS 2) paragraph 6 puts \"duties and taxes (other than those subsequently recoverable ...)\" in the cost of purchase, and credit barred by CGST Act s.17(5) is recoverable from nobody. `apply_purchase_to_inventory` costed a receipt at taxable_amount_paise alone while PUR-04's `blocked_total` block had already debited that tax to the LINE'S OWN expense account, so the receipt journal moved only the taxable value out and the blocked tax stayed behind for ever — closing stock understated, expense overstated, and every later COGS wrong because the moving average is computed off the same figure. `domain/inventory_service._blocked_tax_on_line` is the rule and the receipt now carries it. NO MIGRATION AND NO NEW ACCOUNT: the expense account already holds the tax, and the receipt journal resolves its credit with the SAME fallback order the bill journal used (explicit expense_account_id → \"%Purchase%\" → \"%Expense%\"), so it relieves exactly the account that received the debit; `inventory_stock_ledger.value_delta_paise` and the journal's Inventory debit are the same number by construction, so the tie between stock_position_as_at and the control account survives — both move together. A NULL `itc_eligible` reads as eligible, matching migration 240's NOT NULL DEFAULT true and the pre-existing behaviour. tests/test_blocked_credit_is_part_of_what_the_goods_cost.py holds it, including one end-to-end assertion that the expense account nets to ZERO across the two journals.",
+      "needs": "apportionable-cost columns, and the same amount must flow into the inventory journal or stock_position_as_at stops tying to the control account",
+      "what_is_left": "FREIGHT INWARD, INSURANCE AND CUSTOMS DUTY — the landed-cost half. Two things are missing and only one of them is a column: a purchase bill has nowhere to record an apportionable additional cost, AND the basis on which to apportion it (by value? by quantity? by weight?) is a decision, not a derivation — Tally asks the user which. So it needs a migration and an owner decision, and neither is guessable from the ledger."
     },
     "IT-15": {
       "status": "closed",

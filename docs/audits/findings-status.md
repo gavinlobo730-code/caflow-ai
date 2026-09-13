@@ -9,18 +9,18 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 |---|---|---|
 | closed | **79** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **8** | part of the finding is answered, part is not. Each says which. |
-| open | **29** | re-read and still true. |
+| partial | **9** | part of the finding is answered, part is not. Each says which. |
+| open | **28** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 37 items — 29 open and 8 partial — not 254.**
+**The work left is 37 items — 28 open and 9 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 29 open, most are not code problems.** Nearly every one needs a
+**And of the 28 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -40,7 +40,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
 | medium | **INV-02** | Moving average is the only costing method — no FIFO and no standard cost |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
-| medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
 | medium | **INV-08** | Physical verification is one item at a time, with no count sheet and no session |
 | medium | **IT-23** | The ITR filing workflow offers only ITR-3/5/6/7, has no revised or updated return path, and the  |
 | medium | **PAY-23** | Statutory bonus is computed only inside a leaver's settlement — there is no annual bonus run for |
@@ -73,7 +72,6 @@ migration; a handful need a statutory document a person has to read.
 | **GST-25** | schema per return type |
 | **GST-32** | the IRP schema, and the 30-day reporting-window rule |
 | **INV-03** | substantial inventory schema |
-| **INV-05** | apportionable-cost columns, and the same amount must flow into the inventory journal or stock_position_as_at stops tying to the control account |
 | **INV-08** | a session table |
 | **IT-23** | a status and a pointer to the original acknowledgement — a migration |
 | **PAY-23** | a bonus register, and the state minimum wage the Act computes on |
@@ -98,6 +96,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
+| medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
 | medium | **PAY-15** | Attendance and LOP cannot be entered from the client Payroll tab at all — they live on a firm-wi |
 | low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 

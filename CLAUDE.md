@@ -1478,6 +1478,35 @@ delta at exactly that date. For the same reason a ledger's **Balance column is a
 property of the order it is shown in** and is derived at display time from an
 opening figure, never rendered from the stored chain.
 
+**AND WHAT THAT RECEIPT COSTS INCLUDES THE TAX NOBODY CAN RECLAIM.** AS-2 (and
+Ind AS 2) paragraph 6 puts "duties and taxes (OTHER THAN THOSE SUBSEQUENTLY
+RECOVERABLE by the enterprise from the taxing authorities)" in the cost of
+purchase — so creditable GST is excluded and always was, and credit barred by
+CGST §17(5) is recoverable from nobody and belongs in cost.
+`domain/inventory_service._blocked_tax_on_line` is the rule and
+`apply_purchase_to_inventory` costs the receipt at the line's taxable value
+PLUS it. It used to cost the receipt at the taxable value ALONE while PUR-04's
+`blocked_total` block had already debited that tax to the LINE'S OWN expense
+account, so the receipt journal moved only the taxable value out and the tax
+stayed behind for ever: ₹1,000 of goods with ₹180 blocked leaves Inventory
+₹1,000 and Expense ₹180. Closing stock understated, the period's expense
+overstated, and — because the moving average is computed off the same figure —
+every later COGS wrong too. **It needs no new account and no migration**: the
+expense account already holds the tax, and the receipt journal resolves its
+credit with the SAME fallback order the bill journal used (explicit
+`expense_account_id` → `%Purchase%` → `%Expense%`), so it relieves exactly the
+account that received the debit. `value_delta_paise` and the journal's
+Inventory debit are one number by construction, so the tie above survives —
+both move together, which is why a test asserts the expense account nets to
+ZERO across the two journals. A NULL `itc_eligible` reads as ELIGIBLE, matching
+migration 240's `NOT NULL DEFAULT true`; a blocked SERVICE line capitalises
+nothing because it never reaches the stock ledger at all; and a purchase RETURN
+relieves at the moving average, which now carries the tax. **Freight inward,
+insurance and customs duty are still NOT in cost** — the other two-thirds of
+INV-05 — and closing them is a migration AND an owner decision, because the
+apportionment basis (by value? by quantity? by weight?) is something Tally asks
+the user rather than deriving.
+
 ## GSTR-2B reconciliation — the books are read in `apps/api`, and the answer is kept
 
 The one purchase-side task an Indian practice performs every month is "which of
