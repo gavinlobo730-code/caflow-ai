@@ -332,3 +332,103 @@ def test_a_line_with_no_product_is_refused_at_save_time(monkeypatch):
         }, "u1", db)
     assert e.value.status_code == 422
     assert "Product/Service" in str(e.value.detail)
+
+
+# ── The other end of the schema chain ────────────────────────────────────────
+
+def test_every_updatable_field_is_a_column_the_create_path_writes():
+    """`tests/test_backend_columns_exist_pg.py` checks a write's columns against
+    the real schema only when they are written as a dict LITERAL, and a PATCH's
+    key set is variable — so `update_template`'s `.update(fields)` cannot be
+    one. It costs a unit of that test's budget and its columns go unchecked.
+
+    So `create_template`'s INSERT is a literal (verified against Postgres
+    there) and this asserts the update's field set is a SUBSET of those names.
+    Add a field the table has no column for and this fails in MOCK mode, with
+    no database needed. Same shape, same reason, as the recurring-journal
+    twin's test of the same name.
+
+    `updated_at` is the one exemption and is named rather than inferred: the
+    create path leaves it to the column's own DEFAULT now(), so it is a real
+    column that the INSERT legitimately does not mention.
+    """
+    import ast
+    import inspect
+    import pathlib as _p
+
+    from services import recurring_purchase_bill_service as svc
+
+    tree = ast.parse(_p.Path(inspect.getfile(svc)).read_text())
+
+    def _fn(name):
+        return next(n for n in ast.walk(tree)
+                    if isinstance(n, ast.FunctionDef) and n.name == name)
+
+    upd = _fn("update_template")
+    updatable: set = set()
+    # `for k in ("title", ...): ... fields[k] = data[k]`
+    for n in ast.walk(upd):
+        if (isinstance(n, ast.For) and isinstance(n.iter, ast.Tuple)
+                and any(isinstance(x, ast.Subscript)
+                        and getattr(x.value, "id", None) == "fields"
+                        for b in n.body for x in ast.walk(b))):
+            updatable |= {e.value for e in n.iter.elts
+                          if isinstance(e, ast.Constant)}
+    # `fields["start_date"] = ...`
+    for n in ast.walk(upd):
+        if not isinstance(n, ast.Assign):
+            continue
+        for t in n.targets:
+            if (isinstance(t, ast.Subscript)
+                    and getattr(t.value, "id", None) == "fields"
+                    and isinstance(t.slice, ast.Constant)
+                    and isinstance(t.slice.value, str)):
+                updatable.add(t.slice.value)
+    assert updatable, "the scan found no updatable fields — it has stopped matching"
+
+    insert_keys = next(
+        {k.value for k in call.args[0].keys}
+        for call in ast.walk(_fn("create_template"))
+        if isinstance(call, ast.Call)
+        and getattr(call.func, "attr", None) == "insert"
+        and call.args and isinstance(call.args[0], ast.Dict))
+
+    extra = updatable - insert_keys - {"updated_at"}
+    assert extra == set(), (
+        f"update_template can write {sorted(extra)}, which create_template does "
+        f"not — either it is not a column of recurring_purchase_bill_templates, "
+        f"or the create path is missing it")
+
+
+def test_the_line_insert_names_its_columns_where_the_schema_check_can_read_them():
+    """`.insert(_line_rows(...))` is a CALL and invisible to the schema check,
+    so a wrong column there would never be caught. `_insert_lines` restates the
+    names as a comprehension over dict literals, and BOTH the create and the
+    update replacement go through it — a second `.insert(` on the line table
+    anywhere else in the module puts the blind spot straight back."""
+    import ast
+    import inspect
+    import pathlib as _p
+
+    from services import recurring_purchase_bill_service as svc
+
+    src = _p.Path(inspect.getfile(svc)).read_text()
+    tree = ast.parse(src)
+    sites = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Call)
+             and getattr(n.func, "attr", None) == "insert"
+             and isinstance(n.func.value, ast.Call)
+             and getattr(n.func.value.func, "attr", None) == "table"
+             and n.func.value.args
+             and isinstance(n.func.value.args[0], ast.Constant)
+             and n.func.value.args[0].value
+             == "recurring_purchase_bill_template_lines"]
+    assert len(sites) == 1, (
+        f"{len(sites)} places insert template lines — there must be exactly "
+        f"one, so the column names are stated once where the schema check can "
+        f"read them")
+    payload = sites[0].args[0]
+    assert isinstance(payload, ast.ListComp) and isinstance(payload.elt, ast.Dict), (
+        "the line insert's payload must be a comprehension over a dict LITERAL "
+        "— a call or a bare name is invisible to "
+        "tests/test_backend_columns_exist_pg.py")

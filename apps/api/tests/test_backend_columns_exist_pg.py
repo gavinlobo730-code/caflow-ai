@@ -276,7 +276,27 @@ UNFIXED: dict[str, str] = {}
 #
 # The same reasoning applies to `billing_service.update_schedule`, which took
 # NO unit: its create path was made a literal in the same commit, freeing one.
-MAX_UNREADABLE = 448
+#
+# 448 -> 449 on 2026-09-13 for ONE write, and for exactly the reason above:
+# `services/recurring_purchase_bill_service.update_template`'s `.update(fields)`
+# (PUR-26, migration 379). A PATCH's key set is variable, so its payload cannot
+# be a dict literal.
+#
+# The other SIX that service arrived with took no unit at all — they were made
+# readable in the same commit rather than budgeted, which is the order this
+# check asks for. `create_template`'s INSERT names its columns at the call site
+# (`payload` is mutated by the mock branch, so even the payload parser's
+# local-binding pass cannot read it); `_insert_lines` is the one place the line
+# columns are named, as a comprehension over dict literals, and both the create
+# and the update replacement go through it; and `set_status`, `_stamp_recurring`
+# and `_record_run` write their fixed key sets inline.
+#
+# The chain closes from the other end for the survivor, the same way the
+# recurring-journal one does:
+# `test_a_recurring_bill_is_a_template_the_firm_owns.py` asserts the update's
+# field set is a SUBSET of the create INSERT's, whose columns ARE verified
+# against the real schema here.
+MAX_UNREADABLE = 449
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

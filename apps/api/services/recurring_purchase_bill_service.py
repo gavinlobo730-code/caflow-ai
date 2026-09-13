@@ -137,6 +137,37 @@ def _line_rows(lines: list[dict]) -> list[dict]:
     return rows
 
 
+def _insert_lines(db, template_id: str, rows: list[dict]):
+    """The ONE place template lines are written, and the column names are a
+    LITERAL.
+
+    `tests/test_backend_columns_exist_pg.py` checks a write's columns against
+    the real schema only when it can read them, and it cannot read
+    `.insert(_line_rows(...))` — that is a call. A comprehension over dict
+    literals it CAN read, so the names are restated once here instead of at
+    the create and update sites, and both go through this. Same shape, and the
+    same reason, as `recurring_journal_service._insert_lines`.
+    """
+    if not rows:
+        return None
+    return db.table("recurring_purchase_bill_template_lines").insert([{
+        "template_id": template_id,
+        "description": r["description"],
+        "hsn_sac": r["hsn_sac"],
+        "unit": r["unit"],
+        "quantity": r["quantity"],
+        "rate_paise": r["rate_paise"],
+        "gst_rate_bps": r["gst_rate_bps"],
+        "is_service": r["is_service"],
+        "itc_eligible": r["itc_eligible"],
+        "blocked_credit_reason": r["blocked_credit_reason"],
+        "tds_applicable": r["tds_applicable"],
+        "expense_account_id": r["expense_account_id"],
+        "service_catalogue_id": r["service_catalogue_id"],
+        "sort_order": r["sort_order"],
+    } for r in rows]).execute()
+
+
 def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None) -> dict:
     _validate(data)
     start = _d(data["start_date"]).isoformat()
@@ -164,11 +195,28 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
         MOCK_RECURRING_BILL_TEMPLATES.append(payload)
         return dict(payload)
     db = db or _db()
-    row = db.table("recurring_purchase_bill_templates").insert(payload).execute().data[0]
+    # Spelled out rather than `insert(payload)`: the column check above reads a
+    # dict LITERAL at the call site, and `payload` is mutated by the mock branch
+    # so it cannot be read even by the payload parser's local-binding pass.
+    row = db.table("recurring_purchase_bill_templates").insert({
+        "firm_id": payload["firm_id"],
+        "client_id": payload["client_id"],
+        "vendor_id": payload["vendor_id"],
+        "title": payload["title"],
+        "description": payload["description"],
+        "frequency": payload["frequency"],
+        "start_date": payload["start_date"],
+        "end_date": payload["end_date"],
+        "next_run_date": payload["next_run_date"],
+        "notes": payload["notes"],
+        "is_inter_state": payload["is_inter_state"],
+        "is_reverse_charge": payload["is_reverse_charge"],
+        "status": payload["status"],
+        "created_by": payload["created_by"],
+    }).execute().data[0]
+    _insert_lines(db, row["id"], lines)
     for ln in lines:
         ln["template_id"] = row["id"]
-    if lines:
-        db.table("recurring_purchase_bill_template_lines").insert(lines).execute()
     row["lines"] = lines
     return row
 
@@ -216,10 +264,9 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict
     if new_lines is not None:
         (db.table("recurring_purchase_bill_template_lines").delete()
            .eq("template_id", template_id).execute())
+        _insert_lines(db, template_id, new_lines)
         for ln in new_lines:
             ln["template_id"] = template_id
-        if new_lines:
-            db.table("recurring_purchase_bill_template_lines").insert(new_lines).execute()
     return get_template(firm_id, template_id, db=db)
 
 
@@ -237,7 +284,8 @@ def set_status(firm_id: str, template_id: str, status: str, db=None) -> dict:
         existing.update(fields)
         return dict(existing)
     db = db or _db()
-    (db.table("recurring_purchase_bill_templates").update(fields)
+    (db.table("recurring_purchase_bill_templates")
+       .update({"status": status, "updated_at": fields["updated_at"]})
        .eq("id", template_id).eq("firm_id", firm_id).execute())
     return get_template(firm_id, template_id, db=db)
 
@@ -334,7 +382,9 @@ def _stamp_recurring(firm_id: str, bill: dict, template_id: str,
         return bill
     db = db or _db()
     try:
-        upd = (db.table("purchase_bills").update(fields)
+        upd = (db.table("purchase_bills")
+               .update({"recurring_template_id": template_id,
+                        "recurring_occurrence": occurrence_iso})
                .eq("id", bill["id"]).eq("firm_id", firm_id).execute())
         return upd.data[0] if upd.data else {**bill, **fields}
     except Exception as e:
@@ -365,7 +415,13 @@ def _record_run(firm_id: str, template_id: str, occurrence_iso: str,
     db = db or _db()
     try:
         (db.table("recurring_purchase_bill_runs")
-           .upsert(rec, on_conflict="template_id,occurrence_date").execute())
+           .upsert({"firm_id": firm_id,
+                    "template_id": template_id,
+                    "occurrence_date": occurrence_iso,
+                    "purchase_bill_id": bill_id,
+                    "status": status,
+                    "detail": detail},
+                   on_conflict="template_id,occurrence_date").execute())
     except Exception as e:  # pragma: no cover - history is best-effort
         _logger.warning("recurring bill run-log failed (%s/%s): %s",
                         template_id, occurrence_iso, e)

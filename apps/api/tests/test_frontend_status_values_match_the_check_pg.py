@@ -136,6 +136,15 @@ UNMEASURED: dict[str, set[str]] = {
     # 377. The screen reads both through GET /api/recurring-journals and touches
     # only chart_of_accounts directly, which has no status column.
     "app/accounting/recurring/page.tsx": {"active", "generated"},
+    # recurring_purchase_bill_templates.status ('active'|'paused'|'archived')
+    # and recurring_purchase_bill_runs.status ('generated'|'skipped'|'failed'),
+    # migration 379 — the same shape as the recurring-journal screen above, and
+    # for the same reason. The component reads both through
+    # GET /api/recurring-purchase-bills and touches only `vendors` and
+    # `service_catalogue` directly, to fill two dropdowns; neither has a status
+    # column, so there is nothing here to measure against. Checked by hand
+    # against migration 379's two CHECKs on 2026-09-13.
+    "components/purchases/RecurringBills.tsx": {"active", "archived", "failed", "paused"},
     # mca_filings.status allows all three; the page reads mca_companies only.
     "app/clients/[id]/compliance/mca/page.tsx": {"filed", "in_progress", "not_started"},
     # compliance_tasks.status allows 'filed'; the page reads government_notices.
