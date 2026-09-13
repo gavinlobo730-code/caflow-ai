@@ -2267,6 +2267,40 @@ called.
   already knows the label is a label, and several callers depend on that.
   Strictness belongs at the boundary.
 
+  **AN ASSESSMENT YEAR IS THE SAME RULE AND HAS ITS OWN TYPE.** `AYLabel` /
+  `OptionalAYLabel` were written in the same sweep and exactly one router used
+  them, so six boundary fields still took an AY as a bare `str` and `2026-28`
+  meant 2026-27 there for the same reason — while
+  `tests/test_fy_labels_are_validated.py` scanned only `financial_year`, which
+  is the "a guard states one spelling of its own rule" shape that file's own
+  header warns about. It scans both families now, with a per-family vacuity
+  floor (one combined floor would have stayed green on the fifty-odd FY entry
+  points alone). **The two are NOT interchangeable and a test says so**: both
+  validate identically, so only the NAME keeps them apart, and AY 2026-27 is
+  FY 2025-26 — a route that muddles them reconciles the wrong statement
+  against the wrong return.
+
+- **THE SEVEN ITR FORMS ARE `domain/income_tax/itr_json.ITR_FORMS`, derived
+  from the `ITRForm` Literal the field mappings and the committed Department
+  schemas are keyed on** (IT-23). The filing screen held its own list of four
+  and `itr_workflow`'s docstring agreed with it, so a SALARIED client
+  (ITR-1/ITR-2) or a PRESUMPTIVE one (ITR-4) could not have a filing record
+  created at all — most of a practice's ITR volume — while verified paths and
+  a schema for all seven sat unused. `itr_workflow.validated_form` is the one
+  place that decides (canonicalising as it goes, because the value is stored
+  and then filtered on), `GET /api/itr/forms` serves the list, and
+  `apps/web/.../tax/filing/page.tsx` keeps a fallback array for the redeploy
+  window only — the Schedule III caption shape. A test forbids a third copy.
+  **`record_filing_acknowledgement` is part of the state machine**: it wrote
+  `status = "filed"` with no read of the current status, so a draft could be
+  marked filed past the review and partner review the tax screen promises are
+  mandatory. The permitted states are derived from `_TRANSITIONS`, and an
+  already-filed return is REFUSED rather than silently re-acknowledged — the
+  acknowledgement number is a fact about what the portal did. **Still not
+  built: the §139(5) revised and §139(8A) updated return**, which need a
+  `return_type` and a migration replacing migration 319's
+  `UNIQUE (firm_id, client_id, financial_year, itr_form)`.
+
 ## Bug fixing
 
 - When the user reports a bug, don't just patch the one instance. Identify the underlying pattern (wrong column name, missing null check, stale label, unapplied migration, etc.) and grep/search the rest of the codebase for the same pattern before calling the fix done. Report what else was found, even if you decide not to touch it.

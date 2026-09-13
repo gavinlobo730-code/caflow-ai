@@ -1,6 +1,14 @@
 """
 ITR Preparation Workflow — Draft → Review → Partner Review → Ready for Filing → Filed.
-Supports ITR-3, ITR-5, ITR-6, ITR-7. Architecture supports future ITR forms.
+
+ALL SEVEN FORMS, and the list is not written here (IT-23). `itr_json.ITR_FORMS`
+is derived from the `ITRForm` Literal that `itr_json`'s own field mappings and
+`itr_schema.SCHEMA_FILES` are keyed on, so a form this module accepts is one the
+product can actually map and validate. This docstring used to say "Supports
+ITR-3, ITR-5, ITR-6, ITR-7" and the filing screen offered exactly those four —
+so a SALARIED client (ITR-1/ITR-2) or a PRESUMPTIVE one (ITR-4) could not have a
+filing record created at all, which is most of a typical practice's ITR volume,
+while the mappings and the committed schemas for all seven sat unused.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
 All filing workflow transitions require explicit CA confirmation.
@@ -29,10 +37,50 @@ _TRANSITIONS: dict[str, list[str]] = {
     "filed":             [],  # Terminal — immutable
 }
 
+#: The states from which a filing may become `filed`, DERIVED from the table
+#: above rather than restated. `record_filing_acknowledgement` used to write
+#: `status = "filed"` with no read of the current status at all, so a DRAFT
+#: could be marked filed — past the review and the partner review the workflow
+#: exists to require, and past the tax screen's own promise that partner review
+#: is mandatory before Ready for Filing (IT-23).
+_MAY_BECOME_FILED: frozenset[str] = frozenset(
+    s for s, nxt in _TRANSITIONS.items() if "filed" in nxt)
+
+
+class ITRWorkflowError(ValueError):
+    """A refusal the CA should see as a refusal, not as a 500.
+
+    A ValueError so every existing `except ValueError` in the routers keeps
+    answering 400 — this only names the kind.
+    """
+
 
 def _supabase():
     from core.supabase_client import get_supabase
     return get_supabase()
+
+
+def supported_forms() -> tuple[str, ...]:
+    """The forms a filing may be created for — `itr_json`'s list, not a copy."""
+    from domain.income_tax.itr_json import ITR_FORMS
+    return ITR_FORMS
+
+
+def validated_form(itr_form: str) -> str:
+    """The form as the product spells it, or a refusal naming the seven.
+
+    Case- and space-tolerant on the way in ("itr-4", " ITR-4 ") because a CA
+    types it, and CANONICAL on the way out, because the value is stored and
+    then filtered on: two spellings of one form read as two forms once
+    `itr_filings` holds both.
+    """
+    canonical = (itr_form or "").strip().upper()
+    forms = supported_forms()
+    if canonical not in forms:
+        raise ITRWorkflowError(
+            f"{itr_form!r} is not an ITR form this product prepares. "
+            f"Choose one of: {', '.join(forms)}.")
+    return canonical
 
 
 def create_itr_filing(
@@ -45,6 +93,7 @@ def create_itr_filing(
     computation_snapshot_id: str | None = None,
     notes: str | None = None,
 ) -> dict:
+    itr_form = validated_form(itr_form)
     if _USE_MOCK:
         row = {
             "id": str(uuid4()),
@@ -282,17 +331,59 @@ def record_filing_acknowledgement(
 ) -> dict:
     """
     Record ITR filing acknowledgement after CA submits on portal.
+
+    THE STATE MACHINE APPLIES HERE TOO (IT-23). This wrote `status = "filed"`
+    with no read of the current status, so a DRAFT could be marked filed —
+    past the review and the partner review `_TRANSITIONS` exists to require,
+    and past the tax screen's own promise that partner review is mandatory
+    before Ready for Filing. The permitted states are DERIVED from that table,
+    not restated, so a change to the workflow reaches this path too.
+
+    An ALREADY-FILED return is refused rather than silently overwritten: the
+    acknowledgement number is a fact about what the portal did, and quietly
+    replacing one loses the record of the first filing. The refusal names the
+    number on file so the CA can see whether it actually differs. Correcting a
+    genuinely mistyped acknowledgement, and recording a §139(5) revised return
+    beside its original, both need a path this does not have — see IT-23's
+    remaining half.
+
     # CA REVIEW REQUIRED — This must only be called after CA manually files on Income Tax Portal
     """
+    def _refuse(current: str, existing_ack) -> None:
+        if current == "filed":
+            raise ITRWorkflowError(
+                "This return is already recorded as filed"
+                + (f" under acknowledgement {existing_ack}" if existing_ack else "")
+                + ". Recording a second acknowledgement would overwrite what the "
+                  "portal did the first time.")
+        raise ITRWorkflowError(
+            f"This return is '{current}'. An acknowledgement can only be recorded "
+            f"once it is {' or '.join(sorted(_MAY_BECOME_FILED))} — the review and "
+            f"partner review come first.")
+
     if _USE_MOCK:
         filing = _MOCK_FILINGS.get(filing_id)
-        if filing:
-            filing["acknowledgement_number"] = acknowledgement_number
-            filing["filing_date"] = filing_date
-            filing["status"] = "filed"
-        return filing or {}
+        if not filing:
+            raise ITRWorkflowError("Filing not found")
+        if filing.get("status") not in _MAY_BECOME_FILED:
+            _refuse(filing.get("status") or "", filing.get("acknowledgement_number"))
+        filing["acknowledgement_number"] = acknowledgement_number
+        filing["filing_date"] = filing_date
+        filing["status"] = "filed"
+        filing["updated_at"] = datetime.now(timezone.utc).isoformat()
+        return filing
 
     sb = _supabase()
+    existing = sb.table("itr_filings").select(
+        "status, acknowledgement_number"
+    ).eq("id", filing_id).eq("firm_id", firm_id).limit(1).execute()
+    rows = existing.data or []
+    if not rows:
+        raise ITRWorkflowError("Filing not found")
+    current = rows[0].get("status") or ""
+    if current not in _MAY_BECOME_FILED:
+        _refuse(current, rows[0].get("acknowledgement_number"))
+
     res = sb.table("itr_filings").update({
         "acknowledgement_number": acknowledgement_number,
         "filing_date": filing_date,

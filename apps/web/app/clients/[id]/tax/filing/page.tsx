@@ -41,7 +41,14 @@ const STATUS_COLOR: Record<string, string> = {
   filed: "bg-green-100 text-green-700",
 };
 
-const ITR_FORMS = ["ITR-3", "ITR-5", "ITR-6", "ITR-7"];
+// The forms are SERVED, not listed here (IT-23). This array said
+// ["ITR-3","ITR-5","ITR-6","ITR-7"] while apps/api held verified field mappings
+// and a committed Department JSON schema for all seven — so a salaried client
+// (ITR-1/2) or a presumptive one (ITR-4) could not have a filing record created
+// at all. `GET /api/itr/forms` answers off domain/income_tax/itr_json.ITR_FORMS;
+// this is the fallback for the window where the frontend has redeployed ahead
+// of the backend, in the same shape as the Schedule III caption fallback.
+const ITR_FORMS_FALLBACK = ["ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6", "ITR-7"];
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
 // 1 April with nothing saying so. `financialYearChoicesAround` is the one
@@ -85,6 +92,7 @@ export default function ITRFilingPage() {
   const [fy, setFy] = useState(FY_OPTIONS[0]);
   const [ay, setAy] = useState(AY_OPTIONS[0]);
   const [form, setForm] = useState("ITR-6");
+  const [forms, setForms] = useState<string[]>(ITR_FORMS_FALLBACK);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -140,6 +148,18 @@ export default function ITRFilingPage() {
     let cancelled = false;
     fetchFilingDemoCapabilities().then((c) => {
       if (!cancelled) setDemoFlows(c.enabled ? c.flows : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch("/api/itr/forms").then((r) => {
+      const served = (r?.data?.forms ?? []) as { form?: string }[];
+      const names = served.map((f) => f.form).filter(Boolean) as string[];
+      if (!cancelled && names.length) setForms(names);
+    }).catch(() => {
+      // The fallback above stands. A picker that empties itself because one
+      // request failed is worse than one showing the seven it already knows.
     });
     return () => { cancelled = true; };
   }, []);
@@ -260,7 +280,7 @@ export default function ITRFilingPage() {
               <label className="text-[10px] text-[#64748B] mb-1 block">Form</label>
               <select value={form} onChange={e => setForm(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg">
-                {ITR_FORMS.map(f => <option key={f}>{f}</option>)}
+                {forms.map(f => <option key={f}>{f}</option>)}
               </select>
             </div>
             <div>

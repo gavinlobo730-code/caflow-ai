@@ -1,5 +1,5 @@
 """
-Every financial-year label entering the API goes through one validated type.
+Every YEAR label entering the API goes through one validated type.
 
 WHAT WAS WRONG
     An Indian financial year is written '2026-27'. Fifty-six route parameters
@@ -18,6 +18,14 @@ WHY A RATCHET AND NOT JUST TESTS FOR THE FIX
     written by someone who has not read this file. So the rule is the
     annotation — `fy: FYLabel` — and this module fails if a new financial-year
     parameter goes in as a bare `str`.
+
+AND THE ASSESSMENT YEAR IS THE SAME RULE, WHICH THIS FILE USED TO STATE ONLY
+HALF OF
+    `AY_NAMES` was added on 2026-09-13 (IT-23). An assessment year is written
+    the same way, carries the same defect taken bare, and had its own type in
+    models/fy.py that exactly one router used — so six boundary fields were
+    still bare and nothing here looked at them. A guard that names one spelling
+    of its own rule is the thing this file's header is about.
 """
 import ast
 import pathlib
@@ -28,13 +36,26 @@ from pydantic import BaseModel, ValidationError
 
 from core.ist_clock import ist_fy_label, normalise_fy_label
 from main import app
-from models.fy import FYLabel, OptionalFYLabel
+from models.fy import AYLabel, FYLabel, OptionalAYLabel, OptionalFYLabel
 
 pytestmark = pytest.mark.usefixtures("dev_header_auth")
 
 API = pathlib.Path(__file__).resolve().parent.parent
 FY_NAMES = {"financial_year", "fy", "to_fy", "target_financial_year"}
 FY_TYPES = {"FYLabel", "OptionalFYLabel"}
+
+# AN ASSESSMENT YEAR IS THE SAME LABEL AND WAS NOT SCANNED AT ALL. `AYLabel`
+# has existed in models/fy.py since the FY sweep and exactly one router used
+# it, so six boundary fields took an AY as a bare `str` and '2026-28' meant
+# 2026-27 there for the same reason it did everywhere else. The guard stated
+# one half of its own rule — the shape this file's own header warns about.
+#
+# The two sets are kept SEPARATE and an AY field annotated `FYLabel` fails,
+# because models/fy.py's own comment is the reason: AY 2026-27 is FY 2025-26,
+# and naming the type after what the parameter means is the only thing
+# standing between them at the boundary.
+AY_NAMES = {"assessment_year", "expiry_assessment_year"}
+AY_TYPES = {"AYLabel", "OptionalAYLabel"}
 
 
 def _sources():
@@ -57,7 +78,7 @@ def _entry_points():
                 for stmt in node.body:
                     if (isinstance(stmt, ast.AnnAssign)
                             and isinstance(stmt.target, ast.Name)
-                            and stmt.target.id in FY_NAMES):
+                            and stmt.target.id in FY_NAMES | AY_NAMES):
                         found.append((path.name, stmt.lineno,
                                       f"{node.name}.{stmt.target.id}",
                                       ast.unparse(stmt.annotation), None))
@@ -68,7 +89,7 @@ def _entry_points():
                 args = node.args
                 positional = list(args.args)
                 for arg in positional + list(args.kwonlyargs):
-                    if arg.arg not in FY_NAMES or arg.annotation is None:
+                    if arg.arg not in FY_NAMES | AY_NAMES or arg.annotation is None:
                         continue
                     default = None
                     if arg in positional:
@@ -84,19 +105,59 @@ def _entry_points():
 
 # ── The ratchet ──────────────────────────────────────────────────────────────
 
+def _named(names):
+    return [e for e in _entry_points() if e[2].rsplit(".", 1)[-1] in names]
+
+
 def test_there_are_entry_points_to_check():
-    """A scan that silently finds nothing would pass every test below."""
-    assert len(_entry_points()) >= 50
+    """A scan that silently finds nothing would pass every test below.
+
+    Counted per FAMILY: a scanner that lost the assessment-year half would
+    still clear a single combined floor on the strength of the fifty-odd
+    financial-year ones, which is how that half went unscanned to begin with.
+    """
+    assert len(_named(FY_NAMES)) >= 50
+    assert len(_named(AY_NAMES)) >= 5
 
 
 def test_every_financial_year_entry_point_uses_the_validated_type():
     bare = [f"{f}:{ln} {what} -> {ann}"
-            for f, ln, what, ann, _ in _entry_points()
+            for f, ln, what, ann, _ in _named(FY_NAMES)
             if not any(t in ann for t in FY_TYPES)]
     assert not bare, (
         "a financial-year label is entering the API as a bare string. Annotate "
         "it `FYLabel` (or `OptionalFYLabel`) from models.fy so it is validated "
         "and canonicalised like every other one:\n  " + "\n  ".join(bare))
+
+
+def test_every_assessment_year_entry_point_uses_the_validated_type():
+    """The other half of the same rule (IT-23).
+
+    An assessment year is written exactly as a financial year is and carries
+    exactly the same defect taken bare: '2026-28' passes a shape check and then
+    means 2026-27, because every reader takes the first four characters.
+    `AYLabel` existed and one router used it.
+    """
+    bare = [f"{f}:{ln} {what} -> {ann}"
+            for f, ln, what, ann, _ in _named(AY_NAMES)
+            if not any(t in ann for t in AY_TYPES)]
+    assert not bare, (
+        "an assessment-year label is entering the API as a bare string. "
+        "Annotate it `AYLabel` (or `OptionalAYLabel`) from models.fy. Not "
+        "`FYLabel`: AY 2026-27 is FY 2025-26, and the name is the only thing "
+        "keeping them apart at the boundary:\n  " + "\n  ".join(bare))
+
+
+def test_the_two_year_families_are_not_interchangeable():
+    """A route that muddles them reconciles the wrong statement against the
+    wrong return, and both types validate identically — so nothing but the
+    NAME would catch it."""
+    crossed = [f"{f}:{ln} {what} -> {ann}"
+               for f, ln, what, ann, _ in _named(AY_NAMES)
+               if "FYLabel" in ann]
+    assert not crossed, (
+        "an assessment year is annotated with the FINANCIAL-year type:\n  "
+        + "\n  ".join(crossed))
 
 
 def test_query_never_sits_in_the_default_position():
@@ -112,7 +173,8 @@ def test_query_never_sits_in_the_default_position():
     above would have passed happily either way."""
     broken = [f"{f}:{ln} {what}"
               for f, ln, what, ann, default in _entry_points()
-              if default and "Query(" in default and any(t in ann for t in FY_TYPES)]
+              if default and "Query(" in default
+              and any(t in ann for t in FY_TYPES | AY_TYPES)]
     assert not broken, (
         "Query() in the default position silently discards the validator. "
         "Move it inside: `Annotated[FYLabel, Query(...)]`:\n  " + "\n  ".join(broken))
@@ -123,8 +185,8 @@ def test_no_endpoint_still_relies_on_a_shape_regex():
     is worse than none: a reviewer sees a pattern and stops looking."""
     for path in _sources():
         for i, line in enumerate(path.read_text().splitlines(), 1):
-            if any(n in line for n in FY_NAMES) and r"\d{4}-\d{2}" in line:
-                pytest.fail(f"{path.name}:{i} still shape-checks a financial year: {line.strip()}")
+            if any(n in line for n in FY_NAMES | AY_NAMES) and r"\d{4}-\d{2}" in line:
+                pytest.fail(f"{path.name}:{i} still shape-checks a year label: {line.strip()}")
 
 
 # ── What the type does ───────────────────────────────────────────────────────
@@ -204,3 +266,36 @@ def test_a_year_that_does_not_exist_is_refused_at_the_edge(url):
 def test_a_real_year_still_gets_through(url):
     res = client.get(url.format(fy="2025-26"), headers=HEADERS)
     assert res.status_code == 200, res.text
+
+
+# ── What the ASSESSMENT-year type does ───────────────────────────────────────
+
+class _AYReq(BaseModel):
+    assessment_year: AYLabel
+    other: OptionalAYLabel = None
+
+
+@pytest.mark.parametrize("given,canonical", [
+    ("2026-27", "2026-27"),
+    ("2026-2027", "2026-27"),
+    (" 2026-27 ", "2026-27"),
+])
+def test_an_assessment_year_is_accepted_and_canonicalised(given, canonical):
+    assert _AYReq(assessment_year=given).assessment_year == canonical
+
+
+@pytest.mark.parametrize("bad", ["2026-28", "2026-99", "2026-26", "2026",
+                                 "garbage", "", None, "26-27"])
+def test_anything_that_is_not_an_assessment_year_is_refused(bad):
+    """'2026-28' is the one that matters: it passes ^\\d{4}-\\d{2}$ and then
+    means 2026-27 to every reader that takes the first four characters."""
+    with pytest.raises(ValidationError):
+        _AYReq(assessment_year=bad)
+
+
+def test_an_optional_assessment_year_may_be_absent_but_not_wrong():
+    assert _AYReq(assessment_year="2026-27", other=None).other is None
+    assert _AYReq(assessment_year="2026-27", other="").other is None
+    assert _AYReq(assessment_year="2026-27", other="2031-2032").other == "2031-32"
+    with pytest.raises(ValidationError):
+        _AYReq(assessment_year="2026-27", other="2031-33")

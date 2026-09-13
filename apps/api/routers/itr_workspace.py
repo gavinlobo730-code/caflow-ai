@@ -16,7 +16,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
-from models.fy import FYLabel
+from models.fy import AYLabel, FYLabel
 
 router = APIRouter(prefix="/api/itr", tags=["itr_workspace"])
 _logger = logging.getLogger("caflow.itr.router")
@@ -68,8 +68,13 @@ def _assert_bf_loss_scope(current_user: dict, loss_id: str) -> dict:
 class CreateFilingRequest(BaseModel):
     client_id: str
     financial_year: FYLabel
-    assessment_year: str
-    itr_form: str = Field(..., description="ITR-3, ITR-5, ITR-6, ITR-7")
+    assessment_year: AYLabel
+    # ALL SEVEN. The description used to name four, and so did the screen's
+    # own list — so a salaried or presumptive client could not have a filing
+    # record at all. `itr_workflow.validated_form` is the one place that
+    # decides, off `itr_json.ITR_FORMS`; a Literal here would be a second copy
+    # to keep in step.
+    itr_form: str = Field(..., description="ITR-1 … ITR-7")
     computation_snapshot_id: Optional[str] = None
     notes: Optional[str] = None
 
@@ -91,7 +96,7 @@ class AcknowledgementRequest(BaseModel):
 class SnapshotRequest(BaseModel):
     client_id: str
     financial_year: FYLabel
-    assessment_year: str
+    assessment_year: AYLabel
     regime: str = Field(..., description="new|old")
     income: dict = Field(default_factory=dict)
     computation_result: dict = Field(default_factory=dict)
@@ -125,10 +130,10 @@ class DeductionClaimRequest(BaseModel):
 
 class BFLossRequest(BaseModel):
     client_id: str
-    assessment_year: str
+    assessment_year: AYLabel
     loss_type: str
     original_amount_paise: int = Field(..., ge=0)
-    expiry_assessment_year: str
+    expiry_assessment_year: AYLabel
     source_itr_ack: Optional[str] = None
     notes: Optional[str] = None
 
@@ -248,8 +253,38 @@ def create_filing(
             entity_type="itr_filing", entity_id=filing.get("id"),
         )
         return api_response(True, filing)
+    except ValueError as e:
+        # `validated_form` refuses an unknown form with a sentence naming the
+        # seven. A 500 would hide it behind "something went wrong".
+        raise HTTPException(400, detail=str(e))
     except Exception as e:
         raise HTTPException(500, detail=str(e))
+
+
+@router.get("/forms")
+def list_itr_forms(current_user: dict = Depends(rbac("income_tax", "read"))):
+    """The ITR forms a filing may be created for, SERVED rather than copied.
+
+    The filing screen held its own list of four while `itr_json` carried field
+    mappings and a committed Department schema for seven (IT-23) — the same
+    shape as the Schedule III captions the mapping screen used to hardcode.
+    Each entry says whether a JSON schema is held, so a screen can show the CA
+    what preparing that form will and will not produce.
+    """
+    from domain.income_tax.itr_schema import SCHEMA_FILES
+    from domain.income_tax.itr_json import FIELD_MAPPINGS
+    from domain.income_tax.itr_workflow import supported_forms
+    return api_response(True, {
+        "forms": [
+            {
+                "form": f,
+                "schema_file": SCHEMA_FILES.get(f),
+                "field_mapping_verified": bool(
+                    getattr(FIELD_MAPPINGS.get(f), "verified", False)),
+            }
+            for f in supported_forms()
+        ]
+    })
 
 
 @router.get("/filings")
@@ -360,6 +395,11 @@ def record_acknowledgement(
             entity_type="itr_filing", entity_id=filing_id,
         )
         return api_response(True, result)
+    except ValueError as e:
+        # The state-machine refusal (IT-23): a draft cannot be marked filed,
+        # and an already-filed return cannot be silently re-acknowledged. Both
+        # are the CA's to see, not a 500.
+        raise HTTPException(400, detail=str(e))
     except Exception as e:
         raise HTTPException(500, detail=str(e))
 

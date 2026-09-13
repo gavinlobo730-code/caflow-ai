@@ -962,6 +962,20 @@ EXEMPT: dict[str, str] = {
     "/api/accounting/schedule-iii/captions":
         "a statutory vocabulary, not data: no table, no client_id, and the same "
         "captions for every firm. The PATCH that stores one is guarded.",
+    # ── /api/itr: the list of ITR forms, which is the Department's not ours ──
+    # The seven forms the product can prepare, derived from `itr_json.ITRForm`
+    # and paired with the committed Department schema backing each. It reads no
+    # table, takes no client_id, and returns the same seven for every firm in
+    # India. A client guard here would have to invent a client to check.
+    #
+    # Same reason as the captions above, and the same history: the filing SCREEN
+    # held its own list of four while the mappings and schemas existed for all
+    # seven, so a salaried (ITR-1/2) or presumptive (ITR-4) client could not
+    # have a filing record created at all. POST /api/itr/filings — the path that
+    # USES a form — is client-guarded where it belongs.
+    "/api/itr/forms":
+        "the Department's form list, not data: no table, no client_id, and the "
+        "same seven for every firm. The POST that stores one is guarded.",
     # ── /api/identity: the role matrix, which is about ROLES not clients ────
     # What each of the five roles can reach, straight out of
     # core/permissions.py's PERMISSIONS. It reads no table, takes no client_id,
