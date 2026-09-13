@@ -48,6 +48,37 @@ Validation (at the model boundary, so both paths are covered):
 
 Manual entries carry `source_type = "manual"`, distinguishing them from auto-generated journals (invoices, receipts, bank, opening balances) in the approval queue and audit trail.
 
+## Recurring journals (ACC-06, migration 377)
+
+A recurring journal template says what to post, to which accounts and how
+often. `services/recurring_journal_service.py` turns a due occurrence into a
+**DRAFT manual journal** through this same `manual_journal_service.create`, so
+there is no second write path and the posting kernel's rules apply unchanged.
+
+Four properties are load-bearing:
+
+- **It produces a draft and never posts.** This product acts unprompted in
+  exactly one place — a bank rule a Manager has marked trusted — and that was a
+  recorded owner decision, not a default to copy. A recurring journal saves the
+  typing, not the judgement.
+- **The entry is stamped `source_type = 'manual'`**, which looks wrong and is
+  not. Every guard reads that column: `_is_manual` is
+  `(source_type or "") == "manual"`, and migrations 275/338 refuse the edit and
+  discard paths on anything else. Stamping the template's own source would hand
+  the CA a draft they are invited to review and forbidden to amend. The trace
+  lives on `journal_entries.recurring_template_id`, which no guard reads.
+- **Idempotent per (template, occurrence)**, recorded in
+  `recurring_journal_runs` — the history the screen shows and the record that
+  makes the daily sweep safe to run twice. A FAILED occurrence is written with
+  its reason and the template does **not** advance: a template that cannot post
+  needs a CA, and advancing past a failure would skip the month silently.
+- **The cadence is `domain/recurrence.py`**, shared with the recurring sales
+  invoices rather than copied. A month end clamps against the ORIGINAL day, so
+  a monthly template starting 31 January runs 31 Jan, 28 Feb, 31 Mar.
+
+The template holds **lines**, not two account columns, because the kernel takes
+N and a rent journal with its GST needs three. The screen writes two today.
+
 ## Multi-currency note
 
 When multi-currency lands (`06-multi-currency-phase0.md`), manual journals gain per-line `txn_currency` + `exchange_rate` + foreign amount, balanced in base INR by the kernel; the model/service are the natural place to capture and validate them.

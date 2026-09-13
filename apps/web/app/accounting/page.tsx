@@ -19,14 +19,15 @@ const ADMIN_CARDS: {
   { label: "Supplier Master", description: "Manage supplier TDS sections, credit limits and payment terms", href: "/accounting/suppliers", icon: Users },
   { label: "Receivables Aging", description: "Outstanding invoices grouped by aging bucket", href: "/accounting/receivables", icon: Clock },
   { label: "Loans & FD", description: "Loans, EMI schedules and FD investments with maturity & TDS flags", href: "/accounting/loans", icon: Landmark },
-  // ACC-06. These three keep everything the CA enters in this browser's
-  // localStorage — no table, no RLS, no sharing, and nothing posts a due
-  // template. `notShared` says so on the card, because the description above
-  // it used to promise the opposite: "Automate monthly, quarterly & yearly
-  // entries" is a claim the screen cannot keep, and a partner who set a
-  // template up on their laptop would find nothing on the office machine.
-  // Real firm-scoped tables are the fix and need a migration.
-  { label: "Recurring Transactions", description: "Templates for monthly, quarterly & yearly entries", href: "/accounting/recurring", icon: RefreshCw, notShared: true },
+  // ACC-06 is closed. All three of these kept the CA's work in this browser's
+  // localStorage; all three are on the database now — recurring journals on
+  // `recurring_journal_templates` (migration 377), budgets on
+  // `account_budgets` (376), and the retainer tracker on `billing_schedules`,
+  // which was already built and had no caller. The `notShared` flag below is
+  // kept in the TYPE with no card using it, so the next screen that needs to
+  // admit the same thing has the vocabulary — but a card carrying it now
+  // would be a warning that is no longer true.
+  { label: "Recurring Journals", description: "Templates that generate a draft journal each period", href: "/accounting/recurring", icon: RefreshCw },
   { label: "Budget vs Actuals", description: "Compare budgeted amounts with posted entries", href: "/accounting/budget", icon: Target },
   { label: "Retainer Tracker", description: "Fixed-fee arrangements, and a draft invoice per period", href: "/accounting/retainer", icon: IndianRupee },
   { label: "MSME 43B(h) Tracker", description: "Track MSME vendor payments to avoid IT Act §43B(h) disallowance", href: "/accounting/msme-tracker", icon: FileText },

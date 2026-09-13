@@ -1132,29 +1132,57 @@ PostgREST. That is why:
 - **Renaming or dropping a column can break the frontend while backend CI stays green.**
   `tests/test_frontend_columns_exist_pg.py` parses those select lists and checks them
   against the real schema. Run it when you touch a migration.
-- **A THIRD path exists and it is not a database at all: `localStorage`.** Three
-  screens kept the CA's work in the browser (ACC-06) and two are now on tables —
-  `/accounting/budget` on `account_budgets` (migration 376) and
-  `/accounting/retainer` on `billing_schedules`, **which was already built**.
-  That second one is the lesson, and it inverts the argument
-  `components/BrowserOnlyNotice.tsx` used to make: the notice's own docstring
-  said these screens "have no alternative", and the retainer tracker had one a
-  single call away — `arrangement IN ('retainer','one_time','package')` since
-  migration 073, `billing_service.generate_for_schedule` producing a DRAFT
-  through the sales engine, and three methods in `lib/api` with no callers. So
-  it was exactly the pattern CLAUDE.md warns about at `/gst/reconciliation`: a
-  banner disowning a rival implementation. **Before writing a browser-only
-  notice onto a fourth screen, grep the backend for what it duplicates.**
-  What the retainer screen did in the meantime is worth knowing as a class of
-  defect: it RENDERED a document headed TAX INVOICE under the firm's own
-  GSTIN, numbered from a browser-local counter (two devices collide, so Rule
-  46(b)'s "unique for a financial year" cannot hold), taxed at a hardcoded CGST
-  9% + SGST 9% — the wrong tax for every inter-state client — and offered
-  Print. `apps/web/scripts/a-browser-only-screen-says-so.test.ts` now holds
-  both halves: which screens are still browser-only, and that a screen already
-  moved may not come back OR keep a warning that is no longer true.
-  **`/accounting/recurring` is the one that remains**, and there the original
-  argument does hold: nothing anywhere posts a recurring journal.
+- **A THIRD path existed and it was not a database at all: `localStorage`.**
+  Three screens kept the CA's own work in the browser (ACC-06). All three are
+  on tables now, and the three turned out to be three different jobs — which
+  is the lesson worth keeping, because the finding read as one.
+  `/accounting/budget` went onto `account_budgets` (migration 376);
+  `/accounting/recurring` onto `recurring_journal_templates` (377), the only
+  genuine build of the three; and `/accounting/retainer` onto
+  **`billing_schedules`, which was already built** —
+  `arrangement IN ('retainer','one_time','package')` since migration 073,
+  `billing_service.generate_for_schedule` producing a DRAFT through the sales
+  engine, and three methods in `lib/api` with no callers. That inverts the
+  argument `BrowserOnlyNotice` used to make in its own docstring — that these
+  screens "have no alternative" — and makes it exactly the pattern this file
+  warns about at `/gst/reconciliation`: a banner disowning a rival
+  implementation. **Before writing such a notice onto a fourth screen, grep
+  the backend for what it duplicates.**
+  Two classes of defect found on the way are worth knowing, because neither
+  was in the finding and both are the kind that hide behind "it's only stored
+  locally". The retainer screen RENDERED a document headed TAX INVOICE under
+  the firm's own GSTIN, numbered from a browser-local counter (two devices
+  collide, so Rule 46(b)'s "unique for a financial year" cannot hold) and
+  taxed at a hardcoded CGST 9% + SGST 9% — the wrong tax for every
+  inter-state client — with a Print button. And the recurring screen's "Post
+  Now" wrote `status: "posted"` STRAIGHT TO THE LEDGER, dated TODAY rather
+  than the occurrence, so a rent journal due on the 1st and remembered on the
+  7th landed on the 7th.
+  **`BrowserOnlyNotice` is deleted**: with no screens left it would only invite
+  a fourth, and `apps/web/scripts/a-browser-only-screen-says-so.test.ts`
+  inverts to state the durable rule — no page under `app/` may store the
+  user's WORK in the browser (a remembered tab or an unsent draft is a
+  per-viewer convenience and is allowlisted with its reason), and none of the
+  three may regress.
+- **A RECURRING ANYTHING SHARES ONE CADENCE ENGINE**, `domain/recurrence.py`.
+  `recurring_invoice_service` owned the occurrence arithmetic and it was
+  right, so recurring journals could have copied it — and two cadence engines
+  drifting means one feature posts in a month the other skips. It was MOVED;
+  the invoice service imports and re-exports the names so its callers are
+  untouched. The rule inside it that is easy to get wrong: **a month end clamps
+  against the ORIGINAL day, not the previous occurrence.** A monthly template
+  starting 31 January runs 31 Jan, 28 Feb, **31 Mar** — clamping each step
+  against its predecessor walks the whole series permanently back to the 28th
+  after one February.
+  **A generated journal is a DRAFT and is stamped `source_type = 'manual'`**,
+  which looks wrong and is not: `manual_journal_service._is_manual` is
+  `(source_type or "") == "manual"` and migrations 275/338 refuse the edit and
+  discard paths on anything else, so any other value hands the CA a draft they
+  are invited to review and forbidden to amend. The trace lives on
+  `journal_entries.recurring_template_id` (migration 377), which no guard
+  reads. A failed occurrence is RECORDED in `recurring_journal_runs` and the
+  template does NOT advance — a template that cannot post needs a CA, and
+  advancing past a failure would skip the month silently.
 - **The migrations and production have drifted before, in both halves of the
   schema.** `tests/test_schema_matches_production_pg.py` (columns) and
   `tests/test_guards_match_production_pg.py` (RLS switches, policies,

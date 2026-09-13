@@ -86,6 +86,13 @@ AUDITED: dict[str, tuple[str, ...]] = {
         "assert_client_access", "filter_by_client", "effective_client_ids",
         "_assert_template_scope",
     ),
+    # ACC-06's last screen. `_scoped` resolves the template and asserts the
+    # caller may reach its client in one step, so no endpoint can load a
+    # template without asking — the shape /api/billing's `_assert_invoice_scope`
+    # uses, for the same reason.
+    "/api/recurring-journals": (
+        "assert_client_access", "filter_by_client", "_scoped",
+    ),
     "/api/memory": (
         "assert_client_access", "filter_by_client",
         "_assert_trigger_scope", "_assert_anomaly_scope", "_assert_firmwide",
@@ -1628,6 +1635,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/clients/{client_id}/knowledge": 1,
               "/api/lifecycle": 19, "/api/payroll": 16,
               "/api/recurring-invoices": 11,
+              "/api/recurring-journals": 9,
               "/api/memory": 14,
               "/api/tasks": 15, "/api/task-recurring": 9,
               "/api/tds-workspace": 12,
@@ -1863,6 +1871,7 @@ def test_every_audited_router_actually_imports_the_authz_engine():
                    "routers.purchase_bills", "routers.engagement_letters",
                    "routers.workflow_builder", "routers.lifecycle",
                    "routers.payroll", "routers.recurring_invoices",
+                   "routers.recurring_journals",
                    "routers.memory_intelligence", "routers.tasks",
                    "routers.task_extras", "routers.task_recurring",
                    "routers.tds_workspace", "routers.tds",

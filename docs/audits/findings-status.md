@@ -7,15 +7,15 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **76** | re-read against the code. The defect is gone. |
+| closed | **77** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **9** | part of the finding is answered, part is not. Each says which. |
+| partial | **8** | part of the finding is answered, part is not. Each says which. |
 | open | **31** | re-read and still true. |
 | not a defect as stated | **4** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 40 items — 31 open and 9 partial — not 254.**
+**The work left is 39 items — 31 open and 8 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -94,7 +94,6 @@ migration; a handful need a statutory document a person has to read.
 
 | severity | finding | what it is |
 |---|---|---|
-| high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
@@ -142,6 +141,7 @@ migration; a handful need a statutory document a person has to read.
 | critical | **SALES-02** | Invoice PDF prints a hardcoded 18% / 9% / 9% tax rate on every invoice regardless of the actual  |
 | critical | **TDS-01** | Annual-aggregate thresholds are not modelled for §194J, §194H, §194A, §194D, §194G or §194Q — th |
 | critical | **TDS-02** | §194Q withholds 0.1% of the whole invoice instead of 0.1% of the sum exceeding ₹50 lakh — a six- |
+| high | **ACC-06** | Recurring journals, budgets and retainers are stored in browser localStorage — not in the databa |
 | high | **BANK-07** | The Bank Book fetches every transaction on the account and computes the running balance in Pytho |
 | high | **FA-03** | The Depreciation tab recomputes the annual charge in TypeScript with the exact bug the backend f |
 | high | **FA-08** | Disposal does not charge depreciation up to the disposal date, so the gain/loss on every mid-yea |

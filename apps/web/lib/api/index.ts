@@ -947,6 +947,45 @@ export type ScheduleIiiRatioNote = {
   gaps: { code: string; message: string }[];
 };
 
+// ── Recurring journals ───────────────────────────────────────────────────────
+// Templates the FIRM owns (`recurring_journal_templates`, migration 377).
+// Generating produces a DRAFT manual journal through the one posting kernel
+// and never posts one. Amounts are integer paise; each line is a debit OR a
+// credit, never both.
+
+export type RecurringJournalLine = {
+  id?: string;
+  account_id: string;
+  debit_paise: number;
+  credit_paise: number;
+  narration?: string | null;
+  sort_order?: number;
+};
+
+export type RecurringJournalTemplate = {
+  id: string;
+  client_id: string;
+  name: string;
+  frequency: string;
+  day_of_month: number;
+  narration: string | null;
+  start_date: string;
+  end_date: string | null;
+  next_run_date: string;
+  status: string;
+  lines: RecurringJournalLine[];
+};
+
+export type RecurringJournalRun = {
+  id: string;
+  template_id: string;
+  occurrence_date: string;
+  journal_entry_id: string | null;
+  status: string;
+  detail: Record<string, unknown> | null;
+  created_at?: string;
+};
+
 // ── Billing schedules ────────────────────────────────────────────────────────
 // The practice's own fee arrangements (`billing_schedules`, migration 073).
 // `arrangement` is 'retainer' | 'one_time' | 'package'; the Retainer Tracker
@@ -3018,6 +3057,50 @@ export const api = {
       "/api/onboarding/seed-coa",
       { method: "POST" },
     ),
+  },
+  /**
+   * Recurring journal templates (ACC-06). The screen used to keep these in
+   * localStorage, work out the next due date in the browser, and post
+   * nothing. Generating now raises a DRAFT manual journal through the one
+   * posting kernel; nothing is ever posted unprompted.
+   */
+  recurringJournals: {
+    list: (params?: { client_id?: string; status?: string }) => {
+      const q = new URLSearchParams();
+      if (params?.client_id) q.set("client_id", params.client_id);
+      if (params?.status) q.set("status", params.status);
+      const qs = q.toString();
+      return request<ApiResp<RecurringJournalTemplate[]>>(
+        `/api/recurring-journals${qs ? `?${qs}` : ""}`);
+    },
+    create: (body: unknown) =>
+      request<ApiResp<RecurringJournalTemplate>>("/api/recurring-journals",
+        { method: "POST", body: JSON.stringify(body) }),
+    get: (id: string) =>
+      request<ApiResp<RecurringJournalTemplate>>(`/api/recurring-journals/${id}`),
+    update: (id: string, body: unknown) =>
+      request<ApiResp<RecurringJournalTemplate>>(`/api/recurring-journals/${id}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    remove: (id: string) =>
+      request<ApiResp<{ deleted: boolean; id: string }>>(`/api/recurring-journals/${id}`,
+        { method: "DELETE" }),
+    history: (id: string) =>
+      request<ApiResp<RecurringJournalRun[]>>(`/api/recurring-journals/${id}/history`),
+    /** The next few dates this template will generate on. Writes nothing. */
+    preview: (id: string, count = 5) =>
+      request<ApiResp<{ template_id: string; occurrences: string[] }>>(
+        `/api/recurring-journals/${id}/preview?count=${count}`),
+    /** One occurrence, on demand. Idempotent — a second call returns the first draft. */
+    generate: (id: string, occurrence?: string) =>
+      request<ApiResp<{ created: boolean; journal_entry_id: string | null; reason: string | null }>>(
+        `/api/recurring-journals/${id}/generate${occurrence ? `?occurrence=${occurrence}` : ""}`,
+        { method: "POST" }),
+    /** Every due template. Idempotent; the daily sweep calls the same service. */
+    runDue: (clientId?: string) =>
+      request<ApiResp<{ generated_count: number; skipped_count: number; failed_count: number;
+                        failed: { template_id: string; occurrence: string; error: string }[] }>>(
+        `/api/recurring-journals/run${clientId ? `?client_id=${clientId}` : ""}`,
+        { method: "POST" }),
   },
   billing: {
     listSchedules: (activeOnly?: boolean) =>
