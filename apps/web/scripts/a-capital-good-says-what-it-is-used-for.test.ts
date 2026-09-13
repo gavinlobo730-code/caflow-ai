@@ -162,3 +162,4 @@ test("a client with no fixed assets gets no panel at all", () => {
   // is what makes a real one get skipped.
   assert.match(GSTR3B, /if \(r43\.assets\.length === 0\) \{\s*return null;/);
 });
+

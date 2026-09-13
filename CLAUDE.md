@@ -562,6 +562,26 @@ change. The code is the authority; keep this file in step with it.
   LUT or bond (§16(3)(a)). `domain/gst/gstr3b_computer.py` is the authority for
   all three, and the callers carry them — a figure the computer gets right and
   no screen shows is not a fixed bug.
+- **A RULE 37 REVERSAL CARRIES §50(1) INTEREST, AND THE CLOCK IS NO LONGER IN
+  THE RULE** (GST-28). Rule 37(1) with the second proviso to §16(2) requires
+  credit on a bill 180 days unpaid to be paid back "along with interest payable
+  thereon under section 50", and `rule37_report` stated the tax and stopped.
+  The RATE is settled: §50(3) reaches credit "wrongly availed AND UTILISED",
+  which Rule 37 credit is not — it was validly availed and the consideration
+  went unpaid — so §50(1)'s 18% applies, and that also matters because §50(3)'s
+  own notified rate is a named gap here. ⚠️ **The PERIOD is not settled**:
+  Notification 19/2022-Central Tax substituted the whole of Rule 37 from
+  01-10-2022 and its sub-rule (3), which ran the clock "from the date of
+  availing credit on such supplies", did not survive the substitution. So
+  `interest_on_rule_37_reversal` takes the window rather than choosing it, and
+  the report shows BOTH readings — from availment and from the 180th day — with
+  the caveat naming what was omitted. Picking one silently would over- or
+  under-state a sum the client pays over. The panel sums over the bills THIS
+  return carries, never every overdue bill: Rule 37(1) puts each reversal in
+  one specific return, and an earlier one's interest belongs to a return
+  already filed. **A one-click "Post this reversal" is deliberately NOT built**
+  — `itc_register_service` records why, and a guard asserts no such button
+  appeared.
 - **WHAT BEING LATE COSTS IS `domain/gst/late_filing.py`, and half of it is a
   REFUSAL.** §50(1) interest is COMPUTED — 18% (Notification 13/2017-Central
   Tax), and Rule 88B(1) is the load-bearing part: where the supplies are

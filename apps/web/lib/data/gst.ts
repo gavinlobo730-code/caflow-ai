@@ -461,6 +461,24 @@ export interface Rule37Bill {
   /** MMYYYY. Rule 37(1): the period AFTER the one the 180 days expired in. */
   reverse_in_period: string;
   reversal: { igst_paise: number; cgst_paise: number; sgst_paise: number; total_paise: number };
+  /** What being late COSTS. Rule 37(1) requires the credit back "along with
+   *  interest payable thereon under section 50", and the report used to stop
+   *  at the tax (GST-28). TWO figures, because Notification 19/2022-CT
+   *  substituted Rule 37 and its sub-rule (3) — which stated the clock — did
+   *  not survive: `from_availment` is the omitted rule's reading and
+   *  `from_expiry` the one the substituted rule leaves open. Same base, same
+   *  §50(1) rate; only the window differs. */
+  interest: { from_availment: Rule37Interest; from_expiry: Rule37Interest };
+}
+
+export interface Rule37Interest {
+  section: string;
+  base_paise: number;
+  rate_bps: number;
+  days: number;
+  interest_paise: number;
+  basis: string;
+  caveats: string[];
 }
 
 export interface Rule37Report {
@@ -469,6 +487,9 @@ export interface Rule37Report {
   bills: Rule37Bill[];
   bill_count: number;
   totals: { igst_paise: number; cgst_paise: number; sgst_paise: number; total_paise: number };
+  interest_totals: { from_availment_paise: number; from_expiry_paise: number };
+  /** The sentence naming the substitution that removed the clock. */
+  interest_caveats: string[];
   ca_review_required: true;
 }
 

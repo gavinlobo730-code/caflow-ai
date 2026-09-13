@@ -232,6 +232,58 @@ def interest_on_undeclared_tax(
     )
 
 
+#: Notification 19/2022-Central Tax substituted the whole of Rule 37 with
+#: effect from 01-10-2022, and sub-rule (3) — which stated the interest clock —
+#: did not survive the substitution.
+RULE_37_SUBSTITUTED_FROM = date(2022, 10, 1)
+
+RULE_37_CLOCK_NOT_STATED = (
+    "⚠️ Rule 37 no longer says when the interest clock STARTS. Until "
+    "Notification 19/2022-Central Tax substituted the rule with effect from "
+    "01-10-2022, sub-rule (3) ran it \"from the date of availing credit on "
+    "such supplies till the date when the amount added to the output tax "
+    "liability ... is paid\"; the substituted rule says only \"along with "
+    "interest payable thereon under section 50\". Both readings are shown "
+    "below — from the date the credit was availed, and from the day the 180 "
+    "days expired — because picking one silently would understate or overstate "
+    "a sum the client pays over. The RATE is not in doubt: §50(3) reaches "
+    "credit wrongly availed AND utilised, which this is not — the credit was "
+    "validly availed and has become repayable — so §50(1)'s 18% applies."
+)
+
+
+def interest_on_rule_37_reversal(
+    *,
+    reversal_paise: int,
+    from_date: date,
+    to_date: date,
+    clock: str,
+) -> InterestCharge:
+    """§50(1) on a Rule 37 reversal, over a window the CALLER states.
+
+    CGST Rule 37(1) with the second proviso to §16(2): where the recipient
+    fails to pay the supplier within 180 days, they "shall pay an amount equal
+    to the input tax credit availed in respect of such supply along with
+    interest payable thereon under section 50".
+
+    The rate is §50(1)'s 18% and that part is settled: §50(3) charges credit
+    "wrongly availed AND UTILISED", and Rule 37 credit was validly availed —
+    what changed is that the consideration went unpaid. The PERIOD is the open
+    question, which is why this function takes it rather than deciding it; the
+    caller shows both readings and names the substitution.
+    """
+    return _charge(
+        section="50(1)", base_paise=reversal_paise,
+        rate_bps=SECTION_50_1_RATE_BPS,
+        days=days_late(from_date, to_date), caveats=[],
+        basis=(
+            f"Section 50(1) at 18% per annum (Notification 13/2017-Central "
+            f"Tax), on the credit CGST Rule 37(1) requires to be paid back, "
+            f"run {clock}."
+        ),
+    )
+
+
 def interest_on_wrongly_availed_credit(
     *,
     utilised_on: Optional[date],
