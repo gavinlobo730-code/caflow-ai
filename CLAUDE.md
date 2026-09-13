@@ -574,6 +574,30 @@ change. The code is the authority; keep this file in step with it.
   same return is not. `domain/gst/gstr3b_computer.py` carries the circular's
   wording and is the authority; the pre-2022 layout looks plausible and gets the
   tax right, which is why it survived so long.
+- **GSTR-3B TABLE 4(A) HAS FIVE ROWS, AN IMPORT OF SERVICES OWNS ONE OF THEM,
+  AND TWO ARE STRUCTURALLY NIL** (GST-24). `itc_avl_rows` emits all five in the
+  GSTN utility's order and used to put the WHOLE reverse-charge credit on
+  4(A)(3) ISRC — the DOMESTIC §9(3)/(4) line. An import of services is
+  reverse-charged too (Notification 10/2017-IT(R) entry 1), so on the books it
+  is indistinguishable from a GTA or advocate bill, and it went out on the
+  wrong line. IGST §2(11) defines it — supplier outside India, recipient in
+  India — and the only fact separating them is
+  `vendors.residential_status`, read through
+  `domain/tds/residency.is_non_resident` rather than compared as a string,
+  because **NULL is a real third state and must not move a figure**: an
+  unclassified vendor stays exactly where every vendor already is.
+  **The split touches the ROW and nothing else** — the 3.1(d) liability, the
+  4(A) total, 4(C) and the challan are pinned unchanged by a parametrised
+  test, because `imps_*` is a SUBSET of `rcm_*` accumulated inside the same
+  branch and never added to it. **The two capped rows are capped IN ORDER**:
+  IMPS takes the ceiling first and ISRC takes what is left, since capping each
+  independently against the same ceiling lets them together exceed it and file
+  a 4(A) that does not reconcile with its own 4(C). **4(A)(1) IMPG and 4(A)(4)
+  ISD stay nil and NAME why** (`table_4a_gaps`): IGST on imported goods is paid
+  at customs against a Bill of Entry, never self-assessed on a purchase bill,
+  so it is not a reverse-charge document at all and no document type here
+  carries it; an ISD invoice is not modelled either. A nil meaning "we cannot
+  see it" is not a nil meaning "there was none".
 - **GSTR-3B Table 3.1(a) carries GSTR-1 TABLE 11, and the ledger cannot.**
   §13(2) puts the time of supply for SERVICES at the earlier of invoice or
   payment, so tax on an advance received for services falls due on receipt,

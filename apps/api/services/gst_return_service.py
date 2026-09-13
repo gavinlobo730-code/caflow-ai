@@ -247,6 +247,32 @@ def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
     return live + cancelled_later
 
 
+def _import_of_services_vendors(db, firm_id, client_id) -> set:
+    """Vendor ids whose supplies are an IMPORT OF SERVICES when reverse-charged.
+
+    GSTR-3B Table 4(A) gives an import of services its own line, 4(A)(2), and
+    the only thing separating it from a domestic §9(3)/(4) supply on the books
+    is WHERE THE SUPPLIER IS. `vendors.residential_status` (migration 308) is
+    the one place that is recorded.
+
+    `residency.is_non_resident` rather than `== "non_resident"` because NULL is
+    a real third state — "nobody has said" — and that module is where the
+    codebase already decides what it means. A NULL vendor stays on 4(A)(3),
+    which is where every one of them is today, so an unstated residency cannot
+    move a figure.
+
+    One read of the client's vendor list per return, not one per bill: this is
+    a few dozen rows against a register of thousands, and CLAUDE.md's rule is
+    that what crosses the wire is proportional to the ANSWER.
+    """
+    from domain.tds.residency import is_non_resident
+
+    rows = _paginate_all(lambda: db.table("vendors").select("id, residential_status")
+            .eq("firm_id", firm_id).eq("client_id", client_id))
+    return {r["id"] for r in (rows or [])
+            if r.get("id") and is_non_resident(r.get("residential_status"))}
+
+
 def _issued_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
     return _paginate_all(lambda: db.table("debit_notes").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -893,6 +919,34 @@ def outward_turnover(db, firm_id: str, client_id: str, period: str) -> dict:
     }
 
 
+def _table_4a_gaps() -> list[dict]:
+    """The 4(A) rows this product cannot derive, each with the reason.
+
+    Not a caveat about a figure that might be wrong — both are correctly zero
+    for every client that has neither. It is a statement that if the client DID
+    have one, nothing here would know: the document that carries it does not
+    exist in this product, so the CA has to add the figure on the portal.
+    """
+    return [
+        {
+            "row": "4(A)(1)",
+            "label": "Import of goods",
+            "reason": ("IGST on imported goods is paid at customs against a BILL OF "
+                       "ENTRY, not self-assessed on a purchase bill, and this product "
+                       "has no Bill of Entry document type. The credit is in GSTR-2B's "
+                       "own `impg` section, which the 2B reconciliation parses — but "
+                       "nothing feeds it into the return. Enter it on the portal."),
+        },
+        {
+            "row": "4(A)(4)",
+            "label": "Inward supplies from ISD",
+            "reason": ("An Input Service Distributor invoice is a document type this "
+                       "product does not model, so a distribution from a head office "
+                       "reaches no register here. Enter it on the portal."),
+        },
+    ]
+
+
 def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                       filed_on: "date | None" = None) -> dict:
     """Compute GSTR-3B from posted books and reconcile to the General Ledger.
@@ -906,6 +960,12 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     start, end = _period_bounds(period)
 
     sales = _outward_transactions(db, firm_id, client_id, start, end)
+
+    # Table 4(A)(2). Resolved once for the whole return — see
+    # _import_of_services_vendors — and applied to bills AND to the notes that
+    # adjust them, so a debit note against an imported service reduces the row
+    # it was declared on rather than the domestic one beside it.
+    imps_vendors = _import_of_services_vendors(db, firm_id, client_id)
 
     purchases: list[PurchaseTransaction] = []
     for b in _posted_bills(db, firm_id, client_id, start, end):
@@ -921,6 +981,7 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             ineligible_cgst_paise=int(b.get("ineligible_itc_cgst_paise") or 0),
             ineligible_sgst_paise=int(b.get("ineligible_itc_sgst_paise") or 0),
             ineligible_cess_paise=int(b.get("ineligible_itc_cess_paise") or 0),
+            is_import_of_services=b.get("vendor_id") in imps_vendors,
         ))
     # Debit notes (purchase returns) REVERSE ITC — they credit gst_input in the GL, so
     # the return's ITC must net them or it over-claims (mirror of credit notes reducing
@@ -933,6 +994,7 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             igst_paise=-int(dn.get("igst_paise") or 0),
             cess_paise=-int(dn.get("cess_paise") or 0),
             is_reverse_charge=bool(dn.get("is_reverse_charge", False)),
+            is_import_of_services=dn.get("vendor_id") in imps_vendors,
         ))
     # Purchase credit notes (purchase_credit_notes table) — in this codebase's
     # convention (routers/purchase_credit_notes.py) these are an INCREASE to
@@ -952,6 +1014,7 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             igst_paise=int(pcn.get("igst_paise") or 0),
             cess_paise=int(pcn.get("cess_paise") or 0),
             is_reverse_charge=bool(pcn.get("is_reverse_charge", False)),
+            is_import_of_services=pcn.get("vendor_id") in imps_vendors,
         ))
 
     # ── Table 4(B): credit given back in this period ────────────────────────
@@ -1196,6 +1259,12 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # return is not filed. The LATE FEE is a refusal with a named gap: §47's
         # notified rates are not held here. See domain/gst/late_filing.
         "late_filing": _late_filing_block(result, period, filed_on),
+        # TWO OF TABLE 4(A)'S FIVE ROWS ARE STRUCTURALLY NIL, and a nil that
+        # means "this product cannot see it" is not the same as a nil that
+        # means "this client had none". 4(A)(2) is filled from the books now
+        # (GST-24); these two cannot be, and say so rather than reading as an
+        # answer. Same shape as `cess_gaps` and `payload_gaps`.
+        "table_4a_gaps": _table_4a_gaps(),
         "working": {
             "outward": {
                 "taxable_value_paise": result.outward_taxable_value,

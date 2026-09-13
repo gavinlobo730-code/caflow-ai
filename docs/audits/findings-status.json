@@ -449,9 +449,9 @@
       "four_figures_not_one": "TDS (Schedule TDS), TCS (Schedule TCS, s.206C(4)), tax the client paid itself (26AS Part C, its own line) and a refund already received (Part D, not a credit). Anything not booked FINAL at TRACES is excluded and named: claiming an unmatched credit is what produces a s.143(1) demand."
     },
     "GST-24": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "gstr3b_computer has no import-IGST or ISD row for Table 4(A)"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "Table 4(A)(2) is filled from the books: a reverse-charge purchase from a vendor recorded non_resident is an import of services (IGST §2(11), Notification 10/2017-IT(R) entry 1), resolved through domain.tds.residency.is_non_resident so a NULL residency cannot move a figure. Only the ROW changes — the 3.1(d) liability, 4(A) total, 4(C) and the challan are pinned unchanged by a parametrised test. 4(A)(1) IMPG and 4(A)(4) ISD are still nil and now NAMED with the reason (no Bill of Entry document type; ISD not modelled), because a nil that means 'we cannot see it' is not a nil that means 'there was none'. No migration."
     },
     "PAY-25": {
       "status": "closed",

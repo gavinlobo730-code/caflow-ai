@@ -58,6 +58,18 @@ class PurchaseTransaction:
     ineligible_cgst_paise: int = 0
     ineligible_sgst_paise: int = 0
     ineligible_cess_paise: int = 0
+    # Table 4(A)(2) rather than 4(A)(3). An IMPORT OF SERVICES is IGST Act
+    # §2(11) — supplier outside India, recipient in India, place of supply in
+    # India — and Notification 10/2017-Integrated Tax (Rate) entry 1 puts it on
+    # the recipient under reverse charge. So it reaches this dataclass looking
+    # exactly like a domestic §9(3) purchase, and the form has a separate line
+    # for it. Defaulted, so a caller that does not know stays where it was.
+    #
+    # IMPORT OF GOODS never sets this and could not: IGST on goods is collected
+    # at customs against a Bill of Entry, not self-assessed by the recipient,
+    # so it is not a reverse-charge purchase bill at all. That is 4(A)(1), and
+    # it needs a document type this product does not have.
+    is_import_of_services: bool = False
 
 
 @dataclass(frozen=True)
@@ -289,6 +301,16 @@ class GSTR3BResult:
     # a different head.
     rcm_cess: int = 0
 
+    # Of the reverse-charge tax above, the part that is an IMPORT OF SERVICES.
+    # A SUBSET of rcm_*, never added to it: the liability in Table 3.1(d) and
+    # the cash it is paid with are identical either way. This exists only to
+    # split Table 4(A), where the form gives an import of services its own line
+    # — see itc_avl_rows().
+    imps_igst: int = 0
+    imps_cgst: int = 0
+    imps_sgst: int = 0
+    imps_cess: int = 0
+
     # Table 4: ITC available
     itc_igst: int = 0
     itc_cgst: int = 0
@@ -425,32 +447,57 @@ class GSTR3BResult:
         of a filed return. "ISRC" is Inward Supplies Reverse Charge; the
         general bucket is "OTH".
 
-        IMPG, IMPS and ISD are zero because nothing upstream distinguishes an
-        import or an ISD distribution from any other purchase yet. They are
-        still emitted: the utility always writes all five, and a row that is
-        absent is not the same as a row that is nil.
+        IMPS IS FILLED FROM THE BOOKS, IMPG AND ISD ARE STILL NIL, and the
+        difference between the three is which fact the books hold.
 
-        ISRC is capped at the credit available so the five rows sum to exactly
-        4(A). Without the cap, a period where the Rule 36(4) cap trimmed credit
-        below the reverse-charge tax would file a 4(A) that does not reconcile
-        with its own 4(C).
+        An IMPORT OF SERVICES is a reverse-charge purchase like any other — the
+        recipient self-assesses under Notification 10/2017-IT(R) entry 1 — so
+        until GST-24 every rupee of it went out on 4(A)(3), the line for
+        domestic §9(3)/(4) supplies. `PurchaseTransaction.is_import_of_services`
+        is what separates them, and `gst_return_service` sets it from the
+        vendor's own recorded residency.
+
+        IMPORT OF GOODS cannot be derived and is not a gap in this function:
+        IGST on goods is paid at customs against a BILL OF ENTRY, so it is
+        never a reverse-charge purchase bill and there is no document in this
+        product that carries it. ISD is the same shape — an Input Service
+        Distributor invoice is a document type nothing here models.
+
+        All five rows are still emitted. The GSTN utility writes all five
+        unconditionally, and a row that is absent is not the same as a row that
+        is nil. The two that stay nil are NAMED by
+        `gst_return_service.gstr3b_from_books` rather than left to read as
+        "this client had none".
+
+        ISRC AND IMPS ARE CAPPED TOGETHER, and the order matters. The five rows
+        must sum to exactly 4(A), so the reverse-charge lines are capped at the
+        credit available — without it, a period where the Rule 36(4) cap
+        trimmed credit below the reverse-charge tax would file a 4(A) that does
+        not reconcile with its own 4(C). Capping each line independently
+        against the same ceiling would let the two together exceed it, so IMPS
+        takes the ceiling first and ISRC takes what is left of it.
         """
-        isrc_i = min(self.rcm_igst, self.itc_avail_igst)
-        isrc_c = min(self.rcm_cgst, self.itc_avail_cgst)
-        isrc_s = min(self.rcm_sgst, self.itc_avail_sgst)
-        isrc_x = min(self.rcm_cess, self.itc_avail_cess)
+        def _split(imps_head: int, rcm_head: int, avail: int) -> tuple[int, int]:
+            imps = min(imps_head, avail)
+            return imps, min(rcm_head - imps_head, avail - imps)
+
+        imps_i, isrc_i = _split(self.imps_igst, self.rcm_igst, self.itc_avail_igst)
+        imps_c, isrc_c = _split(self.imps_cgst, self.rcm_cgst, self.itc_avail_cgst)
+        imps_s, isrc_s = _split(self.imps_sgst, self.rcm_sgst, self.itc_avail_sgst)
+        imps_x, isrc_x = _split(self.imps_cess, self.rcm_cess, self.itc_avail_cess)
         return [
             ("IMPG", 0, 0, 0, 0),
-            ("IMPS", 0, 0, 0, 0),
+            # IGST Act §2(11): supplier outside India, recipient in India.
+            ("IMPS", imps_i, imps_c, imps_s, imps_x),
             # Reverse-charge tax is self-assessed by the recipient and taken as
             # credit in the same return (CGST Act §9(3)/(4) with §16).
             ("ISRC", isrc_i, isrc_c, isrc_s, isrc_x),
             ("ISD", 0, 0, 0, 0),
             ("OTH",
-             self.itc_avail_igst - isrc_i,
-             self.itc_avail_cgst - isrc_c,
-             self.itc_avail_sgst - isrc_s,
-             self.itc_avail_cess - isrc_x),
+             self.itc_avail_igst - imps_i - isrc_i,
+             self.itc_avail_cgst - imps_c - isrc_c,
+             self.itc_avail_sgst - imps_s - isrc_s,
+             self.itc_avail_cess - imps_x - isrc_x),
         ]
 
     # Table 6: tax on OUTWARD supplies still payable after the §49 set-off.
@@ -984,6 +1031,15 @@ def compute_gstr3b(
             # count-once rule the GST heads follow, and the reason this loop
             # only adds the LIABILITY.
             result.rcm_cess += p.cess_paise
+            # A SUBSET of the four lines above, accumulated inside the same
+            # branch so it can never count a supply the liability did not.
+            # Splits Table 4(A) only; nothing about 3.1(d) or the challan
+            # changes. IGST Act §2(11) with Notification 10/2017-IT(R) entry 1.
+            if p.is_import_of_services:
+                result.imps_igst += p.igst_paise
+                result.imps_cgst += p.cgst_paise
+                result.imps_sgst += p.sgst_paise
+                result.imps_cess += p.cess_paise
 
     # ── Table 4: ITC available ───────────────────────────────────────────────
     # C4 fix: each purchase's tax is counted ONCE. RCM ITC is already included in
