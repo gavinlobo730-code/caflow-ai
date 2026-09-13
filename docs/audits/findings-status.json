@@ -224,10 +224,9 @@
       "why": "Re-read: the finding's OWN suggested fix is 'Leave it. When a GSP is contracted, wire get_provider's switch in the same commit that adds the provider, as the marker says.' routers/gst_portal.py's five endpoints are budgeted by the reachability ratchet at /api/gst-portal = 5, so the seam cannot rot unnoticed, and domain/gst/portal_service.py carries the TODO(compliance) explaining the gate. Recorded as accepted rather than open: an item whose fix is 'do nothing' is not remaining work."
     },
     "PUR-16": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "app/accounting/suppliers/page.tsx reads and writes public.suppliers (migration 030) over PostgREST, while every purchase path reads public.vendors. Two masters: the TDS section and credit limit a CA records on that screen reach nothing",
-      "needs": "ONE migration — vendors has 34 of the 36 columns already; only credit_limit_paise has no equivalent (payment_terms_days maps to credit_days). Repointing the screen without it would silently drop a recorded credit limit"
+      "status": "closed",
+      "verified_on": "2026-09-13",
+      "why": "/accounting/suppliers goes through GET/POST/PATCH /api/vendors, so the TDS section and credit terms a CA records are the ones every purchase path reads. Migration 378 adds vendors.credit_limit_paise (nullable, no default) so the move loses nothing, and marks public.suppliers RETIRED in the database — same shape as migration 371's dead TDS rate master. No data was migrated: public.suppliers held ZERO rows in production on 13-09-2026 and the repointed screen was its only writer. A DROP needs the production-fixture refresh in docs/schema-drift.md and is a separate change. tests/test_one_supplier_master.py holds all three halves."
     },
     "ACC-06": {
       "status": "closed",

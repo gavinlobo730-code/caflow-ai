@@ -1,14 +1,39 @@
 "use client";
 
 /**
- * Supplier Master with TDS Section Mapping
- * IT Act sections 194C (Contractor), 194I (Rent), 194J (Professional), 194H (Commission),
- * 194A (Interest), 194B (Lottery) — deduct at source before payment to supplier.
- * All monetary amounts stored in paise (integer arithmetic).
+ * Supplier Master — TDS section mapping and credit terms.
+ *
+ * THIS SCREEN WROTE TO THE WRONG TABLE UNTIL 2026-09-13 (PUR-16).
+ * It read and wrote `public.suppliers` (migration 030) straight over
+ * PostgREST, while every purchase path in the product reads `public.vendors`:
+ * bill creation, TDS withholding, the AP ageing, the Schedule III payables
+ * note, GSTR-2B matching and s.43B(h). Two masters and no join between them.
+ *
+ * The credit limit was the harmless half — nothing anywhere reads one. The TDS
+ * SECTION was not. A CA who picked 194J here against a professional firm wrote
+ * `suppliers.tds_section`; the bill path read `vendors.tds_section`, found
+ * NULL and withheld nothing. IT Act s.40(a)(ia) disallows the WHOLE
+ * expenditure for an under-deduction, and s.201(1) makes the deductor liable
+ * for the tax with s.201(1A) interest on top.
+ *
+ * It now goes through GET/POST/PATCH /api/vendors, so `rbac()` runs and what
+ * is recorded here is what the bill reads. Migration 378 gave `vendors` the
+ * one column it lacked (`credit_limit_paise`) and marked `public.suppliers`
+ * retired in the database.
+ *
+ * THREE FIELDS ARE NAMED DIFFERENTLY on the master this now writes, and one is
+ * a different UNIT:
+ *     supplier_name       -> name
+ *     payment_terms_days  -> credit_days
+ *     tds_rate_percent    -> tds_rate_bps   (BASIS POINTS: 1000 = 10.00%)
+ *
+ * IT Act sections 194C (Contractor), 194I (Rent), 194J (Professional), 194H
+ * (Commission), 194A (Interest), 194B (Lottery) — deduct at source before
+ * payment to the supplier. All monetary amounts are integer paise.
  */
 
-import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { useState, useEffect } from "react";
+import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, X, Users, IndianRupee } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -16,30 +41,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Combobox } from "@/components/ui/combobox";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { getFirmId } from "@/lib/data/getFirmId";
+import { getClients } from "@/lib/data/clients";
+import { api, type Vendor, type VendorWrite } from "@/lib/api";
 import { listTdsSections, computeTdsAmount, type TDSSection, type TDSAmountResult } from "@/lib/data/tds";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Client {
+interface ClientOption {
   id: string;
   client_name: string;
-}
-
-interface Supplier {
-  id: string;
-  firm_id: string;
-  client_id: string;
-  supplier_name: string;
-  gstin: string | null;
-  pan: string | null;
-  tds_section: string | null;
-  tds_rate_percent: number | null;
-  credit_limit_paise: number;
-  payment_terms_days: number;
-  is_active: boolean;
-  created_at: string;
 }
 
 // Cosmetic section names only — no rates/thresholds here. Those are always
@@ -81,29 +91,38 @@ function rsToP(rs: string): number | null {
   return paiseFromRupeeInput(rs || "0");
 }
 
+/** Basis points → the percentage to show in the form's box. */
+function bpsToPercentText(bps: number | null): string {
+  if (bps === null || bps === undefined) return "";
+  return String(bps / 100);
+}
+
 const BLANK_FORM = {
-  supplier_name: "",
+  name: "",
   gstin: "",
   pan: "",
   tds_section: "",
-  tds_rate_percent: "",
+  // The box holds a PERCENTAGE; the column is tds_rate_bps. Named for what
+  // it is rather than after the retired table's tds_rate_percent, so the two
+  // cannot be confused into sending one where the other is meant.
+  rate_percent_typed: "",
   credit_limit_rs: "",
-  payment_terms_days: "30",
+  credit_days: "30",
   is_active: true,
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SuppliersPage() {
-  const [firmId, setFirmId] = useState<string | null>(null);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<ClientOption[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(BLANK_FORM);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // TDS section list — thresholds/rates always come from the authoritative
@@ -120,23 +139,32 @@ export default function SuppliersPage() {
   const [tdsCalcError, setTdsCalcError] = useState<string | null>(null);
 
   useEffect(() => {
-    const sb = getSupabaseClient();
-    getFirmId().then(async (fid) => {
-      setFirmId(fid);
-      // clients has no is_active column; its lifecycle field is `status`
-      // (CHECK: active | inactive | archived).
-      const { data, error } = await sb.from("clients").select("id, client_name").eq("firm_id", fid).eq("status", "active").order("client_name");
-      if (error) throw error;
-      setClients((data ?? []) as Client[]);
-      if (data && data.length > 0) setSelectedClientId((data[0] as Client).id);
-    }).catch(() => setError("Failed to load")).finally(() => setLoading(false));
+    getClients()
+      .then((cs) => {
+        const opts = cs.map((c) => ({ id: c.id, client_name: c.client_name }));
+        setClients(opts);
+        if (opts.length > 0) setSelectedClientId(opts[0].id);
+      })
+      .catch(() => setError("Failed to load clients"))
+      .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (!selectedClientId || !firmId) return;
-    loadSuppliers();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClientId, firmId]);
+  const loadVendors = useCallback(async () => {
+    if (!selectedClientId) return;
+    try {
+      // include_inactive: a deactivated supplier has to stay visible, or the
+      // Activate button below has nothing to act on.
+      const res = await api.vendors.list(selectedClientId, true);
+      if (!res.success) throw new Error(res.error ?? "Couldn't load suppliers.");
+      setVendors(res.data ?? []);
+      setError(null);
+    } catch (e) {
+      setVendors([]);
+      setError(e instanceof Error ? e.message : "Couldn't load suppliers.");
+    }
+  }, [selectedClientId]);
+
+  useEffect(() => { loadVendors(); }, [loadVendors]);
 
   useEffect(() => {
     listTdsSections().then(r => setTdsSections(r.sections)).catch(() => setTdsSections([]));
@@ -158,46 +186,34 @@ export default function SuppliersPage() {
     return () => { cancelled = true; };
   }, [billPaise, form.tds_section, form.pan]);
 
-  async function loadSuppliers() {
-    if (!selectedClientId || !firmId) return;
-    try {
-      const sb = getSupabaseClient();
-      const { data, error: fetchErr } = await sb.from("suppliers").select("*").eq("firm_id", firmId).eq("client_id", selectedClientId).order("supplier_name");
-      if (fetchErr) throw fetchErr;
-      setSuppliers((data ?? []) as Supplier[]);
-      setError(null);
-    } catch (e) {
-      setSuppliers([]);
-      setError(e instanceof Error ? e.message : "Couldn't load suppliers.");
-    }
-  }
-
   function openAdd() {
     setEditingId(null);
     setForm(BLANK_FORM);
     setBillRs("");
+    setError(null);
     setShowModal(true);
   }
 
-  function openEdit(s: Supplier) {
-    setEditingId(s.id);
+  function openEdit(v: Vendor) {
+    setEditingId(v.id);
     setForm({
-      supplier_name: s.supplier_name,
-      gstin: s.gstin ?? "",
-      pan: s.pan ?? "",
-      tds_section: s.tds_section ?? "",
-      tds_rate_percent: s.tds_rate_percent !== null ? String(s.tds_rate_percent) : "",
-      credit_limit_rs: s.credit_limit_paise ? String(s.credit_limit_paise / 100) : "",
-      payment_terms_days: String(s.payment_terms_days),
-      is_active: s.is_active,
+      name: v.name,
+      gstin: v.gstin ?? "",
+      pan: v.pan ?? "",
+      tds_section: v.tds_section ?? "",
+      rate_percent_typed: bpsToPercentText(v.tds_rate_bps),
+      credit_limit_rs: v.credit_limit_paise ? String(v.credit_limit_paise / 100) : "",
+      credit_days: v.credit_days !== null && v.credit_days !== undefined ? String(v.credit_days) : "",
+      is_active: v.is_active,
     });
     setBillRs("");
+    setError(null);
     setShowModal(true);
   }
 
   function onSectionChange(val: string) {
     const sec = tdsSections.find(s => s.section === val);
-    setForm(f => ({ ...f, tds_section: val, tds_rate_percent: sec ? String(sec.rate_individual_pct) : "" }));
+    setForm(f => ({ ...f, tds_section: val, rate_percent_typed: sec ? String(sec.rate_individual_pct) : "" }));
   }
 
   // ONLY THE SECTIONS A VENDOR MAY ACTUALLY CARRY.
@@ -225,39 +241,64 @@ export default function SuppliersPage() {
   ];
 
   async function handleSave() {
-    if (!firmId || !selectedClientId) return;
-    if (!form.supplier_name.trim()) { setError("Supplier name is required"); return; }
-    const creditLimit = rsToP(form.credit_limit_rs);
-    if (creditLimit === null) {
+    if (!selectedClientId) return;
+    if (!form.name.trim()) { setError("Supplier name is required"); return; }
+
+    const creditLimit = form.credit_limit_rs.trim() ? rsToP(form.credit_limit_rs) : null;
+    if (form.credit_limit_rs.trim() && creditLimit === null) {
       setError("Credit limit must be an amount in rupees, e.g. 500000 or 500000.50 "
                + "— without commas.");
       return;
     }
+
+    // A percentage through the one parser, then to BASIS POINTS, which is the
+    // column's unit. `parseFloat(x) * 100` is the shape CLAUDE.md's money rule
+    // bans: parseFloat("1,5") is 1 and parseFloat("1e1") is 10.
+    let rateBps: number | undefined;
+    if (form.tds_section && form.rate_percent_typed.trim()) {
+      const bps = bpsFromPercentInput(form.rate_percent_typed);
+      if (bps === null) { setError("TDS rate must be a percentage, e.g. 10 or 7.5."); return; }
+      rateBps = bps;
+    }
+
+    // Blank is a real answer — "no payment terms confirmed" is a different fact
+    // from 0 ("Due on Receipt"), which is why migration 202 took the NOT NULL
+    // DEFAULT 30 off the column.
+    const creditDaysText = form.credit_days.trim();
+    let creditDays: number | null = null;
+    if (creditDaysText) {
+      const n = Number(creditDaysText);
+      if (!Number.isInteger(n) || n < 0) { setError("Payment terms must be a whole number of days."); return; }
+      creditDays = n;
+    }
+
     setSaving(true);
     setError(null);
-    const sb = getSupabaseClient();
-    const payload = {
-      firm_id: firmId,
-      client_id: selectedClientId,
-      supplier_name: form.supplier_name.trim(),
+    const body: VendorWrite = {
+      name: form.name.trim(),
       gstin: form.gstin.trim() || null,
       pan: form.pan.trim() || null,
-      tds_section: form.tds_section || null,
-      tds_rate_percent: form.tds_rate_percent ? parseFloat(form.tds_rate_percent) : null,
+      // A section of "other" records a manual rate against no statutory
+      // section, which is what the option means; the section itself stays null
+      // so nothing downstream routes a 26Q row under a code that is not one.
+      tds_applicable: !!form.tds_section,
+      tds_section: form.tds_section && form.tds_section !== "other" ? form.tds_section : null,
+      tds_rate_bps: rateBps,
       credit_limit_paise: creditLimit,
-      payment_terms_days: parseInt(form.payment_terms_days || "30"),
+      credit_days: creditDays,
       is_active: form.is_active,
     };
     try {
-      let err;
-      if (editingId) {
-        ({ error: err } = await sb.from("suppliers").update(payload).eq("id", editingId));
-      } else {
-        ({ error: err } = await sb.from("suppliers").insert(payload));
+      const res = editingId
+        ? await api.vendors.update(editingId, body)
+        : await api.vendors.create({ ...body, client_id: selectedClientId });
+      if (!res.success) throw new Error(res.error ?? "Couldn't save the supplier.");
+      if (!editingId && (res.data as { duplicate?: boolean })?.duplicate) {
+        setError("A supplier with that GSTIN or PAN already exists for this client — "
+                 + "the existing record was kept.");
       }
-      if (err) throw new Error(err.message);
       setShowModal(false);
-      await loadSuppliers();
+      await loadVendors();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save the supplier.");
     } finally {
@@ -267,10 +308,18 @@ export default function SuppliersPage() {
     }
   }
 
-  async function toggleActive(id: string, cur: boolean) {
-    const sb = getSupabaseClient();
-    await sb.from("suppliers").update({ is_active: !cur }).eq("id", id);
-    await loadSuppliers();
+  async function toggleActive(v: Vendor) {
+    setBusyId(v.id);
+    setError(null);
+    try {
+      const res = await api.vendors.update(v.id, { is_active: !v.is_active });
+      if (!res.success) throw new Error(res.error ?? "Couldn't change the supplier's status.");
+      await loadVendors();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't change the supplier's status.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -284,7 +333,7 @@ export default function SuppliersPage() {
           <h1 className="text-xl font-semibold text-[#0F172A]">Supplier Master</h1>
           <p className="text-sm text-[#64748B] mt-0.5">TDS section mapping &amp; credit terms</p>
         </div>
-        <Button onClick={openAdd} size="sm" className="flex items-center gap-1">
+        <Button onClick={openAdd} size="sm" className="flex items-center gap-1" disabled={!selectedClientId}>
           <Plus className="w-4 h-4" /> Add Supplier
         </Button>
       </div>
@@ -304,6 +353,10 @@ export default function SuppliersPage() {
               placeholder="Select client…"
             />
           </div>
+          <p className="text-xs text-[#64748B] mt-2">
+            These are the same suppliers the client&apos;s Purchases → Vendors tab shows.
+            A TDS section set here is the one every bill for this client withholds on.
+          </p>
         </CardContent>
       </Card>
 
@@ -312,7 +365,7 @@ export default function SuppliersPage() {
         <CardHeader>
           <CardTitle className="text-sm flex items-center gap-2">
             <Users className="w-4 h-4 text-blue-600" />
-            Suppliers ({suppliers.length})
+            Suppliers ({vendors.length})
           </CardTitle>
         </CardHeader>
         {loading ? (
@@ -334,35 +387,41 @@ export default function SuppliersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
-                {suppliers.map(s => (
-                  <tr key={s.id} className="hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-3 font-medium text-[#0F172A]">{s.supplier_name}</td>
-                    <td className="px-4 py-3 text-[#475569] font-mono text-xs">{s.gstin ?? "—"}</td>
-                    <td className="px-4 py-3 text-[#475569] font-mono text-xs">{s.pan ?? "—"}</td>
+                {vendors.map(v => (
+                  <tr key={v.id} className="hover:bg-[#F8FAFC]">
+                    <td className="px-4 py-3 font-medium text-[#0F172A]">{v.name}</td>
+                    <td className="px-4 py-3 text-[#475569] font-mono text-xs">{v.gstin ?? "—"}</td>
+                    <td className="px-4 py-3 text-[#475569] font-mono text-xs">{v.pan ?? "—"}</td>
                     <td className="px-4 py-3">
-                      {s.tds_section ? (
-                        <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">{s.tds_section}</span>
+                      {v.tds_section ? (
+                        <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">{v.tds_section}</span>
                       ) : (
                         <span className="text-[#94A3B8] text-xs">No TDS</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-[#334155]">{s.tds_rate_percent != null ? `${s.tds_rate_percent}%` : "—"}</td>
-                    <td className="px-4 py-3 text-right text-[#334155]">{s.credit_limit_paise ? fmtRs(s.credit_limit_paise) : "—"}</td>
-                    <td className="px-4 py-3 text-right text-[#334155]">{s.payment_terms_days} days</td>
+                    <td className="px-4 py-3 text-right text-[#334155]">{v.tds_rate_bps ? `${v.tds_rate_bps / 100}%` : "—"}</td>
+                    <td className="px-4 py-3 text-right text-[#334155]">{v.credit_limit_paise ? fmtRs(v.credit_limit_paise) : "—"}</td>
+                    <td className="px-4 py-3 text-right text-[#334155]">
+                      {v.credit_days !== null && v.credit_days !== undefined ? `${v.credit_days} days` : "—"}
+                    </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.is_active ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
-                        {s.is_active ? "Active" : "Inactive"}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${v.is_active ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                        {v.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="px-4 py-3 flex gap-2 justify-end">
-                      <button onClick={() => openEdit(s)} className="text-xs text-blue-600 hover:underline">Edit</button>
-                      <button onClick={() => toggleActive(s.id, s.is_active)} className="text-xs text-[#94A3B8] hover:underline">
-                        {s.is_active ? "Deactivate" : "Activate"}
+                      <button onClick={() => openEdit(v)} className="text-xs text-blue-600 hover:underline">Edit</button>
+                      <button
+                        onClick={() => toggleActive(v)}
+                        disabled={busyId === v.id}
+                        className="text-xs text-[#94A3B8] hover:underline disabled:opacity-50"
+                      >
+                        {busyId === v.id ? "Saving…" : v.is_active ? "Deactivate" : "Activate"}
                       </button>
                     </td>
                   </tr>
                 ))}
-                {suppliers.length === 0 && (
+                {vendors.length === 0 && (
                   <tr><td colSpan={9} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No suppliers yet. Add your first supplier.</td></tr>
                 )}
               </tbody>
@@ -370,11 +429,6 @@ export default function SuppliersPage() {
           </div>
         )}
       </Card>
-
-      {/* TDS Calculator */}
-      {form.tds_section && showModal && (
-        null // shown in modal below
-      )}
 
       {/* Add/Edit Modal */}
       {showModal && (
@@ -389,13 +443,13 @@ export default function SuppliersPage() {
 
               <div>
                 <label className="text-xs font-medium text-[#334155] block mb-1">Supplier Name *</label>
-                <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.supplier_name} onChange={e => setForm(f => ({ ...f, supplier_name: e.target.value }))} placeholder="e.g. ABC Contractors Pvt Ltd" />
+                <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. ABC Contractors Pvt Ltd" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-[#334155] block mb-1">GSTIN</label>
-                  <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))} placeholder="27AAAAA0000A1Z2" maxLength={15} />
+                  <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))} placeholder="27AABCU9603R1ZM" maxLength={15} />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-[#334155] block mb-1">PAN</label>
@@ -421,18 +475,20 @@ export default function SuppliersPage() {
               {form.tds_section && (
                 <div>
                   <label className="text-xs font-medium text-[#334155] block mb-1">TDS Rate %</label>
-                  <input type="number" min="0" max="100" step="0.01" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.tds_rate_percent} onChange={e => setForm(f => ({ ...f, tds_rate_percent: e.target.value }))} placeholder="e.g. 10" />
+                  <input type="number" min="0" max="100" step="0.01" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.rate_percent_typed} onChange={e => setForm(f => ({ ...f, rate_percent_typed: e.target.value }))} placeholder="e.g. 10" />
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-[#334155] block mb-1">Credit Limit (₹)</label>
-                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_limit_rs} onChange={e => setForm(f => ({ ...f, credit_limit_rs: e.target.value }))} placeholder="0" />
+                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_limit_rs} onChange={e => setForm(f => ({ ...f, credit_limit_rs: e.target.value }))} placeholder="Leave blank for none" />
+                  <p className="text-[11px] text-[#94A3B8] mt-1 leading-tight">Recorded only — no bill is blocked or flagged by it.</p>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-[#334155] block mb-1">Payment Terms (days)</label>
-                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.payment_terms_days} onChange={e => setForm(f => ({ ...f, payment_terms_days: e.target.value }))} placeholder="30" />
+                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_days} onChange={e => setForm(f => ({ ...f, credit_days: e.target.value }))} placeholder="Leave blank if unconfirmed" />
+                  <p className="text-[11px] text-[#94A3B8] mt-1 leading-tight">Blank and 0 differ: 0 is Due on Receipt.</p>
                 </div>
               </div>
 
@@ -453,9 +509,12 @@ export default function SuppliersPage() {
                     <label className="text-xs font-medium text-[#334155] block mb-1">Bill Amount (₹)</label>
                     <input type="number" min="0" className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
                   </div>
-                  {billPaise > 0 && form.tds_section === "other" && parseFloat(form.tds_rate_percent || "0") > 0 && (() => {
-                    const manualRate = parseFloat(form.tds_rate_percent || "0");
-                    const manualTds = Math.round(billPaise * manualRate / 100);
+                  {billPaise > 0 && form.tds_section === "other" && (() => {
+                    const manualBps = bpsFromPercentInput(form.rate_percent_typed);
+                    if (manualBps === null || manualBps <= 0) return null;
+                    // Integer paise throughout — the rate is basis points, so
+                    // the divisor is 10,000, not 100.
+                    const manualTds = Math.round(billPaise * manualBps / 10000);
                     return (
                       <div className="space-y-1">
                         <div className="flex justify-between text-xs text-[#475569]">
@@ -463,7 +522,7 @@ export default function SuppliersPage() {
                           <span className="font-medium">{fmtRs(billPaise)}</span>
                         </div>
                         <div className="flex justify-between text-xs text-[#475569]">
-                          <span>TDS @ {manualRate}% (manual rate)</span>
+                          <span>TDS @ {manualBps / 100}% (manual rate)</span>
                           <span className="font-medium text-red-600">- {fmtRs(manualTds)}</span>
                         </div>
                         <div className="flex justify-between text-xs font-semibold text-[#0F172A] border-t border-amber-200 pt-1">

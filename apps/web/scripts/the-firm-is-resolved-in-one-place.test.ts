@@ -186,12 +186,19 @@ test("the rule is stated over the operation, not over a name", () => {
     `sb.from("users").select("id, full_name, email, role, is_active, created_at, firm_id, auth_user_id").eq("auth_user_id", a)`),
     "the team screen needs eight columns of its own row");
   assert.ok(!offends(
-    `sb.from("clients").select("firm_id").eq("auth_user_id", uid)`),
-    "auth_user_id on another table is not this lookup");
+    `sb.from("client_portal_users").select("firm_id").eq("auth_user_id", uid)`),
+    "a PORTAL principal resolving their own firm is a different lookup — they "
+    + "have no `users` row at all, which is why lib/data/getFirmId cannot serve "
+    + "them and why the rule keys on the TABLE as well as the column");
   assert.ok(!offends(
-    // A real table name, because tests/test_frontend_tables_exist.py scans
-    // apps/web for `.from("…")` and checks the name against the migrations —
-    // an invented one in an example string fails there, which it did.
-    `sb.from("users").select("firm_id");\n${"x\n".repeat(300)}sb.from("clients").eq("auth_user_id", u)`),
+    // A REAL table and a REAL column, because two other guards scan apps/web
+    // and cannot tell an example from a query:
+    // tests/test_frontend_tables_exist.py checks every `.from("…")` name
+    // against the migrations, and test_frontend_columns_exist_pg.py checks
+    // every `.eq("…")` against the real schema. This example failed both in
+    // turn: first with a made-up one-letter table name, then with a real table
+    // that has no auth_user_id column. Neither scanner strips comments either,
+    // so do not write an example query in one.
+    `sb.from("users").select("firm_id");\n${"x\n".repeat(300)}sb.from("client_portal_users").eq("auth_user_id", u)`),
     "a later query's filter must not be pulled onto an earlier query's from");
 });

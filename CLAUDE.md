@@ -454,6 +454,27 @@ change. The code is the authority; keep this file in step with it.
   FY-versioned authority and a second one in SQL is what the posting-kernel
   rule exists to prevent. A DROP is the right end state and needs the
   production-fixture refresh in `docs/schema-drift.md`.
+- **THE SUPPLIER MASTER IS `public.vendors`, AND `public.suppliers` IS RETIRED**
+  (PUR-16). Migration 030 created a second one and `/accounting/suppliers` was
+  its only writer, straight over PostgREST; every purchase path — bill
+  creation, TDS withholding, AP ageing, the Schedule III payables note, GSTR-2B
+  matching, §43B(h) — reads `vendors`. The credit limit was the harmless half
+  (nothing anywhere reads one, on a vendor OR a client, and migration 378's
+  column comment says `RECORDED, NOT ENFORCED` rather than implying a control
+  that does not exist). **The TDS SECTION was not**: a CA who picked 194J on
+  that screen wrote `suppliers.tds_section`, the bill read
+  `vendors.tds_section`, found NULL and withheld nothing — and §40(a)(ia)
+  disallows the WHOLE expenditure for an under-deduction, with §201(1) putting
+  the tax on the deductor and §201(1A) interest on top. The screen goes through
+  `/api/vendors` now, so `rbac()` runs. **Three field names differ and one is a
+  different UNIT** — `supplier_name`→`name`, `payment_terms_days`→`credit_days`,
+  `tds_rate_percent`→**`tds_rate_bps`**, so a percentage written into the
+  basis-points column stores 10 where 1000 is meant and withholds 0.1% instead
+  of 10%. **No data was migrated and that is a measurement, not a decision**:
+  `public.suppliers` held ZERO rows in production on 13-09-2026. Marked dead in
+  the database rather than DROPped, the same shape as migration 371 — a DROP
+  moves both sides of the production-fixture comparison at once and needs the
+  refresh in `docs/schema-drift.md`.
 - **§43B(h) IS DERIVED FROM THE PURCHASE LEDGER, AND THE LIMIT IS FIFTEEN DAYS**
   (PUR-15). The Finance Act 2023 inserted clause (h) with effect from AY
   2024-25: a sum payable to a MICRO or SMALL enterprise beyond the MSMED §15

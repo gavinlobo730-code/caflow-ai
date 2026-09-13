@@ -986,6 +986,52 @@ export type RecurringJournalRun = {
   created_at?: string;
 };
 
+// ── Vendors — THE supplier master ────────────────────────────────────────────
+// `public.vendors` (migration 049). Every purchase path reads it. The fields a
+// CA sets on the Supplier Master screen are here and NOT on the retired
+// `public.suppliers`, whose column names differed on three of them:
+// supplier_name -> name, payment_terms_days -> credit_days, and
+// tds_rate_percent -> tds_rate_bps, which is BASIS POINTS (1000 = 10.00%).
+
+export type Vendor = {
+  id: string;
+  client_id: string;
+  firm_id?: string;
+  name: string;
+  gstin: string | null;
+  pan: string | null;
+  state_code?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  tds_applicable: boolean;
+  tds_section: string | null;
+  tds_rate_bps: number | null;
+  credit_days: number | null;
+  /** Migration 378. Null = no limit recorded, which is NOT a recorded zero
+   *  (that means no credit at all). Recorded, never enforced — nothing blocks
+   *  or warns on a bill that would exceed it. */
+  credit_limit_paise: number | null;
+  is_active: boolean;
+  created_at?: string;
+};
+
+/** The subset the Supplier Master screen writes. Everything else on a vendor —
+ *  residency, s.195 nature of income, the treaty fields, MSMED status — is set
+ *  on the client workspace's Vendors tab, and a PATCH that omits a field leaves
+ *  it alone. */
+export type VendorWrite = {
+  name?: string;
+  gstin?: string | null;
+  pan?: string | null;
+  state_code?: string;
+  tds_applicable?: boolean;
+  tds_section?: string | null;
+  tds_rate_bps?: number;
+  credit_days?: number | null;
+  credit_limit_paise?: number | null;
+  is_active?: boolean;
+};
+
 // ── Billing schedules ────────────────────────────────────────────────────────
 // The practice's own fee arrangements (`billing_schedules`, migration 073).
 // `arrangement` is 'retainer' | 'one_time' | 'package'; the Retainer Tracker
@@ -3479,6 +3525,29 @@ export const api = {
       if (asOf) q.set("as_of", asOf);
       return request<ApiResp<AgeingDetail<"bills">>>(`/api/vendors/ap-aging?${q}`);
     },
+  },
+
+  /** THE supplier master. `public.suppliers` (migration 030) looked like a
+   *  second one and was written only by /accounting/suppliers; migration 378
+   *  retired it. Every purchase path — bill creation, TDS withholding, AP
+   *  ageing, the Schedule III payables note, GSTR-2B matching, s.43B(h) —
+   *  reads `vendors`, so a TDS section recorded anywhere else withholds nothing
+   *  and s.40(a)(ia) disallows the whole expenditure. PUR-16. */
+  vendors: {
+    list: (clientId: string, includeInactive = false) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (includeInactive) q.set("include_inactive", "true");
+      return request<ApiResp<Vendor[]>>(`/api/vendors/?${q}`);
+    },
+    create: (body: VendorWrite & { client_id: string }) =>
+      request<ApiResp<Vendor & { duplicate?: boolean }>>("/api/vendors/",
+        { method: "POST", body: JSON.stringify(body) }),
+    /** PATCH. NOTE: the server drops nulls (`model_dump(exclude_none=True)`),
+     *  so an optional field cannot be CLEARED back to unset through here — a
+     *  pre-existing property of every optional vendor field, not of this one. */
+    update: (id: string, body: VendorWrite) =>
+      request<ApiResp<Vendor>>(`/api/vendors/${id}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
   },
 
   reports: {

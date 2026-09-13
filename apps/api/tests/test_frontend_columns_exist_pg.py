@@ -330,13 +330,21 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     # the whole point of the finding. The floor still protects what it was
     # raised for: reverting blank_comments() drops ~26, which lands below 242.
     #
+    # LOWERED again, 242 -> 241, later the same day. PUR-16 repointed
+    # app/accounting/suppliers/page.tsx from `public.suppliers` — a second
+    # supplier master no purchase path reads — at /api/vendors, so `rbac()`
+    # runs on a screen that sets a TDS section. Diagnosed the way this comment
+    # says to: the per-file tally against the previous commit moved on exactly
+    # one page, `app/accounting/suppliers/page.tsx: 1 -> 0`, and nothing else
+    # changed. One page that legitimately stopped writing, not a broken parser.
+    #
     # A drop here is not by itself a broken parser. Diagnose it the way that
     # one was — tally scan_writes() PER FILE against the previous commit and
     # see whether the delta is one page that legitimately stopped writing (fix
     # the floor, and say which page) or a spread across many (fix the parser):
     #
     #   collections.Counter(path for path, _, _ in scan_writes(WEB))
-    assert len(scan_writes(WEB)) >= 242, "write scan found too little — parser likely broke"
+    assert len(scan_writes(WEB)) >= 241, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG

@@ -93,6 +93,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("purchase_bill_lines", "cess_rate_bps"): "migration 374",
     ("purchase_bill_lines", "cess_specific_paise_per_unit"): "migration 374",
     ("purchase_bill_lines", "cess_paise"): "migration 374",
+    ("vendors", "credit_limit_paise"): "migration 378",
 }
 
 

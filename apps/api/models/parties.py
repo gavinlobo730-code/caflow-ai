@@ -283,6 +283,16 @@ class CustomerUpdateIn(BaseModel):
         return self
 
 
+def _reject_negative_credit_limit(value):
+    """The DB CHECK (migration 378) refuses a negative credit limit; mock mode
+    has no CHECK, so without this the two disagree about what is acceptable and
+    a test written in mock mode passes against a request production rejects."""
+    if value is not None and value < 0:
+        raise ValueError("Credit limit cannot be negative. Leave it blank for "
+                         "no recorded limit; 0 means no credit at all.")
+    return value
+
+
 class VendorIn(BaseModel):
     client_id: str
     name: str
@@ -313,6 +323,11 @@ class VendorIn(BaseModel):
     # trackable due date — that fallback does not get written back onto
     # the vendor).
     credit_days: Optional[int] = None
+    # Migration 378. Optional for the same reason credit_days is: "no limit
+    # recorded" and "the limit is zero" are different facts, and zero is a real
+    # thing a CA may record (no credit at all). RECORDED, NOT ENFORCED —
+    # nothing blocks or warns on a bill that would exceed it.
+    credit_limit_paise: Optional[int] = None
     tds_applicable: bool = False
     tds_section: Optional[str] = None
     tds_rate_bps: int = 0
@@ -354,6 +369,11 @@ class VendorIn(BaseModel):
         if not v:
             raise ValueError("Vendor name cannot be blank.")
         return v
+
+    @field_validator("credit_limit_paise")
+    @classmethod
+    def _credit_limit_not_negative(cls, v):
+        return _reject_negative_credit_limit(v)
 
     @model_validator(mode="after")
     def validate_identifiers(self) -> "VendorIn":
@@ -407,6 +427,7 @@ class VendorUpdateIn(BaseModel):
     opening_balance_paise: Optional[int] = None
     opening_balance_date: Optional[str] = None
     credit_days: Optional[int] = None
+    credit_limit_paise: Optional[int] = None
     tds_applicable: Optional[bool] = None
     tds_section: Optional[str] = None
     tds_rate_bps: Optional[int] = None
@@ -428,6 +449,11 @@ class VendorUpdateIn(BaseModel):
     no_pe_declaration_ref: Optional[str] = None
     treaty_rate_bps: Optional[int] = None
     is_active: Optional[bool] = None
+
+    @field_validator("credit_limit_paise")
+    @classmethod
+    def _credit_limit_not_negative(cls, v):
+        return _reject_negative_credit_limit(v)
 
     @model_validator(mode="after")
     def validate_identifiers(self) -> "VendorUpdateIn":
