@@ -297,14 +297,23 @@ def test_the_fixtures_the_bulk_path_is_tested_with_are_real_gstins():
 
 
 def test_the_authority_is_still_one_module():
-    """Four more call sites, still one implementation. A second check-digit
-    routine anywhere is the drift this repository keeps recording."""
+    """Five call sites, still one implementation. A second check-digit routine
+    anywhere is the drift this repository keeps recording.
+
+    `inventory.py` joined the list with migration 398 (INV-03a): a godown
+    records the GST registration it operates under, and that GSTIN is what
+    decides whether moving stock out of it is a supply between distinct
+    persons (CGST s.25(4) with Schedule I paragraph 2). A valid-shaped wrong
+    one there does not merely mislabel a warehouse — it decides whether a tax
+    invoice is owed.
+    """
     hits = set()
     for path in (API / "routers").rglob("*.py"):
         text = path.read_text()
         if "gstin_problem" in text or "problem_with" in text:
             hits.add(path.name)
-    assert hits == {"customers.py", "vendors.py", "onboarding.py"}, hits
+    assert hits == {"customers.py", "vendors.py", "onboarding.py",
+                    "inventory.py"}, hits
     for name in sorted(hits):
         src = (API / "routers" / name).read_text()
         assert "from domain.gst.gstin import" in src, (

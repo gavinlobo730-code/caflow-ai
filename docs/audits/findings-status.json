@@ -205,10 +205,11 @@
       "needs": ""
     },
     "INV-03": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "no batch, expiry, godown, item group, alternate unit or reorder level in any migration (repo-wide probe, 2026-09-12)",
-      "needs": "substantial inventory schema"
+      "status": "partial",
+      "verified_on": "2026-09-14",
+      "why": "BATCH, EXPIRY AND GODOWN ARE BUILT (migration 398). Owner decision of 14-09-2026, choosing those three over the alternatives in the same finding because all three touch the stock ledger and doing them separately is two migrations over one table. THE GODOWN IS THE STATUTORY HALF. CGST s.25(1) requires registration in every State a taxable supply is made from and s.25(2)'s proviso allows a second within one state, so a godown carries its state and the registration it operates under — and Schedule I paragraph 2 with s.25(4) makes a transfer between two godowns under DIFFERENT registrations a supply even without consideration, needing a tax invoice, while one under the same registration is not a supply at all. `domain/inventory/location.py` states it and REFUSES to mint the invoice: the value is s.15 with Rule 28 and which option the client elects is recorded nowhere here. Tri-state, because one guess mints a document the Act does not ask for and the other omits one it does; compared on the REGISTRATION rather than the state, since two Maharashtra godowns under different GSTINs are distinct persons. THE LINE THE FEATURE DOES NOT CROSS: a batch is traceability and expiry, NOT a cost formula. AS-2 paragraph 13's specific identification is a third formula beside the two migration 394 made a client policy, and a test asserts `record_stock_out` never mentions a batch. Both ledger columns are nullable and NOTHING is back-filled — NULL is a real group in the detail report and the total still ties to the Inventory control account. `stock_position_detail_as_at` is a second GRAIN, not a second answer: it sums the same deltas, and a real-Postgres test asserts its total equals `stock_position_as_at`'s alongside the ordinary SQL/Python parity. 42 mock tests, 22 on real Postgres, 9 in the browser guard, 18 negative controls — all caught after two rounds strengthened the guards.",
+      "needs": "substantial inventory schema",
+      "what_is_left": "Item group, reorder level and alternate unit — the reporting-and-purchasing conveniences, deliberately left out of this tranche. Nothing statutory turns on them and none touches the stock ledger, so they are a smaller build that needs no migration over inventory_stock_ledger."
     },
     "INV-08": {
       "status": "closed",

@@ -623,3 +623,328 @@ def put_costing_policy(
                   "effective_from": data.effective_from},
     )
     return api_response(True, result)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# WHERE THE STOCK IS, AND WHICH LOT IT CAME FROM (INV-03a, migration 398)
+# ═══════════════════════════════════════════════════════════════════════════
+# `domain/inventory/location.py` decides whether a transfer is a supply,
+# `domain/inventory/batches.py` decides what is expiring, and
+# `services/inventory_location_service.py` fetches. Nothing below decides
+# either — in particular nothing here knows Schedule I paragraph 2, and nothing
+# here buckets an expiry date.
+
+from datetime import date as _date  # noqa: E402 — module already imported above
+
+from pydantic import BaseModel as _BaseModel, Field as _Field, field_validator  # noqa: E402
+
+
+def _a_date(value: str, what: str) -> str:
+    try:
+        _date.fromisoformat(str(value)[:10])
+    except Exception:
+        raise ValueError(f"{what} must be a date, as YYYY-MM-DD.")
+    return str(value)[:10]
+
+
+class GodownIn(_BaseModel):
+    """A place a client keeps stock.
+
+    `state_code` and `gstin` are OPTIONAL and not derived from each other: a
+    client with one registration needs neither, and a client with several needs
+    both — CGST s.25(1) requires a registration in every State a taxable supply
+    is made from, and which of them a warehouse operates under is a fact about
+    the business rather than about its postcode.
+    """
+    client_id: str
+    name: str
+    code: Optional[str] = None
+    address: Optional[str] = None
+    state_code: Optional[str] = None
+    gstin: Optional[str] = None
+    is_default: bool = False
+    notes: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def has_a_name(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError("Name the godown — it is what a CA reads on the "
+                             "stock statement.")
+        return v.strip()
+
+    @field_validator("state_code")
+    @classmethod
+    def two_digits(cls, v):
+        if v in (None, ""):
+            return None
+        value = str(v).strip()
+        if len(value) != 2 or not value.isdigit():
+            raise ValueError("A state code is the two digits a GSTIN starts "
+                             "with, e.g. 27 for Maharashtra.")
+        return value
+
+    @field_validator("gstin")
+    @classmethod
+    def a_real_gstin(cls, v):
+        if v in (None, ""):
+            return None
+        # THE CHECK DIGIT, not a shape regex. A valid-shaped wrong GSTIN on a
+        # godown decides whether a stock transfer is a supply between distinct
+        # persons — see domain/gst/gstin.py and the GST-29 bullet in CLAUDE.md.
+        from domain.gst.gstin import problem_with
+        value = str(v).strip().upper()
+        problem = problem_with(value)
+        if problem:
+            raise ValueError(problem)
+        return value
+
+
+class BatchIn(_BaseModel):
+    """One lot of one item.
+
+    `expiry_date` is OPTIONAL with no default: plenty of stock does not expire,
+    and a batch with none recorded is NAMED as having none rather than assumed
+    sound.
+    """
+    client_id: str
+    service_catalogue_id: str
+    batch_no: str
+    manufactured_on: Optional[str] = None
+    expiry_date: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("batch_no")
+    @classmethod
+    def has_a_number(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError("A batch needs the lot number on the carton.")
+        return v.strip()
+
+    @field_validator("manufactured_on", "expiry_date")
+    @classmethod
+    def dates_are_dates(cls, v):
+        return _a_date(v, "The date") if v else v
+
+
+class TransferIn(_BaseModel):
+    client_id: str
+    service_catalogue_id: str
+    from_godown_id: str
+    to_godown_id: str
+    quantity: str
+    movement_date: str
+    batch_id: Optional[str] = None
+    reference_no: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("movement_date")
+    @classmethod
+    def moved_on_a_date(cls, v: str) -> str:
+        return _a_date(v, "The date the stock moved")
+
+
+def _loc():
+    from services import inventory_location_service as svc
+    return svc
+
+
+def _loc_db():
+    from core.supabase_client import get_supabase
+    return get_supabase()
+
+
+@router.get("/godowns")
+def list_godowns(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Every place this client keeps stock, and which one a movement defaults to."""
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        from domain.inventory import location as _loc_domain
+        return api_response(True, {"godowns": [], "default_godown_id": None,
+                                   "unallocated_means": _loc_domain.UNALLOCATED_MEANS})
+    return api_response(True, _loc().list_godowns(
+        _loc_db(), firm_id=current_user.get("firm_id") or "", client_id=client_id))
+
+
+@router.post("/godowns")
+def create_godown(
+    data: GodownIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(True, {"id": "mock-godown", **data.model_dump()})
+    firm_id = current_user.get("firm_id") or ""
+    row = _loc().create_godown(
+        _loc_db(), firm_id=firm_id, client_id=data.client_id, name=data.name,
+        code=data.code, address=data.address, state_code=data.state_code,
+        gstin=data.gstin, is_default=data.is_default, notes=data.notes,
+        actor_id=current_user.get("id"))
+    log_event(firm_id, "godown", str(row.get("id") or ""), "create",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=row)
+    return api_response(True, row)
+
+
+@router.delete("/godowns/{godown_id}")
+def close_godown(
+    godown_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Close a godown. Refused while it still holds stock."""
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"ok": True, "closed": True})
+    firm_id = current_user.get("firm_id") or ""
+    result = _loc().close_godown(_loc_db(), firm_id=firm_id,
+                                 client_id=client_id, godown_id=godown_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("refusal"))
+    log_event(firm_id, "godown", godown_id, "delete",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"))
+    return api_response(True, result)
+
+
+@router.get("/batches")
+def list_batches(
+    client_id: str = Query(...),
+    service_catalogue_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, [])
+    return api_response(True, _loc().list_batches(
+        _loc_db(), firm_id=current_user.get("firm_id") or "",
+        client_id=client_id, service_catalogue_id=service_catalogue_id))
+
+
+@router.post("/batches")
+def create_batch(
+    data: BatchIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(True, {"id": "mock-batch", **data.model_dump()})
+    firm_id = current_user.get("firm_id") or ""
+    row = _loc().create_batch(
+        _loc_db(), firm_id=firm_id, client_id=data.client_id,
+        service_catalogue_id=data.service_catalogue_id,
+        batch_no=data.batch_no, manufactured_on=data.manufactured_on,
+        expiry_date=data.expiry_date, notes=data.notes,
+        actor_id=current_user.get("id"))
+    log_event(firm_id, "inventory_batch", str(row.get("id") or ""), "create",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=row)
+    return api_response(True, row)
+
+
+@router.get("/position-detail")
+def position_detail(
+    client_id: str = Query(...),
+    as_of: str = Query(..., description='"YYYY-MM-DD"'),
+    service_catalogue_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Closing stock per item PER GODOWN PER BATCH, as at a date.
+
+    The same deltas `stock_position_as_at` sums, grouped one grain finer, so
+    the totals agree by construction.
+    """
+    assert_client_access(current_user, client_id)
+    try:
+        when = _date.fromisoformat(as_of[:10])
+    except Exception:
+        raise HTTPException(status_code=422, detail="The date must be YYYY-MM-DD.")
+    if _USE_MOCK:
+        return api_response(True, {"as_of": when.isoformat(), "rows": [],
+                                   "total_value_paise": 0})
+    return api_response(True, _loc().position_detail(
+        _loc_db(), firm_id=current_user.get("firm_id") or "",
+        client_id=client_id, as_of=when,
+        service_catalogue_id=service_catalogue_id))
+
+
+@router.get("/expiry")
+def expiry_report(
+    client_id: str = Query(...),
+    as_of: str = Query(..., description='"YYYY-MM-DD"'),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """What has expired and what is about to, by lot."""
+    assert_client_access(current_user, client_id)
+    try:
+        when = _date.fromisoformat(as_of[:10])
+    except Exception:
+        raise HTTPException(status_code=422, detail="The date must be YYYY-MM-DD.")
+    if _USE_MOCK:
+        from domain.inventory import batches as _b
+        return api_response(True, _b.expiry_report([], as_of=when).as_dict())
+    return api_response(True, _loc().expiry_report(
+        _loc_db(), firm_id=current_user.get("firm_id") or "",
+        client_id=client_id, as_of=when))
+
+
+@router.get("/transfer-preview")
+def transfer_preview(
+    client_id: str = Query(...),
+    from_godown_id: str = Query(...),
+    to_godown_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Whether moving stock between these two godowns is a supply.
+
+    ASKED BEFORE THE MOVE and on its own, because between two registrations it
+    needs a tax invoice — a decision about a document, not about stock.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        from domain.inventory import location as _loc_domain
+        return api_response(True, {"is_supply": None,
+                                   "reason": _loc_domain.REGISTRATION_NOT_RECORDED,
+                                   "same_registration": None, "gaps": []})
+    result = _loc().transfer_preview(
+        _loc_db(), firm_id=current_user.get("firm_id") or "",
+        client_id=client_id, from_godown_id=from_godown_id,
+        to_godown_id=to_godown_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("refusal"))
+    return api_response(True, result)
+
+
+@router.post("/transfer")
+def transfer_stock(
+    data: TransferIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Move stock from one godown to another. Posts no journal.
+
+    Within one entity the stock is worth what it was worth before it was
+    carried across the yard, and the two ledger rows carry equal and opposite
+    value — so every total that already ties still ties. A cross-registration
+    move IS a supply and the answer says so; the tax invoice is the CA's.
+    """
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(True, {"ok": True, "quantity": data.quantity,
+                                   "value_paise": 0, "decision": {}})
+    firm_id = current_user.get("firm_id") or ""
+    result = _loc().transfer(
+        _loc_db(), firm_id=firm_id, client_id=data.client_id,
+        service_catalogue_id=data.service_catalogue_id,
+        from_godown_id=data.from_godown_id, to_godown_id=data.to_godown_id,
+        quantity=data.quantity, movement_date=data.movement_date,
+        batch_id=data.batch_id, reference_no=data.reference_no,
+        notes=data.notes, actor_id=current_user.get("id"))
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("refusal"))
+    log_event(firm_id, "inventory_transfer", data.service_catalogue_id, "create",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=result)
+    return api_response(True, result)

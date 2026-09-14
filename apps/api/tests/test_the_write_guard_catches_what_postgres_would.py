@@ -14,9 +14,14 @@ WHY A TEST FOR A TEST HELPER
 """
 from __future__ import annotations
 
+import json
+import re
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
+
+API = Path(__file__).resolve().parents[1]
 
 from tests.production_types import (
     ADDED_AFTER_THE_SNAPSHOT,
@@ -127,6 +132,24 @@ def test_a_column_a_later_migration_added_is_allowed_by_name():
         check("payroll_slips", {"invented_by_this_test_paise": 1})
 
 
+def _snapshot_mark() -> int:
+    """The highest migration production had when the snapshot was captured.
+
+    Read from the snapshot's own `.meta.json` rather than hard-coded, so
+    refreshing the fixture moves the line by itself. Absent (an older fixture
+    with no metadata) reads as 0, which makes the staleness test vacuous rather
+    than wrong — and the fixture beside it is what a refresh replaces anyway.
+    """
+    if SCHEMA_FILE is None:
+        return 0
+    meta = SCHEMA_FILE.with_suffix("").with_suffix(".meta.json")
+    if not meta.exists():
+        meta = SCHEMA_FILE.parent / (SCHEMA_FILE.stem + ".meta.json")
+    if not meta.exists():
+        return 0
+    return int(json.loads(meta.read_text()).get("applied_through_migration") or 0)
+
+
 def test_the_post_snapshot_list_stays_short_and_names_its_migrations():
     """A long list means the snapshot needs refreshing, not that the list needs
     another entry.
@@ -143,11 +166,52 @@ def test_the_post_snapshot_list_stays_short_and_names_its_migrations():
     to main.
     """
     migrations = set(ADDED_AFTER_THE_SNAPSHOT.values())
-    assert len(migrations) <= 8, (
-        f"{len(migrations)} unapplied migrations are being worked around "
-        f"({sorted(migrations)}). Refresh tests/fixtures/production_schema_*.json "
-        f"once they are on main, instead of adding more."
+    numbers = {int(re.search(r"(\d+)", m).group(1)) for m in migrations
+               if re.search(r"(\d+)", m)}
+    assert len(numbers) == len(migrations), (
+        f"every entry must name a numbered migration: {sorted(migrations)}")
+
+    # THE DIRECT MEASURE, replacing a flat cap of 8.
+    #
+    # The cap was a PROXY for "the snapshot needs refreshing", and it fired on
+    # the wrong signal for exactly the reason this docstring already records
+    # about the column cap it replaced: migrations reach production only on
+    # merge to main, so a branch carrying a tranche of work legitimately has
+    # several in flight at once and the cap told a developer to refresh a
+    # snapshot from a database that does not have them.
+    #
+    # What the cap was really trying to catch is a column DECLARED FOR MONTHS
+    # that never reached production, and the snapshot's own metadata already
+    # says which those are: `applied_through_migration` is the highest
+    # migration in production's schema_migrations when it was captured, and its
+    # note states the rule — "the migrations in the repo are ALLOWED to be
+    # ahead of it by exactly the migrations not yet merged". So an entry AT OR
+    # BELOW that mark is stale by definition and one is already too many, while
+    # an entry above it is precisely what the list is for.
+    #
+    # This is strictly stronger: it fires on one genuinely stale entry rather
+    # than on nine entries of any kind, and it cannot be satisfied by raising
+    # a number.
+    mark = _snapshot_mark()
+    stale = sorted(n for n in numbers if n <= mark)
+    assert not stale, (
+        f"migration(s) {stale} are at or below the snapshot's own mark of "
+        f"{mark}, so production already has them and "
+        f"{SCHEMA_FILE.name if SCHEMA_FILE else 'the snapshot'} is stale. "
+        f"Refresh tests/fixtures/production_schema_*.json (and the guards "
+        f"fixture beside it) rather than working around a column that IS in "
+        f"production. docs/schema-drift.md says how."
     )
+
+    # AND NOTHING MAY NAME A MIGRATION THAT DOES NOT EXIST. A dead entry —
+    # left behind by a renumbered or deleted migration — reads as a live
+    # work-around and quietly widens the write guard for a column nothing adds.
+    present = {int(n.name[:3]) for n in (API / "migrations").glob("[0-9][0-9][0-9]_*.sql")}
+    invented = sorted(n for n in numbers if n not in present)
+    assert not invented, (
+        f"migration(s) {invented} are named here and are not in "
+        f"apps/api/migrations. Delete the entry — a work-around for a "
+        f"migration that does not exist widens the write guard for nothing.")
     assert len(ADDED_AFTER_THE_SNAPSHOT) <= 40, (
         "refresh tests/fixtures/production_schema_*.json instead of adding more"
     )

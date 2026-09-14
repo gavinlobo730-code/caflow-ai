@@ -24,6 +24,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { StockCountSheetPanel } from "@/components/inventory/StockCountSheet";
 import { CostFormulaPanel } from "@/components/inventory/CostFormulaPanel";
+import { LocationsAndBatches } from "@/components/inventory/LocationsAndBatches";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 interface StockItem {
@@ -412,6 +413,14 @@ export default function InventoryPage() {
             closing stock figure needs to know which formula produced it. */}
         <div className="mb-4">
           <CostFormulaPanel clientId={clientId} />
+        </div>
+
+        {/* INV-03a — where the stock is and which lot it came from. Below the
+            register rather than above it: the register is still the answer to
+            "what do I hold", and this answers "where, and how long has it
+            got". The as-at date is the register's own, so the two agree. */}
+        <div className="mb-4">
+          <LocationsAndBatches clientId={clientId} asOf={asAt || todayLocalISO()} />
         </div>
         <DataTable
           data={items}

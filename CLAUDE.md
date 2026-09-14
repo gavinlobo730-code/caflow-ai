@@ -2425,6 +2425,54 @@ afterwards rather than pretending the two agree. Standard cost is REFUSED and
 named (AS-2 paragraph 17 — two judgements no ledger holds, and it needs a
 variance account and a revision cycle to mean anything).
 
+**STOCK HAS A PLACE AND A LOT, AND ONE OF THEM CHANGES WHICH RETURN A MOVEMENT
+IS IN** (INV-03a, migration 398). `inventory_stock_ledger` recorded WHAT moved,
+WHEN and for how much, and never WHERE or WHICH LOT — so a client with two
+warehouses had one undifferentiated pile and a client whose goods expire had no
+way to say which ones. Owner decision of 14-09-2026 over the alternatives in the
+same finding (item group, reorder level, alternate unit): all three together,
+because all three touch the stock ledger.
+**A GODOWN IS NOT DECORATION.** CGST §25(1) requires registration in every State
+a taxable supply is made from and §25(2)'s proviso allows a second within one
+state, so a godown carries its own `state_code` and the registration it operates
+under. **Schedule I paragraph 2 with §25(4) then makes a transfer between two
+godowns under DIFFERENT registrations a supply even without consideration** — a
+tax invoice is owed — while a transfer under the SAME registration is not a
+supply at all and travels on a Rule 55(1)(c) delivery challan.
+`domain/inventory/location.py` states it and **REFUSES to mint the invoice**:
+the value is §15 with Rule 28 (open market value, like goods, or 90% of the
+recipient's onward price, at the supplier's option) and which the client elects
+is recorded nowhere here. The decision is a **TRI-STATE** — the third is where a
+registration is not recorded, because one guess mints a document the Act does
+not ask for and the other omits one it does. **The comparison is on the
+REGISTRATION, never the state**: two Maharashtra godowns under different GSTINs
+ARE distinct persons.
+**A BATCH IS A TRACEABILITY AND EXPIRY DEVICE AND NOT A COST FORMULA**, and that
+is the line the feature must not cross. AS-2 paragraph 14 permits FIFO or
+weighted average and migration 394 made the choice a client policy; paragraph
+13's specific identification — costing an issue at its own batch's cost — is a
+THIRD formula, and a batch column is exactly what invites it in silently. A test
+asserts `record_stock_out` never mentions a batch. **First-expiry-first-out is a
+PICKING order, suggested and never applied**, for the same reason.
+**BOTH LEDGER COLUMNS ARE NULLABLE AND NOTHING IS BACK-FILLED.** Every movement
+already recorded happened at a location and in a lot nobody wrote down; stamping
+a default godown on them would assert they all happened THERE. NULL is a REAL
+GROUP in the detail report, not a row to drop, and the total still ties to the
+Inventory control account because it is the same deltas either way.
+**`stock_position_detail_as_at` IS A SECOND GRAIN, NOT A SECOND ANSWER** — it
+sums the SAME deltas grouped per (item, godown, batch), so its total is
+`stock_position_as_at`'s total by construction, and a real-Postgres test asserts
+exactly that alongside the ordinary SQL/Python parity. **Stock is good ON its
+expiry date** (a shelf life runs to the end of the stated day; reading it the
+other way writes off a day of sound stock and reverses §17(5)(h) credit that is
+not yet due), and **a batch with no date is its own bucket, never "later"** —
+stock that does not expire and stock whose date nobody recorded are opposite
+situations. A **transfer posts NO journal**: within one entity the stock is
+worth what it was worth before it was carried across the yard, and the two rows
+carry equal and opposite value. **The value moved is the SOURCE godown's own**,
+not the item's blended average, or the per-godown position drifts from the total
+it must sum to.
+
 **A PHYSICAL STOCK COUNT IS ONE SESSION, AND THE VARIANCE IS A FACT ABOUT THE
 COUNT DATE** (INV-08, migration 387). Adjustment was one item per API call and
 one modal per item, reachable only from inside an item's ledger drill-down — so
