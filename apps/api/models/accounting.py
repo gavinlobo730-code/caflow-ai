@@ -255,8 +255,36 @@ class JournalEntryUpdateIn(BaseModel):
     narration: Optional[str] = None
     entry_type: Optional[str] = None
     lines: Optional[list[JournalLineIn]] = None
+    # SUPPORTING DOCUMENTS ON A CORRECTION (ACC-25, second half). The CREATE
+    # path has taken these since the first half; this one dropped them
+    # SILENTLY — the editor rendered the control on an entry being edited, the
+    # CA typed a link, and the PATCH sent everything except that. A field the
+    # screen offers and the server discards is worse than no field at all.
+    #
+    # None means "leave them as they are", which is what every field on this
+    # model means and what lets a CA fix a narration without resending the
+    # documents. An EMPTY LIST is a real answer — it removes them.
+    attachments: Optional[list[dict]] = None
 
     _check_entry_date = field_validator("entry_date")(_posting_date)
+
+    @field_validator("attachments")
+    @classmethod
+    def attachments_are_safe(cls, v: Optional[list[dict]]) -> Optional[list[dict]]:
+        """The same closed scheme vocabulary the create path applies.
+
+        Repeated rather than shared through a mixin because the two fields
+        differ in exactly one way — this one is optional — and a validator that
+        has to test for None on both doors is how one door ends up not
+        validating at all.
+        """
+        if v is None:
+            return None
+        from domain.attachments import AttachmentError, parse_attachments
+        try:
+            return [a.to_dict() for a in parse_attachments(v)]
+        except AttachmentError as e:
+            raise ValueError(str(e)) from e
 
     @field_validator("entry_type")
     @classmethod

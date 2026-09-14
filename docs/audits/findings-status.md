@@ -7,20 +7,20 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **92** | re-read against the code. The defect is gone. |
+| closed | **95** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **10** | part of the finding is answered, part is not. Each says which. |
-| open | **13** | re-read and still true. |
+| partial | **8** | part of the finding is answered, part is not. Each says which. |
+| open | **12** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 23 items — 13 open and 10 partial — not 254.**
+**The work left is 20 items — 12 open and 8 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 13 open, most are not code problems.** Nearly every one needs a
+**And of the 12 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -36,7 +36,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PAY-23** | Statutory bonus is computed only inside a leaver's settlement — there is no annual bonus run for |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
-| medium | **PUR-18** | Import of goods has no path — no Bill of Entry, so the IGST paid to customs cannot be recorded a |
 | medium | **PUR-25** | No purchase orders, goods receipt notes or three-way matching |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
@@ -69,8 +68,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
-| medium | **TDS-23** | Eight commonly-used TDS sections are absent from the registry, including §194T on payments to pa |
-| low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 
 
 ## Not a defect as stated
@@ -162,6 +159,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PAY-25** | The payroll journal posts one Salaries Expense account and defines the debit as the sum of the c |
 | medium | **PUR-12** | The reconciliation screen tells the CA that ITC is restricted to 105% of GSTR-2A — a cushion rep |
 | medium | **PUR-16** | A second, orphaned vendor master at /accounting/suppliers that no purchase path reads |
+| medium | **PUR-18** | Import of goods has no path — no Bill of Entry, so the IGST paid to customs cannot be recorded a |
 | medium | **PUR-19** | Reverse-charge bills produce no self-invoice (§31(3)(f)) and no payment voucher (§31(3)(g)) |
 | medium | **PUR-20** | GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client |
 | medium | **PUR-22** | One payment settling several bills is not reachable from the Purchases screen — the multi-bill a |
@@ -176,8 +174,10 @@ migration; a handful need a statutory document a person has to read.
 | medium | **SALES-27** | A line with no HSN/SAC silently prints 998211 — the CA-services SAC — on any invoice, including  |
 | medium | **TDS-19** | The 26AS parser mislabels Part B (TCS) as TDS and Part D (refunds) as self-assessment tax, and n |
 | medium | **TDS-20** | The 26AS pipeline accepts only pasted tab/pipe-delimited text and offers no current-year option  |
+| medium | **TDS-23** | Eight commonly-used TDS sections are absent from the registry, including §194T on payments to pa |
 | medium | **TDS-32** | Purchase debit and credit notes never reverse TDS, so a return after deduction leaves the regist |
 | low | **ACC-16** | Journal lines have no ordering column, so a voucher's Dr/Cr lines display in arbitrary order and |
+| low | **ACC-25** | The journal editor never sends attachments, though the kernel, the model and the database all su |
 | low | **GST-23** | GSTR-1 has no way to record the real ARN and filing date from the client workspace, so its perio |
 | low | **PUR-29** | Reverse charge and §17(5) eligibility have no test coverage on the purchase-bill compute path at |
 | low | **PUR-30** | A dead _TDS_DEFAULT_BPS table at the top of purchase_bills.py carries a §194H rate that is 2.5x  |

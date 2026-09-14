@@ -107,6 +107,15 @@ export function JournalEditor({
     ? "This entry has been reversed, so it can no longer be edited."
     : existing?.lock_reason ?? null;
   const readOnly = !isNew && lockReason !== null;
+  /* ACC-25, second half. The documents are a DRAFT-only edit and the control
+     has to say so rather than accept a link the PATCH will refuse.
+     `prevent_posted_journal_modification` lets a posted entry's header change
+     only inside `journal_edit_in_progress()`, which only `edit_posted_journal`
+     sets — and that function rewrites LINES and carries no attachments. So a
+     posted entry is read-only here even when it is otherwise editable, which
+     is a DIFFERENT state from `readOnly` (a locked period or a filed return
+     freezes everything). */
+  const attachmentsReadOnly = readOnly || isPosted;
 
   const [entryDate, setEntryDate] = useState(existing?.entry_date ?? todayLocalISO());
   const [entryType, setEntryType] = useState(existing?.entry_type ?? "Journal");
@@ -274,6 +283,11 @@ export function JournalEditor({
             screen ever sent one. */}
         <div>
           <p className="block text-xs font-medium text-[#475569] mb-1">Supporting documents</p>
+          {attachmentsReadOnly && attachments.length === 0 && (
+            <p className="text-[11px] text-[#94A3B8] mb-1">
+              None were attached when this entry was posted.
+            </p>
+          )}
           {attachments.length > 0 && (
             <ul className="mb-2 space-y-1">
               {attachments.map((a, i) => (
@@ -284,7 +298,7 @@ export function JournalEditor({
                   <a href={a.url} target="_blank" rel="noreferrer"
                      className="text-blue-700 hover:underline truncate">{a.name}</a>
                   <span className="text-[#94A3B8] truncate flex-1">{a.url}</span>
-                  {!readOnly && (
+                  {!attachmentsReadOnly && (
                     <button type="button" aria-label={`Remove ${a.name}`}
                             onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}
                             className="text-[#94A3B8] hover:text-red-600">×</button>
@@ -293,7 +307,7 @@ export function JournalEditor({
               ))}
             </ul>
           )}
-          {!readOnly && (
+          {!attachmentsReadOnly && (
             <div className="flex gap-2">
               <input value={attachName} aria-label="Document name"
                      placeholder="Receipt from ABC Ltd"
@@ -318,9 +332,14 @@ export function JournalEditor({
             </div>
           )}
           <p className="text-[10px] text-[#94A3B8] mt-1">
-            A link to the document — the server accepts http and https only, and
-            refuses anything else because a stored link is one a colleague will
-            click.
+            {attachmentsReadOnly
+              ? "A posted entry's documents cannot be changed — the ledger lets a "
+                + "posted entry be corrected only through the edit path, which "
+                + "rewrites its lines. Attach the document to the reversal, or to "
+                + "the source document."
+              : "A link to the document — the server accepts http and https only, "
+                + "and refuses anything else because a stored link is one a "
+                + "colleague will click."}
           </p>
         </div>
 

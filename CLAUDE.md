@@ -551,6 +551,46 @@ change. The code is the authority; keep this file in step with it.
   FY-versioned authority and a second one in SQL is what the posting-kernel
   rule exists to prevent. A DROP is the right end state and needs the
   production-fixture refresh in `docs/schema-drift.md`.
+- **AN IMPORT OF GOODS IS PAID FOR TWICE AND ONLY ONE OF THEM IS THE SUPPLIER'S**
+  (PUR-18, migration 389). IGST on imported goods is not charged by the
+  supplier: IGST §5(1)'s proviso puts the levy under Customs Tariff Act §3(7),
+  collected under the Customs Act, so it is paid to CUSTOMS against a **Bill of
+  Entry** — often the largest single ITC item of an importer's month. This
+  product had no such document, so putting it on the vendor's bill overstated
+  Trade Payables by the whole of it and leaving it off lost the credit, while
+  GSTR-3B Table **4(A)(1) filed NIL** against a GSTR-2B whose own `impg`
+  section shows the document. `domain/gst/bill_of_entry.py` is the rule.
+  **THE ASSESSMENT IS NOT ONE FIGURE.** CGST §2(62)(a) puts "the integrated
+  goods and services tax charged on import of goods" in INPUT TAX and Rule
+  36(1)(d) makes the bill of entry the document it rests on; **basic customs
+  duty and the social welfare surcharge are recoverable from nobody**, so AS-2
+  paragraph 6 makes them COST — the same sentence that keeps blocked §17(5) GST
+  in the cost of goods (INV-05a), and the blocked part of the import's own tax
+  goes the same way. Treating the assessment as one figure claims credit that
+  does not exist. **`ImportOfGoods` IS ITS OWN TYPE, NOT A FLAG ON
+  `PurchaseTransaction`**, and it has no `is_reverse_charge` and no CGST or
+  SGST field: reverse-charge tax is SELF-assessed and creates a Table 3.1(d)
+  liability, this tax was collected by customs and creates none, and IGST §7(2)
+  makes an import inter-state so no other head can arise. A flag beside
+  `is_import_of_services` would invite the next reader to set
+  `is_reverse_charge` too — every other import is — and declare a liability the
+  client does not owe. **The journal touches NO accounts payable**: customs is
+  owed, not the supplier. **IMPG is capped LAST** of the five 4(A) rows, because
+  the two reverse-charge rows carry tax already paid in cash that Rule 36(4)
+  cannot reach, while import credit rides inside the cap (2B communicates it in
+  its own section). Only `status = 'posted'` documents reach the return — a
+  draft has no journal, and that gap is the books-vs-ledger difference the
+  reconciliation exists to catch. **4(A)(4) ISD is now the ONLY named 4(A)
+  gap.** Four refusals are recorded rather than guessed: deferred payment of
+  duty (Customs Act §47(2) proviso), a §27 refund, the duty is **not
+  apportioned into stock cost** (the basis is INV-05's open half and an owner
+  decision), and Rule 46(h)'s UQC has no line detail to come from. The seeded
+  `Customs Duty` account is code **5022** with subtype `Cost of Materials` —
+  both load-bearing: 5021 is Depreciation Expense and `ON CONFLICT DO NOTHING`
+  would have skipped the insert silently, and `schedule_iii.pl_bucket` has no
+  entry for `Direct Expense`, which is why migration 197 moved 5000 and 5001
+  off it.
+
 - **A REVERSE-CHARGE PURCHASE OWES TWO DOCUMENTS AND THEY ARE NOT ONE RULE WITH
   TWO NAMES** (PUR-19, migration 388). The reverse-charge ACCOUNTING was
   complete — the tax kept out of what the vendor is owed, the liability
@@ -589,6 +629,46 @@ change. The code is the authority; keep this file in step with it.
   invented. Numbering goes through the one `domain/gst/invoice_series`
   authority, and uniqueness is per client **per kind**, because Rule 46(b)
   allows "one or multiple series" and these are two.
+
+- **A SECTION THE ENGINE CANNOT ANSWER FOR IS REFUSED WITH ITS OWN REASON, AND
+  THE REASONS ARE NOT INTERCHANGEABLE** (TDS-23). `deduction_section_refusal`
+  is the one place that decides it, and what a CA has to go and do differs per
+  section — a shared "no rate held" paragraph says the wrong thing about most
+  of them. **§192** computes a silent nil, **§206C** is TCS collected by a
+  seller, and **§194N is the third DIRECTION refusal**: it is charged on a
+  banking company, a co-operative bank or a post office on cash the ACCOUNT
+  HOLDER withdraws, so on a bill your client is PAYING there is nothing to
+  withhold — when it bites the client is the **deductee** and the credit
+  appears in their Form 26AS. Saying only "no rate held" there would invite
+  somebody to add one. **§194R, §194O and §194S are refused on the BASE as much
+  as the rate**, and each carries its own sentence in
+  `_SECTIONS_WITH_NO_FIGURE_AND_THE_REASON`: §194R's benefit is often in kind,
+  §194O's base is the *participant's* sale rather than any bill the operator
+  receives, and §194S has no virtual-digital-asset document at all — with
+  §194S(2) requiring the tax paid before consideration in kind is released.
+  **§194-IA/IB/M stay refused** because Form 26QB/26QC/26QD are
+  challan-cum-statements this product does not produce. A test asserts the
+  three answers are DIFFERENT, on the answers rather than on the data, so
+  moving a reason in or out cannot make it vacuous.
+
+- **A JOURNAL'S SUPPORTING DOCUMENTS ARE A DRAFT-ONLY EDIT, AND THE SCREEN SAYS
+  SO** (ACC-25). `JournalEntryIn` has taken validated attachments since the
+  first half of this finding; `JournalEntryUpdateIn` had none, so the editor
+  rendered the control on an entry being corrected, the CA typed a link, and
+  the PATCH sent everything except it. Both doors now validate through the same
+  `domain/attachments` parser — a validator on one door only is one PATCH from
+  being none, and this is the door reached SECOND, after the entry already
+  looks legitimate. `None` means unchanged; an **empty list removes them**,
+  which the service's header filter keeps and the `None` case drops.
+  **A POSTED entry is REFUSED rather than ignored**, because
+  `prevent_posted_journal_modification` (last defined in migration 274) lets a
+  posted header change only inside `journal_edit_in_progress()`, and the one
+  thing that sets it is `edit_posted_journal` — which rewrites LINES and
+  carries no attachments. Teaching it attachments means replacing the posting
+  kernel's own edit RPC, an owner decision rather than a convenience. The
+  editor gates on `attachmentsReadOnly = readOnly || isPosted`, a STRICTER
+  state than `readOnly` (a locked year or a filed return), so a CA is never
+  invited to type something the server will refuse.
 
 - **THE SUPPLIER MASTER IS `public.vendors`, AND `public.suppliers` IS RETIRED**
   (PUR-16). Migration 030 created a second one and `/accounting/suppliers` was
@@ -753,12 +833,12 @@ change. The code is the authority; keep this file in step with it.
   branch and never added to it. **The two capped rows are capped IN ORDER**:
   IMPS takes the ceiling first and ISRC takes what is left, since capping each
   independently against the same ceiling lets them together exceed it and file
-  a 4(A) that does not reconcile with its own 4(C). **4(A)(1) IMPG and 4(A)(4)
-  ISD stay nil and NAME why** (`table_4a_gaps`): IGST on imported goods is paid
-  at customs against a Bill of Entry, never self-assessed on a purchase bill,
-  so it is not a reverse-charge document at all and no document type here
-  carries it; an ISD invoice is not modelled either. A nil meaning "we cannot
-  see it" is not a nil meaning "there was none".
+  a 4(A) that does not reconcile with its own 4(C). **4(A)(4) ISD stays nil and NAMES why**
+  (`table_4a_gaps`): an ISD invoice is not modelled. A nil meaning "we cannot
+  see it" is not a nil meaning "there was none". **4(A)(1) IMPG left that list
+  on 2026-09-14** — migration 389 gave the Bill of Entry a document, see the
+  PUR-18 bullet above — and it is still not a reverse-charge row: the tax is
+  collected at customs, not self-assessed, so it never touches 3.1(d).
 - **A BANK LINE THE CA MARKED AS CARRYING GST IS A DOCUMENT, AND THE
   DOCUMENT IS THE TRANSACTION** (BANK-24). The posting drawer has always let a
   CA say "there is 18% GST inside this ₹590", and `bank_posting_service` then

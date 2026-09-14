@@ -154,3 +154,76 @@ def test_the_parser_error_is_a_sentence_for_a_ca():
     with pytest.raises(AttachmentError) as e:
         parse_attachments([{"name": "R", "url": "javascript:alert(1)"}])
     assert len(str(e.value)) > 30 and "http" in str(e.value)
+
+
+# ── THE CORRECTION PATH, WHICH DROPPED THEM SILENTLY ────────────────────────
+#
+# The first half of ACC-25 gave the editor a control and the CREATE path a
+# validated field. The PATCH kept neither: `JournalEntryUpdateIn` had no
+# `attachments`, so a CA correcting a DRAFT to add the receipt typed a link
+# into a control the screen rendered and lost it with no error. A field the
+# screen offers and the server discards is worse than no field at all.
+
+def test_the_correction_path_takes_documents_too():
+    from models.accounting import JournalEntryUpdateIn
+    got = JournalEntryUpdateIn(
+        attachments=[{"name": "Receipt", "url": "https://x.test/r.pdf"}])
+    assert got.attachments == [{"name": "Receipt", "url": "https://x.test/r.pdf"}]
+
+
+def test_omitting_them_leaves_them_alone():
+    """Every field on the update model is optional and means "unchanged" — a CA
+    fixing a narration must not have to resend the documents."""
+    from models.accounting import JournalEntryUpdateIn
+    assert JournalEntryUpdateIn(narration="fixed").attachments is None
+
+
+def test_an_EMPTY_list_is_a_real_answer():
+    """It removes them, which is a different thing from not mentioning them.
+    The service's header filter keeps `[]` and drops `None` for exactly this."""
+    from models.accounting import JournalEntryUpdateIn
+    assert JournalEntryUpdateIn(attachments=[]).attachments == []
+
+
+@pytest.mark.parametrize("url", ["javascript:alert(1)", "data:text/html,<b>x",
+                                 "file:///etc/passwd"])
+def test_the_correction_path_refuses_what_the_create_path_refuses(url):
+    """A validator on one door only is one PATCH from being none — and this is
+    the door an attacker reaches SECOND, after the entry already looks
+    legitimate."""
+    from models.accounting import JournalEntryUpdateIn
+    with pytest.raises(ValidationError):
+        JournalEntryUpdateIn(attachments=[{"name": "R", "url": url}])
+
+
+def test_both_doors_call_the_same_parser():
+    import inspect
+    from models.accounting import JournalEntryUpdateIn
+    src = inspect.getsource(JournalEntryUpdateIn.attachments_are_safe.__func__)
+    assert "parse_attachments" in src
+    assert "AttachmentError" in src
+
+
+def test_a_posted_entry_is_REFUSED_rather_than_silently_ignored():
+    """`prevent_posted_journal_modification` (last defined in migration 274)
+    lets a posted entry's HEADER change only inside
+    `journal_edit_in_progress()`, which only `edit_posted_journal` sets — and
+    that function rewrites LINES and carries no attachments. So the documents
+    cannot move on a posted entry, and the service says so instead of
+    discarding them, which is the defect this half exists to fix."""
+    import inspect
+    from services.manual_journal_service import ManualJournalService
+    src = inspect.getsource(ManualJournalService.update)
+    assert '"attachments" in data' in src
+    assert "is_posted" in src
+    # The refusal must come BEFORE the posted branch does anything, or a CA
+    # gets the lines rewritten and the documents dropped in the same call.
+    assert src.index('"attachments" in data') < src.index('if entry.get("is_posted"):\n            if lines is None')
+
+
+def test_a_draft_correction_writes_them_to_the_header():
+    import inspect
+    from services.manual_journal_service import ManualJournalService
+    src = inspect.getsource(ManualJournalService.update)
+    header = src[src.index("header = {k: v for k, v in {"):]
+    assert '"attachments": data.get("attachments")' in header

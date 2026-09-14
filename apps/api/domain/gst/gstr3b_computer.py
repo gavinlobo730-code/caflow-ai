@@ -73,6 +73,34 @@ class PurchaseTransaction:
 
 
 @dataclass(frozen=True)
+class ImportOfGoods:
+    """IGST and cess assessed on a BILL OF ENTRY — Table 4(A)(1) (PUR-18).
+
+    A TYPE OF ITS OWN RATHER THAN A FLAG ON PurchaseTransaction, and the reason
+    is the one flag it must never grow. Reverse-charge tax is SELF-assessed by
+    the recipient and creates a Table 3.1(d) liability; this tax was assessed
+    and collected by CUSTOMS (IGST Act s.5(1) proviso with Customs Tariff Act
+    s.3(7)) and creates none. A field sitting beside `is_import_of_services`
+    invites the next reader to set `is_reverse_charge` too, because every other
+    import is reverse-charged — and that declares a liability the client does
+    not owe.
+
+    NO CGST OR SGST FIELD, deliberately. IGST Act s.7(2) makes goods imported
+    into India an inter-state supply until they cross the customs frontier, so
+    integrated tax and cess are the only heads an assessment can charge.
+
+    The customs DUTIES are not here at all: basic customs duty and the social
+    welfare surcharge are recoverable from nobody, so AS-2 paragraph 6 makes
+    them cost rather than input tax and they never reach a return.
+    """
+    igst_paise: int = 0
+    cess_paise: int = 0
+    #: The part CGST Act s.17(5) blocks. Same shape as PurchaseTransaction's.
+    ineligible_igst_paise: int = 0
+    ineligible_cess_paise: int = 0
+
+
+@dataclass(frozen=True)
 class GSTR2ARecord:
     """Supplier-filed invoice from GSTR-2A."""
     cgst_paise: int
@@ -311,6 +339,12 @@ class GSTR3BResult:
     imps_sgst: int = 0
     imps_cess: int = 0
 
+    # Table 4(A)(1) — IGST and cess paid at customs on a Bill of Entry.
+    # NOT a subset of anything above: this tax is on no purchase bill, creates
+    # no Table 3.1(d) liability, and is added to the credit in its own right.
+    impg_igst: int = 0
+    impg_cess: int = 0
+
     # Table 4: ITC available
     itc_igst: int = 0
     itc_cgst: int = 0
@@ -447,8 +481,8 @@ class GSTR3BResult:
         of a filed return. "ISRC" is Inward Supplies Reverse Charge; the
         general bucket is "OTH".
 
-        IMPS IS FILLED FROM THE BOOKS, IMPG AND ISD ARE STILL NIL, and the
-        difference between the three is which fact the books hold.
+        IMPG AND IMPS ARE BOTH FILLED FROM THE BOOKS; ISD IS STILL NIL, and
+        the difference is which fact the books hold.
 
         An IMPORT OF SERVICES is a reverse-charge purchase like any other — the
         recipient self-assesses under Notification 10/2017-IT(R) entry 1 — so
@@ -457,17 +491,27 @@ class GSTR3BResult:
         is what separates them, and `gst_return_service` sets it from the
         vendor's own recorded residency.
 
-        IMPORT OF GOODS cannot be derived and is not a gap in this function:
-        IGST on goods is paid at customs against a BILL OF ENTRY, so it is
-        never a reverse-charge purchase bill and there is no document in this
-        product that carries it. ISD is the same shape — an Input Service
-        Distributor invoice is a document type nothing here models.
+        IMPORT OF GOODS comes off its own document (PUR-18). IGST on goods is
+        paid at customs against a BILL OF ENTRY, so it is never a
+        reverse-charge purchase bill — `ImportOfGoods` carries it and
+        `migrations/389` holds the document. ISD is NOT the same shape and is
+        still nil: an Input Service Distributor invoice is a document type
+        nothing here models.
 
         All five rows are still emitted. The GSTN utility writes all five
         unconditionally, and a row that is absent is not the same as a row that
-        is nil. The two that stay nil are NAMED by
+        is nil. The one that stays nil is NAMED by
         `gst_return_service.gstr3b_from_books` rather than left to read as
         "this client had none".
+
+        IMPG IS CAPPED TOO, AND IT IS CAPPED LAST. The five rows must sum to
+        exactly 4(A), and `itc_avail_*` is the ceiling the Rule 36(4) cap may
+        already have trimmed. Import credit goes LAST rather than first because
+        the two reverse-charge rows carry tax the client has already paid in
+        CASH and Rule 36(4) cannot reach at all, while import credit rides
+        inside the cap — GSTR-2B communicates it in its own `impg` section, so
+        it is capped like any other matched credit and is the row that should
+        give way if the ceiling binds.
 
         ISRC AND IMPS ARE CAPPED TOGETHER, and the order matters. The five rows
         must sum to exactly 4(A), so the reverse-charge lines are capped at the
@@ -485,8 +529,13 @@ class GSTR3BResult:
         imps_c, isrc_c = _split(self.imps_cgst, self.rcm_cgst, self.itc_avail_cgst)
         imps_s, isrc_s = _split(self.imps_sgst, self.rcm_sgst, self.itc_avail_sgst)
         imps_x, isrc_x = _split(self.imps_cess, self.rcm_cess, self.itc_avail_cess)
+        impg_i = min(self.impg_igst, max(self.itc_avail_igst - imps_i - isrc_i, 0))
+        impg_x = min(self.impg_cess, max(self.itc_avail_cess - imps_x - isrc_x, 0))
         return [
-            ("IMPG", 0, 0, 0, 0),
+            # IGST Act s.5(1) proviso with Customs Tariff Act s.3(7): assessed
+            # and collected by customs on a Bill of Entry. Integrated tax and
+            # cess only — s.7(2) makes an import an inter-state supply.
+            ("IMPG", impg_i, 0, 0, impg_x),
             # IGST Act §2(11): supplier outside India, recipient in India.
             ("IMPS", imps_i, imps_c, imps_s, imps_x),
             # Reverse-charge tax is self-assessed by the recipient and taken as
@@ -494,10 +543,10 @@ class GSTR3BResult:
             ("ISRC", isrc_i, isrc_c, isrc_s, isrc_x),
             ("ISD", 0, 0, 0, 0),
             ("OTH",
-             self.itc_avail_igst - imps_i - isrc_i,
+             self.itc_avail_igst - imps_i - isrc_i - impg_i,
              self.itc_avail_cgst - imps_c - isrc_c,
              self.itc_avail_sgst - imps_s - isrc_s,
-             self.itc_avail_cess - imps_x - isrc_x),
+             self.itc_avail_cess - imps_x - isrc_x - impg_x),
         ]
 
     # Table 6: tax on OUTWARD supplies still payable after the §49 set-off.
@@ -929,6 +978,7 @@ def compute_gstr3b(
     reclaims: Sequence[ITCReversal] = (),
     have_2b: Optional[bool] = None,
     advances: Optional[AdvanceTaxOnReceipts] = None,
+    imports_of_goods: Sequence[ImportOfGoods] = (),
 ) -> GSTR3BResult:
     """Compute GSTR-3B figures from transaction data.
 
@@ -936,6 +986,10 @@ def compute_gstr3b(
         sales: Posted sales invoices and credit/debit notes for the period.
         purchases: Posted purchase invoices for the period.
         gstr2a_records: Supplier-filed records from GSTR-2A for the period.
+        imports_of_goods: Bills of entry assessed in the period (PUR-18). IGST
+            and cess paid at customs — Table 4(A)(1), and credit in its own
+            right rather than a subset of any purchase. Defaulted empty so
+            every existing caller is unaffected.
         advances: GSTR-1 Table 11's two figures for this period, in paise —
             what GSTR-1 declares on advances, which 3.1(a) has to pay. None,
             the default, is a client with no Table 11 at all, which is most of
@@ -1056,6 +1110,24 @@ def compute_gstr3b(
     book_sgst = sum(p.sgst_paise - p.ineligible_sgst_paise for p in purchases)
     book_cess = sum(p.cess_paise - p.ineligible_cess_paise for p in purchases)
 
+    # ── Table 4(A)(1): the Bill of Entry (PUR-18) ────────────────────────────
+    # CGST Act s.2(62)(a) puts "the integrated goods and services tax charged
+    # on import of goods" in input tax and Rule 36(1)(d) makes the bill of
+    # entry the document it rests on, so this is book credit like any other —
+    # added to the same totals and then capped with them. It creates NO Table
+    # 3.1(d) liability: the tax was collected by customs, not self-assessed.
+    #
+    # Only integrated tax and cess. Customs duty and the social welfare
+    # surcharge are recoverable from nobody, so AS-2 paragraph 6 makes them
+    # cost and they never reach a return — `ImportOfGoods` has no field for
+    # them, which is how that stays true.
+    result.impg_igst = sum(b.igst_paise - b.ineligible_igst_paise
+                           for b in imports_of_goods)
+    result.impg_cess = sum(b.cess_paise - b.ineligible_cess_paise
+                           for b in imports_of_goods)
+    book_igst += result.impg_igst
+    book_cess += result.impg_cess
+
     # RULE 36(4) REACHES ONLY WHAT A SUPPLIER FURNISHES UNDER §37, AND
     # REVERSE-CHARGE TAX IS NOT THAT.
     #
@@ -1093,10 +1165,14 @@ def compute_gstr3b(
     rcm_book_sgst = sum(p.sgst_paise - p.ineligible_sgst_paise
                         for p in purchases if p.is_reverse_charge)
 
-    result.itc_ineligible_igst = sum(p.ineligible_igst_paise for p in purchases)
+    result.itc_ineligible_igst = (
+        sum(p.ineligible_igst_paise for p in purchases)
+        + sum(b.ineligible_igst_paise for b in imports_of_goods))
     result.itc_ineligible_cgst = sum(p.ineligible_cgst_paise for p in purchases)
     result.itc_ineligible_sgst = sum(p.ineligible_sgst_paise for p in purchases)
-    result.itc_ineligible_cess = sum(p.ineligible_cess_paise for p in purchases)
+    result.itc_ineligible_cess = (
+        sum(p.ineligible_cess_paise for p in purchases)
+        + sum(b.ineligible_cess_paise for b in imports_of_goods))
 
     gstr2a_igst = sum(r.igst_paise for r in gstr2a_records)
     gstr2a_cgst = sum(r.cgst_paise for r in gstr2a_records)

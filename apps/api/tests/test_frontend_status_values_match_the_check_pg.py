@@ -145,6 +145,13 @@ UNMEASURED: dict[str, set[str]] = {
     # column, so there is nothing here to measure against. Checked by hand
     # against migration 379's two CHECKs on 2026-09-13.
     "components/purchases/RecurringBills.tsx": {"active", "archived", "failed", "paused"},
+    # bills_of_entry.status ('draft'|'posted'), migration 389 — the same shape
+    # again. The tab reads the register through GET /api/bills-of-entry and
+    # touches only `chart_of_accounts` directly, to fill the two account
+    # pickers; that table has no status column, so there is nothing here to
+    # measure against. Checked by hand against migration 389's CHECK on
+    # 2026-09-14.
+    "components/purchases/BillsOfEntryTab.tsx": {"posted"},
     # mca_filings.status allows all three; the page reads mca_companies only.
     "app/clients/[id]/compliance/mca/page.tsx": {"filed", "in_progress", "not_started"},
     # compliance_tasks.status allows 'filed'; the page reads government_notices.

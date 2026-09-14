@@ -62,7 +62,7 @@ test("an attachment can be taken off again", () => {
   assert.match(editor, /setAttachments\(attachments\.filter\(\(_, j\) => j !== i\)\)/);
 });
 
-test("a locked entry shows its documents and offers no controls", () => {
+test("a locked OR POSTED entry shows its documents and offers no controls", () => {
   // Bounded to the panel — the lines table below it has readOnly gates of its
   // own, and an unbounded slice counted those too.
   const from = editor.indexOf("Supporting documents");
@@ -71,7 +71,29 @@ test("a locked entry shows its documents and offers no controls", () => {
   const panel = editor.slice(from, to);
   // BOTH gates, counted. A first draft matched the phrase once and passed with
   // the ADD row ungated, because the remove button's own gate satisfied it.
-  const gates = panel.match(/\{!readOnly && \(/g) ?? [];
+  const gates = panel.match(/\{!attachmentsReadOnly && \(/g) ?? [];
   assert.equal(gates.length, 2,
-    "both the remove button and the add row must be gated on readOnly");
+    "both the remove button and the add row must be gated");
+  // And the gate must be the STRICTER one. `readOnly` alone is a locked period
+  // or a filed return; a POSTED entry is otherwise editable and still cannot
+  // take a document, because prevent_posted_journal_modification lets its
+  // header move only inside edit_posted_journal — which rewrites LINES and
+  // carries no attachments. Gating on readOnly would render an add control
+  // whose value the PATCH refuses.
+  assert.doesNotMatch(panel, /\{!readOnly && \(/,
+    "the panel must gate on attachmentsReadOnly, which also covers a posted entry");
+  assert.match(editor, /const attachmentsReadOnly = readOnly \|\| isPosted;/);
+});
+
+test("a posted entry's documents are not sent on a correction", () => {
+  // The server refuses them with a sentence; sending them anyway would turn
+  // every correction of a posted entry into a 422.
+  assert.match(page, /entry\?\.is_posted \? \{\} : \{ attachments: payload\.attachments \}/);
+});
+
+test("a DRAFT correction sends them", () => {
+  // The half that was missing: the editor rendered the control on an entry
+  // being corrected and the PATCH sent everything except it, so the CA typed a
+  // link and lost it with no error.
+  assert.match(page, /attachments: payload\.attachments/);
 });

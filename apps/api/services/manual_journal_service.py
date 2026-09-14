@@ -304,6 +304,29 @@ class ManualJournalService:
             if moved_into:
                 raise HTTPException(status_code=422, detail=moved_into)
 
+        # SUPPORTING DOCUMENTS ARE A DRAFT-ONLY EDIT, AND IT SAYS SO (ACC-25).
+        #
+        # `prevent_posted_journal_modification` (last defined in migration 274)
+        # lets a posted entry's HEADER change only inside
+        # `journal_edit_in_progress()`, and the one thing that sets that flag is
+        # `edit_posted_journal` — which rewrites LINES and carries no
+        # attachments parameter. So a posted entry cannot gain a document
+        # without replacing that function, which is the posting kernel's own
+        # edit path and an owner decision rather than a convenience.
+        #
+        # Refused rather than ignored. Silently discarding what the CA typed is
+        # the defect this half of ACC-25 exists to fix, and doing it here would
+        # reproduce it one layer down.
+        if "attachments" in data and entry.get("is_posted"):
+            raise HTTPException(
+                status_code=422,
+                detail="A posted entry's supporting documents cannot be "
+                       "changed here. The ledger allows a posted entry to be "
+                       "corrected only through the edit path, which rewrites "
+                       "its lines and does not carry documents. Attach the "
+                       "document to the reversal, or record it against the "
+                       "source document instead.")
+
         if entry.get("is_posted"):
             if lines is None:
                 raise HTTPException(
@@ -341,6 +364,10 @@ class ManualJournalService:
                 "narration": data.get("narration"),
                 "reference_no": data.get("reference_no"),
                 "entry_type": data.get("entry_type"),
+                # ACC-25. An EMPTY LIST survives this filter and is meant to:
+                # it is the CA removing the documents, which is a different
+                # answer from not mentioning them.
+                "attachments": data.get("attachments"),
             }.items() if v is not None}
             if header.get("entry_type") and header["entry_type"] not in ALLOWED_ENTRY_TYPES:
                 raise HTTPException(status_code=422, detail=f"Invalid entry_type '{header['entry_type']}'.")

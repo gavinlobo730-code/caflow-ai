@@ -116,8 +116,17 @@ IMMUTABLE_ON_UPDATE: dict[tuple[str, str], str] = {
         "the same field as supply_state_code, which IS updatable — one name "
         "reaches the column and the other is the create path's alias"),
 
-    # Attachments are added through their own endpoint.
-    ("JournalEntryUpdateIn", "attachments"): "attachments have their own route",
+    # ("JournalEntryUpdateIn", "attachments") WAS HERE and its reason —
+    # "attachments have their own route" — was not true: there is no such
+    # route, and the editor rendered a control whose value the PATCH threw
+    # away. ACC-25's second half made the field editable on a DRAFT, so the
+    # entry is gone rather than rewritten. What remains immutable is a POSTED
+    # entry's documents, and that is not a MODEL rule — the model takes the
+    # field, `manual_journal_service.update` refuses it with a sentence, and
+    # the reason is the ledger's (`prevent_posted_journal_modification` lets a
+    # posted header move only inside `edit_posted_journal`, which rewrites
+    # lines and carries no attachments). Listing it here would have said the
+    # field cannot be sent at all.
 
     # The COA hierarchy used to be listed here as a GAP rather than a decision
     # (ACC-09: nothing wrote parent_id, nothing wrote parent_group or sub_group,

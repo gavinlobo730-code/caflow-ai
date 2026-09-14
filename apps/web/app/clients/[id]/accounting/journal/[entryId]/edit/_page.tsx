@@ -164,6 +164,13 @@ export default function JournalEntryPageClient() {
         reference_no: payload.reference_no || null,
         narration: payload.narration,
         lines: payload.lines,
+        // ACC-25, second half. This was the one field the editor collected and
+        // the PATCH did not send, so a CA correcting a draft to add the
+        // receipt lost it with no error. Sent only for a DRAFT, because a
+        // posted entry's header is immutable outside edit_posted_journal and
+        // the server refuses it with a sentence — the editor makes the control
+        // read-only there for the same reason.
+        ...(entry?.is_posted ? {} : { attachments: payload.attachments }),
       });
 
       // Posting a DRAFT goes through the approval endpoint, which is the

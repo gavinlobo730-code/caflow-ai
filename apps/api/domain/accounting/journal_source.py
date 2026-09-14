@@ -62,6 +62,11 @@ PURCHASE_BILL = "purchase_bill"
 DEBIT_NOTE = "debit_note"                   # purchase return — AP DECREASE
 PURCHASE_CREDIT_NOTE = "purchase_credit_note"   # purchase value/tax INCREASE
 PURCHASE_PAYMENT = "purchase_payment"
+#: An import of goods. The duty is assessed and collected by CUSTOMS against a
+#: Bill of Entry (IGST Act s.5(1) proviso with Customs Tariff Act s.3(7)), so
+#: it is not the supplier's invoice under another name and it touches no
+#: accounts payable. Migration 389.
+BILL_OF_ENTRY = "bill_of_entry"
 
 #: Payroll.
 PAYROLL_RUN = "payroll_run"
@@ -90,6 +95,7 @@ ALL_SOURCES = frozenset({
     MANUAL,
     SALES_INVOICE, CREDIT_NOTE, SALES_DEBIT_NOTE, RECEIPT,
     PURCHASE_BILL, DEBIT_NOTE, PURCHASE_CREDIT_NOTE, PURCHASE_PAYMENT,
+    BILL_OF_ENTRY,
     PAYROLL_RUN, PAYROLL_DISBURSEMENT, SETTLEMENT,
     FIXED_ASSET, DEPRECIATION, ASSET_DISPOSAL,
     BANK_TRANSACTION, BANK_OVERPAYMENT,
@@ -124,6 +130,7 @@ SOURCE_LABEL = {
     DEBIT_NOTE: "debit note",
     PURCHASE_CREDIT_NOTE: "credit note",
     PURCHASE_PAYMENT: "payment",
+    BILL_OF_ENTRY: "bill of entry",
     PAYROLL_RUN: "payroll run",
     PAYROLL_DISBURSEMENT: "salary disbursement",
     SETTLEMENT: "full and final settlement",

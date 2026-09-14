@@ -25,8 +25,10 @@ from core.ist_clock import ist_fy_label
 import services.gst_2b_reconciliation_service as gst_2b_reconciliation_service
 import services.gst_advance_service as gst_advance_service
 import services.itc_register_service as itc_register_service
+import services.bill_of_entry_service as bill_of_entry_service
 from domain.gst.gstr3b_computer import (
     SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
+    ImportOfGoods,
     AdvanceTaxOnReceipts, compute_gstr3b,
 )
 from core.observability import capture_soft_failure
@@ -1075,21 +1077,18 @@ def outward_turnover(db, firm_id: str, client_id: str, period: str) -> dict:
 def _table_4a_gaps() -> list[dict]:
     """The 4(A) rows this product cannot derive, each with the reason.
 
-    Not a caveat about a figure that might be wrong — both are correctly zero
-    for every client that has neither. It is a statement that if the client DID
-    have one, nothing here would know: the document that carries it does not
-    exist in this product, so the CA has to add the figure on the portal.
+    Not a caveat about a figure that might be wrong — it is correctly zero for
+    every client with no such document. It is a statement that if the client
+    DID have one, nothing here would know: the document that carries it does
+    not exist in this product, so the CA has to add the figure on the portal.
+
+    4(A)(1) IMPG LEFT THIS LIST ON 2026-09-14 (PUR-18). A Bill of Entry is a
+    document now — migration 389 — so import IGST is derived like any other
+    credit. ISD is still here because an Input Service Distributor invoice is
+    still a document type nothing models, and a nil meaning "we cannot see it"
+    is not a nil meaning "there was none".
     """
     return [
-        {
-            "row": "4(A)(1)",
-            "label": "Import of goods",
-            "reason": ("IGST on imported goods is paid at customs against a BILL OF "
-                       "ENTRY, not self-assessed on a purchase bill, and this product "
-                       "has no Bill of Entry document type. The credit is in GSTR-2B's "
-                       "own `impg` section, which the 2B reconciliation parses — but "
-                       "nothing feeds it into the return. Enter it on the portal."),
-        },
         {
             "row": "4(A)(4)",
             "label": "Inward supplies from ISD",
@@ -1332,8 +1331,28 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         capture_soft_failure(exc, operation="gstr3b.table_11_advances",
                              firm_id=firm_id, client_id=client_id)
 
+    # Table 4(A)(1) — the Bill of Entry (PUR-18). POSTED documents only: a
+    # draft has no journal behind it, and claiming credit on the return that
+    # the ledger does not carry is exactly the books-vs-ledger difference the
+    # reconciliation below exists to catch.
+    #
+    # NOT appended to `purchases`. A Bill of Entry is not a purchase bill: it
+    # carries no reverse-charge liability, no CGST or SGST, and no accounts
+    # payable, and `PurchaseTransaction` has a field for each of those that
+    # would then have to be set to a lie.
+    imports_of_goods = [
+        ImportOfGoods(
+            igst_paise=int(b.get("igst_paise") or 0),
+            cess_paise=int(b.get("cess_paise") or 0),
+            ineligible_igst_paise=int(b.get("ineligible_igst_paise") or 0),
+            ineligible_cess_paise=int(b.get("ineligible_cess_paise") or 0),
+        )
+        for b in bill_of_entry_service.for_period(db, firm_id, client_id, start, end)
+    ]
+
     result = compute_gstr3b(sales, purchases, gstr2a, reversals, reclaims,
-                            have_2b=have_2b, advances=advances)
+                            have_2b=have_2b, advances=advances,
+                            imports_of_goods=imports_of_goods)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)

@@ -439,9 +439,63 @@ _PROPERTY_SECTIONS = frozenset({"194IA", "194-IA", "194IB", "194-IB"})
 #:     product given away, so even a confirmed rate would be applied to a base
 #:     the ledger does not have.
 #:
-#: Named as a set rather than tested inline, so confirming the threshold is
-#: one line here and one line in the registry.
-_UNCONFIRMED_THRESHOLD_SECTIONS = frozenset({"194R"})
+#: Named as DATA rather than tested inline, so confirming a figure is one line
+#: here and one line in the registry. It started as a set holding §194R alone
+#: and became a dict when two more sections needed their own sentence: what a
+#: CA has to go and do differs per section, and one shared paragraph would have
+#: said the wrong thing about two of the three.
+_SECTIONS_WITH_NO_FIGURE_AND_THE_REASON: dict[str, str] = {
+    "194R": (
+        "Section 194R is 10% on a benefit or perquisite from business or "
+        "profession, with a ₹20,000 threshold — but whether the Finance Act "
+        "2025's threshold rationalisation moved that figure has not been "
+        "confirmed against the Act, and it is not written in from memory into "
+        "a year this software calls verified. The benefit is also often in "
+        "KIND, and no bill line here carries the value of one."
+    ),
+    # §194O — an e-commerce OPERATOR withholding on what it facilitates.
+    # Unlike §194N below, a client that IS an operator genuinely deducts under
+    # it, so the routing is fine: a resident participant, Form 26Q. Two things
+    # are missing and both are said.
+    "194O": (
+        "Section 194O is deducted by an e-commerce OPERATOR on the gross "
+        "amount of the sale of goods or services it facilitates for an "
+        "e-commerce participant — so the base is the PARTICIPANT'S sale, not "
+        "a bill the operator receives, and nothing in the purchase ledger "
+        "holds it. Its rate was also reduced by the Finance (No. 2) Act 2024 "
+        "part-way through FY 2024-25, and which figure applies to which "
+        "period has not been confirmed against the Act here."
+    ),
+    # §194S — transfer of a virtual digital asset.
+    "194S": (
+        "Section 194S is deducted on the transfer of a VIRTUAL DIGITAL ASSET, "
+        "which is not a document this software holds — there is no VDA "
+        "transfer to compute on. Its rate and its two thresholds (one for a "
+        "specified person, one for everybody else) have not been confirmed "
+        "against the Act here either, and section 194S(2) requires the tax to "
+        "be paid before the consideration is released where that "
+        "consideration is itself in kind or another virtual digital asset, "
+        "which no bill line can represent."
+    ),
+}
+
+#: A SECTION WHERE THE CLIENT IS THE DEDUCTEE, NOT THE DEDUCTOR (TDS-23).
+#:
+#: §194N charges "every person, being ... a banking company ..., a
+#: co-operative society engaged in carrying on the business of banking or a
+#: post office" on CASH WITHDRAWN by an account holder. So on a bill a client
+#: is PAYING there is nothing to withhold under it, and the direction is the
+#: opposite of every other section on this screen: when §194N bites, the BANK
+#: deducts from the client, the client is the deductee, and the credit turns up
+#: in their Form 26AS — `domain/income_tax/form26as_service.py` is where that
+#: side lives.
+#:
+#: Refused rather than added with a rate, for the same three reasons §206C is:
+#: the direction is wrong, nothing here computes it, and a figure recorded
+#: against a vendor would be stamped 26Q by `return_type_for` — which routes on
+#: residency and never sees the section — when the deductor filing that 26Q
+#: would be the bank rather than this client.
+SECTION_194N_CASH_WITHDRAWAL = "194N"
 
 #: TCS, which is not a deduction and does not belong on a vendor.
 #:
@@ -549,6 +603,18 @@ def deduction_section_refusal(section: Optional[str],
             "does not yet compute."
         )
 
+    if code == SECTION_194N_CASH_WITHDRAWAL:
+        return (
+            "Section 194N is deducted BY A BANK, a co-operative bank or a post "
+            "office on cash the account holder withdraws — so it cannot be "
+            "recorded against a vendor, because on a bill you are paying there "
+            "is nothing to withhold. When it bites, your client is the "
+            "DEDUCTEE: the bank deducts and the credit appears in their Form "
+            "26AS, which is where to reconcile it. A figure recorded here "
+            "would be reported on your client's own Form 26Q, by a deductor "
+            "who never made the deduction."
+        )
+
     if code in tds_rates_for(fy).sections:
         return None
 
@@ -562,19 +628,14 @@ def deduction_section_refusal(section: Optional[str],
         f"cannot work out what to withhold on a bill for this vendor. The "
         f"sections it can compute are: {known}. "
     )
-    if code in _UNCONFIRMED_THRESHOLD_SECTIONS:
-        # NOT the property case: this one goes on 26Q perfectly well. What is
-        # missing is a figure nobody has read off the Act, and a base the
-        # ledger does not hold. Saying which is what lets a CA act on it.
-        return why + (
-            f"Section {code} is 10% on a benefit or perquisite from business "
-            f"or profession, with a ₹20,000 threshold — but whether the "
-            f"Finance Act 2025's threshold rationalisation moved that figure "
-            f"has not been confirmed against the Act, and it is not written in "
-            f"from memory into a year this software calls verified. The "
-            f"benefit is also often in KIND, and no bill line here carries the "
-            f"value of one. Deduct under section {code} outside the bill, and "
-            f"record the challan on the TDS workspace."
+    reason = _SECTIONS_WITH_NO_FIGURE_AND_THE_REASON.get(code)
+    if reason:
+        # NOT the property case: each of these goes on 26Q perfectly well. What
+        # is missing is a figure nobody has read off the Act, and a base the
+        # ledger does not hold. Saying WHICH is what lets a CA act on it.
+        return why + reason + (
+            f" Deduct under section {code} outside the bill, and record the "
+            f"challan on the TDS workspace."
         )
 
     if code in _PROPERTY_SECTIONS:

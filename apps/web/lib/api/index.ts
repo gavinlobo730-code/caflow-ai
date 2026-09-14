@@ -853,6 +853,10 @@ export type JournalEntryUpdate = {
   narration?: string;
   entry_type?: string;
   lines?: JournalLineIO[];
+  /** ACC-25. Omit to leave the documents alone; an EMPTY array removes them.
+   *  Accepted on a DRAFT only — a posted entry's header is immutable outside
+   *  `edit_posted_journal`, and the server refuses it with a sentence. */
+  attachments?: { name: string; url: string }[];
 };
 
 // Phase 4.5.1 — a client_portal_users row (F22 fix: invite_token is single-use,
@@ -1073,6 +1077,80 @@ export type RecurringJournalRun = {
 // `public.suppliers`, whose column names differed on three of them:
 // supplier_name -> name, payment_terms_days -> credit_days, and
 // tds_rate_percent -> tds_rate_bps, which is BASIS POINTS (1000 = 10.00%).
+
+// ── Bills of Entry ───────────────────────────────────────────────────────────
+// The customs assessment on an import of goods (PUR-18, migration 389).
+// IGST and compensation cess here are INPUT TAX — CGST Act s.2(62)(a) with
+// Rule 36(1)(d) — and reach GSTR-3B Table 4(A)(1). Basic customs duty and the
+// social welfare surcharge are recoverable from nobody and are COST (AS-2
+// paragraph 6). The browser does not know which is which and must not learn:
+// `domain/gst/bill_of_entry.py` decides, and every derived figure below comes
+// off the wire.
+
+export type BillOfEntry = {
+  id: string;
+  firm_id?: string;
+  client_id: string;
+  be_number: string;
+  be_date: string;
+  port_code: string | null;
+  vendor_id: string | null;
+  purchase_bill_id: string | null;
+  assessable_value_paise: number;
+  basic_customs_duty_paise: number;
+  social_welfare_surcharge_paise: number;
+  other_duty_paise: number;
+  igst_paise: number;
+  cess_paise: number;
+  ineligible_igst_paise: number;
+  ineligible_cess_paise: number;
+  is_sez: boolean;
+  payment_account_id: string | null;
+  duty_expense_account_id: string | null;
+  status: string;
+  journal_entry_id: string | null;
+  notes: string | null;
+  /** Derived by the server, never here. */
+  total_paise: number;
+  creditable_igst_paise: number;
+  creditable_cess_paise: number;
+  non_creditable_duty_paise: number;
+  gstr2b_section: string;
+  can_post: boolean;
+  /** Stops a posting. */
+  refusals: string[];
+  /** True and worth saying; stops nothing. */
+  caveats: string[];
+};
+
+export type BillOfEntryWrite = {
+  client_id: string;
+  be_number: string;
+  be_date: string;
+  port_code?: string | null;
+  vendor_id?: string | null;
+  purchase_bill_id?: string | null;
+  assessable_value_paise?: number;
+  basic_customs_duty_paise?: number;
+  social_welfare_surcharge_paise?: number;
+  other_duty_paise?: number;
+  igst_paise?: number;
+  cess_paise?: number;
+  ineligible_igst_paise?: number;
+  ineligible_cess_paise?: number;
+  is_sez?: boolean;
+  payment_account_id?: string | null;
+  duty_expense_account_id?: string | null;
+  notes?: string | null;
+};
+
+export type BillOfEntryAuthorities = {
+  credit_authority: string;
+  cost_authority: string;
+  table_4a_row: string;
+  gstr2b_sections: string[];
+  not_modelled: string[];
+};
 
 export type Vendor = {
   id: string;
@@ -3680,6 +3758,35 @@ export const api = {
     update: (id: string, body: VendorWrite) =>
       request<ApiResp<Vendor>>(`/api/vendors/${id}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+  },
+
+  /** The customs assessment on an import of goods (PUR-18).
+   *
+   *  A Bill of Entry is NOT the supplier's invoice under another name: the
+   *  duty is assessed and collected by CUSTOMS (IGST Act s.5(1) proviso with
+   *  Customs Tariff Act s.3(7)), so it touches no accounts payable. Which part
+   *  of it is input tax and which is cost is the server's answer. */
+  billsOfEntry: {
+    authorities: () =>
+      request<ApiResp<BillOfEntryAuthorities>>("/api/bills-of-entry/authorities"),
+    list: (params: { client_id: string; date_from?: string; date_to?: string }) =>
+      request<ApiResp<BillOfEntry[]>>(
+        `/api/bills-of-entry?${new URLSearchParams(params as Record<string, string>)}`),
+    create: (body: BillOfEntryWrite) =>
+      request<ApiResp<BillOfEntry>>("/api/bills-of-entry",
+        { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, clientId: string, body: Partial<BillOfEntryWrite>) =>
+      request<ApiResp<BillOfEntry>>(
+        `/api/bills-of-entry/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    post: (id: string, clientId: string) =>
+      request<ApiResp<BillOfEntry>>(
+        `/api/bills-of-entry/${id}/post?client_id=${encodeURIComponent(clientId)}`,
+        { method: "POST" }),
+    remove: (id: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/bills-of-entry/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
   },
 
   /** The two documents a reverse-charge purchase owes (PUR-19).

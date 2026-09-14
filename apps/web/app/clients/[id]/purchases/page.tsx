@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw } from "lucide-react";
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import { RcmDocumentPanel } from "@/components/purchases/RcmDocumentPanel";
+import { BillsOfEntryTab } from "@/components/purchases/BillsOfEntryTab";
 import { api } from "@/lib/api";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
@@ -142,7 +143,7 @@ async function getAuthToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
-type PurchaseTab = "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes";
+type PurchaseTab = "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes" | "bills-of-entry";
 const TABS: { id: PurchaseTab; label: string }[] = [
   { id: "bills", label: "Purchase Bills" },
   { id: "recurring", label: "Recurring" },
@@ -150,6 +151,10 @@ const TABS: { id: PurchaseTab; label: string }[] = [
   { id: "payments", label: "Payments" },
   { id: "debit-notes", label: "Debit Notes" },
   { id: "credit-notes", label: "Credit Notes" },
+  // PUR-18. Its own tab rather than a kind of purchase bill: a Bill of Entry
+  // carries no reverse-charge liability, no CGST or SGST and no accounts
+  // payable, and the duty is owed to customs rather than to the supplier.
+  { id: "bills-of-entry", label: "Bills of Entry" },
 ];
 
 // Shared money formatter (paise → ₹). Preserves the sign so a negative amount
@@ -258,6 +263,7 @@ export default function PurchasesPage() {
         {tab === "payments" && <Payments clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
         {tab === "debit-notes" && <DebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
         {tab === "credit-notes" && <PurchaseCreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "bills-of-entry" && <BillsOfEntryTab clientId={clientId} />}
       </div>
     </div>
   );
