@@ -2123,6 +2123,40 @@ export const api = {
      *  payments are each within 5% of their own aggregate, and the payments
      *  side has its own denominator that turnover cannot supply. Send none of
      *  them and the base figure applies, which is the safe direction. */
+    /** GET /api/income-tax/regime-election — §115BAC(6) with Rule 21AGA.
+     *
+     *  What choosing the old regime actually REQUIRES, which is not the same
+     *  question as which regime produces less tax. A client WITH business or
+     *  professional income must file Form 10-IEA by the §139(1) due date and
+     *  gets one return journey for life; a client without files in the return
+     *  and may choose afresh every year.
+     *
+     *  Prior-year elections are an INPUT the CA supplies as repeated `prior`
+     *  parameters (`2024-25:withdrew`). The product holds no filing history,
+     *  and supplying none is answered as `history_unknown` — a different
+     *  answer from "the option is available". */
+    regimeElection: (q: {
+      wants_old_regime: boolean;
+      has_business_income: boolean;
+      financial_year: string;
+      form_10iea_filed_on?: string;
+      is_audit?: boolean;
+      has_transfer_pricing_report?: boolean;
+      business_income_ceased?: boolean;
+      prior?: string[];
+    }) => {
+      const p = new URLSearchParams({
+        wants_old_regime: String(q.wants_old_regime),
+        has_business_income: String(q.has_business_income),
+        financial_year: q.financial_year,
+      });
+      if (q.form_10iea_filed_on) p.set("form_10iea_filed_on", q.form_10iea_filed_on);
+      if (q.is_audit) p.set("is_audit", "true");
+      if (q.has_transfer_pricing_report) p.set("has_transfer_pricing_report", "true");
+      if (q.business_income_ceased) p.set("business_income_ceased", "true");
+      for (const one of q.prior ?? []) p.append("prior", one);
+      return request(`/api/income-tax/regime-election?${p.toString()}`);
+    },
     taxAuditApplicability: (q: {
       nature: "business" | "profession";
       turnover_paise: number;

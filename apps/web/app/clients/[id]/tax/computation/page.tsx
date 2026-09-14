@@ -6,6 +6,7 @@ import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { assessmentYearChoicesAround } from "@/lib/dates/periods";
+import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -956,6 +957,23 @@ export default function TaxComputationPage() {
                       <option value="new">New Regime (Default)</option>
                       <option value="old">Old Regime</option>
                     </select>
+                    {/* WHICH REGIME IS CHEAPER IS NOT THE SAME QUESTION AS WHAT
+                        CHOOSING IT REQUIRES. §115BAC(6) makes the new regime the
+                        default since AY 2024-25, so the old one has to be opted
+                        INTO — by Form 10-IEA where there is business income, and
+                        in the return where there is not. A missed form taxes the
+                        client on the new regime for a year they planned around
+                        the old one and cannot be cured after the due date, and
+                        the computation looks perfectly clean either way. Whether
+                        there IS business income is read off the box on this same
+                        screen rather than asked twice. */}
+                    <div className="mt-2">
+                      <RegimeElectionPanel
+                        financialYear={fy}
+                        wantsOldRegime={regime === "old"}
+                        hasBusinessIncome={Boolean(businessIncome) && Number(businessIncome) !== 0}
+                      />
+                    </div>
                   </>
                 )}
               </div>

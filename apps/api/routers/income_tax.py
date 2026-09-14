@@ -34,6 +34,7 @@ from domain.income_tax.presumptive import (
 )
 from services.compliance_obligation_service import itr_due_date_for_client, fy_end_year
 from models.fy import AYLabel, FYLabel, OptionalAYLabel, OptionalFYLabel
+from core.ist_clock import normalise_fy_label
 
 router = APIRouter(prefix="/api/income-tax", tags=["income-tax"])
 
@@ -562,6 +563,88 @@ def tax_audit_applicability(
         data["report_due_date"] = None
         data["return_due_date"] = None
     return api_response(True, data)
+
+
+@router.get("/regime-election")
+def regime_election(
+    wants_old_regime: bool = Query(..., description="What the client wants for this year"),
+    has_business_income: bool = Query(..., description="THE FACT THE WHOLE RULE TURNS ON — §115BAC(6) has two clauses, not one rule with variations"),
+    financial_year: Annotated[FYLabel, Query()] = ...,
+    form_10iea_filed_on: Optional[str] = Query(None, description="The date it was ACTUALLY filed (YYYY-MM-DD); omit if it has not been"),
+    is_audit: bool = Query(False),
+    has_transfer_pricing_report: bool = Query(False),
+    business_income_ceased: bool = Query(False, description="§115BAC(6)(i)'s escape — clause (ii) becomes available instead"),
+    prior: list[str] = Query(default_factory=list, description="An earlier year's election as FY:action, e.g. 2024-25:opted_out or 2025-26:withdrew. Repeat the parameter."),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """Which regime applies, and what the CA must do to get there.
+
+    `domain/income_tax/regime_election.py` has held §115BAC(6) and Rule 21AGA
+    since it was written and **had no caller at all** — the module's own
+    docstring says why that mattered: a missed Form 10-IEA taxes a client on
+    the new regime for a year they planned around the old one and CANNOT be
+    cured after the due date, and a withdrawal made without realising it is
+    final closes an option worth lakhs over a career. Neither failure is
+    visible in the return, which computes cleanly either way.
+
+    Reads nothing and writes nothing — arithmetic and dates on facts the
+    caller states, like the §44AB and HRA endpoints beside it. The due date
+    comes from `compliance_engine.itr_due_date` through the domain module, so
+    a CBDT extension moves it here too.
+
+    PRIOR-YEAR HISTORY IS AN INPUT, NEVER ASSUMED. The product holds no filing
+    history, so clause (i)'s once-only withdrawal cannot be derived. Supplying
+    nothing is answered as `history_unknown`, which is a DIFFERENT answer from
+    "the option is available": assuming availability would tell a CA the old
+    regime is open when their client spent it years ago, and that is the
+    dangerous direction.
+    """
+    from domain.income_tax import regime_election as re_mod
+
+    filed_on = None
+    if form_10iea_filed_on:
+        try:
+            filed_on = date.fromisoformat(str(form_10iea_filed_on)[:10])
+        except ValueError:
+            return api_response(False, None,
+                                "form_10iea_filed_on must be a date (YYYY-MM-DD).")
+
+    # `FY:action`, parsed HERE rather than in the domain module: the wire
+    # format is this endpoint's business and the rule is not.
+    prior_elections: list[re_mod.PriorElection] = []
+    for raw in prior:
+        fy, _, action = str(raw).partition(":")
+        action = action.strip().lower()
+        if action not in ("opted_out", "withdrew"):
+            return api_response(False, None, (
+                f"'{raw}' is not a prior election. Use FY:action, where action "
+                f"is opted_out or withdrew — e.g. 2024-25:withdrew."))
+        try:
+            fy = normalise_fy_label(fy)
+        except ValueError as e:
+            return api_response(False, None, f"'{raw}': {e}")
+        prior_elections.append(re_mod.PriorElection(fy=fy, action=action))
+
+    result = re_mod.evaluate_election(
+        wants_old_regime=wants_old_regime,
+        has_business_income=has_business_income,
+        financial_year_end=fy_end_year(financial_year),
+        form_10iea_filed_on=filed_on,
+        is_audit=is_audit,
+        has_transfer_pricing_report=has_transfer_pricing_report,
+        prior_elections=prior_elections or None,
+        business_income_ceased=business_income_ceased,
+    )
+    return api_response(True, {
+        "financial_year": financial_year,
+        "regime": result.regime,
+        "route": result.route,
+        "form_10iea_required": result.form_10iea_required,
+        "due_date": result.due_date.isoformat() if result.due_date else None,
+        "election_is_available": result.election_is_available,
+        "history_unknown": result.history_unknown,
+        "reasons": list(result.reasons),
+    })
 
 
 @router.post("/hra/compute")

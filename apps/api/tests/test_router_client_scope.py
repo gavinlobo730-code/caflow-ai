@@ -1026,6 +1026,17 @@ EXEMPT: dict[str, str] = {
         "a statutory test, not data: no table, no client_id, and the same "
         "answer for the same figures. The turnover it is asked about is "
         "supplied by the caller, not read from a client.",
+    # §115BAC(6) with Rule 21AGA — which regime applies and what the CA must
+    # do to get there. `domain/income_tax/regime_election.py` held the rule
+    # with NO CALLER, which mattered because a missed Form 10-IEA taxes a
+    # client on the new regime for a year they planned around the old one and
+    # cannot be cured after the due date.
+    "/api/income-tax/regime-election":
+        "dates and a statutory test, not data: no table, no client_id, and "
+        "the same answer for the same facts. Whether there is business "
+        "income, and what was elected in earlier years, are INPUTS the caller "
+        "states — the product holds no filing history, which is why an "
+        "unsupplied history is answered as unknown rather than as available.",
     # ── /api/payroll: the firm's own reading of a state notification ────────
     # firm_pt_slabs has firm_id and NO client_id (migration 327), and that is
     # the whole point of it: professional tax is levied by the STATE, so the

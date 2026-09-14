@@ -1576,6 +1576,29 @@ change. The code is the authority; keep this file in step with it.
   questions in that order and refuses rather than guessing; §206AA's 20% no-PAN
   floor has a non-resident carve-out (§206AA(7) with Rule 37BC) residents do not
   get. Under-deducting disallows the WHOLE expenditure under §40(a)(i).
+- **§115BAC(6) WAS MODELLED AND NOTHING COULD ASK IT.**
+  `domain/income_tax/regime_election.py` has held both clauses with Rule 21AGA
+  since it was written and had **no production caller** — the only mention of
+  it outside its own file and tests was a COMMENT in
+  `domain/payroll/declarations.py`. Its own docstring says why that mattered:
+  *"A missed Form 10-IEA taxes a client on the new regime for a year they
+  planned around the old one, and it cannot be cured after the due date. A
+  withdrawal made without realising it is final closes an option worth lakhs
+  over a career. Neither failure is visible in the return — it computes
+  cleanly either way."* `GET /api/income-tax/regime-election` serves it and the
+  computation screen renders it **beside the regime picker**, because which
+  regime is CHEAPER is not the same question as what choosing it REQUIRES.
+  **A GET, deliberately** — it reads and writes nothing, and a POST would need
+  an entry on `test_write_requires_write_permission.py`'s compute-only
+  allowlist that every preview has to earn. The wire format for an earlier
+  year is `FY:action` (`2024-25:withdrew`), parsed in the ROUTER because the
+  format is the endpoint's business and the rule is not.
+  **PRIOR HISTORY IS AN INPUT AND SILENCE IS ITS OWN ANSWER.** The product
+  holds no filing history, so clause (i)'s once-only withdrawal cannot be
+  derived; supplying nothing is answered as `history_unknown`, which is a
+  DIFFERENT answer from "the option is available". Assuming availability is
+  the dangerous direction — it tells a CA the old regime is open when their
+  client spent it years ago.
 - **§192 withholding rests on THREE separate things, and conflating any two gets
   it wrong.** (1) The employee's regime INTIMATION to the employer — CBDT
   Circular 04/2023 — governs withholding only, and the same circular says
