@@ -8,6 +8,7 @@ import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
+import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -128,7 +129,7 @@ function rupees(paise: number) {
   return `₹${(paise / 100).toLocaleString("en-IN")}`;
 }
 
-type GSTTab = "dashboard" | "gstr1" | "amendments" | "gstr3b" | "itc" | "gstr2b" | "history" | "gstr9";
+type GSTTab = "dashboard" | "gstr1" | "amendments" | "gstr3b" | "itc" | "gstr2b" | "history" | "gstr9" | "registrations";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-[#F1F5F9] text-[#334155]",
@@ -2083,6 +2084,10 @@ const TABS: { id: GSTTab; label: string }[] = [
   { id: "gstr9", label: "GSTR-9" },
   { id: "gstr2b", label: "GSTR-2B Recon" },
   { id: "history", label: "Filing History" },
+  // GST-20. Last, because most clients hold one registration and never open
+  // it — but it is on THIS screen rather than the client record, because what
+  // it decides is which return is filed under which number.
+  { id: "registrations", label: "Registrations" },
 ];
 
 export default function GSTWorkspacePage() {
@@ -2124,6 +2129,7 @@ export default function GSTWorkspacePage() {
         {tab === "gstr2b" && <GSTR2BTab clientId={clientId} />}
         {tab === "history" && <FilingHistoryTab clientId={clientId} />}
         {tab === "gstr9" && <GSTR9Tab clientId={clientId} />}
+        {tab === "registrations" && <RegistrationsTab clientId={clientId} />}
       </div>
     </div>
   );

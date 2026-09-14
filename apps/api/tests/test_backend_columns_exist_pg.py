@@ -296,7 +296,16 @@ UNFIXED: dict[str, str] = {}
 # `test_a_recurring_bill_is_a_template_the_firm_owns.py` asserts the update's
 # field set is a SUBSET of the create INSERT's, whose columns ARE verified
 # against the real schema here.
-MAX_UNREADABLE = 449
+# 449 -> 450 (GST-20). `routers/gst_workspace._existing_return` takes the TABLE
+# as a parameter, because one implementation serves both `gstr1_returns` and
+# `gstr3b_returns` — and a dynamic table makes every filter on that chain
+# invisible here, one unreadable reference per call. Migration 390 narrowed both
+# tables' unique key to (client_id, period, gstin), so the lookup gained an
+# `.eq("gstin", wanted)`: the +1 is that filter. Splitting the function in two to
+# make it readable would put the "which return is already on file" rule in two
+# places, which is the larger risk. The registration service's own three went the
+# other way and were made LITERAL in the same commit rather than budgeted.
+MAX_UNREADABLE = 450
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

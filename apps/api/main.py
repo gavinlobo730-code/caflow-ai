@@ -84,6 +84,7 @@ from routers import recurring_invoices
 from routers import recurring_purchase_bills
 from routers import rcm_documents  # PUR-19 — s.31(3)(f) self-invoice, s.31(3)(g) payment voucher
 from routers import bills_of_entry  # PUR-18 — the customs assessment on an import of goods
+from routers import client_gst_registrations  # GST-20 — a client may hold several GSTINs
 from routers import recurring_journals
 from routers import compliance_ops
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
@@ -370,6 +371,7 @@ app.include_router(recurring_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_purchase_bills.router, dependencies=_CLIENT_GUARD)
 app.include_router(rcm_documents.router, dependencies=_CLIENT_GUARD)
 app.include_router(bills_of_entry.router, dependencies=_CLIENT_GUARD)
+app.include_router(client_gst_registrations.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_journals.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_ops.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_bills.router, dependencies=_CLIENT_GUARD)

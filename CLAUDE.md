@@ -389,6 +389,73 @@ change. The code is the authority; keep this file in step with it.
   most sources say the sub-section was omitted, one reads the Finance Act 2025
   as inserting a proviso that leaves the text in the Act and makes it
   inapplicable. Identical from 01-04-2025, different textually.
+- **A CLIENT IS ONE LEGAL PERSON AND MAY HOLD SEVERAL GSTINs, and until
+  migration 390 the return tables forbade it** (GST-20). CGST §25(1) requires
+  registration in EVERY State or Union territory a taxable supply is made from,
+  and §25(2)'s proviso allows a separate registration per place of business
+  within one state — so a depot, a second office, a warehouse-state e-commerce
+  registration are all the same legal person with several GSTINs and several
+  sets of returns. `clients.gstin` held exactly one, and **both
+  `gstr1_returns` and `gstr3b_returns` were `UNIQUE (client_id, period)`**, so a
+  second registration could not have had its own June GSTR-1 whatever the code
+  did; the CA's only route was a second fake "client" per GSTIN, which then
+  splits the ACCOUNTING of one entity across two ledgers and breaks every
+  client-scoped report. 390 narrows both keys to `(client_id, period, gstin)`.
+  `domain/gst/registrations.py` is the authority.
+  **`clients.gstin` IS NOT REPLACED and that is the part to read before
+  "tidying" it.** It stays the PRIMARY and remains the only place the primary is
+  stored; `client_gst_registrations` holds the ADDITIONAL ones ONLY, and
+  `all_registrations` presents the union. The obvious alternative — move every
+  registration into the table and leave `clients.gstin` as a cache — was
+  rejected because a cache needs ONE write path and that column already has
+  several (onboarding, the client edit screen, migration 073's seed), so it
+  would drift the first time somebody edited a client and surface as a return
+  filed under the wrong registration. **There is deliberately NO backfill**, for
+  the same reason.
+  **A GSTIN THE CLIENT DOES NOT HOLD IS REFUSED, NEVER DEFAULTED TO THE
+  PRIMARY** — in the domain module and again as a 422 in
+  `services/client_gst_registration_service.resolve` — because filing one
+  registration's return under another's number is the exact failure this
+  feature exists to prevent, and it is invisible until the portal rejects it or,
+  worse, accepts it. The PRIMARY COMES FIRST in the list for the mirror-image
+  reason: a screen opens on `[0]`, and that has to be the registration every
+  existing document already carries.
+  **The narrowed key made `_existing_return` load-bearing**: a save path still
+  matching on (client, period) alone now finds the OTHER registration's return
+  and revises it, silently replacing one state's figures with another's, so the
+  GSTIN is a required parameter there with no default.
+  ⚠️ **THE TWO `gstin` COLUMNS ARE NOT THE SAME SHAPE, and the difference
+  decides whether narrowing constrains anything.** `gstr1_returns.gstin` is NOT
+  NULL from migration 036; `gstr3b_returns.gstin` is NULLABLE, because 036's
+  CREATE TABLE omitted it and **migration 234 added it as a bare `TEXT`** with
+  nothing to back-fill from. Postgres treats NULLs as DISTINCT in a unique
+  index, so `(client_id, period, gstin)` enforces NOTHING on a row saved
+  without one — narrowing the key would have REMOVED what `UNIQUE (client_id,
+  period)` gave those rows rather than refining it. 390 closes it twice: it
+  **back-fills both tables' NULL gstin from `clients.gstin` BEFORE dropping the
+  old constraint** (that constraint guarantees at most one row per (client,
+  period), so the update cannot collide — and before 390 a client held exactly
+  one registration, so `clients.gstin` IS what such a row was prepared under: a
+  repair of 234's omission, not a guess), and keys both indexes on
+  **`coalesce(gstin, '')`**, which is a no-op on `gstr1_returns` today and is
+  written anyway because these two columns have already drifted apart once.
+  **No `SET NOT NULL`**: merging applies this to production with no review step
+  in front of it, and one unbackfillable row would abort the deploy and block
+  every later migration behind it.
+  **`files_gstr1_and_3b` exists so no caller tests the type by name** — a
+  composition dealer files CMP-08 and GSTR-4 under §10, an ISD files GSTR-6, a
+  §51 deductor GSTR-7 and a §52 operator GSTR-8, and `OTHER_RETURN_FORMS` holds
+  the sentence so the refusal names the form that registration actually owes
+  rather than saying only that this one is unavailable. An SEZ unit, an SEZ
+  developer, a casual and a non-resident taxable person DO file the ordinary
+  pair. **`state_code` is DERIVED from the GSTIN's first two characters**, never
+  taken from the caller (the column CHECKs `state_code = left(gstin, 2)`), and
+  the prefix is taken rather than `gstin.state_code` for `place_of_supply`'s
+  reason — the question is which state, not whether the check digit is right.
+  **Closing is not deleting**: §29 cancellation sets `effective_to`, because the
+  returns for every period the registration was live are still owed and the rows
+  already filed under it are keyed on its GSTIN; `withdraw` is for a
+  registration recorded in ERROR and is refused once any return exists under it.
 - **A PLACE OF SUPPLY HAS FOUR SOURCES AND ONE RESOLVER**, and the invoice
   declares the field TWICE. `domain/gst/place_of_supply.recipient_place_of_supply`
   is the chain — what the caller stated (CGST Rule 46(n) makes it the

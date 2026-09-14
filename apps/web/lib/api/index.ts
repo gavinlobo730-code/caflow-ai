@@ -1152,6 +1152,43 @@ export type BillOfEntryAuthorities = {
   not_modelled: string[];
 };
 
+// ── GST registrations ────────────────────────────────────────────────────────
+// A client is one legal person and may hold several GSTINs (GST-20, migration
+// 390). CGST Act s.25(1) makes registration state-wise and s.25(2) allows one
+// per place of business. The PRIMARY is the GSTIN on the client record; this
+// namespace manages the rest, and `domain/gst/registrations.py` presents the
+// union — so the list below always starts with the primary.
+
+export type ClientGstRegistration = {
+  /** Null on the PRIMARY: it is `clients.gstin` and has no registration row. */
+  id: string | null;
+  gstin: string;
+  state_code: string;
+  registration_type: string;
+  filing_frequency: string;
+  is_primary: boolean;
+  trade_name: string | null;
+  effective_from: string | null;
+  /** CGST Act s.29 cancellation or surrender. The periods it was live still
+   *  owe their returns, so a cancelled registration is closed, never hidden. */
+  effective_to: string | null;
+  label: string;
+  files_gstr1_and_3b: boolean;
+  /** Set when this registration owes a DIFFERENT form — a composition dealer
+   *  files CMP-08 and GSTR-4, an ISD files GSTR-6, and so on. Offering it a
+   *  GSTR-3B screen offers a return it must not file. */
+  other_return_form: string | null;
+};
+
+export type GstRegistrationKinds = {
+  registration_types: {
+    value: string;
+    files_gstr1_and_3b: boolean;
+    other_return_form: string | null;
+  }[];
+  filing_frequencies: string[];
+};
+
 export type Vendor = {
   id: string;
   client_id: string;
@@ -3758,6 +3795,37 @@ export const api = {
     update: (id: string, body: VendorWrite) =>
       request<ApiResp<Vendor>>(`/api/vendors/${id}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+  },
+
+  /** Which GST registrations a client holds (GST-20). */
+  clientGstRegistrations: {
+    kinds: () =>
+      request<ApiResp<GstRegistrationKinds>>("/api/client-gst-registrations/kinds"),
+    list: (clientId: string) =>
+      request<ApiResp<ClientGstRegistration[]>>(
+        `/api/client-gst-registrations?client_id=${encodeURIComponent(clientId)}`),
+    create: (body: {
+      client_id: string;
+      gstin: string;
+      registration_type?: string;
+      filing_frequency?: string;
+      trade_name?: string | null;
+      effective_from?: string | null;
+    }) => request<ApiResp<ClientGstRegistration>>("/api/client-gst-registrations",
+      { method: "POST", body: JSON.stringify(body) }),
+    /** Records a s.29 cancellation. NOT a delete — the returns for every period
+     *  the registration was live are still owed. */
+    close: (id: string, clientId: string, effectiveTo: string) =>
+      request<ApiResp<ClientGstRegistration>>(
+        `/api/client-gst-registrations/${id}/close`,
+        { method: "POST",
+          body: JSON.stringify({ client_id: clientId, effective_to: effectiveTo }) }),
+    /** For a registration recorded in ERROR. The server refuses once a return
+     *  has been prepared under it. */
+    remove: (id: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/client-gst-registrations/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
   },
 
   /** The customs assessment on an import of goods (PUR-18).

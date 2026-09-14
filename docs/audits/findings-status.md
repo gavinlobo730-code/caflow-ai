@@ -7,27 +7,26 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **95** | re-read against the code. The defect is gone. |
+| closed | **96** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | partial | **8** | part of the finding is answered, part is not. Each says which. |
-| open | **12** | re-read and still true. |
+| open | **11** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 20 items — 12 open and 8 partial — not 254.**
+**The work left is 19 items — 11 open and 8 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 12 open, most are not code problems.** Nearly every one needs a
+**And of the 11 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
 
 | severity | finding | what it is |
 |---|---|---|
-| high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
@@ -44,7 +43,6 @@ migration; a handful need a statutory document a person has to read.
 
 | finding | what actually blocks it |
 |---|---|
-| **GST-20** | a registrations table; clients.gstin is singular today |
 | **FA-11** | a migration per item. One hazard the finding does not name: a shift multiplier folded into wdv_rate_percent would make schedule_ii_departure report every double-shift asset as a Part C departure, so it must be its own column |
 | **GST-25** | schema per return type |
 | **GST-32** | the IRP schema, and the 30-day reporting-window rule |
@@ -114,6 +112,7 @@ migration; a handful need a statutory document a person has to read.
 | high | **FA-08** | Disposal does not charge depreciation up to the disposal date, so the gain/loss on every mid-yea |
 | high | **GST-08** | GSTR-1 Table 7 (B2CS) uses a blended rate inferred from the whole invoice, producing rates that  |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
+| high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **IT-14** | Holding period is counted in whole calendar months rather than days, so a holding one day short  |
 | high | **IT-15** | The ITR deadline tracker conflates assessment year with financial year — the period it stores an |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
