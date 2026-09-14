@@ -5,6 +5,8 @@ CGST §8: CGST+SGST (intra-state), IGST (inter-state).
 All monetary values in integer paise.
 """
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+from domain.gst import uqc as _uqc
 from typing import Optional, Any
 from decimal import Decimal
 
@@ -123,9 +125,12 @@ class InvoiceLineIn(BaseModel):
         # un-editable for any unrelated field change. The dropdown (new UI)
         # only offers valid UQC codes, so new data is compliant by construction —
         # this validator just normalizes case/whitespace for whatever comes in.
-        if v is None or v == "":
-            return None
-        return v.strip().upper()
+        # Delegates to `domain/gst/uqc.normalise` — the authority this
+        # validator used to name in a COMMENT and never import. Same
+        # answer as the respelling it replaces (case, whitespace, and
+        # empty reads as absent); asking means a later change to what
+        # normalising means happens in one place.
+        return _uqc.normalise(v)
 
     # model_validator (not field_validator) — Pydantic v2 skips field_validator
     # on a field that was simply omitted (uses its `= None` default) unless
@@ -496,9 +501,12 @@ class PurchaseBillLineIn(BaseModel):
     def normalize_unit(cls, v: Optional[str]) -> Optional[str]:
         # Same lenient normalize-only rule as InvoiceLineIn.unit — see that
         # validator's comment for why values are never rejected.
-        if v is None or v == "":
-            return None
-        return v.strip().upper()
+        # Delegates to `domain/gst/uqc.normalise` — the authority this
+        # validator used to name in a COMMENT and never import. Same
+        # answer as the respelling it replaces (case, whitespace, and
+        # empty reads as absent); asking means a later change to what
+        # normalising means happens in one place.
+        return _uqc.normalise(v)
 
     # See InvoiceLineIn.require_service_catalogue_id — model_validator, not
     # field_validator, for the same "must fire even when the field is

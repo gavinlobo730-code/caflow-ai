@@ -98,7 +98,17 @@ and an "API" tab) and bring back:
    Validations" or similar. This is what tells me which combinations the IRP
    rejects, and it is the difference between a builder that works and one that
    produces files the portal refuses.
-4. **The 30-day reporting-window advisory.** My understanding is that
+4. **One question I need answered off the Table 12 / HSN summary rules**, and
+   it applies to GSTR-1 as much as to the e-invoice: **may Table 12 carry more
+   than one row for the same HSN under different Unit Quantity Codes?**
+   A client who sells the same HSN in boxes and in pieces has quantities that
+   cannot be added, and the product currently sums them and reports whichever
+   unit it saw first — which is a quantity of neither. It now **says so** on
+   the return rather than filing it silently, and the aggregation is left
+   alone deliberately, because changing what is filed on a guess about the
+   schema is the one thing worse than the current behaviour. If two rows are
+   allowed, this becomes a real fix rather than a warning.
+5. **The 30-day reporting-window advisory.** My understanding is that
    taxpayers above a turnover threshold must report an invoice to the IRP
    within 30 days of its date, and that the threshold was lowered at some
    point. **I do not trust my own version of this** — I need the advisory

@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import Optional, Sequence
 
+from . import uqc
 from .classifier import B2B_SECTION_CATEGORIES, GSTInvoiceCategory
 
 
@@ -198,7 +199,7 @@ def build_gstr1(
     if exp:
         payload["exp"] = exp
 
-    hsn = _build_hsn_summary(invoices, aggregate_turnover_paise)
+    hsn, hsn_uqc_gaps = _hsn_summary_and_gaps(invoices, aggregate_turnover_paise)
     if hsn:
         payload["hsn"] = {"data": hsn}
 
@@ -208,6 +209,11 @@ def build_gstr1(
 
     # ── What is NOT in the payload, said out loud ───────────────────────────
     gaps: list[dict] = []
+    # Table 12's units, gathered on the same walk that built its rows. These
+    # are reported even though the row IS filed, because what is wrong with it
+    # is invisible in the figure: "15" reads as a quantity whether or not it
+    # added boxes to pieces.
+    gaps.extend(hsn_uqc_gaps)
     for inv in b2b_invoices:
         if inv.gst_invoice_category is GSTInvoiceCategory.B2B or inv.party_gstin:
             continue
@@ -719,10 +725,33 @@ def _required_hsn_digits(turnover_paise: int) -> int:
 
 
 def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int) -> list[dict]:
-    """Aggregate line items by HSN/SAC code for Table 12."""
+    """Aggregate line items by HSN/SAC code for Table 12.
+
+    The rows only. `_hsn_summary_and_gaps` is the one walk; this wrapper is
+    kept because three test modules call it and because a caller that wants
+    only the rows should not have to unpack a tuple.
+    """
+    return _hsn_summary_and_gaps(invoices, turnover_paise)[0]
+
+
+def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
+                          turnover_paise: int) -> tuple[list[dict], list[dict]]:
+    """Table 12's rows AND what is wrong with the units they are built from.
+
+    ONE WALK, deliberately. The gaps must be about exactly the lines that FEED
+    a row: a line with no HSN code is skipped below and is not declared here at
+    all, so reporting its unit would send a CA to fix a line this table does
+    not carry. A second pass over the same invoices is a second definition of
+    "in scope" and the two would drift.
+    """
     required_digits = _required_hsn_digits(turnover_paise)
 
     by_hsn: dict[str, dict] = {}
+    # Per HSN: every unit seen, and the invoice each was seen on. Table 12
+    # carries ONE uqc per row, so a group whose units differ cannot be
+    # declared without losing a unit — see `uqc.one_unit_for`.
+    units_seen: dict[str, list[tuple[str, Optional[str]]]] = {}
+    uqc_gaps: list[dict] = []
     for inv in invoices:
         # Notes NET against the summary rather than being skipped (task #166).
         #
@@ -753,6 +782,8 @@ def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int)
                         "samt": 0,
                         "csamt": 0,
                     }
+                units_seen.setdefault(code, []).append(
+                    (inv.reference_no, line.unit))
                 by_hsn[code]["qty"] += sign * line.quantity
                 by_hsn[code]["txval"] += sign * line.taxable_paise
                 by_hsn[code]["iamt"] += sign * line.igst_paise
@@ -771,7 +802,57 @@ def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int)
             by_hsn[code]["samt"] += sign * inv.sgst_paise
             by_hsn[code]["csamt"] += sign * inv.cess_paise
 
-    return [
+    # ── WHAT THE UNITS ON THOSE LINES ARE WRONG ABOUT ──────────────────────
+    #
+    # REPORTED, NEVER REFUSED, and never substituted. Three reasons, and each
+    # is the same reason recorded elsewhere for the same shape of decision:
+    #
+    #   * A product or an invoice line may carry a pre-dropdown free-text unit
+    #     (the API normalisers say so), and refusing the build would make that
+    #     row un-editable for any unrelated change.
+    #   * GST-29's split: the client's OWN GSTIN is a hard refusal because the
+    #     return is filed under it, while a COUNTERPARTY's is reported —
+    #     refusing a whole build for one wrong line is how a CA learns to skip
+    #     the validator. A unit is a fact on a line, not the identity the
+    #     return is filed under.
+    #   * The UQC carries no tax. Table 12's qty and uqc do not move a rupee of
+    #     the liability, so the cost of reporting is a sentence and the cost of
+    #     guessing is a return that says something untrue about what was
+    #     supplied.
+    for code in by_hsn:
+        seen = units_seen.get(code, [])
+        for reference_no, unit in seen:
+            problem = uqc.problem_with(unit)
+            if problem is None:
+                continue
+            uqc_gaps.append({
+                "kind": (uqc.GAP_UQC_NOT_RECORDED if uqc.normalise(unit) is None
+                         else uqc.GAP_UQC_NOT_A_CODE),
+                "reference_no": reference_no,
+                "hsn_sc": code,
+                "reason": (
+                    f"HSN {code}: {problem} Table 12 files the unit exactly as "
+                    f"recorded, so correct it on the invoice line or on the "
+                    f"product in the catalogue."),
+            })
+        mixed = uqc.one_unit_for(u for _, u in seen)
+        if mixed:
+            refs = sorted({r for r, u in seen if uqc.normalise(u) in mixed})
+            uqc_gaps.append({
+                "kind": uqc.GAP_UQC_MIXED_FOR_ONE_HSN,
+                "reference_no": ", ".join(refs),
+                "hsn_sc": code,
+                "reason": (
+                    f"HSN {code} was supplied in more than one unit this "
+                    f"period ({', '.join(mixed)}), and Table 12 carries ONE "
+                    f"unit per HSN. The quantity below is their arithmetic "
+                    f"sum, which is not a quantity of either — "
+                    f"{mixed[0]} is reported because it was seen first. "
+                    f"Record one unit for this HSN, or convert the quantities "
+                    f"to a common one, before filing."),
+            })
+
+    rows = [
         {
             "num": idx,
             "hsn_sc": code,
@@ -793,6 +874,7 @@ def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int)
         }
         for idx, (code, data) in enumerate(by_hsn.items(), start=1)
     ]
+    return rows, uqc_gaps
 
 
 # ── Table 13: Documents Issued Summary ───────────────────────────────────────

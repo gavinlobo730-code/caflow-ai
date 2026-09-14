@@ -1470,6 +1470,55 @@ change. The code is the authority; keep this file in step with it.
   not restart each April** — the client-wide unique index would reject the
   collision — so the sequence keeps climbing, and that falls out of matching on the
   series head rather than being special-cased.
+- **A UNIT QUANTITY CODE IS A CODE, NOT A WORD, and the one module that knew
+  which codes exist had ZERO IMPORTERS.** `models/uqc.py` held CBIC's fixed
+  44-code list and named, in its own docstring, every place it was meant to be
+  used; three validators cited `VALID_UQC_CODES` in their COMMENTS and none
+  imported it. So `gstr1_builder` put `line.unit` straight into Table 12's
+  `uqc` and three things reached a return unremarked: **`'PIECES'`** where the
+  code is `PCS`, **`None`** — a JSON null where the schema wants a string — and
+  **10 BOX + 5 PCS summed to 15 and filed as BOX**, a quantity that is not a
+  quantity of either. The same `public.tds_section_limits` shape: a module
+  whose name reads like the authority and which nothing reads.
+  `domain/gst/uqc.py` is the authority now, with the RULE over the list —
+  `problem_with` is shaped like `gstin.problem_with` deliberately, one shape
+  for "what is wrong with this identifier". It moved out of `models/` because
+  that is the API boundary and a domain module importing from it is the wrong
+  direction, the same reasoning that moved Schedule II Part C out of
+  `routers/fixed_assets.py`; `models/uqc.py` re-exports.
+  **NOTHING REFUSES, AND THAT IS GST-29's SPLIT APPLIED TO A DIFFERENT
+  IDENTIFIER.** The carve-out the old validators recorded is still right — a
+  product or a line may carry a pre-dropdown free-text unit (`HRS` for service
+  hours), and refusing at the API boundary would make that row un-editable for
+  any unrelated change. What was wrong was the conclusion drawn from it, *"the
+  dropdown only offers valid UQC codes, so new data is compliant by
+  construction"*, which is a claim about EVERY write door — and this codebase
+  has found that claim false twice already. So the document is never refused
+  and the RETURN reports, as `payload_gaps`, which the GSTR-1 screen already
+  renders. The three answers are **NOT interchangeable** and a test says so:
+  an absent unit cites Rule 46(h), a wrong one names the code it probably
+  meant (`closest_code` is a suggestion and never a substitution, matched on
+  the LABEL rather than by edit distance, which would pair `TON` with `TUB`),
+  and a mixture names both units and says the quantity below is their sum.
+  **THE FILED FIGURE IS NOT CHANGED.** Whether Table 12 may carry two rows for
+  one HSN under different UQCs could not be checked — every `.gov.in` is
+  refused at this environment's proxy — so the mixed case is REPORTED and the
+  aggregation left alone, the `interest_on_rule_37_reversal` discipline: state
+  the open question rather than answer it from memory. The real fix is the
+  CA's anyway, since one HSN should have one unit.
+  **ALL SIX DOORS ASK THE AUTHORITY** — `ServiceCatalogueIn`/`UpdateIn`,
+  `InvoiceLineIn`, `PurchaseBillLineIn`, `FirmHsnLibraryIn`/`UpdateIn` — and
+  the last pair had **no validator at all**, which mattered most because
+  `routers/hsn.py` serves that `uqc` as a HINT that pre-fills an invoice line,
+  so a value typed there propagates. The guard derives the door list from the
+  AST and checks PER CLASS, because a module-level walk passes when only one of
+  a create/PATCH pair is guarded. **`apps/web/lib/constants/uqc.ts` is the
+  keystroke mirror** — seven editors render their dropdown from it — pinned
+  from the PYTHON side, the Schedule III caption lesson: a guard in `apps/web`
+  asserting the browser against a copy of itself passes whenever both drift
+  together. There is deliberately **no endpoint**: a 44-entry constant that
+  moves by CBIC notification would be a Singapore-to-Mumbai round trip, and the
+  parity test already prevents the drift an endpoint would.
 - **§34(2)'s window is measured from the ORIGINAL SUPPLY's financial year, not the
   note's own period, and the two diverge constantly.** A June 2025 invoice credited
   in January 2027 sits in a wide-open period — January 2027's GSTR-1 is not filed —

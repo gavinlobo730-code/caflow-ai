@@ -13,6 +13,8 @@ from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
+from domain.gst import uqc as _uqc
+
 _CODE_RE = re.compile(r"^\d{2,8}$")
 
 
@@ -24,6 +26,20 @@ class FirmHsnLibraryIn(BaseModel):
     uqc: Optional[str] = None
     notes: Optional[str] = None
     source: str = "manual"                        # 'manual' | 'import'
+
+    @field_validator("uqc")
+    @classmethod
+    def normalize_uqc(cls, v):
+        """Case and whitespace only — this door had NO validator at all.
+
+        The HSN library's `uqc` is served by `routers/hsn.py` as a HINT that
+        pre-fills an invoice line's unit, so a value typed here propagates
+        onto every document for that HSN. Normalising is not a refusal: an
+        entry that is not a Unit Quantity Code is still accepted and is
+        reported by the GSTR-1 build, for the reason `domain/gst/uqc.py`
+        records — a row the CA already has must stay editable.
+        """
+        return _uqc.normalise(v)
 
     @field_validator("hsn_code")
     @classmethod
@@ -74,6 +90,20 @@ class FirmHsnLibraryUpdateIn(BaseModel):
     uqc: Optional[str] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("uqc")
+    @classmethod
+    def normalize_uqc(cls, v):
+        """Case and whitespace only — this door had NO validator at all.
+
+        The HSN library's `uqc` is served by `routers/hsn.py` as a HINT that
+        pre-fills an invoice line's unit, so a value typed here propagates
+        onto every document for that HSN. Normalising is not a refusal: an
+        entry that is not a Unit Quantity Code is still accepted and is
+        reported by the GSTR-1 build, for the reason `domain/gst/uqc.py`
+        records — a row the CA already has must stay editable.
+        """
+        return _uqc.normalise(v)
 
     @field_validator("description")
     @classmethod
