@@ -1167,6 +1167,46 @@ export type BillOfEntryAuthorities = {
 // breakup of the balance, not a second posting of it, so the two have to agree
 // and the difference is NAMED where they do not.
 
+// ── GSTR-9, consolidated from the year's own returns (GST-10) ───────────────
+// CGST Act s.44 with Rule 80(1): the annual return consolidates the financial
+// year's GSTR-1 and GSTR-3B, and the portal opens it once every one of them is
+// furnished. `domain/gst/gstr9_builder.py` decides which figure belongs on
+// which row and which rows it could not derive; this carries shapes only.
+
+export type GSTR9Row = {
+  code: string;
+  label: string;
+  txval_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  cess_paise: number;
+  /** Set where the figure could not be derived. A row with a note is NOT a
+   *  declaration of nil — on an annual return a nil says nothing was owed. */
+  note?: string;
+};
+
+export type GSTR9Working = {
+  financial_year: string;
+  gstin: string;
+  tables: Record<string, GSTR9Row[]>;
+  hsn: {
+    hsn_sc: string; desc: string | null; uqc: string | null; qty: number;
+    txval_paise: number; igst_paise: number; cgst_paise: number;
+    sgst_paise: number; cess_paise: number;
+  }[];
+  months: {
+    period: string; gstr1_status: string | null; gstr3b_status: string | null;
+    gstr1_payload_held: boolean;
+  }[];
+  gaps: string[];
+  /** True only when every month of the year has BOTH returns filed — the
+   *  condition the portal opens FORM GSTR-9 on. */
+  is_complete: boolean;
+  not_built: Record<string, string>;
+  source: string;
+};
+
 export type OpeningDocument = {
   id: string;
   kind: "receivable" | "payable";
@@ -3875,6 +3915,16 @@ export const api = {
     update: (id: string, body: VendorWrite) =>
       request<ApiResp<Vendor>>(`/api/vendors/${id}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+  },
+
+  /** The annual return's working (GST-10). */
+  gstr9: {
+    compute: (clientId: string, financialYear: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId,
+                                      financial_year: financialYear });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<GSTR9Working>>(`/api/gst-workspace/gstr9/compute?${q}`);
+    },
   },
 
   /** The bill-wise breakup of a client's opening balances (ACC-14). */

@@ -986,6 +986,70 @@ change. The code is the authority; keep this file in step with it.
   assumed nil. `GET /api/fixed-assets/{id}/disposal-preview` writes nothing and
   runs the same module, so what the CA is shown before confirming is what gets
   posted.
+- **THE ANNUAL RETURN CONSOLIDATES THE YEAR'S OWN RETURNS, AND NOTHING ADDED
+  THEM UP** (GST-10). CGST §44 with Rule 80(1): GSTR-9 consolidates the
+  financial year's GSTR-1 and GSTR-3B, and the portal opens it once every one
+  of them is furnished and auto-populates from them. The GSTR-9 tab loaded a
+  saved draft and **nothing created one** — every figure was already in the
+  product and nothing totalled them. `domain/gst/gstr9_builder.py` is the
+  authority for Tables 4, 5, 6, 7, 8, 9 and 17; `services/gstr9_service.py`
+  fetches; `GET /api/gst-workspace/gstr9/compute` serves; the screen decides
+  nothing, saves nothing and files nothing.
+  **IT READS `payload_json`, NOT `gstr3b_returns`' OWN PER-HEAD PAISE COLUMNS.**
+  Migration 036 declared them and **`save_gstr3b` has never written one** — it
+  stores `tax_liability_paise`, `itc_claimed_paise`, `net_tax_paise`,
+  `rcm_cash_paise`, `cash_payable_paise` and the two JSON blobs, and every other
+  column keeps its `DEFAULT 0`. Reading them would give a confident nil for
+  every month of every client, which is the worst possible answer on an annual
+  return. Twenty-four header rows and their payloads for a year — proportional
+  to the ANSWER.
+  **A STORED RUPEE FIGURE COMES BACK THROUGH `Decimal(str(v))`, NEVER
+  `int(v * 100)`.** GSTR-1's payload is 2-decimal rupees and GSTR-3B's is whole
+  rupees, and in binary floating point `0.29 * 100` is 28.999999999999996 — a
+  paisa lost, on some values only, twelve months over, on a return that has to
+  foot. That is not a precision loss overall: the annual return consolidates
+  what was DECLARED, and what was declared was those rupees.
+  **TABLE 4(A)'s FIVE ROWS ARE TABLE 6's ROWS.** GST-24 split imports of
+  services out of the domestic reverse-charge line and PUR-18 gave imports of
+  goods a document, so IMPG→6E, IMPS→6F, ISRC→6C+6D and OTH→6B are already told
+  apart in the return being consolidated; there is nothing to apportion. And
+  the `b2b` section carries Tables **4B, 4D, 4E and 5B** at once, told apart
+  only by `inv_typ` — a test reads `gstr1_builder._INV_TYP` so a value added
+  there without a home here fails rather than falling into 4B and declaring a
+  deemed export as an ordinary B2B supply.
+  **TABLE 7 IS THE ONE GSTR-3B CANNOT ANSWER.** Its Table 4(B) has two boxes,
+  permanent and reclaimable, and Rules 38, 42, 43 and §17(5) share one;
+  `itc_reversal_register` records the statutory GROUND (migration 362), which
+  is exactly what Table 7 asks for. A ground with no row is NAMED and kept OUT
+  of the total rather than folded into "other reversals". **The year is
+  selected by `period`, the register's own MMYYYY of the GSTR-3B the row was
+  declared in** — there is no reversal DATE column, and §44 with Rule 80(1)
+  consolidates the returns FURNISHED for the year, so the period is the right
+  key as well as the only one. `.in_` over the twelve named periods and never
+  a range: MMYYYY is TEXT, so `'042025' > '032026'` and a `gte`/`lte` would
+  drop the first nine months of every year and keep three belonging to the
+  next. The first draft filtered on an invented `reversal_date` and the mock
+  suite agreed, because the FIXTURE invented it too — which is why that test
+  module now asserts every fixture key against the production snapshot.
+  **A NIL ON AN ANNUAL RETURN DECLARES THAT NOTHING WAS OWED, so a row nobody
+  can derive carries a NOTE and renders as a dash.** Six are refused and named:
+  Table **6B's three-way split** (inputs / capital goods / input services — no
+  column records it and it is a judgement about USE; the TOTAL is derived, only
+  the apportionment is not), **6C against 6D** (recorded on
+  `vendors.gst_registration_status` but not carried by the monthly 3B being
+  consolidated), **Rule 39 / 6G** (no ISD invoice is modelled), **TRAN-I and
+  TRAN-II**, **8C** (a fact about the NEXT year's returns), and **8A** (the
+  portal auto-populates it; totalling a year of `gstr2a_records` is a read
+  proportional to transaction volume for a four-number answer — a stored
+  per-period total is the right next step and is a migration). **A month FILED
+  but whose payload this product never held** is named too: its tax is in the
+  3B row and its Table 4 breakdown is not.
+  **Tables 10–14, 15, 16, 18 and 19 are NOT built and each says why** —
+  §47's late-fee rates are deliberately EMPTY in `domain/gst/late_filing.py`,
+  so Table 19 must not invent one. ⚠️ The FORM's own numbering and row labels
+  are `[S]`, written from knowledge because every `.gov.in` is refused at this
+  environment's proxy; the FIGURES are not affected, each being a total of
+  figures this product computed and the CA filed.
 - **GSTR-3B Table 3.1(a) carries GSTR-1 TABLE 11, and the ledger cannot.**
   §13(2) puts the time of supply for SERVICES at the earlier of invoice or
   payment, so tax on an advance received for services falls due on receipt,

@@ -1013,6 +1013,47 @@ class GSTR9In(BaseModel):
     total_tax_paise: int = 0
 
 
+@router.get("/gstr9/compute")
+def compute_gstr9(
+    client_id: str = Query(...),
+    # `Annotated[...]`, NOT `FYLabel = Query(...)`: FastAPI builds the field
+    # from `Query()` in the default position and DISCARDS the Annotated
+    # metadata carrying the validator, silently (CLAUDE.md). `2026-28` would
+    # then reach `gstr9_fy_periods` and mean 2026-27.
+    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    gstin: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """The annual return's working, consolidated from the year's own returns.
+
+    CGST Act s.44 with Rule 80(1): the annual return consolidates the financial
+    year's GSTR-1 and GSTR-3B, and the portal opens FORM GSTR-9 once every one
+    of them is furnished. So this reads twenty-four header rows and their stored
+    payloads — never a year of transactions — and says which months are
+    outstanding rather than presenting eleven months as twelve.
+
+    `gstin` selects the REGISTRATION (GST-20): a client may hold several, each
+    files its own annual return, and omitting it means the primary.
+
+    Writes nothing and transmits nothing.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"financial_year": financial_year,
+                                   "tables": {}, "hsn": [], "months": [],
+                                   "gaps": [], "is_complete": False})
+    from core.supabase_client import get_supabase
+    from services import client_gst_registration_service as regs
+    from services import gstr9_service
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    registration = regs.resolve(db, firm_id, client_id, gstin)
+    return api_response(True, gstr9_service.build(
+        db, firm_id, client_id, financial_year=financial_year,
+        gstin=registration.gstin))
+
+
 @router.post("/gstr9")
 def save_gstr9(
     data: GSTR9In,

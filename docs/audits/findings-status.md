@@ -7,15 +7,15 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **97** | re-read against the code. The defect is gone. |
+| closed | **98** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **7** | part of the finding is answered, part is not. Each says which. |
+| partial | **6** | part of the finding is answered, part is not. Each says which. |
 | open | **11** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 18 items — 11 open and 7 partial — not 254.**
+**The work left is 17 items — 11 open and 6 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -58,7 +58,6 @@ migration; a handful need a statutory document a person has to read.
 
 | severity | finding | what it is |
 |---|---|---|
-| high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
@@ -110,6 +109,7 @@ migration; a handful need a statutory document a person has to read.
 | high | **FA-03** | The Depreciation tab recomputes the annual charge in TypeScript with the exact bug the backend f |
 | high | **FA-08** | Disposal does not charge depreciation up to the disposal date, so the gain/loss on every mid-yea |
 | high | **GST-08** | GSTR-1 Table 7 (B2CS) uses a blended rate inferred from the whole invoice, producing rates that  |
+| high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **IT-14** | Holding period is counted in whole calendar months rather than days, so a holding one day short  |

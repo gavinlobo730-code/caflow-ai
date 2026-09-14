@@ -10,6 +10,7 @@ import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
 import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
+import GSTR9Working from "@/components/gst/GSTR9Working";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -2056,6 +2057,11 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
           )}
         </div>
       )}
+
+      {/* The consolidation itself (GST-10). Offered whether or not a draft has
+          been saved: the point is to produce the figures, and until GST-10 the
+          tab could only ever show a draft nothing created. */}
+      <GSTR9Working clientId={clientId} financialYear={fy} />
     </div>
   );
 }
