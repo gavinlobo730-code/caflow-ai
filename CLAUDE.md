@@ -1899,6 +1899,38 @@ PostgREST. That is why:
   RLS is genuinely enforced on the API path too.
 - RBAC: `Partner > Manager > Executive > Reviewer > Client`
   (`core/permissions.py`, applied as `rbac(resource, action)`).
+- **THERE ARE THREE PRINCIPALS AND ONLY ONE OF THEM IS STAFF.** `rbac()` decides
+  a staff request; `core/portal_auth.get_current_portal_client` is the CLIENT
+  principal (a real Supabase JWT, no staff `users` row, no RBAC role); and
+  `get_current_portal_employee` is the EMPLOYEE one (PAY-26). All three are
+  authenticated — an employee has held a Supabase identity since migration 262,
+  `payroll_employees.auth_user_id` with `portal_enabled`, which is exactly what
+  that migration's RLS reads. What did not exist was any way for the API to
+  RESOLVE one, so everything the product COMPUTES was unreachable to an employee
+  however well it worked for the CA: the §192 projection answers off
+  `_compute_slip`, the run's own engine, and it is precisely the working an
+  employee asks their employer for in January.
+  **THE EMPLOYEE PRINCIPAL IS DELIBERATELY NARROWER THAN THE CLIENT ONE** (owner
+  decision, 14-09-2026): **read-only**, **self-scoped** and with **no client
+  switcher**. The self-scoping is what makes it safe and it is STRUCTURAL rather
+  than checked — no endpoint in `routers/portal_employee.py` takes an
+  `employee_id` or a `client_id`, so there is no parameter to tamper with, and a
+  test asserts that on the SIGNATURE so an id added later fails rather than
+  becoming a way in. `portal_enabled` is asked SEPARATELY from `auth_user_id`
+  because they are two different facts — `revoke_employee_portal` clears the
+  second and may leave the first, so a check on the binding alone keeps a
+  revoked employee signed in — and the refusal is one generic 403 for every
+  cause, the oracle `employee_portal_service` raises one generic 404 to avoid.
+  **`"PortalEmployee"` IS NOT AN RBAC ROLE**: `PERMISSIONS` has no entry for it,
+  so `rbac()` denies it everywhere, which is correct and is why no endpoint may
+  carry both. **The computation is the payroll module's** —
+  `routers/payroll.compute_tds_projection`, called by both doors, which answer
+  differently only about WHO may ask (200 with `success: false` for staff, 403
+  for an employee whose own principal no longer matches a live row). A second
+  withholding engine for the employee's side of the screen is exactly what
+  PAY-10 deleted. **There is deliberately no `/me`**: the portal already reads
+  its own `payroll_employees` row over PostgREST, and the reachability ratchet
+  named the duplicate on the first run.
 - **ACCESS IS BY ROLE, AND THERE IS NO PER-MEMBER OVERRIDE.** `rbac()` decides
   every request from the role alone. The Team screen used to render a "Module
   Access Matrix" of per-member toggles headed *"Changes are saved instantly.

@@ -6029,7 +6029,46 @@ def tds_projection(
     financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
     current_user: dict = Depends(rbac("payroll", "read")),
 ):
+    """The STAFF door onto one employee's §192 projection.
+
+    The computation itself is `compute_tds_projection` below, because an
+    employee may now ask for their own through `routers/portal_employee.py`
+    (PAY-26) and two implementations of a withholding figure is the thing this
+    endpoint exists to have undone once already. This door decides only WHO may
+    ask: rbac, then the caller's assignment scope.
+    """
+    assert_client_access(current_user, client_id)
+    try:
+        return api_response(True, compute_tds_projection(
+            _db(), firm_id=current_user["firm_id"], client_id=client_id,
+            employee_id=employee_id, fy=financial_year))
+    except EmployeeNotFound:
+        # This door has answered 200 with success=false since it was written
+        # and a screen checks `res.success`; the employee door answers 403 for
+        # the same condition, because there the id came from the principal and
+        # a miss means the principal is wrong, not the request.
+        return api_response(False, None, "Employee not found")
+
+
+class EmployeeNotFound(Exception):
+    """No such employee under this firm and client.
+
+    Its own exception rather than a return value, because the two doors owe
+    DIFFERENT answers — 200/success=false for staff, 403 for an employee — and
+    a sentinel return is one `if` away from being read as a real projection of
+    zero.
+    """
+
+
+def compute_tds_projection(db, *, firm_id: str, client_id: str,
+                           employee_id: str, fy: str) -> dict:
     """One employee's §192 withholding for a financial year, month by month.
+
+    NO AUTHORISATION HAPPENS HERE and that is deliberate: this function is
+    reached by a staff caller who has passed rbac and an assignment check, and
+    by an employee resolved to their OWN ids by `get_current_portal_employee`.
+    Putting a check inside would have to know which, and a function that asks
+    "who is this?" from ids alone is the shape that gets it wrong.
 
     THIS EXISTS BECAUSE THE FRONTEND WAS COMPUTING IT (PAY-10), and the copy
     it replaces is the same story /statutory-position tells one screen over.
@@ -6066,24 +6105,22 @@ def tds_projection(
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
-    assert_client_access(current_user, client_id)
-    firm_id = current_user["firm_id"]
-    fy = financial_year
-
-    db = _db()
     if not db:
-        return api_response(True, {
+        return {
             "financial_year": fy, "employee_id": employee_id,
             "months": [], "estimated_annual_tds_paise": 0,
             "deducted_so_far_paise": 0, "months_paid": 0,
             "projected_monthly_paise": 0, "gaps": [],
-        })
+        }
 
+    # BOTH ids, always. The employee door supplies them from the resolved
+    # principal, so this triple is what makes an employee unable to read
+    # another client's row even if their own client_id were ever wrong.
     emps = (db.table("payroll_employees").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("id", employee_id).execute().data) or []
     if not emps:
-        return api_response(False, None, "Employee not found")
+        raise EmployeeNotFound(employee_id)
 
     months = [f"{y:04d}-{m:02d}" for y, m in fy_months(fy)]
     gaps: list[str] = []
@@ -6172,7 +6209,7 @@ def tds_projection(
         })
 
     remaining = sum(1 for r in rows if not r["actual"])
-    return api_response(True, {
+    return {
         "financial_year": fy,
         "employee_id": employee_id,
         "months": rows,
@@ -6186,7 +6223,7 @@ def tds_projection(
         "estimated_annual_tds_paise": deducted + projected_monthly * remaining,
         "estimated_annual_gross_paise": sum(r["gross_paise"] for r in rows),
         "gaps": gaps,
-    })
+    }
 
 
 @router.get("/statutory-position")

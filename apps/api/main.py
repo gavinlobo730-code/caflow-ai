@@ -115,7 +115,7 @@ from routers.ai_copilot_v2 import router as ai_copilot_v2_router
 from routers.memory_intelligence import router as memory_intelligence_router
 # Client Portal
 from routers.portal import router as portal_router
-from routers import portal_access, portal_self, portal_data
+from routers import portal_access, portal_self, portal_data, portal_employee
 # Phase 4.6 — Online Payments (links + public gateway webhook)
 from routers import payments
 
@@ -435,6 +435,9 @@ app.include_router(portal_self.router)
 # Phase 4.5.2 — client-facing portal data surfaces (invoices, canonical dues,
 # statements, reminders, compliance). Client-authenticated; NOT behind _CLIENT_GUARD.
 app.include_router(portal_data.router)
+# The employee-facing API (PAY-26). Read-only and self-scoped — its principal
+# is core.portal_auth.get_current_portal_employee, not rbac().
+app.include_router(portal_employee.router)
 # Phase 4.6 — Online Payments. Staff endpoints carry their own accounting rbac;
 # the gateway webhook is public (signature-verified). NOT behind _CLIENT_GUARD.
 app.include_router(payments.router)
