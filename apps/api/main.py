@@ -94,6 +94,7 @@ from routers import purchase_bills, purchase_payments, document_intelligence_v1
 from routers import party_credits
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
 from routers import payroll, fixed_assets, banking
+from routers import cwip as cwip_router
 from routers import timeline
 from routers import engagement_letters
 # Phase 14 routers that existed but were never mounted (production-readiness fix)
@@ -404,6 +405,9 @@ app.include_router(document_intelligence_v2.router, dependencies=_CLIENT_GUARD)
 # actually run payroll untouched — enforced-looking and not enforced.
 app.include_router(payroll.router, dependencies=_CLIENT_GUARD + _MFA_GUARD)
 app.include_router(fixed_assets.router, dependencies=_CLIENT_GUARD)
+# Capital work-in-progress (FA-11a). Its own router BECAUSE it is not a fixed
+# asset: no depreciation, and its own Schedule III line and two schedules.
+app.include_router(cwip_router.router, dependencies=_CLIENT_GUARD)
 app.include_router(banking.router, dependencies=_CLIENT_GUARD)
 app.include_router(timeline.router, dependencies=_CLIENT_GUARD)
 # Phase 6 — Year End routers (client-scoped reads guarded by G1)

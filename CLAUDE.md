@@ -359,6 +359,63 @@ change. The code is the authority; keep this file in step with it.
   So it WARNS: `foreclosed_months` names them and the notice says to reverse
   and restart if the asset was acquired here. Same shape as Rule 46(b)'s
   invoice-number sequence gap, for the same reason.
+- **AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER, AND THAT IS THE FIX**
+  (FA-11a, migration 397). `fixed_assets` was the only place an asset could
+  live and everything in it is depreciated, so a client building a factory
+  either left it out — a balance sheet short by the whole of what had been
+  spent — or put it in and had depreciation charged on something not ready for
+  use, which overstates the expense, understates the asset and understates
+  every later year's charge because the written-down value starts lower. AS-10
+  paragraph 20 and Schedule II both start depreciation when the asset is
+  AVAILABLE FOR USE. `domain/fixed_assets/cwip.py` is the rule,
+  `services/cwip_service.py` fetches and posts, `routers/cwip.py` decides
+  nothing — and it is a SEPARATE router deliberately, because mounting it on
+  `/api/fixed-assets` is what makes the next reader reach for
+  `_SCHEDULE_II_PART_C`.
+  **AND IT IS A DISCLOSURE, NOT A CONVENIENCE.** MCA G.S.R. 207(E) of
+  24-03-2021 — the SAME notification behind the two ageing schedules migration
+  303 built — gives capital work-in-progress its own line under Non-current
+  assets immediately after PP&E, an **ageing schedule** (<1y / 1-2y / 2-3y /
+  >3y, split between *projects in progress* and *projects temporarily
+  suspended*), and a **completion schedule** for every project overdue against
+  its originally approved completion date OR over its originally approved cost.
+  **`capital_wip` HAS BEEN A DECLARED YEAR-END LINE SINCE `year_end_lines.py`
+  WAS WRITTEN and nothing could ever reach it** — no caption resolved there —
+  so the year-end balance sheet carried a structurally nil CWIP line for every
+  client. That is the half nobody could have seen.
+  **THE AGEING AGES MONEY, NOT PROJECTS**, which is why the cost is
+  `cwip_additions` with one row per tranche and its own `incurred_on`: a build
+  begun three years ago whose last contractor bill arrived last month has
+  amounts in three bands at once, and a project-level date would put all of it
+  in the oldest. Exactly one year falls in the SECOND band — "less than 1 year"
+  means less than — and months are counted on the calendar rather than days, so
+  the answer cannot disagree with itself across a leap year.
+  **SUSPENSION MOVES THE ROW AND NEVER THE BALANCE**: it is presentational, and
+  reading it as a removal would take the cost off the balance sheet, which is a
+  write-off nobody decided. **The schedules are AS AT A DATE** — a project
+  capitalised in June is CWIP in a 31 March note and a fixed asset in a 30
+  September one, which is why `capitalised_on` is recorded rather than the row
+  deleted, the same discipline `stock_position_as_at` applies to stock.
+  **TWO FACTS ARE REFUSED RATHER THAN GUESSED and both directions of the guess
+  are wrong**: `approved_completion_date` and `approved_cost_paise` are
+  nullable with no default, because defaulting the date to the project's start
+  reports every project overdue on day two and defaulting the cost to what has
+  been spent reports none over budget ever; a project with neither is NAMED as
+  undeterminable. A reportable project with no `expected_completion_date` is
+  named too rather than bucketed — a row in "more than 3 years" because nobody
+  said otherwise states something false.
+  **CAPITALISATION CREATES THE ASSET AND IS ONE WAY**: cost = the accumulated
+  tranches (each carrying its §17(5)-blocked tax, AS-10 paragraph 9 — the same
+  sentence AS-2 paragraph 6 applies to stock), `put_to_use_date` = the date it
+  became ready, and `purchase_date` the SAME date rather than the project's
+  start, or the register would charge three years of depreciation the moment
+  it is capitalised. `acquisition_mode` is deliberately left NULL (every
+  payment already happened on the tranches) and the trace lives on
+  `capital_work_in_progress.capitalised_asset_id`. The account is code **1504**
+  with subtype `Capital Work-in-Progress`, and the SUBTYPE is load-bearing:
+  `schedule_iii.classify` buckets on it and the CWIP branch is tested BEFORE
+  the tangible one, because "Capital Work in Progress - Plant" contains
+  "plant".
 - **The Finance (No. 2) Act 2024 forked capital gains on 23-07-2024, and it is
   the DATE OF TRANSFER that decides.** §111A 15%→20%, §112A 10%/₹1,00,000 →
   12.5%/₹1,25,000, §112 20%-with-indexation → 12.5%-without, and §2(42A)'s

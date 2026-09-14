@@ -79,6 +79,13 @@ SETTLEMENT = "settlement"
 FIXED_ASSET = "fixed_asset"
 DEPRECIATION = "depreciation"
 ASSET_DISPOSAL = "asset_disposal"
+#: An asset UNDER CONSTRUCTION, which is not one of the four above and must not
+#: be (migration 397). Schedule III Division I presents capital work-in-progress
+#: on its own line and AS-10 paragraph 20 does not start depreciating it, so a
+#: CWIP cost tranche stamped `fixed_asset` would point a drill-through at a
+#: `fixed_assets` row that does not exist yet. Both point at the PROJECT.
+CWIP_ADDITION = "cwip_addition"
+CWIP_CAPITALISATION = "cwip_capitalisation"
 
 #: Banking.
 BANK_TRANSACTION = "bank_transaction"
@@ -98,6 +105,7 @@ ALL_SOURCES = frozenset({
     BILL_OF_ENTRY,
     PAYROLL_RUN, PAYROLL_DISBURSEMENT, SETTLEMENT,
     FIXED_ASSET, DEPRECIATION, ASSET_DISPOSAL,
+    CWIP_ADDITION, CWIP_CAPITALISATION,
     BANK_TRANSACTION, BANK_OVERPAYMENT,
     OPENING, TRIAL_BALANCE_IMPORT, YEAR_END_ADJUSTMENT,
 })
@@ -137,6 +145,8 @@ SOURCE_LABEL = {
     FIXED_ASSET: "fixed asset",
     DEPRECIATION: "depreciation charge",
     ASSET_DISPOSAL: "asset disposal",
+    CWIP_ADDITION: "capital work-in-progress",
+    CWIP_CAPITALISATION: "capitalisation of work-in-progress",
     BANK_TRANSACTION: "bank entry",
     BANK_OVERPAYMENT: "bank entry",
     OPENING: "opening balance",

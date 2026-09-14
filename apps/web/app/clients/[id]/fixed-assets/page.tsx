@@ -13,6 +13,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { fyRangeFor } from "@/lib/dates/periods";
+import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
@@ -23,10 +24,11 @@ import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 // from lib/api is the one client that attaches the Bearer token (and refreshes
 // it once on a 401, and reads a refusal out of `detail`).
 
-type FATab = "register" | "depreciation" | "disposal" | "reports";
+type FATab = "register" | "cwip" | "depreciation" | "disposal" | "reports";
 
 const TABS: { id: FATab; label: string }[] = [
   { id: "register",    label: "Asset Register" },
+  { id: "cwip",        label: "Work in Progress" },
   { id: "depreciation",label: "Depreciation" },
   { id: "disposal",    label: "Disposal" },
   { id: "reports",     label: "Reports" },
@@ -242,6 +244,12 @@ export default function FixedAssetsPage() {
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-6">
         {tab === "register"     && <RegisterTab    clientId={clientId} />}
+        {/* Capital work-in-progress (FA-11a). The schedules are AS AT the end
+            of the selected financial year — Schedule III's ageing is a
+            reporting-date figure, and a project capitalised in June is work in
+            progress in a 31 March note and a fixed asset in a September one. */}
+        {tab === "cwip"         && <CwipTab clientId={clientId}
+                                     asOf={fyRangeFor(financialYear).end} />}
         {tab === "depreciation" && <DepreciationTab clientId={clientId} />}
         {tab === "disposal"     && <DisposalTab     clientId={clientId} />}
         {tab === "reports"      && <ReportsTab      clientId={clientId} financialYear={financialYear} />}

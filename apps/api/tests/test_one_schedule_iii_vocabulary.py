@@ -45,7 +45,13 @@ SUBTYPES = [
     "TDS Payable", "Short Term Loan", "Overdraft", "CC Limit", "Term Loan",
     "Long Term Loan", "Debenture", "Intangible Asset", "Goodwill", "Software",
     "Fixed Asset", "Tangible", "Plant", "Machinery", "Furniture", "Building",
-    "Vehicle", "Long Term Investment", "Investment", "Inventory", "Stock",
+    "Vehicle",
+    # Migration 397's seeded subtype, plus the three spellings a CA might type.
+    # "Capital Work in Progress - Plant" is the one that matters: it contains
+    # "plant", so it must reach the CWIP branch BEFORE the tangible test.
+    "Capital Work-in-Progress", "CWIP", "Capital Work in Progress - Plant",
+    "Under Construction",
+    "Long Term Investment", "Investment", "Inventory", "Stock",
     "Trade Receivable", "Debtor", "Receivable", "Cash", "Bank", "Advance",
     "Other Income", "Interest Income", "Dividend", "Sales", "Raw Material",
     "Cost of Goods", "Purchase", "Employee", "Salary", "Wages", "Staff",

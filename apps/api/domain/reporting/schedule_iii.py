@@ -47,6 +47,13 @@ BALANCE_SHEET_CAPTIONS = (
     "Other Current Liabilities",
     "Intangible Fixed Assets",
     "Tangible Fixed Assets",
+    # Schedule III Division I presents Capital work-in-progress on its own line
+    # under Non-current assets, IMMEDIATELY AFTER Property, Plant and
+    # Equipment, and never merged into it (MCA G.S.R. 207(E), 24-03-2021 — the
+    # same amendment behind the two ageing schedules). Folding a CWIP balance
+    # into Tangible Fixed Assets would present an asset under construction as
+    # one in use, which is the whole of FA-11a.
+    "Capital Work-in-Progress",
     "Long-term Investments",
     "Inventories",
     "Trade Receivables",
@@ -233,6 +240,12 @@ def bs_bucket(account_type: str, account_subtype: str | None,
         # contains "asset"-family keywords the tangible test matches.
         if "intangible" in sub or "goodwill" in sub or "software" in sub:
             return "Intangible Fixed Assets"
+        # BEFORE the tangible test, whose keywords a hand-typed subtype like
+        # "Capital Work in Progress - Plant" would otherwise match first,
+        # presenting an asset under construction as one in use.
+        if ("work in progress" in sub or "cwip" in sub
+                or "capital work" in sub or "under construction" in sub):
+            return "Capital Work-in-Progress"
         if any(k in sub for k in (
             "fixed asset", "tangible", "plant", "machinery", "furniture", "building", "vehicle",
         )):
