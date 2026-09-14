@@ -1728,6 +1728,42 @@ INV-05 — and closing them is a migration AND an owner decision, because the
 apportionment basis (by value? by quantity? by weight?) is something Tally asks
 the user rather than deriving.
 
+**A PHYSICAL STOCK COUNT IS ONE SESSION, AND THE VARIANCE IS A FACT ABOUT THE
+COUNT DATE** (INV-08, migration 387). Adjustment was one item per API call and
+one modal per item, reachable only from inside an item's ledger drill-down — so
+a 31 March stock-take with a hundred variances was a hundred retyped
+quantities, a hundred §17(5)(h) decisions and a hundred journals with no common
+reference tying them to the count. `domain/inventory/count_session.py` is the
+RULE (which lines vary, by how much, in which direction, and which cannot post
+yet); it reads nothing and posts nothing.
+`services/stock_count_service.py` fetches its inputs and posts through
+`domain/inventory_service.apply_stock_adjustment` once per varying line — the
+SAME function the single-item path calls, so there is no second stock write
+path — with the session's own `reference_no` on every one.
+**THE SYSTEM QUANTITY IS ON BOTH SIDES OF TIME.**
+`stock_count_lines.system_qty_units` is what the books said when the sheet was
+OPENED, kept so the CA can see the books moved under them; the variance that
+POSTS is recomputed at post time against the position AS AT THE COUNT DATE,
+because a 30 March purchase bill entered on 2 April changes what the books say
+for 31 March and posting the snapshot's variance would re-introduce the very
+difference that bill corrected. Where the two disagree the sheet SAYS so, and
+**no variance is stored** for the same reason — a stored one is wrong the
+moment a backdated document lands. **`reverse_itc` is nullable with no default
+and a SHORTAGE cannot post without it** (whether damaged stock's credit must be
+reversed is a CA judgement, since it might still be sold at a discount), while
+a SURPLUS needs no decision and is REFUSED if it claims one. Both refusals are
+per LINE: a hundred-line sheet with two undecided posts the ninety-eight and
+names the two, because refusing the batch sends the CA back to the
+hundred-clicks path. **The batch is not atomic and cannot be** — each
+adjustment is its own journal through the posting kernel — so a line that
+failed is NAMED in the response and re-posting the session is refused rather
+than doubling the lines that succeeded. **`post_session` asks BOTH period
+questions**, which `routers/inventory.py:adjust_stock` does not: a shortage
+registers its §17(5)(h) reversal on GSTR-3B Table 4(B)(1) (INV-06), so a count
+sheet IS a document that feeds a return and `period_lock_service.assert_open`
+applies — unconditionally, not gated on whether any line happens to carry a
+reversal, the same reasoning a fixed asset's acquisition takes.
+
 ## GSTR-2B reconciliation — the books are read in `apps/api`, and the answer is kept
 
 The one purchase-side task an Indian practice performs every month is "which of

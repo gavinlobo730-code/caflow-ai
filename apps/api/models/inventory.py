@@ -96,3 +96,46 @@ class NrvWritedownIn(BaseModel):
         if v < 0:
             raise ValueError("nrv_per_unit_paise must be non-negative.")
         return v
+
+
+# ── The physical count (INV-08) ──────────────────────────────────────────────
+# One session, not a hundred adjustments. The variance is DERIVED — nothing
+# here carries one — and the s.17(5)(h) decision is per line and tri-state:
+# None means the CA has not decided, which is not False.
+
+class StockCountOpenIn(BaseModel):
+    client_id: str
+    count_date: Optional[str] = None     # YYYY-MM-DD; defaults to today in IST
+    reference_no: Optional[str] = None   # defaults to PC-<date>
+    notes: Optional[str] = None
+
+
+class StockCountEntryIn(BaseModel):
+    service_catalogue_id: str
+    #: None means NOT COUNTED and is deliberately not zero — a zero count
+    #: writes the whole of an item's stock off.
+    counted_qty_units: Optional[float] = None
+    #: CGST Act s.17(5)(h). None means the CA has not decided; a SHORTAGE with
+    #: no decision cannot post.
+    reverse_itc: Optional[bool] = None
+    itc_reversal_is_interstate: Optional[bool] = None
+    notes: Optional[str] = None
+
+    @field_validator("counted_qty_units")
+    @classmethod
+    def three_decimals(cls, v: Optional[float]) -> Optional[float]:
+        if v is None:
+            return None
+        if v < 0:
+            raise ValueError("A counted quantity cannot be negative.")
+        from domain.quantity import quantity_violation
+        problem = quantity_violation(v)
+        if problem:
+            raise ValueError(problem)
+        return v
+
+
+class StockCountSaveIn(BaseModel):
+    client_id: str
+    entries: list[StockCountEntryIn]
+

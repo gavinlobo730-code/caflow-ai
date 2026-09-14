@@ -135,10 +135,10 @@
       "closed_by": "migration 383, domain/gst/section_18_6.py, dispose_asset + the preview endpoint, gst_return_service, the fixed-assets screen"
     },
     "GST-11": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "no reference to QRMP anywhere in apps/api or apps/web (repo-wide probe, 2026-09-12)",
-      "needs": "schema for a quarterly filing preference, plus IFF"
+      "status": "closed",
+      "verified_on": "2026-09-14",
+      "why": "CLOSED, and the 12-09 probe's 'no reference to QRMP anywhere' was already stale when it was written. services/compliance_engine.py holds the whole scheme (Rule 61A with s.39(1) and its proviso, Notifications 82/84/85 of 2020): gstr1_due_date takes a frequency and answers the 13th of the month after the QUARTER, gstr3b_due_date answers the 22nd or the 24th by state through gst_state_category — which returns None for an unrecorded state and is given the EARLIER date, because being early costs nothing and s.47 charges Rs 50 a day — pmt06_due_date is the 25th for months 1 and 2 only, and iff_due_date the 13th for the same two. compliance_obligation_service._gst_obligations emits a DIFFERENT SET for a quarterly filer (four GSTR-1s, four GSTR-3Bs and eight PMT-06 challans) rather than the monthly set less often, and gst_profile_for defaults to MONTHLY on an unset or unrecognised value because the monthly dates are the earlier ones. routers/gst_workspace.py:_gst_regime serves the frequency, the state and the state category to the screen, and clients.gst_filing_frequency is on the client form. IFF is deliberately NOT generated as an obligation and the reason is recorded where the decision lives: it is optional, nothing is due if it is not used, and an obligation nobody owes appearing every month is how a compliance calendar stops being read. What is still not built is the IFF RETURN itself (the B2B-only subset of GSTR-1 for months 1 and 2), which is a filing rather than a date and belongs with the rest of the prepare-and-file work.",
+      "needs": ""
     },
     "GST-20": {
       "status": "open",
@@ -212,10 +212,10 @@
       "needs": "substantial inventory schema"
     },
     "INV-08": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "physical verification is one item at a time; no count sheet or session (repo-wide probe, 2026-09-12)",
-      "needs": "a session table"
+      "status": "closed",
+      "verified_on": "2026-09-14",
+      "why": "CLOSED. Migration 387 adds public.stock_count_sessions and public.stock_count_lines; domain/inventory/count_session.py is the RULE (which lines vary, by how much, in which direction, which cannot post and why) and reads nothing; services/stock_count_service.py fetches its inputs and posts through domain/inventory_service.apply_stock_adjustment once per varying line — the SAME function the single-item path calls, with the session's own reference_no on every one, so there is no second stock write path. THE SYSTEM QUANTITY IS ON BOTH SIDES OF TIME: the line's system_qty_units is the snapshot taken when the sheet was opened, and the variance that POSTS is recomputed at post time against the position AS AT THE COUNT DATE, because a 30 March purchase bill entered on 2 April changes what the books say for 31 March and posting the snapshot's variance would re-introduce the very difference that bill corrected; where the two disagree the sheet says so, and NO VARIANCE IS STORED for the same reason. reverse_itc is nullable with no default and a SHORTAGE cannot post without it (whether damaged stock's credit must be reversed is a CA judgement — it might still be sold at a discount), while a SURPLUS needs no decision and is refused if it claims one; both refusals are per LINE, so a hundred-line sheet with two undecided posts the ninety-eight and names the two. The batch is not atomic and cannot be — each adjustment is its own journal through the posting kernel — so a failed line is NAMED and re-posting the session is refused rather than doubling the lines that succeeded. post_session asks BOTH period questions, which routers/inventory.py:adjust_stock does not: a shortage registers its s.17(5)(h) reversal on GSTR-3B Table 4(B)(1) (INV-06), so a count sheet IS a document that feeds a return and period_lock_service.assert_open applies — unconditionally, not gated on whether a line happens to carry a reversal, the same reasoning a fixed asset's acquisition takes. Every read of one-row-per-ITEM is paged through core.db_paging.fetch_all and the test double now enforces PostgREST's ~1000-row ceiling, so a 1,500-SKU sheet is proven to come back whole; a negative control caught a first assertion that did not actually test the item-name read. 54/54 negative controls. The single-item adjust_stock path is unchanged and stays on the acknowledged firm-only-lock debt list.",
+      "needs": ""
     },
     "GST-31": {
       "status": "not_a_defect_as_stated",

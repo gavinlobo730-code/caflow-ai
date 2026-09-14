@@ -722,6 +722,63 @@ export type JournalLineIO = {
   narration?: string | null;
 };
 
+/** INV-08 — the physical stock count. */
+export type StockCountSessionRow = {
+  id: string;
+  client_id: string;
+  count_date: string;
+  reference_no: string;
+  status: "open" | "posted" | "abandoned";
+  notes: string | null;
+  posted_at: string | null;
+};
+
+export type StockCountLine = {
+  service_catalogue_id: string;
+  item_name: string;
+  unit: string | null;
+  /** What the books said when the sheet was opened… */
+  system_qty_units: string;
+  /** …and what they say as at the count date NOW. The variance is measured
+   *  against this one: the count is a fact about the count date, and stock
+   *  moves between opening a sheet and keying it in. */
+  current_qty_units: string;
+  counted_qty_units: string | null;
+  variance_qty_units: string | null;
+  direction: "increase" | "decrease" | null;
+  reason: string | null;
+  reverse_itc: boolean | null;
+  itc_reversal_is_interstate: boolean;
+  will_post: boolean;
+  /** Why this line will not post. A blank count and an undecided s.17(5)(h)
+   *  are the two, and both are per LINE — ninety-eight post and two are
+   *  named. */
+  gaps: string[];
+  caveats: string[];
+  notes: string;
+};
+
+export type StockCountSheet = {
+  session: StockCountSessionRow;
+  lines: StockCountLine[];
+  counted_count: number;
+  variance_count: number;
+  postable_count: number;
+  blocked_count: number;
+  gaps: string[];
+};
+
+export type StockCountPostResult = {
+  session_id: string;
+  reference_no: string;
+  count_date: string;
+  posted: { item: string; quantity: string; direction: string }[];
+  posted_count: number;
+  failed: { item: string; why: string }[];
+  failed_count: number;
+  not_posted_count: number;
+};
+
 /** One entry of GET /api/banking/account-types. */
 export type BankAccountTypeInfo = {
   value: string;
@@ -1955,6 +2012,26 @@ export const api = {
       request(`/api/inventory/items/${serviceCatalogueId}/adjust`, { method: "POST", body: JSON.stringify(body) }),
     writedown: (serviceCatalogueId: string, body: unknown) =>
       request(`/api/inventory/items/${serviceCatalogueId}/writedown`, { method: "POST", body: JSON.stringify(body) }),
+    // INV-08 — the physical count. One sheet, not a hundred adjustments. The
+    // VARIANCE is derived on the server against the position as at the count
+    // date and is never sent up; so is which line may post and why.
+    openCountSession: (body: unknown) =>
+      request<ApiResp<{ id: string }>>("/api/inventory/count-sessions",
+        { method: "POST", body: JSON.stringify(body) }),
+    countSessions: (params: Record<string, string>) =>
+      request<ApiResp<StockCountSessionRow[]>>(
+        `/api/inventory/count-sessions?${new URLSearchParams(params)}`),
+    countSession: (sessionId: string) =>
+      request<ApiResp<StockCountSheet>>(
+        `/api/inventory/count-sessions/${encodeURIComponent(sessionId)}`),
+    saveCountSession: (sessionId: string, body: unknown) =>
+      request<ApiResp<StockCountSheet & { saved: number }>>(
+        `/api/inventory/count-sessions/${encodeURIComponent(sessionId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    postCountSession: (sessionId: string) =>
+      request<ApiResp<StockCountPostResult>>(
+        `/api/inventory/count-sessions/${encodeURIComponent(sessionId)}/post`,
+        { method: "POST" }),
   },
   // Multi-Currency (Phase 1/5) — currency master + resolved policy (gates FX UI).
   currencies: {

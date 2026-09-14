@@ -15,7 +15,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from models.common import api_response
-from models.inventory import StockAdjustmentIn, NrvWritedownIn
+from models.inventory import (StockAdjustmentIn, NrvWritedownIn,
+                              StockCountOpenIn, StockCountSaveIn)
 from core.permissions import rbac
 from core.authz import assert_client_access
 from services.audit_service import log_event
@@ -384,3 +385,171 @@ def writedown_stock_to_nrv(
     except Exception as e:
         _logger.error("writedown_stock_to_nrv: %s", e)
         return api_response(False, None, "Unable to record the write-down. Please try again.")
+
+
+# ── The physical count (INV-08) ──────────────────────────────────────────────
+# Stock-taking at 31 March produces a sheet with a hundred variances, and
+# `POST /items/{id}/adjust` above takes ONE item per call. These four routes
+# are the round trip the finding names: open a sheet, key the counted
+# quantities back, see the variance list, post one batch under one reference.
+#
+# NOTHING HERE POSTS DIRECTLY. `services/stock_count_service.post_session`
+# calls `domain/inventory_service.apply_stock_adjustment` once per varying
+# line — the same function the single-item path above calls. One write path.
+# CA REVIEW REQUIRED — the variance list is confirmed before it posts.
+
+def _count_plan_response(session: dict, plan) -> dict:
+    return {
+        "session": {
+            "id": session["id"],
+            "client_id": session["client_id"],
+            "count_date": str(session["count_date"])[:10],
+            "reference_no": session["reference_no"],
+            "status": session["status"],
+            "notes": session.get("notes"),
+            "posted_at": session.get("posted_at"),
+        },
+        "lines": [{
+            "service_catalogue_id": p.line.service_catalogue_id,
+            "item_name": p.line.item_name,
+            "unit": p.line.unit,
+            # The figure the sheet was printed against, and the one the
+            # variance is measured against now. Both, because they can differ
+            # and the CA needs to see that they did.
+            "system_qty_units": str(p.line.system_qty_units),
+            "current_qty_units": str(p.line.current_qty_units),
+            "counted_qty_units": (None if p.line.counted_qty_units is None
+                                  else str(p.line.counted_qty_units)),
+            "variance_qty_units": (None if p.line.variance_qty_units is None
+                                   else str(p.line.variance_qty_units)),
+            "direction": p.direction,
+            "reason": p.reason,
+            "reverse_itc": p.line.reverse_itc,
+            "itc_reversal_is_interstate": p.line.itc_reversal_is_interstate,
+            "will_post": p.will_post,
+            "gaps": p.gaps,
+            "caveats": p.caveats,
+            "notes": p.line.notes,
+        } for p in plan.lines],
+        "counted_count": plan.counted_count,
+        "variance_count": plan.variance_count,
+        "postable_count": len(plan.postable),
+        "blocked_count": plan.blocked_count,
+        "gaps": plan.gaps,
+    }
+
+
+@router.post("/count-sessions")
+def open_count_session(
+    data: StockCountOpenIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Open a count sheet with one line per stock item and the books' figure
+    as at the COUNT DATE — not as at today, which would give the CA a variance
+    against a position the count was never taken against."""
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(True, {"id": "mock-session", **data.model_dump()})
+    from core.supabase_client import get_supabase
+    from services import stock_count_service
+    return api_response(True, stock_count_service.open_session(
+        get_supabase(), firm_id=current_user.get("firm_id"), client_id=data.client_id,
+        count_date=data.count_date, reference_no=data.reference_no,
+        notes=data.notes, created_by=current_user.get("id")))
+
+
+@router.get("/count-sessions")
+def list_count_sessions(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, [])
+    from core.supabase_client import get_supabase
+    # Spelled out rather than passed as the service's SESSION_COLUMNS: the
+    # column guard reads every `.select()` against the real schema and can
+    # only do so on a literal. A test holds the two identical.
+    rows = (get_supabase().table("stock_count_sessions").select(
+                "id, firm_id, client_id, count_date, reference_no, status, notes, "
+                "created_at, created_by, posted_at, posted_by")
+            .eq("firm_id", current_user.get("firm_id")).eq("client_id", client_id)
+            .order("count_date", desc=True).execute().data) or []
+    return api_response(True, rows)
+
+
+@router.get("/count-sessions/{session_id}")
+def get_count_session(
+    session_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The sheet and what it will post. The variance is recomputed here, never
+    stored — see domain/inventory/count_session.py."""
+    if _USE_MOCK:
+        return api_response(True, {"session": None, "lines": []})
+    from core.supabase_client import get_supabase
+    from services import stock_count_service
+    db = get_supabase()
+    session, plan = stock_count_service.read_plan(
+        db, firm_id=current_user.get("firm_id"), session_id=session_id)
+    assert_client_access(current_user, session["client_id"])
+    return api_response(True, _count_plan_response(session, plan))
+
+
+@router.patch("/count-sessions/{session_id}")
+def save_count_session(
+    session_id: str,
+    data: StockCountSaveIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """The counted quantities and the s.17(5)(h) decisions, in one call.
+
+    Bulk by design: the whole point of the session is that a hundred-line
+    sheet is one round trip rather than a hundred.
+    """
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(True, {"saved": len(data.entries)})
+    from core.supabase_client import get_supabase
+    from services import stock_count_service
+    db = get_supabase()
+    session, _ = stock_count_service.read_plan(
+        db, firm_id=current_user.get("firm_id"), session_id=session_id)
+    if session["client_id"] != data.client_id:
+        raise HTTPException(status_code=404, detail="Count sheet not found.")
+    saved = stock_count_service.save_counts(
+        db, firm_id=current_user.get("firm_id"), session_id=session_id,
+        entries=[e.model_dump(exclude_unset=True) for e in data.entries])
+    session, plan = stock_count_service.read_plan(
+        db, firm_id=current_user.get("firm_id"), session_id=session_id)
+    return api_response(True, {"saved": saved, **_count_plan_response(session, plan)})
+
+
+@router.post("/count-sessions/{session_id}/post")
+def post_count_session(
+    session_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Post every varying line, under the session's own reference.
+
+    # CA REVIEW REQUIRED — the CA confirms the variance list before this runs.
+    """
+    if _USE_MOCK:
+        return api_response(True, {"session_id": session_id, "posted_count": 0,
+                                   "posted": [], "failed": [], "failed_count": 0})
+    from core.supabase_client import get_supabase
+    from services import stock_count_service
+    db = get_supabase()
+    session, _ = stock_count_service.read_plan(
+        db, firm_id=current_user.get("firm_id"), session_id=session_id)
+    assert_client_access(current_user, session["client_id"])
+    result = stock_count_service.post_session(
+        db, firm_id=current_user.get("firm_id"), session_id=session_id,
+        actor_id=current_user.get("id"))
+    log_event(current_user.get("firm_id") or "", "stock_count_session", session_id, "post",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={"reference_no": result["reference_no"],
+                        "posted_count": result["posted_count"],
+                        "failed_count": result["failed_count"]})
+    return api_response(True, result)
+
