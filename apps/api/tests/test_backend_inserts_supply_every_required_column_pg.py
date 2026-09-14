@@ -82,7 +82,7 @@ ALLOWED: dict[str, str] = {}
 # a **kwargs dict, or passed in as a parameter. Budgeted so the blind spot has a
 # number on it and cannot quietly grow — it may shrink freely, and raising it is
 # a deliberate act visible in a diff.
-UNREADABLE_BUDGET = 125
+UNREADABLE_BUDGET = 118
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
@@ -188,15 +188,79 @@ def test_the_check_can_actually_see_a_payload_built_in_a_variable(schema):
         "missing that are supplied.")
 
 
+#: A floor under how many INSERTs the scan finds, because the budget above only
+#: catches the count going UP. A parser that stopped recognising `.insert(`
+#: altogether would report ZERO unreadable and ZERO found, and every test in
+#: this module would pass while checking nothing — the exact failure its own
+#: docstring names. A negative control found that hole: neutering the counter
+#: left the suite green. Raise it as the tree grows; it may never be lowered
+#: without saying which writes went away.
+FOUND_FLOOR = 150
+
+
+def test_the_scan_still_finds_the_inserts():
+    """The other half of the budget: it must not read FEWER either.
+
+    Asserted on the count rather than on a spelling, because the ways a scanner
+    can stop matching are as many as the ways a call can be written — and every
+    one of them looks like a passing suite.
+    """
+    found, _unreadable = insert_payloads(API_ROOT)
+    assert len(found) >= FOUND_FLOOR, (
+        f"the scan reads only {len(found)} insert payloads (floor "
+        f"{FOUND_FLOOR}). Either a lot of writes were deleted, or the parser "
+        "stopped matching — and the second one passes every other test here."
+    )
+
+
 def test_unreadable_payloads_stay_within_budget():
     """A parser that silently stops matching keeps passing while checking
-    nothing. The count is the alarm."""
+    nothing. The count is the alarm — this half for the count going UP,
+    test_the_scan_still_finds_the_inserts for it going down."""
     _found, unreadable = insert_payloads(API_ROOT)
     assert unreadable <= UNREADABLE_BUDGET, (
         f"{unreadable} insert payloads cannot be read (budget "
         f"{UNREADABLE_BUDGET}). Write the payload inline, or bind it to a "
         "local dict literal, rather than raising this."
     )
+
+
+def test_a_bulk_insert_is_read_rather_than_counted_unreadable():
+    """A BULK insert — `insert([{...} for x in rows])` — was counted unreadable,
+    which left the writes that create the MOST rows unchecked against NOT NULL:
+    one row per stock item on a count sheet, per slip on a payroll run, per line
+    on an imported statement. A comprehension has a single `elt`, so every row
+    it produces carries the same keys and there is nothing to guess — it is
+    exactly as certain as an inline dict.
+
+    Asserted on the parser rather than on a count, because a count passes
+    whenever the tree happens to hold none of them.
+    """
+    import ast as _ast
+    from _backend_query_parser import insert_payloads as _ip  # noqa: F401
+
+    src = (
+        "def f(db, rows, firm_id):\n"
+        "    db.table('t').insert([{'firm_id': firm_id, 'n': r} for r in rows]).execute()\n"
+        "    db.table('u').insert([{'a': 1, 'b': 2}, {'a': 3}]).execute()\n"
+    )
+    tmp = API_ROOT / "_parser_probe_tmp.py"
+    tmp.write_text(src, encoding="utf-8")
+    try:
+        _ast.parse(src)                       # the probe must itself be valid
+        found, unreadable = insert_payloads(API_ROOT)
+    finally:
+        tmp.unlink()
+
+    by_rel = {rel: keys for path, _ln, rel, keys in found
+              if path == "_parser_probe_tmp.py"}
+    assert by_rel.get("t") == {"firm_id", "n"}, (
+        "a comprehension-built bulk insert must be read, not skipped")
+    # A literal list of literal rows takes the INTERSECTION: a key present in
+    # one row and absent from the next is a row that omits it, and the union
+    # would clear the whole insert on the strength of its most complete row.
+    assert by_rel.get("u") == {"a"}, (
+        "a list of rows must report what EVERY row supplies, not their union")
 
 
 def test_every_allowed_entry_still_omits_the_column_it_claims(schema):

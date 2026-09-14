@@ -488,6 +488,26 @@ def insert_payloads(api_root: Path) -> tuple[list[tuple[str, int, str, set[str]]
                 arg = node.args[0]
                 if isinstance(arg, ast.Dict):
                     keys, readable = _dict_keys(arg)
+                elif isinstance(arg, (ast.ListComp, ast.GeneratorExp)) and isinstance(arg.elt, ast.Dict):
+                    # A BULK insert built by comprehension. Every row it
+                    # produces has the SAME keys — the single `elt` — so this
+                    # is exactly as certain as an inline dict and there is
+                    # nothing to guess. It was counted unreadable before, which
+                    # left one row per stock item, per payroll slip and per
+                    # imported statement line unchecked against NOT NULL: the
+                    # bulk writes, which is where a forgotten column costs most.
+                    keys, readable = _dict_keys(arg.elt)
+                elif (isinstance(arg, ast.List) and arg.elts
+                      and all(isinstance(e, ast.Dict) for e in arg.elts)):
+                    # A literal list of literal rows. Each row must satisfy
+                    # NOT NULL on its OWN, so what every row supplies is the
+                    # INTERSECTION — a key present in one row and missing from
+                    # the next is a row that omits it, and taking the union
+                    # would report the whole insert as safe on the strength of
+                    # its most complete row.
+                    per = [_dict_keys(e) for e in arg.elts]
+                    readable = all(r for _, r in per)
+                    keys = set.intersection(*[k for k, _ in per]) if readable else set()
                 elif isinstance(arg, ast.Name) and arg.id in local:
                     keys, readable = local[arg.id]
                 else:
