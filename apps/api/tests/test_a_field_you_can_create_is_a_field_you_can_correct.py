@@ -65,6 +65,44 @@ IMMUTABLE_ON_UPDATE: dict[tuple[str, str], str] = {
     ("ServiceCatalogueUpdateIn", "client_id"): "a catalogue entry belongs to one client",
     ("FirmHsnLibraryUpdateIn", "client_id"): "a library entry belongs to one client",
 
+    # ── The sales cycle before the tax invoice (SALES-21) ───────────────────
+    #
+    # A pre-invoice document is cheap to re-raise and the customer has not
+    # relied on a supply, so the bar for immutability here is lower than on an
+    # invoice — but each of these would make the row a DIFFERENT document
+    # rather than a corrected one.
+    ("QuotationUpdateIn", "client_id"): "a quotation belongs to one set of books",
+    ("SalesOrderUpdateIn", "client_id"): "an order belongs to one set of books",
+    ("DeliveryChallanUpdateIn", "client_id"): "a challan belongs to one set of books",
+    ("QuotationUpdateIn", "customer_id"): (
+        "a quotation is an offer TO somebody; offering it to a different "
+        "customer is a new offer, and the customer's own GSTIN, state and "
+        "credit terms are snapshotted onto the document"),
+    ("SalesOrderUpdateIn", "customer_id"): "an order is an agreement with one customer",
+    ("QuotationUpdateIn", "kind"): (
+        "a quotation and a proforma invoice draw from DIFFERENT numbering "
+        "series, so switching the kind leaves the document bearing a number "
+        "from a series it is no longer in — and the number may already be "
+        "taken in the series it moves to"),
+    ("QuotationUpdateIn", "currency"): "every line figure is in that currency's minor units",
+    ("SalesOrderUpdateIn", "currency"): "every line figure is in that currency's minor units",
+    ("SalesOrderUpdateIn", "quotation_id"): (
+        "which quotation an order came from is a fact about how it arose, and "
+        "re-pointing it would mark a second quotation converted while leaving "
+        "the first claiming this order"),
+    ("DeliveryChallanUpdateIn", "reason"): (
+        "the reason decides which of CGST Rule 55's movements this is, which "
+        "particulars the document must carry, whether its lines bear tax at "
+        "all, and which deemed-supply clock runs — s.143's one or three years, "
+        "s.31(7)'s six months, or none. Changing it turns the document into a "
+        "different one whose figures were computed under the old rule"),
+    ("DeliveryChallanUpdateIn", "order_id"): (
+        "the order a consignment delivered against is what its quantity was "
+        "checked for over-delivery against; re-pointing it would leave the "
+        "first order showing goods delivered that went somewhere else"),
+    ("DeliveryChallanUpdateIn", "customer_id"): "the consignee is corrected, not the party the document was raised under",
+    ("DeliveryChallanUpdateIn", "vendor_id"): "the consignee is corrected, not the party the document was raised under",
+
     # Identity. Changing one of these does not correct the record, it makes it
     # a different record — and the row it would collide with may already exist.
     ("BankAccountUpdateIn", "account_no"): "the account number IS the account",

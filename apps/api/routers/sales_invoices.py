@@ -16,6 +16,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
+from domain.sales.line_tax import compute_line_gst
 from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
@@ -188,34 +189,15 @@ def _assert_invoice_no_available(
         raise HTTPException(status_code=409, detail=f"Invoice number '{invoice_no}' already exists for this client.")
 
 
-def _compute_line_gst(
-    taxable_paise: int,
-    gst_rate_bps: int,
-    is_interstate: bool,
-) -> tuple[int, int, int]:
-    """
-    Compute CGST, SGST, IGST for a line in integer paise.
-    CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
-    All rates in basis points (bps). 1800 bps = 18%.
-    Returns (cgst_paise, sgst_paise, igst_paise).
-    """
-    # Integer arithmetic — never floating point
-    if is_interstate:
-        igst_paise = (taxable_paise * gst_rate_bps) // 10000
-        return 0, 0, igst_paise
-    else:
-        # Compute the FULL tax first, then split it into CGST + SGST so their sum
-        # equals the full tax — i.e. the *same* amount an inter-state supply of the
-        # same taxable value and rate would attract as IGST. Splitting the rate
-        # first and flooring each half independently (the previous approach) lost
-        # up to 1 paise for odd tax amounts (e.g. 0.25%/0.10% rates, or any taxable
-        # whose full tax is odd), understating the GST liability and leaving
-        # CGST+SGST ≠ IGST-equivalent. SGST carries any odd paise. Journal stays
-        # balanced because total_paise is derived from these components.
-        full_gst_paise = (taxable_paise * gst_rate_bps) // 10000
-        cgst_paise = full_gst_paise // 2
-        sgst_paise = full_gst_paise - cgst_paise
-        return cgst_paise, sgst_paise, 0
+# MOVED to `domain/sales/line_tax.py` (SALES-21) and RE-EXPORTED here, so every
+# existing import still resolves — `tests/generate_gst_parity_vectors.py` among
+# them, which pins this function against `apps/web/lib/money/gstLine.ts` through
+# `shared/gst-parity-vectors.json`. Three more documents now carry taxed lines
+# (quotation, proforma invoice, delivery challan) and a service reaching into a
+# router for a statutory calculation is the wrong direction, which is why
+# `domain/fixed_assets/` was carved out of `routers/fixed_assets.py` for the
+# same reason.
+_compute_line_gst = compute_line_gst
 
 
 def _round_off_paise(amount_paise: int) -> int:

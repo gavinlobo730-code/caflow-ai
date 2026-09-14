@@ -320,7 +320,19 @@ UNFIXED: dict[str, str] = {}
 # produces is a real column of its table, and `tests/production_types.py` runs
 # on the mock write path, so the payload is checked against production's own
 # column list and types on every test that writes one.
-MAX_UNREADABLE = 452
+# 452 -> 455 (SALES-21). `services/sales_cycle_service` has three PATCH paths —
+# a quotation, a sales order and a delivery challan — and each builds its
+# `.update(...)` payload from whichever fields the caller sent, so the dict is
+# genuinely dynamic and no literal exists to read. That is three; the other
+# FIFTEEN this service arrived with were removed rather than budgeted, and how
+# is the part worth keeping. The first draft shared six module-level column
+# constants (`_QUOTE_COLS`, `_CHALLAN_LINE_COLS` and so on) and passed them to
+# `.select(...)` — readable to a person, invisible here, on SIX BRAND-NEW
+# tables where a typo has nothing else to catch it. They are written out at
+# every call site now, `_one` lost its `cols` parameter in favour of three
+# literal branches, and the three INSERT payloads were inlined at their
+# `.insert(...)` calls instead of being built above and passed by name.
+MAX_UNREADABLE = 455
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

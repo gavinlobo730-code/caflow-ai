@@ -473,6 +473,66 @@ change. The code is the authority; keep this file in step with it.
   the state list now (as `ReceiptIn.place_of_supply` has been since GST-15),
   the edit path too, and a request whose two disagree is refused rather than
   silently resolved one way.
+- **THE SALES CYCLE BEGINS BEFORE THE TAX INVOICE, AND ONLY ONE OF THE FOUR
+  DOCUMENTS IS THE ACT'S** (SALES-21, migration 392). A client quotes, takes an
+  order, delivers against it and bills afterwards; the product started at the
+  invoice, so a CA either raised it EARLY — declaring a supply that had not
+  happened and paying tax on it a month before the money arrived — or kept the
+  quotation in a spreadsheet and re-typed every line when it converted.
+  `domain/sales/order_cycle.py` is the commercial chain and
+  `domain/gst/delivery_challan.py` is CGST Rule 55; the service, the router and
+  the screen decide nothing either of them decides.
+  **A quotation, a proforma invoice and a sales order are COMMERCIAL papers the
+  Act does not know** — CGST §7 charges a SUPPLY and an offer is not one — so
+  none of the six tables carries a `journal_entry_id`, nothing posts, nothing
+  moves stock, and a test asserts no return builder reads any of them. **The
+  proforma is the trap**: it looks like an invoice, is often numbered like one,
+  and a GSTR-1 that picked one up would declare a supply that never happened.
+  **It is never numbered from the tax-invoice series** — Rule 46(b) requires
+  that series to be CONSECUTIVE and unique for the FY, so consuming a number
+  for a document that may never become a supply puts a permanent gap in it and
+  reusing the number later puts two documents on one. `series_kind_of` gives
+  each kind its own; uniqueness is per client PER KIND, so a quotation and a
+  proforma may share a number and two quotations may not.
+  **A DELIVERY CHALLAN IS THE ACT'S, AND TWO OF ITS REASONS START A CLOCK
+  WHOSE EXPIRY IS A DEEMED SUPPLY.** §143(3) deems inputs not received back
+  within ONE YEAR to have been supplied to the job worker **on the day they
+  were sent out** — so the tax falls due in a return already filed, with
+  §50(1) interest from that return's own due date — and §143(4) is the same at
+  THREE years for capital goods; §31(7) gives goods sent on approval SIX
+  MONTHS from removal. Neither clock is visible in any ledger (the goods left,
+  nothing was billed, no journal moved), so the challan is the only document
+  either can be computed from, which is the point of the module rather than a
+  convenience. **`goods_kind` is nullable with NO default and is REFUSED,
+  never guessed**: defaulting to inputs reports a deemed supply two years
+  early and defaulting to capital goods hides one for two years, and moulds,
+  dies, jigs, fixtures and tools are outside both (second proviso to §143(1)) —
+  named as its own answer, because "no clock" and "a clock nobody computed"
+  must not look the same on a screen. An extension under the proviso is
+  RECORDED and honoured only where it is LATER than the statutory date. A
+  month-end deadline walks BACK to the month's last day (31 August plus six
+  months is 28 February), never forward, because forward is a day late on a
+  deemed supply.
+  **Rule 55(1)'s nine clauses are checked and TWO ARE CONDITIONAL**: (vii) tax
+  rate and amount only "where the transportation is for supply to the
+  consignee" — so a job-work despatch carries none, and the service zeroes the
+  rate rather than asking the caller to remember — and (viii) place of supply
+  only on an inter-State movement. Rule 55(2)'s three legends are printed
+  verbatim because the rule prescribes the WORDS. **What an order still has
+  open is DERIVED, never stored** (migration 278's reasoning applied to a
+  quantity), from challan lines read `.in_` over THIS order's line ids and
+  their parents' statuses — a cancelled challan has delivered nothing.
+  Over-delivery is REFUSED, never clamped. Three things are named rather than
+  guessed: **ITC-04's periodicity** (Rule 45(3) turns on the principal's own
+  preceding-year turnover, which no column holds, so both readings are shown
+  and neither chosen), **what has been INVOICED against an order** (an invoice
+  line carries no link back to an order line, so the figure is honestly zero
+  rather than a description match), and Rule 55(5)'s four steps, whose gaps
+  are reported. ⚠️ Every period and every clause of Rule 55 is `[S]`-graded and
+  pinned by a test — egress is refused here — and `compute_line_gst` MOVED to
+  `domain/sales/line_tax.py` with `routers/sales_invoices` re-exporting it, so
+  `shared/gst-parity-vectors.json` still pins the one implementation.
+
 - **A §37(3) AMENDMENT RE-DECLARES THE WHOLE ENTRY, so an export amendment
   carries its shipping bill.** `domain/gst/amendments.build_invoice_amendment`
   emitted three empty strings for `sbpcode`/`sbnum`/`sbdt` on `expa`

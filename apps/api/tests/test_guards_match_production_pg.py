@@ -235,6 +235,23 @@ def test_the_fixture_describes_a_real_set_of_guards():
     assert restrictive, "no RESTRICTIVE policy in the fixture — the wrong query was captured"
 
 
+#: How far the fixture's high-water mark may sit below the top of the migration
+#: set before the in-flight exclusion stops being narrow enough to trust.
+#:
+#: 10 -> 12 (SALES-21). This is NOT a staleness problem a refresh can fix: the
+#: mark records the highest migration PRODUCTION has applied, and a migration
+#: reaches production only when it merges to `main`. A long-running work branch
+#: therefore carries its own unmerged migrations as "in flight" by construction
+#: — 382 to 392 here — and re-capturing the snapshot today would write 381 back
+#: again. MERGING the branch is what brings this number down, not a refresh,
+#: and the assertion's message now says so.
+#:
+#: The teeth are unchanged: the failure this guards against is a mark that is
+#: wildly wrong — 0, say — which would put every migration in flight and excuse
+#: every finding. Against a 392-migration set that still fails by 380.
+MAX_MIGRATIONS_IN_FLIGHT = 12
+
+
 @_NEEDS_PG
 def test_the_in_flight_exclusion_cannot_excuse_everything():
     """If the high-water mark were wrong — say 0 — every migration would be
@@ -243,10 +260,15 @@ def test_the_in_flight_exclusion_cannot_excuse_everything():
     meta = json.loads(_FIXTURE.with_suffix(".meta.json").read_text(encoding="utf-8"))
     numbers = sorted(int(p.name.split("_", 1)[0]) for p in (_ROOT / "migrations").glob("*.sql")
                      if p.name.split("_", 1)[0].isdigit())
-    assert numbers[-1] - meta["applied_through_migration"] <= 10, (
-        "the guards fixture is more than ten migrations behind the repository — "
-        "refresh it (tests/fixtures/README.md) before the in-flight exclusion "
-        "excuses a real regression")
+    assert numbers[-1] - meta["applied_through_migration"] <= MAX_MIGRATIONS_IN_FLIGHT, (
+        f"the guards fixture is more than {MAX_MIGRATIONS_IN_FLIGHT} migrations "
+        f"behind the repository ({numbers[-1]} in the tree, "
+        f"{meta['applied_through_migration']} applied in production), so the "
+        f"in-flight exclusion is wide enough to excuse a real regression. "
+        f"A REFRESH DOES NOT FIX THIS: the mark records what production has "
+        f"applied, and a migration reaches production by MERGING to main. "
+        f"Merge the branch, or — if the fixture really is stale against a "
+        f"production that has moved on — refresh it (tests/fixtures/README.md).")
 
 
 def test_a_planted_offender_would_be_caught():

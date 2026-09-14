@@ -1800,6 +1800,122 @@ export type GSTStatusUpdate = {
   filed_date?: string;
 };
 
+/** SALES-21 — the sales cycle before the tax invoice. */
+export interface SalesCycleVocabulary {
+  quote_kinds: { value: string; label: string }[];
+  quote_statuses: string[];
+  order_statuses: string[];
+  challan_statuses: string[];
+  challan_reasons: { value: string; label: string; is_a_supply: boolean }[];
+  goods_kinds: { value: string; label: string }[];
+  not_a_tax_invoice: string;
+  no_tax_on_a_non_supply: string;
+  job_work_exclusion: string;
+  rule_55_5_steps: string[];
+  copies: { copy: string; legend: string }[];
+  itc_04: { decided: boolean; readings: string[]; refusal: string };
+}
+
+export interface PreInvoiceLine {
+  description: string;
+  hsn_sac?: string | null;
+  quantity: number;
+  unit?: string | null;
+  rate_paise: number;
+  gst_rate_percent: number;
+  is_service?: boolean;
+  discount_percent_bps?: number | null;
+  discount_paise?: number | null;
+  order_line_id?: string | null;
+  quantity_is_provisional?: boolean;
+}
+
+export interface SalesQuotation {
+  id: string;
+  kind: string;
+  title?: string;
+  document_no: string;
+  document_date: string;
+  valid_until?: string | null;
+  status: string;
+  customer_id: string;
+  customer_name?: string | null;
+  taxable_paise: number;
+  total_paise: number;
+  is_expired: boolean | null;
+}
+
+export interface SalesOrder {
+  id: string;
+  document_no: string;
+  document_date: string;
+  status: string;
+  customer_id: string;
+  customer_name?: string | null;
+  customer_po_no?: string | null;
+  expected_delivery_date?: string | null;
+  taxable_paise: number;
+  total_paise: number;
+}
+
+export interface DeemedSupplyClock {
+  applies: boolean;
+  statute: string;
+  months: number | null;
+  sent_on: string | null;
+  due_back_by: string | null;
+  overdue: boolean | null;
+  days_remaining: number | null;
+  consequence: string;
+  gaps: string[];
+}
+
+export interface DeliveryChallan {
+  id: string;
+  document_no: string;
+  document_date: string;
+  reason: string;
+  reason_label?: string;
+  status: string;
+  goods_kind?: string | null;
+  received_back_on?: string | null;
+  consignee_name?: string | null;
+  taxable_paise: number;
+  total_paise: number;
+  clock: DeemedSupplyClock;
+}
+
+export interface ChallanParticulars {
+  challan: DeliveryChallan | null;
+  lines: Record<string, unknown>[];
+  rule: string;
+  reason_label: string;
+  particulars: { clause: string; label: string; value: string | null; required: boolean }[];
+  missing: string[];
+  copies: { copy: string; legend: string }[];
+  clock: DeemedSupplyClock;
+  rule_55_5: { steps: string[]; gaps: string[] };
+  itc_04: { decided: boolean; readings: string[]; refusal: string };
+  ca_review_required: boolean;
+}
+
+export interface OrderOpenLine {
+  order_line_id: string;
+  description: string;
+  ordered_qty: string;
+  delivered_qty: string;
+  invoiced_qty: string;
+  undelivered_qty: string;
+  unbilled_qty: string;
+}
+
+export interface OrderPosition {
+  order: SalesOrder | null;
+  lines: OrderOpenLine[];
+  status_would_be: string;
+  gaps: string[];
+}
+
 export const api = {
   /** The firm's own reading of the DTAA rates it withholds under, per country
    *  and nature of income. Ships empty and is never seeded: India has
@@ -3928,6 +4044,55 @@ export const api = {
   },
 
   /** The bill-wise breakup of a client's opening balances (ACC-14). */
+  /** SALES-21 — quotation, proforma invoice, sales order, Rule 55 challan. */
+  salesCycle: {
+    vocabulary: () =>
+      request<ApiResp<SalesCycleVocabulary>>("/api/sales-cycle/vocabulary"),
+    quotations: (clientId: string, kind?: string) =>
+      request<ApiResp<SalesQuotation[]>>(
+        `/api/sales-cycle/quotations?client_id=${encodeURIComponent(clientId)}`
+        + (kind ? `&kind=${encodeURIComponent(kind)}` : "")),
+    quotationLines: (id: string, clientId: string) =>
+      request<ApiResp<Record<string, unknown>[]>>(
+        `/api/sales-cycle/quotations/${id}/lines`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    createQuotation: (body: Record<string, unknown>) =>
+      request<ApiResp<SalesQuotation>>("/api/sales-cycle/quotations",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateQuotation: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<SalesQuotation>>(
+        `/api/sales-cycle/quotations/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    orders: (clientId: string, onlyOpen = false) =>
+      request<ApiResp<SalesOrder[]>>(
+        `/api/sales-cycle/orders?client_id=${encodeURIComponent(clientId)}`
+        + `&only_open=${onlyOpen ? "true" : "false"}`),
+    orderPosition: (id: string, clientId: string) =>
+      request<ApiResp<OrderPosition>>(
+        `/api/sales-cycle/orders/${id}/position`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    createOrder: (body: Record<string, unknown>) =>
+      request<ApiResp<SalesOrder>>("/api/sales-cycle/orders",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateOrder: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<SalesOrder>>(
+        `/api/sales-cycle/orders/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    challans: (clientId: string) =>
+      request<ApiResp<DeliveryChallan[]>>(
+        `/api/sales-cycle/challans?client_id=${encodeURIComponent(clientId)}`),
+    challan: (id: string, clientId: string) =>
+      request<ApiResp<ChallanParticulars>>(
+        `/api/sales-cycle/challans/${id}?client_id=${encodeURIComponent(clientId)}`),
+    createChallan: (body: Record<string, unknown>) =>
+      request<ApiResp<DeliveryChallan>>("/api/sales-cycle/challans",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateChallan: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<DeliveryChallan>>(
+        `/api/sales-cycle/challans/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+  },
+
   openingDocuments: {
     kinds: () =>
       request<ApiResp<OpeningDocumentKinds>>("/api/opening-documents/kinds"),

@@ -22,6 +22,7 @@ import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import AllocateReceiptModal from "@/components/sales/AllocateReceiptModal";
+import SalesCycleTab from "@/components/sales/SalesCycleTab";
 import { unallocatedOf } from "@/lib/sales/receiptAllocation";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import {
@@ -66,8 +67,11 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { StateLookup } from "@/components/lookups/StateLookup";
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type SalesTab = "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements";
+type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements";
 const TABS: { id: SalesTab; label: string }[] = [
+  // SALES-21 — the cycle BEFORE the invoice. First, because that is the
+  // order the documents are raised in.
+  { id: "sales-cycle", label: "Quotes, Orders & Challans" },
   { id: "invoices", label: "Sales Invoices" },
   { id: "recurring", label: "Recurring" },
   { id: "customers", label: "Customers" },
@@ -268,6 +272,9 @@ export default function SalesPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
+        {tab === "sales-cycle" && (
+          <SalesCycleTab clientId={clientId} />
+        )}
         {tab === "invoices" && (
           <SalesInvoices clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
         )}
