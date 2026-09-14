@@ -108,6 +108,10 @@ const BLANK_FORM = {
   rate_percent_typed: "",
   credit_limit_rs: "",
   credit_days: "30",
+  // "" is UNRECORDED, which is a real third state rather than a missing
+  // answer — CGST Act s.31(3)(f) turns on it and the self-invoice path names
+  // an unrecorded vendor as a gap rather than assuming either way.
+  gst_registration_status: "",
   is_active: true,
 };
 
@@ -128,6 +132,14 @@ export default function SuppliersPage() {
   // TDS section list — thresholds/rates always come from the authoritative
   // TDSComputer via GET /api/tds/sections, never hardcoded here.
   const [tdsSections, setTdsSections] = useState<TDSSection[]>([]);
+
+  // The three answers to "is this supplier registered" (PUR-19), served by
+  // GET /api/rcm-documents/registration-states rather than spelled here.
+  // `domain/gst/rcm_documents.py` owns the vocabulary because s.31(3)(f) turns
+  // on it; there is deliberately no hardcoded fallback, since an unreachable
+  // server leaving the box on "Not recorded" is the truth, where a guessed
+  // pair could offer a value the server refuses.
+  const [registrationStates, setRegistrationStates] = useState<string[]>([]);
 
   // TDS calculator
   const [billRs, setBillRs] = useState("");
@@ -170,6 +182,16 @@ export default function SuppliersPage() {
     listTdsSections().then(r => setTdsSections(r.sections)).catch(() => setTdsSections([]));
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    api.rcmDocuments.registrationStates()
+      .then((res) => {
+        if (alive && res.success && Array.isArray(res.data)) setRegistrationStates(res.data);
+      })
+      .catch(() => { /* leaves the field unset, which is the third state */ });
+    return () => { alive = false; };
+  }, []);
+
   // Recompute the calculator via the authoritative TDSComputer whenever the
   // bill amount, section, or supplier PAN changes — never re-derive rates
   // or the individual/company/§206AA rules locally.
@@ -204,6 +226,7 @@ export default function SuppliersPage() {
       rate_percent_typed: bpsToPercentText(v.tds_rate_bps),
       credit_limit_rs: v.credit_limit_paise ? String(v.credit_limit_paise / 100) : "",
       credit_days: v.credit_days !== null && v.credit_days !== undefined ? String(v.credit_days) : "",
+      gst_registration_status: v.gst_registration_status ?? "",
       is_active: v.is_active,
     });
     setBillRs("");
@@ -286,6 +309,10 @@ export default function SuppliersPage() {
       tds_rate_bps: rateBps,
       credit_limit_paise: creditLimit,
       credit_days: creditDays,
+      // Omitted rather than sent as null when unrecorded: the server drops
+      // nulls on a PATCH, so sending one would be inert and sending "" would
+      // fail the CHECK. Leaving it out leaves the column as it is.
+      gst_registration_status: form.gst_registration_status || undefined,
       is_active: form.is_active,
     };
     try {
@@ -455,6 +482,35 @@ export default function SuppliersPage() {
                   <label className="text-xs font-medium text-[#334155] block mb-1">PAN</label>
                   <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value.toUpperCase() }))} placeholder="AAAAA0000A" maxLength={10} />
                 </div>
+              </div>
+
+              {/* PUR-19. Not derived from whether a GSTIN is on file: a blank
+                  GSTIN box means nobody typed one, which is not the same fact
+                  as the supplier being unregistered — and CGST Act s.31(3)(f)
+                  makes the RECIPIENT issue a self-invoice on exactly that
+                  fact. Leaving it unrecorded is a real answer. */}
+              <div>
+                <label htmlFor="supplier-gst-registration" className="text-xs font-medium text-[#334155] block mb-1">
+                  GST registration
+                </label>
+                <select
+                  id="supplier-gst-registration"
+                  value={form.gst_registration_status}
+                  onChange={e => setForm(f => ({ ...f, gst_registration_status: e.target.value }))}
+                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Not recorded</option>
+                  {registrationStates.filter(o => o !== "unrecorded").map(o => (
+                    <option key={o} value={o}>
+                      {o === "registered" ? "Registered" : "Unregistered"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-[#94A3B8] mt-1 leading-tight">
+                  A reverse-charge bill from an unregistered supplier needs a self-invoice
+                  (CGST Act s.31(3)(f)). Left unrecorded, the self-invoice says so rather
+                  than guessing.
+                </p>
               </div>
 
               <div>

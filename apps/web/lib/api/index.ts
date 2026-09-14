@@ -1092,6 +1092,11 @@ export type Vendor = {
    *  (that means no credit at all). Recorded, never enforced — nothing blocks
    *  or warns on a bill that would exceed it. */
   credit_limit_paise: number | null;
+  /** Migration 388. Is this supplier registered under GST? NULL is a real
+   *  THIRD state — nobody has recorded it — and CGST Act s.31(3)(f) turns on
+   *  the answer, so the self-invoice path NAMES an unrecorded vendor as a gap
+   *  rather than assuming either way. */
+  gst_registration_status?: string | null;
   is_active: boolean;
   created_at?: string;
 };
@@ -1110,6 +1115,9 @@ export type VendorWrite = {
   tds_rate_bps?: number;
   credit_days?: number | null;
   credit_limit_paise?: number | null;
+  /** 'registered' | 'unregistered'. Omit to leave it as it is — a PATCH drops
+   *  nulls, so this cannot be cleared back to unrecorded from here. */
+  gst_registration_status?: string | null;
   is_active?: boolean;
 };
 
@@ -3674,6 +3682,42 @@ export const api = {
         { method: "PATCH", body: JSON.stringify(body) }),
   },
 
+  /** The two documents a reverse-charge purchase owes (PUR-19).
+   *
+   *  CGST Act s.31(3)(f) makes the RECIPIENT issue a self-invoice for a
+   *  reverse-charge supply from an UNREGISTERED supplier; s.31(3)(g) makes them
+   *  issue a payment voucher at the time of payment on EVERY s.9(3)/(4)
+   *  liability, registered or not. The browser does not know that difference
+   *  and must not learn it — `domain/gst/rcm_documents.py` decides, and the
+   *  preview carries the answer with its reasons. */
+  rcmDocuments: {
+    kinds: () => request<ApiResp<RcmDocumentKind[]>>("/api/rcm-documents/kinds"),
+    /** The three answers to "is this supplier registered". Served rather than
+     *  spelled here: `unrecorded` is a real third state, and a screen that
+     *  knows only two turns a named gap into a silent guess. */
+    registrationStates: () =>
+      request<ApiResp<string[]>>("/api/rcm-documents/registration-states"),
+    list: (params: { client_id: string; kind?: string }) =>
+      request<ApiResp<RcmDocumentRow[]>>(
+        `/api/rcm-documents?${new URLSearchParams(params as Record<string, string>)}`),
+    previewSelfInvoice: (params: { client_id: string; purchase_bill_id: string }) =>
+      request<ApiResp<RcmDocumentPreview>>(
+        `/api/rcm-documents/preview/self-invoice?${new URLSearchParams(params)}`),
+    previewPaymentVoucher: (params: { client_id: string; purchase_payment_id: string }) =>
+      request<ApiResp<RcmDocumentPreview>>(
+        `/api/rcm-documents/preview/payment-voucher?${new URLSearchParams(params)}`),
+    issue: (body: {
+      client_id: string;
+      kind: "self_invoice" | "payment_voucher";
+      purchase_bill_id?: string;
+      purchase_payment_id?: string;
+      document_no?: string;
+      document_date?: string;
+      notes?: string;
+    }) => request<ApiResp<RcmDocumentRow>>("/api/rcm-documents",
+      { method: "POST", body: JSON.stringify(body) }),
+  },
+
   reports: {
     transactions: (clientId?: string, dateFrom?: string, dateTo?: string) => {
       const q = new URLSearchParams();
@@ -4098,4 +4142,84 @@ export type EsicMappedIpCheck = {
   matched: string[];
   would_be_rejected: boolean;
   what_it_means: string;
+};
+
+// ── The two documents a reverse-charge purchase owes (PUR-19) ───────────────
+//
+// Shapes only. Which document is due, what it says and what could not be
+// stated are `domain/gst/rcm_documents.py`'s answers — in particular the one
+// difference that matters, that s.31(3)(f) reaches only an UNREGISTERED
+// supplier while s.31(3)(g) reaches every reverse-charge payment, is nowhere
+// in this file and must not be.
+
+export type RcmDocumentKind = {
+  kind: "self_invoice" | "payment_voucher";
+  section: string;
+  rule: string;
+  hangs_off: "purchase_bill" | "purchase_payment";
+  only_when_supplier_unregistered: boolean;
+};
+
+export type RcmParty = {
+  name: string;
+  address: string;
+  gstin: string | null;
+  state_code: string | null;
+};
+
+export type RcmParticulars = {
+  kind: string;
+  section: string;
+  rule: string;
+  document_no: string;
+  document_date: string;
+  supplier: RcmParty;
+  recipient: RcmParty;
+  lines: {
+    description: string;
+    hsn_sac: string | null;
+    quantity: string | null;
+    unit: string | null;
+    taxable_paise: number;
+  }[];
+  taxable_paise: number;
+  amount_paid_paise: number;
+  taxes: { head: string; amount_paise: number }[];
+  total_tax_paise: number;
+  place_of_supply: [string, string];
+  tax_payable_on_reverse_charge: boolean;
+  gaps: string[];
+  caveats: string[];
+};
+
+export type RcmDocumentRow = {
+  id: string;
+  kind: string;
+  document_no: string;
+  document_date: string;
+  purchase_bill_id: string | null;
+  purchase_payment_id: string | null;
+  taxable_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  igst_paise: number;
+  cess_paise: number;
+  amount_paid_paise: number;
+};
+
+export type RcmDocumentPreview = {
+  kind: "self_invoice" | "payment_voucher";
+  section: string;
+  rule: string;
+  /** The Act asks for this document. */
+  due: boolean;
+  /** Why it is NOT due — a settled answer about the statute. */
+  reasons: string[];
+  /** What nobody has recorded yet. DIFFERENT from `reasons`: this one is
+   *  actionable, and a screen that renders the two the same way turns a named
+   *  gap into a refusal. */
+  gaps: string[];
+  vendor_registration: "registered" | "unregistered" | "unrecorded";
+  existing: RcmDocumentRow | null;
+  particulars: RcmParticulars | null;
 };

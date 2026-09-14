@@ -82,6 +82,7 @@ from routers import firm_hsn_library  # Firm-owned, CA-curated HSN/SAC library (
 from routers import firm_hsn_rate_history  # Per-firm rate history, mechanism only (Decision D)
 from routers import recurring_invoices
 from routers import recurring_purchase_bills
+from routers import rcm_documents  # PUR-19 — s.31(3)(f) self-invoice, s.31(3)(g) payment voucher
 from routers import recurring_journals
 from routers import compliance_ops
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
@@ -366,6 +367,7 @@ app.include_router(purchase_credit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(customer_statements.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_purchase_bills.router, dependencies=_CLIENT_GUARD)
+app.include_router(rcm_documents.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_journals.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_ops.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_bills.router, dependencies=_CLIENT_GUARD)

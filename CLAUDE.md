@@ -551,6 +551,45 @@ change. The code is the authority; keep this file in step with it.
   FY-versioned authority and a second one in SQL is what the posting-kernel
   rule exists to prevent. A DROP is the right end state and needs the
   production-fixture refresh in `docs/schema-drift.md`.
+- **A REVERSE-CHARGE PURCHASE OWES TWO DOCUMENTS AND THEY ARE NOT ONE RULE WITH
+  TWO NAMES** (PUR-19, migration 388). The reverse-charge ACCOUNTING was
+  complete — the tax kept out of what the vendor is owed, the liability
+  self-accounted, GSTR-3B declaring it — and the product produced neither
+  document the CGST Act makes the RECIPIENT issue. **§31(3)(f) reaches only a
+  supply received from a supplier who is NOT REGISTERED; §31(3)(g) reaches
+  EVERY §9(3)/(4) payment**, registered supplier or not — so a payment to a
+  registered goods transport agency owes a voucher and owes no self-invoice,
+  and asking the registration question in `payment_voucher_due` would import
+  (f)'s limb into a section that does not carry it. The self-invoice is not
+  paperwork: it is the document the input credit RESTS on (Rule 36(1)(b) with
+  §16(2)(a)). `domain/gst/rcm_documents.py` is the authority and decides all of
+  it; the router and the screen decide nothing.
+  **REGISTRATION HAS THREE STATES AND THE THIRD IS REFUSED, NOT GUESSED.** A
+  valid GSTIN on the vendor IS the registration — read through
+  `domain/gst/gstin.problem_with`, so a malformed one reports itself instead of
+  being read as registered — `vendors.gst_registration_status` answers it where
+  there is no GSTIN, and NULL is *unrecorded*, named as a gap: one guess mints
+  a document the Act does not ask for and the other withholds the one the
+  credit rests on. The column is nullable with **no default** and CHECKed to
+  the two settled answers, so `unrecorded` cannot be STORED as a string; both
+  API doors (`VendorIn` and `VendorUpdateIn`) normalise case and refuse it with
+  a sentence saying it is the ABSENCE of a value, and both screens that record
+  it — the client Vendors tab and the firm-level Supplier Master — serve the
+  picker from `GET /api/rcm-documents/registration-states` rather than
+  spelling the pair. A `Decision`'s **`reasons` and `gaps` are different
+  things** and the panel renders them differently: reasons mean the Act does
+  not ask for the document (settled), gaps mean nobody can yet tell
+  (actionable). The particulars are built in the domain module rather than in
+  the PDF, so what the endpoint serves and what the CA prints are one object.
+  Four refusals are recorded rather than guessed: **no consolidated month-end
+  self-invoice** (`[S]`, tied to the withdrawn Notification 8/2017-CT(R)),
+  whether §9(4) applies is the bill's own `is_reverse_charge` and is the CA's
+  answer, a cancelled registration is not modelled, and **Rule 46(h)'s UQC is
+  absent because `purchase_bill_lines` has no unit column** — named, never
+  invented. Numbering goes through the one `domain/gst/invoice_series`
+  authority, and uniqueness is per client **per kind**, because Rule 46(b)
+  allows "one or multiple series" and these are two.
+
 - **THE SUPPLIER MASTER IS `public.vendors`, AND `public.suppliers` IS RETIRED**
   (PUR-16). Migration 030 created a second one and `/accounting/suppliers` was
   its only writer, straight over PostgREST; every purchase path — bill

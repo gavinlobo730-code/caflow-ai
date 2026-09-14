@@ -7,20 +7,20 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **91** | re-read against the code. The defect is gone. |
+| closed | **92** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
 | partial | **10** | part of the finding is answered, part is not. Each says which. |
-| open | **14** | re-read and still true. |
+| open | **13** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 24 items — 14 open and 10 partial — not 254.**
+**The work left is 23 items — 13 open and 10 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**And of the 14 open, most are not code problems.** Nearly every one needs a
+**And of the 13 open, most are not code problems.** Nearly every one needs a
 migration; a handful need a statutory document a person has to read.
 
 ## Open
@@ -37,7 +37,6 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 | medium | **PUR-18** | Import of goods has no path — no Bill of Entry, so the IGST paid to customs cannot be recorded a |
-| medium | **PUR-19** | Reverse-charge bills produce no self-invoice (§31(3)(f)) and no payment voucher (§31(3)(g)) |
 | medium | **PUR-25** | No purchase orders, goods receipt notes or three-way matching |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
@@ -54,7 +53,6 @@ migration; a handful need a statutory document a person has to read.
 | **PAY-23** | a bonus register, and the state minimum wage the Act computes on |
 | **PAY-26** | schema for claims |
 | **PAY-27** | each bank's own file format |
-| **PUR-19** | document series and templates |
 | **PUR-25** | three new document types |
 | **SALES-21** | four new document types |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |
@@ -164,6 +162,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **PAY-25** | The payroll journal posts one Salaries Expense account and defines the debit as the sum of the c |
 | medium | **PUR-12** | The reconciliation screen tells the CA that ITC is restricted to 105% of GSTR-2A — a cushion rep |
 | medium | **PUR-16** | A second, orphaned vendor master at /accounting/suppliers that no purchase path reads |
+| medium | **PUR-19** | Reverse-charge bills produce no self-invoice (§31(3)(f)) and no payment voucher (§31(3)(g)) |
 | medium | **PUR-20** | GST compensation cess cannot be recorded on a purchase, so the cess ITC is lost for every client |
 | medium | **PUR-22** | One payment settling several bills is not reachable from the Purchases screen — the multi-bill a |
 | medium | **PUR-23** | Issuing a debit note (purchase return) does not resync the TDS register, so 26Q keeps reporting  |
