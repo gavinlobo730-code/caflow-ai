@@ -139,3 +139,22 @@ class StockCountSaveIn(BaseModel):
     client_id: str
     entries: list[StockCountEntryIn]
 
+
+
+class CostingPolicyIn(BaseModel):
+    """Record the client's cost formula — AS-2 paragraph 14 (INV-02).
+
+    `effective_from` is REQUIRED in substance and optional in the model, so
+    the refusal that explains why comes from `domain/inventory/costing.py`
+    with the statutory reasoning attached rather than from a Pydantic
+    "field required". A CA who leaves the date blank needs to read the
+    sentence about AS-5 paragraph 29, not a validation error.
+
+    There is no `method` validator here for the same reason: the two
+    permitted formulas, and the refusal naming why standard cost is not a
+    third, live in the domain module. A `Literal` here would be a second
+    list of them.
+    """
+    client_id: str
+    method: str
+    effective_from: Optional[str] = None  # YYYY-MM-DD

@@ -106,12 +106,39 @@ def _declared_snapshot(template_name: str) -> dict:
                        capture_output=True, text=True)
 
 
+#: What an in-flight migration must actually DO to an object before a finding
+#: about that object is excused. Each pattern's first group is the name.
+#:
+#: THIS USED TO BE EVERY LOWERCASE IDENTIFIER IN THE FILE, and that was the
+#: real weakness rather than the cap below it. A migration that merely
+#: MENTIONED `journal_entries` — in a comment, in a `REFERENCES` clause, in an
+#: unrelated `UPDATE` — excused every guard finding about that table, and an
+#: in-flight set touches the busiest tables in the schema by construction. So
+#: the exclusion widened with every migration on a branch while the thing it
+#: was meant to excuse (an object production has not seen yet) did not.
+#:
+#: Narrow now: the object has to be CREATED, ADDED or have its RLS switched on
+#: by a migration production has not applied. Being under-generous fails a
+#: legitimate PR loudly and is fixed by adding the shape here; being
+#: over-generous is silent and was excusing real drift.
+_CREATES_IN_FLIGHT = (
+    re.compile(r"create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)"),
+    re.compile(r"create\s+policy\s+\"?([a-z_][a-z0-9_]*)\"?"),
+    re.compile(r"add\s+constraint\s+([a-z_][a-z0-9_]*)"),
+    re.compile(r"add\s+column\s+(?:if\s+not\s+exists\s+)?([a-z_][a-z0-9_]*)"),
+    re.compile(r"alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)\s+"
+               r"enable\s+row\s+level\s+security"),
+    # A CHECK written inline on ADD COLUMN is named `<table>_<column>_check` by
+    # Postgres, and the finding carries that generated name rather than
+    # anything spelled in the file.
+    re.compile(r"alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?[a-z_][a-z0-9_]*\s+"
+               r"add\s+column\s+(?:if\s+not\s+exists\s+)?([a-z_][a-z0-9_]*)"),
+)
+
+
 def _names_in_migrations_after_the_snapshot() -> set:
-    """Every identifier in a migration numbered above the fixture's high-water
-    mark. Coarse on purpose — the same reasoning as the column test: being
-    over-generous costs one release of blindness to a drifted guard that
-    shares a name with an in-flight one; being under-generous fails every PR
-    that adds a constraint."""
+    """Every object CREATED by a migration numbered above the fixture's
+    high-water mark — not every identifier those migrations mention."""
     meta_path = _FIXTURE.with_suffix(".meta.json")
     if not meta_path.exists():
         return set()
@@ -121,7 +148,14 @@ def _names_in_migrations_after_the_snapshot() -> set:
         head = sql.name.split("_", 1)[0]
         if not head.isdigit() or int(head) <= through:
             continue
-        names |= set(re.findall(r"[a-z_][a-z0-9_]*", sql.read_text(encoding="utf-8").lower()))
+        body = sql.read_text(encoding="utf-8").lower()
+        for pattern in _CREATES_IN_FLIGHT:
+            names |= set(pattern.findall(body))
+        # `<table>_<column>_check` for an inline CHECK on a new column.
+        for table, column in re.findall(
+                r"alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?([a-z_][a-z0-9_]*)\s+"
+                r"add\s+column\s+(?:if\s+not\s+exists\s+)?([a-z_][a-z0-9_]*)", body):
+            names.add(f"{table}_{column}_check")
     return names
 
 
@@ -235,40 +269,58 @@ def test_the_fixture_describes_a_real_set_of_guards():
     assert restrictive, "no RESTRICTIVE policy in the fixture — the wrong query was captured"
 
 
-#: How far the fixture's high-water mark may sit below the top of the migration
-#: set before the in-flight exclusion stops being narrow enough to trust.
+#: The most of production's OWN tables the in-flight exclusion may shield
+#: before it stops being narrow enough to trust.
 #:
-#: 10 -> 12 (SALES-21). This is NOT a staleness problem a refresh can fix: the
-#: mark records the highest migration PRODUCTION has applied, and a migration
-#: reaches production only when it merges to `main`. A long-running work branch
-#: therefore carries its own unmerged migrations as "in flight" by construction
-#: — 382 to 392 here — and re-capturing the snapshot today would write 381 back
-#: again. MERGING the branch is what brings this number down, not a refresh,
-#: and the assertion's message now says so.
+#: THIS REPLACES A COUNT OF UNMERGED MIGRATIONS (10 -> 12 -> gone), and the
+#: replacement is a strengthening rather than a relaxation. That count was a
+#: PROXY for the thing that actually matters — how wide the exclusion is — and
+#: it was a proxy because the exclusion used to be every lowercase identifier
+#: in every in-flight migration, which does widen with the count. It no longer
+#: is (see `_CREATES_IN_FLIGHT`): a finding is excused only where an unapplied
+#: migration CREATES the object, so the exclusion covers new tables, new
+#: columns, new constraints and new policies however many migrations are in
+#: flight.
 #:
-#: The teeth are unchanged: the failure this guards against is a mark that is
-#: wildly wrong — 0, say — which would put every migration in flight and excuse
-#: every finding. Against a 392-migration set that still fails by 380.
-MAX_MIGRATIONS_IN_FLIGHT = 12
+#: That makes the property measurable directly, which is what this asserts. It
+#: is strictly stronger than the count was: a mark of 0 would put every
+#: CREATE TABLE in the whole set in flight and shield essentially all 279 of
+#: production's tables, failing here by a couple of hundred — where the old
+#: count test would have failed by 394 and the old EXCLUSION would meanwhile
+#: have been excusing real drift on `journal_entries` because some in-flight
+#: migration happened to write the name in a comment.
+#:
+#: Against the branch as it stands the figure is ZERO: every in-flight
+#: migration creates tables production has never seen and adds columns to
+#: tables whose existing guards are still compared in full.
+MAX_LIVE_TABLES_THE_EXCLUSION_MAY_SHIELD = 8
 
 
 @_NEEDS_PG
-def test_the_in_flight_exclusion_cannot_excuse_everything():
+def test_the_in_flight_exclusion_cannot_excuse_everything(in_flight):
     """If the high-water mark were wrong — say 0 — every migration would be
-    'in flight' and every finding excused. The mark must sit at or near the
-    top of the migration set."""
+    'in flight' and every finding excused. Measured on what the exclusion
+    actually shields, not on how far behind the mark is."""
     meta = json.loads(_FIXTURE.with_suffix(".meta.json").read_text(encoding="utf-8"))
     numbers = sorted(int(p.name.split("_", 1)[0]) for p in (_ROOT / "migrations").glob("*.sql")
                      if p.name.split("_", 1)[0].isdigit())
-    assert numbers[-1] - meta["applied_through_migration"] <= MAX_MIGRATIONS_IN_FLIGHT, (
-        f"the guards fixture is more than {MAX_MIGRATIONS_IN_FLIGHT} migrations "
-        f"behind the repository ({numbers[-1]} in the tree, "
-        f"{meta['applied_through_migration']} applied in production), so the "
-        f"in-flight exclusion is wide enough to excuse a real regression. "
-        f"A REFRESH DOES NOT FIX THIS: the mark records what production has "
-        f"applied, and a migration reaches production by MERGING to main. "
-        f"Merge the branch, or — if the fixture really is stale against a "
-        f"production that has moved on — refresh it (tests/fixtures/README.md).")
+    through = meta["applied_through_migration"]
+    assert through in numbers, (
+        f"the fixture says production has applied through migration {through}, "
+        f"which is not a migration in this tree — the mark is wrong, and every "
+        f"migration above it is being treated as in flight.")
+
+    live = json.loads(_FIXTURE.read_text(encoding="utf-8"))
+    tables = set(live["rls"])
+    shielded = sorted(tables & in_flight)
+    assert len(shielded) <= MAX_LIVE_TABLES_THE_EXCLUSION_MAY_SHIELD, (
+        f"the in-flight exclusion shields {len(shielded)} of production's "
+        f"{len(tables)} own tables, which is wide enough to excuse a real "
+        f"regression. A table production ALREADY HAS is not in flight: its "
+        f"guards are comparable and must be compared. Either the fixture's "
+        f"high-water mark ({through}) is wrong, or a migration above it is "
+        f"re-creating a table that already exists.\n  "
+        + "\n  ".join(shielded))
 
 
 def test_a_planted_offender_would_be_caught():

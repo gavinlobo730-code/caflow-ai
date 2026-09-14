@@ -16,7 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from models.common import api_response
 from models.inventory import (StockAdjustmentIn, NrvWritedownIn,
-                              StockCountOpenIn, StockCountSaveIn)
+                              StockCountOpenIn, StockCountSaveIn,
+                              CostingPolicyIn)
 from core.permissions import rbac
 from core.authz import assert_client_access
 from services.audit_service import log_event
@@ -553,3 +554,72 @@ def post_count_session(
                         "failed_count": result["failed_count"]})
     return api_response(True, result)
 
+
+
+# ── Which cost formula the books are kept on (AS-2 paragraph 14, INV-02) ─────
+# The engine is `domain/inventory/costing.py` and the reads are
+# `services/inventory_costing_policy_service.py`. Nothing is decided here.
+
+
+@router.get("/costing-policy")
+def get_costing_policy(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The client's cost formula, the alternatives, and what a change means.
+
+    Also answers for a client with NOTHING recorded, which is the common case
+    and is not the same as having no answer: every book in this product has
+    been kept on the weighted average because it was the only formula there
+    was, so the response says which formula is in force AND that nobody has
+    chosen it.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, None)
+    from core.supabase_client import get_supabase
+    from services import inventory_costing_policy_service as svc
+    db = get_supabase()
+    firm_id = current_user.get("firm_id") or ""
+    data = svc.read_policy(db, firm_id=firm_id, client_id=client_id)
+    data["methods_used"] = svc.ledger_methods_used(
+        db, firm_id=firm_id, client_id=client_id)
+    return api_response(True, data)
+
+
+@router.put("/costing-policy")
+def put_costing_policy(
+    data: CostingPolicyIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Record the client's cost formula.
+
+    A CHANGE IS A CHANGE IN ACCOUNTING POLICY (AS-5 paragraph 29) and it is
+    PROSPECTIVE: nothing already priced is re-costed, so the server refuses a
+    date stock has already moved on or after rather than quietly restating a
+    closing stock figure that is in a filed return. The refusal is a 422
+    carrying the sentence, because the CA has something to do about it — pick
+    the start of the next period — and an opaque failure would send them to
+    the database.
+    """
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(True, None)
+    from core.supabase_client import get_supabase
+    from services import inventory_costing_policy_service as svc
+    db = get_supabase()
+    firm_id = current_user.get("firm_id") or ""
+    result = svc.set_policy(
+        db, firm_id=firm_id, client_id=data.client_id,
+        method=data.method, effective_from=data.effective_from,
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("refusal"))
+    log_event(
+        firm_id, "client", data.client_id, "update",
+        actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        new_data={"inventory_costing_method": result.get("method"),
+                  "effective_from": data.effective_from},
+    )
+    return api_response(True, result)

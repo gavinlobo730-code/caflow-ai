@@ -23,6 +23,7 @@ import { formatServicePrice } from "@/lib/catalogue/service";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { StockCountSheetPanel } from "@/components/inventory/StockCountSheet";
+import { CostFormulaPanel } from "@/components/inventory/CostFormulaPanel";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 interface StockItem {
@@ -406,6 +407,12 @@ export default function InventoryPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0">
+        {/* INV-02 — AS-2 par. 14's cost formula. Above the register because
+            it is what every value in it was computed on, and a CA reading a
+            closing stock figure needs to know which formula produced it. */}
+        <div className="mb-4">
+          <CostFormulaPanel clientId={clientId} />
+        </div>
         <DataTable
           data={items}
           columns={columns}

@@ -250,9 +250,9 @@
       "why": "firm_hsn_library exists, so a firm's own library is built and reused. The finding's real ask — SHIPPING an HSN/SAC master — is a data-supply item like the professional-tax slabs, not code"
     },
     "INV-02": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "moving average is still the only costing method. FIFO appears in the module only as prose"
+      "status": "closed",
+      "verified_on": "2026-09-14",
+      "why": "AS-2 par. 14's second cost formula is built. domain/inventory/costing.py is the authority (the two formulas, what an unrecorded client is on and why that is a fact rather than a guess, AS-2 par. 17's refusal of standard cost, and AS-5 par. 29/32's prospective-only change); migration 394 puts the POLICY on clients.inventory_costing_method (nullable, no default, no backfill) and the STAMP on inventory_stock_ledger.costing_method (defaulted and backfilled, because that value is known). The fork lives only in record_stock_out: a receipt costs the same under both, so stock_position needs no change and a test asserts it never mentions the formula. GET/PUT /api/inventory/costing-policy and a panel on the client Inventory tab."
     },
     "PAY-24": {
       "status": "closed",

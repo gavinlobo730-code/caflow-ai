@@ -2196,11 +2196,61 @@ both move together, which is why a test asserts the expense account nets to
 ZERO across the two journals. A NULL `itc_eligible` reads as ELIGIBLE, matching
 migration 240's `NOT NULL DEFAULT true`; a blocked SERVICE line capitalises
 nothing because it never reaches the stock ledger at all; and a purchase RETURN
-relieves at the moving average, which now carries the tax. **Freight inward,
+relieves on the client's own cost formula (the moving average unless FIFO is
+recorded — see INV-02 below), which now carries the tax. **Freight inward,
 insurance and customs duty are still NOT in cost** — the other two-thirds of
 INV-05 — and closing them is a migration AND an owner decision, because the
 apportionment basis (by value? by quantity? by weight?) is something Tally asks
 the user rather than deriving.
+
+**THE COST FORMULA IS A CLIENT POLICY, AND ONLY ONE FUNCTION FORKS ON IT**
+(INV-02, migration 394). AS-2 paragraph 14 permits FIFO **or** weighted
+average, and the product had only the second — so a client whose books are
+kept on FIFO had a closing stock figure, and therefore a profit, that its own
+accounting policy note did not describe. `domain/inventory/costing.py` is the
+authority. **A RECEIPT COSTS THE SAME UNDER BOTH**: the formulas assign cost to
+what goes OUT, and the running value rises by the receipt's own invoice cost
+either way — so the fork is entirely inside `record_stock_out`, the
+oversold-absorb split is common to both, and `domain/reporting/stock_position`
+needs no change at all (a test asserts it never mentions the formula).
+**Paragraph 16 makes it a property of the ENTERPRISE'S inventories**, so it
+lives on `clients.inventory_costing_method` and no caller may choose one:
+`CostingPolicy` carries the client it belongs to and a movement REFUSES a
+policy that is not its own, which keeps passing it down a cached read rather
+than a choice — the posting paths resolve it once per document, because
+`clients` is a Singapore-to-Mumbai round trip and an invoice has as many lines
+as it has lines.
+**NULL IS NOT A DEFAULT DRESSED UP AS ONE.** The client column is nullable
+with no default and no backfill, and reads as the weighted average — which is
+a FACT, not a guess: every book in this product was kept that way because it
+was the only formula there was. The LEDGER column
+(`inventory_stock_ledger.costing_method`) IS defaulted and backfilled, for the
+opposite reason — the value is known for every existing row — and it is what
+makes AS-5 paragraph 32's disclosure derivable from the ledger instead of
+remembered. A CHANGE IS PROSPECTIVE: nothing is ever re-costed, so
+`switch_refusal` requires a date and refuses one stock has already moved on or
+after, because re-costing would move a closing stock figure already in a filed
+return.
+**A LAYER CARRIES ITS VALUE, NOT A UNIT COST**, and that is the same decision
+`_compute_stock_in` makes blending the average from the exact total: three
+units costing ₹100 have a unit cost of 3,333 paise and a value of 10,000, and
+`3 × 3,333` is 9,999. A layer takes the ledger's own `value_delta_paise`, a
+whole layer is consumed at its whole value and a part layer is split by
+quantity with the remainder keeping exactly what is left — so the layers tie
+to the books to the paise, and the one paise that would otherwise appear on
+every awkward receipt cannot be mistaken for the real difference a
+cancellation reversal leaves. **The layers are DERIVED from the ledger, never
+stored** (migration 278's reasoning), replayed forward from the last row whose
+running quantity was at or below zero — the force-close pairs that with a
+value of exactly zero, so nothing before it can matter — **carrying that row's
+own oversold deficit**, without which a receipt clearing an oversell becomes a
+layer of its whole quantity. **`record_stock_out_at_value` is deliberately NOT
+forked**: a cancellation reversal removes the value the original movement
+added because the journal side reverses that entry at its original value, which
+is not a FIFO concept at all, so `rebase` puts the layers back on the books
+afterwards rather than pretending the two agree. Standard cost is REFUSED and
+named (AS-2 paragraph 17 — two judgements no ledger holds, and it needs a
+variance account and a revision cycle to mean anything).
 
 **A PHYSICAL STOCK COUNT IS ONE SESSION, AND THE VARIANCE IS A FACT ABOUT THE
 COUNT DATE** (INV-08, migration 387). Adjustment was one item per API call and

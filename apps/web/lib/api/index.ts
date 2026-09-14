@@ -2460,6 +2460,19 @@ export const api = {
       request<ApiResp<StockCountPostResult>>(
         `/api/inventory/count-sessions/${encodeURIComponent(sessionId)}/post`,
         { method: "POST" }),
+    // INV-02 — which of AS-2 paragraph 14's two cost formulas prices an
+    // issue. The formula is a per-CLIENT policy (AS-2 par. 16), the answer
+    // for a client with nothing recorded is the weighted average, and a
+    // change is prospective (AS-5 par. 29/32). Every sentence in the response
+    // is the server's; nothing here decides.
+    costingPolicy: (params: Record<string, string>) =>
+      request<ApiResp<InventoryCostingPolicy>>(
+        `/api/inventory/costing-policy?${new URLSearchParams(params)}`),
+    setCostingPolicy: (body: {
+      client_id: string; method: string; effective_from: string | null;
+    }) =>
+      request<ApiResp<InventoryCostingPolicy>>("/api/inventory/costing-policy",
+        { method: "PUT", body: JSON.stringify(body) }),
   },
   // Multi-Currency (Phase 1/5) — currency master + resolved policy (gates FX UI).
   currencies: {
@@ -4845,4 +4858,33 @@ export type RcmDocumentPreview = {
   vendor_registration: "registered" | "unregistered" | "unrecorded";
   existing: RcmDocumentRow | null;
   particulars: RcmParticulars | null;
+};
+
+
+/** INV-02 — a client's cost formula and what changing it would mean.
+ *
+ *  `method` is always one of the two AS-2 paragraph 14 permits and is never
+ *  null: a client with nothing recorded IS on the weighted average, because
+ *  it was the only formula this product had. `is_recorded` is the separate
+ *  fact of whether anybody has chosen, and `unrecorded_means` carries the
+ *  sentence saying so — present only when they have not.
+ *
+ *  `methods_used` is DERIVED from `inventory_stock_ledger.costing_method`,
+ *  the stamp on every movement, which is what makes the AS-5 paragraph 32
+ *  disclosure a property of the ledger rather than something remembered.
+ */
+export type InventoryCostingPolicy = {
+  client_id: string;
+  method: string;
+  label: string;
+  is_recorded: boolean;
+  unrecorded_means: string | null;
+  methods: { value: string; label: string }[];
+  standard_cost_refused: string;
+  as5_disclosure: string;
+  earliest_date_a_change_can_take_effect: string | null;
+  methods_used: {
+    method: string; label: string;
+    first_movement: string; last_movement: string;
+  }[];
 };

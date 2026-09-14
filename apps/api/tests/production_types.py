@@ -89,9 +89,13 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("vendors", "gst_registration_status"): "migration 388",
     ("client_sales_invoices", "is_opening"): "migration 391",
     ("purchase_bills", "is_opening"): "migration 391",
+    ("clients", "inventory_costing_method"): "migration 394",
+    ("inventory_stock_ledger", "costing_method"): "migration 394",
     # public.capital_gain_reinvestments (385), public.stock_count_sessions and
-    # public.stock_count_lines (387) and public.rcm_documents (388) are WHOLE
-    # new tables and need no entry: a table the snapshot predates is skipped.
+    # public.stock_count_lines (387), public.rcm_documents (388),
+    # public.bills_of_entry (389), public.client_gst_registrations (390) and
+    # the sales/purchase pre-document tables (392, 393) are WHOLE new tables
+    # and need no entry: a table the snapshot predates is skipped.
 }
 
 

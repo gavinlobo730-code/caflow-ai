@@ -1,13 +1,22 @@
 """
-Inventory costing engine — moving-average valuation for stock-tracked
+Inventory costing engine — AS-2 paragraph 14 valuation for stock-tracked
 (kind='good') Product/Service catalogue items.
 
-Moving-average costing: every stock-IN movement (purchase, opening balance)
-recomputes the average cost per unit from the exact total value in (never
-re-derived from a rounded per-unit figure — see _compute_stock_in). Every
-stock-OUT movement (sale, adjustment) prices the outgoing units at the
-CURRENT average cost — this is the defining trait of moving-average costing
-versus FIFO/LIFO, which track cost by batch instead.
+TWO COST FORMULAS, AND ONE FUNCTION FORKS ON THEM (INV-02). AS-2 paragraph 14
+permits the weighted average or first-in, first-out, and paragraph 16 makes
+the choice a property of the ENTERPRISE'S inventories — so it is a per-client
+policy on `clients.inventory_costing_method`, resolved through
+`domain/inventory/costing.py`, and no caller may pick one per movement.
+
+A RECEIPT COSTS THE SAME EITHER WAY. Every stock-IN movement (purchase,
+opening balance) adds its own exact total cost to the running value and
+recomputes the average cost per unit from that total (never re-derived from a
+rounded per-unit figure — see _compute_stock_in), whichever formula is in
+force. Only the stock-OUT movement differs: it prices the outgoing units at
+the CURRENT average, or off the OLDEST layers first under FIFO. That is why
+the fork is confined to `record_stock_out` / `_compute_stock_out_fifo`, why
+the oversold-absorb split and the force-close are common to both, and why
+`domain/reporting/stock_position.py` needs no knowledge of the formula at all.
 
 inventory_stock_ledger (migration 188) is the authoritative, append-only
 audit trail: each row's running_qty_units / running_value_paise are computed
@@ -39,6 +48,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.observability import capture_posting_failure
+from domain.inventory import costing
 
 _logger = logging.getLogger("caflow.inventory")
 
@@ -150,6 +160,52 @@ def _compute_stock_out(prev_qty: Decimal, prev_value_paise: int, prev_avg_paise:
     }
 
 
+def _compute_stock_out_fifo(prev_qty: Decimal, prev_value_paise: int,
+                            quantity: Decimal, layers) -> dict:
+    """Pure FIFO math for a stock-OUT movement. No I/O. Prices the outgoing
+    units off the OLDEST layers first (AS-2 paragraph 14's first-in, first-out
+    cost formula) instead of at the current weighted average.
+
+    THE SHAPE IS THE MOVING AVERAGE'S, DELIBERATELY. Only the NUMBER differs:
+    `value_delta_paise` still drives the COGS journal and still sums to the
+    running value, `running_avg_cost_paise` is still the value on hand over
+    the quantity on hand (under FIFO that is the layer-weighted average, which
+    is what a register should show), and the force-close at zero is unchanged.
+    That is what lets one posting path, one ledger and one closing-stock
+    function serve both formulas — and it is why
+    `domain/reporting/stock_position.py` needs no change at all.
+
+    The issue's cost is CLAMPED to what the books hold, the same discipline
+    `record_stock_out_at_value` applies: layers are replayed from the ledger
+    and the running value is chained on it, so the two agree — but a clamp is
+    the difference between a rounding residue and a running value that has
+    gone negative, and only one of those is recoverable.
+    """
+    if quantity <= 0:
+        raise ValueError("Stock-out quantity must be positive.")
+    new_qty = prev_qty - quantity
+    issue = costing.consume(layers, quantity)
+    out_value = min(issue.value_paise, prev_value_paise)
+    # Force-close — see _compute_stock_out. Identical rule, identical reason:
+    # when the quantity is exhausted the movement relieves EXACTLY what was on
+    # the books, so the deltas always sum to the running value.
+    if new_qty <= 0:
+        out_value = prev_value_paise
+    new_value = 0 if new_qty <= 0 else prev_value_paise - out_value
+    new_avg = _round_paise(new_value / new_qty) if new_qty > 0 else 0
+    return {
+        "quantity_delta": -quantity,
+        # What this issue actually cost per unit — NOT the running average.
+        # Under FIFO the two differ, and this column is the one a purchase
+        # return prices itself off (_sale_unit_cost_for_return).
+        "unit_cost_paise": _round_paise(Decimal(out_value) / quantity),
+        "value_delta_paise": -out_value,
+        "running_qty_units": new_qty,
+        "running_avg_cost_paise": new_avg,
+        "running_value_paise": new_value,
+    }
+
+
 def _last_ledger_row(db, service_catalogue_id: str) -> Optional[dict]:
     """The row every new movement chains its running totals from.
 
@@ -175,6 +231,157 @@ def _last_ledger_row(db, service_catalogue_id: str) -> Optional[dict]:
         .execute()
     )
     return resp.data[0] if resp.data else None
+
+
+def resolve_costing_policy(db, client_id: str) -> "costing.CostingPolicy":
+    """Which cost formula this client's books are kept on (AS-2 paragraph 14).
+
+    Resolved ONCE PER DOCUMENT by the posting paths and handed down to each
+    line — `clients` is one Singapore-to-Mumbai round trip (CLAUDE.md,
+    "Reporting performance") and an invoice has as many lines as it has
+    lines. `CostingPolicy` carries the client it belongs to so a line can
+    refuse a policy that is not its own; see `record_stock_out`.
+
+    A client with nothing recorded reads as the weighted average, and that is
+    not a guess — see `costing.UNRECORDED_MEANS`.
+    """
+    try:
+        rows = (
+            db.table("clients").select("id, inventory_costing_method")
+            .eq("id", client_id).limit(1).execute().data
+        )
+    except Exception as e:
+        # Never block the document. A client row that cannot be read means
+        # the formula in force is the one every book in this product has
+        # always been kept on.
+        capture_posting_failure(e, operation="resolve_costing_policy", client_id=client_id)
+        rows = None
+    recorded = (rows[0].get("inventory_costing_method") if rows else None)
+    return costing.policy_for(client_id, recorded)
+
+
+def _policy(db, client_id: str, policy) -> "costing.CostingPolicy":
+    """The policy to price this movement on — resolved, or the caller's own.
+
+    A POLICY BELONGING TO ANOTHER CLIENT IS REFUSED. AS-2 paragraph 16 makes
+    the cost formula a property of the enterprise's inventories, so a
+    per-movement choice is not something this engine accepts; passing one down
+    is a cached READ, and carrying the client id is what keeps it a cached
+    read however the plumbing is later rearranged. The alternative — a bare
+    string parameter — is one refactor away from a caller picking a formula.
+    """
+    if policy is None:
+        return resolve_costing_policy(db, client_id)
+    if str(policy.client_id) != str(client_id):
+        raise ValueError(
+            f"A cost formula belongs to a client: this movement is client "
+            f"{client_id} and the policy passed is client {policy.client_id}'s.")
+    return policy
+
+
+def _open_layers(db, service_catalogue_id: str, prev: Optional[dict]) -> tuple:
+    """The receipts still on hand for this item, oldest first — FIFO's input.
+
+    DERIVED FROM THE LEDGER, NEVER STORED (see `costing.layers_from_movements`
+    for why). The replay starts at the most recent row whose running quantity
+    was at or below ZERO, because the force-close invariant pairs that with a
+    running value of exactly zero: every layer is consumed there, so nothing
+    before it can matter. That is what bounds the read for a fast-moving item
+    — an item that sells out is replayed from its last sell-out, not from the
+    day it was created.
+
+    THE WATERMARK QUERY CAN ONLY NARROW, NEVER CORRUPT. Its answer is
+    re-checked in Python before it is used, and ignored if it does not
+    actually hold a quantity at or below zero, so a filter that behaves
+    differently on some driver costs a longer read and never a wrong price.
+    """
+    if prev is None:
+        return ()
+    from core.db_paging import fetch_all
+
+    watermark = None
+    watermark_id = None
+    opening_deficit = Decimal(0)
+    try:
+        wm_rows = (
+            db.table("inventory_stock_ledger")
+            .select("id, created_at, running_qty_units")
+            .eq("service_catalogue_id", service_catalogue_id)
+            .lte("running_qty_units", 0)
+            .order("created_at", desc=True).limit(1).execute().data
+        )
+        wm_qty = (Decimal(str(wm_rows[0].get("running_qty_units") or 0))
+                  if wm_rows else None)
+        if wm_qty is not None and wm_qty <= 0:
+            watermark = wm_rows[0].get("created_at")
+            watermark_id = wm_rows[0].get("id")
+            # THE WATERMARK CARRIES ITS OWN DEFICIT. A force-close at exactly
+            # zero starts the replay clean, but a row force-closed BELOW zero
+            # is an oversell: its value is zero and its quantity is not, and
+            # the next receipt clears that deficit before any of it becomes
+            # stock on hand (`_compute_stock_in`'s absorb split). Starting the
+            # replay at zero instead would turn that receipt into a layer of
+            # its whole quantity and value units that were already sold.
+            opening_deficit = -wm_qty
+    except Exception as e:
+        capture_posting_failure(e, operation="_open_layers.watermark",
+                                service_catalogue_id=service_catalogue_id)
+
+    def _q():
+        q = (
+            db.table("inventory_stock_ledger")
+            # `running_value_paise` is read for the WRITE-DOWN branch only:
+            # a movement that changes value and not quantity re-costs every
+            # layer to the new carrying amount, and taking that from the row
+            # itself is what keeps the layers tied to the books exactly.
+            .select("id, created_at, quantity_delta, value_delta_paise, "
+                    "running_value_paise")
+            .eq("service_catalogue_id", service_catalogue_id)
+        )
+        # >= rather than >, because `gte` is the comparison every driver and
+        # double in this codebase implements; the watermark row itself is
+        # dropped below. It is the force-close, so it contributes nothing.
+        return q.gte("created_at", watermark) if watermark else q
+
+    rows = fetch_all(_q, key="id", label="inventory.fifo_layers")
+    # fetch_all orders by id; the replay must be in INSERTION order, which is
+    # what `_last_ledger_row` chains the running totals in.
+    rows.sort(key=lambda r: (str(r.get("created_at") or ""), str(r.get("id") or "")))
+    # Dropped by ID, not by timestamp: two rows sharing a `created_at` would
+    # otherwise both go, and the second of them is a real movement. The
+    # timestamp is what the query can filter on; the id is what identifies the
+    # row — which is what makes the whole watermark an optimisation that can
+    # only narrow the read and never change the answer.
+    if watermark_id:
+        rows = [r for r in rows if str(r.get("id")) != str(watermark_id)]
+
+    position = costing.layers_from_movements(rows, opening_deficit=opening_deficit)
+    prev_qty = Decimal(str(prev.get("running_qty_units") or 0))
+    if position.quantity != prev_qty:
+        # A QUANTITY DISAGREEMENT IS NOT A ROUNDING DIFFERENCE. The value one
+        # below is expected on a cancellation reversal and is re-based; this
+        # one means the replay reconstructed a different number of units from
+        # the same rows the running totals were chained on, and the re-base
+        # would then spread the right value over the wrong quantity — which is
+        # exactly the shape the watermark's own oversold deficit had before it
+        # was carried. Logged loudly rather than absorbed.
+        _logger.warning(
+            "_open_layers: service_catalogue_id=%s FIFO replay holds %s units "
+            "but the ledger holds %s — the layers do not describe this item's "
+            "position and the next issue will be priced off them",
+            service_catalogue_id, position.quantity, prev_qty,
+        )
+    prev_value = int(prev.get("running_value_paise") or 0)
+    if costing.value_of(position.layers) != prev_value:
+        _logger.warning(
+            "_open_layers: service_catalogue_id=%s FIFO layers total %d but the "
+            "ledger holds %d — re-basing the layers on the books "
+            "(a cancellation reversal prices itself at the original value, "
+            "which is not a first-in first-out concept)",
+            service_catalogue_id, costing.value_of(position.layers), prev_value,
+        )
+        return costing.rebase(position.layers, prev_value)
+    return position.layers
 
 
 class _StockCASConflict(Exception):
@@ -217,6 +424,7 @@ def _insert_and_cache(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     movement_type: str, calc: dict, source_type: Optional[str], source_id: Optional[str],
     reference_no: Optional[str], created_by: Optional[str], expected_version: int,
+    costing_method: str,
 ) -> dict:
     """Lost-update guard (task #241): two concurrent movements on the SAME
     item both reading the same _last_ledger_row before either writes would
@@ -273,6 +481,15 @@ def _insert_and_cache(
         "source_id": source_id,
         "reference_no": reference_no,
         "created_by": created_by,
+        # WHICH FORMULA WAS IN FORCE when this movement was priced (migration
+        # 394). Required rather than defaulted, because a call site that
+        # forgets it would stamp the DB default on a row the other formula
+        # priced — and this column is what makes a change of accounting
+        # policy derivable (AS-5 paragraph 32) instead of remembered. It
+        # records the POLICY, not the mechanism: a cancellation reversal
+        # prices itself at the original value under either formula and is
+        # still stamped with the one in force.
+        "costing_method": costing_method,
         # Stamped explicitly (not left to the DB default) because
         # _last_ledger_row chains running totals by insertion order — an
         # explicit microsecond timestamp keeps that ordering deterministic
@@ -306,6 +523,7 @@ def _set_ledger_journal_entry_id(db, ledger_row_id: Optional[str], journal_entry
 def seed_opening_balance(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     opening_qty, opening_cost_paise, created_by: Optional[str] = None,
+    policy=None,
 ) -> Optional[dict]:
     """Idempotent — a no-op if an opening row already exists for this item
     (the product form may re-save without changing opening stock) or if
@@ -324,6 +542,7 @@ def seed_opening_balance(
     )
     if existing.data:
         return None
+    resolved = _policy(db, client_id, policy)
     # Chain from the CURRENT running totals, not a hardcoded zero baseline —
     # an opening balance added AFTER movements already exist (e.g. the item
     # was sold/oversold before the CA set up its opening stock) previously
@@ -346,7 +565,7 @@ def seed_opening_balance(
             db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
             movement_date=movement_date, movement_type="opening", calc=calc,
             source_type=None, source_id=None, reference_no=None, created_by=created_by,
-            expected_version=version,
+            expected_version=version, costing_method=resolved.method,
         )
         return row, calc
 
@@ -362,6 +581,7 @@ def seed_opening_balance(
 
 def seed_opening_balances_batch(
     db, *, firm_id: str, created_by: Optional[str], rows: list[dict],
+    policies: Optional[dict] = None,
 ) -> None:
     """Batched equivalent of seed_opening_balance for a batch of BRAND-NEW
     service_catalogue rows (bulk import only — see bulk_create_services).
@@ -390,6 +610,13 @@ def seed_opening_balances_batch(
     cache_rows: list[dict] = []
     fallback_date = datetime.now(timezone.utc).date().isoformat()
     totals_by_client: dict = {}
+    # `policies` is the caller's — `bulk_create_services` resolves it out of
+    # the SAME `clients` read that gives it the default opening-balance date,
+    # because two reads of one row are two Singapore-to-Mumbai round trips and
+    # this is the function whose per-row loop is what made a 300-product
+    # import hang. Absent, it is resolved here, once per DISTINCT client and
+    # never per row.
+    policies = dict(policies or {})
 
     for row in rows:
         if row.get("kind") != "good":
@@ -416,6 +643,8 @@ def seed_opening_balances_batch(
             movement_date = (row.get("created_at") or "")[:10] or fallback_date
         calc = _compute_stock_in(Decimal("0"), 0, qty, int(opening_cost_paise))
         client_id = row.get("client_id")
+        if client_id not in policies:
+            policies[client_id] = resolve_costing_policy(db, client_id)
         ledger_rows.append({
             "firm_id": firm_id,
             "client_id": client_id,
@@ -435,6 +664,10 @@ def seed_opening_balances_batch(
             "source_id": None,
             "reference_no": None,
             "created_by": created_by,
+            # Which formula was in force — see _insert_and_cache. An opening
+            # balance costs the same under both, but the stamp is what makes
+            # a later change of policy derivable (AS-5 paragraph 32).
+            "costing_method": policies[client_id].method,
         })
         cache_rows.append({
             "id": row["id"],
@@ -493,7 +726,17 @@ def record_stock_in(
     quantity, total_cost_paise: int, movement_type: str = "purchase",
     source_type: Optional[str] = None, source_id: Optional[str] = None,
     reference_no: Optional[str] = None, created_by: Optional[str] = None,
+    policy=None,
 ) -> dict:
+    """A RECEIPT COSTS THE SAME UNDER BOTH FORMULAS, and that is why there is
+    one of these rather than two. AS-2 paragraph 14's formulas assign cost to
+    what goes OUT; what comes in is its own invoice's cost either way, and the
+    running value rises by exactly that under FIFO as under the weighted
+    average. So the FIFO fork lives entirely in `record_stock_out`, and the
+    oversold-absorb split (`_compute_stock_in`) is common to both — which is
+    also why `domain/reporting/stock_position.py` needs no change at all."""
+    resolved = _policy(db, client_id, policy)
+
     def _attempt():
         # Version read BEFORE the ledger read — see seed_opening_balance's
         # _attempt for why the order matters (task #241).
@@ -506,7 +749,7 @@ def record_stock_in(
             db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
             movement_date=movement_date, movement_type=movement_type, calc=calc,
             source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
-            expected_version=version,
+            expected_version=version, costing_method=resolved.method,
         )
         # task #103: surfaced separately from the ledger row (no DB column for
         # it) — apply_purchase_to_inventory uses this to post a Dr COGS true-up
@@ -523,6 +766,7 @@ def record_stock_out_at_value(
     quantity, value_paise: int, movement_type: str,
     source_type: Optional[str] = None, source_id: Optional[str] = None,
     reference_no: Optional[str] = None, created_by: Optional[str] = None,
+    policy=None,
 ) -> dict:
     """Stock-OUT at an EXPLICIT value instead of the current moving average —
     used by cancellation reversals, which must remove exactly the value the
@@ -535,6 +779,16 @@ def record_stock_out_at_value(
     qty = Decimal(str(quantity))
     if qty <= 0:
         raise ValueError("Stock-out quantity must be positive.")
+    # DELIBERATELY NOT FORKED ON THE FORMULA. A cancellation reversal removes
+    # exactly the value the original movement added, because the journal side
+    # reverses that entry at its original value — pricing it any other way
+    # splits the Inventory GL from the stock ledger, which is the defect this
+    # function exists to fix. Under FIFO that can take out a newer layer's
+    # cost while the quantity comes off the oldest, and `_open_layers`
+    # re-bases the layers on the books afterwards rather than pretending the
+    # two agree. The row is still STAMPED with the policy in force: the column
+    # records the formula the books are kept on, not the mechanism.
+    resolved = _policy(db, client_id, policy)
 
     def _attempt():
         # Version read BEFORE the ledger read — see seed_opening_balance's
@@ -564,7 +818,7 @@ def record_stock_out_at_value(
             db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
             movement_date=movement_date, movement_type=movement_type, calc=calc,
             source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
-            expected_version=version,
+            expected_version=version, costing_method=resolved.method,
         )
 
     return _with_stock_cas_retry(_attempt)
@@ -575,16 +829,27 @@ def record_stock_out(
     quantity, movement_type: str = "sale",
     source_type: Optional[str] = None, source_id: Optional[str] = None,
     reference_no: Optional[str] = None, created_by: Optional[str] = None,
+    policy=None,
 ) -> dict:
-    """Prices the outgoing units at the CURRENT moving-average cost. If this
-    item has no stock history at all yet (no opening balance, no prior
+    """Prices the outgoing units on THE CLIENT'S OWN COST FORMULA — the
+    current weighted average, or the oldest layers first where the client's
+    books are kept on FIFO (AS-2 paragraph 14). This is the one place the two
+    formulas differ: a receipt costs the same either way, so everything else
+    in this module is common to both.
+
+    If this item has no stock history at all yet (no opening balance, no prior
     purchase), starts from a zero baseline instead of skipping — the
     movement still records (quantity goes negative, i.e. "oversold", at
     Rs 0 cost) so a CA sees on the Inventory page that this item needs its
     opening stock set up, rather than the sale leaving no trace anywhere.
     Cost stays 0 until a real purchase/opening balance establishes an
     average; the oversold quantity self-corrects the next time stock comes
-    in, exactly like any other stock-in blending into the running average."""
+    in, exactly like any other stock-in blending into the running average.
+    FIFO behaves identically there and deliberately so: an oversell is not a
+    cost formula question, and two formulas disagreeing about stock that was
+    never bought would be a difference about nothing."""
+    resolved = _policy(db, client_id, policy)
+
     def _attempt():
         # Version read BEFORE the ledger read — see seed_opening_balance's
         # _attempt for why the order matters (task #241).
@@ -598,7 +863,13 @@ def record_stock_out(
         prev_qty = Decimal(str(prev["running_qty_units"])) if prev else Decimal("0")
         prev_value = int(prev["running_value_paise"]) if prev else 0
         prev_avg = int(prev["running_avg_cost_paise"]) if prev else 0
-        calc = _compute_stock_out(prev_qty, prev_value, prev_avg, Decimal(str(quantity)))
+        if resolved.is_fifo:
+            calc = _compute_stock_out_fifo(
+                prev_qty, prev_value, Decimal(str(quantity)),
+                _open_layers(db, service_catalogue_id, prev),
+            )
+        else:
+            calc = _compute_stock_out(prev_qty, prev_value, prev_avg, Decimal(str(quantity)))
         if calc["running_qty_units"] < 0:
             _logger.warning(
                 "record_stock_out: service_catalogue_id=%s oversold by %s units — stock now negative",
@@ -608,7 +879,7 @@ def record_stock_out(
             db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
             movement_date=movement_date, movement_type=movement_type, calc=calc,
             source_type=source_type, source_id=source_id, reference_no=reference_no, created_by=created_by,
-            expected_version=version,
+            expected_version=version, costing_method=resolved.method,
         )
 
     return _with_stock_cas_retry(_attempt)
@@ -913,6 +1184,11 @@ def post_opening_stock_journal_entry(
 
 def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, created_by: Optional[str] = None) -> None:
     try:
+        # ONE read of the client's cost formula for the whole document, not
+        # one per line — `clients` is a Singapore-to-Mumbai round trip
+        # (CLAUDE.md, "Reporting performance"). The policy carries its own
+        # client so a line cannot be priced on another client's formula.
+        policy = resolve_costing_policy(db, client_id)
         lines = (
             db.table("client_sales_invoice_lines")
             .select("id, description, quantity, service_catalogue_id")
@@ -940,6 +1216,7 @@ def apply_sale_to_inventory(db, *, firm_id: str, client_id: str, invoice: dict, 
                 movement_date=invoice.get("invoice_date"), quantity=qty, movement_type="sale",
                 source_type="sales_invoice", source_id=invoice["id"], reference_no=invoice.get("invoice_no"),
                 created_by=created_by,
+                policy=policy,
             )
             total_value += abs(int(movement["value_delta_paise"]))
             if movement and movement.get("id"):
@@ -1017,6 +1294,11 @@ def _blocked_tax_on_line(line: dict) -> int:
 
 def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict, created_by: Optional[str] = None) -> None:
     try:
+        # ONE read of the client's cost formula for the whole document, not
+        # one per line — `clients` is a Singapore-to-Mumbai round trip
+        # (CLAUDE.md, "Reporting performance"). The policy carries its own
+        # client so a line cannot be priced on another client's formula.
+        policy = resolve_costing_policy(db, client_id)
         lines = (
             db.table("purchase_bill_lines")
             .select("id, description, quantity, taxable_amount_paise, expense_account_id, "
@@ -1054,6 +1336,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                 movement_date=bill.get("bill_date"), quantity=qty, total_cost_paise=cost_paise,
                 movement_type="purchase", source_type="purchase_bill", source_id=bill["id"],
                 reference_no=reference_no, created_by=created_by,
+                policy=policy,
             )
             receipt_items.append({
                 "value_paise": int(movement["value_delta_paise"]),
@@ -1124,6 +1407,11 @@ def _today() -> str:
 
 def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, invoice_no: str, created_by: Optional[str] = None) -> None:
     try:
+        # ONE read of the client's cost formula for the whole document, not
+        # one per line — `clients` is a Singapore-to-Mumbai round trip
+        # (CLAUDE.md, "Reporting performance"). The policy carries its own
+        # client so a line cannot be priced on another client's formula.
+        policy = resolve_costing_policy(db, client_id)
         already = (
             db.table("inventory_stock_ledger").select("id")
             .eq("source_type", "sales_invoice").eq("source_id", invoice_id).eq("movement_type", "sale_reversal")
@@ -1147,6 +1435,7 @@ def reverse_sale_stock(db, *, firm_id: str, client_id: str, invoice_id: str, inv
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=mv["service_catalogue_id"],
                 movement_date=today, quantity=qty, total_cost_paise=value, movement_type="sale_reversal",
                 source_type="sales_invoice", source_id=invoice_id, reference_no=invoice_no, created_by=created_by,
+                policy=policy,
             )
             if movement and movement.get("id"):
                 movement_ids.append(movement["id"])
@@ -1284,6 +1573,11 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
     own GL journal + AR sub-ledger application have committed
     (routers/credit_notes.py) — fail-soft, never raises."""
     try:
+        # ONE read of the client's cost formula for the whole document, not
+        # one per line — `clients` is a Singapore-to-Mumbai round trip
+        # (CLAUDE.md, "Reporting performance"). The policy carries its own
+        # client so a line cannot be priced on another client's formula.
+        policy = resolve_costing_policy(db, client_id)
         cn_id = credit_note.get("id")
         cn_no = credit_note.get("credit_note_no") or cn_id
         invoice_id = credit_note.get("sales_invoice_id")
@@ -1318,6 +1612,7 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
                 movement_date=credit_note.get("credit_note_date"), quantity=qty, total_cost_paise=value,
                 movement_type="sale_return", source_type="credit_note", source_id=cn_id,
                 reference_no=cn_no, created_by=created_by,
+                policy=policy,
             )
             total_value += value
             if movement and movement.get("id"):
@@ -1346,6 +1641,11 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
     journal + AP sub-ledger application have committed
     (routers/debit_notes.py) — fail-soft, never raises."""
     try:
+        # ONE read of the client's cost formula for the whole document, not
+        # one per line — `clients` is a Singapore-to-Mumbai round trip
+        # (CLAUDE.md, "Reporting performance"). The policy carries its own
+        # client so a line cannot be priced on another client's formula.
+        policy = resolve_costing_policy(db, client_id)
         dn_id = debit_note.get("id")
         dn_no = debit_note.get("debit_note_no") or dn_id
         lines = (
@@ -1373,6 +1673,7 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
                 db, firm_id=firm_id, client_id=client_id, service_catalogue_id=item["id"],
                 movement_date=debit_note.get("debit_note_date"), quantity=qty, movement_type="purchase_return",
                 source_type="debit_note", source_id=dn_id, reference_no=dn_no, created_by=created_by,
+                policy=policy,
             )
             total_value += abs(int(movement["value_delta_paise"]))
             if movement.get("id"):
@@ -1395,6 +1696,11 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
 
 def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bill_reference: str, created_by: Optional[str] = None) -> None:
     try:
+        # ONE read of the client's cost formula for the whole document, not
+        # one per line — `clients` is a Singapore-to-Mumbai round trip
+        # (CLAUDE.md, "Reporting performance"). The policy carries its own
+        # client so a line cannot be priced on another client's formula.
+        policy = resolve_costing_policy(db, client_id)
         already = (
             db.table("inventory_stock_ledger").select("id")
             .eq("source_type", "purchase_bill").eq("source_id", bill_id).eq("movement_type", "purchase_reversal")
@@ -1422,6 +1728,7 @@ def reverse_purchase_stock(db, *, firm_id: str, client_id: str, bill_id: str, bi
                 movement_date=today, quantity=qty, value_paise=abs(int(mv["value_delta_paise"])),
                 movement_type="purchase_reversal",
                 source_type="purchase_bill", source_id=bill_id, reference_no=bill_reference, created_by=created_by,
+                policy=policy,
             )
             if movement.get("id"):
                 movement_ids.append(movement["id"])
@@ -1516,6 +1823,7 @@ def _movement_journal_ref(prefix: str, movement_id) -> str:
 def record_stock_adjustment(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     quantity, direction: str, reference_no: Optional[str] = None, created_by: Optional[str] = None,
+    policy=None,
 ) -> dict:
     """direction="increase": stock-IN valued at the CURRENT average cost —
     keeps the average stable rather than diluting/inflating it with an
@@ -1532,11 +1840,13 @@ def record_stock_adjustment(
             movement_date=movement_date, quantity=quantity, total_cost_paise=total_cost_paise,
             movement_type="adjustment", source_type="adjustment", source_id=None,
             reference_no=reference_no, created_by=created_by,
+            policy=policy,
         )
     return record_stock_out(
         db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
         movement_date=movement_date, quantity=quantity, movement_type="adjustment",
         source_type="adjustment", source_id=None, reference_no=reference_no, created_by=created_by,
+        policy=policy,
     )
 
 
@@ -1706,6 +2016,7 @@ def apply_stock_adjustment(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     quantity, direction: str, reverse_itc: bool = False, reference_no: Optional[str] = None,
     created_by: Optional[str] = None, itc_reversal_is_interstate: bool = False,
+    policy=None,
 ) -> Optional[dict]:
     """One call per manual stock adjustment (routers/inventory.py). Fail-soft
     — never raises; a missing chart-of-accounts entry degrades the journal,
@@ -1726,6 +2037,7 @@ def apply_stock_adjustment(
             db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
             movement_date=movement_date, quantity=quantity, direction=direction,
             reference_no=reference_no, created_by=created_by,
+            policy=policy,
         )
         value_paise = abs(int(movement["value_delta_paise"]))
         journal_ref = _movement_journal_ref("ADJ", movement.get("id"))
@@ -1783,10 +2095,13 @@ def _compute_nrv_writedown(prev_qty: Decimal, prev_value_paise: int, nrv_per_uni
 def record_nrv_writedown(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     nrv_per_unit_paise: int, reference_no: Optional[str] = None, created_by: Optional[str] = None,
+    policy=None,
 ) -> Optional[dict]:
     """Returns None if this item has no stock (nothing to write down) or if
     the supplied NRV is already >= the current average cost — both
     legitimate no-ops, never an error."""
+    resolved = _policy(db, client_id, policy)
+
     def _attempt():
         # Version read BEFORE the ledger read — see seed_opening_balance's
         # _attempt for why the order matters (task #241).
@@ -1803,7 +2118,7 @@ def record_nrv_writedown(
             db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
             movement_date=movement_date, movement_type="nrv_writedown", calc=calc,
             source_type="nrv_writedown", source_id=None, reference_no=reference_no, created_by=created_by,
-            expected_version=version,
+            expected_version=version, costing_method=resolved.method,
         )
 
     return _with_stock_cas_retry(_attempt)
@@ -1854,6 +2169,7 @@ def post_nrv_writedown_journal_entry(
 def apply_nrv_writedown(
     db, *, firm_id: str, client_id: str, service_catalogue_id: str, movement_date: str,
     nrv_per_unit_paise: int, reference_no: Optional[str] = None, created_by: Optional[str] = None,
+    policy=None,
 ) -> Optional[dict]:
     """One call per manual NRV write-down (routers/inventory.py). Fail-soft
     — never raises. Returns None when there's no stock to write down or NRV
@@ -1869,6 +2185,7 @@ def apply_nrv_writedown(
             db, firm_id=firm_id, client_id=client_id, service_catalogue_id=service_catalogue_id,
             movement_date=movement_date, nrv_per_unit_paise=nrv_per_unit_paise,
             reference_no=reference_no, created_by=created_by,
+            policy=policy,
         )
         if not movement:
             return None

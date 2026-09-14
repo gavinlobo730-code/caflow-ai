@@ -268,7 +268,10 @@ def post_session(db, *, firm_id: str, session_id: str, actor_id: Optional[str]) 
     period_lock_service.assert_open(db, firm_id, session["client_id"],
                                     session["count_date"])
 
-    from domain.inventory_service import apply_stock_adjustment
+    from domain.inventory_service import apply_stock_adjustment, resolve_costing_policy
+    # ONE read of the client's cost formula for the whole sheet — a
+    # hundred-line count would otherwise be a hundred `clients` round trips.
+    policy = resolve_costing_policy(db, session["client_id"])
     posted, failed = [], []
     for p in plan.postable:
         try:
@@ -283,6 +286,7 @@ def post_session(db, *, firm_id: str, session_id: str, actor_id: Optional[str]) 
                 reference_no=session["reference_no"],
                 itc_reversal_is_interstate=p.line.itc_reversal_is_interstate,
                 created_by=actor_id,
+                policy=policy,
             )
             if movement is None:
                 failed.append({"item": p.line.item_name,
