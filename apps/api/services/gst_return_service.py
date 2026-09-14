@@ -181,11 +181,19 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
     return {"output_paise": output_paise, "itc_paise": itc_paise, "by_head": by_head}
 
 
+from domain.accounting import opening_documents as _opening
+
+
 def _posted_sales(db, firm_id, client_id, start, end) -> list[dict]:
-    return _paginate_all(lambda: db.table("client_sales_invoices").select("*")
+    # OPENING DOCUMENTS ARE NOT THIS CLIENT'S SUPPLIES (ACC-14, migration 391).
+    # An invoice carried over from the system the client migrated from was
+    # raised, taxed and DECLARED there; declaring it again here states an
+    # outward supply twice and pays the tax on it twice.
+    return _opening.without_carried_over(_paginate_all(
+        lambda: db.table("client_sales_invoices").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_SALES_POSTED))
-            .gte("invoice_date", start).lte("invoice_date", end))
+            .gte("invoice_date", start).lte("invoice_date", end)))
 
 
 def _issued_credit_notes(db, firm_id, client_id, start, end) -> list[dict]:
@@ -215,10 +223,11 @@ def _bills_cancelled_in(db, firm_id, client_id, start, end) -> list[dict]:
     the cancellation reversal nets the original posting to zero inside the same
     month. Only credit availed in an EARLIER period is given back here.
     """
-    rows = _paginate_all(lambda: db.table("purchase_bills").select("*")
+    rows = _opening.without_carried_over(_paginate_all(
+        lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "cancelled")
-            .gte("cancelled_at", start).lte("cancelled_at", f"{end}T23:59:59.999999+00:00"))
+            .gte("cancelled_at", start).lte("cancelled_at", f"{end}T23:59:59.999999+00:00")))
     return [b for b in rows if str(b.get("bill_date") or "")[:10] < start]
 
 
@@ -237,15 +246,21 @@ def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
     A cancelled bill with no cancelled_at cannot be placed in time, so it stays
     excluded: that is the behaviour every existing return was computed under.
     """
-    live = _paginate_all(lambda: db.table("purchase_bills").select("*")
+    # OPENING BILLS CARRY NO CREDIT THIS CLIENT MAY CLAIM (ACC-14, migration
+    # 391): the credit on a bill received in the system the client migrated
+    # from was availed there, and Table 4(A) claiming it again would double the
+    # month's input tax against a GSTR-2B that shows no such document.
+    live = _opening.without_carried_over(_paginate_all(
+        lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_BILL_POSTED))
-            .gte("bill_date", start).lte("bill_date", end))
+            .gte("bill_date", start).lte("bill_date", end)))
     cancelled_later = [
-        b for b in _paginate_all(lambda: db.table("purchase_bills").select("*")
+        b for b in _opening.without_carried_over(_paginate_all(
+            lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "cancelled")
-            .gte("bill_date", start).lte("bill_date", end))
+            .gte("bill_date", start).lte("bill_date", end)))
         if str(b.get("cancelled_at") or "")[:10] > end
     ]
     return live + cancelled_later

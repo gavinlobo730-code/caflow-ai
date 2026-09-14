@@ -40,6 +40,7 @@ from __future__ import annotations
 from typing import Iterable, Optional
 
 from core.ist_clock import ist_fy_label
+from domain.accounting import opening_documents as _opening
 from domain.gst.invoice_series import (
     SeriesSettings,
     format_number,
@@ -95,7 +96,7 @@ def numbers_in_series(db, firm_id: str, client_id: str, head: str) -> list[str]:
     if db is None or not head:
         return []
     try:
-        resp = (db.table("client_sales_invoices").select("invoice_no")
+        resp = (db.table("client_sales_invoices").select("invoice_no, is_opening")
                 .eq("firm_id", firm_id).eq("client_id", client_id)
                 .is_("deleted_at", "null")
                 .like("invoice_no", f"{head}%")
@@ -103,7 +104,13 @@ def numbers_in_series(db, firm_id: str, client_id: str, head: str) -> list[str]:
                 .limit(_SEQUENCE_WINDOW).execute())
     except Exception:  # noqa: BLE001
         return []
-    return [r.get("invoice_no") or "" for r in (resp.data or [])]
+    # A CARRIED-OVER NUMBER IS NOT PART OF THIS SERIES (ACC-14, migration 391).
+    # It is the number the OLD system issued, and Rule 46(b)'s "consecutive
+    # serial number" is about the series this client keeps here. Counting it
+    # would suggest the next number from somebody else's sequence and report a
+    # gap wherever the two happen to share a prefix.
+    return [r.get("invoice_no") or "" for r in (resp.data or [])
+            if not _opening.carried_over(r)]
 
 
 def suggest(db, firm_id: str, client_id: str, invoice_date=None,

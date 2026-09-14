@@ -82,7 +82,15 @@ ALLOWED: dict[str, str] = {}
 # a **kwargs dict, or passed in as a parameter. Budgeted so the blind spot has a
 # number on it and cannot quietly grow — it may shrink freely, and raising it is
 # a deliberate act visible in a diff.
-UNREADABLE_BUDGET = 118
+# 118 -> 120 (ACC-14). The two opening-document inserts take a row built by
+# `domain/accounting/opening_documents.row_for` — the one place an opening
+# document's columns are named, and deliberately so: the two kinds differ in
+# which column carries the amount, and a literal payload at each call site
+# would be a second copy of that. Checked from the other end instead, twice
+# over: a test asserts every key `row_for` produces is a real column of its
+# table, and `tests/production_types.py` validates the payload against
+# production's own columns and types on the mock write path.
+UNREADABLE_BUDGET = 120
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

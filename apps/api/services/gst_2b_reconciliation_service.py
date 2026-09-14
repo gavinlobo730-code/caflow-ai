@@ -38,6 +38,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from domain.accounting import opening_documents as _opening
 from domain.gst.gstr2b import GSTR2BFile, parse_gstr2b
 from domain.gst.itc_matching import (
     BookBill, PortalDocument, Reconciliation, defaulters, reconcile,
@@ -106,13 +107,21 @@ def read_book_bills(db, firm_id: str, client_id: str, period: str) -> list[BookB
     to find unfiled ones.
     """
     start, end = _period_bounds(period)
-    rows = _paginate_all(lambda: db.table("purchase_bills")
+    # AN OPENING BILL HAS NO 2B COUNTERPART AND NEVER WILL (ACC-14, migration
+    # 391). It was received in the system the client migrated from, so the
+    # portal's 2B for this period says nothing about it — leaving it in would
+    # report it as "missing in 2B" every month and send the CA to chase a
+    # supplier about a bill from before the engagement started.
+    # `is_opening` is in the projection on purpose: the filter reads the key off
+    # the row, so a select that omitted it would quietly match nothing.
+    rows = _opening.without_carried_over(_paginate_all(
+        lambda: db.table("purchase_bills")
             .select("id, vendor_id, bill_no, bill_date, taxable_amount_paise, "
-                    "igst_paise, cgst_paise, sgst_paise, status")
+                    "igst_paise, cgst_paise, sgst_paise, status, is_opening")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(BILL_ON_THE_BOOKS))
             .is_("deleted_at", "null")
-            .gte("bill_date", start).lte("bill_date", end))
+            .gte("bill_date", start).lte("bill_date", end)))
 
     vendor_ids = sorted({r.get("vendor_id") for r in rows if r.get("vendor_id")})
     gstins: dict[str, str] = {}

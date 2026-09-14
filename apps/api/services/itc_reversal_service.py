@@ -29,6 +29,7 @@ from typing import Optional
 
 from core.ist_clock import ist_today
 import domain.gst.late_filing as late_filing
+from domain.accounting import opening_documents as _opening
 from domain.gst.itc_reversal import (
     days_outstanding, is_overdue, parse_iso, payment_due_by, reversal_for_bill,
     reversal_period,
@@ -54,10 +55,16 @@ def _all_bills(db, firm_id: str, client_id: Optional[str]) -> list[dict]:
     out: list[dict] = []
     cursor = None
     while True:
+        # RULE 37'S 180 DAYS NEVER STARTED HERE FOR AN OPENING BILL (ACC-14,
+        # migration 391): the credit was availed in the system the client
+        # migrated from, so a reversal computed here would give back credit
+        # this client's own electronic credit ledger never took.
+        # `is_opening` is in the projection because the filter reads it off the
+        # row — a select that omitted it would match nothing, silently.
         q = (db.table("purchase_bills")
              .select("id, bill_no, bill_date, vendor_id, status, total_paise, "
                      "paid_paise, tds_paise, cgst_paise, sgst_paise, igst_paise, "
-                     "debited_paise, credit_note_paise")
+                     "debited_paise, credit_note_paise, is_opening")
              .eq("firm_id", firm_id)
              .in_("status", list(_LIVE_STATUSES)))
         if client_id:
@@ -65,7 +72,7 @@ def _all_bills(db, firm_id: str, client_id: Optional[str]) -> list[dict]:
         if cursor is not None:
             q = q.gt("id", cursor)
         page = q.order("id").limit(PAGE).execute().data or []
-        out.extend(page)
+        out.extend(_opening.without_carried_over(page))
         if len(page) < PAGE:
             break
         cursor = page[-1].get("id")

@@ -26,6 +26,7 @@ import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/componen
 import { toast } from "@/components/ui/use-toast";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -39,6 +40,7 @@ type AccountingTab =
   | "approvals"
   | "verify-books"
   | "reports"
+  | "opening-balances"
   | "day-book";
 
 const TABS: { id: AccountingTab; label: string }[] = [
@@ -53,6 +55,7 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "approvals",     label: "Approvals" },
   { id: "verify-books",  label: "Verify Books" },
   { id: "reports",       label: "Reports" },
+  { id: "opening-balances", label: "Opening Balances" },
 ];
 
 // ── Shared types ───────────────────────────────────────────────────────────
@@ -318,6 +321,9 @@ export default function AccountingPage() {
         )}
         {tab === "verify-books" && (
           <VerifyBooks clientId={clientId} />
+        )}
+        {tab === "opening-balances" && (
+          <OpeningBalancesTab clientId={clientId} />
         )}
         {tab === "reports" && (
           <FinancialReports clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} mcActive={mcActive} />

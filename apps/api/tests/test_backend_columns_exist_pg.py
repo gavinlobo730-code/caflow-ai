@@ -305,7 +305,22 @@ UNFIXED: dict[str, str] = {}
 # make it readable would put the "which return is already on file" rule in two
 # places, which is the larger risk. The registration service's own three went the
 # other way and were made LITERAL in the same commit rather than budgeted.
-MAX_UNREADABLE = 450
+# 450 -> 452 (ACC-14). `services/opening_document_service` inserts a row built
+# by `domain/accounting/opening_documents.row_for`, which is the ONE place an
+# opening document's columns are named — the sales and purchase shapes differ
+# (the payable side has to write `net_payable_paise`, because migration 278
+# generates ITS outstanding figure from that and not from `total_paise`) and a
+# literal payload at each of the two call sites would be a second copy of that
+# rule, which is the larger risk. The four this service arrived with were
+# halved first rather than budgeted: both soft-delete payloads are written
+# INLINE at their call sites instead of sharing a local.
+#
+# The chain closes from the other end, as the recurring-bill entry above does:
+# `test_an_opening_balance_is_made_of_documents.py` asserts every key `row_for`
+# produces is a real column of its table, and `tests/production_types.py` runs
+# on the mock write path, so the payload is checked against production's own
+# column list and types on every test that writes one.
+MAX_UNREADABLE = 452
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

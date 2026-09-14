@@ -1777,6 +1777,88 @@ statement went back to guessing from the subtype.
   both PDFs — because a movement shown without the sentence saying the ledger
   and the register disagree is exactly the disclosure a reader would rely on.
 
+## Opening balances — the ledger takes a total, ageing needs documents
+
+**AN OPENING BALANCE IS MADE OF DOCUMENTS, AND UNTIL MIGRATION 391 IT WAS THREE
+TOTALS** (ACC-14). `opening_balance_service._plan_opening` computes exactly
+three targets — aggregate Trade Receivables (Σ `customers.opening_balance_paise`),
+aggregate Trade Payables and each bank — which is the right shape for the
+GENERAL LEDGER and useless for ageing. Every AR/AP ageing screen and the
+Schedule III ageing note (MCA G.S.R. 207(E) of 24-03-2021) bucket by the DUE
+DATE of each open document, and a control-account total has no dates, so on day
+one the whole opening receivable ages to nothing. Tally takes opening balances
+bill by bill with dates for exactly this reason.
+
+- **An opening document is an ORDINARY row in `client_sales_invoices` /
+  `purchase_bills`** carrying the OLD system's own number and date, with
+  `is_opening` true. That is what makes a receipt allocate against it
+  (`receipt_allocations` is an FK to that very table), a statement list it, the
+  collections queue chase it and the bank match queue offer it — all unchanged.
+  A separate table would have needed every one of those taught about it.
+- **IT POSTS NO JOURNAL.** `customers.opening_balance_paise` stays the single
+  source of the ledger's AR leg and `opening_balance_service` is untouched. The
+  document is the BILL-WISE BREAKUP of that balance, not a second posting of it.
+  So the two must AGREE, and where they do not the difference is NAMED rather
+  than absorbed — `domain/accounting/opening_documents.reconcile`, rendered on
+  the Opening Balances tab. An ageing schedule that does not foot to its own
+  control account is worse than either figure alone.
+- **IT DECLARES NO TAX AND WITHHOLDS NOTHING.** The GST was charged and declared
+  where the document was issued; any TDS was deducted, deposited and reported on
+  a statement filed from there. Every tax field is zero and `total_paise` is
+  simply what is owed. That zero is also what keeps it out of the 26Q build,
+  whose own reads are `.gt("tds_paise", 0)` and `.eq("tds_section", "195")`.
+- **`purchase_bills.outstanding_paise` IS GENERATED FROM `net_payable_paise`,
+  NOT `total_paise`** (migration 278) — the one asymmetry between the two
+  tables, and writing only the total would leave every opening bill outstanding
+  at ZERO, invisible to AP ageing and to the Schedule III payables note. A
+  real-Postgres test proves it both ways round.
+- **`is_opening` SAYS ONE THING, and every reader that feeds a statutory output
+  asks it**: `domain/accounting/opening_documents.without_carried_over`. The
+  GSTR-1/3B build (declaring a carried-over supply again pays the tax twice, and
+  claiming its credit again doubles Table 4(A)), the GSTR-2B reconciliation (no
+  2B counterpart, ever — it would report as "missing in 2B" every month and send
+  the CA to chase a supplier about a bill from before the engagement), the Rule
+  37 report (the 180 days never started here), §43B(h) (the deduction was
+  claimed in a year whose return was prepared elsewhere), the tax-invoice PDF,
+  Rule 46(b)'s series, and all four §34 note routes. The list is the RULE, in
+  `tests/test_an_opening_balance_is_made_of_documents.py::EXCLUDES`, with the
+  readers that SHOULD see one recorded beside it so an absent filter is a
+  decision.
+- **THE FILTER READS THE KEY OFF THE ROW, so a narrow `select()` that omits
+  `is_opening` makes it a silent no-op.** A guard walks each module's AST and
+  fails a literal projection on either table that is neither `*` nor names the
+  column. And `carried_over` reads an ABSENT key as an ORDINARY document — the
+  direction that cannot silently drop a real supply from a return.
+- **§43B(h)'s other direction is NAMED, not computed**: an earlier year's
+  disallowance actually PAID during this year comes back as a deduction, and
+  nothing on a carried-over bill records whether it was disallowed. The answer
+  lists them rather than showing a nil that reads as "none".
+- **A §194 FY AGGREGATE CANNOT BE CARRIED OVER AT ALL**, and the module says so
+  rather than approximating. The aggregate is measured on what was CREDITED
+  during the year, while an opening balance records what is still OWED — a bill
+  credited in April and settled before the migration counts toward the limit and
+  is not carried over. `resolve_tds` already takes `fy_prior_taxable_paise` and
+  `fy_prior_tds_paise` from its caller for exactly this reason.
+- **THE OTHER DOUBLE COUNT: two mechanisms open one position and neither
+  corrects the other.** `opening_balance_service` posts the masters under
+  `source_type='Opening'`; `trial_balance_import_service` posts an imported
+  trial balance under `'TrialBalance'`, deliberately separate (its header
+  explains why, and that separation is right). Nothing COMPARED them, so a CA
+  who enters the bank opening balance on the bank master AND imports a trial
+  balance carrying a Bank row opens the account twice and the balance sheet is
+  out by exactly it, silently. `double_openings` reports every account with a
+  NON-ZERO position in both — non-zero on both sides, because a delta engine
+  legitimately leaves a net-zero pair behind on an account whose master balance
+  went to zero. **No difference is offered**: which of the two is the mistake is
+  the CA's answer, and a single netted figure would read as one to post.
+- **The old system's document NUMBER is not checked against Rule 46(b)** — it is
+  a fact about a document somebody else issued, the same way
+  `purchase_bills.bill_no` is the vendor's own, and refusing a series this
+  product never generated would make a migration impossible for the clients who
+  most need one. Per-client uniqueness still applies (migration 151), because a
+  carried-over number that collides with one this client will issue is a real
+  conflict the CA has to resolve.
+
 ## Reporting scope — "all clients" means the caller's clients
 
 A reporting endpoint called with no `client_id` means "all clients", and that is

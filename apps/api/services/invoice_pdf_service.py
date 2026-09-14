@@ -55,6 +55,7 @@ All monetary values arrive as integer paise and are formatted for display only
 — no float arithmetic is performed on amounts. Tax RATES are held in basis
 points and are likewise formatted by integer arithmetic.
 """
+from domain.accounting import opening_documents as _opening
 import io
 import logging
 import re
@@ -1042,6 +1043,18 @@ def get_sales_invoice_pdf(invoice_id: str, firm_id: str) -> tuple[bytes, str]:
     if not row.data:
         raise ValueError(f"Invoice {invoice_id} not found for firm {firm_id}")
     data = row.data
+    # NO TAX INVOICE FOR A CARRIED-OVER DOCUMENT (ACC-14, migration 391). An
+    # opening invoice records what a party still owes at the migration date; the
+    # supply was made, taxed and invoiced in the system the client migrated
+    # from, and that system issued the document. Printing one here under this
+    # client's GSTIN, with a Rule 46 tax-invoice heading and nil tax on its
+    # face, is a second tax invoice for one supply.
+    if _opening.carried_over(data):
+        raise ValueError(
+            "That invoice was carried over from the system this client "
+            "migrated from: it is the record of what the customer still owes, "
+            "not a tax invoice this client issued. The original document is the "
+            "one to send.")
     customer = data.get("customers") or {}
     # The selling client — firm-scoped, like every other query in this codebase.
     client_row = (

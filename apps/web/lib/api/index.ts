@@ -1159,6 +1159,75 @@ export type BillOfEntryAuthorities = {
 // namespace manages the rest, and `domain/gst/registrations.py` presents the
 // union — so the list below always starts with the primary.
 
+// ── Opening documents ────────────────────────────────────────────────────────
+// The bill-wise breakup of a client's opening balances (ACC-14, migration 391).
+// The ledger's opening AR and AP are aggregates from the party masters, which
+// have no dates — so on day one the whole opening receivable ages to nothing.
+// An opening document supplies those dates. It posts NO journal: it is the
+// breakup of the balance, not a second posting of it, so the two have to agree
+// and the difference is NAMED where they do not.
+
+export type OpeningDocument = {
+  id: string;
+  kind: "receivable" | "payable";
+  party_id: string;
+  party_name: string | null;
+  document_no: string;
+  document_date: string | null;
+  due_date: string | null;
+  total_paise: number;
+  paid_paise: number;
+  outstanding_paise: number;
+  status: string;
+};
+
+export type OpeningReconciliationRow = {
+  party_id: string;
+  party_name: string | null;
+  opening_balance_paise: number;
+  documents_paise: number;
+  document_count: number;
+  /** Balance less documents. POSITIVE means part of the balance will not age. */
+  difference_paise: number;
+  agrees: boolean;
+  /** The server's own sentence. Null when the two agree. */
+  sentence: string | null;
+};
+
+export type OpeningDocumentListing = {
+  kind: "receivable" | "payable";
+  documents: OpeningDocument[];
+  documents_paise: number;
+  opening_balance_paise: number;
+  reconciliation: OpeningReconciliationRow[];
+  unreconciled_parties: number;
+};
+
+export type DoubleOpening = {
+  account_id: string;
+  account_name: string | null;
+  master_paise: number;
+  trial_balance_paise: number;
+  /** The server's own sentence. Which of the two figures is the mistake is the
+   *  CA's answer, so no difference is offered. */
+  sentence: string;
+};
+
+export type OpeningReconciliation = {
+  receivable: OpeningDocumentListing;
+  payable: OpeningDocumentListing;
+  /** Accounts the opening position was posted into TWICE — once from the party
+   *  and bank masters, once from an imported trial balance. The two journal
+   *  families are deliberately separate and neither corrects the other. */
+  double_openings: DoubleOpening[];
+};
+
+export type OpeningDocumentKinds = {
+  kinds: { value: string; label: string; party: string; number: string }[];
+  /** Why an opening bill contributes nothing to a section 194 FY aggregate. */
+  section_194_aggregate: string;
+};
+
 export type ClientGstRegistration = {
   /** Null on the PRIMARY: it is `clients.gstin` and has no registration row. */
   id: string | null;
@@ -3780,6 +3849,17 @@ export const api = {
    *  ageing, the Schedule III payables note, GSTR-2B matching, s.43B(h) —
    *  reads `vendors`, so a TDS section recorded anywhere else withholds nothing
    *  and s.40(a)(ia) disallows the whole expenditure. PUR-16. */
+  customers: {
+    /** The client's customers. `/api/customers/` has served this since the
+     *  first sales work; the frontend reached it over PostgREST instead, which
+     *  is why there was no helper here. */
+    list: (clientId: string, includeInactive = false) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (includeInactive) q.set("include_inactive", "true");
+      return request<ApiResp<{ id: string; name: string }[]>>(`/api/customers/?${q}`);
+    },
+  },
+
   vendors: {
     list: (clientId: string, includeInactive = false) => {
       const q = new URLSearchParams({ client_id: clientId });
@@ -3795,6 +3875,36 @@ export const api = {
     update: (id: string, body: VendorWrite) =>
       request<ApiResp<Vendor>>(`/api/vendors/${id}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+  },
+
+  /** The bill-wise breakup of a client's opening balances (ACC-14). */
+  openingDocuments: {
+    kinds: () =>
+      request<ApiResp<OpeningDocumentKinds>>("/api/opening-documents/kinds"),
+    list: (clientId: string, kind: "receivable" | "payable") =>
+      request<ApiResp<OpeningDocumentListing>>(
+        `/api/opening-documents?client_id=${encodeURIComponent(clientId)}`
+        + `&kind=${encodeURIComponent(kind)}`),
+    create: (body: {
+      client_id: string;
+      kind: "receivable" | "payable";
+      party_id: string;
+      document_no: string;
+      document_date: string;
+      due_date?: string | null;
+      outstanding_paise: number;
+      notes?: string | null;
+    }) => request<ApiResp<OpeningDocument>>("/api/opening-documents",
+      { method: "POST", body: JSON.stringify(body) }),
+    remove: (id: string, clientId: string, kind: "receivable" | "payable") =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/opening-documents/${id}?client_id=${encodeURIComponent(clientId)}`
+        + `&kind=${encodeURIComponent(kind)}`,
+        { method: "DELETE" }),
+    /** Both sides at once — what the Opening Balances tab opens on. */
+    reconciliation: (clientId: string) =>
+      request<ApiResp<OpeningReconciliation>>(
+        `/api/opening-documents/reconciliation?client_id=${encodeURIComponent(clientId)}`),
   },
 
   /** Which GST registrations a client holds (GST-20). */

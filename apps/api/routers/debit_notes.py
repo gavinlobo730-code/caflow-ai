@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
+from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
@@ -480,13 +481,16 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             # losing whichever wrote second.
             for _attempt in range(6):
                 b = (db.table("purchase_bills")
-                     .select("net_payable_paise,paid_paise,debited_paise,credit_note_paise,status")
+                     .select("net_payable_paise,paid_paise,debited_paise,credit_note_paise,status,is_opening")
                      .eq("id", bill_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
                 if not b.data:
                     raise HTTPException(status_code=422, detail="Linked bill is not part of this client's books.")
                 bill = b.data[0]
                 if (bill.get("status") or "") in ("draft", "cancelled"):
                     raise HTTPException(status_code=422, detail=f"Cannot debit-note a {bill.get('status')} bill.")
+                if _opening.carried_over(bill):
+                    raise HTTPException(status_code=422,
+                                        detail=_opening.note_refusal(_opening.PAYABLE))
                 net_payable = int(bill.get("net_payable_paise") or 0)
                 paid = int(bill.get("paid_paise") or 0)
                 raw_debited = bill.get("debited_paise")   # CAS guard must match this exact stored value

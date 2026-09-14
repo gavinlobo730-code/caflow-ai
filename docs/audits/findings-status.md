@@ -7,15 +7,15 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **96** | re-read against the code. The defect is gone. |
+| closed | **97** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **8** | part of the finding is answered, part is not. Each says which. |
+| partial | **7** | part of the finding is answered, part is not. Each says which. |
 | open | **11** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 19 items — 11 open and 8 partial — not 254.**
+**The work left is 18 items — 11 open and 7 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -61,7 +61,6 @@ migration; a handful need a statutory document a person has to read.
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
-| medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
@@ -126,6 +125,7 @@ migration; a handful need a statutory document a person has to read.
 | high | **SALES-09** | GSTR-1 Table 11A/11B (tax on advances, §13(2)) is unreachable — the three columns it needs are n |
 | high | **TDS-11** | tds_deductions and tds_returns are written directly from the browser with no role check, and the |
 | medium | **ACC-11** | POST /api/accounting/accounts cannot set account_subtype, so every account a CA creates lands in |
+| medium | **ACC-14** | Opening balances cover only aggregate AR, aggregate AP and bank — every other account, and every |
 | medium | **ACC-15** | A discarded draft journal can be resurrected and posted, because post_draft never selects delete |
 | medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
 | medium | **BANK-18** | The import module's most important refusals reach the CA as raw JSON: "API error 422: {\"detail\ |
