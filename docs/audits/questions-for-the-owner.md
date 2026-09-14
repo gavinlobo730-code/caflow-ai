@@ -306,6 +306,54 @@ you go it is a deliberate change rather than a drift.
 
 ---
 
+## 12. Two modules that hold a rule nothing applies  *(found 14-09-2026)*
+
+A sweep for "what under `domain/` does nothing import?" found five modules.
+Three are now wired up and shipped — the UQC list, the AS 11 year-end
+revaluation and the §115BAC(6) regime election. Two are left, and neither is a
+bug I should quietly decide:
+
+### 12a. The bank exception rules — 315 lines nobody asks
+
+`domain/banking/exceptions.py` decides **what a partner should look at** on a
+bank transaction: an unfamiliar payee, a round-sum amount, a duplicate shape, a
+weekend date. It is careful, well argued and well tested, and its only importer
+is its own test. Its docstring says the context is gathered by
+`services/bank_exception_service.py` — **that file does not exist.** So no flag
+is raised and no partner ever sees one.
+
+The module itself says that nothing here GATING a posting is a product
+decision, not an oversight, and I agree with that part: a platform should not
+hold a CA's books hostage to a threshold it invented. But *raising* a flag and
+*blocking* a posting are different things, and today it does neither.
+
+**What I need from you: do you want a partner review surface at all?** Options:
+
+- **(a) A "Worth a look" list** on the banking screen — the transactions the
+  rules flagged, with the reason, and nothing blocked. This is what the module
+  was written for and it is a few hours.
+- **(b) Nothing.** A firm reviews how it reviews; the rules stay as reference.
+  I would then say so in the module rather than leave it reading as unfinished.
+- **(c) Something else** you have in mind from how your firm actually reviews
+  junior work.
+
+I have not guessed. It is named in
+`tests/test_a_domain_module_has_a_reader.py` so it cannot be forgotten.
+
+### 12b. A duplicate notification service
+
+`domain/notification_service.py` is an older copy of
+`services/notification_service.py` whose store is a hardcoded
+`MOCK_NOTIFICATIONS` list. The live one is what `routers/tasks.py` calls;
+nothing in the production tree imports the copy.
+
+It is harmless today and the hazard is the `public.suppliers` shape: a future
+reader reaches for the name, gets the mock, and writes notifications nobody
+receives. **Deleting it is the right end state and is your call**, like the two
+DROPs in §9 above.
+
+---
+
 # ANSWERED — 13 September 2026, evening
 
 Six things were put to the owner after PR #523 went green. All six came back
