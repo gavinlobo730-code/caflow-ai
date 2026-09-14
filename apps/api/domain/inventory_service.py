@@ -49,6 +49,7 @@ from fastapi import HTTPException
 
 from core.observability import capture_posting_failure
 from domain.inventory import costing
+from domain.inventory import landed_cost as landed
 
 _logger = logging.getLogger("caflow.inventory")
 
@@ -1292,6 +1293,98 @@ def _blocked_tax_on_line(line: dict) -> int:
             + int(line.get("cess_paise") or 0))
 
 
+def _landed_costs_for(db, *, bill: dict, lines: list, goods_by_id: dict):
+    """This bill's unapplied landed costs, and each goods line's share.
+
+    Returns `(charges, plan)` where `plan` maps a line id to a list of
+    `(expense_account_id, paise)` — one entry per charge that reached it, so
+    the receipt journal can credit each charge's OWN account rather than
+    folding them together.
+
+    `domain/inventory/landed_cost.py` decides the basis and the split; this
+    reads. Never raises: a failure here must leave the receipt exactly as it
+    was before AS-2 paragraph 6 was implemented, which is a correct-but-
+    incomplete cost rather than no cost at all.
+    """
+    try:
+        charges = (
+            db.table("purchase_bill_landed_costs")
+            .select("id, description, amount_paise, expense_account_id, source, applied_at")
+            .eq("bill_id", bill["id"]).is_("applied_at", "null")
+            .execute().data
+        ) or []
+    except Exception as e:
+        capture_posting_failure(e, operation="_landed_costs_for", bill_id=bill.get("id"))
+        return [], {}
+    if not charges:
+        return [], {}
+
+    # The BILL's basis wins over the client's — the consignment that differs
+    # from the client's usual is what the override exists for.
+    recorded = None
+    try:
+        rows = (
+            db.table("clients").select("id, landed_cost_basis")
+            .eq("id", bill.get("client_id")).limit(1).execute().data
+        ) or []
+        recorded = rows[0].get("landed_cost_basis") if rows else None
+    except Exception as e:
+        capture_posting_failure(e, operation="_landed_costs_for.basis",
+                                client_id=bill.get("client_id"))
+    basis = landed.basis_for(recorded, bill.get("landed_cost_basis"))
+
+    # GOODS LINES ONLY. A service line never reaches the stock ledger, so a
+    # share allocated to one would simply disappear out of the cost.
+    goods_lines = [
+        landed.Line(
+            line_id=str(l.get("id")),
+            service_catalogue_id=str(l.get("service_catalogue_id") or ""),
+            cost_paise=int(l.get("taxable_amount_paise") or 0) + _blocked_tax_on_line(l),
+            quantity=Decimal(str(l.get("quantity") or 0)),
+        )
+        for l in lines if goods_by_id.get(l.get("service_catalogue_id"))
+    ]
+    split = landed.apportion_many(
+        goods_lines,
+        [(str(c["id"]), int(c.get("amount_paise") or 0)) for c in charges],
+        basis=basis,
+    )
+    account_by_charge = {str(c["id"]): c.get("expense_account_id") for c in charges}
+    plan: dict = {}
+    for charge_id, one in getattr(split, "per_charge", {}).items():
+        for line_id, paise in one.by_line.items():
+            plan.setdefault(line_id, []).append((account_by_charge.get(charge_id), paise))
+    if split.unapportioned_paise:
+        _logger.warning(
+            "_landed_costs_for: bill=%s %d paise of landed cost could not be "
+            "apportioned — %s", bill.get("id"), split.unapportioned_paise,
+            "; ".join(split.gaps))
+    # Only the charges that actually reached a line are applied; one that
+    # could not be split stays unapplied and keeps being reported.
+    applied = {cid for cid, one in getattr(split, "per_charge", {}).items()
+               if one.by_line}
+    return [c for c in charges if str(c["id"]) in applied], plan
+
+
+def _mark_landed_costs_applied(db, charges: list) -> None:
+    """Stamp `applied_at` once the receipt has actually posted.
+
+    AFTER the journal, never before: a charge marked applied on a receipt that
+    failed would be silently left out of the cost for ever, with nothing
+    reporting it — which is the one outcome this whole feature exists to stop.
+    """
+    if not charges:
+        return
+    stamp = datetime.now(timezone.utc).isoformat()
+    for charge in charges:
+        try:
+            db.table("purchase_bill_landed_costs").update(
+                {"applied_at": stamp}).eq("id", charge["id"]).execute()
+        except Exception as e:
+            capture_posting_failure(e, operation="_mark_landed_costs_applied",
+                                    landed_cost_id=charge.get("id"))
+
+
 def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict, created_by: Optional[str] = None) -> None:
     try:
         # ONE read of the client's cost formula for the whole document, not
@@ -1315,6 +1408,12 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
             .in_("id", catalogue_ids).execute().data
         ) or []
         goods_by_id = {i["id"]: i for i in items if i.get("kind") == "good"}
+        # AS-2 paragraph 6 — freight inward, insurance and non-creditable duty
+        # are part of what the goods cost (INV-05). Read and split BEFORE the
+        # per-line loop, because the split is over the whole bill's goods lines
+        # and a line cannot know its own share.
+        charges, plan = _landed_costs_for(db, bill=bill, lines=lines,
+                                          goods_by_id=goods_by_id)
         # Stock-ledger rows keep the human-facing bill number; the JOURNAL
         # reference must be system-unique (vendor bill numbers collide across
         # vendors — see phase2_journal_service.purchase_bill_journal_ref).
@@ -1327,8 +1426,12 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
         for line in lines:
             item = goods_by_id.get(line.get("service_catalogue_id"))
             qty = line.get("quantity")
-            cost_paise = (int(line.get("taxable_amount_paise") or 0)
-                          + _blocked_tax_on_line(line))
+            own_cost_paise = (int(line.get("taxable_amount_paise") or 0)
+                              + _blocked_tax_on_line(line))
+            # This line's share of the bill's freight, insurance and
+            # non-creditable duty (AS-2 par. 6).
+            share = plan.get(str(line.get("id")), [])
+            cost_paise = own_cost_paise + sum(int(p) for _acct, p in share)
             if not item or not qty or float(qty) <= 0 or cost_paise <= 0:
                 continue
             movement = record_stock_in(
@@ -1338,20 +1441,44 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
                 reference_no=reference_no, created_by=created_by,
                 policy=policy,
             )
-            receipt_items.append({
-                "value_paise": int(movement["value_delta_paise"]),
-                "expense_account_id": line.get("expense_account_id"),
-            })
+            # EACH CONTRIBUTING ACCOUNT IS CREDITED WITH WHAT IT CONTRIBUTED.
+            # The line's own cost relieves the LINE's expense account; each
+            # charge's share relieves the account that charge already landed
+            # on — which is the whole mechanism (INV-05a): the transporter's
+            # bill posted Dr Freight / Cr Transporter, so this posts
+            # Dr Inventory / Cr Freight and the expense nets to zero.
+            #
+            # `split_pro_rata` is EXACT where the movement took the whole cost,
+            # which is every ordinary receipt; it only rounds where part of the
+            # cost covered an oversold deficit, and then it is the defensible
+            # split rather than charging one account the residue.
+            contributors = [(line.get("expense_account_id"), own_cost_paise)]
+            contributors += [(acct, int(p)) for acct, p in share]
+            for (acct, _w), got in zip(
+                    contributors,
+                    landed.split_pro_rata(int(movement["value_delta_paise"]),
+                                          [w for _a, w in contributors])):
+                if got:
+                    receipt_items.append({
+                        "value_paise": got, "expense_account_id": acct,
+                    })
             # task #103: a stock-in that (fully or partly) covers a prior
             # oversold deficit splits its cost between real on-hand value
             # (receipt_items above) and a COGS true-up (this) — see
             # _compute_stock_in / post_inventory_trueup_journal_entry.
             trueup_paise = int(movement.get("trueup_paise") or 0)
             if trueup_paise > 0:
-                trueup_items.append({
-                    "value_paise": trueup_paise,
-                    "expense_account_id": line.get("expense_account_id"),
-                })
+                # Split across the SAME contributors, for the same reason: the
+                # true-up is part of this receipt's cost and the accounts that
+                # carried it are the ones to relieve.
+                for (acct, _w), got in zip(
+                        contributors,
+                        landed.split_pro_rata(trueup_paise,
+                                              [w for _a, w in contributors])):
+                    if got:
+                        trueup_items.append({
+                            "value_paise": got, "expense_account_id": acct,
+                        })
             if movement and movement.get("id"):
                 movement_ids.append(movement["id"])
         # ONE combined journal for the WHOLE bill (grouped by resolved expense
@@ -1370,6 +1497,8 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
             )
             for mid in movement_ids:
                 _set_ledger_journal_entry_id(db, mid, journal_id)
+            # The receipt is posted, so the charges it carried are spent.
+            _mark_landed_costs_applied(db, charges)
         # Separate COGS true-up journal (own reference suffix, see
         # post_inventory_trueup_journal_entry) — posted independently of the
         # receipt journal above since a bill fully absorbed into a prior

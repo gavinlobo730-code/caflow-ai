@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ValidationError as PydanticValidationError
+from pydantic import BaseModel, ValidationError as PydanticValidationError, field_validator
 from dataclasses import asdict
 from domain.purchases import near_duplicate
 from domain.gst import compensation_cess
@@ -2161,3 +2161,169 @@ def create_bill_from_document(
     except Exception as e:
         _logger.error("create_bill_from_document: %s", e)
         return api_response(False, None, f"Unable to complete purchase bill operation: {e}")
+
+
+# ── What else the goods cost to get here (AS-2 par. 6, INV-05) ───────────────
+#
+# `apply_purchase_to_inventory` costs a receipt at the line's taxable value
+# plus its s.17(5)-blocked tax and nothing else. AS-2 paragraph 6 puts freight
+# inwards and other expenditure directly attributable to the acquisition in the
+# cost of purchase too — so stock was carried at less than it cost and every
+# later COGS was wrong with it.
+#
+# `domain/inventory/landed_cost.py` decides the basis and the split;
+# `services/landed_cost_service.py` reads and writes. Nothing here decides.
+
+
+class LandedCostIn(BaseModel):
+    """One charge — freight inward, insurance in transit, a clearing agent's fee.
+
+    `description` is free text because AS-2 paragraph 6's category is open
+    ("other expenditure directly attributable to the acquisition"), and a fixed
+    list would refuse a real charge. `expense_account_id` is the account the
+    charge ALREADY landed on, which the receipt journal relieves; nullable,
+    because the same %Purchase% → %Expense% fallback the bill journal uses
+    applies and a charge must never be refused for want of an account.
+    """
+    client_id: str
+    description: str
+    amount_paise: int
+    expense_account_id: Optional[str] = None
+    notes: Optional[str] = None
+
+    @field_validator("description")
+    @classmethod
+    def says_what_it_is(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError(
+                "Say what the charge is. It goes into the cost of the stock and "
+                "a CA reading the working months later has only this.")
+        return v.strip()
+
+    @field_validator("amount_paise")
+    @classmethod
+    def a_real_amount(cls, v: int) -> int:
+        if int(v) <= 0:
+            raise ValueError("A landed cost is a positive amount.")
+        return int(v)
+
+
+class LandedCostBasisIn(BaseModel):
+    """How landed costs are split across the lines they covered.
+
+    Recorded on the CLIENT (an accounting policy, applied consistently) or
+    overridden on one BILL. `basis` of null clears a bill override; the two
+    permitted values and the refusal naming why weight and volume are not
+    offered come from `domain/inventory/landed_cost.py`.
+    """
+    client_id: str
+    basis: Optional[str] = None
+    bill_id: Optional[str] = None
+
+
+@router.get("/{bill_id}/landed-costs")
+def get_landed_costs(
+    bill_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The charges on this bill, the basis in force, and the split they make.
+
+    The split is a PREVIEW over the charges not yet in a receipt, run through
+    the same function the receipt runs — so what a CA is shown before receiving
+    is what gets posted.
+    """
+    # The BILL's own client, resolved rather than taken from the request — a
+    # client_id the caller may reach says nothing about a bill_id they may not.
+    _assert_bill_scope(current_user, bill_id)
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, None)
+    from core.supabase_client import get_supabase
+    from services import landed_cost_service as svc
+    return api_response(True, svc.read_for_bill(
+        get_supabase(), firm_id=current_user.get("firm_id") or "",
+        client_id=client_id, bill_id=bill_id))
+
+
+@router.post("/{bill_id}/landed-costs")
+def add_landed_cost(
+    bill_id: str,
+    data: LandedCostIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Record a charge against a bill.
+
+    ACCEPTED EVEN AFTER THE BILL IS RECEIVED, and that is deliberate: the
+    charge is a fact, refusing the entry would send it somewhere worse, and
+    `applied_at` staying NULL is what lets the register report that it is not
+    in the cost rather than leaving it out of a figure that reads as complete.
+    """
+    _assert_bill_scope(current_user, bill_id)
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(True, None)
+    from core.supabase_client import get_supabase
+    from services import landed_cost_service as svc
+    firm_id = current_user.get("firm_id") or ""
+    row = svc.add_charge(
+        get_supabase(), firm_id=firm_id, client_id=data.client_id, bill_id=bill_id,
+        description=data.description, amount_paise=data.amount_paise,
+        expense_account_id=data.expense_account_id, notes=data.notes,
+        actor_id=current_user.get("id"),
+    )
+    log_event(firm_id, "purchase_bill_landed_cost", str(row.get("id") or bill_id),
+              "create", actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=row)
+    return api_response(True, row)
+
+
+@router.delete("/{bill_id}/landed-costs/{charge_id}")
+def delete_landed_cost(
+    bill_id: str,
+    charge_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Remove a charge that has not reached a receipt. An applied one is refused."""
+    _assert_bill_scope(current_user, bill_id)
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, None)
+    from core.supabase_client import get_supabase
+    from services import landed_cost_service as svc
+    firm_id = current_user.get("firm_id") or ""
+    result = svc.remove_charge(get_supabase(), firm_id=firm_id,
+                               charge_id=charge_id, bill_id=bill_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("refusal"))
+    log_event(firm_id, "purchase_bill_landed_cost", charge_id, "delete",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"),
+              old_data={"bill_id": bill_id})
+    return api_response(True, result)
+
+
+@router.put("/landed-cost-basis")
+def put_landed_cost_basis(
+    data: LandedCostBasisIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Record the client's basis, or override it for one consignment."""
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(True, None)
+    from core.supabase_client import get_supabase
+    from services import landed_cost_service as svc
+    firm_id = current_user.get("firm_id") or ""
+    result = svc.set_basis(
+        get_supabase(), firm_id=firm_id, client_id=data.client_id,
+        basis=data.basis, bill_id=data.bill_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("refusal"))
+    log_event(firm_id, "purchase_bill_landed_cost",
+              data.bill_id or data.client_id, "update",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"),
+              new_data={"basis": data.basis, "bill_id": data.bill_id})
+    return api_response(True, result)

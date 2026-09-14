@@ -91,7 +91,7 @@ test("the bonus register is the server's answer", async (t) => {
 
   await t.test("is mounted on the payroll screen", () => {
     const page = fs.readFileSync(PAGE, "utf8");
-    assert.match(page, /<BonusRegisterTab/);
+    assert.match(page, /<BonusRegisterTab[\s/>]/);
   });
 
   await t.test("the comment strip does not make the scan vacuous", () => {

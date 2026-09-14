@@ -7,15 +7,15 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **103** | re-read against the code. The defect is gone. |
+| closed | **104** | re-read against the code. The defect is gone. |
 | closed_by_commit | **158** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-| partial | **5** | part of the finding is answered, part is not. Each says which. |
+| partial | **4** | part of the finding is answered, part is not. Each says which. |
 | open | **7** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 12 items — 7 open and 5 partial — not 254.**
+**The work left is 11 items — 7 open and 4 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -54,7 +54,6 @@ migration; a handful need a statutory document a person has to read.
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
-| medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
 
 
 ## Not a defect as stated
@@ -134,6 +133,7 @@ migration; a handful need a statutory document a person has to read.
 | medium | **GST-30** | A test encodes the assumption behind the reverse-charge underpayment, so the suite cannot catch  |
 | medium | **INV-02** | Moving average is the only costing method — no FIFO and no standard cost |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
+| medium | **INV-05** | Inventory cost excludes freight and non-creditable GST — closing stock and COGS are understated |
 | medium | **INV-07** | Opening the Inventory tab walks the client's ENTIRE stock ledger |
 | medium | **INV-08** | Physical verification is one item at a time, with no count sheet and no session |
 | medium | **IT-23** | The ITR filing workflow offers only ITR-3/5/6/7, has no revised or updated return path, and the  |

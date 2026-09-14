@@ -2237,10 +2237,55 @@ migration 240's `NOT NULL DEFAULT true`; a blocked SERVICE line capitalises
 nothing because it never reaches the stock ledger at all; and a purchase RETURN
 relieves on the client's own cost formula (the moving average unless FIFO is
 recorded — see INV-02 below), which now carries the tax. **Freight inward,
-insurance and customs duty are still NOT in cost** — the other two-thirds of
-INV-05 — and closing them is a migration AND an owner decision, because the
-apportionment basis (by value? by quantity? by weight?) is something Tally asks
-the user rather than deriving.
+insurance and customs duty are in cost too since migration 396** — the other
+two-thirds of INV-05, see the next bullet.
+
+**WHAT ELSE THE GOODS COST TO GET HERE IS RECORDED AGAINST THE BILL, AND THE
+BASIS IS A POLICY THE STANDARD DOES NOT GIVE** (INV-05, migration 396). AS-2
+paragraph 6 puts "freight inwards and other expenditure directly attributable
+to the acquisition" in the cost of purchase alongside the non-recoverable
+duties above; the receipt costed a line at its taxable value plus its blocked
+tax and nothing else, so a client who paid to bring a consignment in carried
+stock at less than it cost, expensed the freight in the month it was billed
+rather than when the goods sold, and — the cost formula running off the same
+figure — got every later COGS wrong with it.
+`domain/inventory/landed_cost.py` is the rule and
+`services/landed_cost_service.py` fetches, previews and carries over.
+**AS-2 SETTLES WHAT GOES IN AND NOT HOW TO SPLIT IT**, so the basis is an
+accounting policy rather than a derivation — by value is wrong for a container
+of identical t-shirts, by quantity is wrong for 200 chairs and 20 tables, and
+₹50,000 of freight over exactly that consignment is ₹14,285.71 / ₹35,714.29 by
+value against ₹45,454.55 / ₹4,545.45 by quantity. **BOTH are built, value is
+the default**, the policy is `clients.landed_cost_basis` and one consignment
+may override it with `purchase_bills.landed_cost_basis` — the shape every
+product in this tier ships (TallyPrime appropriate-by-quantity / by-value per
+expense ledger, Zoho Books quantity/value on save, QuickBooks Enterprise
+quantity/amount/percentage; Xero has no allocation at all). Owner decision of
+14-09-2026. **Weight and volume are NAMED and not offered**: the most accurate
+basis for freight specifically, and `service_catalogue` holds no weight, so it
+needs a column and a figure typed per item first. Both columns are nullable
+with **no default and no backfill**, so a client with nothing recorded is told
+the default is a policy they have not stated.
+**`applied_at` IS THE BOUNDARY AND IT IS STAMPED AFTER THE JOURNAL.** A charge
+recorded after the receipt is KEPT and REPORTED rather than silently left out
+or quietly folded in — migration 251 makes the posted journal immutable, so
+whether to reverse is the CA's decision, and the row carries the sentence
+saying so. Stamping before the journal would leave a charge marked done on a
+receipt that failed, which is the one outcome the feature exists to stop.
+**EACH CHARGE KEEPS ITS OWN ACCOUNT**: the receipt credits the goods line's
+expense account for the line's own cost and each charge's account for its
+share, split with `split_pro_rata`, which returns the weights EXACTLY when the
+amount equals their total — so the ordinary case needs no branch and the
+journal balances with no plug. The split is largest remainder for the same
+reason `domain/gst/discount.py` is. **A SERVICE LINE TAKES NO SHARE** (it never
+reaches the stock ledger, so the share would simply vanish out of the cost),
+and a charge with nothing to attach to stays UNAPPLIED and keeps being
+reported rather than being marked done. **The Bill of Entry's non-creditable
+duty carries itself over** — basic customs duty and the social welfare
+surcharge, which migration 389 could name as cost and not act on for want of a
+basis — from BOTH doors, create and PATCH, because a carry-over on create
+alone is one correction away from a stale figure; restating is safe by
+construction since the update is `.is_("applied_at", "null")`.
 
 **THE COST FORMULA IS A CLIENT POLICY, AND ONLY ONE FUNCTION FORKS ON IT**
 (INV-02, migration 394). AS-2 paragraph 14 permits FIFO **or** weighted

@@ -17,6 +17,7 @@ from core.permissions import rbac
 from models.common import api_response
 from domain.gst import bill_of_entry as boe
 from services import bill_of_entry_service as svc
+from services import landed_cost_service
 
 router = APIRouter(prefix="/api/bills-of-entry", tags=["bills_of_entry"])
 
@@ -177,13 +178,23 @@ def create_bill_of_entry(
         "created_by": current_user.get("id"),
     }).execute().data or []
     row = rows[0] if rows else {}
+    # AS-2 paragraph 6 — basic customs duty and the social welfare surcharge
+    # are recoverable from nobody, so they belong in the cost of the goods.
+    # This module has said so since it was written and could not act on it:
+    # apportioning needs a basis, and migration 396 is that basis taken. Where
+    # this Bill of Entry names a purchase bill, the non-creditable duty becomes
+    # a landed cost on it (INV-05). Never raises — the input-credit half of
+    # this document is the urgent one.
+    _landed = landed_cost_service.carry_over_from_bill_of_entry(
+        db, firm_id=current_user.get("firm_id") or "", row=row,
+        actor_id=current_user.get("id"))
     # The ROW as written, not the payload as sent — the two differ by every
     # defaulted column, and the audit log wants what is on the record.
     log_event(current_user.get("firm_id") or "", "bill_of_entry",
               row.get("id") or "", "create",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), new_data=row)
-    return api_response(True, row)
+    return api_response(True, {**row, "landed_cost": _landed})
 
 
 @router.patch("/{be_id}")
@@ -263,6 +274,16 @@ def update_bill_of_entry(
                })
                .eq("id", be_id).eq("firm_id", current_user.get("firm_id"))
                .execute().data) or []
+    # THE SAME CARRY-OVER THE CREATE PATH RUNS. A correction that raises the
+    # basic customs duty raises what the goods cost, and a carry-over on the
+    # create door only is one PATCH away from being none — the shape this
+    # repository keeps having to undo, most recently on the attachment
+    # validator (ACC-25). Restating is safe by construction: the service
+    # updates `.is_("applied_at", "null")`, so a charge already inside a
+    # posted receipt journal is left exactly as it was.
+    landed_cost_service.carry_over_from_bill_of_entry(
+        db, firm_id=current_user.get("firm_id") or "",
+        row=(updated[0] if updated else row), actor_id=current_user.get("id"))
     return api_response(True, updated[0] if updated else row)
 
 

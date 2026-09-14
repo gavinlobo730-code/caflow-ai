@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw } from "lucide-react";
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import { RcmDocumentPanel } from "@/components/purchases/RcmDocumentPanel";
+import { LandedCostPanel } from "@/components/purchases/LandedCostPanel";
 import { BillsOfEntryTab } from "@/components/purchases/BillsOfEntryTab";
 import PurchaseCycleTab from "@/components/purchases/PurchaseCycleTab";
 import { api } from "@/lib/api";
@@ -527,6 +528,10 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
   const [rcmDoc, setRcmDoc] = useState<
     { kind: "self_invoice"; billId: string } | { kind: "payment_voucher"; paymentId: string } | null
   >(null);
+  // AS-2 par. 6 — what else the goods cost to get here. Offered on every
+  // bill: whether a consignment carried freight is a fact about the bill,
+  // not something the browser can read off a status.
+  const [landedCostBillId, setLandedCostBillId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseBillRow | PurchaseBillDetail | null>(null);
   function openMenuFor(e: React.MouseEvent, bill: PurchaseBillRow) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1115,6 +1120,14 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
                 Self-invoice (s.31(3)(f))
               </button>
+              {/* AS-2 par. 6. Freight inward, insurance in transit and
+                  non-creditable customs duty are part of what the stock cost;
+                  the split has to be seen BEFORE the receipt, because the
+                  journal it posts cannot be rewritten (migration 251). */}
+              <button onClick={() => { setMenu(null); setLandedCostBillId(b.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                Landed costs
+              </button>
               {b.status !== "cancelled" && (
                 <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/bills/${b.id}/edit`); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
@@ -1172,6 +1185,15 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
           purchasePaymentId={"paymentId" in rcmDoc ? rcmDoc.paymentId : undefined}
           onClose={() => setRcmDoc(null)}
           onIssued={load}
+        />
+      )}
+
+      {landedCostBillId && (
+        <LandedCostPanel
+          clientId={clientId}
+          billId={landedCostBillId}
+          onClose={() => setLandedCostBillId(null)}
+          onChanged={load}
         />
       )}
 

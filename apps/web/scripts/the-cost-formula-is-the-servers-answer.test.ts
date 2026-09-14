@@ -76,7 +76,7 @@ test("the cost formula is the server's answer", async (t) => {
 
   await t.test("is mounted where the figures it explains are", () => {
     const page = fs.readFileSync(PAGE, "utf8");
-    assert.match(page, /<CostFormulaPanel/);
+    assert.match(page, /<CostFormulaPanel[\s/>]/);
   });
 
   await t.test("the comment strip does not make the scan vacuous", () => {
