@@ -153,10 +153,9 @@
       "needs": "the IRP schema, and the 30-day reporting-window rule"
     },
     "PAY-23": {
-      "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "no annual bonus run — s.12 bonus is computed only inside a leaver's settlement (repo-wide probe, 2026-09-12)",
-      "needs": "a bonus register, and the state minimum wage the Act computes on"
+      "status": "closed",
+      "verified_on": "2026-09-14",
+      "why": "the annual register is built. domain/payroll/bonus.py implemented the Payment of Bonus Act 1965 from the start and its only caller was a LEAVER'S settlement, so a client's continuing employees were never computed for — while s.10 makes the minimum payable whether or not there is an allocable surplus, s.19 makes it due eight months after the year's close and s.28 makes non-payment an offence. domain/payroll/bonus_register.py is the rule (the population, s.19's date DERIVED from the year's own close, the totals), services/bonus_register_service.py fetches s.2(21) salary, months with a RELEASED run and days ACTUALLY worked, and migration 395 stores the two facts no ledger holds: the employer's own s.10/s.11 rate with s.12's minimum wage, and s.9 dismissals CHECKed to the Act's five grounds. GET /api/payroll/bonus-register plus a Bonus tab on the client payroll screen. The s.12 minimum-wage TABLE is still a human step and is named on every answer; an unrecorded working-day count is read as neither nil nor thirty."
     },
     "PAY-26": {
       "status": "open",

@@ -299,6 +299,45 @@ change. The code is the authority; keep this file in step with it.
   deducted BOTH halves of the 12% from the employee's pay. Deliberately NOT
   extended to `_build_settlement_lines`: a leaver's F&F payload carries no
   employer contribution at all, so there is nothing there to split.
+- **THE STATUTORY BONUS IS AN ANNUAL DEBT AND THE PRODUCT COMPUTED IT ONLY FOR
+  LEAVERS** (PAY-23, migration 395). `domain/payroll/bonus.py` has implemented
+  the Payment of Bonus Act 1965 since the payroll module was built, and its one
+  caller was a leaver's settlement — so a client's CONTINUING employees, which
+  is all of them most years, were never computed for. §10 makes the minimum
+  payable "whether or not the employer has any allocable surplus", §19 makes it
+  due within eight months of the accounting year's close and §28 makes
+  non-payment an offence: it is a liability the balance sheet owes.
+  `domain/payroll/bonus_register.py` is the register and calls `bonus.compute`
+  rather than restating any of its sections. **EVERY EMPLOYEE APPEARS,
+  INCLUDING THE ONES THE ACT DOES NOT REACH**, each with its own reason —
+  §2(13)'s ₹21,000 ceiling, §8's thirty days, §9's forfeiture — because a
+  register that silently drops them cannot be checked against the payroll.
+  **§19's date is DERIVED from the year's own close**, not stated as 30
+  November, so a client whose accounting year is not the financial year gets
+  their own; the proviso allowing an extension on application is NAMED rather
+  than assumed.
+  **THE SERVICE READS THREE COLUMNS THAT EACH HAVE AN OBVIOUS WRONG
+  NEIGHBOUR.** §2(21) salary is `basic_paise` plus DA and NOT the slip's
+  `gross_paise`, which carries every allowance the section excludes; a month
+  worked is a RELEASED run (PAY-04's reasoning — a draft has paid nobody, and
+  here it would put a month of salary into a statutory debt); and §8's count is
+  `attendance.days_present`, days ACTUALLY worked, not `working_days`, which is
+  the establishment's days in the month. **An unrecorded working-day count is
+  read as NEITHER nil NOR thirty**: nil would disqualify every employee at a
+  client who runs payroll without attendance and hide the debt, thirty would
+  assert a fact nobody holds — so the figure is shown, the employee is named,
+  and the gap travels on the LINE as well as the summary.
+  Migration 395 stores only what no ledger holds: the employer's own §10/§11
+  rate (defaulted to the §10 minimum, which is owed whatever the surplus turns
+  out to be) with §12's minimum wage, and §9 dismissals **CHECKed to the Act's
+  five grounds** — a free-text reason would let "poor performance" forfeit a
+  statutory debt, which §9 does not reach. ⚠️ **One §12 minimum wage per
+  client-year is a stated simplification** (the section compares per SCHEDULED
+  EMPLOYMENT and per skill grade) and the wage TABLE itself remains the human
+  step §3b records. Nothing is posted — the provision is a journal the CA
+  raises — and Form C (Rule 4(c)) and Form D (Rule 5) are named rather than
+  produced.
+
 - **A DRAFT payroll run has deducted nothing** (PAY-04).
   `_tds_already_deducted_this_fy` and `_members_contributing_earlier_this_period`
   read `payroll_runs` with no status predicate while every other reader has

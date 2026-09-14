@@ -2833,6 +2833,37 @@ export const api = {
     // is the thing someone wires a button to next.
   },
   payroll: {
+    /** PAY-23 — the annual statutory bonus register (Payment of Bonus Act
+     *  1965). Who is owed, who is out and why, §19's due date and the
+     *  employer's own §10/§11 rate. Every sentence is the server's; the
+     *  browser spells no section and no threshold. */
+    bonusRegister: (params: Record<string, string>) =>
+      request<ApiResp<BonusRegister>>(
+        `/api/payroll/bonus-register?${new URLSearchParams(params)}`),
+    saveBonusDeclaration: (body: {
+      client_id: string; accounting_year: string;
+      /** null = apply the statutory minimum. §10's figure lives on the server
+       *  only; a default here would be a second copy of it. */
+      rate_bps: number | null;
+      allocable_surplus_paise: number | null;
+      minimum_wage_monthly_paise: number | null;
+      scheduled_employment: string | null;
+    }) =>
+      request<ApiResp<unknown>>("/api/payroll/bonus-declaration",
+        { method: "PUT", body: JSON.stringify(body) }),
+    /** §9 — forfeiture of the WHOLE bonus on DISMISSAL for one of the Act's
+     *  five grounds. The ground list comes back on the register as
+     *  `section_9_grounds`; the browser holds none of its own. */
+    saveBonusDisqualification: (body: {
+      client_id: string; employee_id: string; accounting_year: string;
+      ground: string; dismissed_on: string; notes?: string | null;
+    }) =>
+      request<ApiResp<unknown>>("/api/payroll/bonus-disqualification",
+        { method: "PUT", body: JSON.stringify(body) }),
+    removeBonusDisqualification: (params: Record<string, string>) =>
+      request<ApiResp<unknown>>(
+        `/api/payroll/bonus-disqualification?${new URLSearchParams(params)}`,
+        { method: "DELETE" }),
     /** One employee's §192 projection for a financial year. Served, never
      *  computed here — the browser's own ladder went stale the day the
      *  Finance Act moved and said nothing. */
@@ -4887,4 +4918,56 @@ export type InventoryCostingPolicy = {
     method: string; label: string;
     first_movement: string; last_movement: string;
   }[];
+};
+
+
+/** PAY-23 — the annual statutory bonus register for one client-year.
+ *
+ *  `rate_is_the_statutory_minimum` is a SEPARATE fact from the rate: 8.33% is
+ *  both §10's floor and what applies when no allocable surplus has been
+ *  declared, and a CA needs to see which of those it is.
+ *
+ *  `working_days` is `null` where the year's attendance is not recorded — NOT
+ *  zero. §8 needs thirty working days, and reading absence as nil would
+ *  disqualify every employee at a client who runs payroll without attendance,
+ *  hiding a debt. The server computes the figure and names the employee.
+ */
+export type BonusRegister = {
+  accounting_year: string;
+  rate_bps: number;
+  rate_is_the_statutory_minimum: boolean;
+  minimum_wage_monthly_paise: number | null;
+  scheduled_employment: string | null;
+  due_date: string;
+  employees: {
+    employee_id: string;
+    employee_name: string;
+    monthly_salary_paise: number;
+    months_worked: number;
+    working_days: number | null;
+    eligible: boolean;
+    payable_paise: number;
+    minimum_paise: number;
+    maximum_paise: number;
+    calculation_base_monthly_paise: number;
+    reasons: string[];
+    gaps: string[];
+  }[];
+  total_payable_paise: number;
+  total_minimum_paise: number;
+  total_maximum_paise: number;
+  eligible_count: number;
+  excluded_count: number;
+  gaps: string[];
+  notes: string[];
+  declaration: {
+    id: string;
+    accounting_year: string;
+    rate_bps: number;
+    allocable_surplus_paise: number | null;
+    minimum_wage_monthly_paise: number | null;
+    scheduled_employment: string | null;
+    notes: string | null;
+  } | null;
+  section_9_grounds: { value: string; label: string }[];
 };
