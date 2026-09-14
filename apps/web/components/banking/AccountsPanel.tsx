@@ -16,7 +16,13 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
-import { api, ApiRefusal } from "@/lib/api";
+import { api, ApiRefusal, type BankAccountTypeInfo } from "@/lib/api";
+
+//: The five values migration 386 allows, for the redeploy window only.
+//: apps/api/domain/banking/account_kind.ACCOUNT_TYPES is the source and
+//: a guard holds this in step with it.
+const FALLBACK_ACCOUNT_TYPES = ["Current", "Savings", "Cash Credit",
+                                "Overdraft", "Credit Card"];
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { getBankStatements, getBankTransactions, BankStatement, BankTransaction } from "@/lib/data/bankStatements";
@@ -382,6 +388,25 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   const [coaAccounts, setCoaAccounts] = useState<CoaAccountLite[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // BANK-21. The vocabulary is the engine's — the type decides whether this
+  // account's ledger is an asset or a liability, and for a card which way up
+  // its balance reads. The array below is a FALLBACK for the window where the
+  // frontend has redeployed ahead of the backend, never the source.
+  const [accountTypes, setAccountTypes] = useState<BankAccountTypeInfo[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.banking.bankAccountTypes();
+        if (res.success) setAccountTypes(res.data?.account_types ?? []);
+      } catch { /* the fallback list stands in */ }
+    })();
+  }, []);
+  // "Amount owed" on a credit card, whose statement states its balance the
+  // other way up from a bank's. The SERVER decides which — this only renders
+  // the label that came back.
+  const openingLabel =
+    (accountTypes.find(t => t.value === accountType)?.balance_label ?? "Balance")
+      === "Amount owed" ? "Opening Amount Owed" : "Opening Balance";
 
   useEffect(() => {
     (async () => {
@@ -484,11 +509,12 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
             <div>
               <label className={labelCls}>Account Type</label>
               <select value={accountType} onChange={(e) => setAccountType(e.target.value)} className={inputCls}>
-                {["Current","Savings","Cash Credit","Overdraft"].map((t) => <option key={t}>{t}</option>)}
+                {(accountTypes.length ? accountTypes.map(t => t.value) : FALLBACK_ACCOUNT_TYPES)
+                  .map((t) => <option key={t}>{t}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelCls}>Opening Balance (₹)</label>
+              <label className={labelCls}>{openingLabel} (₹)</label>
               <input type="number" step="0.01" value={openingBal} onChange={(e) => setOpeningBal(e.target.value)} className={inputCls} placeholder="0.00" />
             </div>
           </div>

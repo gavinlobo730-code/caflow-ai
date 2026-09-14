@@ -70,6 +70,7 @@ from services.bank_entry_service import bank_entry_service, REDRAFT_CHUNK
 from domain.banking import file_hash, StatementParseError
 from domain.banking.normalizer import parse_statement_detailed
 from domain.banking.tie_out import statement_check, totals_agreement
+from domain.banking import account_kind
 from domain.banking.register import opening_balance_gap, OPENING_DATE_REQUIRED
 from domain.banking import vision
 from services import statement_vision
@@ -232,23 +233,35 @@ def _next_bank_account_code(db, firm_id: str) -> str:
     return str(n)
 
 
-#: An overdraft and a cash credit are MONEY OWED TO THE BANK, so their ledger is
-#: a liability. bank_accounts.account_type has allowed these since migration 054
-#: and the form offers them; the ledger was created Asset/'Bank' regardless.
-#:
-#: The SUBTYPE is 'Bank Overdraft' and that was checked, not chosen:
-#: domain/reporting/schedule_iii.bs_bucket() substring-scans for the literal
-#: "overdraft", so 'Bank OD' and 'Cash Credit' both fall to Other Current
-#: Liabilities instead of Short-term Borrowings — the caption Schedule III
-#: Division I puts "loans repayable on demand from banks" under.
-_OVERDRAWN_BANK_TYPES = frozenset({"Cash Credit", "Overdraft"})
-_OD_LEDGER = ("Liability", "Bank Overdraft")
-_ASSET_LEDGER = ("Asset", "Bank")
+def _bank_account_type(db, firm_id: str, bank_account_id: Optional[str]) -> Optional[str]:
+    """This account's own type, or None when it cannot be read.
+
+    None takes the ORDINARY path, which is the safe direction: a card whose
+    type could not be read imports with un-mirrored balances and its own
+    balance check then says so loudly, where a bank account wrongly treated as
+    a card would silently invert every figure on a statement that was right.
+    """
+    if not db or not bank_account_id:
+        return None
+    try:
+        row = (db.table("bank_accounts").select("id, account_type")
+               .eq("id", bank_account_id).eq("firm_id", firm_id)
+               .limit(1).execute().data or [None])[0]
+    except Exception:  # noqa: BLE001 — an unreadable account must not stop the parse
+        _logger.warning("could not read the type of bank account %s", bank_account_id)
+        return None
+    return (row or {}).get("account_type")
 
 
 def ledger_shape_for_bank(account_type: Optional[str]) -> tuple[str, str]:
-    """(account_type, account_subtype) for a bank account's own ledger."""
-    return _OD_LEDGER if (account_type or "") in _OVERDRAWN_BANK_TYPES else _ASSET_LEDGER
+    """(account_type, account_subtype) for a bank account's own ledger.
+
+    MOVED to `domain/banking/account_kind` by BANK-21, which needed the same
+    answer for a credit card and needed it beside the sign rule rather than in
+    a router. Re-exported under the old name so existing imports still work —
+    the same shape `routers/fixed_assets` uses for Schedule II Part C.
+    """
+    return account_kind.ledger_shape_for(account_type)
 
 
 def _ensure_bank_ledger(db, firm_id: str, client_id: str, bank_name: str,
@@ -429,10 +442,40 @@ def _annotate_accounts(db, firm_id: str, rows: list[dict]) -> list[dict]:
         # says the same thing beside the balance it affects.
         r["opening_balance_gap"] = opening_balance_gap(
             r.get("opening_balance_paise"), r.get("opening_balance_date"))
+        # BANK-21. The store holds LEDGER sign — positive is a debit balance —
+        # so a credit card's opening balance is negative there. The CA typed
+        # what the statement says, an amount OWED, and that is what comes back.
+        # Every other account type is the identity.
+        r["opening_balance_paise"] = account_kind.to_statement_sign(
+            r.get("account_type"), r.get("opening_balance_paise"))
+        r["balance_label"] = account_kind.balance_label(r.get("account_type"))
     return rows
 
 
 # ─── Bank Accounts ────────────────────────────────────────────────────────────
+
+@router.get("/account-types")
+def list_bank_account_types(
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """The kinds of bank account this product supports, and what each one is.
+
+    Served so the form holds no second copy of the vocabulary. It is not
+    cosmetic: the type decides whether the account's ledger is an ASSET or a
+    LIABILITY and, for a credit card, which way up its balance reads — so a
+    picker offering a value the engine has never heard of would create an
+    account with the wrong ledger (BANK-21).
+    """
+    return api_response(True, {
+        "account_types": [{
+            "value": t,
+            "ledger_account_type": account_kind.ledger_shape_for(t)[0],
+            "ledger_account_subtype": account_kind.ledger_shape_for(t)[1],
+            "owed_to_the_bank": account_kind.is_owed_to_the_bank(t),
+            "balance_label": account_kind.balance_label(t),
+        } for t in account_kind.ACCOUNT_TYPES],
+    })
+
 
 @router.get("/accounts")
 def list_bank_accounts(
@@ -475,6 +518,14 @@ def create_bank_account(
         return api_response(True, {"id": "mock-id", **data.model_dump()})
     firm_id = current_user["firm_id"]
     payload = {"firm_id": firm_id, **data.model_dump()}
+    # BANK-21. The CA types what the statement says. A CREDIT CARD statement
+    # states the amount OWED as a positive figure where the ledger holds a
+    # credit balance, so it is stored negated — and then everything downstream
+    # (the register's running total, the opening-balance journal, the
+    # reconciliation) is one sign convention with no per-path knowledge. Every
+    # other account type is the identity.
+    payload["opening_balance_paise"] = account_kind.to_ledger_sign(
+        payload.get("account_type"), payload.get("opening_balance_paise"))
     # Multi-Currency Phase 5 — resolve the account currency. None ⇒ let the column
     # default to INR (byte-for-byte today's). A non-INR currency is allowed ONLY when
     # multi-currency is active for this client and the code is in the ISO master.
@@ -503,6 +554,9 @@ def create_bank_account(
 
     row = db.table("bank_accounts").insert(payload).execute()
     account = (row.data or [{}])[0]
+    account = dict(account)
+    account["opening_balance_paise"] = account_kind.to_statement_sign(
+        account.get("account_type"), account.get("opening_balance_paise"))
     # Auto-sync opening balances to the GL (no manual post). Roll back on failure.
     if int(payload.get("opening_balance_paise") or 0) != 0 and payload.get("client_id"):
         if not _sync_opening_balances(db, current_user["firm_id"], payload["client_id"],
@@ -530,6 +584,23 @@ def update_bank_account(
     prior = (db.table("bank_accounts").select("*")
              .eq("id", account_id).eq("firm_id", firm_id).limit(1).execute().data or [{}])[0]
     assert_client_access(current_user, prior.get("client_id"))
+    # BANK-21. The sign the CA typed is the STATEMENT's, and the type it is
+    # read against is the one this PATCH leaves the account in — a PATCH may
+    # carry a new opening balance, a new account_type, or both, and reading
+    # the stored type while the request changes it would store the figure
+    # under the old convention.
+    effective_type = update.get("account_type", prior.get("account_type"))
+    if "opening_balance_paise" in update:
+        update["opening_balance_paise"] = account_kind.to_ledger_sign(
+            effective_type, update["opening_balance_paise"])
+    # RE-SIGNING AN EXISTING BALANCE WHEN THE TYPE ITSELF CHANGES. Turning a
+    # current account into a card (or back) flips which way its stored figure
+    # is meant to read, and leaving it would silently invert the opening
+    # balance of an account whose statement nobody re-read.
+    elif (update.get("account_type")
+          and account_kind.is_credit_card(update["account_type"])
+             != account_kind.is_credit_card(prior.get("account_type"))):
+        update["opening_balance_paise"] = -int(prior.get("opening_balance_paise") or 0)
     if update.get("coa_account_id"):
         taken = _bank_ledger_conflict(db, firm_id, prior.get("client_id"),
                                       update["coa_account_id"], exclude_account_id=account_id)
@@ -560,6 +631,9 @@ def update_bank_account(
             except Exception:
                 pass
             return api_response(False, None, "Unable to save bank account. Please try again.")
+    account = dict(account)
+    account["opening_balance_paise"] = account_kind.to_statement_sign(
+        account.get("account_type"), account.get("opening_balance_paise"))
     return api_response(True, account)
 
 
@@ -921,6 +995,22 @@ def upload_statement(
             allow_vision=allow_vision, has_balances=has_balances)
     except StatementParseError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+    # ── BANK-21: a card statement states its balances the other way up ──────
+    # A card statement's "total amount due" is a positive figure where the
+    # ledger holds a credit balance, so every balance READ OFF IT is mirrored
+    # here — once, before anything looks at one. That is the whole of the
+    # difference: the DEBIT and CREDIT columns need nothing, because a purchase
+    # is money out of the card account in exactly the sense posting_map means,
+    # and Dr Expense / Cr Card is already what comes out.
+    #
+    # It has to happen BEFORE `statement_check`, which REFUSES the import when
+    # `opening + credits - debits != closing`. On a card statement in its own
+    # sign that is never true, so a file that adds up perfectly would be
+    # refused — see domain/banking/account_kind for the worked figures.
+    txns, opening_balance_paise, closing_balance_paise = account_kind.mirror_imported_statement(
+        _bank_account_type(db, current_user["firm_id"], bank_account_id),
+        txns, opening_balance_paise, closing_balance_paise)
 
     # BEFORE anything is written. balance_agreement is computed after the import
     # and is advisory; this one decides whether the import happens at all, so it

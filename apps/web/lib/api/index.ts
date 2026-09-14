@@ -722,6 +722,15 @@ export type JournalLineIO = {
   narration?: string | null;
 };
 
+/** One entry of GET /api/banking/account-types. */
+export type BankAccountTypeInfo = {
+  value: string;
+  ledger_account_type: string;
+  ledger_account_subtype: string;
+  owed_to_the_bank: boolean;
+  balance_label: string;
+};
+
 /** GET /api/currencies/policy. `gates` is the half that matters: `active`
  *  alone could not say WHICH of three switches was down, which is why the
  *  feature was unusable (ACC-19). */
@@ -1973,6 +1982,11 @@ export const api = {
   // Banking (Phase B.0): all bank mutations go through the backend banking
   // service — the frontend never writes bank rows or journals to Supabase.
   banking: {
+    // BANK-21 — the five kinds of account and what each one is. The TYPE
+    // decides whether the ledger is an asset or a liability and, for a card,
+    // which way up its balance reads, so the form must not hold its own list.
+    bankAccountTypes: () =>
+      request<ApiResp<{ account_types: BankAccountTypeInfo[] }>>("/api/banking/account-types"),
     listBankAccounts: (params?: Record<string, string>) => request(`/api/banking/accounts${params ? "?" + new URLSearchParams(params) : ""}`),
     createBankAccount: (data: unknown) => request("/api/banking/accounts", { method: "POST", body: JSON.stringify(data) }),
     updateBankAccount: (id: string, data: unknown) => request(`/api/banking/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),

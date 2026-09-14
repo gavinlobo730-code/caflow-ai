@@ -873,10 +873,10 @@
       ]
     },
     "BANK-21": {
-      "status": "open",
+      "status": "closed",
       "verified_on": "2026-09-13",
-      "why": "no credit-card account type in any migration",
-      "needs": "a migration; a card is a liability account whose statement signs are the mirror of a bank's"
+      "why": "CLOSED. Migration 386 widens bank_accounts.account_type to include 'Credit Card'; domain/banking/account_kind.py is the authority for what each kind is. THE DOUBLE ENTRY NEEDED NO CHANGE and that is the finding's real answer: posting_map.build_lines is direction-driven, so a LIABILITY ledger makes it already right both ways round — Dr Expense / Cr Card on a purchase, Dr Card / Cr Bank on a payment — and a test asserts the posting map still does not mention a card. What differs is the SIGN OF THE BALANCE, and there is one convention inside (ledger sign) with three translations at the edge: the opening balance the CA types, the balances read off an imported statement (which must be mirrored BEFORE statement_check, or a file that adds up perfectly is refused), and the register's response. A MOVEMENT never flips. An overdraft is owed to the bank and deliberately NOT mirrored — the bank prints an overdrawn account as negative; a card statement never prints a negative. The Transfer derivation now asks a FACT (is this chart row a bank account's linked ledger) because _looks_like_bank_or_cash requires account_type == 'Asset', which a card's and an overdraft's never is — so paying the company card out of the current account was coded 'Other' and posted as an expense against a liability ledger instead of a Contra; that half fixes the identical pre-existing overdraft case too. models/banking.py validates account_type at BOTH doors (it was a 500-shaped database error before), the picker is served from GET /api/banking/account-types, and the card subtype presents under Short-term Borrowings. 34/34 negative controls. ⚠️ The Schedule III caption is [S]: the Schedule could not be read here and Other Current Liabilities is defensible — both are current liabilities, so no total moves, only which caption. entry_type_for still calls a card purchase a 'Payment'; recorded, not fixed, since those are the three values journal_entries.entry_type allows and the accounting is right either way.",
+      "needs": ""
     },
     "BANK-22": {
       "status": "closed_by_commit",

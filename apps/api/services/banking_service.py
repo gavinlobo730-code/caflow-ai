@@ -417,6 +417,24 @@ class BankingService:
                                 detail="That account belongs to a different client.")
         return account
 
+    @staticmethod
+    def _is_bank_ledger(db, firm_id: str, client_id: str, coa_account_id: str) -> Optional[bool]:
+        """Whether this chart row IS one of the client's bank accounts' ledgers.
+
+        None, not False, when the question could not be asked — the derivation
+        then falls back to the name test it has always used, rather than
+        asserting the account is not a bank ledger on the strength of a failed
+        read.
+        """
+        try:
+            rows = (db.table("bank_accounts").select("id, coa_account_id")
+                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                    .eq("coa_account_id", coa_account_id).limit(1).execute().data) or []
+        except Exception:  # noqa: BLE001
+            _logger.warning("could not check whether %s is a bank ledger", coa_account_id)
+            return None
+        return bool(rows)
+
     def _confirmed_category(self, db, firm_id: str, txn: dict, account: dict) -> str:
         """The category implied by the account the CA picked (account-first coding).
 
@@ -431,7 +449,16 @@ class BankingService:
         fallback is used instead, which is an EXPLICIT_COUNTER category and posts
         to exactly what was picked.
         """
-        derived = category_for_account(account, is_credit=int(txn.get("credit_paise") or 0) > 0)
+        derived = category_for_account(
+            account, is_credit=int(txn.get("credit_paise") or 0) > 0,
+            # BANK-21. The FACT, not the name test: is this chart row the
+            # linked ledger of one of the client's own bank accounts? A credit
+            # card's and an overdraft's ledgers are LIABILITIES, which the name
+            # test refuses by construction, so paying the company card out of
+            # the current account was coded "Other" and posted as an expense
+            # against a liability ledger instead of a Contra.
+            is_bank_ledger=self._is_bank_ledger(db, firm_id, txn["client_id"],
+                                                account["id"]))
         if not derived.needs_confirmation:
             return derived.category
         try:

@@ -2137,6 +2137,41 @@ is never refused. `GET /api/currencies/entitlement` answers the firm gate with n
 client in the request, because a firm with no clients yet is exactly the firm
 this gets switched on for.
 
+**A COMPANY CREDIT CARD IS A BANK ACCOUNT, AND THE DOUBLE ENTRY NEEDED NO
+CHANGE** (BANK-21, migration 386). `bank_accounts.account_type` admitted four
+values and none of them was a card, so the statement could not be imported, the
+spend could not be coded through the bank workflow, and the monthly payment out
+of the current account posted to whatever ledger somebody picked.
+`domain/banking/account_kind.py` is the authority. **`posting_map.build_lines`
+is direction-driven, so a LIABILITY ledger makes it already right both ways
+round** — Dr Expense / Cr Card on a purchase (money out of the card account in
+exactly the sense the posting map means), Dr Card / Cr Bank on a payment — and
+nothing in the posting map, the settlement or the reversal moves. A test asserts
+the posting map still does not mention a card, because a branch on the account
+type there would be a second rule to keep in step. **What differs is the SIGN OF
+THE BALANCE**: a card's is a credit balance and its own statement states it the
+other way up, as an amount owed. So there is ONE convention inside the product —
+ledger sign, positive is a debit balance — and exactly three translations at the
+edge: the opening balance the CA types, the balances read off an imported
+statement (`mirror_imported_statement`, which must run BEFORE `statement_check`
+or a file that adds up perfectly is refused), and the register's response. A
+MOVEMENT never flips: a ₹500 purchase is ₹500 on either kind of account.
+**An OVERDRAFT is owed to the bank and is NOT mirrored** — it is drawn against a
+bank account whose balance the bank prints the ordinary way, overdrawn as
+negative; a card statement never prints a negative. **The Transfer derivation
+now asks a FACT** — is this chart row the linked ledger of one of the client's
+own bank accounts — because `_looks_like_bank_or_cash` requires `account_type ==
+'Asset'`, which a card's and an overdraft's ledger never is, so paying the
+company card out of the current account was coded "Other" and posted as an
+expense against a liability ledger instead of a Contra. `None` means "not
+established" and the name test answers as it always did. `entry_type_for` still
+calls a card purchase a "Payment"; that is recorded, not fixed — the three
+values are what `journal_entries.entry_type` allows and the accounting is right
+either way. ⚠️ The card subtype presents under **Short-term Borrowings** with
+the overdraft one; `[S]`, because Schedule III could not be read here and Other
+Current Liabilities is defensible — both are current liabilities, so no total
+moves, only which caption.
+
 **A MATCHING RULE SAYS WHICH FIELD IT READS AND WHICH RULE WINS** (migration
 380, BANK-11 steps 1 and 2). Until then `domain/banking/rules.rule_matches` was
 one case-insensitive substring of the NARRATION plus an amount range and a

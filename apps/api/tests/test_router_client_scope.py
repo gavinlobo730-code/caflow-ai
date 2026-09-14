@@ -1422,6 +1422,13 @@ EXEMPT: dict[str, str] = {
     "/api/income-tax/capital-gains/cii-table":
         "the statutory Cost Inflation Index table (Section 48 2nd proviso) "
         "— identical for every firm and client, no stored data read.",
+    "/api/banking/account-types":
+        "the five kinds of bank account this product supports, out of "
+        "domain/banking/account_kind.ACCOUNT_TYPES — a vocabulary, identical "
+        "for every firm and client, no stored data read and no client named. "
+        "Served so the account form holds no second copy: the type decides "
+        "whether the account's ledger is an Asset or a Liability, and for a "
+        "credit card which way up its balance reads.",
     "/api/income-tax/capital-gains/sections":
         "the four sections of the s.54 family and what each one reaches, out "
         "of domain/income_tax/reinvestment_exemption.RULES — statutory "

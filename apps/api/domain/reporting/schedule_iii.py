@@ -210,7 +210,20 @@ def bs_bucket(account_type: str, account_subtype: str | None,
         # Short-term FIRST: the seeded subtype "Short Term Loan" contains
         # "term loan", so testing the long-term branch first presented every
         # working-capital loan as a non-current borrowing.
-        if "short term" in sub or "overdraft" in sub or "cc limit" in sub:
+        # "credit card": a company card outstanding is a loan repayable on
+        # demand from a bank, which is what Schedule III Division I puts under
+        # Short-term Borrowings — the same caption the overdraft subtype
+        # already lands in, and for the same reason. Added with the card
+        # account type (BANK-21, migration 386); without it the subtype
+        # 'Credit Card' would fall through to Other Current Liabilities BY
+        # ACCIDENT rather than by a decision.
+        # ⚠️ `[S]`. Schedule III could not be read here — icai.org and every
+        # .gov.in are refused at this environment's egress proxy — and the
+        # alternative presentation (Other Current Liabilities) is defensible.
+        # Both are current liabilities, so no total and no sub-total moves;
+        # only which of two captions the figure sits on.
+        if ("short term" in sub or "overdraft" in sub or "cc limit" in sub
+                or "credit card" in sub):
             return "Short-term Borrowings"
         if "long term" in sub or "term loan" in sub or "debenture" in sub:
             return "Long-term Borrowings"
