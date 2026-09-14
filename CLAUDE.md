@@ -818,6 +818,53 @@ change. The code is the authority; keep this file in step with it.
   the database rather than DROPped, the same shape as migration 371 — a DROP
   moves both sides of the production-fixture comparison at once and needs the
   refresh in `docs/schema-drift.md`.
+- **THE PURCHASE CYCLE BEGINS BEFORE THE BILL, AND THE GOODS RECEIPT IS A
+  STATUTORY FACT** (PUR-25, migration 393). A client raises a purchase order,
+  receives the goods against it and only then books the supplier's invoice;
+  neither of the first two documents existed, so there was nothing to check
+  the bill against — and no record at all of WHEN the goods arrived. That
+  second absence is statutory twice over. **CGST §16(2)(b)** allows the input
+  tax credit only where the recipient "has received the goods or services",
+  and a March invoice for goods that arrive in April carries credit belonging
+  to April. **MSMED §15 runs its fifteen days from ACCEPTANCE**, and the
+  Explanation to §2(b) makes acceptance the day of ACTUAL DELIVERY — so
+  `domain/income_tax/section_43b_h.py` had to use the bill date as a proxy and
+  carried `ACCEPTANCE_DATE_NOT_HELD` on **every** answer. The proxy is the
+  EARLIER date and therefore manufactures disallowances on bills paid in time;
+  a goods receipt is the real one, and the caveat is now emitted only for the
+  bills that actually fell back.
+  `domain/purchases/order_cycle.py` is the commercial chain and
+  `domain/purchases/three_way_match.py` is the comparison and the two statutes
+  it settles.
+  **IT REPORTS; IT NEVER BLOCKS A BILL.** A supplier who short-ships or
+  over-charges has still sent one and the CA still has to book what arrived —
+  refusing would push the entry outside the system, which is worse than a
+  mismatch nobody looked at. The one thing refused is an over-RECEIPT against
+  the order, because goods on the premises in excess of what was ordered mean
+  the ORDER is wrong. **NO TOLERANCE IS APPLIED AND NONE IS INVENTED**: "within
+  2%" is a firm's procurement policy rather than a rule, and every answer says
+  so. **NO PRICE VARIANCE IS POSTED** — INV-05a costs a receipt at the BILL's
+  own taxable value plus its §17(5)-blocked tax, so the bill IS the cost and a
+  variance account would double-count. **A BILL WITH NO ORDER IS NOT A
+  FINDING**: most purchases a practice sees — fees, rent, utilities — are never
+  ordered.
+  **NEITHER DOCUMENT POSTS OR MOVES STOCK.** The expense, the credit and the
+  payable all arise when the bill is received. Goods received and not invoiced
+  are a real accrual and building one needs a GRNI account and a reversal path
+  — an owner decision, named rather than half-built.
+  **`rejected_qty` IS ITS OWN FIGURE, not a smaller quantity**, because
+  §16(2)(b) asks what was RECEIVED and §2(b) asks what was ACCEPTED and one
+  number cannot answer both; what the order still owes is measured on what was
+  KEPT. **The ACCEPTANCE date is the LAST receipt, not the first** — a
+  part-shipped order is accepted when the goods the bill covers have all
+  arrived — and an **objection removed** (§2(b)'s second limb) displaces it,
+  which is LATER and so can only remove a disallowance, never create one.
+  **The YEAR of the add-back is still the BILL's**: §43B(h) disallows a
+  deduction claimed in the year the expense ACCRUED in, so only the fifteen-day
+  clock moves. **`purchase_bill_lines` carries no `firm_id`** and is scoped
+  through its parent bill — naming the column would be PGRST204 and no read at
+  all, so the tenant check happens at the parent and a test pins both halves.
+
 - **§43B(h) IS DERIVED FROM THE PURCHASE LEDGER, AND THE LIMIT IS FIFTEEN DAYS**
   (PUR-15). The Finance Act 2023 inserted clause (h) with effect from AY
   2024-25: a sum payable to a MICRO or SMALL enterprise beyond the MSMED §15

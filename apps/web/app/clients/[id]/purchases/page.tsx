@@ -7,6 +7,7 @@ import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loade
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
 import { RcmDocumentPanel } from "@/components/purchases/RcmDocumentPanel";
 import { BillsOfEntryTab } from "@/components/purchases/BillsOfEntryTab";
+import PurchaseCycleTab from "@/components/purchases/PurchaseCycleTab";
 import { api } from "@/lib/api";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
@@ -143,8 +144,12 @@ async function getAuthToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
-type PurchaseTab = "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes" | "bills-of-entry";
+type PurchaseTab = "purchase-cycle" | "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes" | "bills-of-entry";
 const TABS: { id: PurchaseTab; label: string }[] = [
+  // PUR-25 — the cycle BEFORE the bill. First, because that is the order the
+  // documents are raised in, and because the goods receipt is what CGST
+  // s.16(2)(b) conditions the credit on.
+  { id: "purchase-cycle", label: "Orders & Goods Receipts" },
   { id: "bills", label: "Purchase Bills" },
   { id: "recurring", label: "Recurring" },
   { id: "vendors", label: "Vendors" },
@@ -263,6 +268,7 @@ export default function PurchasesPage() {
         {tab === "payments" && <Payments clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
         {tab === "debit-notes" && <DebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
         {tab === "credit-notes" && <PurchaseCreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "purchase-cycle" && <PurchaseCycleTab clientId={clientId} />}
         {tab === "bills-of-entry" && <BillsOfEntryTab clientId={clientId} />}
       </div>
     </div>

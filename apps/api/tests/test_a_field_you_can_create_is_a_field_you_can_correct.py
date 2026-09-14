@@ -103,6 +103,25 @@ IMMUTABLE_ON_UPDATE: dict[tuple[str, str], str] = {
     ("DeliveryChallanUpdateIn", "customer_id"): "the consignee is corrected, not the party the document was raised under",
     ("DeliveryChallanUpdateIn", "vendor_id"): "the consignee is corrected, not the party the document was raised under",
 
+    # ── The purchase cycle before the bill (PUR-25) ─────────────────────────
+    ("PurchaseOrderUpdateIn", "client_id"): "an order belongs to one set of books",
+    ("GoodsReceiptUpdateIn", "client_id"): "a receipt belongs to one set of books",
+    ("PurchaseOrderUpdateIn", "vendor_id"): (
+        "an order is a commitment to buy FROM somebody; ordering from a "
+        "different supplier is a different order, and the supplier's own "
+        "GSTIN, state and MSMED classification are snapshotted onto it"),
+    ("GoodsReceiptUpdateIn", "vendor_id"): (
+        "whose goods arrived is the fact the receipt records; re-pointing it "
+        "would move a MSMED s.2(b) acceptance date onto another supplier's "
+        "bills and change what s.43B(h) disallows"),
+    ("PurchaseOrderUpdateIn", "currency"): "every line figure is in that currency's minor units",
+    ("GoodsReceiptUpdateIn", "order_id"): (
+        "the order a consignment was received against is what its quantity "
+        "was checked for over-receipt against, and it is how the receipt's "
+        "date reaches s.43B(h) as the day of acceptance. Re-pointing it would "
+        "leave the first order showing goods received that went elsewhere, "
+        "and would silently move a statutory clock onto another set of bills"),
+
     # Identity. Changing one of these does not correct the record, it makes it
     # a different record — and the row it would collide with may already exist.
     ("BankAccountUpdateIn", "account_no"): "the account number IS the account",

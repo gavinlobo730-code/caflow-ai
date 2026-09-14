@@ -137,6 +137,18 @@ class Bill:
     #: True where the bill was capitalised into a fixed asset, so nothing was
     #: deducted and clause (h) has nothing to disallow.
     capitalised: bool = False
+    #: THE DAY MSMED §15 ACTUALLY RUNS FROM, where the books hold one (PUR-25,
+    #: migration 393). §2(b)'s Explanation makes the day of acceptance the day
+    #: of ACTUAL DELIVERY — the goods receipt — or, where the buyer objected in
+    #: writing within fifteen days, the day the objection was removed.
+    #:
+    #: None means no goods receipt is recorded and the BILL DATE is used
+    #: instead, which is what this module has always done and what
+    #: ACCEPTANCE_DATE_NOT_HELD describes. The caveat is now emitted only for
+    #: the bills it is actually true of, rather than on every answer — a
+    #: caveat that appears whether or not it applies teaches a reader to skip
+    #: it.
+    acceptance_date: Optional[date] = None
 
 
 @dataclass(frozen=True)
@@ -252,7 +264,11 @@ def compute(bills: Iterable[Bill], *, financial_year: str) -> Section43BHResult:
     fy_start, fy_end = _fy_bounds(financial_year)
     out: list[BillOutcome] = []
     gaps: list[str] = []
-    caveats: list[str] = [FIRST_PROVISO_DOES_NOT_APPLY, ACCEPTANCE_DATE_NOT_HELD]
+    caveats: list[str] = [FIRST_PROVISO_DOES_NOT_APPLY]
+    #: ACCEPTANCE_DATE_NOT_HELD is added only if some bill actually used the
+    #: proxy. Before PUR-25 every bill did, so it was unconditional; a caveat
+    #: that appears whether or not it applies is one a reader learns to skip.
+    any_proxied = False
 
     if financial_year < FIRST_FY:
         return Section43BHResult(
@@ -301,7 +317,26 @@ def compute(bills: Iterable[Bill], *, financial_year: str) -> Section43BHResult:
             continue
 
         days, source = limit_days(b.agreed_days)
-        due = b.bill_date + timedelta(days=days)
+        # THE CLOCK RUNS FROM ACCEPTANCE, and the bill date is only the proxy.
+        # A goods receipt supplies the real date and it is almost always LATER
+        # than the bill date — goods arrive after the invoice is raised as
+        # often as before — so using it lengthens the period and can only
+        # REMOVE a disallowance the proxy manufactured, never create one.
+        from_date = b.acceptance_date or b.bill_date
+        if b.acceptance_date is None:
+            acceptance_proxied = True
+        else:
+            acceptance_proxied = False
+        due = from_date + timedelta(days=days)
+        source = source + (
+            f" Measured from the bill date, {b.bill_date.isoformat()} — no "
+            f"goods receipt records the day of acceptance."
+            if acceptance_proxied else
+            f" Measured from the day of acceptance, "
+            f"{b.acceptance_date.isoformat()} (MSMED §2(b), Explanation).")
+
+        if acceptance_proxied:
+            any_proxied = True
 
         if b.capitalised:
             out.append(BillOutcome(
@@ -339,6 +374,12 @@ def compute(bills: Iterable[Bill], *, financial_year: str) -> Section43BHResult:
         at_risk = (b.deductible_paise * missed // b.total_paise
                    if b.total_paise > 0 else 0)
 
+        # THE YEAR IS THE BILL'S, NOT THE ACCEPTANCE'S. s.43B(h) disallows a
+        # deduction claimed in the previous year the expense ACCRUED in, and
+        # the expense accrues with the bill. Only the fifteen-day CLOCK moves
+        # to the acceptance date; which year's return the add-back lands in
+        # does not, or a March bill received in April would silently move a
+        # disallowance into the next year's computation.
         accrued_here = fy_start <= b.bill_date <= fy_end
         released_here = sum(
             1 for f in late_fys if f == financial_year)
@@ -371,6 +412,8 @@ def compute(bills: Iterable[Bill], *, financial_year: str) -> Section43BHResult:
             in_time, late, tuple(sorted(set(late_fys))), unpaid,
             this_years_disallowance, reason, True))
 
+    if any_proxied:
+        caveats.append(ACCEPTANCE_DATE_NOT_HELD)
     return Section43BHResult(
         financial_year=financial_year, disallowed_paise=disallowed,
         allowed_on_payment_paise=allowed_back, bills=tuple(out),

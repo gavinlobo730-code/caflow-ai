@@ -202,6 +202,18 @@ def for_financial_year(db, firm_id: str, client_id: str,
     vendors = _vendors(db, firm_id, client_id)
     pays = _payments(db, firm_id, [str(r.get("id")) for r in rows])
     capitalised = _capitalised(db, firm_id, client_id)
+    # THE DAY MSMED §15 ACTUALLY RUNS FROM, where the books hold one (PUR-25,
+    # migration 393). §2(b)'s Explanation makes the day of acceptance the day
+    # of ACTUAL DELIVERY — a goods receipt — or, where the buyer objected in
+    # writing, the day the objection was removed. Read ONCE for the whole
+    # client rather than per bill: this walks every live bill, and a per-bill
+    # lookup would be a Singapore-to-Mumbai round trip each.
+    #
+    # A bill with no order, or an order with no receipt, is simply absent and
+    # `section_43b_h.compute` falls back to the bill date, saying so on that
+    # bill rather than on every answer.
+    from services.purchase_cycle_service import acceptance_dates_by_bill
+    accepted = acceptance_dates_by_bill(db, firm_id, client_id)
 
     bills = []
     for r in rows:
@@ -225,6 +237,7 @@ def for_financial_year(db, firm_id: str, client_id: str,
             agreed_days=v.get("msmed_agreement_days"),
             payments=tuple(pays.get(str(r.get("id"))) or ()),
             capitalised=str(r.get("id")) in capitalised,
+            acceptance_date=_iso(accepted.get(str(r.get("id")))),
         ))
 
     # Oldest first — a reader following the year through wants them in order.
@@ -234,8 +247,8 @@ def for_financial_year(db, firm_id: str, client_id: str,
     bills.sort(key=lambda b: (b.bill_date or date.min, b.bill_no or ""))
 
     out = rule.compute(bills, financial_year=financial_year).to_dict()
-    out["source"] = ("derived from purchase_bills, purchase_payment_allocations "
-                     "and vendors.msme_status")
+    out["source"] = ("derived from purchase_bills, purchase_payment_allocations, "
+                     "vendors.msme_status and goods_receipt_notes.received_on")
     # THE OPENING BILLS ARE NAMED, NOT COUNTED (ACC-14, migration 391). They are
     # out of the computation because their expense was claimed in a year whose
     # return was prepared elsewhere — but s.43B(h)'s other direction is that an

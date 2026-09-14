@@ -235,14 +235,68 @@ def test_every_answer_says_the_first_proviso_does_not_apply():
     assert "does NOT reach clause (h)" in rule.FIRST_PROVISO_DOES_NOT_APPLY
 
 
-def test_every_answer_says_the_clock_starts_at_acceptance():
-    """§15 runs from the day of acceptance or deemed acceptance and the books
-    hold the bill date. The proxy gives the EARLIEST due date and therefore the
-    LARGEST disallowance, which puts the item in front of the CA — who has the
-    delivery note — rather than hiding it."""
-    r = compute([], financial_year=FY)
-    assert rule.ACCEPTANCE_DATE_NOT_HELD in r.caveats
+def test_the_proxy_caveat_appears_only_on_a_bill_THAT_USED_THE_PROXY():
+    """§15 runs from the day of acceptance or deemed acceptance, and until
+    PUR-25 the books held only the bill date — so this caveat was on EVERY
+    answer, including an empty one.
+
+    Migration 393's goods receipt supplies the real date, so the caveat is now
+    emitted only for the bills that actually fell back. A caveat that appears
+    whether or not it applies is one a reader learns to skip, and this one has
+    to be read: the proxy gives the EARLIEST due date and therefore the
+    LARGEST disallowance.
+    """
     assert "ACCEPTANCE" in rule.ACCEPTANCE_DATE_NOT_HELD
+    # Nothing to speak for.
+    assert rule.ACCEPTANCE_DATE_NOT_HELD not in compute(
+        [], financial_year=FY).caveats
+    # A bill with no goods receipt behind it.
+    proxied = compute([_bill(payments=())], financial_year=FY)
+    assert rule.ACCEPTANCE_DATE_NOT_HELD in proxied.caveats
+    # And one with a real acceptance date does not raise it.
+    accepted = compute(
+        [_bill(payments=(), acceptance_date=date(2025, 5, 20))],
+        financial_year=FY)
+    assert rule.ACCEPTANCE_DATE_NOT_HELD not in accepted.caveats
+
+
+def test_the_clock_runs_from_the_ACCEPTANCE_date_where_one_is_held():
+    """MSMED §2(b), Explanation: the day of acceptance is the day of ACTUAL
+    DELIVERY. Goods arrive after the invoice as often as before, so the real
+    date is usually LATER than the bill date — which lengthens the period and
+    can only REMOVE a disallowance the proxy manufactured, never create one."""
+    bill_date = date(2025, 5, 1)
+    delivered = date(2025, 5, 20)
+    paid = date(2025, 6, 2)          # 32 days after the bill, 13 after delivery
+    # The WHOLE gross, so nothing is left unpaid to disallow proportionally —
+    # the only thing under test here is which date the fifteen days run from.
+    settled = (rule.Payment(paid, 1_18_000),)
+    # On the proxy that is late; §15's fifteen days ran out on 16 May.
+    on_proxy = compute([_bill(bill_date=bill_date, payments=settled)],
+                       financial_year=FY)
+    assert on_proxy.disallowed_paise > 0
+    # On the real acceptance date it is in time — 4 June was the limit.
+    on_acceptance = compute([_bill(bill_date=bill_date,
+                                   acceptance_date=delivered,
+                                   payments=settled)],
+                            financial_year=FY)
+    assert on_acceptance.disallowed_paise == 0
+    outcome = on_acceptance.bills[0]
+    assert outcome.due_by == "2025-06-04"
+    assert "day of acceptance" in outcome.limit_source
+
+
+def test_the_YEAR_of_the_add_back_is_still_the_BILL_s():
+    """§43B(h) disallows a deduction claimed in the previous year the expense
+    ACCRUED in, and the expense accrues with the bill. Only the fifteen-day
+    CLOCK moves to the acceptance date — a March bill received in April must
+    not silently move its disallowance into the next year's computation."""
+    march = date(2026, 3, 20)
+    april = date(2026, 4, 5)
+    r = compute([_bill(bill_date=march, acceptance_date=april, payments=())],
+                financial_year=FY)
+    assert r.disallowed_paise == 1_00_000, (
+        "the add-back left FY 2025-26 because the goods arrived in April")
 
 
 def test_a_bill_with_no_date_is_a_gap_not_a_disallowance():

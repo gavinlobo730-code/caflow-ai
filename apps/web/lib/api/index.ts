@@ -1916,6 +1916,86 @@ export interface OrderPosition {
   gaps: string[];
 }
 
+/** PUR-25 — the purchase cycle before the bill. */
+export interface PurchaseCycleVocabulary {
+  order_statuses: string[];
+  order_open_statuses: string[];
+  receipt_statuses: string[];
+  posts_nothing: string;
+  section_16_2_b: string;
+  bill_to_ship_to: string;
+  msmed_acceptance: string;
+  no_tolerance: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  document_no: string;
+  document_date: string;
+  expected_date?: string | null;
+  status: string;
+  vendor_id: string;
+  vendor_name?: string | null;
+  taxable_paise: number;
+  total_paise: number;
+}
+
+export interface GoodsReceipt {
+  id: string;
+  document_no: string;
+  received_on: string;
+  status: string;
+  order_id?: string | null;
+  vendor_id: string;
+  vendor_challan_no?: string | null;
+  objection_raised_on?: string | null;
+  objection_removed_on?: string | null;
+}
+
+export interface PurchaseOrderOpenLine {
+  order_line_id: string;
+  description: string;
+  ordered_qty: string;
+  received_qty: string;
+  billed_qty: string;
+  unreceived_qty: string;
+  unbilled_qty: string;
+}
+
+export interface PurchaseOrderPosition {
+  order: PurchaseOrder | null;
+  lines: PurchaseOrderOpenLine[];
+  status_would_be: string;
+  posts_nothing: string;
+}
+
+export interface ThreeWayMatchLine {
+  bill_line_id: string;
+  description: string;
+  billed_qty: string;
+  billed_rate_paise: number;
+  order_line_id: string | null;
+  ordered_qty: string | null;
+  ordered_rate_paise: number | null;
+  received_qty: string | null;
+  quantity_difference: string | null;
+  rate_difference_paise: number | null;
+}
+
+export interface ThreeWayMatch {
+  bill_id: string;
+  matched: boolean;
+  has_order: boolean;
+  has_receipt: boolean;
+  lines: ThreeWayMatchLine[];
+  differences: string[];
+  gaps: string[];
+  caveats: string[];
+  acceptance_date: string | null;
+  acceptance_source: string;
+  ca_review_required: boolean;
+}
+
 export const api = {
   /** The firm's own reading of the DTAA rates it withholds under, per country
    *  and nature of income. Ships empty and is never seeded: India has
@@ -4044,6 +4124,49 @@ export const api = {
   },
 
   /** The bill-wise breakup of a client's opening balances (ACC-14). */
+  /** PUR-25 — purchase order, goods receipt, three-way match. */
+  purchaseCycle: {
+    vocabulary: () =>
+      request<ApiResp<PurchaseCycleVocabulary>>("/api/purchase-cycle/vocabulary"),
+    orders: (clientId: string, onlyOpen = false) =>
+      request<ApiResp<PurchaseOrder[]>>(
+        `/api/purchase-cycle/orders?client_id=${encodeURIComponent(clientId)}`
+        + `&only_open=${onlyOpen ? "true" : "false"}`),
+    orderLines: (id: string, clientId: string) =>
+      request<ApiResp<Record<string, unknown>[]>>(
+        `/api/purchase-cycle/orders/${id}/lines`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    orderPosition: (id: string, clientId: string) =>
+      request<ApiResp<PurchaseOrderPosition>>(
+        `/api/purchase-cycle/orders/${id}/position`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    createOrder: (body: Record<string, unknown>) =>
+      request<ApiResp<PurchaseOrder>>("/api/purchase-cycle/orders",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateOrder: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<PurchaseOrder>>(
+        `/api/purchase-cycle/orders/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    receipts: (clientId: string) =>
+      request<ApiResp<GoodsReceipt[]>>(
+        `/api/purchase-cycle/receipts?client_id=${encodeURIComponent(clientId)}`),
+    receiptLines: (id: string, clientId: string) =>
+      request<ApiResp<Record<string, unknown>[]>>(
+        `/api/purchase-cycle/receipts/${id}/lines`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    createReceipt: (body: Record<string, unknown>) =>
+      request<ApiResp<GoodsReceipt>>("/api/purchase-cycle/receipts",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateReceipt: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<GoodsReceipt>>(
+        `/api/purchase-cycle/receipts/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    matchBill: (billId: string, clientId: string) =>
+      request<ApiResp<ThreeWayMatch>>(
+        `/api/purchase-cycle/bills/${billId}/match`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+  },
+
   /** SALES-21 — quotation, proforma invoice, sales order, Rule 55 challan. */
   salesCycle: {
     vocabulary: () =>

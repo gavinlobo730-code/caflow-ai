@@ -332,7 +332,13 @@ UNFIXED: dict[str, str] = {}
 # every call site now, `_one` lost its `cols` parameter in favour of three
 # literal branches, and the three INSERT payloads were inlined at their
 # `.insert(...)` calls instead of being built above and passed by name.
-MAX_UNREADABLE = 455
+# 455 -> 457 (PUR-25). `services/purchase_cycle_service` has two PATCH paths —
+# a purchase order and a goods receipt — and each builds its `.update(...)`
+# payload from whichever fields the caller sent, so the dict is genuinely
+# dynamic and no literal exists to read. Every other query in that module is
+# readable: the projections are written out at each call site rather than
+# shared through a constant, and both INSERT payloads are inline.
+MAX_UNREADABLE = 457
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
