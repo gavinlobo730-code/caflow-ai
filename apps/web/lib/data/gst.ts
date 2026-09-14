@@ -514,6 +514,69 @@ export async function fetchRule37Report(
 }
 
 
+/** One supplier's credit at risk under CGST Rule 37A, for one financial year. */
+export interface Rule37ASupplier {
+  vendor_id: string | null;
+  vendor_name: string;
+  vendor_gstin: string | null;
+  bill_count: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  cess_paise: number;
+  total_paise: number;
+  /** ALWAYS null. Whether the supplier furnished their GSTR-3B is the one fact
+   *  this product cannot hold — GSTR-2B is generated FROM filed GSTR-1s and
+   *  carries no 3B status at all. The server never guesses it and the screen
+   *  must not fill it in. */
+  supplier_filed_gstr3b: null;
+}
+
+export interface Rule37AReport {
+  financial_year: string;
+  as_of: string;
+  rule: string;
+  /** 30 September following the end of the availment FY — the SUPPLIER's own
+   *  deadline to file the GSTR-3B. */
+  supplier_deadline: string;
+  /** 30 November following it — the RECIPIENT's deadline to reverse. */
+  recipient_deadline: string;
+  supplier_deadline_passed: boolean;
+  recipient_deadline_passed: boolean;
+  suppliers: Rule37ASupplier[];
+  totals: {
+    igst_paise: number; cgst_paise: number; sgst_paise: number;
+    cess_paise: number; total_paise: number;
+    supplier_count: number; bill_count: number;
+  };
+  gaps: string[];
+  caveats: string[];
+  source: string;
+  ca_review_required: true;
+}
+
+/** The credit that rests on a supplier having filed their GSTR-3B.
+ *
+ *  CGST Rule 37A (Notification 26/2022-CT). NOT Rule 37, which is about what
+ *  the RECIPIENT did — the supplier went unpaid for 180 days. They share a
+ *  reason code and a box on Table 4(B)(2) and nothing else.
+ *
+ *  `financialYear` is the year the credit was AVAILED in, because both
+ *  deadlines hang off the end of that year and not off any month.
+ *
+ *  # CA REVIEW REQUIRED — this reports; it posts no journal and files nothing.
+ */
+export async function fetchRule37AReport(
+  clientId: string,
+  financialYear: string,   // "2025-26"
+): Promise<Rule37AReport> {
+  return apiGet<Rule37AReport>(
+    `/api/gst-workspace/itc/rule37a?client_id=${encodeURIComponent(clientId)}` +
+    `&financial_year=${encodeURIComponent(financialYear)}`,
+  );
+}
+
+
 /** One asset in the Rule 43 working, included or not, and why. */
 export interface Rule43Asset {
   asset_id: string;

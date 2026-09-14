@@ -1215,6 +1215,41 @@ change. The code is the authority; keep this file in step with it.
   already filed. **A one-click "Post this reversal" is deliberately NOT built**
   — `itc_register_service` records why, and a guard asserts no such button
   appeared.
+- **RULE 37A IS THE SUPPLIER'S DEFAULT AND RULE 37 IS THE RECIPIENT'S; THEY
+  SHARE A BOX AND NOTHING ELSE** (GST-28, second half). `itc_reversal_register`
+  has accepted a `rule_37a` ground since migration 362 and GSTR-3B Table
+  4(B)(2) has a slot for it, and nothing produced a figure. Rule 37A
+  (Notification 26/2022-Central Tax): where a supplier DECLARED the invoice in
+  GSTR-1 but has not furnished the GSTR-3B for that period by the **30th of
+  September** following the end of the FY the credit was availed in, the
+  recipient reverses it by the **30th of November** following — and an
+  unreversed credit is payable with §50 interest. `domain/gst/rule_37a.py` is
+  the rule and `services/rule_37a_service.py` fetches.
+  **BOTH DATES HANG OFF THE END OF THE AVAILMENT YEAR**, which is the part that
+  is easy to get wrong twice over: the FY's own September and November would be
+  a year early, and "sixty days after the supplier's date" two months late.
+  **THE ONE FACT THIS PRODUCT CANNOT HOLD IS WHETHER THE SUPPLIER FILED**, and
+  it is NAMED on every answer rather than guessed — GSTR-2B is generated FROM
+  filed GSTR-1s, so a document appearing in it proves the GSTR-1 and says
+  nothing about the 3B, and `gstr2a_records.supplier_filed_on` is the trap
+  (it is the GSTR-1's date, so reading it would report every supplier as
+  compliant). Guessing "filed" leaves a reversal undone with interest running;
+  guessing "not filed" reverses credit the client is entitled to.
+  `supplier_filed_gstr3b` is typed `null` in the browser so a screen cannot
+  fill it in.
+  **THE POPULATION IS THE MATCHED DOCUMENTS**, read from `gstr2a_records`
+  rather than from `purchase_bills`: the rule reaches a supply whose invoice
+  the supplier DID declare in GSTR-1, which is exactly what a 2B match proves,
+  and a bill missing from 2B is §16(2)(aa) and belongs in the reconciliation.
+  An empty answer is a NAMED gap, not a clean bill of health. **The §50
+  interest is deliberately NOT computed** — the rule does not say which date it
+  runs from, and `late_filing.interest_on_rule_37_reversal` already shows two
+  readings for the same silence in Rule 37; a single figure here would be a
+  third answer to an open question. Nothing is posted: the CA raises the
+  journal and registers it with ground `rule_37a`, which is RECLAIMABLE
+  (4(B)(2), released into 4(D)(1)) because the rule lets the credit be
+  re-availed once the supplier files. ⚠️ Every date is `[S]`-graded and pinned.
+
 - **WHAT BEING LATE COSTS IS `domain/gst/late_filing.py`, and half of it is a
   REFUSAL.** §50(1) interest is COMPUTED — 18% (Notification 13/2017-Central
   Tax), and Rule 88B(1) is the load-bearing part: where the supplies are

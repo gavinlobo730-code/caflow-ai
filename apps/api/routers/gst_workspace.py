@@ -1537,6 +1537,55 @@ def rule37_itc_reversal(
         get_supabase(), current_user["firm_id"], client_id, as_of=as_of))
 
 
+@router.get("/itc/rule37a")
+def rule37a_supplier_not_filed(
+    client_id: str = Query(..., description="Client whose credit to check"),
+    financial_year: Annotated[FYLabel, Query(
+        description="The FY the credit was AVAILED in, e.g. 2025-26")] = ...,
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """The credit that rests on a supplier having filed their GSTR-3B.
+
+    CGST Rule 37A (Notification 26/2022-Central Tax): where a supplier declared
+    the invoice in GSTR-1 but has NOT furnished the GSTR-3B for that period by
+    the 30th of September following the end of the financial year the credit
+    was availed in, the recipient reverses it on or before the 30th of
+    November following — and an unreversed credit is payable with §50 interest.
+
+    THIS IS NOT RULE 37 AND SHARES ONLY A BOX. Rule 37 is about what the
+    RECIPIENT did (the supplier went unpaid for 180 days); this is about what
+    the SUPPLIER did. One the client can fix by paying, the other only the
+    supplier can fix.
+
+    The one fact this product cannot hold — whether the supplier filed — is
+    NAMED on every answer rather than guessed, because guessing either way is
+    expensive in opposite directions.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This reports; it posts no
+    # journal and files nothing.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        from domain.gst import rule_37a as _r
+        return api_response(True, {
+            "financial_year": financial_year, "as_of": "",
+            "rule": _r.RULE,
+            "supplier_deadline": _r.supplier_deadline(financial_year).isoformat(),
+            "recipient_deadline": _r.recipient_deadline(financial_year).isoformat(),
+            "supplier_deadline_passed": False,
+            "recipient_deadline_passed": False,
+            "suppliers": [], "totals": {}, "gaps": [],
+            "caveats": [_r.SUPPLIER_FILING_NOT_HELD, _r.RE_AVAILMENT,
+                        _r.NOT_COMPUTED, _r.POSTS_NOTHING],
+            "ca_review_required": True,
+        })
+    from core.supabase_client import get_supabase
+    from services.rule_37a_service import build as rule37a_build
+    return api_response(True, rule37a_build(
+        get_supabase(), current_user["firm_id"], client_id,
+        financial_year=financial_year))
+
+
 # ── A draft return is not a filing, and must be deletable ────────────────────
 #
 # WHY THESE EXIST
