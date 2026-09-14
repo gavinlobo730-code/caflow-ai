@@ -159,9 +159,8 @@
     },
     "PAY-26": {
       "status": "open",
-      "verified_on": "2026-09-12",
-      "why": "the employee portal has no reimbursement or declaration surface beyond payslips and a leave number (repo-wide probe, 2026-09-12)",
-      "needs": "schema for claims"
+      "verified_on": "2026-09-14",
+      "why": "the employee portal has no reimbursement or declaration surface beyond payslips and a leave number. RE-READ 14-09-2026 and the BLOCKER is now precise: there is NO employee authentication dependency for the API at all. core/portal_auth.get_current_portal_client is the CLIENT principal; an employee has no equivalent, and the portal reaches the database only over PostgREST under migration 262's per-command policies. So the TDS working — the finding's own highest-value half, whose engine already exists as GET /api/payroll/tds-projection — cannot be served to an employee without first adding a second unauthenticated-principal auth surface to the API. That is an owner decision with security consequences, not a backlog fix. Form 16 is separately unbuildable: no generator exists, and from 01-04-2026 the form is 130."
     },
     "PAY-27": {
       "status": "open",

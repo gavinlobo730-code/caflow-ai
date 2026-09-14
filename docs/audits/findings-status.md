@@ -43,7 +43,6 @@ migration; a handful need a statutory document a person has to read.
 | **GST-25** | schema per return type |
 | **GST-32** | the IRP schema, and the 30-day reporting-window rule |
 | **INV-03** | substantial inventory schema |
-| **PAY-26** | schema for claims |
 | **PAY-27** | each bank's own file format |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |
 
