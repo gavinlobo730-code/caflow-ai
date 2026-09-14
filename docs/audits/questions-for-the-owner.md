@@ -222,11 +222,87 @@ decision and I am treating these the same way. What is left here is two DROPs
 
 ---
 
-## 10. Nothing else is waiting on you
+## 10. The reading list — eight things blocked on a page I cannot open
 
-Everything not on this list either needed no permission or needed no migration,
-and is either shipped or scheduled. `docs/audits/findings-status.md` is the
-count.
+**UPDATE, 14 September 2026, 22:20 IST.** This section used to say "nothing
+else is waiting on you", and that was true when it was written. It is not now:
+everything I could build without you is built, and what is left is almost
+entirely documents.
+
+**`docs/audits/what-to-fetch-for-me.md` is the list**, and it is written as one
+trip per website rather than as eight scattered asks, because you offered to go
+and get them. Each section says what page, exactly what I need off it, and what
+it unblocks. Nothing in it is broken — every gap is already a named refusal in
+the code with a sentence pointing at the document to read, and each engine
+works the moment the figure is written in.
+
+The order there is by value, and the top three are:
+
+1. **cbic-gst.gov.in** — six late-fee notifications, and the §50(3) rate that
+   is question 7 above. One sitting settles both halves of GST-21.
+2. **einvoice1.gst.gov.in** — the INV-01 schema. The highest-value item in the
+   file, because e-invoice IRN is one of only **two** statutory outputs
+   software can complete end to end with no GSP or ERI registration.
+3. **protean-tinpan.com** — the TDS statement file layout, so a CA stops
+   re-keying the whole quarter into the RPU.
+
+§8 of that file is a long tail worth knowing about even if you never fetch it,
+and its first item is the largest single improvement available anywhere: 18
+states levy professional tax whose slabs the product does not hold, so an
+employee in Gujarat, Telangana, Andhra Pradesh or Kerala has it named as a gap
+on the payroll run and a CA works it out by hand every month.
+
+**One thing on this page is still a decision rather than a document**: BANK-11
+step 3, below. It is the only item in the whole backlog waiting on your
+judgement rather than on a page.
+
+---
+
+## 11. BANK-11 step 3 — how much a *trusted* rule may do unattended
+
+This follows on from the conversation we had about bank rules, where I think I
+explained it badly the first time. The short version of what is already true:
+
+- **The product ships zero rules.** Every one is written by the CA, per client.
+  That was your instinct and it is already how it works.
+- A rule on its own only **proposes** — it fills in the draft and a human still
+  clicks Pass.
+- Auto-posting needs a **second, separate tick**: a Manager or Partner marks
+  that rule *trusted*, and only then do its lines pass with no click.
+
+So there are two gates, and the CA controls both. Steps 1 and 2 of BANK-11 are
+shipped: a rule can now say which field it reads, which way it matches, and
+which rule wins — previously a broad rule written in April permanently shadowed
+a narrow one written in July, and the only remedy was to delete and re-create
+the broad rule, which lost its trusted flag.
+
+**Step 3 is the open question: should a rule be able to propose more than one
+line?** Today a rule proposes a single account. It cannot say "this ₹11,800 is
+₹10,000 rent and ₹1,800 GST", and it cannot tag the party.
+
+- **Matching wider was safe to build** — a CA types every pattern, and the
+  widest case was always reachable anyway (an empty pattern matches
+  everything).
+- **Proposing wider is different in kind**, because a trusted rule posts with
+  nobody watching, and a split it gets wrong is a wrong journal in the ledger.
+
+I said I would build **split legs and a party tag, and never a TDS treatment**
+(that one decides a statutory withholding and belongs in front of a human). I
+have **not** built it, because your answer read to me as "keep the CA in
+control" and I would rather have you say so explicitly than assume it.
+
+Three ways to go, and I recommend the first:
+
+- **(a) Build split legs + party, leave TDS out.** A trusted rule can post
+  rent-plus-GST in one go. This is what the CAs will ask for first, and it is
+  where the repetitive typing actually is.
+- **(b) Build them, but only for UNtrusted rules** — a split rule always stops
+  for a click, however trusted. Safest, and still removes the typing.
+- **(c) Leave it.** A rule proposes one account, full stop. Nothing is lost
+  that exists today.
+
+A guard currently asserts `RuleSuggestion` gained no field, so whichever way
+you go it is a deliberate change rather than a drift.
 
 ---
 
