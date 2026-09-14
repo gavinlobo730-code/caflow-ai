@@ -2422,6 +2422,24 @@ export const api = {
       rateAudit: (params: Record<string, string>) => request(`/api/fx-reports/rate-audit?${new URLSearchParams(params)}`),
       openBalances: (params: Record<string, string>) => request(`/api/fx-reports/open-balances?${new URLSearchParams(params)}`),
     },
+    /** AS 11 period-end revaluation of open foreign monetary items.
+     *
+     * A POST for the PREVIEW as well, because the closing rates are a map and
+     * a query string is the wrong place for one — the same shape as
+     * `/api/filing-demo/{flow}/preview`. The preview writes nothing; `run`
+     * posts through the one kernel and auto-reverses on day 1 of the next
+     * period. `closing_rates` may be omitted from the preview, which is the
+     * useful first call: the answer names the currencies that need one. */
+    fxRevaluation: {
+      preview: (clientId: string, body: { period_end: string; closing_rates?: Record<string, string> }) =>
+        request(`/api/fx-revaluation/preview?client_id=${encodeURIComponent(clientId)}`, {
+          method: "POST", body: JSON.stringify(body),
+        }),
+      run: (clientId: string, body: { period_end: string; closing_rates: Record<string, string> }) =>
+        request(`/api/fx-revaluation/run?client_id=${encodeURIComponent(clientId)}`, {
+          method: "POST", body: JSON.stringify(body),
+        }),
+    },
   },
   // Stock register + per-item ledger (migration 188). Read-only — all
   // movements are written as a side effect of issuing/receiving documents.

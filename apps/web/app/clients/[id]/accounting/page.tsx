@@ -6,6 +6,7 @@ import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2, Trash2, Undo2 
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll, selectAllKeyset } from "@/lib/supabase/selectAll";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
+import FxRevaluationPanel from "@/components/accounting/FxRevaluationPanel";
 import { DataTable, downloadCsv, exportSelectedAction } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
@@ -1593,7 +1594,8 @@ function FXReports({ clientId, financialYear, onFinancialYearChange }: { clientI
       </p>
 
       {loading ? <TableSkeleton cols={5} rows={5} /> : !loaded ? null : (
-        <FXReportBody view={view} data={data} byC={byC} />
+        <FXReportBody view={view} data={data} byC={byC}
+                     clientId={clientId} periodEnd={period.end} onPosted={load} />
       )}
     </div>
   );
@@ -1615,8 +1617,13 @@ function FXEmpty() {
   return <div className="text-center py-12 text-[#94A3B8] text-sm">No foreign-currency activity for this period.</div>;
 }
 
-function FXReportBody({ view, data, byC }: {
+function FXReportBody({ view, data, byC, clientId, periodEnd, onPosted }: {
   view: FXView; data: unknown; byC: <T extends { currency: string }>(rows: T[]) => T[];
+  // The Unrealized view carries the ACTION that writes the table it reads, so
+  // it needs the client and the period end the toolbar resolved. `onPosted`
+  // re-runs the same load the view already uses, rather than the panel
+  // holding a second idea of what this report says.
+  clientId: string; periodEnd: string; onPosted: () => void;
 }) {
   const wrap = "bg-white rounded-xl border border-[#F1F5F9] overflow-hidden";
   const th = "px-3 py-3 text-left font-semibold";
@@ -1683,8 +1690,19 @@ function FXReportBody({ view, data, byC }: {
   if (view === "unrealized") {
     const d = data as FXUnrealizedData | null;
     const lines = byC(d?.lines ?? []);
-    if (!d || lines.length === 0) return <FXEmpty />;
+    // THE ACTION SITS WITH THE REPORT THAT READS IT. `fx_revaluations` is
+    // written by exactly one thing — the AS 11 revaluation — and until it had
+    // a door this table was a structural nil for every client. An empty
+    // report here now means "nothing has been revalued yet", which is a
+    // different sentence from "there is nothing to revalue", and the panel is
+    // what tells them apart.
+    const panel = (
+      <FxRevaluationPanel clientId={clientId} periodEnd={periodEnd} onPosted={onPosted} />
+    );
+    if (!d || lines.length === 0) return <div className="space-y-3">{panel}<FXEmpty /></div>;
     return (
+      <div className="space-y-3">
+      {panel}
       <div className={wrap}>
         <table className="w-full text-xs">
           <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className={th}>Period end</th><th className={th}>Currency</th><th className={th}>Item</th><th className={thr}>Closing rate</th><th className={thr}>Cumulative</th><th className={thr}>Runs</th></tr></thead>
@@ -1701,6 +1719,7 @@ function FXReportBody({ view, data, byC }: {
             ))}
           </tbody>
         </table>
+      </div>
       </div>
     );
   }

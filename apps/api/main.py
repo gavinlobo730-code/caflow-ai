@@ -61,6 +61,7 @@ from routers import clients, compliance, documents, assistant, insights, tasks, 
 from routers import accounting, compliance_records
 from routers import currencies  # Multi-Currency Phase 1 (read-only currency master + policy)
 from routers import fx_reports  # Multi-Currency Phase 5 (read-only FX reporting)
+from routers import fx_revaluation  # AS 11 period-end revaluation (its own router: this one POSTS)
 from routers import risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst, tds, income_tax
 from routers import task_templates, task_extras, task_recurring
@@ -302,6 +303,7 @@ app.include_router(accounting.router, dependencies=_CLIENT_GUARD)
 # client-assignment scope for the /policy route (which carries client_id).
 app.include_router(currencies.router, dependencies=_CLIENT_GUARD)
 app.include_router(fx_reports.router, dependencies=_CLIENT_GUARD)
+app.include_router(fx_revaluation.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_records.router, dependencies=_CLIENT_GUARD)
 # routers/document_intelligence.py (unversioned /api/document-intelligence) is
 # RETIRED as of the R2.8 fix phase (audit F19): it's a 4th, undisclosed

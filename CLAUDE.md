@@ -2967,6 +2967,54 @@ is never refused. `GET /api/currencies/entitlement` answers the firm gate with n
 client in the request, because a firm with no clients yet is exactly the firm
 this gets switched on for.
 
+**THE AS 11 YEAR-END REVALUATION WAS BUILT, TESTED AND UNREACHABLE.** AS 11
+paragraph 11 retranslates a MONETARY item held in a foreign currency at the
+CLOSING rate on each balance sheet date and paragraph 13 takes the difference
+to the profit and loss account, so a client with an open USD receivable at
+31 March carries it at the rate it was invoiced at until somebody restates it.
+`domain/currency/fx_revaluation_service.py` has done exactly that since
+Multi-Currency Phase 4 — idempotent, self-healing, period-aware, posting
+through the one kernel and auto-reversing on day 1 of the next period — with
+**ZERO production importers**. `revalue()` is the only writer of
+`fx_revaluations`, so `GET /api/fx-reports/unrealized` reported a structural
+nil for every client however many foreign documents they held, while
+`services/fx_reporting_service.py`'s own header claimed those tables were
+"written by the Phase-4 settlement + revaluation paths" — true of settlement,
+false of revaluation. The `capital_wip` shape again. ACC-19 made migration
+122's gates WRITABLE on 13-09-2026, which turned a dormant phase into a live
+gap: a firm can now switch multi-currency on and the year-end step it needs
+has no door.
+`routers/fx_revaluation.py` is that door, and it is **its own router
+deliberately** — `routers/fx_reports.py` says "read-only FX reporting" in its
+first line, and a POST that writes journals under that prefix would make the
+next reader believe the contract still holds. Same reasoning that kept CWIP
+off `/api/fixed-assets`.
+**THE PREVIEW IS THE POSTING'S OWN WALK.** `plan()` was EXTRACTED from
+`revalue()` rather than written beside it, so what a CA is shown before
+confirming is what gets posted — two compositions of `_exposure` +
+`_prior_runs` would drift, and a test counts the `_exposure` call sites.
+`plan()` does **not raise on a missing rate**: a preview is most useful before
+any rate is typed, because the whole point of opening it is to learn which
+currencies need one, so a row with no rate carries `rate_gap` and no target.
+`revalue()` keeps its strict refusal — an exchange difference is a real
+posting and a rate nobody supplied cannot be guessed.
+**THE PREVIEW REPORTS `closure_reason`, NOT THE FIRM-FY VALIDATOR AND NOT
+`lock_reason`** — exactly what will actually refuse the post. The firm-FY
+validator alone UNDER-reports, because the kernel asks `period_closure_reason`
+for every entry (migration 361) and would refuse a finalised client year-end
+the preview had said nothing about; `lock_reason` would OVER-report, because
+**CGST Rule 34 fixes the rate of exchange at the TIME OF SUPPLY**, so
+restating the rupee carrying amount afterwards cannot change a figure any
+filed GSTR-1 or GSTR-3B reported. `revalue`'s own client-lock debt is
+pre-existing and stays acknowledged in
+`test_every_dated_posting_path_asserts_the_client_lock.py`.
+**Nothing schedules it** — the closing rate is a fact somebody records and the
+entry hits the P&L, so it is a CA action on a period they named; a test
+asserts no job mentions it. **Re-running is the CORRECTION path**, posting
+only the delta to the new target, and the panel SAYS so: a CA who believes a
+second run duplicates will avoid the button after a rate changes and the
+accounts stay wrong.
+
 **A COMPANY CREDIT CARD IS A BANK ACCOUNT, AND THE DOUBLE ENTRY NEEDED NO
 CHANGE** (BANK-21, migration 386). `bank_accounts.account_type` admitted four
 values and none of them was a card, so the statement could not be imported, the

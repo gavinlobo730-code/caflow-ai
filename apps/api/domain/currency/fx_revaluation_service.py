@@ -175,6 +175,94 @@ class FXRevaluationService:
             rows = q.eq("item_ref", item_ref).execute().data or []
         return sum(int(r.get("delta_paise") or 0) for r in rows), len(rows)
 
+    def _exposure(self, db, firm_id, client_id, period_end) -> dict:
+        """Open foreign exposure per (currency, item_type, item_ref).
+
+        AR/AP are aggregated (item_ref=None); each foreign BANK account is its
+        own item, keyed by its GL account so multiple same-currency accounts
+        never collide.
+        """
+        exposure: dict = {}   # (currency, item_type, item_ref) -> [foreign_out, carrying_base]
+        for ccy, f, b in self._open_receivables(db, firm_id, client_id, period_end):
+            k = (ccy, "receivable", None); e = exposure.setdefault(k, [0, 0]); e[0] += f; e[1] += b
+        for ccy, f, b in self._open_payables(db, firm_id, client_id, period_end):
+            k = (ccy, "payable", None); e = exposure.setdefault(k, [0, 0]); e[0] += f; e[1] += b
+        for ccy, acct_id, f, b in self._open_bank_balances(db, firm_id, client_id, period_end):
+            k = (ccy, "bank", acct_id); e = exposure.setdefault(k, [0, 0]); e[0] += f; e[1] += b
+        return exposure
+
+    def plan(self, db, firm_id: str, client_id: str, period_end: str,
+             closing_rates: dict | None = None) -> dict:
+        """WHAT A REVALUATION WOULD POST, WRITING NOTHING.
+
+        The same walk `revalue` posts from, so what a CA is shown before
+        confirming is what gets posted — `GET /api/fixed-assets/{id}/disposal-preview`
+        applies the same discipline for the same reason. Two compositions of
+        `_exposure` + `_prior_runs` would be two definitions of the answer, and
+        they would drift.
+
+        UNLIKE `revalue` THIS DOES NOT RAISE ON A MISSING RATE. A preview is
+        most useful BEFORE the CA has typed any rate at all: the whole point of
+        opening it is to find out which currencies need one. So a row whose
+        rate is absent or unusable is returned with `rate_gap` set and no
+        target, and `currencies` names every currency the period is exposed in.
+        `revalue` keeps its own strict validation and refuses — a rate nobody
+        supplied cannot be guessed, and an exchange difference is a real
+        posting to the P&L.
+
+        The PERIOD LOCK is deliberately not asked here. A preview of a locked
+        period is still worth reading (it says what the year-end adjustment
+        would have been), and the caller that POSTS asks
+        `period_validation_service` exactly as it always has.
+        """
+        period_end = str(period_end)[:10]
+        rates = closing_rates or {}
+        exposure = self._exposure(db, firm_id, client_id, period_end)
+
+        rows = []
+        for (ccy, item_type, item_ref), (foreign_out, carrying_base) in sorted(
+                exposure.items(), key=lambda kv: (kv[0][0], kv[0][1], str(kv[0][2] or ""))):
+            row = {"currency": ccy, "item_type": item_type, "item_ref": item_ref,
+                   "foreign_outstanding": foreign_out, "carrying_base_paise": carrying_base,
+                   "closing_rate": None, "target_paise": None, "prior_paise": None,
+                   "delta_paise": None, "run_count": 0, "rate_gap": None}
+            cur = currency_service.get_currency(db, ccy)
+            if not cur:
+                row["rate_gap"] = f"{ccy} is not in the currency master."
+                rows.append(row); continue
+            if ccy not in rates:
+                row["rate_gap"] = (
+                    f"No closing rate recorded for {ccy} at {period_end}. AS 11 "
+                    f"retranslates a monetary item at the CLOSING rate, which is "
+                    f"a fact about that date — record it and run again.")
+                rows.append(row); continue
+            rc = Decimal(str(rates[ccy]))
+            if rc <= 0:
+                row["rate_gap"] = f"The closing rate for {ccy} must be positive."
+                rows.append(row); continue
+
+            minor = int(cur.get("minor_unit", 2))
+            revalued = to_base_minor(foreign_out, rc, minor)
+            # AR and BANK are assets, AP is a liability; the target adjustment to the
+            # carrying base is the same signed quantity (revalued − carrying) for all —
+            # only the journal direction differs (handled in _post_reval).
+            target = revalued - carrying_base
+            prior, run_count = self._prior_runs(db, firm_id, client_id, period_end,
+                                                ccy, item_type, item_ref)
+            row.update({"closing_rate": str(rc), "target_paise": target,
+                        "prior_paise": prior, "delta_paise": target - prior,
+                        "run_count": run_count})
+            rows.append(row)
+
+        return {
+            "period_end": period_end,
+            "reversal_date": _next_day(period_end),
+            "rows": rows,
+            "currencies": sorted({r["currency"] for r in rows}),
+            "rate_gaps": [r["rate_gap"] for r in rows if r["rate_gap"]],
+            "would_post": sum(1 for r in rows if (r["delta_paise"] or 0) != 0),
+        }
+
     def revalue(self, db, firm_id: str, client_id: str, period_end: str,
                 closing_rates: dict, actor: dict | None = None) -> dict:
         """Revalue open foreign AR/AP at `period_end` using `closing_rates`
@@ -186,18 +274,11 @@ class FXRevaluationService:
         period_validation_service.validate_posting_date(firm_id or "", period_end)
         period_validation_service.validate_posting_date(firm_id or "", reversal_date)
 
-        # Aggregate open foreign exposure per (currency, item_type, item_ref). AR/AP are
-        # aggregated (item_ref=None); each foreign BANK account is its own item, keyed by
-        # its GL account so multiple same-currency accounts never collide.
-        exposure: dict = {}   # (currency, item_type, item_ref) -> [foreign_out, carrying_base]
-        for ccy, f, b in self._open_receivables(db, firm_id, client_id, period_end):
-            k = (ccy, "receivable", None); e = exposure.setdefault(k, [0, 0]); e[0] += f; e[1] += b
-        for ccy, f, b in self._open_payables(db, firm_id, client_id, period_end):
-            k = (ccy, "payable", None); e = exposure.setdefault(k, [0, 0]); e[0] += f; e[1] += b
-        for ccy, acct_id, f, b in self._open_bank_balances(db, firm_id, client_id, period_end):
-            k = (ccy, "bank", acct_id); e = exposure.setdefault(k, [0, 0]); e[0] += f; e[1] += b
+        exposure = self._exposure(db, firm_id, client_id, period_end)
 
-        # Validate closing rates + currencies up front (Task 6).
+        # Validate closing rates + currencies up front (Task 6). UNCHANGED: the
+        # posting path refuses rather than reporting, which is why `plan` above
+        # is a separate answer and not this one with the raises removed.
         for (ccy, _item, _ref) in exposure:
             cur = currency_service.get_currency(db, ccy)
             if not cur:
@@ -209,17 +290,12 @@ class FXRevaluationService:
                 raise HTTPException(status_code=422, detail=f"Closing rate for {ccy} must be positive.")
 
         results = []
-        for (ccy, item_type, item_ref), (foreign_out, carrying_base) in sorted(
-                exposure.items(), key=lambda kv: (kv[0][0], kv[0][1], str(kv[0][2] or ""))):
-            minor = int(currency_service.get_currency(db, ccy).get("minor_unit", 2))
-            rc = Decimal(str(closing_rates[ccy]))
-            revalued = to_base_minor(foreign_out, rc, minor)
-            # AR and BANK are assets, AP is a liability; the target adjustment to the
-            # carrying base is the same signed quantity (revalued − carrying) for all —
-            # only the journal direction differs (handled in _post_reval).
-            target = revalued - carrying_base
-            prior, run_count = self._prior_runs(db, firm_id, client_id, period_end, ccy, item_type, item_ref)
-            delta = target - prior
+        for planned in self.plan(db, firm_id, client_id, period_end, closing_rates)["rows"]:
+            ccy = planned["currency"]; item_type = planned["item_type"]
+            item_ref = planned["item_ref"]
+            target = planned["target_paise"]; delta = planned["delta_paise"]
+            run_count = planned["run_count"]
+            rc = Decimal(str(planned["closing_rate"]))
             if delta == 0:
                 results.append({"currency": ccy, "item_type": item_type, "item_ref": item_ref,
                                 "target_paise": target, "delta_paise": 0, "journal_entry_id": None})
