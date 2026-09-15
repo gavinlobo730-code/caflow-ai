@@ -69,7 +69,7 @@ WEB = pathlib.Path(__file__).resolve().parents[3] / "apps" / "web"
 #: that file stays the stricter check for its own module, and this one is the
 #: floor under every other.
 BUDGET: dict[str, int] = {
-    "/api/year-end": 10, "/api/task-recurring": 9, "/api/itr": 6,
+    "/api/year-end": 10, "/api/task-recurring": 9, "/api/itr": 5,
     "/api/tasks": 8, "/api/engagements": 7, "/api/relationships": 7,
     "/api/income-tax": 6, "/api/gst-portal": 5, "/api/lifecycle": 5,
     "/api/health": 4, "/api/mca-workspace": 4, "/api/sales-invoices": 4,
@@ -98,7 +98,12 @@ BUDGET: dict[str, int] = {
 # client for ever while the §72/§73/§74/§71B engine sat behind it. Wiring the
 # form reached that endpoint and its GET sibling, and added GET
 # /api/itr/loss-types, which the head dropdown is built from.
-TOTAL_BUDGET = 130
+# 130 -> 129: a recorded disallowance can be accepted. PATCH
+# /api/itr/disallowances/{id}/status had no caller, so every row stayed
+# `pending` — and the tax screen sends only `accepted` ones to the engine, so
+# each §40A(3) cash disallowance and §43B unpaid liability a CA recorded was
+# silently left out of the return.
+TOTAL_BUDGET = 129
 
 
 def _sources() -> str:

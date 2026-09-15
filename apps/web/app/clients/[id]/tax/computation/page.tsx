@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { assessmentYearChoicesAround } from "@/lib/dates/periods";
 import RegimeElectionPanel from "@/components/tax/RegimeElectionPanel";
 
@@ -273,6 +274,19 @@ export default function TaxComputationPage() {
   // §74 and §71B sat behind it fully built. §72 carries a business loss eight
   // assessment years; letting it lapse because there was nowhere to type it is
   // relief the client never gets back.
+  // A DISALLOWANCE IS RECORDED `pending` AND ONLY AN `accepted` ONE REACHES
+  // THE COMPUTATION — the filter a few hundred lines below says so, and its
+  // own comment records that this total "used to be computed after the compute
+  // call ... so accepting a disallowance changed the tax by exactly ₹0". That
+  // fix moved the filter to the right side of the call and left the state it
+  // filters on unreachable: PATCH /api/itr/disallowances/{id}/status had no
+  // caller, so nothing could ever be accepted. Every §40A(3) cash disallowance
+  // and every §43B unpaid liability a CA recorded sat amber and was silently
+  // left out of the return — and §40A(3) ADDS to income, so the tax came out
+  // too low.
+  const { can } = usePermissions();
+  const [statusBusy, setStatusBusy] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [lossTypes, setLossTypes] = useState<LossTypeRule[]>([]);
   const [lossNotModelled, setLossNotModelled] = useState<{ what: string; why: string }[]>([]);
   const [showAddLoss, setShowAddLoss] = useState(false);
@@ -419,6 +433,23 @@ export default function TaxComputationPage() {
       }
     })();
   }, []);
+
+  const setDisallowanceStatus = async (id: string, status: "accepted" | "rejected") => {
+    setStatusError(null);
+    setStatusBusy(id);
+    try {
+      const res = await apiFetch(`/api/itr/disallowances/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      if (res?.success) await load();
+      else setStatusError(res?.detail ?? res?.error ?? "The status was not changed.");
+    } catch (e) {
+      setStatusError(e instanceof Error ? e.message : "The status was not changed.");
+    } finally {
+      setStatusBusy(null);
+    }
+  };
 
   const saveLoss = async () => {
     setLossError(null);
@@ -1826,11 +1857,63 @@ export default function TaxComputationPage() {
                       <p className="text-xs font-semibold text-red-600">{paise(d.amount_paise)}</p>
                       <span className={`text-[10px] ${d.status === "accepted" ? "text-green-600" : d.status === "rejected" ? "text-red-500" : "text-amber-600"}`}>
                         {d.status}
+                        {d.status !== "accepted" && <span className="text-[#94A3B8]"> · not in the computation</span>}
                       </span>
+                      {/* ACCEPTING IS `income_tax: approve`, which is Manager+.
+                          The tier is the server's and is read from
+                          GET /api/identity/permissions rather than restated
+                          here — the Team screen's own hardcoded ROLE_DEFAULTS
+                          had drifted from PERMISSIONS in both directions. An
+                          Executive sees who to ask instead of a button that
+                          would 403. */}
+                      {can("income_tax", "approve") ? (
+                        <div className="flex gap-1 justify-end mt-1">
+                          {d.status !== "accepted" && (
+                            <button
+                              type="button"
+                              onClick={() => setDisallowanceStatus(d.id, "accepted")}
+                              disabled={statusBusy === d.id || actionInFlight}
+                              className="text-[10px] px-2 py-0.5 rounded border border-green-200 text-green-700 hover:bg-green-50 disabled:opacity-40"
+                            >
+                              {statusBusy === d.id ? "…" : "Accept"}
+                            </button>
+                          )}
+                          {d.status !== "rejected" && (
+                            <button
+                              type="button"
+                              onClick={() => setDisallowanceStatus(d.id, "rejected")}
+                              disabled={statusBusy === d.id || actionInFlight}
+                              className="text-[10px] px-2 py-0.5 rounded border border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC] disabled:opacity-40"
+                            >
+                              {statusBusy === d.id ? "…" : "Reject"}
+                            </button>
+                          )}
+                        </div>
+                      ) : d.status === "pending" ? (
+                        <p className="text-[10px] text-[#94A3B8] mt-1">a Manager accepts this</p>
+                      ) : null}
                     </div>
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* The figure the return will actually carry. A CA looking at four
+                amber rows totalling ₹4,00,000 has no way to tell, from the
+                rows alone, that the computation is using none of them. */}
+            {disallowances.length > 0 && (
+              <p className="text-[11px] text-[#64748B] border-t border-[#F1F5F9] pt-2">
+                Added back to income:{" "}
+                <span className="font-mono text-[#334155]">
+                  {paise(disallowances.filter(d => d.status === "accepted")
+                                      .reduce((t, d) => t + d.amount_paise, 0))}
+                </span>{" "}
+                — only an accepted disallowance reaches the computation.
+              </p>
+            )}
+
+            {statusError && (
+              <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{statusError}</p>
             )}
 
             {!showDisallForm ? (

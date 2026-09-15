@@ -125,8 +125,28 @@ class DisallowanceRequest(BaseModel):
     notes: Optional[str] = None
 
 
+#: The three states a recorded disallowance can be in. ONLY `accepted` reaches
+#: the computation — the tax screen filters on it before sending the add-backs
+#: — so a value outside this set is not a loud error, it is a disallowance
+#: SILENTLY dropped from the return. `tax_disallowances.status` carries no
+#: CHECK constraint (migration 156 records the three in a COMMENT), so the
+#: database will store "Accepted" or "approve" quite happily and the filter
+#: will then skip the row for ever.
+DISALLOWANCE_STATUSES = ("pending", "accepted", "rejected")
+
+
 class DisallowanceStatusRequest(BaseModel):
-    status: str = Field(..., description="pending|accepted|rejected")
+    status: str = Field(..., description="|".join(DISALLOWANCE_STATUSES))
+
+    @field_validator("status")
+    @classmethod
+    def _known_status(cls, v: str) -> str:
+        text = str(v or "").strip().lower()
+        if text not in DISALLOWANCE_STATUSES:
+            raise ValueError(
+                f"Unknown status '{v}'. One of: "
+                + ", ".join(DISALLOWANCE_STATUSES) + ".")
+        return text
 
 
 class DeductionClaimRequest(BaseModel):
