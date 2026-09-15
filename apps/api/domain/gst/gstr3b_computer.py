@@ -720,7 +720,10 @@ class GSTR3BResult:
         # supplier. The GSTN utility gates this block on the return period and
         # writes it for every period from July 2022; before that the row did
         # not exist on the form. Zero here: nothing marks a supply as made
-        # through an ECO, and neither side of §9(5) is modelled.
+        # through an ECO, and neither side of §9(5) is modelled. THE CA IS TOLD
+        # THAT — services/gst_return_service._undeclarable_rows carries this
+        # sentence beside the payload, because a GSTN payload has nowhere to
+        # hold one and a nil on a filed return otherwise reads as an answer.
         eco_zero = {"txval": 0, "iamt": 0, "camt": 0, "samt": 0, "csamt": 0}
         eco_dtls = (
             {"eco_dtls": {"eco_sup": dict(eco_zero),          # ECO pays the tax
@@ -740,6 +743,7 @@ class GSTR3BResult:
             # Zero because purchases are not yet classified as exempt or
             # non-GST on the inward side. Both rows are emitted regardless: the
             # utility defaults the cells to 0 and always writes GST and NONGST.
+            # Named for the CA in gst_return_service._undeclarable_rows, row 5.
             "inward_sup": {
                 "isup_details": [
                     {"ty": "GST", "inter": 0, "intra": 0},
@@ -858,7 +862,9 @@ class GSTR3BResult:
                     "csamt": r(self.itc_net_cess),
                 },
                 # Table 4(D)(2) — ineligible under §16(4) and the PoS rules.
-                # Zero because neither is tracked yet. §17(5) is NOT reported
+                # Zero because neither is tracked yet, and named for the CA in
+                # gst_return_service._undeclarable_rows rather than left as a
+                # bare 0.00 on a return about to be filed. §17(5) is NOT reported
                 # here any more; it moved to 4(B)(1) above, and the circular
                 # leaves no room: "The reversal of ITC of ineligible credit
                 # under section 17(5) or any other provisions is required to be

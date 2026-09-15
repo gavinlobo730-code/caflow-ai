@@ -1114,6 +1114,67 @@ def _table_4a_gaps() -> list[dict]:
     ]
 
 
+def _undeclarable_rows() -> list[dict]:
+    """EVERY row of this GSTR-3B that is nil because nothing here can derive it.
+
+    `_table_4a_gaps` above answers the same question for the ITC table and is
+    the authority for those rows; this calls it rather than restating them, so
+    the 4(A) list has exactly one definition and this one is provably a
+    superset of it.
+
+    WHY THE OTHER THREE WERE MISSING FOR SO LONG
+        Each already carried its reason — in a SOURCE COMMENT, next to the
+        literal zero it explains. That is the right place for the next
+        programmer and no place at all for the CA, who sees 0.00 on a return
+        they are about to file and has nothing to distinguish "this client had
+        none" from "this product cannot see it". 4(A) got the treatment in
+        GST-24 and the same payload's outward side never did.
+
+    NONE OF THIS INVENTS A FIGURE. Every row below stays exactly as computed —
+    nil — and the sentence travels beside the payload rather than inside it,
+    because a GSTN payload has nowhere to carry one. Same shape as
+    `payload_gaps` on the GSTR-1 side and `cess_gaps`.
+    """
+    return _table_4a_gaps() + [
+        {
+            "row": "3.1.1(i)",
+            "label": "Supplies on which the e-commerce operator pays the tax (§9(5))",
+            "reason": ("Nothing here marks a supply as made through an electronic "
+                       "commerce operator, and neither side of §9(5) is modelled, so "
+                       "both 3.1.1 rows are nil. A client supplying through one has "
+                       "to enter these on the portal."),
+        },
+        {
+            "row": "3.1.1(ii)",
+            "label": "Supplies made through an e-commerce operator (§9(5))",
+            "reason": ("The same gap seen from the supplier's side, and it is the one "
+                       "to check: a supply made through an operator has been counted "
+                       "in 3.1(a) here like any other outward supply, because nothing "
+                       "tells the two apart. Where a client sells through an operator, "
+                       "both this row and what 3.1(a) already carries need looking at "
+                       "on the portal."),
+        },
+        {
+            "row": "5",
+            "label": "Exempt, nil-rated and non-GST INWARD supplies",
+            "reason": ("A purchase bill is not classified as exempt, nil-rated or "
+                       "non-GST on the inward side here, so this row is nil. It is a "
+                       "disclosure only — no tax turns on it — but the portal expects "
+                       "the values."),
+        },
+        {
+            "row": "4(D)(2)",
+            "label": "Ineligible ITC under §16(4) and the place-of-supply rules",
+            "reason": ("Neither limb is tracked here, so the row is nil. §17(5) is "
+                       "deliberately NOT in it: Circular 170/02/2022-GST puts that "
+                       "reversal in Table 4(B) and says reporting it in 4(D) as well "
+                       "overstates the ineligible credit shown against the taxpayer. "
+                       "So a nil here does not mean no blocked credit — that is in "
+                       "4(B)(1)."),
+        },
+    ]
+
+
 def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                       filed_on: "date | None" = None) -> dict:
     """Compute GSTR-3B from posted books and reconcile to the General Ledger.
@@ -1493,6 +1554,14 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # (GST-24); these two cannot be, and say so rather than reading as an
         # answer. Same shape as `cess_gaps` and `payload_gaps`.
         "table_4a_gaps": _table_4a_gaps(),
+        # AND EVERY OTHER ROW THIS RETURN DECLARES NIL WITHOUT BEING ABLE TO
+        # DERIVE IT. `table_4a_gaps` above has been served since GST-24 and NO
+        # SCREEN EVER RENDERED IT, so the ISD sentence reached nobody; and
+        # three more structurally-nil blocks in this same payload — 3.1.1's two
+        # §9(5) rows, Table 5's inward exempt/nil-rated/non-GST values and
+        # 4(D)(2) — carried their reason only in a source comment beside the
+        # literal zero. A superset, so a screen renders one list.
+        "undeclarable_rows": _undeclarable_rows(),
         # WHAT THE BANK LINES PUT ON THE RETURN, AND WHAT THEY CANNOT SUPPLY
         # (BANK-24). A charge the CA marked as carrying GST now reaches Table
         # 4(A)(5) and a receipt so marked reaches 3.1(a) — both were on the

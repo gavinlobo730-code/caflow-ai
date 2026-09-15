@@ -1294,6 +1294,48 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     </div>
                   );
                 })()}
+                {/* ROWS THIS RETURN DECLARES NIL AND CANNOT DERIVE.
+                    A nil that means "this client had none" and a nil that
+                    means "this product cannot see it" look identical on a
+                    filed return, and four rows of this GSTR-3B are the second
+                    kind: 3.1.1's two §9(5) e-commerce rows, Table 5's inward
+                    exempt/nil-rated/non-GST values, and 4(D)(2). Each already
+                    carried its reason in a source comment next to the literal
+                    zero — the right place for the next programmer and no place
+                    at all for the CA about to file.
+
+                    `table_4a_gaps` had the same problem one level up: served
+                    since GST-24 and rendered by nothing, so the ISD sentence
+                    reached nobody. `undeclarable_rows` is the superset and this
+                    is the one place it is shown. Every sentence is the
+                    server's; nothing here decides which rows are listed. */}
+                {(() => {
+                  const rows = (computeResult.undeclarable_rows as
+                    { row: string; label: string; reason: string }[] | undefined) ?? [];
+                  if (rows.length === 0) return null;
+                  return (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm space-y-2">
+                      <p className="font-medium text-[#334155]">
+                        Nil because this product cannot derive it — {rows.length} row
+                        {rows.length === 1 ? "" : "s"}
+                      </p>
+                      <p className="text-[11px] text-[#64748B]">
+                        These are filed as nil. That is correct for a client with none,
+                        and wrong for a client with any — nothing here can tell the two
+                        apart, so check each on the portal before you file.
+                      </p>
+                      <ul className="space-y-1.5">
+                        {rows.map((g) => (
+                          <li key={g.row} className="border-t border-slate-200 pt-1.5">
+                            <span className="font-mono text-xs text-[#334155]">Table {g.row}</span>
+                            <span className="text-xs text-[#475569]"> — {g.label}</span>
+                            <p className="text-[11px] text-[#64748B] mt-0.5">{g.reason}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
                 {/* THE TABLES, not just the totals.
                     The GSTN offline utility is table by table, and a CA
                     reviewing before filing is checking 3.1 and 4, not a single
