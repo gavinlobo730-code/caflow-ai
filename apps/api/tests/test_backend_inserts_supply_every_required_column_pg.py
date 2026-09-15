@@ -43,7 +43,8 @@ WHAT IS DELIBERATELY NOT CHECKED
       --continue-on-error, so the migrations on test_migrations_apply.py's
       baseline never run and their tables are absent locally while present in
       production. Reporting those would call one bug two; missing TABLES are
-      test_backend_tables_exist's job.
+      test_backend_tables_exist_pg.py's job — which is a real file now, and
+      was not when this line was written.
 
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI job.
 """
@@ -148,7 +149,7 @@ def _offenders(schema):
     out = []
     for path, lineno, relation, keys in found:
         if relation not in tables:
-            continue                      # test_backend_tables_exist's job
+            continue                   # test_backend_tables_exist_pg.py's job
         for col in sorted(required.get(relation, set()) - keys):
             if f"{relation}.{col}" in ALLOWED:
                 continue

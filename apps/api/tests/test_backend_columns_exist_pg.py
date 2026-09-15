@@ -35,8 +35,9 @@ THE --continue-on-error PROBLEM, AND WHY IT DOES NOT MAKE THIS CRY WOLF
     someone has to remember to close:
 
       * a relation absent from the template is skipped — that is
-        test_backend_tables_exist's job, and reporting it here would call one
-        bug two.
+        test_backend_tables_exist_pg.py's job, and reporting it here would
+        call one bug two. That file did not exist when this line was
+        written — the hand-off was to nobody for as long as it stood.
       * a column DECLARED BY a baseline-failure migration is skipped. When that
         migration is repaired and drops off the baseline, its columns become
         checkable again automatically.
