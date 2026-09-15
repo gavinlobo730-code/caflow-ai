@@ -11,7 +11,7 @@
     "partial": "verified against the code: part of the finding is fixed and part is still true. `why` says which part is closed and `what_is_left` says what is not. Never quote one of these as done."
   },
   "_the_stale_problem_this_exists_to_end": "docs/audits/2026-09-11-the-verification-pass.md measured the backlog ~10% stale. Five days later docs/audits/2026-09-12-the-probe-pass/ measured the same backlog 38-59% stale by subsystem, because five tranches had landed and nothing re-scored. On 12 September a further hand-check found INV-04, INV-07, FA-03, FA-16, FA-18, PAY-17, PAY-18, PUR-30, TDS-31, GST-03 and PUR-12 all recorded open and all in fact closed. A status that is only ever written by an audit is a status that is wrong by the time it is read.",
-  "verified_on": "2026-09-13",
+  "verified_on": "2026-09-15",
   "findings": {
     "INV-04": {
       "status": "closed",
@@ -1189,9 +1189,9 @@
     },
     "GST-25": {
       "status": "open",
-      "verified_on": "2026-09-13",
-      "why": "services/filing_demo/gstr9.py is a walk-through, not a computation. Composition (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1) and GSTR-9C are absent",
-      "needs": "schema per return type"
+      "verified_on": "2026-09-15",
+      "why": "PARTLY CLOSED and still open. The GSTR-9 COMPUTATION exists (GST-10, domain/gst/gstr9_builder.py + GET /api/gst-workspace/gstr9/compute), so the old note's 'gstr9.py is a walk-through, not a computation' is stale — filing_demo/gstr9.py is the DEMO, which is what it is meant to be. GSTR-3B Table 3.1.1 is still structurally nil because nothing marks a supply as made through an e-commerce operator, but it is now NAMED to the CA rather than silent (_undeclarable_rows, 15-09-2026). What remains needs forms this environment cannot fetch: composition (CMP-08 / GSTR-4), e-commerce TCS on GSTR-8, and GSTR-9C.",
+      "needs": "schema per return type (CMP-08/GSTR-4, GSTR-8, GSTR-9C) — see docs/audits/what-to-fetch-for-me.md §5"
     },
     "GST-29": {
       "status": "closed_by_commit",

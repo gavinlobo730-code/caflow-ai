@@ -36,7 +36,7 @@ migration; a handful need a statutory document a person has to read.
 
 | finding | what actually blocks it |
 |---|---|
-| **GST-25** | schema per return type |
+| **GST-25** | schema per return type (CMP-08/GSTR-4, GSTR-8, GSTR-9C) — see docs/audits/what-to-fetch-for-me.md §5 |
 | **GST-32** | the IRP schema, and the 30-day reporting-window rule |
 | **PAY-27** | each bank's own file format |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |

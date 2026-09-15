@@ -361,6 +361,47 @@ in one message. Recorded here verbatim in substance, with what each one
 settles, because a decision that lives only in a chat log is a decision nobody
 can find later.
 
+## 13. A rate master for foreign currency — one decision inside it  *(found 15-09-2026)*
+
+**Not urgent, and not broken.** Recording it because the sweep that found it is
+exactly the sweep that found ACC-19, and because the decision inside it is
+yours rather than mine.
+
+`fx_rates` (migration 146) exists to hold operator-entered exchange rates.
+`ManualRateProvider` reads it — latest rate on or before the document's date —
+and **nothing has ever written a row.** When a foreign document is created
+without an explicit rate the lookup finds nothing and the API answers:
+
+> *No exchange rate available for USD→INR on 2026-09-15. **Record the rate
+> first** or enter it manually.*
+
+There is no way to record it first.
+
+**Why this is not a live defect today:** both screens that create a foreign
+document — Sales and Purchases — *require* the CA to type the rate, so every
+document takes the manual-override branch and the lookup is never reached. The
+feature works; what is missing is recording the day's rate ONCE instead of on
+every document. ACC-19 made multi-currency switchable on 13-09-2026, so this
+became reachable two days ago and has never been exercised.
+
+**The decision I will not make alone.** Migration 146 declares `fx_rates` as
+**global reference data** — no `firm_id` column, readable by every
+authenticated user, "writes go through the service role". That is defensible:
+USD→INR on a date is a fact about the world, not about a firm, and RBI
+publishes one. But it means one firm's typo silently moves another firm's
+books, and this codebase's tenancy rule is otherwise absolute — every query
+carries `.eq("firm_id", …)`. A firm-scoped rate table is a different design
+and a migration.
+
+So: **(a)** build it global, Partner-only to write, with the screen saying
+plainly that a rate is shared across the platform; **(b)** make it firm-scoped
+first, which is a migration and changes the provider's lookup; or **(c)** leave
+it, and change the refusal message so it stops promising a screen that does not
+exist. (c) is an hour and is the honest floor. I lean **(a)** if you expect
+several clients with foreign business and **(c)** if you do not.
+
+---
+
 ## A. Merge #523 — **"Merge all of them"**
 
 Merged as `523ad02e`, squash, on a green head. Migrations **374–381** applied
