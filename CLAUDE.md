@@ -1014,6 +1014,34 @@ change. The code is the authority; keep this file in step with it.
   live. `GET /api/purchase-payments?purchase_bill_id=` unions the two and
   stamps `allocated_to_bill_paise`, because `amount_paise` stops being the
   bill's figure the moment one payment settles several.
+- **HOW LONG A CARRIED-FORWARD LOSS LIVES IS PER HEAD, AND ONE OF THEM IS NOT
+  EIGHT YEARS.** `domain/income_tax/loss_set_off.py` decides WHICH HEAD a
+  brought-forward loss may reach; `domain/income_tax/loss_carry_forward.py` is
+  the separate authority for HOW LONG — §72(3) eight assessment years for a
+  business loss, **§73(4) FOUR for a speculation loss**, §74(2) eight for
+  either capital head and §71B eight for house property. The computation
+  screen's own label read "§72 (Business, 8 yrs) · §74 (Capital, 8 yrs)",
+  hardcoded — true of three heads and silent about the fourth — and the
+  engine's expiry refusal quoted "§72(3)/§74's eight assessment years" for
+  every head including speculation. Both name the head's own section now, and
+  `GET /api/itr/loss-types` serves the vocabulary so the form holds neither a
+  head nor a period.
+  **`brought_forward_losses` WAS READ AND NEVER WRITTEN** (IT-10's other half):
+  `POST /api/itr/bf-losses` has existed since migration 156 with no caller and
+  the panel listing them was read-only, so every client showed "No
+  carried-forward losses recorded" for ever with a fully built set-off engine
+  behind it. **`expiry_assessment_year` was a REQUIRED caller-supplied field**,
+  so the one statutory fact in the row was whatever was typed; it is derived
+  now and a caller-supplied value still WINS (`domain/tds/deductor.resolve`'s
+  shape). **Two refusals rather than guesses**: `other` means the head is not
+  identified, so no section fixes a period and it is refused rather than given
+  eight years, and **§32(2) unabsorbed depreciation and §73A's specified-business
+  loss carry forward INDEFINITELY** and are absent from the stored vocabulary —
+  named on the form, because recording one as `other` with any expiry would
+  expire a loss that never expires. ⚠️ Every period is `[S]`-graded, `VERIFIED`
+  is False and each is pinned by a test: the error direction is unsafe BOTH
+  ways, since too short expires relief the client is entitled to and too long
+  claims relief they are not.
 - **A capital LOSS does not relieve other income** (§71(3), §74), and **§80G has
   a ceiling** (§80G(4): 10% of adjusted gross total income, where adjusted GTI
   is GTI less the capital-gains buckets and less every other Chapter VI-A
@@ -1085,6 +1113,23 @@ change. The code is the authority; keep this file in step with it.
   same return is not. `domain/gst/gstr3b_computer.py` carries the circular's
   wording and is the authority; the pre-2022 layout looks plausible and gets the
   tax right, which is why it survived so long.
+- **A NIL ON A GSTR-3B SAYS WHICH KIND OF NIL IT IS.** Four rows of this
+  product's GSTR-3B are nil because nothing here can DERIVE them, and on a
+  filed return that is indistinguishable from a client who had none: **3.1.1(i)
+  and 3.1.1(ii)** (§9(5) e-commerce — nothing marks a supply as made through an
+  operator, so an aggregator's sales are counted in 3.1(a) like any other
+  outward supply), **Table 5** (exempt / nil-rated / non-GST INWARD supplies — a
+  purchase bill is not classified that way here) and **4(D)(2)** (§16(4) and the
+  place-of-supply rules, neither tracked). Each carried its reason in a source
+  COMMENT beside the literal zero, which is the right place for the next
+  programmer and no place at all for the CA about to file. `_undeclarable_rows`
+  in `services/gst_return_service.py` is the one list and it CALLS
+  `_table_4a_gaps` rather than restating it, so the 4(A) rows keep one
+  definition. **`table_4a_gaps` itself was served since GST-24 and rendered by
+  nothing**, so even the ISD sentence reached nobody; the client GST screen
+  renders the superset now. No figure changes — what an underivable row needs is
+  a document this product does not model, not a number from memory — and a test
+  asserts no reason states a rate or an amount.
 - **GSTR-3B TABLE 4(A) HAS FIVE ROWS, AN IMPORT OF SERVICES OWNS ONE OF THEM,
   AND TWO ARE STRUCTURALLY NIL** (GST-24). `itc_avl_rows` emits all five in the
   GSTN utility's order and used to put the WHOLE reverse-charge credit on

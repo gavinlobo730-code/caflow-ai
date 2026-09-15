@@ -1300,9 +1300,9 @@
       ]
     },
     "IT-10": {
-      "status": "closed_by_commit",
-      "verified_on": null,
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters.",
+      "status": "closed",
+      "verified_on": "2026-09-15",
+      "why": "Re-read, and the other half was still open. IT-10's own fix — the engine reading brought_forward_losses — was real and shipped: loss_set_off.py applies §72, §73, §74 and §71B head by head. But NOTHING WROTE THE TABLE. POST /api/itr/bf-losses had no caller (the reachability ratchet carried it) and the computation screen's panel was read-only, so every client showed 'No carried-forward losses recorded' for ever. The screen can now record one, and domain/income_tax/loss_carry_forward.py derives how long it lives — §72(3) eight assessment years, §73(4) FOUR for speculation, §74(2) and §71B eight — which had been a required caller-supplied field, so the one statutory fact in the row was whatever was typed.",
       "commits": [
         "86e0ea3f Twenty-eight values nobody was maintaining, and the nine-subsystem pro",
         "714c1c84 Phase 7a–7g: screens for engines that already worked (#472)",
