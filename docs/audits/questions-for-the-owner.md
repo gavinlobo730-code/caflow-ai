@@ -222,8 +222,265 @@ decision and I am treating these the same way. What is left here is two DROPs
 
 ---
 
-## 10. Nothing else is waiting on you
+## 10. The reading list — eight things blocked on a page I cannot open
 
-Everything not on this list either needed no permission or needed no migration,
-and is either shipped or scheduled. `docs/audits/findings-status.md` is the
-count.
+**UPDATE, 14 September 2026, 22:20 IST.** This section used to say "nothing
+else is waiting on you", and that was true when it was written. It is not now:
+everything I could build without you is built, and what is left is almost
+entirely documents.
+
+**`docs/audits/what-to-fetch-for-me.md` is the list**, and it is written as one
+trip per website rather than as eight scattered asks, because you offered to go
+and get them. Each section says what page, exactly what I need off it, and what
+it unblocks. Nothing in it is broken — every gap is already a named refusal in
+the code with a sentence pointing at the document to read, and each engine
+works the moment the figure is written in.
+
+The order there is by value, and the top three are:
+
+1. **cbic-gst.gov.in** — six late-fee notifications, and the §50(3) rate that
+   is question 7 above. One sitting settles both halves of GST-21.
+2. **einvoice1.gst.gov.in** — the INV-01 schema. The highest-value item in the
+   file, because e-invoice IRN is one of only **two** statutory outputs
+   software can complete end to end with no GSP or ERI registration.
+3. **protean-tinpan.com** — the TDS statement file layout, so a CA stops
+   re-keying the whole quarter into the RPU.
+
+§8 of that file is a long tail worth knowing about even if you never fetch it,
+and its first item is the largest single improvement available anywhere: 18
+states levy professional tax whose slabs the product does not hold, so an
+employee in Gujarat, Telangana, Andhra Pradesh or Kerala has it named as a gap
+on the payroll run and a CA works it out by hand every month.
+
+**One thing on this page is still a decision rather than a document**: BANK-11
+step 3, below. It is the only item in the whole backlog waiting on your
+judgement rather than on a page.
+
+---
+
+## 11. BANK-11 step 3 — how much a *trusted* rule may do unattended
+
+This follows on from the conversation we had about bank rules, where I think I
+explained it badly the first time. The short version of what is already true:
+
+- **The product ships zero rules.** Every one is written by the CA, per client.
+  That was your instinct and it is already how it works.
+- A rule on its own only **proposes** — it fills in the draft and a human still
+  clicks Pass.
+- Auto-posting needs a **second, separate tick**: a Manager or Partner marks
+  that rule *trusted*, and only then do its lines pass with no click.
+
+So there are two gates, and the CA controls both. Steps 1 and 2 of BANK-11 are
+shipped: a rule can now say which field it reads, which way it matches, and
+which rule wins — previously a broad rule written in April permanently shadowed
+a narrow one written in July, and the only remedy was to delete and re-create
+the broad rule, which lost its trusted flag.
+
+**Step 3 is the open question: should a rule be able to propose more than one
+line?** Today a rule proposes a single account. It cannot say "this ₹11,800 is
+₹10,000 rent and ₹1,800 GST", and it cannot tag the party.
+
+- **Matching wider was safe to build** — a CA types every pattern, and the
+  widest case was always reachable anyway (an empty pattern matches
+  everything).
+- **Proposing wider is different in kind**, because a trusted rule posts with
+  nobody watching, and a split it gets wrong is a wrong journal in the ledger.
+
+I said I would build **split legs and a party tag, and never a TDS treatment**
+(that one decides a statutory withholding and belongs in front of a human). I
+have **not** built it, because your answer read to me as "keep the CA in
+control" and I would rather have you say so explicitly than assume it.
+
+Three ways to go, and I recommend the first:
+
+- **(a) Build split legs + party, leave TDS out.** A trusted rule can post
+  rent-plus-GST in one go. This is what the CAs will ask for first, and it is
+  where the repetitive typing actually is.
+- **(b) Build them, but only for UNtrusted rules** — a split rule always stops
+  for a click, however trusted. Safest, and still removes the typing.
+- **(c) Leave it.** A rule proposes one account, full stop. Nothing is lost
+  that exists today.
+
+A guard currently asserts `RuleSuggestion` gained no field, so whichever way
+you go it is a deliberate change rather than a drift.
+
+---
+
+## 12. Two modules that hold a rule nothing applies  *(found 14-09-2026)*
+
+A sweep for "what under `domain/` does nothing import?" found five modules.
+Three are now wired up and shipped — the UQC list, the AS 11 year-end
+revaluation and the §115BAC(6) regime election. Two are left, and neither is a
+bug I should quietly decide:
+
+### 12a. The bank exception rules — 315 lines nobody asks
+
+`domain/banking/exceptions.py` decides **what a partner should look at** on a
+bank transaction: an unfamiliar payee, a round-sum amount, a duplicate shape, a
+weekend date. It is careful, well argued and well tested, and its only importer
+is its own test. Its docstring says the context is gathered by
+`services/bank_exception_service.py` — **that file does not exist.** So no flag
+is raised and no partner ever sees one.
+
+The module itself says that nothing here GATING a posting is a product
+decision, not an oversight, and I agree with that part: a platform should not
+hold a CA's books hostage to a threshold it invented. But *raising* a flag and
+*blocking* a posting are different things, and today it does neither.
+
+**What I need from you: do you want a partner review surface at all?** Options:
+
+- **(a) A "Worth a look" list** on the banking screen — the transactions the
+  rules flagged, with the reason, and nothing blocked. This is what the module
+  was written for and it is a few hours.
+- **(b) Nothing.** A firm reviews how it reviews; the rules stay as reference.
+  I would then say so in the module rather than leave it reading as unfinished.
+- **(c) Something else** you have in mind from how your firm actually reviews
+  junior work.
+
+I have not guessed. It is named in
+`tests/test_a_domain_module_has_a_reader.py` so it cannot be forgotten.
+
+### 12b. A duplicate notification service
+
+`domain/notification_service.py` is an older copy of
+`services/notification_service.py` whose store is a hardcoded
+`MOCK_NOTIFICATIONS` list. The live one is what `routers/tasks.py` calls;
+nothing in the production tree imports the copy.
+
+It is harmless today and the hazard is the `public.suppliers` shape: a future
+reader reaches for the name, gets the mock, and writes notifications nobody
+receives. **Deleting it is the right end state and is your call**, like the two
+DROPs in §9 above.
+
+---
+
+# ANSWERED — 13 September 2026, evening
+
+Six things were put to the owner after PR #523 went green. All six came back
+in one message. Recorded here verbatim in substance, with what each one
+settles, because a decision that lives only in a chat log is a decision nobody
+can find later.
+
+## 13. A rate master for foreign currency — one decision inside it  *(found 15-09-2026)*
+
+**Not urgent, and not broken.** Recording it because the sweep that found it is
+exactly the sweep that found ACC-19, and because the decision inside it is
+yours rather than mine.
+
+`fx_rates` (migration 146) exists to hold operator-entered exchange rates.
+`ManualRateProvider` reads it — latest rate on or before the document's date —
+and **nothing has ever written a row.** When a foreign document is created
+without an explicit rate the lookup finds nothing and the API answers:
+
+> *No exchange rate available for USD→INR on 2026-09-15. **Record the rate
+> first** or enter it manually.*
+
+There is no way to record it first.
+
+**Why this is not a live defect today:** both screens that create a foreign
+document — Sales and Purchases — *require* the CA to type the rate, so every
+document takes the manual-override branch and the lookup is never reached. The
+feature works; what is missing is recording the day's rate ONCE instead of on
+every document. ACC-19 made multi-currency switchable on 13-09-2026, so this
+became reachable two days ago and has never been exercised.
+
+**The decision I will not make alone.** Migration 146 declares `fx_rates` as
+**global reference data** — no `firm_id` column, readable by every
+authenticated user, "writes go through the service role". That is defensible:
+USD→INR on a date is a fact about the world, not about a firm, and RBI
+publishes one. But it means one firm's typo silently moves another firm's
+books, and this codebase's tenancy rule is otherwise absolute — every query
+carries `.eq("firm_id", …)`. A firm-scoped rate table is a different design
+and a migration.
+
+So: **(a)** build it global, Partner-only to write, with the screen saying
+plainly that a rate is shared across the platform; **(b)** make it firm-scoped
+first, which is a migration and changes the provider's lookup; or **(c)** leave
+it, and change the refusal message so it stops promising a screen that does not
+exist. (c) is an hour and is the honest floor. I lean **(a)** if you expect
+several clients with foreign business and **(c)** if you do not.
+
+---
+
+## A. Merge #523 — **"Merge all of them"**
+
+Merged as `523ad02e`, squash, on a green head. Migrations **374–381** applied
+to production by the `apply pending migrations — production` job.
+
+## B. ACC-19, multi-currency — **"did not understand the question, but I have always trusted you"**
+
+The question restated: the whole multi-currency feature is BUILT — foreign
+documents, realised and unrealised FX, five report endpoints, foreign bank
+accounts — and cannot be switched on, because `resolve_currency_policy` ANDs
+three flags and two of them (`firms.multi_currency_entitled`,
+`clients.multi_currency_enabled`) are written by **nothing**: no endpoint, no
+model field, no screen, no seed. Only a hand-written SQL UPDATE activates it.
+The open question was whether the FIRM-level one is a self-serve setting or a
+commercial entitlement you sell.
+
+**Decided: a self-serve Partner setting, plus the per-client opt-in.** There
+is no billing, plan or entitlement machinery anywhere in this product, so
+"commercial entitlement" has nothing to hang off — gating one checkbox would
+mean inventing an entitlement system first, which is a larger and less useful
+build than the feature it gates. A CA firm either has foreign-currency clients
+or it does not; it is not a flag anyone games. If it is ever sold, the column
+does not move: a plan check goes in front of the endpoint that sets it.
+`MULTI_CURRENCY_ENABLED` stays an environment kill switch and must NOT get a
+settings toggle — `core/feature_flags` says "No DB dependency" and means it.
+
+## C. BANK-24, GST on bank charges — **"keep it general … they upload the transactions and the CAs only select on which transaction GST is there; we shouldn't presume, let the CAs do it, give them the modal where they can select"**
+
+**This overrides the shape the finding proposed, and it is the right call.**
+The finding wanted a monthly consolidated bank GST invoice modelled as a
+document, matched against one GSTR-2B row. That presumes both the bank's
+invoicing practice — `[S]`-graded, unconfirmable from here — and *which* lines
+of a statement carry GST, which is exactly the guessing this codebase refuses
+everywhere else.
+
+**Decided: the CA marks the transaction.** A bank-charge line gets a control
+where the CA says "this carries GST", at what rate, and whether it is
+inter-state. `bank_matching_rules` already carries `suggested_gst_rate_bps`
+and `suggested_is_interstate` (migration 254) as the per-bank DEFAULT, so the
+rule proposes and the CA disposes — the same division of labour the rest of
+the bank module uses. No bank-invoice document, no GSTIN on a bank table, no
+inference from a narration.
+
+## D. FA-08b, output tax on an asset disposal — **"I really am not aware of this, so you take the decision; if you need anything from somewhere you can't reach, tell me and I'll provide it"**
+
+**Decided: build it, computing CGST §18(6) as the statute states it** — on a
+supply of capital goods on which input tax credit has been taken, the amount
+payable is the HIGHER of (a) the credit taken reduced by five percentage
+points per quarter or part of a quarter from the invoice date (Rule 44(6)) and
+(b) the tax on the transaction value. Both are computed and the higher is
+taken, with the working shown, because "whichever is higher" is the operative
+words and picking one silently is how a disposal under-declares.
+
+**One thing I may come back to you for:** whether a particular disposal is a
+"supply" at all — a scrapping with no consideration, or a transfer to a
+related party — turns on facts the ledger does not hold. Those are named on
+the answer rather than assumed, in the shape `vendors.msme_status` uses.
+
+## E. ACC-16, journal line order — **"again did not understand, but I trust you"**
+
+The question restated: open a voucher and its debit and credit lines come back
+in whatever order the database happens to return. There is no "line 1, line 2"
+column. The finding's fix — add the column and backfill every line already
+posted — runs into migration 251, whose trigger **forbids touching a posted
+journal line at all**, so the backfill would need the trigger disabled against
+production, run, and re-enabled. That is a rare and reviewable act, and I was
+not going to do it unattended for a presentational fix.
+
+**Decided: no trigger is disabled and nothing is rewritten.** The column is
+added for lines written FROM NOW ON, and the order for lines already posted is
+DERIVED at read time — debits before credits, then creation order, then id, so
+an old voucher displays the conventional way round and displays the SAME way
+round every time. That is the same visible outcome as the backfill, with none
+of the risk. Scheduled, not yet built.
+
+## F. PUR-27, expense claims — **"we don't do the accounting, the CAs do, so it's their responsibility … we have given the attachment, if they want they can attach it, it's their call"**
+
+**Decided: not building an expense-claim document.** The banking voucher path
+plus `domain/banking/attachments` is the answer, and the CA confirms the claim
+with their client as part of their own engagement. Recorded as
+`not_a_defect_as_stated` rather than left open, so nobody re-opens it as a
+gap: it is a scope decision, not a hole.

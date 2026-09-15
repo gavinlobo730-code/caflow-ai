@@ -29,6 +29,7 @@ from models.accounting import (FixedAssetIn, FixedAssetUpdateIn, DepreciationIn,
 from core.db_paging import fetch_all
 from domain.fixed_assets import integrity as fa_integrity
 from domain.fixed_assets import schedule_ii
+from domain.gst import section_18_6 as s186
 from domain.reporting import fixed_asset_movement as fa_movement
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
@@ -1023,6 +1024,81 @@ def run_depreciation(
     })
 
 
+@router.get("/{asset_id}/disposal-preview")
+def preview_disposal(
+    asset_id: str,
+    proceeds_paise: Annotated[int, Query(ge=0)] = 0,
+    disposal_date: Annotated[Optional[str], Query()] = None,
+    gst_rate_bps: Annotated[Optional[int], Query()] = None,
+    is_interstate: Annotated[bool, Query()] = False,
+    is_supply: Annotated[Optional[bool], Query()] = None,
+    current_user: dict = Depends(rbac("accounting", "read"))
+):
+    """What disposing this asset on these terms would cost, before confirming.
+
+    WHY THIS EXISTS (FA-08b). The disposal panel showed a P&L computed on the
+    GROSS proceeds. The moment a disposal carries GST that figure is wrong by
+    the tax — which belongs to the government, not to the seller — and CGST Act
+    s.18(6) may demand MORE than that tax besides. Neither could be worked out
+    in the browser without putting a statutory calculation there, so the screen
+    asks.
+
+    It WRITES NOTHING and posts no journal. Same computation the disposal
+    itself runs, from the same module, so what the CA is shown is what gets
+    posted — two derivations of one figure is how a preview comes to disagree
+    with the thing it previews.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"asset_id": asset_id, "section_18_6": None})
+
+    asset = _live_asset(db, asset_id, current_user["firm_id"])
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    # Row-addressed with no client_id in the request, so the mount-level guard
+    # never fires — the same IDOR family as dispose_asset. One message for both
+    # branches so the response is not an oracle for which asset ids exist.
+    if not can_access_client(current_user, asset.get("client_id")):
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    if gst_rate_bps is not None and int(gst_rate_bps) not in s186.ALLOWED_RATES_BPS:
+        raise HTTPException(
+            status_code=422,
+            detail=("gst_rate_bps must be one of "
+                    + ", ".join(str(r) for r in s186.ALLOWED_RATES_BPS)))
+
+    when = disposal_date or ist_today().isoformat()
+    result = s186.compute(
+        credit_taken=s186.TaxHeads(
+            cgst_paise=int(asset.get("cgst_paise") or 0),
+            sgst_paise=int(asset.get("sgst_paise") or 0),
+            igst_paise=int(asset.get("igst_paise") or 0)),
+        itc_was_taken=asset.get("itc_eligible"),
+        invoice_date=asset.get("purchase_date"),
+        disposal_date=when,
+        proceeds_paise=int(proceeds_paise),
+        rate_bps=gst_rate_bps,
+        is_interstate=is_interstate,
+        is_supply=is_supply,
+    )
+    tax_charged = result.tax_on_transaction_value.total_paise
+    wdv = int(asset["purchase_cost_paise"]) - int(
+        asset.get("accumulated_depreciation_paise") or 0)
+    return api_response(True, {
+        "asset_id": asset_id,
+        "disposal_date": when,
+        "wdv_at_disposal": wdv,
+        # Measured on the consideration NET of tax, exactly as the disposal
+        # measures it. The buyer's tax is not the seller's proceeds.
+        "gain_loss_paise": (int(proceeds_paise) - tax_charged) - wdv,
+        "tax_charged_paise": tax_charged,
+        # What posting it would NOT charge — the same refusal dispose_asset
+        # makes, shown before the CA commits rather than after.
+        "depreciation_months_outstanding": _depreciation_months_outstanding(asset, when),
+        "section_18_6": _section_18_6_payload(result, tax_charged),
+    })
+
+
 @router.patch("/{asset_id}/dispose")
 def dispose_asset(
     asset_id: str,
@@ -1085,6 +1161,35 @@ def dispose_asset(
             ),
         )
 
+    # CGST Act s.18(6) — the HIGHER of the credit taken on the asset, reduced
+    # for the time it was held, and the tax on the transaction value under
+    # s.15 (FA-08b). Worked out BEFORE the claim so a rate the engine cannot
+    # split refuses the whole disposal rather than leaving the asset marked
+    # disposed with a journal that has no tax on it.
+    #
+    # Only the transaction-value limb is POSTED. Where the reduced credit is
+    # the higher limb the excess is reported and left for the CA to raise:
+    # two Rules prescribe the reduction and give different figures, and there
+    # is no invoice behind the difference. See domain/gst/section_18_6.
+    section_18_6 = s186.compute(
+        credit_taken=s186.TaxHeads(
+            cgst_paise=int(asset.get("cgst_paise") or 0),
+            sgst_paise=int(asset.get("sgst_paise") or 0),
+            igst_paise=int(asset.get("igst_paise") or 0)),
+        itc_was_taken=asset.get("itc_eligible"),
+        invoice_date=asset.get("purchase_date"),
+        disposal_date=disposal_date,
+        proceeds_paise=sale_proceeds,
+        rate_bps=data.gst_rate_bps,
+        is_interstate=data.is_interstate,
+        is_supply=data.is_supply,
+    )
+    output_tax = {
+        "cgst_paise": section_18_6.tax_on_transaction_value.cgst_paise,
+        "sgst_paise": section_18_6.tax_on_transaction_value.sgst_paise,
+        "igst_paise": section_18_6.tax_on_transaction_value.igst_paise,
+    }
+
     # Capture pre-disposal values for rollback before any mutation.
     prior_disposal_date  = asset.get("disposal_date")
     prior_disposal_value = asset.get("disposal_value_paise")
@@ -1092,18 +1197,29 @@ def dispose_asset(
 
     def _rollback_claim():
         db.table("fixed_assets").update({
-            "is_disposed":          False,
-            "disposal_date":        prior_disposal_date,
-            "disposal_value_paise": prior_disposal_value,
-            "notes":                prior_notes,
+            "is_disposed":            False,
+            "disposal_date":          prior_disposal_date,
+            "disposal_value_paise":   prior_disposal_value,
+            "notes":                  prior_notes,
+            "disposal_is_supply":     None,
+            "disposal_gst_rate_bps":  None,
+            "disposal_is_interstate": False,
         }).eq("id", asset_id).eq("firm_id", current_user["firm_id"]).execute()
 
     # Claim the disposal atomically: only succeeds if still not disposed.
     claim = db.table("fixed_assets").update({
-        "is_disposed":          True,
-        "disposal_date":        disposal_date,
-        "disposal_value_paise": sale_proceeds,
-        "notes":                disposal_notes,
+        "is_disposed":            True,
+        "disposal_date":          disposal_date,
+        "disposal_value_paise":   sale_proceeds,
+        "notes":                  disposal_notes,
+        # Migration 383. Recorded with the claim, so a disposal and its GST
+        # treatment arrive together — gst_return_service reads these columns
+        # as the DOCUMENT behind the output tax, and a row carrying tax in the
+        # ledger and nothing here is the books-vs-ledger difference this whole
+        # change exists to close.
+        "disposal_is_supply":     data.is_supply,
+        "disposal_gst_rate_bps":  data.gst_rate_bps,
+        "disposal_is_interstate": bool(data.is_interstate),
     }).eq("id", asset_id).eq("firm_id", current_user["firm_id"]).eq("is_disposed", False).execute()
     if not claim.data:
         raise HTTPException(status_code=409, detail="Asset already disposed")
@@ -1112,7 +1228,9 @@ def dispose_asset(
 
     try:
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-        journal_id = _journal_svc.journal_for_asset_disposal(asset, sale_proceeds, current_user["firm_id"], asset["client_id"])
+        journal_id = _journal_svc.journal_for_asset_disposal(
+            asset, sale_proceeds, current_user["firm_id"], asset["client_id"],
+            output_tax=output_tax)
     except Exception:
         # Compensate: the claim above must never be left standing without a
         # journal behind it — undo it so a retry can cleanly start over.
@@ -1123,7 +1241,12 @@ def dispose_asset(
         raise HTTPException(status_code=502, detail="Failed to post the disposal journal. The asset has not been disposed — please retry.")
 
     wdv = asset["purchase_cost_paise"] - asset.get("accumulated_depreciation_paise", 0)
-    gain_loss = sale_proceeds - wdv
+    # NET of the tax the buyer paid. The proceeds figure is what crossed the
+    # bank; the output tax inside it belongs to the government, not to the
+    # seller, so counting it as consideration would overstate the gain by
+    # exactly the tax. The journal above measures the same way.
+    tax_charged = sum(output_tax.values())
+    gain_loss = (sale_proceeds - tax_charged) - wdv
 
     # The days between the last whole month charged and the disposal date are
     # NOT charged — the engine posts whole months only, the purchase month
@@ -1153,11 +1276,59 @@ def dispose_asset(
         "wdv_at_disposal": wdv,
         "gain_loss_paise": gain_loss,
         "journal_entry_id": journal_id,
+        # CGST Act s.18(6), with BOTH readings of the reduction rule and the
+        # working behind each. Served rather than summarised: this is a sum
+        # the CA pays over on the client's behalf, and the excess over the
+        # tax charged is theirs to raise.
+        "section_18_6":    _section_18_6_payload(section_18_6, tax_charged),
         # Whole months are charged; the days between the last month end and the
         # disposal date are not. Stated so the CA can see the figure is a whole
         # month short rather than discovering it in the accounts.
         "part_month_depreciation_not_charged": part_month_uncharged,
     })
+
+
+def _section_18_6_payload(result, tax_charged_paise: int) -> dict:
+    """The s.18(6) working, in the shape the screen renders (FA-08b).
+
+    BOTH readings of the reduction rule are served and neither is chosen. Rule
+    40(2) reduces the credit by five percentage points a quarter or part
+    quarter; Rule 44(6), through Rule 44(1)(b), pro-rates it over the remaining
+    useful life in months out of sixty. They give different figures, neither
+    could be read against the Rules from this environment, and this is a sum
+    the CA pays over — so the screen shows both, the same shape
+    `interest_on_rule_37_reversal` takes for the two Rule 37 clocks.
+
+    `excess_over_tax_charged_paise` is what the journal did NOT post: the tax
+    on the transaction value is on the ledger, and the difference where the
+    reduced credit is the higher limb is the CA's to raise.
+    """
+    def heads(h) -> dict:
+        return {"cgst_paise": h.cgst_paise, "sgst_paise": h.sgst_paise,
+                "igst_paise": h.igst_paise, "total_paise": h.total_paise}
+
+    return {
+        "applies": result.applies,
+        "readings_agree": result.readings_agree,
+        "credit_taken": heads(result.credit_taken),
+        "tax_on_transaction_value": heads(result.tax_on_transaction_value),
+        "tax_charged_paise": tax_charged_paise,
+        "readings": [
+            {
+                "reading": r.reading,
+                "elapsed": r.elapsed,
+                "working": r.remaining_fraction,
+                "reduced_credit": heads(r.reduced_credit),
+                "amount_payable": heads(r.amount_payable),
+                "basis": r.basis,
+                "excess_over_tax_charged_paise":
+                    max(0, r.amount_payable.total_paise - tax_charged_paise),
+            }
+            for r in result.readings
+        ],
+        "caveats": list(result.caveats),
+        "gaps": list(result.gaps),
+    }
 
 
 # ─────────────────────── FA-10: correcting the register ──────────────────────

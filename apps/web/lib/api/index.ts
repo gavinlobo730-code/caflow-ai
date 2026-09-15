@@ -722,6 +722,87 @@ export type JournalLineIO = {
   narration?: string | null;
 };
 
+/** INV-08 — the physical stock count. */
+export type StockCountSessionRow = {
+  id: string;
+  client_id: string;
+  count_date: string;
+  reference_no: string;
+  status: "open" | "posted" | "abandoned";
+  notes: string | null;
+  posted_at: string | null;
+};
+
+export type StockCountLine = {
+  service_catalogue_id: string;
+  item_name: string;
+  unit: string | null;
+  /** What the books said when the sheet was opened… */
+  system_qty_units: string;
+  /** …and what they say as at the count date NOW. The variance is measured
+   *  against this one: the count is a fact about the count date, and stock
+   *  moves between opening a sheet and keying it in. */
+  current_qty_units: string;
+  counted_qty_units: string | null;
+  variance_qty_units: string | null;
+  direction: "increase" | "decrease" | null;
+  reason: string | null;
+  reverse_itc: boolean | null;
+  itc_reversal_is_interstate: boolean;
+  will_post: boolean;
+  /** Why this line will not post. A blank count and an undecided s.17(5)(h)
+   *  are the two, and both are per LINE — ninety-eight post and two are
+   *  named. */
+  gaps: string[];
+  caveats: string[];
+  notes: string;
+};
+
+export type StockCountSheet = {
+  session: StockCountSessionRow;
+  lines: StockCountLine[];
+  counted_count: number;
+  variance_count: number;
+  postable_count: number;
+  blocked_count: number;
+  gaps: string[];
+};
+
+export type StockCountPostResult = {
+  session_id: string;
+  reference_no: string;
+  count_date: string;
+  posted: { item: string; quantity: string; direction: string }[];
+  posted_count: number;
+  failed: { item: string; why: string }[];
+  failed_count: number;
+  not_posted_count: number;
+};
+
+/** One entry of GET /api/banking/account-types. */
+export type BankAccountTypeInfo = {
+  value: string;
+  ledger_account_type: string;
+  ledger_account_subtype: string;
+  owed_to_the_bank: boolean;
+  balance_label: string;
+};
+
+/** GET /api/currencies/policy. `gates` is the half that matters: `active`
+ *  alone could not say WHICH of three switches was down, which is why the
+ *  feature was unusable (ACC-19). */
+export type CurrencyPolicy = {
+  active: boolean;
+  functional_currency: string;
+  gates: {
+    platform: { on: boolean; settable: boolean; why?: string };
+    firm: { on: boolean; settable: boolean };
+    client: { on: boolean; settable: boolean };
+    functional_currency_supported: boolean;
+    functional_currency: string;
+  };
+};
+
 /**
  * GET /api/accounting/journal/{id}. Beyond the row itself this carries the two
  * fields the editor is built around:
@@ -772,6 +853,10 @@ export type JournalEntryUpdate = {
   narration?: string;
   entry_type?: string;
   lines?: JournalLineIO[];
+  /** ACC-25. Omit to leave the documents alone; an EMPTY array removes them.
+   *  Accepted on a DRAFT only — a posted entry's header is immutable outside
+   *  `edit_posted_journal`, and the server refuses it with a sentence. */
+  attachments?: { name: string; url: string }[];
 };
 
 // Phase 4.5.1 — a client_portal_users row (F22 fix: invite_token is single-use,
@@ -993,6 +1078,226 @@ export type RecurringJournalRun = {
 // supplier_name -> name, payment_terms_days -> credit_days, and
 // tds_rate_percent -> tds_rate_bps, which is BASIS POINTS (1000 = 10.00%).
 
+// ── Bills of Entry ───────────────────────────────────────────────────────────
+// The customs assessment on an import of goods (PUR-18, migration 389).
+// IGST and compensation cess here are INPUT TAX — CGST Act s.2(62)(a) with
+// Rule 36(1)(d) — and reach GSTR-3B Table 4(A)(1). Basic customs duty and the
+// social welfare surcharge are recoverable from nobody and are COST (AS-2
+// paragraph 6). The browser does not know which is which and must not learn:
+// `domain/gst/bill_of_entry.py` decides, and every derived figure below comes
+// off the wire.
+
+export type BillOfEntry = {
+  id: string;
+  firm_id?: string;
+  client_id: string;
+  be_number: string;
+  be_date: string;
+  port_code: string | null;
+  vendor_id: string | null;
+  purchase_bill_id: string | null;
+  assessable_value_paise: number;
+  basic_customs_duty_paise: number;
+  social_welfare_surcharge_paise: number;
+  other_duty_paise: number;
+  igst_paise: number;
+  cess_paise: number;
+  ineligible_igst_paise: number;
+  ineligible_cess_paise: number;
+  is_sez: boolean;
+  payment_account_id: string | null;
+  duty_expense_account_id: string | null;
+  status: string;
+  journal_entry_id: string | null;
+  notes: string | null;
+  /** Derived by the server, never here. */
+  total_paise: number;
+  creditable_igst_paise: number;
+  creditable_cess_paise: number;
+  non_creditable_duty_paise: number;
+  gstr2b_section: string;
+  can_post: boolean;
+  /** Stops a posting. */
+  refusals: string[];
+  /** True and worth saying; stops nothing. */
+  caveats: string[];
+};
+
+export type BillOfEntryWrite = {
+  client_id: string;
+  be_number: string;
+  be_date: string;
+  port_code?: string | null;
+  vendor_id?: string | null;
+  purchase_bill_id?: string | null;
+  assessable_value_paise?: number;
+  basic_customs_duty_paise?: number;
+  social_welfare_surcharge_paise?: number;
+  other_duty_paise?: number;
+  igst_paise?: number;
+  cess_paise?: number;
+  ineligible_igst_paise?: number;
+  ineligible_cess_paise?: number;
+  is_sez?: boolean;
+  payment_account_id?: string | null;
+  duty_expense_account_id?: string | null;
+  notes?: string | null;
+};
+
+export type BillOfEntryAuthorities = {
+  credit_authority: string;
+  cost_authority: string;
+  table_4a_row: string;
+  gstr2b_sections: string[];
+  not_modelled: string[];
+};
+
+// ── GST registrations ────────────────────────────────────────────────────────
+// A client is one legal person and may hold several GSTINs (GST-20, migration
+// 390). CGST Act s.25(1) makes registration state-wise and s.25(2) allows one
+// per place of business. The PRIMARY is the GSTIN on the client record; this
+// namespace manages the rest, and `domain/gst/registrations.py` presents the
+// union — so the list below always starts with the primary.
+
+// ── Opening documents ────────────────────────────────────────────────────────
+// The bill-wise breakup of a client's opening balances (ACC-14, migration 391).
+// The ledger's opening AR and AP are aggregates from the party masters, which
+// have no dates — so on day one the whole opening receivable ages to nothing.
+// An opening document supplies those dates. It posts NO journal: it is the
+// breakup of the balance, not a second posting of it, so the two have to agree
+// and the difference is NAMED where they do not.
+
+// ── GSTR-9, consolidated from the year's own returns (GST-10) ───────────────
+// CGST Act s.44 with Rule 80(1): the annual return consolidates the financial
+// year's GSTR-1 and GSTR-3B, and the portal opens it once every one of them is
+// furnished. `domain/gst/gstr9_builder.py` decides which figure belongs on
+// which row and which rows it could not derive; this carries shapes only.
+
+export type GSTR9Row = {
+  code: string;
+  label: string;
+  txval_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  cess_paise: number;
+  /** Set where the figure could not be derived. A row with a note is NOT a
+   *  declaration of nil — on an annual return a nil says nothing was owed. */
+  note?: string;
+};
+
+export type GSTR9Working = {
+  financial_year: string;
+  gstin: string;
+  tables: Record<string, GSTR9Row[]>;
+  hsn: {
+    hsn_sc: string; desc: string | null; uqc: string | null; qty: number;
+    txval_paise: number; igst_paise: number; cgst_paise: number;
+    sgst_paise: number; cess_paise: number;
+  }[];
+  months: {
+    period: string; gstr1_status: string | null; gstr3b_status: string | null;
+    gstr1_payload_held: boolean;
+  }[];
+  gaps: string[];
+  /** True only when every month of the year has BOTH returns filed — the
+   *  condition the portal opens FORM GSTR-9 on. */
+  is_complete: boolean;
+  not_built: Record<string, string>;
+  source: string;
+};
+
+export type OpeningDocument = {
+  id: string;
+  kind: "receivable" | "payable";
+  party_id: string;
+  party_name: string | null;
+  document_no: string;
+  document_date: string | null;
+  due_date: string | null;
+  total_paise: number;
+  paid_paise: number;
+  outstanding_paise: number;
+  status: string;
+};
+
+export type OpeningReconciliationRow = {
+  party_id: string;
+  party_name: string | null;
+  opening_balance_paise: number;
+  documents_paise: number;
+  document_count: number;
+  /** Balance less documents. POSITIVE means part of the balance will not age. */
+  difference_paise: number;
+  agrees: boolean;
+  /** The server's own sentence. Null when the two agree. */
+  sentence: string | null;
+};
+
+export type OpeningDocumentListing = {
+  kind: "receivable" | "payable";
+  documents: OpeningDocument[];
+  documents_paise: number;
+  opening_balance_paise: number;
+  reconciliation: OpeningReconciliationRow[];
+  unreconciled_parties: number;
+};
+
+export type DoubleOpening = {
+  account_id: string;
+  account_name: string | null;
+  master_paise: number;
+  trial_balance_paise: number;
+  /** The server's own sentence. Which of the two figures is the mistake is the
+   *  CA's answer, so no difference is offered. */
+  sentence: string;
+};
+
+export type OpeningReconciliation = {
+  receivable: OpeningDocumentListing;
+  payable: OpeningDocumentListing;
+  /** Accounts the opening position was posted into TWICE — once from the party
+   *  and bank masters, once from an imported trial balance. The two journal
+   *  families are deliberately separate and neither corrects the other. */
+  double_openings: DoubleOpening[];
+};
+
+export type OpeningDocumentKinds = {
+  kinds: { value: string; label: string; party: string; number: string }[];
+  /** Why an opening bill contributes nothing to a section 194 FY aggregate. */
+  section_194_aggregate: string;
+};
+
+export type ClientGstRegistration = {
+  /** Null on the PRIMARY: it is `clients.gstin` and has no registration row. */
+  id: string | null;
+  gstin: string;
+  state_code: string;
+  registration_type: string;
+  filing_frequency: string;
+  is_primary: boolean;
+  trade_name: string | null;
+  effective_from: string | null;
+  /** CGST Act s.29 cancellation or surrender. The periods it was live still
+   *  owe their returns, so a cancelled registration is closed, never hidden. */
+  effective_to: string | null;
+  label: string;
+  files_gstr1_and_3b: boolean;
+  /** Set when this registration owes a DIFFERENT form — a composition dealer
+   *  files CMP-08 and GSTR-4, an ISD files GSTR-6, and so on. Offering it a
+   *  GSTR-3B screen offers a return it must not file. */
+  other_return_form: string | null;
+};
+
+export type GstRegistrationKinds = {
+  registration_types: {
+    value: string;
+    files_gstr1_and_3b: boolean;
+    other_return_form: string | null;
+  }[];
+  filing_frequencies: string[];
+};
+
 export type Vendor = {
   id: string;
   client_id: string;
@@ -1011,6 +1316,11 @@ export type Vendor = {
    *  (that means no credit at all). Recorded, never enforced — nothing blocks
    *  or warns on a bill that would exceed it. */
   credit_limit_paise: number | null;
+  /** Migration 388. Is this supplier registered under GST? NULL is a real
+   *  THIRD state — nobody has recorded it — and CGST Act s.31(3)(f) turns on
+   *  the answer, so the self-invoice path NAMES an unrecorded vendor as a gap
+   *  rather than assuming either way. */
+  gst_registration_status?: string | null;
   is_active: boolean;
   created_at?: string;
 };
@@ -1029,6 +1339,9 @@ export type VendorWrite = {
   tds_rate_bps?: number;
   credit_days?: number | null;
   credit_limit_paise?: number | null;
+  /** 'registered' | 'unregistered'. Omit to leave it as it is — a PATCH drops
+   *  nulls, so this cannot be cleared back to unrecorded from here. */
+  gst_registration_status?: string | null;
   is_active?: boolean;
 };
 
@@ -1487,6 +1800,202 @@ export type GSTStatusUpdate = {
   filed_date?: string;
 };
 
+/** SALES-21 — the sales cycle before the tax invoice. */
+export interface SalesCycleVocabulary {
+  quote_kinds: { value: string; label: string }[];
+  quote_statuses: string[];
+  order_statuses: string[];
+  challan_statuses: string[];
+  challan_reasons: { value: string; label: string; is_a_supply: boolean }[];
+  goods_kinds: { value: string; label: string }[];
+  not_a_tax_invoice: string;
+  no_tax_on_a_non_supply: string;
+  job_work_exclusion: string;
+  rule_55_5_steps: string[];
+  copies: { copy: string; legend: string }[];
+  itc_04: { decided: boolean; readings: string[]; refusal: string };
+}
+
+export interface PreInvoiceLine {
+  description: string;
+  hsn_sac?: string | null;
+  quantity: number;
+  unit?: string | null;
+  rate_paise: number;
+  gst_rate_percent: number;
+  is_service?: boolean;
+  discount_percent_bps?: number | null;
+  discount_paise?: number | null;
+  order_line_id?: string | null;
+  quantity_is_provisional?: boolean;
+}
+
+export interface SalesQuotation {
+  id: string;
+  kind: string;
+  title?: string;
+  document_no: string;
+  document_date: string;
+  valid_until?: string | null;
+  status: string;
+  customer_id: string;
+  customer_name?: string | null;
+  taxable_paise: number;
+  total_paise: number;
+  is_expired: boolean | null;
+}
+
+export interface SalesOrder {
+  id: string;
+  document_no: string;
+  document_date: string;
+  status: string;
+  customer_id: string;
+  customer_name?: string | null;
+  customer_po_no?: string | null;
+  expected_delivery_date?: string | null;
+  taxable_paise: number;
+  total_paise: number;
+}
+
+export interface DeemedSupplyClock {
+  applies: boolean;
+  statute: string;
+  months: number | null;
+  sent_on: string | null;
+  due_back_by: string | null;
+  overdue: boolean | null;
+  days_remaining: number | null;
+  consequence: string;
+  gaps: string[];
+}
+
+export interface DeliveryChallan {
+  id: string;
+  document_no: string;
+  document_date: string;
+  reason: string;
+  reason_label?: string;
+  status: string;
+  goods_kind?: string | null;
+  received_back_on?: string | null;
+  consignee_name?: string | null;
+  taxable_paise: number;
+  total_paise: number;
+  clock: DeemedSupplyClock;
+}
+
+export interface ChallanParticulars {
+  challan: DeliveryChallan | null;
+  lines: Record<string, unknown>[];
+  rule: string;
+  reason_label: string;
+  particulars: { clause: string; label: string; value: string | null; required: boolean }[];
+  missing: string[];
+  copies: { copy: string; legend: string }[];
+  clock: DeemedSupplyClock;
+  rule_55_5: { steps: string[]; gaps: string[] };
+  itc_04: { decided: boolean; readings: string[]; refusal: string };
+  ca_review_required: boolean;
+}
+
+export interface OrderOpenLine {
+  order_line_id: string;
+  description: string;
+  ordered_qty: string;
+  delivered_qty: string;
+  invoiced_qty: string;
+  undelivered_qty: string;
+  unbilled_qty: string;
+}
+
+export interface OrderPosition {
+  order: SalesOrder | null;
+  lines: OrderOpenLine[];
+  status_would_be: string;
+  gaps: string[];
+}
+
+/** PUR-25 — the purchase cycle before the bill. */
+export interface PurchaseCycleVocabulary {
+  order_statuses: string[];
+  order_open_statuses: string[];
+  receipt_statuses: string[];
+  posts_nothing: string;
+  section_16_2_b: string;
+  bill_to_ship_to: string;
+  msmed_acceptance: string;
+  no_tolerance: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  document_no: string;
+  document_date: string;
+  expected_date?: string | null;
+  status: string;
+  vendor_id: string;
+  vendor_name?: string | null;
+  taxable_paise: number;
+  total_paise: number;
+}
+
+export interface GoodsReceipt {
+  id: string;
+  document_no: string;
+  received_on: string;
+  status: string;
+  order_id?: string | null;
+  vendor_id: string;
+  vendor_challan_no?: string | null;
+  objection_raised_on?: string | null;
+  objection_removed_on?: string | null;
+}
+
+export interface PurchaseOrderOpenLine {
+  order_line_id: string;
+  description: string;
+  ordered_qty: string;
+  received_qty: string;
+  billed_qty: string;
+  unreceived_qty: string;
+  unbilled_qty: string;
+}
+
+export interface PurchaseOrderPosition {
+  order: PurchaseOrder | null;
+  lines: PurchaseOrderOpenLine[];
+  status_would_be: string;
+  posts_nothing: string;
+}
+
+export interface ThreeWayMatchLine {
+  bill_line_id: string;
+  description: string;
+  billed_qty: string;
+  billed_rate_paise: number;
+  order_line_id: string | null;
+  ordered_qty: string | null;
+  ordered_rate_paise: number | null;
+  received_qty: string | null;
+  quantity_difference: string | null;
+  rate_difference_paise: number | null;
+}
+
+export interface ThreeWayMatch {
+  bill_id: string;
+  matched: boolean;
+  has_order: boolean;
+  has_receipt: boolean;
+  lines: ThreeWayMatchLine[];
+  differences: string[];
+  gaps: string[];
+  caveats: string[];
+  acceptance_date: string | null;
+  acceptance_source: string;
+  ca_review_required: boolean;
+}
+
 export const api = {
   /** The firm's own reading of the DTAA rates it withholds under, per country
    *  and nature of income. Ships empty and is never seeded: India has
@@ -1614,6 +2123,40 @@ export const api = {
      *  payments are each within 5% of their own aggregate, and the payments
      *  side has its own denominator that turnover cannot supply. Send none of
      *  them and the base figure applies, which is the safe direction. */
+    /** GET /api/income-tax/regime-election — §115BAC(6) with Rule 21AGA.
+     *
+     *  What choosing the old regime actually REQUIRES, which is not the same
+     *  question as which regime produces less tax. A client WITH business or
+     *  professional income must file Form 10-IEA by the §139(1) due date and
+     *  gets one return journey for life; a client without files in the return
+     *  and may choose afresh every year.
+     *
+     *  Prior-year elections are an INPUT the CA supplies as repeated `prior`
+     *  parameters (`2024-25:withdrew`). The product holds no filing history,
+     *  and supplying none is answered as `history_unknown` — a different
+     *  answer from "the option is available". */
+    regimeElection: (q: {
+      wants_old_regime: boolean;
+      has_business_income: boolean;
+      financial_year: string;
+      form_10iea_filed_on?: string;
+      is_audit?: boolean;
+      has_transfer_pricing_report?: boolean;
+      business_income_ceased?: boolean;
+      prior?: string[];
+    }) => {
+      const p = new URLSearchParams({
+        wants_old_regime: String(q.wants_old_regime),
+        has_business_income: String(q.has_business_income),
+        financial_year: q.financial_year,
+      });
+      if (q.form_10iea_filed_on) p.set("form_10iea_filed_on", q.form_10iea_filed_on);
+      if (q.is_audit) p.set("is_audit", "true");
+      if (q.has_transfer_pricing_report) p.set("has_transfer_pricing_report", "true");
+      if (q.business_income_ceased) p.set("business_income_ceased", "true");
+      for (const one of q.prior ?? []) p.append("prior", one);
+      return request(`/api/income-tax/regime-election?${p.toString()}`);
+    },
     taxAuditApplicability: (q: {
       nature: "business" | "profession";
       turnover_paise: number;
@@ -1913,6 +2456,24 @@ export const api = {
       rateAudit: (params: Record<string, string>) => request(`/api/fx-reports/rate-audit?${new URLSearchParams(params)}`),
       openBalances: (params: Record<string, string>) => request(`/api/fx-reports/open-balances?${new URLSearchParams(params)}`),
     },
+    /** AS 11 period-end revaluation of open foreign monetary items.
+     *
+     * A POST for the PREVIEW as well, because the closing rates are a map and
+     * a query string is the wrong place for one — the same shape as
+     * `/api/filing-demo/{flow}/preview`. The preview writes nothing; `run`
+     * posts through the one kernel and auto-reverses on day 1 of the next
+     * period. `closing_rates` may be omitted from the preview, which is the
+     * useful first call: the answer names the currencies that need one. */
+    fxRevaluation: {
+      preview: (clientId: string, body: { period_end: string; closing_rates?: Record<string, string> }) =>
+        request(`/api/fx-revaluation/preview?client_id=${encodeURIComponent(clientId)}`, {
+          method: "POST", body: JSON.stringify(body),
+        }),
+      run: (clientId: string, body: { period_end: string; closing_rates: Record<string, string> }) =>
+        request(`/api/fx-revaluation/run?client_id=${encodeURIComponent(clientId)}`, {
+          method: "POST", body: JSON.stringify(body),
+        }),
+    },
   },
   // Stock register + per-item ledger (migration 188). Read-only — all
   // movements are written as a side effect of issuing/receiving documents.
@@ -1931,15 +2492,71 @@ export const api = {
       request(`/api/inventory/items/${serviceCatalogueId}/adjust`, { method: "POST", body: JSON.stringify(body) }),
     writedown: (serviceCatalogueId: string, body: unknown) =>
       request(`/api/inventory/items/${serviceCatalogueId}/writedown`, { method: "POST", body: JSON.stringify(body) }),
+    // INV-08 — the physical count. One sheet, not a hundred adjustments. The
+    // VARIANCE is derived on the server against the position as at the count
+    // date and is never sent up; so is which line may post and why.
+    openCountSession: (body: unknown) =>
+      request<ApiResp<{ id: string }>>("/api/inventory/count-sessions",
+        { method: "POST", body: JSON.stringify(body) }),
+    countSessions: (params: Record<string, string>) =>
+      request<ApiResp<StockCountSessionRow[]>>(
+        `/api/inventory/count-sessions?${new URLSearchParams(params)}`),
+    countSession: (sessionId: string) =>
+      request<ApiResp<StockCountSheet>>(
+        `/api/inventory/count-sessions/${encodeURIComponent(sessionId)}`),
+    saveCountSession: (sessionId: string, body: unknown) =>
+      request<ApiResp<StockCountSheet & { saved: number }>>(
+        `/api/inventory/count-sessions/${encodeURIComponent(sessionId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    postCountSession: (sessionId: string) =>
+      request<ApiResp<StockCountPostResult>>(
+        `/api/inventory/count-sessions/${encodeURIComponent(sessionId)}/post`,
+        { method: "POST" }),
+    // INV-02 — which of AS-2 paragraph 14's two cost formulas prices an
+    // issue. The formula is a per-CLIENT policy (AS-2 par. 16), the answer
+    // for a client with nothing recorded is the weighted average, and a
+    // change is prospective (AS-5 par. 29/32). Every sentence in the response
+    // is the server's; nothing here decides.
+    costingPolicy: (params: Record<string, string>) =>
+      request<ApiResp<InventoryCostingPolicy>>(
+        `/api/inventory/costing-policy?${new URLSearchParams(params)}`),
+    setCostingPolicy: (body: {
+      client_id: string; method: string; effective_from: string | null;
+    }) =>
+      request<ApiResp<InventoryCostingPolicy>>("/api/inventory/costing-policy",
+        { method: "PUT", body: JSON.stringify(body) }),
   },
   // Multi-Currency (Phase 1/5) — currency master + resolved policy (gates FX UI).
   currencies: {
     list: (params?: Record<string, string>) => request(`/api/currencies${params ? "?" + new URLSearchParams(params) : ""}`),
-    policy: (params: Record<string, string>) => request(`/api/currencies/policy?${new URLSearchParams(params)}`),
+    policy: (params: Record<string, string>) =>
+      request<ApiResp<CurrencyPolicy>>(`/api/currencies/policy?${new URLSearchParams(params)}`),
+    // ACC-19 — the two gates that were READ by six routers and WRITTEN BY
+    // NOTHING. `setEntitlement` is the firm switch (L2), `setClientPolicy` the
+    // per-client one (L3). The platform gate is an environment kill switch and
+    // deliberately has no setter.
+    // The firm gate on its own, with no client in the request — a firm with no
+    // clients yet cannot read it off a client's policy, and that firm is
+    // exactly the one a Partner is switching this on for.
+    entitlement: () =>
+      request<ApiResp<{ platform: { on: boolean; why?: string }; firm: { on: boolean } }>>(
+        "/api/currencies/entitlement"),
+    setEntitlement: (enabled: boolean) =>
+      request<ApiResp<{ multi_currency_entitled: boolean }>>("/api/currencies/entitlement",
+        { method: "PUT", body: JSON.stringify({ enabled }) }),
+    setClientPolicy: (clientId: string, enabled: boolean) =>
+      request<ApiResp<{ multi_currency_enabled: boolean }>>(
+        `/api/currencies/policy?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PUT", body: JSON.stringify({ enabled }) }),
   },
   // Banking (Phase B.0): all bank mutations go through the backend banking
   // service — the frontend never writes bank rows or journals to Supabase.
   banking: {
+    // BANK-21 — the five kinds of account and what each one is. The TYPE
+    // decides whether the ledger is an asset or a liability and, for a card,
+    // which way up its balance reads, so the form must not hold its own list.
+    bankAccountTypes: () =>
+      request<ApiResp<{ account_types: BankAccountTypeInfo[] }>>("/api/banking/account-types"),
     listBankAccounts: (params?: Record<string, string>) => request(`/api/banking/accounts${params ? "?" + new URLSearchParams(params) : ""}`),
     createBankAccount: (data: unknown) => request("/api/banking/accounts", { method: "POST", body: JSON.stringify(data) }),
     updateBankAccount: (id: string, data: unknown) => request(`/api/banking/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
@@ -2268,6 +2885,37 @@ export const api = {
     // is the thing someone wires a button to next.
   },
   payroll: {
+    /** PAY-23 — the annual statutory bonus register (Payment of Bonus Act
+     *  1965). Who is owed, who is out and why, §19's due date and the
+     *  employer's own §10/§11 rate. Every sentence is the server's; the
+     *  browser spells no section and no threshold. */
+    bonusRegister: (params: Record<string, string>) =>
+      request<ApiResp<BonusRegister>>(
+        `/api/payroll/bonus-register?${new URLSearchParams(params)}`),
+    saveBonusDeclaration: (body: {
+      client_id: string; accounting_year: string;
+      /** null = apply the statutory minimum. §10's figure lives on the server
+       *  only; a default here would be a second copy of it. */
+      rate_bps: number | null;
+      allocable_surplus_paise: number | null;
+      minimum_wage_monthly_paise: number | null;
+      scheduled_employment: string | null;
+    }) =>
+      request<ApiResp<unknown>>("/api/payroll/bonus-declaration",
+        { method: "PUT", body: JSON.stringify(body) }),
+    /** §9 — forfeiture of the WHOLE bonus on DISMISSAL for one of the Act's
+     *  five grounds. The ground list comes back on the register as
+     *  `section_9_grounds`; the browser holds none of its own. */
+    saveBonusDisqualification: (body: {
+      client_id: string; employee_id: string; accounting_year: string;
+      ground: string; dismissed_on: string; notes?: string | null;
+    }) =>
+      request<ApiResp<unknown>>("/api/payroll/bonus-disqualification",
+        { method: "PUT", body: JSON.stringify(body) }),
+    removeBonusDisqualification: (params: Record<string, string>) =>
+      request<ApiResp<unknown>>(
+        `/api/payroll/bonus-disqualification?${new URLSearchParams(params)}`,
+        { method: "DELETE" }),
     /** One employee's §192 projection for a financial year. Served, never
      *  computed here — the browser's own ladder went stale the day the
      *  Finance Act moved and said nothing. */
@@ -3533,6 +4181,17 @@ export const api = {
    *  ageing, the Schedule III payables note, GSTR-2B matching, s.43B(h) —
    *  reads `vendors`, so a TDS section recorded anywhere else withholds nothing
    *  and s.40(a)(ia) disallows the whole expenditure. PUR-16. */
+  customers: {
+    /** The client's customers. `/api/customers/` has served this since the
+     *  first sales work; the frontend reached it over PostgREST instead, which
+     *  is why there was no helper here. */
+    list: (clientId: string, includeInactive = false) => {
+      const q = new URLSearchParams({ client_id: clientId });
+      if (includeInactive) q.set("include_inactive", "true");
+      return request<ApiResp<{ id: string; name: string }[]>>(`/api/customers/?${q}`);
+    },
+  },
+
   vendors: {
     list: (clientId: string, includeInactive = false) => {
       const q = new URLSearchParams({ client_id: clientId });
@@ -3548,6 +4207,234 @@ export const api = {
     update: (id: string, body: VendorWrite) =>
       request<ApiResp<Vendor>>(`/api/vendors/${id}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+  },
+
+  /** The annual return's working (GST-10). */
+  gstr9: {
+    compute: (clientId: string, financialYear: string, gstin?: string) => {
+      const q = new URLSearchParams({ client_id: clientId,
+                                      financial_year: financialYear });
+      if (gstin) q.set("gstin", gstin);
+      return request<ApiResp<GSTR9Working>>(`/api/gst-workspace/gstr9/compute?${q}`);
+    },
+  },
+
+  /** The bill-wise breakup of a client's opening balances (ACC-14). */
+  /** PUR-25 — purchase order, goods receipt, three-way match. */
+  purchaseCycle: {
+    vocabulary: () =>
+      request<ApiResp<PurchaseCycleVocabulary>>("/api/purchase-cycle/vocabulary"),
+    orders: (clientId: string, onlyOpen = false) =>
+      request<ApiResp<PurchaseOrder[]>>(
+        `/api/purchase-cycle/orders?client_id=${encodeURIComponent(clientId)}`
+        + `&only_open=${onlyOpen ? "true" : "false"}`),
+    orderLines: (id: string, clientId: string) =>
+      request<ApiResp<Record<string, unknown>[]>>(
+        `/api/purchase-cycle/orders/${id}/lines`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    orderPosition: (id: string, clientId: string) =>
+      request<ApiResp<PurchaseOrderPosition>>(
+        `/api/purchase-cycle/orders/${id}/position`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    createOrder: (body: Record<string, unknown>) =>
+      request<ApiResp<PurchaseOrder>>("/api/purchase-cycle/orders",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateOrder: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<PurchaseOrder>>(
+        `/api/purchase-cycle/orders/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    receipts: (clientId: string) =>
+      request<ApiResp<GoodsReceipt[]>>(
+        `/api/purchase-cycle/receipts?client_id=${encodeURIComponent(clientId)}`),
+    receiptLines: (id: string, clientId: string) =>
+      request<ApiResp<Record<string, unknown>[]>>(
+        `/api/purchase-cycle/receipts/${id}/lines`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    createReceipt: (body: Record<string, unknown>) =>
+      request<ApiResp<GoodsReceipt>>("/api/purchase-cycle/receipts",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateReceipt: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<GoodsReceipt>>(
+        `/api/purchase-cycle/receipts/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    matchBill: (billId: string, clientId: string) =>
+      request<ApiResp<ThreeWayMatch>>(
+        `/api/purchase-cycle/bills/${billId}/match`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+  },
+
+  /** SALES-21 — quotation, proforma invoice, sales order, Rule 55 challan. */
+  salesCycle: {
+    vocabulary: () =>
+      request<ApiResp<SalesCycleVocabulary>>("/api/sales-cycle/vocabulary"),
+    quotations: (clientId: string, kind?: string) =>
+      request<ApiResp<SalesQuotation[]>>(
+        `/api/sales-cycle/quotations?client_id=${encodeURIComponent(clientId)}`
+        + (kind ? `&kind=${encodeURIComponent(kind)}` : "")),
+    quotationLines: (id: string, clientId: string) =>
+      request<ApiResp<Record<string, unknown>[]>>(
+        `/api/sales-cycle/quotations/${id}/lines`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    createQuotation: (body: Record<string, unknown>) =>
+      request<ApiResp<SalesQuotation>>("/api/sales-cycle/quotations",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateQuotation: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<SalesQuotation>>(
+        `/api/sales-cycle/quotations/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    orders: (clientId: string, onlyOpen = false) =>
+      request<ApiResp<SalesOrder[]>>(
+        `/api/sales-cycle/orders?client_id=${encodeURIComponent(clientId)}`
+        + `&only_open=${onlyOpen ? "true" : "false"}`),
+    orderPosition: (id: string, clientId: string) =>
+      request<ApiResp<OrderPosition>>(
+        `/api/sales-cycle/orders/${id}/position`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    createOrder: (body: Record<string, unknown>) =>
+      request<ApiResp<SalesOrder>>("/api/sales-cycle/orders",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateOrder: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<SalesOrder>>(
+        `/api/sales-cycle/orders/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    challans: (clientId: string) =>
+      request<ApiResp<DeliveryChallan[]>>(
+        `/api/sales-cycle/challans?client_id=${encodeURIComponent(clientId)}`),
+    challan: (id: string, clientId: string) =>
+      request<ApiResp<ChallanParticulars>>(
+        `/api/sales-cycle/challans/${id}?client_id=${encodeURIComponent(clientId)}`),
+    createChallan: (body: Record<string, unknown>) =>
+      request<ApiResp<DeliveryChallan>>("/api/sales-cycle/challans",
+        { method: "POST", body: JSON.stringify(body) }),
+    updateChallan: (id: string, clientId: string, body: Record<string, unknown>) =>
+      request<ApiResp<DeliveryChallan>>(
+        `/api/sales-cycle/challans/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+  },
+
+  openingDocuments: {
+    kinds: () =>
+      request<ApiResp<OpeningDocumentKinds>>("/api/opening-documents/kinds"),
+    list: (clientId: string, kind: "receivable" | "payable") =>
+      request<ApiResp<OpeningDocumentListing>>(
+        `/api/opening-documents?client_id=${encodeURIComponent(clientId)}`
+        + `&kind=${encodeURIComponent(kind)}`),
+    create: (body: {
+      client_id: string;
+      kind: "receivable" | "payable";
+      party_id: string;
+      document_no: string;
+      document_date: string;
+      due_date?: string | null;
+      outstanding_paise: number;
+      notes?: string | null;
+    }) => request<ApiResp<OpeningDocument>>("/api/opening-documents",
+      { method: "POST", body: JSON.stringify(body) }),
+    remove: (id: string, clientId: string, kind: "receivable" | "payable") =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/opening-documents/${id}?client_id=${encodeURIComponent(clientId)}`
+        + `&kind=${encodeURIComponent(kind)}`,
+        { method: "DELETE" }),
+    /** Both sides at once — what the Opening Balances tab opens on. */
+    reconciliation: (clientId: string) =>
+      request<ApiResp<OpeningReconciliation>>(
+        `/api/opening-documents/reconciliation?client_id=${encodeURIComponent(clientId)}`),
+  },
+
+  /** Which GST registrations a client holds (GST-20). */
+  clientGstRegistrations: {
+    kinds: () =>
+      request<ApiResp<GstRegistrationKinds>>("/api/client-gst-registrations/kinds"),
+    list: (clientId: string) =>
+      request<ApiResp<ClientGstRegistration[]>>(
+        `/api/client-gst-registrations?client_id=${encodeURIComponent(clientId)}`),
+    create: (body: {
+      client_id: string;
+      gstin: string;
+      registration_type?: string;
+      filing_frequency?: string;
+      trade_name?: string | null;
+      effective_from?: string | null;
+    }) => request<ApiResp<ClientGstRegistration>>("/api/client-gst-registrations",
+      { method: "POST", body: JSON.stringify(body) }),
+    /** Records a s.29 cancellation. NOT a delete — the returns for every period
+     *  the registration was live are still owed. */
+    close: (id: string, clientId: string, effectiveTo: string) =>
+      request<ApiResp<ClientGstRegistration>>(
+        `/api/client-gst-registrations/${id}/close`,
+        { method: "POST",
+          body: JSON.stringify({ client_id: clientId, effective_to: effectiveTo }) }),
+    /** For a registration recorded in ERROR. The server refuses once a return
+     *  has been prepared under it. */
+    remove: (id: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/client-gst-registrations/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+  },
+
+  /** The customs assessment on an import of goods (PUR-18).
+   *
+   *  A Bill of Entry is NOT the supplier's invoice under another name: the
+   *  duty is assessed and collected by CUSTOMS (IGST Act s.5(1) proviso with
+   *  Customs Tariff Act s.3(7)), so it touches no accounts payable. Which part
+   *  of it is input tax and which is cost is the server's answer. */
+  billsOfEntry: {
+    authorities: () =>
+      request<ApiResp<BillOfEntryAuthorities>>("/api/bills-of-entry/authorities"),
+    list: (params: { client_id: string; date_from?: string; date_to?: string }) =>
+      request<ApiResp<BillOfEntry[]>>(
+        `/api/bills-of-entry?${new URLSearchParams(params as Record<string, string>)}`),
+    create: (body: BillOfEntryWrite) =>
+      request<ApiResp<BillOfEntry>>("/api/bills-of-entry",
+        { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, clientId: string, body: Partial<BillOfEntryWrite>) =>
+      request<ApiResp<BillOfEntry>>(
+        `/api/bills-of-entry/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify(body) }),
+    post: (id: string, clientId: string) =>
+      request<ApiResp<BillOfEntry>>(
+        `/api/bills-of-entry/${id}/post?client_id=${encodeURIComponent(clientId)}`,
+        { method: "POST" }),
+    remove: (id: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/bills-of-entry/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+  },
+
+  /** The two documents a reverse-charge purchase owes (PUR-19).
+   *
+   *  CGST Act s.31(3)(f) makes the RECIPIENT issue a self-invoice for a
+   *  reverse-charge supply from an UNREGISTERED supplier; s.31(3)(g) makes them
+   *  issue a payment voucher at the time of payment on EVERY s.9(3)/(4)
+   *  liability, registered or not. The browser does not know that difference
+   *  and must not learn it — `domain/gst/rcm_documents.py` decides, and the
+   *  preview carries the answer with its reasons. */
+  rcmDocuments: {
+    kinds: () => request<ApiResp<RcmDocumentKind[]>>("/api/rcm-documents/kinds"),
+    /** The three answers to "is this supplier registered". Served rather than
+     *  spelled here: `unrecorded` is a real third state, and a screen that
+     *  knows only two turns a named gap into a silent guess. */
+    registrationStates: () =>
+      request<ApiResp<string[]>>("/api/rcm-documents/registration-states"),
+    list: (params: { client_id: string; kind?: string }) =>
+      request<ApiResp<RcmDocumentRow[]>>(
+        `/api/rcm-documents?${new URLSearchParams(params as Record<string, string>)}`),
+    previewSelfInvoice: (params: { client_id: string; purchase_bill_id: string }) =>
+      request<ApiResp<RcmDocumentPreview>>(
+        `/api/rcm-documents/preview/self-invoice?${new URLSearchParams(params)}`),
+    previewPaymentVoucher: (params: { client_id: string; purchase_payment_id: string }) =>
+      request<ApiResp<RcmDocumentPreview>>(
+        `/api/rcm-documents/preview/payment-voucher?${new URLSearchParams(params)}`),
+    issue: (body: {
+      client_id: string;
+      kind: "self_invoice" | "payment_voucher";
+      purchase_bill_id?: string;
+      purchase_payment_id?: string;
+      document_no?: string;
+      document_date?: string;
+      notes?: string;
+    }) => request<ApiResp<RcmDocumentRow>>("/api/rcm-documents",
+      { method: "POST", body: JSON.stringify(body) }),
   },
 
   reports: {
@@ -3974,4 +4861,165 @@ export type EsicMappedIpCheck = {
   matched: string[];
   would_be_rejected: boolean;
   what_it_means: string;
+};
+
+// ── The two documents a reverse-charge purchase owes (PUR-19) ───────────────
+//
+// Shapes only. Which document is due, what it says and what could not be
+// stated are `domain/gst/rcm_documents.py`'s answers — in particular the one
+// difference that matters, that s.31(3)(f) reaches only an UNREGISTERED
+// supplier while s.31(3)(g) reaches every reverse-charge payment, is nowhere
+// in this file and must not be.
+
+export type RcmDocumentKind = {
+  kind: "self_invoice" | "payment_voucher";
+  section: string;
+  rule: string;
+  hangs_off: "purchase_bill" | "purchase_payment";
+  only_when_supplier_unregistered: boolean;
+};
+
+export type RcmParty = {
+  name: string;
+  address: string;
+  gstin: string | null;
+  state_code: string | null;
+};
+
+export type RcmParticulars = {
+  kind: string;
+  section: string;
+  rule: string;
+  document_no: string;
+  document_date: string;
+  supplier: RcmParty;
+  recipient: RcmParty;
+  lines: {
+    description: string;
+    hsn_sac: string | null;
+    quantity: string | null;
+    unit: string | null;
+    taxable_paise: number;
+  }[];
+  taxable_paise: number;
+  amount_paid_paise: number;
+  taxes: { head: string; amount_paise: number }[];
+  total_tax_paise: number;
+  place_of_supply: [string, string];
+  tax_payable_on_reverse_charge: boolean;
+  gaps: string[];
+  caveats: string[];
+};
+
+export type RcmDocumentRow = {
+  id: string;
+  kind: string;
+  document_no: string;
+  document_date: string;
+  purchase_bill_id: string | null;
+  purchase_payment_id: string | null;
+  taxable_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  igst_paise: number;
+  cess_paise: number;
+  amount_paid_paise: number;
+};
+
+export type RcmDocumentPreview = {
+  kind: "self_invoice" | "payment_voucher";
+  section: string;
+  rule: string;
+  /** The Act asks for this document. */
+  due: boolean;
+  /** Why it is NOT due — a settled answer about the statute. */
+  reasons: string[];
+  /** What nobody has recorded yet. DIFFERENT from `reasons`: this one is
+   *  actionable, and a screen that renders the two the same way turns a named
+   *  gap into a refusal. */
+  gaps: string[];
+  vendor_registration: "registered" | "unregistered" | "unrecorded";
+  existing: RcmDocumentRow | null;
+  particulars: RcmParticulars | null;
+};
+
+
+/** INV-02 — a client's cost formula and what changing it would mean.
+ *
+ *  `method` is always one of the two AS-2 paragraph 14 permits and is never
+ *  null: a client with nothing recorded IS on the weighted average, because
+ *  it was the only formula this product had. `is_recorded` is the separate
+ *  fact of whether anybody has chosen, and `unrecorded_means` carries the
+ *  sentence saying so — present only when they have not.
+ *
+ *  `methods_used` is DERIVED from `inventory_stock_ledger.costing_method`,
+ *  the stamp on every movement, which is what makes the AS-5 paragraph 32
+ *  disclosure a property of the ledger rather than something remembered.
+ */
+export type InventoryCostingPolicy = {
+  client_id: string;
+  method: string;
+  label: string;
+  is_recorded: boolean;
+  unrecorded_means: string | null;
+  methods: { value: string; label: string }[];
+  standard_cost_refused: string;
+  as5_disclosure: string;
+  earliest_date_a_change_can_take_effect: string | null;
+  methods_used: {
+    method: string; label: string;
+    first_movement: string; last_movement: string;
+  }[];
+};
+
+
+/** PAY-23 — the annual statutory bonus register for one client-year.
+ *
+ *  `rate_is_the_statutory_minimum` is a SEPARATE fact from the rate: 8.33% is
+ *  both §10's floor and what applies when no allocable surplus has been
+ *  declared, and a CA needs to see which of those it is.
+ *
+ *  `working_days` is `null` where the year's attendance is not recorded — NOT
+ *  zero. §8 needs thirty working days, and reading absence as nil would
+ *  disqualify every employee at a client who runs payroll without attendance,
+ *  hiding a debt. The server computes the figure and names the employee.
+ */
+export type BonusRegister = {
+  accounting_year: string;
+  rate_bps: number;
+  rate_is_the_statutory_minimum: boolean;
+  minimum_wage_monthly_paise: number | null;
+  scheduled_employment: string | null;
+  due_date: string;
+  employees: {
+    employee_id: string;
+    employee_name: string;
+    monthly_salary_paise: number;
+    months_worked: number;
+    working_days: number | null;
+    eligible: boolean;
+    payable_paise: number;
+    minimum_paise: number;
+    maximum_paise: number;
+    calculation_base_monthly_paise: number;
+    reasons: string[];
+    gaps: string[];
+  }[];
+  total_payable_paise: number;
+  total_minimum_paise: number;
+  total_maximum_paise: number;
+  eligible_count: number;
+  excluded_count: number;
+  gaps: string[];
+  notes: string[];
+  declaration: {
+    id: string;
+    accounting_year: string;
+    rate_bps: number;
+    allocable_surplus_paise: number | null;
+    minimum_wage_monthly_paise: number | null;
+    scheduled_employment: string | null;
+    notes: string | null;
+  } | null;
+  section_9_grounds: { value: string; label: string }[];
 };

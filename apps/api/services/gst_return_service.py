@@ -25,11 +25,15 @@ from core.ist_clock import ist_fy_label
 import services.gst_2b_reconciliation_service as gst_2b_reconciliation_service
 import services.gst_advance_service as gst_advance_service
 import services.itc_register_service as itc_register_service
+import services.bill_of_entry_service as bill_of_entry_service
 from domain.gst.gstr3b_computer import (
     SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
+    ImportOfGoods,
     AdvanceTaxOnReceipts, compute_gstr3b,
 )
 from core.observability import capture_soft_failure
+import domain.gst.bank_charge_gst as bank_charge_gst
+import domain.gst.section_18_6 as section_18_6
 from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
 from domain.gst.classifier import classify_transaction, TransactionForClassification
 from domain.gst.validator import GSTValidator, InvoiceToValidate
@@ -177,11 +181,19 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
     return {"output_paise": output_paise, "itc_paise": itc_paise, "by_head": by_head}
 
 
+from domain.accounting import opening_documents as _opening
+
+
 def _posted_sales(db, firm_id, client_id, start, end) -> list[dict]:
-    return _paginate_all(lambda: db.table("client_sales_invoices").select("*")
+    # OPENING DOCUMENTS ARE NOT THIS CLIENT'S SUPPLIES (ACC-14, migration 391).
+    # An invoice carried over from the system the client migrated from was
+    # raised, taxed and DECLARED there; declaring it again here states an
+    # outward supply twice and pays the tax on it twice.
+    return _opening.without_carried_over(_paginate_all(
+        lambda: db.table("client_sales_invoices").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_SALES_POSTED))
-            .gte("invoice_date", start).lte("invoice_date", end))
+            .gte("invoice_date", start).lte("invoice_date", end)))
 
 
 def _issued_credit_notes(db, firm_id, client_id, start, end) -> list[dict]:
@@ -211,10 +223,11 @@ def _bills_cancelled_in(db, firm_id, client_id, start, end) -> list[dict]:
     the cancellation reversal nets the original posting to zero inside the same
     month. Only credit availed in an EARLIER period is given back here.
     """
-    rows = _paginate_all(lambda: db.table("purchase_bills").select("*")
+    rows = _opening.without_carried_over(_paginate_all(
+        lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "cancelled")
-            .gte("cancelled_at", start).lte("cancelled_at", f"{end}T23:59:59.999999+00:00"))
+            .gte("cancelled_at", start).lte("cancelled_at", f"{end}T23:59:59.999999+00:00")))
     return [b for b in rows if str(b.get("bill_date") or "")[:10] < start]
 
 
@@ -233,15 +246,21 @@ def _posted_bills(db, firm_id, client_id, start, end) -> list[dict]:
     A cancelled bill with no cancelled_at cannot be placed in time, so it stays
     excluded: that is the behaviour every existing return was computed under.
     """
-    live = _paginate_all(lambda: db.table("purchase_bills").select("*")
+    # OPENING BILLS CARRY NO CREDIT THIS CLIENT MAY CLAIM (ACC-14, migration
+    # 391): the credit on a bill received in the system the client migrated
+    # from was availed there, and Table 4(A) claiming it again would double the
+    # month's input tax against a GSTR-2B that shows no such document.
+    live = _opening.without_carried_over(_paginate_all(
+        lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_BILL_POSTED))
-            .gte("bill_date", start).lte("bill_date", end))
+            .gte("bill_date", start).lte("bill_date", end)))
     cancelled_later = [
-        b for b in _paginate_all(lambda: db.table("purchase_bills").select("*")
+        b for b in _opening.without_carried_over(_paginate_all(
+            lambda: db.table("purchase_bills").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("status", "cancelled")
-            .gte("bill_date", start).lte("bill_date", end))
+            .gte("bill_date", start).lte("bill_date", end)))
         if str(b.get("cancelled_at") or "")[:10] > end
     ]
     return live + cancelled_later
@@ -432,6 +451,66 @@ def _issued_purchase_credit_notes(db, firm_id, client_id, start, end) -> list[di
             .gte("credit_note_date", start).lte("credit_note_date", end))
 
 
+def _bank_lines_declaring_gst(db, firm_id, client_id, start, end) -> list[dict]:
+    """Posted bank lines on which the CA declared a GST rate (BANK-24).
+
+    A bank charge is not a purchase bill, so nothing in the document set above
+    sees it — but the posting drawer lets a CA say "there is 18% GST inside
+    this ₹590", and `bank_posting_service` then posts a real Dr GST Input leg
+    for it. Migration 382 records the rate that was POSTED on the transaction
+    itself, which is what makes this a DOCUMENT fetch rather than a second
+    reading of the ledger: sourcing it from `journal_lines` would make the
+    books-vs-ledger reconciliation compare the ledger with itself on this
+    slice and agree by construction, the same reason Table 4(B) is built from
+    documents.
+
+    `posted_journal_id` is asked for twice over — in the filter and again in
+    `declared_gst` — because a test double that ignores `.not_` would
+    otherwise let an unposted line onto the return.
+    """
+    return _paginate_all(lambda: db.table("bank_transactions")
+            # Spelled out rather than pulled from a constant so
+            # test_backend_columns_exist_pg can read every name and check it
+            # against the real schema — a projection built in Python is
+            # invisible to it, and this is the only fetch of these columns.
+            .select("id, transaction_date, description, debit_paise, "
+                    "credit_paise, gst_rate_bps, gst_is_interstate, "
+                    "posted_journal_id, category")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .not_.is_("gst_rate_bps", "null")
+            .not_.is_("posted_journal_id", "null")
+            .gte("transaction_date", start).lte("transaction_date", end))
+
+
+def _disposals_declaring_gst(db, firm_id, client_id, start, end) -> list[dict]:
+    """Assets disposed in the period on which the CA declared output tax (FA-08b).
+
+    A disposal is not a sales invoice, so nothing in the outward document set
+    sees it — but `dispose_asset` now posts a real Cr GST Output leg for one
+    (CGST Act §9 on the supply, §15 on its transaction value). Migration 383
+    records the rate on the ASSET, which is what makes this a document fetch
+    rather than a second reading of the ledger: sourcing it from `journal_lines`
+    would make the books-vs-ledger comparison agree with itself on this slice.
+
+    The credit-side columns come too, because §18(6)'s other limb is worked out
+    from them and the return has to say when it demands more than the tax
+    declared here.
+
+    Columns are spelled out rather than pulled from a constant so
+    test_backend_columns_exist_pg can check every name against the real schema.
+    """
+    return _paginate_all(lambda: db.table("fixed_assets")
+            .select("id, asset_name, purchase_date, disposal_date, "
+                    "disposal_value_paise, disposal_is_supply, "
+                    "disposal_gst_rate_bps, disposal_is_interstate, "
+                    "cgst_paise, sgst_paise, igst_paise, itc_eligible, "
+                    "is_disposed, deleted_at")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("is_disposed", True)
+            .not_.is_("disposal_gst_rate_bps", "null")
+            .gte("disposal_date", start).lte("disposal_date", end))
+
+
 def _gstr2a_for_period(db, firm_id, client_id, period) -> list[dict]:
     """Supplier-filed records for the period, for the Rule 36(4) comparison.
 
@@ -618,6 +697,9 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
         # CGST §34: a credit note reduces outward tax, so it carries a minus.
         rows += [_detail_row(c, "Credit note", "credit_note_no", "credit_note_date",
                              names.get(c.get("customer_id"), ""), sign=-1) for c in cns]
+        # A bank receipt the CA marked as carrying GST is in 3.1(a) too
+        # (BANK-24), so it is in the listing under it.
+        rows += _bank_detail_rows(db, firm_id, client_id, start, end, inward=False)
 
     elif line == "3.1d":
         # Inward supplies liable to reverse charge — §9(3)/(4). The documents
@@ -652,6 +734,7 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
                              names.get(d.get("vendor_id"), "")) for d in dns]
         rows += [_detail_row(c, "Credit note", "credit_note_no", "credit_note_date",
                              names.get(c.get("vendor_id"), ""), sign=-1) for c in pcns]
+        rows += _bank_detail_rows(db, firm_id, client_id, start, end, inward=True)
 
     elif line == "4B1":
         cancelled = _bills_cancelled_in(db, firm_id, client_id, start, end)
@@ -713,6 +796,40 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
         "total_sgst_paise": sum(r["sgst_paise"] for r in rows),
         "total_tax_paise": sum(r["tax_paise"] for r in rows),
     }
+
+
+def _bank_detail_rows(db, firm_id, client_id, start, end, *, inward: bool) -> list[dict]:
+    """The declared bank lines behind 4(A) or 3.1(a), as detail rows.
+
+    THE DETAIL HAS TO ADD UP TO THE SUMMARY — that is the whole contract of
+    `gstr3b_detail`, and a figure the return now carries and the drill-down
+    does not turns one trusted number into two untrusted ones. Built from the
+    same `bank_charge_gst.declared_gst` the return uses, off the same fetch.
+
+    `document_no` is deliberately EMPTY, and that is the finding in one field:
+    a bank line has no supplier invoice number, which is exactly why
+    §16(2)(aa) cannot be evidenced for it. Writing the transaction's own id
+    there would read as a document reference the supplier issued.
+    """
+    declared = bank_charge_gst.declared_gst(
+        _bank_lines_declaring_gst(db, firm_id, client_id, start, end))
+    out: list[dict] = []
+    for chg in (declared.inward if inward else declared.outward):
+        sp = chg.split
+        out.append({
+            "id": chg.transaction_id,
+            "kind": "Bank charge" if inward else "Bank receipt",
+            "document_no": "",
+            "document_date": chg.transaction_date,
+            "party": chg.description,
+            "taxable_paise": sp.taxable_paise,
+            "igst_paise": sp.igst_paise,
+            "cgst_paise": sp.cgst_paise,
+            "sgst_paise": sp.sgst_paise,
+            "tax_paise": sp.tax_paise,
+            "status": "posted",
+        })
+    return out
 
 
 def _late_filing_block(result, period: str, filed_on) -> dict:
@@ -779,7 +896,10 @@ def _late_filing_block(result, period: str, filed_on) -> dict:
 
 
 def _outward_transactions(db, firm_id: str, client_id: str,
-                          start: str, end: str) -> "list[SalesTransaction]":
+                          start: str, end: str,
+                          bank_gst: "bank_charge_gst.BankGSTOnTheReturn | None" = None,
+                          disposals: "list | None" = None,
+                          ) -> "list[SalesTransaction]":
     """Every outward document of the period, as the computer wants to see it.
 
     MOVED here rather than copied (FA-19). Two callers need the outward side
@@ -846,6 +966,56 @@ def _outward_transactions(db, firm_id: str, client_id: str,
             cess_paise=int(sdn.get("cess_paise") or 0),
             supply_type=cls["supply_type"],
             is_reverse_charge=cls["is_reverse_charge"],
+        ))
+    # A receipt into the bank on which the CA declared GST is an OUTWARD supply
+    # the client made (CGST Act §9), and `charge_gst.build_inclusive_lines`
+    # already credits GST Output for it — so the liability is in the ledger
+    # whether or not the return declares it. Declared here, in the one place
+    # both the return and Rule 43's turnover read, so a working and its return
+    # cannot disagree about what was supplied.
+    #
+    # It reaches Table 3.1(a) and never Table 3.2: a bank line records no
+    # recipient state and no recipient class, and the SalesTransaction defaults
+    # (`place_of_supply=""`, `recipient_type="registered"`) keep it out by
+    # construction. Do not helpfully fill those in — 3.2 is "of the supplies
+    # shown in 3.1(a)" broken down by facts the books do not hold.
+    # `bank_gst` is passed by `gstr3b_from_books`, which needs the same answer
+    # for the INWARD side and the caveats: one Singapore-to-Mumbai round trip
+    # instead of two for a figure that cannot differ between them. Fetched here
+    # when nobody supplied it, so `outward_turnover` stays a one-argument call.
+    if bank_gst is None:
+        bank_gst = bank_charge_gst.declared_gst(
+            _bank_lines_declaring_gst(db, firm_id, client_id, start, end))
+    for out in bank_gst.outward:
+        sales.append(SalesTransaction(
+            transaction_type="bank_receipt",
+            taxable_amount_paise=out.split.taxable_paise,
+            cgst_paise=out.split.cgst_paise,
+            sgst_paise=out.split.sgst_paise,
+            igst_paise=out.split.igst_paise,
+            cess_paise=0,
+            supply_type="taxable",
+            is_reverse_charge=False,
+        ))
+    # An asset disposal is an outward supply too (FA-08b), and the disposal
+    # journal already credits GST Output for it. Same argument as the bank
+    # receipt above, same place: one list, so a working and a return cannot
+    # disagree about what was supplied. And Table 3.1(a) only — a disposal
+    # records no recipient state and no recipient class, so 3.2 would assert
+    # what the books do not hold.
+    if disposals is None:
+        disposals, _ = section_18_6.outward_supplies(
+            _disposals_declaring_gst(db, firm_id, client_id, start, end))
+    for d in disposals:
+        sales.append(SalesTransaction(
+            transaction_type="asset_disposal",
+            taxable_amount_paise=d.taxable_paise,
+            cgst_paise=d.tax.cgst_paise,
+            sgst_paise=d.tax.sgst_paise,
+            igst_paise=d.tax.igst_paise,
+            cess_paise=0,
+            supply_type="taxable",
+            is_reverse_charge=False,
         ))
     return sales
 
@@ -922,27 +1092,85 @@ def outward_turnover(db, firm_id: str, client_id: str, period: str) -> dict:
 def _table_4a_gaps() -> list[dict]:
     """The 4(A) rows this product cannot derive, each with the reason.
 
-    Not a caveat about a figure that might be wrong — both are correctly zero
-    for every client that has neither. It is a statement that if the client DID
-    have one, nothing here would know: the document that carries it does not
-    exist in this product, so the CA has to add the figure on the portal.
+    Not a caveat about a figure that might be wrong — it is correctly zero for
+    every client with no such document. It is a statement that if the client
+    DID have one, nothing here would know: the document that carries it does
+    not exist in this product, so the CA has to add the figure on the portal.
+
+    4(A)(1) IMPG LEFT THIS LIST ON 2026-09-14 (PUR-18). A Bill of Entry is a
+    document now — migration 389 — so import IGST is derived like any other
+    credit. ISD is still here because an Input Service Distributor invoice is
+    still a document type nothing models, and a nil meaning "we cannot see it"
+    is not a nil meaning "there was none".
     """
     return [
-        {
-            "row": "4(A)(1)",
-            "label": "Import of goods",
-            "reason": ("IGST on imported goods is paid at customs against a BILL OF "
-                       "ENTRY, not self-assessed on a purchase bill, and this product "
-                       "has no Bill of Entry document type. The credit is in GSTR-2B's "
-                       "own `impg` section, which the 2B reconciliation parses — but "
-                       "nothing feeds it into the return. Enter it on the portal."),
-        },
         {
             "row": "4(A)(4)",
             "label": "Inward supplies from ISD",
             "reason": ("An Input Service Distributor invoice is a document type this "
                        "product does not model, so a distribution from a head office "
                        "reaches no register here. Enter it on the portal."),
+        },
+    ]
+
+
+def _undeclarable_rows() -> list[dict]:
+    """EVERY row of this GSTR-3B that is nil because nothing here can derive it.
+
+    `_table_4a_gaps` above answers the same question for the ITC table and is
+    the authority for those rows; this calls it rather than restating them, so
+    the 4(A) list has exactly one definition and this one is provably a
+    superset of it.
+
+    WHY THE OTHER THREE WERE MISSING FOR SO LONG
+        Each already carried its reason — in a SOURCE COMMENT, next to the
+        literal zero it explains. That is the right place for the next
+        programmer and no place at all for the CA, who sees 0.00 on a return
+        they are about to file and has nothing to distinguish "this client had
+        none" from "this product cannot see it". 4(A) got the treatment in
+        GST-24 and the same payload's outward side never did.
+
+    NONE OF THIS INVENTS A FIGURE. Every row below stays exactly as computed —
+    nil — and the sentence travels beside the payload rather than inside it,
+    because a GSTN payload has nowhere to carry one. Same shape as
+    `payload_gaps` on the GSTR-1 side and `cess_gaps`.
+    """
+    return _table_4a_gaps() + [
+        {
+            "row": "3.1.1(i)",
+            "label": "Supplies on which the e-commerce operator pays the tax (§9(5))",
+            "reason": ("Nothing here marks a supply as made through an electronic "
+                       "commerce operator, and neither side of §9(5) is modelled, so "
+                       "both 3.1.1 rows are nil. A client supplying through one has "
+                       "to enter these on the portal."),
+        },
+        {
+            "row": "3.1.1(ii)",
+            "label": "Supplies made through an e-commerce operator (§9(5))",
+            "reason": ("The same gap seen from the supplier's side, and it is the one "
+                       "to check: a supply made through an operator has been counted "
+                       "in 3.1(a) here like any other outward supply, because nothing "
+                       "tells the two apart. Where a client sells through an operator, "
+                       "both this row and what 3.1(a) already carries need looking at "
+                       "on the portal."),
+        },
+        {
+            "row": "5",
+            "label": "Exempt, nil-rated and non-GST INWARD supplies",
+            "reason": ("A purchase bill is not classified as exempt, nil-rated or "
+                       "non-GST on the inward side here, so this row is nil. It is a "
+                       "disclosure only — no tax turns on it — but the portal expects "
+                       "the values."),
+        },
+        {
+            "row": "4(D)(2)",
+            "label": "Ineligible ITC under §16(4) and the place-of-supply rules",
+            "reason": ("Neither limb is tracked here, so the row is nil. §17(5) is "
+                       "deliberately NOT in it: Circular 170/02/2022-GST puts that "
+                       "reversal in Table 4(B) and says reporting it in 4(D) as well "
+                       "overstates the ineligible credit shown against the taxpayer. "
+                       "So a nil here does not mean no blocked credit — that is in "
+                       "4(B)(1)."),
         },
     ]
 
@@ -959,7 +1187,21 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     """
     start, end = _period_bounds(period)
 
-    sales = _outward_transactions(db, firm_id, client_id, start, end)
+    # BANK-24 — resolved once and used three times: the outward side below, the
+    # inward side after the bills, and the caveats on the way out. Both the
+    # return and the reconciliation have to see the same set, and re-fetching
+    # it per use is three cross-region round trips for one small answer.
+    bank_gst = bank_charge_gst.declared_gst(
+        _bank_lines_declaring_gst(db, firm_id, client_id, start, end))
+    # FA-08b — the same shape, one fetch, used for the outward side and for the
+    # caveats. `disposal_caveats` carries the two things the figures cannot
+    # say: GSTR-1 has no invoice to carry these supplies, and s.18(6) may
+    # demand more than the tax charged.
+    disposals, disposal_caveats = section_18_6.outward_supplies(
+        _disposals_declaring_gst(db, firm_id, client_id, start, end))
+
+    sales = _outward_transactions(db, firm_id, client_id, start, end,
+                                  bank_gst=bank_gst, disposals=disposals)
 
     # Table 4(A)(2). Resolved once for the whole return — see
     # _import_of_services_vendors — and applied to bills AND to the notes that
@@ -1015,6 +1257,33 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             cess_paise=int(pcn.get("cess_paise") or 0),
             is_reverse_charge=bool(pcn.get("is_reverse_charge", False)),
             is_import_of_services=pcn.get("vendor_id") in imps_vendors,
+        ))
+    # A bank charge the CA marked as carrying GST (BANK-24). CGST Act §16 gives
+    # the credit — a bank charge is an input service received in the course or
+    # furtherance of business — and `bank_posting_service` has already debited
+    # GST Input for it, so the credit is on the ledger whether or not the
+    # return claims it. It goes on Table 4(A)(5), "All other ITC", which is
+    # where an ordinary domestic inward supply belongs: not reverse charge
+    # (the bank charges the tax and pays it over), not an import, not ISD.
+    #
+    # §16(2)(aa) is NOT satisfied by anything here and is not pretended to be —
+    # there is no supplier GSTIN and no invoice number on a bank line, so the
+    # credit cannot be matched to GSTR-2B. `bank_gst.caveats` says so on every
+    # answer that carries one. Inventing a GSTIN so the 2B match would pass is
+    # worse than the gap: it would claim a document exists.
+    #
+    # No §17(5) split. A blocked head is a per-line fact the purchase bill
+    # carries and a bank line does not; a charge that IS blocked should be
+    # posted without a rate, which books the whole amount to the expense — the
+    # same figure §17(5) would leave behind.
+    for chg in bank_gst.inward:
+        purchases.append(PurchaseTransaction(
+            taxable_amount_paise=chg.split.taxable_paise,
+            cgst_paise=chg.split.cgst_paise,
+            sgst_paise=chg.split.sgst_paise,
+            igst_paise=chg.split.igst_paise,
+            cess_paise=0,
+            is_reverse_charge=False,
         ))
 
     # ── Table 4(B): credit given back in this period ────────────────────────
@@ -1138,8 +1407,28 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         capture_soft_failure(exc, operation="gstr3b.table_11_advances",
                              firm_id=firm_id, client_id=client_id)
 
+    # Table 4(A)(1) — the Bill of Entry (PUR-18). POSTED documents only: a
+    # draft has no journal behind it, and claiming credit on the return that
+    # the ledger does not carry is exactly the books-vs-ledger difference the
+    # reconciliation below exists to catch.
+    #
+    # NOT appended to `purchases`. A Bill of Entry is not a purchase bill: it
+    # carries no reverse-charge liability, no CGST or SGST, and no accounts
+    # payable, and `PurchaseTransaction` has a field for each of those that
+    # would then have to be set to a lie.
+    imports_of_goods = [
+        ImportOfGoods(
+            igst_paise=int(b.get("igst_paise") or 0),
+            cess_paise=int(b.get("cess_paise") or 0),
+            ineligible_igst_paise=int(b.get("ineligible_igst_paise") or 0),
+            ineligible_cess_paise=int(b.get("ineligible_cess_paise") or 0),
+        )
+        for b in bill_of_entry_service.for_period(db, firm_id, client_id, start, end)
+    ]
+
     result = compute_gstr3b(sales, purchases, gstr2a, reversals, reclaims,
-                            have_2b=have_2b, advances=advances)
+                            have_2b=have_2b, advances=advances,
+                            imports_of_goods=imports_of_goods)
 
     # ── Reconcile the return to the posted General Ledger ─────────────────────
     gl = _gl_gst_movements(db, firm_id, client_id, start, end)
@@ -1265,6 +1554,33 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # (GST-24); these two cannot be, and say so rather than reading as an
         # answer. Same shape as `cess_gaps` and `payload_gaps`.
         "table_4a_gaps": _table_4a_gaps(),
+        # AND EVERY OTHER ROW THIS RETURN DECLARES NIL WITHOUT BEING ABLE TO
+        # DERIVE IT. `table_4a_gaps` above has been served since GST-24 and NO
+        # SCREEN EVER RENDERED IT, so the ISD sentence reached nobody; and
+        # three more structurally-nil blocks in this same payload — 3.1.1's two
+        # §9(5) rows, Table 5's inward exempt/nil-rated/non-GST values and
+        # 4(D)(2) — carried their reason only in a source comment beside the
+        # literal zero. A superset, so a screen renders one list.
+        "undeclarable_rows": _undeclarable_rows(),
+        # WHAT THE BANK LINES PUT ON THE RETURN, AND WHAT THEY CANNOT SUPPLY
+        # (BANK-24). A charge the CA marked as carrying GST now reaches Table
+        # 4(A)(5) and a receipt so marked reaches 3.1(a) — both were on the
+        # ledger and on neither return before. These sentences are the half
+        # that cannot be computed: §16(2)(aa) wants a supplier document nothing
+        # here holds, and an outward supply with no tax invoice will not appear
+        # in the GSTR-1 the portal compares this return against. Empty when no
+        # bank line declared any GST, so a client who never uses the feature
+        # sees nothing.
+        "bank_line_caveats": list(bank_gst.caveats),
+        # WHAT AN ASSET DISPOSAL PUTS ON THIS RETURN, AND WHAT IT CANNOT SAY
+        # (FA-08b). A sale of a capital asset is a supply and the disposal
+        # journal now credits GST Output for it, so Table 3.1(a) declares it —
+        # it was in neither the ledger nor the return before. These sentences
+        # are the half that cannot be computed: GSTR-1 is built from invoices
+        # and there is none behind a disposal (Rule 46), and CGST Act s.18(6)
+        # charges the HIGHER of this tax and the credit taken on the asset
+        # reduced for the time it was held, which the return does not carry.
+        "disposal_caveats": list(disposal_caveats),
         "working": {
             "outward": {
                 "taxable_value_paise": result.outward_taxable_value,
@@ -1425,6 +1741,30 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                 "ledger_paise": gl["itc_paise"],
                 "difference_paise": books_itc - gl["itc_paise"],
                 "matched": itc_matched,
+            },
+            # BANK-24 — what the bank lines put on BOTH sides of the two
+            # comparisons above. Unlike the advance tax, this is NOT held out:
+            # a bank charge posts a real GST Input debit, so the ledger carries
+            # it and the return now does too, and the two agree. It is named
+            # because a CA looking at a Table 4(A) figure larger than the
+            # purchase register needs to see where the difference came from,
+            # and because the §16(2)(aa) caveat beside it is about exactly
+            # these rupees.
+            "bank_lines": {
+                "itc_paise": bank_gst.itc_paise,
+                "output_tax_paise": bank_gst.output_tax_paise,
+                "inward_line_count": len(bank_gst.inward),
+                "outward_line_count": len(bank_gst.outward),
+            },
+            # FA-08b — the disposals' own contribution to 3.1(a), on both sides
+            # of the output-tax comparison. Named for the same reason: a CA
+            # looking at 3.1(a) above the sales register needs to see where the
+            # difference came from, and the s.18(6) caveat is about these
+            # rupees.
+            "asset_disposals": {
+                "output_tax_paise": sum(d.tax.total_paise for d in disposals),
+                "taxable_value_paise": sum(d.taxable_paise for d in disposals),
+                "count": len(disposals),
             },
             "reconciled": output_matched and itc_matched,
             "ledger_by_head": gl["by_head"],

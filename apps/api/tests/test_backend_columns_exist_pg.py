@@ -35,8 +35,9 @@ THE --continue-on-error PROBLEM, AND WHY IT DOES NOT MAKE THIS CRY WOLF
     someone has to remember to close:
 
       * a relation absent from the template is skipped — that is
-        test_backend_tables_exist's job, and reporting it here would call one
-        bug two.
+        test_backend_tables_exist_pg.py's job, and reporting it here would
+        call one bug two. That file did not exist when this line was
+        written — the hand-off was to nobody for as long as it stood.
       * a column DECLARED BY a baseline-failure migration is skipped. When that
         migration is repaired and drops off the baseline, its columns become
         checkable again automatically.
@@ -296,7 +297,49 @@ UNFIXED: dict[str, str] = {}
 # `test_a_recurring_bill_is_a_template_the_firm_owns.py` asserts the update's
 # field set is a SUBSET of the create INSERT's, whose columns ARE verified
 # against the real schema here.
-MAX_UNREADABLE = 449
+# 449 -> 450 (GST-20). `routers/gst_workspace._existing_return` takes the TABLE
+# as a parameter, because one implementation serves both `gstr1_returns` and
+# `gstr3b_returns` — and a dynamic table makes every filter on that chain
+# invisible here, one unreadable reference per call. Migration 390 narrowed both
+# tables' unique key to (client_id, period, gstin), so the lookup gained an
+# `.eq("gstin", wanted)`: the +1 is that filter. Splitting the function in two to
+# make it readable would put the "which return is already on file" rule in two
+# places, which is the larger risk. The registration service's own three went the
+# other way and were made LITERAL in the same commit rather than budgeted.
+# 450 -> 452 (ACC-14). `services/opening_document_service` inserts a row built
+# by `domain/accounting/opening_documents.row_for`, which is the ONE place an
+# opening document's columns are named — the sales and purchase shapes differ
+# (the payable side has to write `net_payable_paise`, because migration 278
+# generates ITS outstanding figure from that and not from `total_paise`) and a
+# literal payload at each of the two call sites would be a second copy of that
+# rule, which is the larger risk. The four this service arrived with were
+# halved first rather than budgeted: both soft-delete payloads are written
+# INLINE at their call sites instead of sharing a local.
+#
+# The chain closes from the other end, as the recurring-bill entry above does:
+# `test_an_opening_balance_is_made_of_documents.py` asserts every key `row_for`
+# produces is a real column of its table, and `tests/production_types.py` runs
+# on the mock write path, so the payload is checked against production's own
+# column list and types on every test that writes one.
+# 452 -> 455 (SALES-21). `services/sales_cycle_service` has three PATCH paths —
+# a quotation, a sales order and a delivery challan — and each builds its
+# `.update(...)` payload from whichever fields the caller sent, so the dict is
+# genuinely dynamic and no literal exists to read. That is three; the other
+# FIFTEEN this service arrived with were removed rather than budgeted, and how
+# is the part worth keeping. The first draft shared six module-level column
+# constants (`_QUOTE_COLS`, `_CHALLAN_LINE_COLS` and so on) and passed them to
+# `.select(...)` — readable to a person, invisible here, on SIX BRAND-NEW
+# tables where a typo has nothing else to catch it. They are written out at
+# every call site now, `_one` lost its `cols` parameter in favour of three
+# literal branches, and the three INSERT payloads were inlined at their
+# `.insert(...)` calls instead of being built above and passed by name.
+# 455 -> 457 (PUR-25). `services/purchase_cycle_service` has two PATCH paths —
+# a purchase order and a goods receipt — and each builds its `.update(...)`
+# payload from whichever fields the caller sent, so the dict is genuinely
+# dynamic and no literal exists to read. Every other query in that module is
+# readable: the projections are written out at each call site rather than
+# shared through a constant, and both INSERT payloads are inline.
+MAX_UNREADABLE = 457
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

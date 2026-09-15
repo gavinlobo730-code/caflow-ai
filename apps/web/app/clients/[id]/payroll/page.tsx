@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Play, CheckCircle,
   FileText, TrendingUp, IndianRupee, Download, Upload,
-  CreditCard, Settings,
+  CreditCard, Settings, Scale,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -25,6 +25,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
+import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -56,7 +57,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
  *  `setup` is deliberately NOT a verb and sits after them: the client's
  *  statutory registrations are a fact about the client, not a step in a month.
  */
-type Tab = "inputs" | "register" | "release" | "outputs" | "file" | "setup";
+type Tab = "inputs" | "register" | "release" | "outputs" | "file" | "bonus" | "setup";
 
 /** The server refuses a shorter reason and so does migration 328's CHECK. Not a
  *  quality bar — a floor under "ok", "-" and ".", which is what a required
@@ -1846,6 +1847,10 @@ export default function PayrollPage() {
     // ("give me the file"), this is the screen a CA works from with the portal
     // open in the next tab ("what do I type in this box"). Track F, phase F3.
     { id: "file",     label: "File",     icon: Upload },
+    // BONUS — annual, not monthly, which is why it is its own tab and not a
+    // panel under Outputs: §19 makes it due eight months after the year's
+    // close, on a date nothing else in payroll shares.
+    { id: "bonus",    label: "Bonus",    icon: Scale },
     { id: "setup",    label: "Setup",    icon: Settings },
   ];
 
@@ -1895,6 +1900,9 @@ export default function PayrollPage() {
             its portal asks for it. It transmits nothing and asks for no
             credential; see components/payroll/StatutoryHandoff.tsx. */}
         {tab === "file"     && <StatutoryHandoff clientId={clientId} />}
+        {/* BONUS — the Payment of Bonus Act 1965 register for an accounting
+            year. §10's minimum is a debt whether or not there is a surplus. */}
+        {tab === "bonus"    && <BonusRegisterTab clientId={clientId} />}
         {tab === "setup"    && <StatutoryIdentityTab clientId={clientId} />}
       </div>
     </div>

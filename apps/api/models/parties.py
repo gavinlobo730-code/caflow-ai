@@ -37,6 +37,24 @@ def _normalise_residency(model) -> list[str]:
     """
     errors: list[str] = []
 
+    # CGST Act s.31(3)(f). Normalised and validated HERE rather than in its own
+    # helper for the reason this function exists: a create path that accepts
+    # "Unregistered" and an update path that rejects it lets the value in by one
+    # door and makes it uneditable through the other.
+    status = getattr(model, "gst_registration_status", None)
+    if status is not None:
+        model.gst_registration_status = str(status).strip().lower()
+        from domain.gst.rcm_documents import REGISTERED, UNREGISTERED, UNRECORDED
+        if model.gst_registration_status not in (REGISTERED, UNREGISTERED):
+            hint = (" `unrecorded` is the ABSENCE of a value, so leave it unset"
+                    if model.gst_registration_status == UNRECORDED else
+                    " Leave it unset if nobody has established which — that is a"
+                    " different fact from either.")
+            errors.append(
+                f"gst_registration_status must be '{REGISTERED}' or "
+                f"'{UNREGISTERED}' (got '{model.gst_registration_status}')."
+                + hint)
+
     if model.residential_status is not None:
         model.residential_status = model.residential_status.strip().lower()
         if model.residential_status not in RESIDENTIAL_STATUSES:
@@ -338,6 +356,14 @@ class VendorIn(BaseModel):
     # resident", so a non-resident payee falls under s.195 instead.
     # domain/tds/residency.py is the authority.
     residential_status: Optional[str] = None
+    # CGST Act s.31(3)(f) asks whether the SUPPLIER is registered, because a
+    # self-invoice is due only on a reverse-charge supply received from one who
+    # is not. A GSTIN above IS the registration and answers it; this answers it
+    # where there is no GSTIN. NULL is a real third state — nobody has recorded
+    # it — and domain/gst/rcm_documents.py names that gap rather than guessing,
+    # because one guess mints a document the Act does not ask for and the other
+    # withholds the one the input credit rests on. Migration 388.
+    gst_registration_status: Optional[str] = None
     country_of_residence: Optional[str] = None
     tax_identification_number: Optional[str] = None
     # Part II First Schedule payee class — which SURCHARGE ladder a s.195
@@ -432,6 +458,14 @@ class VendorUpdateIn(BaseModel):
     tds_section: Optional[str] = None
     tds_rate_bps: Optional[int] = None
     residential_status: Optional[str] = None
+    # CGST Act s.31(3)(f) asks whether the SUPPLIER is registered, because a
+    # self-invoice is due only on a reverse-charge supply received from one who
+    # is not. A GSTIN above IS the registration and answers it; this answers it
+    # where there is no GSTIN. NULL is a real third state — nobody has recorded
+    # it — and domain/gst/rcm_documents.py names that gap rather than guessing,
+    # because one guess mints a document the Act does not ask for and the other
+    # withholds the one the input credit rests on. Migration 388.
+    gst_registration_status: Optional[str] = None
     country_of_residence: Optional[str] = None
     tax_identification_number: Optional[str] = None
     # Part II First Schedule payee class — which SURCHARGE ladder a s.195

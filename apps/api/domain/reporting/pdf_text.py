@@ -11,9 +11,27 @@ the PDF as an unmapped glyph. Rendered and read back:
 
 Two services already knew this and handled it privately, with the reasoning
 written out twice; three others did not, and shipped the box to a CA's customer,
-to an employee, and into a signed year-end set. Discovering the same fact
-independently five times is how four of them got it wrong, so it is one function
-now.
+to an employee, and into a signed year-end set.
+
+⚠️ THIS MODULE HAS NO PRODUCTION IMPORTER, AND THAT IS NOT A BUG TO FIX BY
+WIRING IT IN. An earlier version of this docstring said the fix was "one
+function now", which was the intention and is not what happened. What the five
+PDF services actually do is never CONSTRUCT a ₹ string at all — they write
+"Rs." into their format strings directly — and
+`tests/test_no_pdf_renders_the_rupee_sign.py` is what holds that, by failing on
+any U+20B9 a PDF service could put on a page. A substitution helper has nothing
+to substitute.
+
+The one place the text is NOT under a service's control is CA-authored HTML in
+an engagement letter, and `services/engagement_pdf_service._pdf_safe` handles
+that. It is deliberately NOT this function: it replaces with **"Rs. "**, a
+space, because that text is running prose, where this module uses **"Rs."**
+without one, because its case is a table cell. Two answers to two questions.
+Unifying them would change a document a client receives.
+
+So this module is kept for the RULE it records rather than for a caller, and
+`tests/test_a_domain_module_has_a_reader.py` names it with that reason so the
+next sweep does not re-find it.
 
 WHY "Rs." AND NOT AN EMBEDDED FONT
 

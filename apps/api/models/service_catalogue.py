@@ -15,6 +15,8 @@ one library shared across the firm's clients) — checked by the router (not
 here), since that check needs a DB read.
 """
 from pydantic import BaseModel, field_validator
+
+from domain.gst import uqc as _uqc
 from typing import Optional
 
 
@@ -87,9 +89,12 @@ class ServiceCatalogueIn(BaseModel):
         # value; rejecting it would make the row un-editable for any
         # unrelated field change. The new UI's dropdown only offers valid
         # UQC codes, so new/changed unit values are compliant by construction.
-        if v is None or v == "":
-            return None
-        return v.strip().upper()
+        # Delegates to `domain/gst/uqc.normalise` — the authority this
+        # validator used to name in a COMMENT and never import. Same
+        # answer as the respelling it replaces (case, whitespace, and
+        # empty reads as absent); asking means a later change to what
+        # normalising means happens in one place.
+        return _uqc.normalise(v)
 
     @field_validator("opening_qty_units")
     @classmethod
@@ -165,9 +170,12 @@ class ServiceCatalogueUpdateIn(BaseModel):
         # value; rejecting it would make the row un-editable for any
         # unrelated field change. The new UI's dropdown only offers valid
         # UQC codes, so new/changed unit values are compliant by construction.
-        if v is None or v == "":
-            return None
-        return v.strip().upper()
+        # Delegates to `domain/gst/uqc.normalise` — the authority this
+        # validator used to name in a COMMENT and never import. Same
+        # answer as the respelling it replaces (case, whitespace, and
+        # empty reads as absent); asking means a later change to what
+        # normalising means happens in one place.
+        return _uqc.normalise(v)
 
     @field_validator("opening_qty_units")
     @classmethod

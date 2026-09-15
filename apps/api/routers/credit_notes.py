@@ -16,6 +16,7 @@ from models.invoices import InvoiceLineIn
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
+from domain.accounting import opening_documents as _opening
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
 from services.timeline_service import timeline_service
@@ -278,7 +279,12 @@ def create_credit_note(
                     # invoice_date as well as is_interstate: §34(2)'s window runs
                     # from the financial year of the ORIGINAL SUPPLY, so the
                     # supply's own date is the input, not the note's.
-                    .select("is_interstate, invoice_date")
+                    # `is_opening` because a §34 note against a carried-over
+                    # invoice adjusts tax that was charged and DECLARED in the
+                    # system the client migrated from: reducing this client's
+                    # output tax by it claims a relief against a liability its
+                    # own returns never carried (ACC-14, migration 391).
+                    .select("is_interstate, invoice_date, is_opening")
                     .eq("id", data["sales_invoice_id"])
                     .eq("firm_id", firm_id)
                     # CLIENT-SCOPED, and it was not (SALES-30). The service-role
@@ -310,6 +316,17 @@ def create_credit_note(
                         status_code=422,
                         detail="The invoice this credit note refers to is not part of this client's books.")
                 original_invoice = inv_resp.data[0]
+                if _opening.carried_over(original_invoice):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            "That invoice was carried over from the system this "
+                            "client migrated from, so its GST was charged and "
+                            "declared there. A §34 credit note here would reduce "
+                            "this client's output tax by an amount its own "
+                            "returns never declared. Raise the note in the system "
+                            "that issued the invoice, or record the adjustment as "
+                            "a change to the opening balance."))
                 is_interstate = original_invoice.get("is_interstate", False)
 
         # Compute lines (shared with the PATCH endpoint — see _compute_lines)

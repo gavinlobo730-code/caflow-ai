@@ -13,7 +13,7 @@ from datetime import datetime, timezone, date
 from decimal import Decimal as _Decimal, ROUND_HALF_UP as _ROUND_HALF_UP
 import math
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 import logging
 
@@ -6029,7 +6029,46 @@ def tds_projection(
     financial_year: Annotated[FYLabel, Query(description='e.g. "2026-27"')] = ...,
     current_user: dict = Depends(rbac("payroll", "read")),
 ):
+    """The STAFF door onto one employee's §192 projection.
+
+    The computation itself is `compute_tds_projection` below, because an
+    employee may now ask for their own through `routers/portal_employee.py`
+    (PAY-26) and two implementations of a withholding figure is the thing this
+    endpoint exists to have undone once already. This door decides only WHO may
+    ask: rbac, then the caller's assignment scope.
+    """
+    assert_client_access(current_user, client_id)
+    try:
+        return api_response(True, compute_tds_projection(
+            _db(), firm_id=current_user["firm_id"], client_id=client_id,
+            employee_id=employee_id, fy=financial_year))
+    except EmployeeNotFound:
+        # This door has answered 200 with success=false since it was written
+        # and a screen checks `res.success`; the employee door answers 403 for
+        # the same condition, because there the id came from the principal and
+        # a miss means the principal is wrong, not the request.
+        return api_response(False, None, "Employee not found")
+
+
+class EmployeeNotFound(Exception):
+    """No such employee under this firm and client.
+
+    Its own exception rather than a return value, because the two doors owe
+    DIFFERENT answers — 200/success=false for staff, 403 for an employee — and
+    a sentinel return is one `if` away from being read as a real projection of
+    zero.
+    """
+
+
+def compute_tds_projection(db, *, firm_id: str, client_id: str,
+                           employee_id: str, fy: str) -> dict:
     """One employee's §192 withholding for a financial year, month by month.
+
+    NO AUTHORISATION HAPPENS HERE and that is deliberate: this function is
+    reached by a staff caller who has passed rbac and an assignment check, and
+    by an employee resolved to their OWN ids by `get_current_portal_employee`.
+    Putting a check inside would have to know which, and a function that asks
+    "who is this?" from ids alone is the shape that gets it wrong.
 
     THIS EXISTS BECAUSE THE FRONTEND WAS COMPUTING IT (PAY-10), and the copy
     it replaces is the same story /statutory-position tells one screen over.
@@ -6066,24 +6105,22 @@ def tds_projection(
 
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
-    assert_client_access(current_user, client_id)
-    firm_id = current_user["firm_id"]
-    fy = financial_year
-
-    db = _db()
     if not db:
-        return api_response(True, {
+        return {
             "financial_year": fy, "employee_id": employee_id,
             "months": [], "estimated_annual_tds_paise": 0,
             "deducted_so_far_paise": 0, "months_paid": 0,
             "projected_monthly_paise": 0, "gaps": [],
-        })
+        }
 
+    # BOTH ids, always. The employee door supplies them from the resolved
+    # principal, so this triple is what makes an employee unable to read
+    # another client's row even if their own client_id were ever wrong.
     emps = (db.table("payroll_employees").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("id", employee_id).execute().data) or []
     if not emps:
-        return api_response(False, None, "Employee not found")
+        raise EmployeeNotFound(employee_id)
 
     months = [f"{y:04d}-{m:02d}" for y, m in fy_months(fy)]
     gaps: list[str] = []
@@ -6172,7 +6209,7 @@ def tds_projection(
         })
 
     remaining = sum(1 for r in rows if not r["actual"])
-    return api_response(True, {
+    return {
         "financial_year": fy,
         "employee_id": employee_id,
         "months": rows,
@@ -6186,7 +6223,7 @@ def tds_projection(
         "estimated_annual_tds_paise": deducted + projected_monthly * remaining,
         "estimated_annual_gross_paise": sum(r["gross_paise"] for r in rows),
         "gaps": gaps,
-    })
+    }
 
 
 @router.get("/statutory-position")
@@ -7287,3 +7324,209 @@ def list_employee_loans(
             .eq("firm_id", current_user["firm_id"])
             .eq("employee_id", employee_id).execute().data) or []
     return api_response(True, {"loans": rows})
+
+
+# ── The annual statutory bonus register (Payment of Bonus Act 1965, PAY-23) ───
+#
+# `domain/payroll/bonus.py` has implemented this Act since the payroll module
+# was built and its only caller was a LEAVER'S settlement, so a client's
+# continuing employees were never computed for. §10 makes the minimum payable
+# "whether or not the employer has any allocable surplus", §19 makes it due
+# within eight months of the year's close and §28 makes non-payment an offence
+# — a debt the balance sheet owes, that nothing in the product produced.
+#
+# `domain/payroll/bonus_register.py` is the rule and
+# `services/bonus_register_service.py` fetches its inputs. Nothing is decided
+# here and nothing is posted: the provision is a journal the CA raises.
+
+
+class BonusDeclarationIn(BaseModel):
+    """The employer's own §10/§11 determination for one accounting year.
+
+    `rate_bps` is where the ALLOCABLE SURPLUS under §§4-7 and the Second
+    Schedule places them between §10's 8.33% and §11's 20% — their computation
+    from their own accounts, which payroll cannot derive. It defaults to the
+    minimum, which is what is owed whatever the surplus turns out to be.
+
+    `minimum_wage_monthly_paise` is §12's comparator and is OPTIONAL: absent,
+    the engine computes on ₹7,000 and says it did, which is the refusal
+    `domain/payroll/bonus.py` has carried since it was written.
+    """
+    client_id: str
+    accounting_year: FYLabel
+    # OPTIONAL, so §10's 8.33% lives in ONE place. A default here would be a
+    # second copy of a statutory figure, and the screen would then need a
+    # third to pre-fill its own box.
+    rate_bps: Optional[int] = None
+    allocable_surplus_paise: Optional[int] = None
+    minimum_wage_monthly_paise: Optional[int] = None
+    scheduled_employment: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BonusDisqualificationIn(BaseModel):
+    """§9 — forfeiture of the WHOLE bonus.
+
+    `ground` is validated against `domain/payroll/bonus_register`'s own five,
+    which are the Act's: a free-text reason would let "poor performance"
+    forfeit a statutory debt, and §9 reaches DISMISSAL for fraud, riotous or
+    violent behaviour on the premises, or theft, misappropriation or sabotage
+    of the establishment's property — and nothing else.
+    """
+    client_id: str
+    employee_id: str
+    accounting_year: FYLabel
+    ground: str
+    dismissed_on: str
+    notes: Optional[str] = None
+
+    @field_validator("ground")
+    @classmethod
+    def a_ground_the_act_names(cls, v: str) -> str:
+        from domain.payroll import bonus_register as br
+        key = (v or "").strip().lower()
+        if key not in br.SECTION_9_GROUNDS:
+            raise ValueError(
+                "§9 forfeits a bonus on DISMISSAL for fraud, riotous or violent "
+                "behaviour on the premises, or theft, misappropriation or "
+                "sabotage of the establishment's property — and nothing else. "
+                "One of: " + ", ".join(sorted(br.SECTION_9_GROUNDS)))
+        return key
+
+
+@router.get("/bonus-register")
+def bonus_register_for_year(
+    client_id: str = Query(...),
+    accounting_year: Annotated[FYLabel, Query(description='e.g. "2025-26"')] = ...,
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """Who is owed statutory bonus for this accounting year, and why.
+
+    Every employee on the master appears, INCLUDING those the Act does not
+    reach — a register that silently drops them cannot be checked against the
+    payroll. Each carries its own reason (§2(13)'s ceiling, §8's thirty days,
+    §9's forfeiture) or its own gap.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, None)
+    from services import bonus_register_service as svc
+    return api_response(True, svc.read_register(
+        db, firm_id=current_user.get("firm_id") or "",
+        client_id=client_id, accounting_year=accounting_year))
+
+
+@router.put("/bonus-declaration")
+def put_bonus_declaration(
+    data: BonusDeclarationIn,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Record the employer's §10/§11 rate and §12 minimum wage for the year."""
+    assert_client_access(current_user, data.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, None)
+    from services import bonus_register_service as svc
+    row = svc.save_declaration(
+        db, firm_id=current_user.get("firm_id") or "", client_id=data.client_id,
+        accounting_year=data.accounting_year, rate_bps=data.rate_bps,
+        allocable_surplus_paise=data.allocable_surplus_paise,
+        minimum_wage_monthly_paise=data.minimum_wage_monthly_paise,
+        scheduled_employment=data.scheduled_employment, notes=data.notes,
+        actor_id=current_user.get("id"),
+    )
+    log_event(
+        current_user.get("firm_id") or "", "bonus_declaration",
+        str(row.get("id") or data.client_id), "update",
+        actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        new_data={"accounting_year": data.accounting_year,
+                  "rate_bps": data.rate_bps,
+                  "minimum_wage_monthly_paise": data.minimum_wage_monthly_paise},
+    )
+    return api_response(True, row)
+
+
+@router.put("/bonus-disqualification")
+def put_bonus_disqualification(
+    data: BonusDisqualificationIn,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Record a §9 forfeiture for one employee for one accounting year.
+
+    AUDITED, because it takes a statutory debt away from a person. Replacing
+    an existing record for the same employee and year is an update rather than
+    a second row — the UNIQUE key says so — so a correction is possible and a
+    duplicate is not.
+    """
+    assert_client_access(current_user, data.client_id)
+    db = _db()
+    if not db:
+        return api_response(True, None)
+    firm_id = current_user.get("firm_id") or ""
+    existing = (
+        db.table("bonus_disqualifications").select("id")
+        .eq("firm_id", firm_id).eq("employee_id", data.employee_id)
+        .eq("accounting_year", data.accounting_year).limit(1).execute().data
+    ) or []
+    payload = {"ground": data.ground, "dismissed_on": data.dismissed_on,
+               "notes": data.notes}
+    if existing:
+        # The tenant filter on the UPDATE as well as the id: the service-role
+        # key bypasses RLS, so the app-layer filter is the isolation control.
+        # Columns written out rather than passed as `payload`, so the column
+        # ratchet can read which ones this touches.
+        (db.table("bonus_disqualifications").update({
+            "ground": data.ground,
+            "dismissed_on": data.dismissed_on,
+            "notes": data.notes,
+         }).eq("firm_id", firm_id).eq("id", existing[0]["id"]).execute())
+        row = {**existing[0], **payload}
+    else:
+        # Written out rather than spread, so the NOT NULL ratchet
+        # (tests/test_backend_inserts_supply_every_required_column_pg.py) can
+        # read what this insert actually supplies.
+        inserted = db.table("bonus_disqualifications").insert({
+            "firm_id": firm_id, "client_id": data.client_id,
+            "employee_id": data.employee_id,
+            "accounting_year": data.accounting_year,
+            "created_by": current_user.get("id"),
+            "ground": data.ground,
+            "dismissed_on": data.dismissed_on,
+            "notes": data.notes,
+        }).execute()
+        row = (inserted.data or [{}])[0]
+    log_event(
+        firm_id, "bonus_disqualification", data.employee_id, "update",
+        actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        new_data={"accounting_year": data.accounting_year,
+                  "ground": data.ground, "dismissed_on": data.dismissed_on},
+    )
+    return api_response(True, row)
+
+
+@router.delete("/bonus-disqualification")
+def delete_bonus_disqualification(
+    client_id: str = Query(...),
+    employee_id: str = Query(...),
+    accounting_year: Annotated[FYLabel, Query()] = ...,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Undo a §9 forfeiture. It takes a statutory debt away from a person, so
+    recording one in error must be correctable."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        return api_response(True, None)
+    firm_id = current_user.get("firm_id") or ""
+    db.table("bonus_disqualifications").delete().eq("firm_id", firm_id).eq(
+        "employee_id", employee_id).eq("accounting_year", accounting_year).execute()
+    log_event(
+        firm_id, "bonus_disqualification", employee_id, "delete",
+        actor_id=current_user.get("auth_user_id"),
+        actor_email=current_user.get("email"),
+        old_data={"accounting_year": accounting_year},
+    )
+    return api_response(True, {"removed": True})

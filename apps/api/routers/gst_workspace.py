@@ -203,22 +203,34 @@ def _visible_or_none(current_user: dict, rec: Optional[dict]) -> Optional[dict]:
 
 
 def _existing_return(current_user: dict, table: str, mock_store: dict,
-                     client_id: str, period: str) -> Optional[dict]:
-    """The return already on file for this (client, period), if any.
+                     client_id: str, period: str, gstin: str) -> Optional[dict]:
+    """The return already on file for this (client, period, REGISTRATION), if any.
 
     Both save endpoints need it for the same two reasons: to revise a draft in
-    place rather than colliding with the UNIQUE(client_id, period) constraint,
-    and to refuse a change to one that has been filed.
+    place rather than colliding with the unique index, and to refuse a change to
+    one that has been filed.
+
+    THE GSTIN IS PART OF THE KEY (GST-20, migration 390). It was not, and could
+    not have been: `UNIQUE (client_id, period)` on both tables meant a client
+    with two registrations could hold only one month's return between them. With
+    the key narrowed, a lookup that still matched on (client, period) alone
+    would find the OTHER registration's return and revise it — silently
+    replacing one state's figures with another's, which is worse than the
+    collision it replaced. Not defaulted: a caller that has not decided which
+    registration it means has not decided what it is saving.
     """
+    wanted = (gstin or "").strip().upper()
     if _USE_MOCK:
         for rec in mock_store.values():
-            if rec.get("client_id") == client_id and rec.get("period") == period:
+            if (rec.get("client_id") == client_id and rec.get("period") == period
+                    and (rec.get("gstin") or "").strip().upper() == wanted):
                 return rec
         return None
     from core.supabase_client import get_supabase
     rows = (get_supabase().table(table).select("*")
             .eq("firm_id", current_user["firm_id"])
             .eq("client_id", client_id).eq("period", period)
+            .eq("gstin", wanted)
             .limit(1).execute().data) or []
     return rows[0] if rows else None
 
@@ -424,17 +436,19 @@ def save_gstr1(
             "created_at": datetime.utcnow().isoformat(),
         }
 
-        # One return per (client, period) — the table says so (UNIQUE, migration
-        # 036), and so does the law: there is one GSTR-1 for a month. So a second
-        # save is a REVISION of the draft, not a new return, and the insert that
-        # used to happen here failed the unique constraint and surfaced as
-        # "Unable to complete GST operation. Please try again."
+        # One return per (client, period, REGISTRATION) — the unique index says
+        # so (migration 390, narrowing migration 036's (client_id, period)), and
+        # so does the law: there is one GSTR-1 per registration for a month. So a
+        # second save is a REVISION of that draft, not a new return, and the
+        # insert that used to happen here failed the unique constraint and
+        # surfaced as "Unable to complete GST operation. Please try again."
         #
         # Once submitted it freezes. A GST return cannot be revised (CGST §37);
         # corrections are declared in a later period's amendment tables. A
         # payload that could still change after filing would also make the
         # exception report compare the books against a moving target.
-        existing = _existing_return(current_user, "gstr1_returns", _MOCK_GSTR1, body.client_id, body.period)
+        existing = _existing_return(current_user, "gstr1_returns", _MOCK_GSTR1,
+                                    body.client_id, body.period, gstin)
         if existing:
             if existing.get("status") == "submitted":
                 raise HTTPException(
@@ -632,7 +646,8 @@ def save_gstr3b(
         # corrections are declared in a later period's amendment tables. A
         # payload that could still change after filing would also make the
         # exception report compare the books against a moving target.
-        existing = _existing_return(current_user, "gstr3b_returns", _MOCK_GSTR3B, body.client_id, body.period)
+        existing = _existing_return(current_user, "gstr3b_returns", _MOCK_GSTR3B,
+                                    body.client_id, body.period, gstin)
         if existing:
             if existing.get("status") == "submitted":
                 raise HTTPException(
@@ -996,6 +1011,47 @@ class GSTR9In(BaseModel):
     total_cgst_paise: int = 0
     total_sgst_paise: int = 0
     total_tax_paise: int = 0
+
+
+@router.get("/gstr9/compute")
+def compute_gstr9(
+    client_id: str = Query(...),
+    # `Annotated[...]`, NOT `FYLabel = Query(...)`: FastAPI builds the field
+    # from `Query()` in the default position and DISCARDS the Annotated
+    # metadata carrying the validator, silently (CLAUDE.md). `2026-28` would
+    # then reach `gstr9_fy_periods` and mean 2026-27.
+    financial_year: Annotated[FYLabel, Query(...)] = ...,
+    gstin: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("gst", "compute")),
+):
+    """The annual return's working, consolidated from the year's own returns.
+
+    CGST Act s.44 with Rule 80(1): the annual return consolidates the financial
+    year's GSTR-1 and GSTR-3B, and the portal opens FORM GSTR-9 once every one
+    of them is furnished. So this reads twenty-four header rows and their stored
+    payloads — never a year of transactions — and says which months are
+    outstanding rather than presenting eleven months as twelve.
+
+    `gstin` selects the REGISTRATION (GST-20): a client may hold several, each
+    files its own annual return, and omitting it means the primary.
+
+    Writes nothing and transmits nothing.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"financial_year": financial_year,
+                                   "tables": {}, "hsn": [], "months": [],
+                                   "gaps": [], "is_complete": False})
+    from core.supabase_client import get_supabase
+    from services import client_gst_registration_service as regs
+    from services import gstr9_service
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    registration = regs.resolve(db, firm_id, client_id, gstin)
+    return api_response(True, gstr9_service.build(
+        db, firm_id, client_id, financial_year=financial_year,
+        gstin=registration.gstin))
 
 
 @router.post("/gstr9")
@@ -1479,6 +1535,55 @@ def rule37_itc_reversal(
     from services.itc_reversal_service import rule37_report
     return api_response(True, rule37_report(
         get_supabase(), current_user["firm_id"], client_id, as_of=as_of))
+
+
+@router.get("/itc/rule37a")
+def rule37a_supplier_not_filed(
+    client_id: str = Query(..., description="Client whose credit to check"),
+    financial_year: Annotated[FYLabel, Query(
+        description="The FY the credit was AVAILED in, e.g. 2025-26")] = ...,
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """The credit that rests on a supplier having filed their GSTR-3B.
+
+    CGST Rule 37A (Notification 26/2022-Central Tax): where a supplier declared
+    the invoice in GSTR-1 but has NOT furnished the GSTR-3B for that period by
+    the 30th of September following the end of the financial year the credit
+    was availed in, the recipient reverses it on or before the 30th of
+    November following — and an unreversed credit is payable with §50 interest.
+
+    THIS IS NOT RULE 37 AND SHARES ONLY A BOX. Rule 37 is about what the
+    RECIPIENT did (the supplier went unpaid for 180 days); this is about what
+    the SUPPLIER did. One the client can fix by paying, the other only the
+    supplier can fix.
+
+    The one fact this product cannot hold — whether the supplier filed — is
+    NAMED on every answer rather than guessed, because guessing either way is
+    expensive in opposite directions.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. This reports; it posts no
+    # journal and files nothing.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        from domain.gst import rule_37a as _r
+        return api_response(True, {
+            "financial_year": financial_year, "as_of": "",
+            "rule": _r.RULE,
+            "supplier_deadline": _r.supplier_deadline(financial_year).isoformat(),
+            "recipient_deadline": _r.recipient_deadline(financial_year).isoformat(),
+            "supplier_deadline_passed": False,
+            "recipient_deadline_passed": False,
+            "suppliers": [], "totals": {}, "gaps": [],
+            "caveats": [_r.SUPPLIER_FILING_NOT_HELD, _r.RE_AVAILMENT,
+                        _r.NOT_COMPUTED, _r.POSTS_NOTHING],
+            "ca_review_required": True,
+        })
+    from core.supabase_client import get_supabase
+    from services.rule_37a_service import build as rule37a_build
+    return api_response(True, rule37a_build(
+        get_supabase(), current_user["firm_id"], client_id,
+        financial_year=financial_year))
 
 
 # ── A draft return is not a filing, and must be deletable ────────────────────

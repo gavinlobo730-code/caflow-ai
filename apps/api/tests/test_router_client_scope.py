@@ -563,7 +563,13 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # _assert_capital_gains_scope is the new resolver (can_access_client, one
     # fixed "Capital gains record not found" message, the year_end.py shape) —
     # a no-op in mock mode, which has no persistent store to protect.
-    "/api/income-tax": ("assert_client_access", "can_access_client", "_assert_capital_gains_scope"),
+    # IT-19 added a second row-addressed resolver, _entry_and_claims: it
+    # fetches the register entry by id, 404s on another firm's or an
+    # unassigned client's with the same fixed "Capital gains record not
+    # found" message, and returns its claims — so every s.54-family endpoint
+    # is scoped through the ENTRY, which is what carries the client_id.
+    "/api/income-tax": ("assert_client_access", "can_access_client",
+                        "_assert_capital_gains_scope", "_entry_and_claims"),
     # "/api/compliance" is a SHARED prefix — TWO DISTINCT FILES both declare
     # APIRouter(prefix="/api/compliance"): compliance.py (4 routes: /tasks,
     # /calendar, /seed, /due-dates/calculate — the older compliance_calendar
@@ -1020,6 +1026,17 @@ EXEMPT: dict[str, str] = {
         "a statutory test, not data: no table, no client_id, and the same "
         "answer for the same figures. The turnover it is asked about is "
         "supplied by the caller, not read from a client.",
+    # §115BAC(6) with Rule 21AGA — which regime applies and what the CA must
+    # do to get there. `domain/income_tax/regime_election.py` held the rule
+    # with NO CALLER, which mattered because a missed Form 10-IEA taxes a
+    # client on the new regime for a year they planned around the old one and
+    # cannot be cured after the due date.
+    "/api/income-tax/regime-election":
+        "dates and a statutory test, not data: no table, no client_id, and "
+        "the same answer for the same facts. Whether there is business "
+        "income, and what was elected in earlier years, are INPUTS the caller "
+        "states — the product holds no filing history, which is why an "
+        "unsupplied history is answered as unknown rather than as available.",
     # ── /api/payroll: the firm's own reading of a state notification ────────
     # firm_pt_slabs has firm_id and NO client_id (migration 327), and that is
     # the whole point of it: professional tax is levied by the STATE, so the
@@ -1159,6 +1176,13 @@ EXEMPT: dict[str, str] = {
         "the statutory TDS rate table for a financial year (domain/tds/"
         "section_rates.py). Reference data from the IT Act, identical for "
         "every firm and every client.",
+    "/api/itr/loss-types":
+        "the carry-forward period per loss type — §72(3) eight assessment "
+        "years, §73(4) FOUR, §74(2) and §71B eight (domain/income_tax/"
+        "loss_carry_forward.py). Reference data from the IT Act, identical for "
+        "every firm and every client, served so the form holds no vocabulary "
+        "and no period. Same shape as /api/tds/sections above; the request "
+        "model has no client_id to check.",
     "/api/lifecycle/dashboard":
         "aggregate counts only: lead stage tallies, a proposal count, an "
         "overdue-renewal count. No client is named and no per-client figure is "
@@ -1416,6 +1440,19 @@ EXEMPT: dict[str, str] = {
     "/api/income-tax/capital-gains/cii-table":
         "the statutory Cost Inflation Index table (Section 48 2nd proviso) "
         "— identical for every firm and client, no stored data read.",
+    "/api/banking/account-types":
+        "the five kinds of bank account this product supports, out of "
+        "domain/banking/account_kind.ACCOUNT_TYPES — a vocabulary, identical "
+        "for every firm and client, no stored data read and no client named. "
+        "Served so the account form holds no second copy: the type decides "
+        "whether the account's ledger is an Asset or a Liability, and for a "
+        "credit card which way up its balance reads.",
+    "/api/income-tax/capital-gains/sections":
+        "the four sections of the s.54 family and what each one reaches, out "
+        "of domain/income_tax/reinvestment_exemption.RULES — statutory "
+        "reference data, identical for every firm and client, no stored data "
+        "read and no client named. Served so the screen holds no second copy "
+        "of the vocabulary.",
     "/api/income-tax/capital-gains/compute":
         "ComputeCapitalGainsRequest has no client_id — a stateless "
         "estimator, does not persist anything (unlike POST /capital-gains, "
@@ -1626,6 +1663,16 @@ EXEMPT: dict[str, str] = {
         "the global ISO 4217 currency master (currency_service.list_currencies "
         "takes no firm_id or client_id at all) — reference data shared by every "
         "firm, with no client to scope to.",
+    "/api/currencies/entitlement":
+        "firms.multi_currency_entitled is a column on FIRMS (migration 146) "
+        "and both methods here scope to `current_user['firm_id']` — there is "
+        "no client_id in the request and none could be checked. It is the L2 "
+        "gate of resolve_currency_policy: a firm-wide switch, Partner-only to "
+        "write through rbac('settings', 'write'). The GET exists precisely "
+        "BECAUSE it has no client: a firm with no clients yet could not read "
+        "its own gate off a client's policy. The L3 gate beside it, PUT "
+        "/api/currencies/policy, IS per-client and does call "
+        "assert_client_access, which is why only this one is here.",
     "/api/team/{user_id}/role":
         "users has a firm_id and NO client_id column (migration 003) — "
         "addressed by a STAFF user_id, and already firm-membership checked. "

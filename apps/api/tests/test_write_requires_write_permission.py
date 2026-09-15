@@ -79,6 +79,15 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         "/api/filing-demo/{flow}/preview",
         "/api/banking/reconciliations/{recon_id}/preview",
         "/api/banking/transactions/{txn_id}/posting-preview",
+        # The AS 11 revaluation preview. POST because the closing rates are a
+        # map and a query string is the wrong place for one. It runs
+        # `FXRevaluationService.plan`, which is the READ half of the walk the
+        # posting path posts from, and writes nothing — enforced, not merely
+        # asserted, by test_the_year_end_fx_revaluation_has_a_door.py, which
+        # counts the rows in `fx_revaluations` and `journal_entries` either
+        # side of the call. It sits at accounting:read deliberately: a
+        # reviewer who may not post still needs to see the working.
+        "/api/fx-revaluation/preview",
         "/api/billing/preview-run",
         # A leaver's settlement is COMPUTED and handed back for a human to act
         # on. POST only because the request body carries the facts no record

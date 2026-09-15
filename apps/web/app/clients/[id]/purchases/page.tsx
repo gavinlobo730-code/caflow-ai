@@ -5,6 +5,11 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw } from "lucide-react";
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
+import { RcmDocumentPanel } from "@/components/purchases/RcmDocumentPanel";
+import { LandedCostPanel } from "@/components/purchases/LandedCostPanel";
+import { BillsOfEntryTab } from "@/components/purchases/BillsOfEntryTab";
+import PurchaseCycleTab from "@/components/purchases/PurchaseCycleTab";
+import { api } from "@/lib/api";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
 import { registerNotesFrom, topLevelNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
@@ -140,14 +145,22 @@ async function getAuthToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
-type PurchaseTab = "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes";
+type PurchaseTab = "purchase-cycle" | "bills" | "recurring" | "vendors" | "payments" | "debit-notes" | "credit-notes" | "bills-of-entry";
 const TABS: { id: PurchaseTab; label: string }[] = [
+  // PUR-25 — the cycle BEFORE the bill. First, because that is the order the
+  // documents are raised in, and because the goods receipt is what CGST
+  // s.16(2)(b) conditions the credit on.
+  { id: "purchase-cycle", label: "Orders & Goods Receipts" },
   { id: "bills", label: "Purchase Bills" },
   { id: "recurring", label: "Recurring" },
   { id: "vendors", label: "Vendors" },
   { id: "payments", label: "Payments" },
   { id: "debit-notes", label: "Debit Notes" },
   { id: "credit-notes", label: "Credit Notes" },
+  // PUR-18. Its own tab rather than a kind of purchase bill: a Bill of Entry
+  // carries no reverse-charge liability, no CGST or SGST and no accounts
+  // payable, and the duty is owed to customs rather than to the supplier.
+  { id: "bills-of-entry", label: "Bills of Entry" },
 ];
 
 // Shared money formatter (paise → ₹). Preserves the sign so a negative amount
@@ -256,6 +269,8 @@ export default function PurchasesPage() {
         {tab === "payments" && <Payments clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
         {tab === "debit-notes" && <DebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
         {tab === "credit-notes" && <PurchaseCreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "purchase-cycle" && <PurchaseCycleTab clientId={clientId} />}
+        {tab === "bills-of-entry" && <BillsOfEntryTab clientId={clientId} />}
       </div>
     </div>
   );
@@ -508,6 +523,15 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
   // the table scrolls/clips an in-flow dropdown.
   const [detailId, setDetailId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  // The s.31(3)(f) / s.31(3)(g) panel. One piece of state for both kinds,
+  // because the panel takes the kind and the server decides everything else.
+  const [rcmDoc, setRcmDoc] = useState<
+    { kind: "self_invoice"; billId: string } | { kind: "payment_voucher"; paymentId: string } | null
+  >(null);
+  // AS-2 par. 6 — what else the goods cost to get here. Offered on every
+  // bill: whether a consignment carried freight is a fact about the bill,
+  // not something the browser can read off a status.
+  const [landedCostBillId, setLandedCostBillId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseBillRow | PurchaseBillDetail | null>(null);
   function openMenuFor(e: React.MouseEvent, bill: PurchaseBillRow) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1087,6 +1111,23 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
                 View details
               </button>
+              {/* CGST Act s.31(3)(f). Offered on EVERY bill and never gated
+                  here: whether the section reaches this one depends on the
+                  supplier's registration, which the panel asks the server and
+                  the browser must not decide. A bill it does not reach opens
+                  the panel and is told why, which is the answer the CA needs. */}
+              <button onClick={() => { setMenu(null); setRcmDoc({ kind: "self_invoice", billId: b.id }); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                Self-invoice (s.31(3)(f))
+              </button>
+              {/* AS-2 par. 6. Freight inward, insurance in transit and
+                  non-creditable customs duty are part of what the stock cost;
+                  the split has to be seen BEFORE the receipt, because the
+                  journal it posts cannot be rewritten (migration 251). */}
+              <button onClick={() => { setMenu(null); setLandedCostBillId(b.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
+                Landed costs
+              </button>
               {b.status !== "cancelled" && (
                 <button onClick={() => { setMenu(null); router.push(`/clients/${clientId}/purchases/bills/${b.id}/edit`); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[#F8FAFC] text-[#334155]">
@@ -1133,6 +1174,26 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
           onCancelBill={cancelBill}
           onChanged={load}
           onToast={(text, type) => setMsg({ type: type === "success" ? "ok" : "err", text })}
+        />
+      )}
+
+      {rcmDoc && (
+        <RcmDocumentPanel
+          clientId={clientId}
+          kind={rcmDoc.kind}
+          purchaseBillId={"billId" in rcmDoc ? rcmDoc.billId : undefined}
+          purchasePaymentId={"paymentId" in rcmDoc ? rcmDoc.paymentId : undefined}
+          onClose={() => setRcmDoc(null)}
+          onIssued={load}
+        />
+      )}
+
+      {landedCostBillId && (
+        <LandedCostPanel
+          clientId={clientId}
+          billId={landedCostBillId}
+          onClose={() => setLandedCostBillId(null)}
+          onChanged={load}
         />
       )}
 
@@ -1257,6 +1318,13 @@ function Vendors({ clientId }: { clientId: string }) {
   // It is not the same as "resident", and the backend reports it as a gap
   // rather than pretending the question was answered.
   const [residentialStatus, setResidentialStatus] = useState<"" | "resident" | "non_resident">("");
+  // CGST Act s.31(3)(f) — whether this supplier is registered under GST.
+  // A GSTIN above answers it; this answers it where there is none. The
+  // options are SERVED, so the browser never spells the third state: an
+  // empty value is "not recorded", which is a different fact from either
+  // answer and is what the self-invoice path names as a gap.
+  const [gstRegistrationStatus, setGstRegistrationStatus] = useState("");
+  const [gstRegistrationOptions, setGstRegistrationOptions] = useState<string[]>([]);
   const [countryOfResidence, setCountryOfResidence] = useState("");
   const [taxIdentificationNumber, setTaxIdentificationNumber] = useState("");
   // s.195 withholding. The backend owns every rule here (CLAUDE.md: zero
@@ -1319,6 +1387,24 @@ function Vendors({ clientId }: { clientId: string }) {
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /* The three answers to "is this supplier registered" are the SERVER's list
+     (PUR-19). CGST Act s.31(3)(f) reaches only a supply from an UNREGISTERED
+     supplier, so this one field decides whether a self-invoice is due — and
+     `unrecorded` is a real third state rather than the absence of the other
+     two. A copy of the list here would be a second place for it to drift, and
+     there is deliberately no hardcoded fallback: an unreachable server leaves
+     the box on "Not recorded", which is the truth, where a guessed pair could
+     offer a value the server refuses. */
+  useEffect(() => {
+    let alive = true;
+    api.rcmDocuments.registrationStates()
+      .then((res) => {
+        if (alive && res.success && Array.isArray(res.data)) setGstRegistrationOptions(res.data);
+      })
+      .catch(() => { /* leaves the field unset, which is the third state */ });
+    return () => { alive = false; };
+  }, []);
 
   /** Bulk-import vendors through /api/vendors/bulk — one request for the whole
    *  file instead of one POST per row. Duplicates (GSTIN/PAN already on file
@@ -1395,6 +1481,7 @@ function Vendors({ clientId }: { clientId: string }) {
           tds_applicable: tdsApplicable,
           tds_section: tdsApplicable ? tdsSection : undefined,
           residential_status: residentialStatus || undefined,
+          gst_registration_status: gstRegistrationStatus || undefined,
           // Only meaningful for a non-resident; 26Q has no field for either.
           country_of_residence:
             residentialStatus === "non_resident" ? countryOfResidence.trim().toUpperCase() || undefined : undefined,
@@ -1432,6 +1519,7 @@ function Vendors({ clientId }: { clientId: string }) {
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
       setTdsApplicable(false); setTdsSection("194C"); setTdsRate("2"); setOpeningBalance("");
       setResidentialStatus(""); setCountryOfResidence(""); setTaxIdentificationNumber("");
+      setGstRegistrationStatus("");
       setNatureOfIncome(""); setPayeeClass(""); setTrcOnFile(false); setForm10fOnFile(false);
       setNoPeDeclaration(false); setTreatyRate("");
       setNoPeDeclarationOn(""); setNoPeDeclarationRef("");
@@ -1872,6 +1960,26 @@ function Vendors({ clientId }: { clientId: string }) {
                   <option value="non_resident">Non-resident</option>
                 </select>
               </div>
+              <div>
+                <label htmlFor="gst-registration-status" className="block text-xs font-medium text-[#475569] mb-1">GST registration (CGST Act s.31(3)(f))</label>
+                <select
+                  id="gst-registration-status"
+                  value={gstRegistrationStatus}
+                  onChange={(e) => setGstRegistrationStatus(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {/* The EMPTY option is the third state and says so: a blank
+                      here is "nobody has recorded it", which is why a
+                      self-invoice cannot be decided rather than being refused. */}
+                  <option value="">Not recorded</option>
+                  {gstRegistrationOptions.filter((o) => o !== "unrecorded").map((o) => (
+                    <option key={o} value={o}>{o === "registered" ? "Registered" : "Unregistered"}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-[#94A3B8] mt-1">
+                  Only needed where there is no GSTIN above — a GSTIN is the registration.
+                </p>
+              </div>
               {residentialStatus === "non_resident" && (
                 <div>
                   <label htmlFor="country-of-residence" className="block text-xs font-medium text-[#475569] mb-1">Country (ISO code)</label>
@@ -2155,6 +2263,11 @@ interface PaymentRow {
 
 function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  // CGST Act s.31(3)(g). Offered on every payment and never gated here: the
+  // section carries no "unregistered" limb, and whether it reaches this
+  // payment depends on what the payment settled — which the panel asks the
+  // server. A payment it does not reach opens the panel and is told why.
+  const [voucherFor, setVoucherFor] = useState<string | null>(null);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [openBills, setOpenBills] = useState<{
     id: string; our_reference: string; bill_no: string | null; net_payable_paise: number;
@@ -2720,12 +2833,27 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
           </>
         }
         rowActions={(p) => !p.is_reversed && (
-          <button onClick={() => reversePayment(p)}
-            className="text-[11px] text-red-600 hover:text-red-800 hover:underline">
-            Reverse
-          </button>
+          <div className="flex items-center justify-end gap-3">
+            <button onClick={() => setVoucherFor(p.id)}
+              className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
+              Payment voucher
+            </button>
+            <button onClick={() => reversePayment(p)}
+              className="text-[11px] text-red-600 hover:text-red-800 hover:underline">
+              Reverse
+            </button>
+          </div>
         )}
       />
+
+      {voucherFor && (
+        <RcmDocumentPanel
+          clientId={clientId}
+          kind="payment_voucher"
+          purchasePaymentId={voucherFor}
+          onClose={() => setVoucherFor(null)}
+        />
+      )}
     </div>
   );
 }

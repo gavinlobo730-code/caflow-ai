@@ -29,6 +29,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from domain.accounting import journal_source as JS
+from domain.accounting import line_order
 
 from services.phase2_journal_service import phase2_journal_service
 from services import period_lock_service
@@ -187,14 +188,20 @@ class ManualJournalService:
         rows = (db.table("journal_entries")
                 .select("id, client_id, entry_date, reference_no, narration, entry_type, "
                         "is_posted, is_reversed, source_type, created_at, "
-                        "lines:journal_lines(id, account_id, debit_paise, credit_paise, narration)")
+                        "lines:journal_lines(id, account_id, debit_paise, credit_paise, "
+                        "narration, line_order, created_at)")
                 .eq("id", entry_id).eq("firm_id", firm_id)
                 .is_("deleted_at", None).limit(1).execute().data) or []
         if not rows:
             raise HTTPException(status_code=404, detail="Journal entry not found.")
         entry = rows[0]
 
-        lines = entry.get("lines") or []
+        # ACC-16 — the voucher's own order, or the conventional one derived for
+        # a line written before migration 384. PostgREST cannot express "debits
+        # before credits" as an ORDER BY (no expression ordering, no boolean
+        # column), so the sort happens here, in the one rule both sides share.
+        lines = line_order.in_display_order(entry.get("lines") or [])
+        entry["lines"] = lines
         entry["total_debit_paise"] = sum(int(l.get("debit_paise") or 0) for l in lines)
         entry["total_credit_paise"] = sum(int(l.get("credit_paise") or 0) for l in lines)
         entry["status"] = "posted" if entry.get("is_posted") else "draft"
@@ -297,6 +304,29 @@ class ManualJournalService:
             if moved_into:
                 raise HTTPException(status_code=422, detail=moved_into)
 
+        # SUPPORTING DOCUMENTS ARE A DRAFT-ONLY EDIT, AND IT SAYS SO (ACC-25).
+        #
+        # `prevent_posted_journal_modification` (last defined in migration 274)
+        # lets a posted entry's HEADER change only inside
+        # `journal_edit_in_progress()`, and the one thing that sets that flag is
+        # `edit_posted_journal` — which rewrites LINES and carries no
+        # attachments parameter. So a posted entry cannot gain a document
+        # without replacing that function, which is the posting kernel's own
+        # edit path and an owner decision rather than a convenience.
+        #
+        # Refused rather than ignored. Silently discarding what the CA typed is
+        # the defect this half of ACC-25 exists to fix, and doing it here would
+        # reproduce it one layer down.
+        if "attachments" in data and entry.get("is_posted"):
+            raise HTTPException(
+                status_code=422,
+                detail="A posted entry's supporting documents cannot be "
+                       "changed here. The ledger allows a posted entry to be "
+                       "corrected only through the edit path, which rewrites "
+                       "its lines and does not carry documents. Attach the "
+                       "document to the reversal, or record it against the "
+                       "source document instead.")
+
         if entry.get("is_posted"):
             if lines is None:
                 raise HTTPException(
@@ -334,6 +364,10 @@ class ManualJournalService:
                 "narration": data.get("narration"),
                 "reference_no": data.get("reference_no"),
                 "entry_type": data.get("entry_type"),
+                # ACC-25. An EMPTY LIST survives this filter and is meant to:
+                # it is the CA removing the documents, which is a different
+                # answer from not mentioning them.
+                "attachments": data.get("attachments"),
             }.items() if v is not None}
             if header.get("entry_type") and header["entry_type"] not in ALLOWED_ENTRY_TYPES:
                 raise HTTPException(status_code=422, detail=f"Invalid entry_type '{header['entry_type']}'.")
@@ -341,13 +375,20 @@ class ManualJournalService:
                 db.table("journal_entries").update(header).eq("id", entry_id).eq("firm_id", firm_id).execute()
             if lines is not None:
                 db.table("journal_lines").delete().eq("journal_entry_id", entry_id).execute()
+                # `line_order` is the position in the array the CA saved, the
+                # same thing post_journal_atomic's WITH ORDINALITY records on
+                # the create path (migration 384). Written here because this
+                # path does its own INSERT and does not go through the RPC —
+                # without it an EDITED voucher would fall back to the derived
+                # order while the one beside it kept the order it was typed in.
                 db.table("journal_lines").insert([{
                     "journal_entry_id": entry_id,
                     "account_id": l["account_id"],
                     "debit_paise": int(l.get("debit_paise") or 0),
                     "credit_paise": int(l.get("credit_paise") or 0),
                     "narration": l.get("narration") or "",
-                } for l in lines]).execute()
+                    "line_order": i,
+                } for i, l in enumerate(lines)]).execute()
 
         return self.get(db, firm_id, entry_id)
 

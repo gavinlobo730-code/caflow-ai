@@ -6,7 +6,12 @@
  * Section 2(29A): Long-term capital gains
  * Section 45: Chargeability of capital gains
  * Section 48: Mode of computation
- * Section 54: Exemptions
+ * Section 54 / 54B / 54EC / 54F: reinvestment exemption (IT-19) — recorded
+ *   per claim against a register entry and computed by
+ *   domain/income_tax/reinvestment_exemption.py. This page renders the
+ *   working and decides none of it: s.54F apportions on net consideration
+ *   where s.54 takes the lower of two amounts, s.54EC's Rs 50 lakh spans two
+ *   financial years, and s.54B is the one section a short-term gain reaches.
  * Finance (No. 2) Act 2024, for transfers made ON OR AFTER 23-07-2024: s.111A
  *   15% -> 20%; s.112A 10%/Rs 1,00,000 -> 12.5%/Rs 1,25,000; s.112 20%-with-
  *   indexation -> 12.5%-without. THE HOLDING PERIODS CHANGED TOO — s.2(42A)
@@ -25,7 +30,7 @@
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ChevronLeft, Calculator, Info, BookOpen, Plus, X, Trash2 } from "lucide-react";
+import { ChevronLeft, Calculator, Info, BookOpen, Plus, X, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -36,6 +41,9 @@ import {
   type CapitalGainsAssetType, type CapitalGainsRegisterAssetType,
   type CapitalGainsAssesseeType,
   type CapitalGainsComputeResult, type CapitalGainsRecord,
+  getCapitalGainExemption, getReinvestmentSections, addReinvestment, deleteReinvestment,
+  type CapitalGainExemption, type ReinvestmentSectionInfo,
+  type ReinvestmentSection, type AcquisitionKind, type TransferredAssetNature,
 } from "@/lib/data/income-tax";
 
 // Asset types with their holding period thresholds and tax treatment
@@ -57,6 +65,16 @@ const ASSET_TYPES_REG: { value: CapitalGainsRegisterAssetType; label: string }[]
   { value: "other",         label: "Other" },
 ];
 
+// What was SOLD, in the vocabulary the s.54 family charges on (IT-19). The
+// four VALUES come from the server (`getReinvestmentSections`); only the
+// labels live here, because a label is prose and a value is a contract.
+const NATURE_LABELS: Record<TransferredAssetNature, string> = {
+  residential_house: "Residential house",
+  agricultural_land: "Agricultural land",
+  land_or_building: "Land or building (not a residence)",
+  other: "Something else",
+};
+
 function getFYFromDate(dateStr: string): string {
   const d = new Date(dateStr);
   const y = d.getFullYear();
@@ -67,10 +85,25 @@ function getFYFromDate(dateStr: string): string {
 
 interface Client { id: string; client_name: string; }
 
+const BLANK_CLAIM = {
+  section: "54" as ReinvestmentSection,
+  new_asset_description: "",
+  acquisition_kind: "" as "" | AcquisitionKind,
+  acquisition_date: "",
+  cost_rs: "",
+  cgas_rs: "",
+  cgas_date: "",
+  // "" is a THIRD state, not a zero: s.54F refuses a claim where how many
+  // other houses the assessee owned is unrecorded, and a 0 would assert none.
+  other_houses: "" as "" | string,
+  agri_use: "" as "" | "yes" | "no",
+};
+
 const BLANK_REG = {
   asset_description: "",
   asset_type: "equity_shares" as CapitalGainsRegisterAssetType,
   assessee_type: "unspecified" as CapitalGainsAssesseeType,
+  transferred_asset_nature: "" as "" | TransferredAssetNature,
   purchase_date: "",
   sale_date: "",
   purchase_cost_rs: "",
@@ -211,6 +244,85 @@ export default function CapitalGainsPage() {
 
   // Live preview for the "Add Transaction" modal — same debounced
   // server-side compute as the calculator tab, not a client-side re-implementation.
+  // ── s.54 family (IT-19). Everything below is READ; nothing is computed
+  // here. Which section reaches a transfer, whether a claim is in time, and
+  // how much it exempts are all the server's answers.
+  const [natures, setNatures] = useState<TransferredAssetNature[]>([]);
+  const [sectionInfo, setSectionInfo] = useState<ReinvestmentSectionInfo[]>([]);
+  const [exemptFor, setExemptFor] = useState<CapitalGainsRecord | null>(null);
+  const [exemption, setExemption] = useState<CapitalGainExemption | null>(null);
+  const [exemptBusy, setExemptBusy] = useState(false);
+  const [exemptError, setExemptError] = useState("");
+  const [claimForm, setClaimForm] = useState({ ...BLANK_CLAIM });
+
+  useEffect(() => {
+    getReinvestmentSections()
+      .then(d => { setNatures(d.asset_natures); setSectionInfo(d.sections); })
+      .catch(() => { /* the labels above stand in until the server answers */ });
+  }, []);
+
+  const loadExemption = useCallback(async (recordId: string) => {
+    setExemptBusy(true);
+    try {
+      setExemption(await getCapitalGainExemption(recordId));
+      setExemptError("");
+    } catch (e) {
+      setExemption(null);
+      setExemptError(e instanceof Error ? e.message : "Couldn't load the exemption working.");
+    } finally {
+      setExemptBusy(false);
+    }
+  }, []);
+
+  async function openExemption(r: CapitalGainsRecord) {
+    setExemptFor(r);
+    setClaimForm({ ...BLANK_CLAIM });
+    setExemptError("");
+    await loadExemption(r.id);
+  }
+
+  async function saveClaim() {
+    if (!exemptFor || !claimForm.new_asset_description.trim()) {
+      setExemptError("Describe what was bought.");
+      return;
+    }
+    setExemptBusy(true);
+    try {
+      await addReinvestment(exemptFor.id, {
+        section: claimForm.section,
+        new_asset_description: claimForm.new_asset_description.trim(),
+        acquisition_kind: claimForm.acquisition_kind || null,
+        acquisition_date: claimForm.acquisition_date || null,
+        cost_paise: rsToP(claimForm.cost_rs),
+        cgas_deposit_paise: rsToP(claimForm.cgas_rs),
+        cgas_deposit_date: claimForm.cgas_date || null,
+        other_residential_houses_owned:
+          claimForm.other_houses === "" ? null : Number(claimForm.other_houses),
+        agricultural_use_two_years:
+          claimForm.agri_use === "" ? null : claimForm.agri_use === "yes",
+      });
+      setClaimForm({ ...BLANK_CLAIM });
+      await loadExemption(exemptFor.id);
+    } catch (e) {
+      setExemptError(e instanceof Error ? e.message : "Couldn't record the claim.");
+    } finally {
+      setExemptBusy(false);
+    }
+  }
+
+  async function removeClaim(claimId: string) {
+    if (!exemptFor) return;
+    setExemptBusy(true);
+    try {
+      await deleteReinvestment(exemptFor.id, claimId);
+      await loadExemption(exemptFor.id);
+    } catch (e) {
+      setExemptError(e instanceof Error ? e.message : "Couldn't delete the claim.");
+    } finally {
+      setExemptBusy(false);
+    }
+  }
+
   const [regPreview, setRegPreview] = useState<CapitalGainsComputeResult | null>(null);
   useEffect(() => {
     if (!showModal || !regForm.purchase_date || !regForm.sale_date || !regForm.purchase_cost_rs || !regForm.sale_value_rs) {
@@ -247,6 +359,9 @@ export default function CapitalGainsPage() {
         asset_description: regForm.asset_description.trim(),
         asset_type: regForm.asset_type,
         assessee_type: regForm.assessee_type,
+        // Unstated goes as null. Defaulting to any of the four would decide
+        // which section reaches this transfer by omission.
+        transferred_asset_nature: regForm.transferred_asset_nature || null,
         purchase_date: regForm.purchase_date,
         sale_date: regForm.sale_date,
         purchase_cost_paise: rsToP(regForm.purchase_cost_rs),
@@ -576,7 +691,7 @@ export default function CapitalGainsPage() {
               </div>
             )}
             {regLoading ? (
-              <TableSkeleton cols={10} bare />
+              <TableSkeleton cols={11} bare />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -591,6 +706,7 @@ export default function CapitalGainsPage() {
                       <th className="px-4 py-3 text-right">Indexed Cost</th>
                       <th className="px-4 py-3 text-center">Gain Type</th>
                       <th className="px-4 py-3 text-right">Tax Rate</th>
+                      <th className="px-4 py-3 text-center">s.54</th>
                       <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
@@ -612,6 +728,12 @@ export default function CapitalGainsPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-[#334155]">{r.tax_rate_percent != null ? `${r.tax_rate_percent}%` : "—"}</td>
+                          <td className="px-4 py-3 text-center">
+                            <button onClick={() => openExemption(r)}
+                                    className="text-xs px-2 py-1 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors whitespace-nowrap">
+                              Exemption
+                            </button>
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
                               <span className={`text-xs font-semibold ${gain >= 0 ? "text-green-700" : "text-red-700"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
@@ -624,13 +746,241 @@ export default function CapitalGainsPage() {
                       );
                     })}
                     {records.length === 0 && (
-                      <tr><td colSpan={10} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No capital gains transactions recorded yet.</td></tr>
+                      <tr><td colSpan={11} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No capital gains transactions recorded yet.</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
             )}
           </Card>
+
+          {/* ── s.54 family exemption (IT-19) ──────────────────────────────
+              Everything shown is the server's working. This panel formats it
+              and decides nothing: which section reaches the transfer, whether
+              a claim is in time, s.54F's proportion and s.54EC's cap are all
+              domain/income_tax/reinvestment_exemption.py's answers. */}
+          {exemptFor && (
+            <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <h2 className="text-sm font-semibold text-[#0F172A]">
+                      Reinvestment exemption — {exemptFor.asset_description}
+                    </h2>
+                  </div>
+                  <button onClick={() => { setExemptFor(null); setExemption(null); }} aria-label="Close">
+                    <X className="w-4 h-4 text-[#94A3B8]" />
+                  </button>
+                </div>
+
+                <div className="px-5 py-4 space-y-4">
+                  {exemptError && (
+                    <div className="bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">{exemptError}</div>
+                  )}
+
+                  {exemption && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-[#F8FAFC] rounded-lg px-3 py-2">
+                        <p className="text-[11px] text-[#64748B]">Gain (s. 48)</p>
+                        <p className="text-sm font-semibold text-[#0F172A]">{fmtRs(exemption.gain_paise)}</p>
+                      </div>
+                      <div className="bg-emerald-50 rounded-lg px-3 py-2">
+                        <p className="text-[11px] text-emerald-700">Exempt</p>
+                        <p className="text-sm font-semibold text-emerald-800">{fmtRs(exemption.total_exemption_paise)}</p>
+                      </div>
+                      <div className="bg-amber-50 rounded-lg px-3 py-2">
+                        <p className="text-[11px] text-amber-800">Still taxable</p>
+                        <p className="text-sm font-semibold text-amber-900">{fmtRs(exemption.taxable_gain_paise)}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* What the register could not answer. A sentence saying what
+                      to go and record beats a figure computed from a guess. */}
+                  {exemption && exemption.gaps.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
+                      {exemption.gaps.map((g, i) => (
+                        <p key={i} className="text-[11px] text-amber-900 flex gap-1.5">
+                          <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />{g}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {exemption?.claims.map(c => (
+                    <div key={c.id ?? c.section}
+                         className={`rounded-lg border px-3 py-2.5 space-y-1.5 ${c.allowed ? "border-emerald-200 bg-emerald-50/40" : "border-[#E2E8F0] bg-[#F8FAFC]"}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-[#0F172A]">
+                            s. {c.section} — {c.new_asset_description}
+                          </p>
+                          <p className="text-[11px] text-[#64748B]">{c.heading}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`text-sm font-semibold ${c.allowed ? "text-emerald-700" : "text-[#94A3B8]"}`}>
+                            {c.allowed ? fmtRs(c.exemption_paise) : "Not allowed"}
+                          </p>
+                          {c.deadline && (
+                            <p className="text-[11px] text-[#64748B]">
+                              by {c.deadline}{c.within_time === false ? " — missed" : ""}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      {c.working.map((w, i) => (
+                        <p key={`w${i}`} className="text-[11px] text-[#475569]">{w}</p>
+                      ))}
+                      {c.gaps.map((g, i) => (
+                        <p key={`g${i}`} className="text-[11px] text-amber-900 flex gap-1.5">
+                          <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />{g}
+                        </p>
+                      ))}
+                      {c.caveats.map((v, i) => (
+                        <p key={`c${i}`} className="text-[11px] text-[#64748B] italic">{v}</p>
+                      ))}
+                      {c.id && (
+                        <button onClick={() => removeClaim(c.id as string)} disabled={exemptBusy}
+                                className="text-[11px] text-[#94A3B8] hover:text-red-500 transition-colors">
+                          Delete this claim
+                        </button>
+                      )}
+                    </div>
+                  ))}
+
+                  {exemption && exemption.caveats.map((v, i) => (
+                    <p key={i} className="text-[11px] text-[#64748B] italic">{v}</p>
+                  ))}
+
+                  {/* ── record a claim ─────────────────────────────────── */}
+                  <div className="border-t pt-4 space-y-3">
+                    <p className="text-xs font-semibold text-[#334155]">Record a claim</p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-[#334155] block mb-1">Section</label>
+                        <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                                value={claimForm.section}
+                                onChange={e => setClaimForm(f => ({ ...f, section: e.target.value as ReinvestmentSection }))}>
+                          {(sectionInfo.length
+                            ? sectionInfo.map(x => x.section)
+                            : (["54", "54B", "54EC", "54F"] as ReinvestmentSection[])).map(sec => (
+                            <option key={sec} value={sec}>s. {sec}</option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-[#64748B] mt-1">
+                          {sectionInfo.find(x => x.section === claimForm.section)?.new_asset ?? ""}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-[#334155] block mb-1">Bought by</label>
+                        <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                                aria-label="Acquisition kind"
+                                value={claimForm.acquisition_kind}
+                                onChange={e => setClaimForm(f => ({ ...f, acquisition_kind: e.target.value as "" | AcquisitionKind }))}>
+                          <option value="">Not stated</option>
+                          <option value="purchase">Purchase</option>
+                          <option value="construction">Construction</option>
+                          <option value="bonds">Bond subscription</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium text-[#334155] block mb-1">What was bought *</label>
+                      <input className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                             value={claimForm.new_asset_description}
+                             onChange={e => setClaimForm(f => ({ ...f, new_asset_description: e.target.value }))}
+                             placeholder="e.g. Flat 402, Prabhat Residency, Pune" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-[#334155] block mb-1">Cost (₹)</label>
+                        <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                               value={claimForm.cost_rs}
+                               onChange={e => setClaimForm(f => ({ ...f, cost_rs: e.target.value }))} placeholder="0" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-[#334155] block mb-1">Acquired on</label>
+                        <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                               aria-label="Acquisition date"
+                               value={claimForm.acquisition_date}
+                               onChange={e => setClaimForm(f => ({ ...f, acquisition_date: e.target.value }))} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-[#334155] block mb-1">
+                          Capital Gains Accounts Scheme (₹)
+                        </label>
+                        <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                               value={claimForm.cgas_rs}
+                               onChange={e => setClaimForm(f => ({ ...f, cgas_rs: e.target.value }))} placeholder="0" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-[#334155] block mb-1">Deposited on</label>
+                        <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                               aria-label="CGAS deposit date"
+                               value={claimForm.cgas_date}
+                               onChange={e => setClaimForm(f => ({ ...f, cgas_date: e.target.value }))} />
+                      </div>
+                    </div>
+
+                    {/* The two facts no ledger holds. Blank is a THIRD state
+                        and the server refuses on it — a 0 here would assert
+                        the assessee owned no other house. */}
+                    {claimForm.section === "54F" && (
+                      <div>
+                        <label className="text-xs font-medium text-[#334155] block mb-1">
+                          Other residential houses owned on the date of transfer
+                        </label>
+                        <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                               value={claimForm.other_houses}
+                               onChange={e => setClaimForm(f => ({ ...f, other_houses: e.target.value }))}
+                               placeholder="Leave blank if not established" />
+                        <p className="text-[11px] text-[#64748B] mt-1">
+                          s. 54F needs this and no ledger holds it. Blank is not zero —
+                          the working says the claim cannot be tested until it is recorded.
+                        </p>
+                      </div>
+                    )}
+                    {claimForm.section === "54B" && (
+                      <div>
+                        <label className="text-xs font-medium text-[#334155] block mb-1">
+                          Farmed in the two years before the transfer?
+                        </label>
+                        <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm"
+                                aria-label="Agricultural use in the two preceding years"
+                                value={claimForm.agri_use}
+                                onChange={e => setClaimForm(f => ({ ...f, agri_use: e.target.value as "" | "yes" | "no" }))}>
+                          <option value="">Not established</option>
+                          <option value="yes">Yes — by the assessee or a parent</option>
+                          <option value="no">No</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" onClick={saveClaim} disabled={exemptBusy}>
+                        {exemptBusy ? "Saving…" : "Record claim"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-[#94A3B8] border-t pt-3">
+                    Every figure and window here is written from knowledge rather than read
+                    off the bare Act — this environment cannot reach incometax.gov.in.
+                    Check s. 54EC&apos;s ₹50 lakh, the six-month and two- and three-year
+                    windows and the Finance Act 2023 ₹10 crore cap against the section
+                    before relying on them.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Add Transaction Modal */}
           {showModal && (
@@ -653,6 +1003,24 @@ export default function CapitalGainsPage() {
                     <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value as CapitalGainsRegisterAssetType }))}>
                       {ASSET_TYPES_REG.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-[#334155] block mb-1">Sold as</label>
+                    <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            aria-label="What was sold, for the s.54 family"
+                            value={regForm.transferred_asset_nature}
+                            onChange={e => setRegForm(f => ({ ...f, transferred_asset_nature: e.target.value as "" | TransferredAssetNature }))}>
+                      <option value="">Not stated</option>
+                      {(natures.length ? natures : (Object.keys(NATURE_LABELS) as TransferredAssetNature[])).map(n => (
+                        <option key={n} value={n}>{NATURE_LABELS[n] ?? n}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-[#64748B] mt-1">
+                      Decides which of ss. 54, 54B, 54EC and 54F can reach this transfer.
+                      &quot;Immovable property&quot; above cannot say — s. 54 reaches a residential
+                      house and s. 54F reaches an asset that is not one.
+                    </p>
                   </div>
 
                   <div>

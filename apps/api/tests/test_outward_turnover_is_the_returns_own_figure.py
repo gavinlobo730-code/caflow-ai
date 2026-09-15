@@ -45,8 +45,14 @@ def _inv(kind, value):
 @pytest.fixture
 def books(monkeypatch):
     """A period whose outward side is whatever the test puts in `rows`."""
-    rows: dict = {"sales": [], "cn": [], "sdn": []}
+    rows: dict = {"sales": [], "cn": [], "sdn": [], "bank": [], "disposals": []}
     monkeypatch.setattr(grs, "_posted_sales", lambda *a: rows["sales"])
+    # A posted bank RECEIPT on which the CA declared GST is an outward supply
+    # too (BANK-24) — so it is turnover, and `_outward_transactions` reads it.
+    monkeypatch.setattr(grs, "_bank_lines_declaring_gst", lambda *a: rows["bank"])
+    # …and so is the sale of a capital asset (FA-08b). §2(112) "total turnover"
+    # reaches it, so it is in F.
+    monkeypatch.setattr(grs, "_disposals_declaring_gst", lambda *a: rows["disposals"])
     monkeypatch.setattr(grs, "_issued_credit_notes", lambda *a: rows["cn"])
     monkeypatch.setattr(grs, "_issued_sales_debit_notes", lambda *a: rows["sdn"])
     monkeypatch.setattr(grs, "_customers_for_3b", lambda *a: {})
@@ -155,8 +161,14 @@ def test_gstr3b_and_the_working_build_the_outward_side_the_same_way():
     rather than keeping its own inline copy — two constructions of one list is
     how a return and a working come apart."""
     import inspect
+    import re
     src = inspect.getsource(grs.gstr3b_from_books)
-    assert "_outward_transactions(db, firm_id, client_id, start, end)" in src
+    # THE RULE, NOT ONE SPELLING OF IT. This used to pin the whole argument
+    # list, and BANK-24 added a keyword argument (`bank_gst=`, so the return
+    # and the working read one fetch) — a change that obeys the rule and broke
+    # the guard. What matters is that the builder is CALLED with the period's
+    # own bounds, not how many arguments follow.
+    assert re.search(r"_outward_transactions\(db, firm_id, client_id, start, end[,)]", src)
     # ...and must NOT have kept the loop it used to run inline.
     assert 'transaction_type="sales_invoice"' not in src
     assert inspect.getsource(grs.outward_turnover).count("_outward_transactions") == 1
@@ -231,3 +243,72 @@ def test_the_caveat_travels_onto_the_rule_43_answer(monkeypatch):
 
     out = r43.for_period(_DB(), FIRM, CLIENT, PERIOD)
     assert "the sentence" in out["caveats"]
+
+
+# ── a bank receipt is turnover (BANK-24) ────────────────────────────────────
+
+def test_a_bank_receipt_declaring_gst_is_in_F(books):
+    """The CA marked a ₹1,18,000 receipt as containing 18% GST, so ₹1,00,000 of
+    it is an outward supply the client made — CGST Act §9, and the posting
+    already credited GST Output for it. §2(112) "total turnover" reaches it,
+    and leaving it out would make F too small and Te too LARGE."""
+    books["bank"] = [{"id": "b1", "posted_journal_id": "j1", "gst_rate_bps": 1800,
+                      "credit_paise": 1_18_000_00, "debit_paise": 0,
+                      "transaction_date": "2025-06-14"}]
+    t = _turnover()
+    assert t["total_paise"] == 1_00_000_00
+    # …and it is not exempt.
+    assert t["exempt_paise"] == 0
+
+
+def test_a_bank_CHARGE_is_not_turnover(books):
+    """Money OUT is an INWARD supply. Its tax is input credit, not output tax,
+    and its value is not the client's turnover — putting it in F would inflate
+    the denominator Rule 43 apportions by and understate every reversal."""
+    books["bank"] = [{"id": "b2", "posted_journal_id": "j2", "gst_rate_bps": 1800,
+                      "debit_paise": 59_000, "credit_paise": 0,
+                      "transaction_date": "2025-06-14"}]
+    t = _turnover()
+    assert t["total_paise"] == 0
+
+
+def test_an_unposted_bank_line_is_not_turnover(books):
+    """No journal, nothing in the ledger, nothing on the return. Declaring it
+    would put output tax on a supply the books do not carry."""
+    books["bank"] = [{"id": "b3", "posted_journal_id": None, "gst_rate_bps": 1800,
+                      "credit_paise": 1_18_000_00, "debit_paise": 0,
+                      "transaction_date": "2025-06-14"}]
+    assert _turnover()["total_paise"] == 0
+
+
+# ── an asset disposal is turnover too (FA-08b) ──────────────────────────────
+
+def test_a_disposal_declaring_gst_is_in_F(books):
+    """CGST §9 charges the supply and §2(112) counts it in total turnover. A
+    ₹1,18,000 sale at 18% contributes its ₹1,00,000 transaction value; leaving
+    it out would make F too small and every Rule 43 reversal too LARGE."""
+    books["disposals"] = [{
+        "id": "fa1", "asset_name": "Lathe", "is_disposed": True,
+        "disposal_gst_rate_bps": 1800, "disposal_is_interstate": False,
+        "disposal_is_supply": True, "disposal_value_paise": 1_18_000_00,
+        "purchase_date": "2022-04-01", "disposal_date": "2025-06-20",
+        "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0, "itc_eligible": False,
+    }]
+    t = _turnover()
+    assert t["total_paise"] == 1_00_000_00
+    assert t["exempt_paise"] == 0
+
+
+def test_a_disposal_recorded_as_not_a_supply_is_not_turnover(books):
+    """A scrapping for no consideration. The CA said it is not a supply, so no
+    output tax is charged and nothing reaches the return — asserting otherwise
+    would put turnover on a transaction the client did not make."""
+    books["disposals"] = [{
+        "id": "fa2", "asset_name": "Scrap", "is_disposed": True,
+        "disposal_gst_rate_bps": 1800, "disposal_is_interstate": False,
+        "disposal_is_supply": False, "disposal_value_paise": 1_18_000_00,
+        "purchase_date": "2022-04-01", "disposal_date": "2025-06-20",
+        "cgst_paise": 0, "sgst_paise": 0, "igst_paise": 0, "itc_eligible": False,
+    }]
+    assert _turnover()["total_paise"] == 0
+

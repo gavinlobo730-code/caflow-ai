@@ -13,6 +13,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { fyRangeFor } from "@/lib/dates/periods";
+import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
@@ -23,10 +24,11 @@ import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 // from lib/api is the one client that attaches the Bearer token (and refreshes
 // it once on a 401, and reads a refusal out of `detail`).
 
-type FATab = "register" | "depreciation" | "disposal" | "reports";
+type FATab = "register" | "cwip" | "depreciation" | "disposal" | "reports";
 
 const TABS: { id: FATab; label: string }[] = [
   { id: "register",    label: "Asset Register" },
+  { id: "cwip",        label: "Work in Progress" },
   { id: "depreciation",label: "Depreciation" },
   { id: "disposal",    label: "Disposal" },
   { id: "reports",     label: "Reports" },
@@ -242,6 +244,12 @@ export default function FixedAssetsPage() {
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-6">
         {tab === "register"     && <RegisterTab    clientId={clientId} />}
+        {/* Capital work-in-progress (FA-11a). The schedules are AS AT the end
+            of the selected financial year — Schedule III's ageing is a
+            reporting-date figure, and a project capitalised in June is work in
+            progress in a 31 March note and a fixed asset in a September one. */}
+        {tab === "cwip"         && <CwipTab clientId={clientId}
+                                     asOf={fyRangeFor(financialYear).end} />}
         {tab === "depreciation" && <DepreciationTab clientId={clientId} />}
         {tab === "disposal"     && <DisposalTab     clientId={clientId} />}
         {tab === "reports"      && <ReportsTab      clientId={clientId} financialYear={financialYear} />}
@@ -1437,6 +1445,42 @@ function DepreciationTab({ clientId }: { clientId: string }) {
 
 // ── Disposal Tab ────────────────────────────────────────────────────────────
 
+/** The s.18(6) working the server sends, rendered and never re-derived. */
+type Section186Heads = {
+  cgst_paise: number; sgst_paise: number; igst_paise: number; total_paise: number;
+};
+type Section186Reading = {
+  reading: string;
+  elapsed: number;
+  working: string;
+  reduced_credit: Section186Heads;
+  amount_payable: Section186Heads;
+  basis: string;
+  excess_over_tax_charged_paise: number;
+};
+type DisposalPreview = {
+  wdv_at_disposal: number;
+  gain_loss_paise: number;
+  tax_charged_paise: number;
+  depreciation_months_outstanding: string[];
+  section_18_6: {
+    applies: boolean;
+    readings_agree: boolean;
+    credit_taken: Section186Heads;
+    tax_on_transaction_value: Section186Heads;
+    tax_charged_paise: number;
+    readings: Section186Reading[];
+    caveats: string[];
+    gaps: string[];
+  } | null;
+};
+
+const RULE_LABEL: Record<string, string> = {
+  rule_40_2: "Rule 40(2) — five points a quarter",
+  rule_44_6: "Rule 44(6) — pro-rata over sixty months",
+  transaction_value_only: "s.18(6) not reached",
+};
+
 function DisposalTab({ clientId }: { clientId: string }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1463,6 +1507,21 @@ function DisposalTab({ clientId }: { clientId: string }) {
   const [lastDisposal, setLastDisposal] = useState<{
     asset: string; gainLoss: number; partMonthUncharged: boolean;
   } | null>(null);
+  // THE GST TREATMENT, WHICH THE CA STATES (FA-08b). A sale of a capital asset
+  // is a supply and the disposal journal posted no tax line at all, so the tax
+  // was never declared and nothing prompted the CA to raise a separate
+  // invoice. None of these three is inferred: whether a disposal is a supply
+  // turns on facts no ledger holds (a scrapping for nothing, a transfer whose
+  // treatment turns on Schedule I), the rate on the sale is not necessarily
+  // the rate the asset was bought at, and an asset bought locally may be sold
+  // across a state border.
+  const [isSupply, setIsSupply] = useState<"" | "yes" | "no">("");
+  const [gstRateBps, setGstRateBps] = useState("");
+  const [interstate, setInterstate] = useState(false);
+  // What the server says this disposal would cost, BEFORE confirming — the
+  // s.18(6) working included. Fetched rather than derived: the reduced-credit
+  // limb is a statutory calculation and CLAUDE.md keeps those in apps/api.
+  const [preview, setPreview] = useState<DisposalPreview | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") { setLoading(false); return; }
@@ -1486,6 +1545,32 @@ function DisposalTab({ clientId }: { clientId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Debounced so typing an amount does not fire a request per keystroke. The
+  // preview WRITES NOTHING — it is the same computation the disposal runs,
+  // from the same module, so what is shown here is what gets posted.
+  useEffect(() => {
+    if (!selected) { setPreview(null); return; }
+    const id = window.setTimeout(async () => {
+      const q = new URLSearchParams({
+        proceeds_paise: String(proceedsPaise ?? 0),
+        disposal_date: disposalDate,
+        is_interstate: String(interstate),
+      });
+      if (gstRateBps) q.set("gst_rate_bps", gstRateBps);
+      if (isSupply) q.set("is_supply", isSupply === "yes" ? "true" : "false");
+      try {
+        const j = await request<ApiEnvelope<DisposalPreview>>(
+          `/api/fixed-assets/${selected.id}/disposal-preview?${q.toString()}`);
+        setPreview(j.success ? (j.data ?? null) : null);
+      } catch {
+        // A failed preview must not block the disposal itself — the panel
+        // falls back to the figures it can show without the server.
+        setPreview(null);
+      }
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [selected, proceedsPaise, disposalDate, gstRateBps, interstate, isSupply]);
+
   async function dispose() {
     if (!selected) return;
     if (proceedsPaise === null) {
@@ -1508,6 +1593,12 @@ function DisposalTab({ clientId }: { clientId: string }) {
         body: JSON.stringify({
           disposal_date:         disposalDate,
           sale_proceeds_paise:   proceedsPaise as number,
+          // Sent as null where the CA has not said, which the server names as
+          // a gap. Defaulting either way would decide a statutory question by
+          // omission.
+          is_supply:             isSupply === "" ? null : isSupply === "yes",
+          gst_rate_bps:          gstRateBps ? Number(gstRateBps) : null,
+          is_interstate:         interstate,
         }),
       });
       if (!j.success) throw new Error(j.error ?? "Failed");
@@ -1516,7 +1607,8 @@ function DisposalTab({ clientId }: { clientId: string }) {
         gainLoss: Number(j.data?.gain_loss_paise ?? 0),
         partMonthUncharged: Boolean(j.data?.part_month_depreciation_not_charged),
       });
-      setSelected(null); setProceeds(""); await load();
+      setSelected(null); setProceeds(""); setGstRateBps(""); setIsSupply("");
+      setInterstate(false); setPreview(null); await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to dispose asset");
     }
@@ -1612,23 +1704,130 @@ function DisposalTab({ clientId }: { clientId: string }) {
               <input type="number" className={INPUT} value={proceeds} onChange={e => setProceeds(e.target.value)} placeholder="0" />
             </Field>
           </div>
+          {/* THE GST TREATMENT. All three are STATED — see the state above for
+              why none of them can be inferred from the register. */}
+          <div className="grid grid-cols-3 gap-4">
+            <Field label="Is this a supply?">
+              <select className={INPUT} value={isSupply}
+                      onChange={e => setIsSupply(e.target.value as "" | "yes" | "no")}>
+                <option value="">Not stated</option>
+                <option value="yes">Yes — sold for consideration</option>
+                <option value="no">No — scrapped / written off</option>
+              </select>
+            </Field>
+            <Field label="GST on the sale">
+              <select className={INPUT} value={gstRateBps} disabled={isSupply === "no"}
+                      onChange={e => setGstRateBps(e.target.value)}>
+                <option value="">Not stated</option>
+                <option value="0">No GST</option>
+                <option value="500">5%</option>
+                <option value="1200">12%</option>
+                <option value="1800">18%</option>
+                <option value="2800">28%</option>
+              </select>
+            </Field>
+            <Field label="Head">
+              <label className="flex items-center gap-2 text-xs text-[#334155] h-[38px]">
+                <input type="checkbox" checked={interstate} disabled={!gstRateBps || gstRateBps === "0"}
+                       onChange={e => setInterstate(e.target.checked)} />
+                Inter-state (IGST)
+              </label>
+            </Field>
+          </div>
+          <p className="text-[11px] text-[#94A3B8] -mt-2">
+            Sale proceeds are the amount the buyer paid, GST included. The tax is
+            worked out of it, so the P&amp;L below is measured on the value net of tax.
+          </p>
           <div className="bg-[#F8FAFC] rounded-lg px-4 py-3 text-xs space-y-1">
             <div className="flex justify-between"><span className="text-[#94A3B8]">WDV at disposal:</span><span className="font-mono text-[#1E293B]">{fmt(selected.purchase_cost_paise - selected.accumulated_depreciation_paise)}</span></div>
-            <div className="flex justify-between"><span className="text-[#94A3B8]">Sale proceeds:</span><span className="font-mono text-[#1E293B]">{proceedsPaise === null ? "—" : fmt(proceedsPaise)}</span></div>
+            <div className="flex justify-between"><span className="text-[#94A3B8]">Sale proceeds (incl. GST):</span><span className="font-mono text-[#1E293B]">{proceedsPaise === null ? "—" : fmt(proceedsPaise)}</span></div>
+            {(preview?.tax_charged_paise ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-[#94A3B8]">Output tax on the transaction value (s.15):</span>
+                <span className="font-mono text-[#1E293B]">−{fmt(preview!.tax_charged_paise)}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-[#E2E8F0] pt-1 mt-1">
               <span className="font-medium text-[#1E293B]">P&L on disposal:</span>
+              {/* The SERVER's figure wherever it has answered — it nets the tax
+                  the same way the journal does. The local fallback is the
+                  no-GST case, which is the same arithmetic. */}
               <span className={`font-mono font-semibold ${
-                (proceedsPaise ?? 0) >= (selected.purchase_cost_paise - selected.accumulated_depreciation_paise)
-                  ? "text-green-700" : "text-red-700"
+                (preview
+                  ? preview.gain_loss_paise
+                  : (proceedsPaise ?? 0) - (selected.purchase_cost_paise - selected.accumulated_depreciation_paise)
+                ) >= 0 ? "text-green-700" : "text-red-700"
               }`}>
                 {proceedsPaise === null
                   ? "—"
-                  : fmt(proceedsPaise - (selected.purchase_cost_paise - selected.accumulated_depreciation_paise))}
+                  : fmt(preview
+                        ? preview.gain_loss_paise
+                        : proceedsPaise - (selected.purchase_cost_paise - selected.accumulated_depreciation_paise))}
               </span>
             </div>
           </div>
+
+          {/* CGST Act s.18(6) — the HIGHER of the credit taken on the asset,
+              reduced for the time it was held, and the tax on the transaction
+              value. BOTH readings of the reduction rule are shown and neither
+              is chosen: Rule 40(2) and Rule 44(6) give different figures,
+              neither could be read against the Rules, and this is a sum the CA
+              pays over. The server computes all of it; nothing here derives a
+              rupee. */}
+          {preview?.section_18_6?.applies && (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs space-y-2">
+              <p className="font-semibold text-indigo-900">
+                CGST Act s.18(6) — the higher of the reduced credit and the tax on the sale
+              </p>
+              {preview.section_18_6.credit_taken.total_paise > 0 && (
+                <div className="flex justify-between text-indigo-900">
+                  <span>Input tax credit taken on this asset</span>
+                  <span className="font-mono">{fmt(preview.section_18_6.credit_taken.total_paise)}</span>
+                </div>
+              )}
+              <table className="w-full text-[11px] text-indigo-900">
+                <tbody>
+                  {preview.section_18_6.readings.map(r => (
+                    <tr key={r.reading} className="align-top">
+                      <td className="py-0.5 pr-2">{RULE_LABEL[r.reading] ?? r.reading}</td>
+                      <td className="py-0.5 pr-2 text-indigo-700">{r.working}</td>
+                      <td className="py-0.5 text-right font-mono">
+                        {fmt(r.amount_payable.total_paise)}
+                        <span className="ml-1 text-indigo-600">
+                          ({r.basis === "reduced_credit" ? "reduced credit" : "tax on the sale"})
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!preview.section_18_6.readings_agree && (
+                <p className="text-[11px] text-indigo-800 border-t border-indigo-200 pt-1">
+                  The two readings differ. The disposal posts the tax on the
+                  transaction value only; the excess under whichever reading you
+                  follow is raised separately.
+                </p>
+              )}
+              {preview.section_18_6.caveats.map((c, i) => (
+                <p key={i} className="text-[11px] text-indigo-800">{c}</p>
+              ))}
+              {preview.section_18_6.gaps.map((g, i) => (
+                <p key={i} className="text-[11px] text-amber-800">{g}</p>
+              ))}
+            </div>
+          )}
+          {(preview?.depreciation_months_outstanding?.length ?? 0) > 0 && (
+            <p className="text-[11px] text-amber-800">
+              Depreciation for {preview!.depreciation_months_outstanding.join(", ")} has
+              not been posted. The disposal will be refused until it is — the gain
+              is computed from the written-down value.
+            </p>
+          )}
           <div className="flex gap-3">
-            <button onClick={() => { setSelected(null); setProceeds(""); }} className="flex-1 py-2 rounded-lg border border-[#E2E8F0] text-xs text-[#64748B]">Cancel</button>
+            <button onClick={() => {
+              setSelected(null); setProceeds(""); setGstRateBps("");
+              setIsSupply(""); setInterstate(false); setPreview(null);
+            }} className="flex-1 py-2 rounded-lg border border-[#E2E8F0] text-xs text-[#64748B]">Cancel</button>
             <button onClick={dispose} disabled={disposing} className="flex-1 py-2 rounded-lg bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50">
               {disposing ? "Processing…" : "Confirm Disposal"}
             </button>

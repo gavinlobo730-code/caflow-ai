@@ -255,8 +255,36 @@ class JournalEntryUpdateIn(BaseModel):
     narration: Optional[str] = None
     entry_type: Optional[str] = None
     lines: Optional[list[JournalLineIn]] = None
+    # SUPPORTING DOCUMENTS ON A CORRECTION (ACC-25, second half). The CREATE
+    # path has taken these since the first half; this one dropped them
+    # SILENTLY — the editor rendered the control on an entry being edited, the
+    # CA typed a link, and the PATCH sent everything except that. A field the
+    # screen offers and the server discards is worse than no field at all.
+    #
+    # None means "leave them as they are", which is what every field on this
+    # model means and what lets a CA fix a narration without resending the
+    # documents. An EMPTY LIST is a real answer — it removes them.
+    attachments: Optional[list[dict]] = None
 
     _check_entry_date = field_validator("entry_date")(_posting_date)
+
+    @field_validator("attachments")
+    @classmethod
+    def attachments_are_safe(cls, v: Optional[list[dict]]) -> Optional[list[dict]]:
+        """The same closed scheme vocabulary the create path applies.
+
+        Repeated rather than shared through a mixin because the two fields
+        differ in exactly one way — this one is optional — and a validator that
+        has to test for None on both doors is how one door ends up not
+        validating at all.
+        """
+        if v is None:
+            return None
+        from domain.attachments import AttachmentError, parse_attachments
+        try:
+            return [a.to_dict() for a in parse_attachments(v)]
+        except AttachmentError as e:
+            raise ValueError(str(e)) from e
 
     @field_validator("entry_type")
     @classmethod
@@ -692,10 +720,40 @@ class DisposalIn(BaseModel):
     sale_proceeds_paise: int = 0
     disposal_date: Optional[str] = None  # YYYY-MM-DD; defaults to today
     notes: Optional[str] = None
+    # ── the GST treatment (FA-08b, migration 383) ────────────────────────────
+    # A sale of a capital asset is a SUPPLY, and CGST Act s.18(6) charges the
+    # HIGHER of the credit taken on it (reduced for the time it was held) and
+    # the tax on the transaction value. None of that could be expressed here:
+    # the disposal journal carried no tax line and this model had no field to
+    # drive one.
+    #
+    # All three are STATED and none is inferred. Whether a disposal is a supply
+    # turns on facts no ledger holds (a scrapping for nothing, a transfer whose
+    # treatment turns on Schedule I); the rate on the outward supply is not
+    # necessarily the rate the asset was bought at; and an asset bought locally
+    # may be sold across a state border, which changes the head. Left unstated,
+    # each is NAMED as a gap on the answer rather than assumed.
+    is_supply: Optional[bool] = None
+    gst_rate_bps: Optional[int] = None
+    is_interstate: bool = False
 
     @field_validator("sale_proceeds_paise")
     @classmethod
     def must_be_non_negative(cls, v: int) -> int:
         if v < 0:
             raise ValueError("sale_proceeds_paise must be non-negative.")
+        return v
+
+    @field_validator("gst_rate_bps")
+    @classmethod
+    def must_be_a_rate_the_engine_holds(cls, v: Optional[int]) -> Optional[int]:
+        # The same five migration 383's CHECK allows and
+        # domain/banking/charge_gst.ALLOWED_RATES_BPS splits at. Refused at the
+        # model so a typo in a tax head never reaches the database — a wrong
+        # rate here becomes a wrong GSTR-3B.
+        from domain.banking.charge_gst import ALLOWED_RATES_BPS
+        if v is not None and int(v) not in ALLOWED_RATES_BPS:
+            raise ValueError(
+                "gst_rate_bps must be one of "
+                + ", ".join(str(r) for r in ALLOWED_RATES_BPS))
         return v

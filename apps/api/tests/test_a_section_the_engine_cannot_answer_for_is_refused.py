@@ -457,3 +457,69 @@ def test_the_vendor_importer_holds_no_section_list_of_its_own():
         "the importer must not read a TDS rate from the spreadsheet")
     assert 'key: "tds_rate"' not in code, (
         "and must not offer a TDS Rate column for a CA to fill in")
+
+
+# ── The three sections TDS-23 asked for that are still not rates ────────────
+#
+# §194T went into the registry (it is a real obligation of every partnership
+# and LLP client, and its rate and threshold are the Finance (No. 2) Act 2024's
+# own). §194-IA/IB/M are refused as challan-cum-statement forms. What was left
+# unanswered was §194N, §194O and §194S: a CA picking any of them got the bare
+# string "Unknown TDS section" at the first bill. Each now gets a sentence, and
+# the sentences differ because what the CA has to do differs.
+
+@pytest.mark.parametrize("fy", FYS)
+def test_a_cash_withdrawal_says_the_CLIENT_is_the_deductee(fy):
+    """§194N is charged on a banking company, a co-operative bank or a post
+    office, on cash the ACCOUNT HOLDER withdraws. The direction is the opposite
+    of every other section on the vendor screen: when it bites, the bank
+    deducts FROM this client. Saying only "no rate held" would invite somebody
+    to add one."""
+    message = deduction_section_refusal("194N", fy)
+    assert message
+    assert "bank" in message.lower()
+    assert "26AS" in message, (
+        "the CA must be sent to the credit side, which is where this actually "
+        "appears for their client")
+    # It must NOT read as a missing rate — that is the change somebody would
+    # then make.
+    assert "holds no rate" not in message
+
+
+@pytest.mark.parametrize("fy", FYS)
+def test_an_e_commerce_operator_is_refused_on_its_BASE_not_only_its_rate(fy):
+    """§194O routes fine — a resident participant, Form 26Q — so unlike the
+    property sections it has nowhere wrong to go. What is missing is the base:
+    the gross amount of the PARTICIPANT'S sale, which is not a bill the
+    operator receives and is in no purchase ledger."""
+    message = deduction_section_refusal("194O", fy)
+    assert message
+    assert "participant" in message.lower()
+    assert "outside the bill" in message
+
+
+@pytest.mark.parametrize("fy", FYS)
+def test_a_virtual_digital_asset_is_refused_with_its_own_reason(fy):
+    message = deduction_section_refusal("194S", fy)
+    assert message
+    assert "virtual digital asset" in message.lower()
+    assert "194S(2)" in message, (
+        "consideration in kind is what makes even a confirmed rate unusable")
+
+
+@pytest.mark.parametrize("code", ["194N", "194O", "194S"])
+def test_none_of_the_three_is_offered_as_a_section_that_can_be_computed(code):
+    """The refusal lists what the engine CAN do. Naming a section there that it
+    then refuses would answer one refusal with another — the reason §192 and
+    §206C are already excluded from that list."""
+    message = deduction_section_refusal("194ZZ") or ""
+    assert code not in message
+
+
+def test_each_refused_section_says_something_DIFFERENT():
+    """One shared paragraph would say the wrong thing about two of the three.
+    Asserted on the answers rather than on the data, so moving a reason into
+    the dict or out of it cannot make this vacuous."""
+    answers = {c: deduction_section_refusal(c) for c in ("194R", "194O", "194S")}
+    assert all(answers.values())
+    assert len(set(answers.values())) == 3

@@ -221,15 +221,17 @@ def test_nothing_enforces_a_credit_limit_yet():
             continue
         if "credit_limit_paise" in _strip_comments(body, path.suffix):
             readers.append(text)
-    # The vendor models declare it, the api client types it, the screen renders
-    # it, and production_types names it as a column added after the 2026-09-03
-    # snapshot (docs/schema-drift.md — the entry goes when the snapshot is
-    # refreshed). None of those is an enforcement.
+    # The vendor models declare it, the api client types it and the screen
+    # renders it. None of those is an enforcement.
+    #
+    # `tests/production_types.py` was a fourth entry and is gone, exactly as
+    # the note it carried predicted: it named the column as added after the
+    # snapshot, and the snapshot was refreshed to migration 381 on the evening
+    # of 13 September 2026, so the entry went with it.
     assert sorted(readers) == [
         "../web/app/accounting/suppliers/page.tsx",
         "../web/lib/api/index.ts",
         "models/parties.py",
-        "tests/production_types.py",
     ], (
         "something new touches credit_limit_paise. If a bill is now blocked or "
         "flagged by it, migration 378's column comment says RECORDED, NOT "

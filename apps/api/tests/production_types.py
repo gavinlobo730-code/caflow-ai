@@ -70,33 +70,40 @@ _NUMERIC_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 # Keep this SHORT. A long list means the snapshot needs refreshing, not that the
 # list needs another entry.
 ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
-    # Migrations 359-373 were all HERE until the snapshot was refreshed on
-    # 13 September 2026 — nine entries over five migrations, which took the
-    # list to nine MIGRATIONS, one past the cap below. That is the cap doing
-    # its job for the second time: it says refresh the fixture, not add a
-    # tenth entry. The fixture now matches production column for column
-    # (md5 337e17e6246ef4b49d129934d61219cb over 4,137 columns in 277 tables,
-    # verified against the live database), so the only entries left are the
-    # migrations this branch has not merged yet.
-    ("client_sales_invoices", "cess_paise"): "migration 374",
-    ("client_sales_invoice_lines", "cess_rate_bps"): "migration 374",
-    ("client_sales_invoice_lines", "cess_specific_paise_per_unit"): "migration 374",
-    ("client_sales_invoice_lines", "cess_paise"): "migration 374",
-    ("purchase_bills", "cess_paise"): "migration 374",
-    ("purchase_bill_lines", "cess_rate_bps"): "migration 374",
-    ("purchase_bill_lines", "cess_specific_paise_per_unit"): "migration 374",
-    ("purchase_bill_lines", "cess_paise"): "migration 374",
-    ("vendors", "credit_limit_paise"): "migration 378",
-    ("purchase_bills", "recurring_template_id"): "migration 379",
-    ("purchase_bills", "recurring_occurrence"): "migration 379",
-    ("bank_matching_rules", "priority"): "migration 380",
-    ("bank_matching_rules", "match_field"): "migration 380",
-    ("bank_matching_rules", "match_operator"): "migration 380",
-    ("bank_matching_rules", "description_patterns"): "migration 380",
-    ("itr_filings", "return_type"): "migration 381",
-    ("itr_filings", "original_filing_id"): "migration 381",
-    ("itr_filings", "original_acknowledgement_number"): "migration 381",
-    ("itr_filings", "original_filing_date"): "migration 381",
+    # Migrations 374-381 were all HERE until the pair of fixtures was refreshed
+    # to production's mark of 381 on the evening of 13 September 2026 — the
+    # SECOND refresh that day, and this list is why: nineteen entries over six
+    # migrations, and the other half of the ratchet
+    # (test_guards_match_production_pg's ten-migration limit) had already
+    # fired. Both fixtures now match production row for row (schema md5
+    # e764f1bd44aa5cafe1c2e4eaa1fd8dda over 4,237 columns in 284 tables;
+    # guards md5 111977fa54589d4f31096fd92a2223ee over 2,356 rows), so the
+    # only entries left are the migrations this branch has not merged yet.
+    ("bank_transactions", "gst_rate_bps"): "migration 382",
+    ("bank_transactions", "gst_is_interstate"): "migration 382",
+    ("fixed_assets", "disposal_is_supply"): "migration 383",
+    ("fixed_assets", "disposal_gst_rate_bps"): "migration 383",
+    ("fixed_assets", "disposal_is_interstate"): "migration 383",
+    ("journal_lines", "line_order"): "migration 384",
+    ("capital_gains", "transferred_asset_nature"): "migration 385",
+    ("vendors", "gst_registration_status"): "migration 388",
+    ("client_sales_invoices", "is_opening"): "migration 391",
+    ("purchase_bills", "is_opening"): "migration 391",
+    ("clients", "inventory_costing_method"): "migration 394",
+    ("inventory_stock_ledger", "costing_method"): "migration 394",
+    ("clients", "landed_cost_basis"): "migration 396",
+    ("purchase_bills", "landed_cost_basis"): "migration 396",
+    ("inventory_stock_ledger", "godown_id"): "migration 398",
+    ("inventory_stock_ledger", "batch_id"): "migration 398",
+    # public.capital_gain_reinvestments (385), public.stock_count_sessions and
+    # public.stock_count_lines (387), public.rcm_documents (388),
+    # public.bills_of_entry (389), public.client_gst_registrations (390) and
+    # the sales/purchase pre-document tables (392, 393),
+    # public.purchase_bill_landed_costs (396),
+    # public.capital_work_in_progress and public.cwip_additions (397),
+    # and public.godowns and public.inventory_batches (398)
+    # are WHOLE new tables
+    # and need no entry: a table the snapshot predates is skipped.
 }
 
 

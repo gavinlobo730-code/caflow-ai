@@ -611,7 +611,8 @@ class BankPostingService:
         # Mark the transaction posted and settle its invoice/bill in the same
         # action. settle_on_post carries the CAS guard that makes a double-click
         # safe, so it is reused here rather than reimplemented.
-        settled = self.settle_on_post(db, firm_id, txn_id, journal_entry_id, actor_id=actor_id)
+        settled = self.settle_on_post(db, firm_id, txn_id, journal_entry_id, actor_id=actor_id,
+                                      gst_rate_bps=gst_rate_bps, is_interstate=is_interstate)
 
         try:
             from services.audit_service import log_event
@@ -633,9 +634,17 @@ class BankPostingService:
                 "posted_journal_id": journal_entry_id, "settled": settled}
 
     # ── Deferred settlement — runs only when the draft journal is posted ───────
-    def settle_on_post(self, db, firm_id, txn_id, journal_id, actor_id=None) -> Optional[dict]:
+    def settle_on_post(self, db, firm_id, txn_id, journal_id, actor_id=None,
+                       gst_rate_bps: Optional[int] = None,
+                       is_interstate: bool = False) -> Optional[dict]:
         """Called by journal_posting_service.post_draft once the bank draft is on
         the books: mark the transaction posted and settle its invoice/bill. Idempotent.
+
+        `gst_rate_bps` / `is_interstate` are supplied only by `post`, which is
+        the one caller that knows them. `_dispatch_deferred` cannot: it reaches
+        here for a LEGACY draft, and `post` has created nothing but posted
+        journals since the approval queue was removed, so the only rows it can
+        still find predate migration 382 and have no rate to carry.
 
         Concurrency guard: two near-simultaneous calls (e.g. a double-click on
         "approve draft") could both read match_status as not-yet-posted before
@@ -648,10 +657,32 @@ class BankPostingService:
         prior_status = txn.get("match_status")
         if prior_status == "posted":
             return None                                   # already settled (idempotent)
-        claim = db.table("bank_transactions").update({
-            "match_status": "posted", "posted_at": _now(), "posted_by": actor_id,
-            "posted_journal_id": journal_id, "updated_at": _now(),
-        }).eq("id", txn_id).eq("firm_id", firm_id).eq("match_status", prior_status).execute()
+        # WHAT WAS POSTED, not what was proposed (migration 382). The CA can
+        # override draft_gst_rate_bps in the drawer, and a line posted with no
+        # draft at all carries NULL there — so the draft cannot tell
+        # gst_return_service what tax this line declares. Written INSIDE the
+        # claiming UPDATE rather than beside it: a second write could land
+        # after a concurrent undo cleared the row, leaving a rate on a
+        # transaction with no journal.
+        #
+        # Two literal payloads rather than one dict with the pair added
+        # conditionally: a payload built in Python is invisible to
+        # test_backend_columns_exist_pg, which checks every column name here
+        # against the real schema.
+        if gst_rate_bps is None:
+            claim = db.table("bank_transactions").update({
+                "match_status": "posted", "posted_at": _now(), "posted_by": actor_id,
+                "posted_journal_id": journal_id, "updated_at": _now(),
+            }).eq("id", txn_id).eq("firm_id", firm_id).eq(
+                "match_status", prior_status).execute()
+        else:
+            claim = db.table("bank_transactions").update({
+                "match_status": "posted", "posted_at": _now(), "posted_by": actor_id,
+                "posted_journal_id": journal_id, "updated_at": _now(),
+                "gst_rate_bps": int(gst_rate_bps),
+                "gst_is_interstate": bool(is_interstate),
+            }).eq("id", txn_id).eq("firm_id", firm_id).eq(
+                "match_status", prior_status).execute()
         if not claim.data:
             return None                                   # lost the race to a concurrent caller
 
@@ -855,6 +886,13 @@ class BankPostingService:
         db.table("bank_transactions").update({
             "match_status": back_to, "posted_at": None, "posted_by": None,
             "posted_journal_id": None, "updated_at": _now(),
+            # The declared split goes with the posting it described. Leaving it
+            # would keep the line in the return's bank-GST document set while
+            # its journal is reversed out of the ledger — the books-vs-ledger
+            # difference this whole change exists to close, reintroduced from
+            # the other end. The DRAFT (draft_gst_rate_bps) is untouched, so
+            # re-posting still opens the drawer on the same proposal.
+            "gst_rate_bps": None, "gst_is_interstate": False,
         }).eq("id", txn_id).eq("firm_id", firm_id).eq("match_status", "posted").execute()
 
         try:

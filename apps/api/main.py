@@ -61,6 +61,7 @@ from routers import clients, compliance, documents, assistant, insights, tasks, 
 from routers import accounting, compliance_records
 from routers import currencies  # Multi-Currency Phase 1 (read-only currency master + policy)
 from routers import fx_reports  # Multi-Currency Phase 5 (read-only FX reporting)
+from routers import fx_revaluation  # AS 11 period-end revaluation (its own router: this one POSTS)
 from routers import risks, ai_insights, automation, notifications, ai_copilot
 from routers import gst, tds, income_tax
 from routers import task_templates, task_extras, task_recurring
@@ -82,12 +83,19 @@ from routers import firm_hsn_library  # Firm-owned, CA-curated HSN/SAC library (
 from routers import firm_hsn_rate_history  # Per-firm rate history, mechanism only (Decision D)
 from routers import recurring_invoices
 from routers import recurring_purchase_bills
+from routers import rcm_documents  # PUR-19 — s.31(3)(f) self-invoice, s.31(3)(g) payment voucher
+from routers import bills_of_entry  # PUR-18 — the customs assessment on an import of goods
+from routers import client_gst_registrations  # GST-20 — a client may hold several GSTINs
+from routers import opening_documents  # ACC-14 — the bill-wise breakup of an opening balance
+from routers import sales_cycle  # SALES-21 — quotation, proforma, order, Rule 55 challan
+from routers import purchase_cycle  # PUR-25 — purchase order, goods receipt, three-way match
 from routers import recurring_journals
 from routers import compliance_ops
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
 from routers import party_credits
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
 from routers import payroll, fixed_assets, banking
+from routers import cwip as cwip_router
 from routers import timeline
 from routers import engagement_letters
 # Phase 14 routers that existed but were never mounted (production-readiness fix)
@@ -109,7 +117,7 @@ from routers.ai_copilot_v2 import router as ai_copilot_v2_router
 from routers.memory_intelligence import router as memory_intelligence_router
 # Client Portal
 from routers.portal import router as portal_router
-from routers import portal_access, portal_self, portal_data
+from routers import portal_access, portal_self, portal_data, portal_employee
 # Phase 4.6 — Online Payments (links + public gateway webhook)
 from routers import payments
 
@@ -295,6 +303,7 @@ app.include_router(accounting.router, dependencies=_CLIENT_GUARD)
 # client-assignment scope for the /policy route (which carries client_id).
 app.include_router(currencies.router, dependencies=_CLIENT_GUARD)
 app.include_router(fx_reports.router, dependencies=_CLIENT_GUARD)
+app.include_router(fx_revaluation.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_records.router, dependencies=_CLIENT_GUARD)
 # routers/document_intelligence.py (unversioned /api/document-intelligence) is
 # RETIRED as of the R2.8 fix phase (audit F19): it's a 4th, undisclosed
@@ -366,6 +375,12 @@ app.include_router(purchase_credit_notes.router, dependencies=_CLIENT_GUARD)
 app.include_router(customer_statements.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_invoices.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_purchase_bills.router, dependencies=_CLIENT_GUARD)
+app.include_router(rcm_documents.router, dependencies=_CLIENT_GUARD)
+app.include_router(bills_of_entry.router, dependencies=_CLIENT_GUARD)
+app.include_router(client_gst_registrations.router, dependencies=_CLIENT_GUARD)
+app.include_router(opening_documents.router, dependencies=_CLIENT_GUARD)
+app.include_router(sales_cycle.router, dependencies=_CLIENT_GUARD)
+app.include_router(purchase_cycle.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_journals.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_ops.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_bills.router, dependencies=_CLIENT_GUARD)
@@ -392,6 +407,9 @@ app.include_router(document_intelligence_v2.router, dependencies=_CLIENT_GUARD)
 # actually run payroll untouched — enforced-looking and not enforced.
 app.include_router(payroll.router, dependencies=_CLIENT_GUARD + _MFA_GUARD)
 app.include_router(fixed_assets.router, dependencies=_CLIENT_GUARD)
+# Capital work-in-progress (FA-11a). Its own router BECAUSE it is not a fixed
+# asset: no depreciation, and its own Schedule III line and two schedules.
+app.include_router(cwip_router.router, dependencies=_CLIENT_GUARD)
 app.include_router(banking.router, dependencies=_CLIENT_GUARD)
 app.include_router(timeline.router, dependencies=_CLIENT_GUARD)
 # Phase 6 — Year End routers (client-scoped reads guarded by G1)
@@ -423,6 +441,9 @@ app.include_router(portal_self.router)
 # Phase 4.5.2 — client-facing portal data surfaces (invoices, canonical dues,
 # statements, reminders, compliance). Client-authenticated; NOT behind _CLIENT_GUARD.
 app.include_router(portal_data.router)
+# The employee-facing API (PAY-26). Read-only and self-scoped — its principal
+# is core.portal_auth.get_current_portal_employee, not rbac().
+app.include_router(portal_employee.router)
 # Phase 4.6 — Online Payments. Staff endpoints carry their own accounting rbac;
 # the gateway webhook is public (signature-verified). NOT behind _CLIENT_GUARD.
 app.include_router(payments.router)

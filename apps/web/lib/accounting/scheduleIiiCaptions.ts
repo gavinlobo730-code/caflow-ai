@@ -74,6 +74,12 @@ export function bsBucket(type: string, subtype: string | null): string {
   if (type === "Asset") {
     if (s.includes("intangible") || s.includes("goodwill") || s.includes("patent") || s.includes("trademark"))
       return "Intangible Fixed Assets";
+    // BEFORE the tangible test, whose keywords a subtype like "Capital Work in
+    // Progress - Plant" would otherwise match first — presenting an asset
+    // under construction as one in use. Same order as the engine's.
+    if (s.includes("work in progress") || s.includes("work-in-progress") ||
+        s.includes("cwip") || s.includes("capital work") || s.includes("under construction"))
+      return "Capital Work-in-Progress";
     if (s.includes("fixed") || s.includes("plant") || s.includes("machinery") || s.includes("building") ||
         s.includes("furniture") || s.includes("vehicle") || s.includes("tangible") || s.includes("equipment"))
       return "Tangible Fixed Assets";
@@ -132,7 +138,8 @@ export const PL_EXP_ORDER = [
 ];
 
 export const BS_ASSET_ORDER = [
-  "Tangible Fixed Assets", "Intangible Fixed Assets", "Long-term Investments", "Inventories",
+  "Tangible Fixed Assets", "Intangible Fixed Assets", "Capital Work-in-Progress",
+  "Long-term Investments", "Inventories",
   "Trade Receivables", "Short-term Loans & Advances", "Cash & Cash Equivalents", "Other Current Assets",
 ];
 export const BS_LIAB_ORDER = [

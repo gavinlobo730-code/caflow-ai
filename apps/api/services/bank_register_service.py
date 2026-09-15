@@ -44,6 +44,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
+from domain.banking import account_kind
 from domain.banking.register import (
     build_register, first_divergence, summarise, RegisterLine,
     opening_balance_gap,
@@ -197,6 +198,51 @@ class BankRegisterService:
             key = lambda l: (str(l.transaction_date or ""), l.transaction_id)
         return sorted(lines, key=key, reverse=desc)
 
+    #: Every key in a register response that is a BALANCE — a position, which
+    #: reads one way up on a bank statement and the other on a card's. A
+    #: MOVEMENT (debit_paise, credit_paise, amount_paise, deposits_paise,
+    #: withdrawals_paise) is a magnitude and never flips: a Rs 500 purchase is
+    #: Rs 500 on either kind of account.
+    _BALANCE_KEYS = ("balance_paise", "statement_balance_paise", "balance_delta_paise",
+                     "computed_balance_paise", "delta_paise",
+                     "opening_balance_paise", "closing_balance_paise",
+                     "view_opening_balance_paise")
+
+    @classmethod
+    def _present(cls, body: dict, account_type) -> dict:
+        """The register in the sign the CA reads on the STATEMENT (BANK-21).
+
+        ONE PLACE, AT THE END, DELIBERATELY. There are two register paths —
+        the SQL function and its Python twin — and they are held identical by
+        a parity test; converting inside either would make them disagree and
+        would give the other one a chance to forget. Both come through here.
+
+        For everything but a credit card this is the identity, so no other
+        account's response moves by a paise.
+        """
+        if not account_kind.is_credit_card(account_type):
+            return body
+        flip = account_kind.to_statement_sign
+
+        def _one(d):
+            if not isinstance(d, dict):
+                return d
+            return {k: (flip(account_type, v) if k in cls._BALANCE_KEYS and v is not None
+                        else v)
+                    for k, v in d.items()}
+
+        out = dict(body)
+        for key in ("account", "summary", "divergence"):
+            if isinstance(out.get(key), dict):
+                out[key] = _one(out[key])
+        out["lines"] = [_one(l) for l in (out.get("lines") or [])]
+        if out.get("view_opening_balance_paise") is not None:
+            out["view_opening_balance_paise"] = flip(
+                account_type, out["view_opening_balance_paise"])
+        # So a screen can label the column without deciding what it means.
+        out["balance_label"] = account_kind.balance_label(account_type)
+        return out
+
     @staticmethod
     def _line_out(line: RegisterLine) -> dict:
         return {
@@ -307,7 +353,7 @@ class BankRegisterService:
             db, firm_id, bank_account_id, date_from=date_from, date_to=date_to,
             status=status, q=q, sort=sort, desc=desc, limit=limit, offset=offset)
         if sql is not None:
-            return {
+            return self._present({
                 "account": self._account_out(account, opening),
                 "lines": sql["lines"],
                 "summary": sql["summary"],
@@ -317,7 +363,7 @@ class BankRegisterService:
                 "total_count": sql["total_count"],
                 "limit": limit, "offset": offset,
                 "sort": sort, "desc": bool(desc),
-            }
+            }, account.get("account_type"))
 
         txns = self._txns(db, firm_id, bank_account_id)
         statuses = self._reconciliation_statuses(db, firm_id, txns)
@@ -348,7 +394,7 @@ class BankRegisterService:
             idx = _index_of(all_lines, filtered[0])
             view_opening = all_lines[idx - 1].balance_paise if idx > 0 else opening
 
-        return {
+        return self._present({
             "account": self._account_out(account, opening),
             "lines": [self._line_out(l) for l in page],
             "summary": summarise(all_lines, opening_balance_paise=opening),
@@ -362,7 +408,7 @@ class BankRegisterService:
             "offset": offset,
             "sort": sort,
             "desc": bool(desc),
-        }
+        }, account.get("account_type"))
 
 
 bank_register_service = BankRegisterService()

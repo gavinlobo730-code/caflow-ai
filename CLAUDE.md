@@ -55,6 +55,26 @@ change. The code is the authority; keep this file in step with it.
   inserting. Sales, purchases, receipts, payments, credit/debit notes, banking, payroll,
   fixed assets, opening balances, manual journals and reversals all route through it. Do
   not add a second write path.
+- **A VOUCHER'S LINES HAVE AN ORDER AND TWO FUNCTIONS RECORD IT** (ACC-16, migration
+  384). `journal_lines.line_order` is the zero-based position the line held in the
+  jsonb array the posting was called with, read out with `WITH ORDINALITY` by
+  `post_journal_atomic` AND by `edit_posted_journal` — the second matters because a
+  correction DELETEs every line and re-inserts them, so leaving it alone would have
+  lost the CA's order the first time they fixed the voucher, silently. Taking the
+  order from the array is what let every posting function stay unchanged: a field
+  every caller must set is a field some caller will not. **Nothing already posted is
+  backfilled** and that is a decision — migration 251 makes a posted line immutable,
+  so a backfill would mean disabling that trigger against production for a DISPLAY
+  order. An existing line keeps `line_order` NULL and
+  `domain/accounting/line_order.py` orders it at read time: debits before credits,
+  then `created_at`, then `id`. That chain is TOTAL, which is the property that
+  matters — the same voucher renders the same way on every read. **There is
+  deliberately no TypeScript mirror**: the one place a CA sees a voucher's lines is
+  `GET /api/accounting/journal/{id}`, and the browser's own `journal_lines` embed
+  only SUMS debits. A guard fails if `apps/web` ever mentions the column, because
+  PostgREST can express neither "debits before credits" nor a fallback chain as an
+  `ORDER BY` and the rule would then need mirroring —
+  `tests/fixtures/journal_line_order.json` is already the table for it.
 - The live GL is `journal_entries` + `journal_lines` only. A posted entry can never be
   hard-DELETEd or rewritten in place (DB triggers), and a correction to a real
   transaction is an append-only reversal. But immutability is not absolute, and the
@@ -174,6 +194,35 @@ change. The code is the authority; keep this file in step with it.
   option became the one to LEAVE the regime; which sub-section it now names
   could not be read. The rule is written as the effect, with the sub-section
   deliberately not guessed.
+- **THE FOUR REINVESTMENT SECTIONS ARE NOT ONE RULE WITH FOUR NAMES** (IT-19,
+  migration 385). `capital_gains_engine` computed the gain, the holding period
+  and the rate and stopped, so on a house sale — where the whole gain is
+  routinely exempt — the register showed tax on a gain the client may not owe
+  tax on at all. `domain/income_tax/reinvestment_exemption.py` is the
+  authority. **§54 exempts the LOWER of the gain and the cost; §54F is
+  PROPORTIONATE** — gain × cost ÷ NET CONSIDERATION — so on a ₹1 crore sale
+  with a ₹40 lakh gain and a ₹50 lakh house, §54's rule would exempt ₹40 lakh
+  and §54F exempts ₹20 lakh; applying the wrong one halves the tax.
+  **§54EC's ₹50 lakh spans the year of transfer AND the year after it
+  together** (the second proviso), so reading it as a per-year cap doubles the
+  exemption; its window is six months, and from 01-04-2018 it reaches only land
+  or building — a transfer before that keeps the wider section, the fork shape
+  again. **§54B is the one section a SHORT-TERM gain reaches**, because its
+  charging words describe the USE of the land in the two preceding years rather
+  than a holding period. The Finance Act 2023's ₹10 crore ceiling applies to
+  §54 and §54F from FY 2023-24 only. **Three facts are refused and NAMED, never
+  guessed**: what was SOLD (`capital_gains.transferred_asset_nature` — the
+  register's `asset_type` cannot tell a residential house from a plot), how many
+  other houses the assessee owned (§54F's own condition) and whether the land
+  was farmed (§54B's). **No exemption amount is stored** — the caps move by
+  Finance Act, so it is derived on every read, the same reason migration 278
+  made `outstanding_paise` generated. **The individual-or-HUF test is its own
+  tri-state and NOT `capital_gains_engine.ASSESSEE_TYPES`**, whose `other` means
+  "not a RESIDENT individual or HUF" — a NON-RESIDENT individual falls there and
+  §54 reaches them perfectly well. The fraction FLOORS, because the exemption is
+  what tax is not charged on. ⚠️ Every figure and window is `[S]`-graded: egress
+  is refused here, incometax.gov.in included, so a test pins each constant
+  exactly and the screen says so.
 - **An estimated Cost Inflation Index says so, and is not written into the
   register.** The CII for a year is notified partway through it, usually around
   June, so `cii_for` legitimately falls back for a sale in the first weeks of a
@@ -250,6 +299,45 @@ change. The code is the authority; keep this file in step with it.
   deducted BOTH halves of the 12% from the employee's pay. Deliberately NOT
   extended to `_build_settlement_lines`: a leaver's F&F payload carries no
   employer contribution at all, so there is nothing there to split.
+- **THE STATUTORY BONUS IS AN ANNUAL DEBT AND THE PRODUCT COMPUTED IT ONLY FOR
+  LEAVERS** (PAY-23, migration 395). `domain/payroll/bonus.py` has implemented
+  the Payment of Bonus Act 1965 since the payroll module was built, and its one
+  caller was a leaver's settlement — so a client's CONTINUING employees, which
+  is all of them most years, were never computed for. §10 makes the minimum
+  payable "whether or not the employer has any allocable surplus", §19 makes it
+  due within eight months of the accounting year's close and §28 makes
+  non-payment an offence: it is a liability the balance sheet owes.
+  `domain/payroll/bonus_register.py` is the register and calls `bonus.compute`
+  rather than restating any of its sections. **EVERY EMPLOYEE APPEARS,
+  INCLUDING THE ONES THE ACT DOES NOT REACH**, each with its own reason —
+  §2(13)'s ₹21,000 ceiling, §8's thirty days, §9's forfeiture — because a
+  register that silently drops them cannot be checked against the payroll.
+  **§19's date is DERIVED from the year's own close**, not stated as 30
+  November, so a client whose accounting year is not the financial year gets
+  their own; the proviso allowing an extension on application is NAMED rather
+  than assumed.
+  **THE SERVICE READS THREE COLUMNS THAT EACH HAVE AN OBVIOUS WRONG
+  NEIGHBOUR.** §2(21) salary is `basic_paise` plus DA and NOT the slip's
+  `gross_paise`, which carries every allowance the section excludes; a month
+  worked is a RELEASED run (PAY-04's reasoning — a draft has paid nobody, and
+  here it would put a month of salary into a statutory debt); and §8's count is
+  `attendance.days_present`, days ACTUALLY worked, not `working_days`, which is
+  the establishment's days in the month. **An unrecorded working-day count is
+  read as NEITHER nil NOR thirty**: nil would disqualify every employee at a
+  client who runs payroll without attendance and hide the debt, thirty would
+  assert a fact nobody holds — so the figure is shown, the employee is named,
+  and the gap travels on the LINE as well as the summary.
+  Migration 395 stores only what no ledger holds: the employer's own §10/§11
+  rate (defaulted to the §10 minimum, which is owed whatever the surplus turns
+  out to be) with §12's minimum wage, and §9 dismissals **CHECKed to the Act's
+  five grounds** — a free-text reason would let "poor performance" forfeit a
+  statutory debt, which §9 does not reach. ⚠️ **One §12 minimum wage per
+  client-year is a stated simplification** (the section compares per SCHEDULED
+  EMPLOYMENT and per skill grade) and the wage TABLE itself remains the human
+  step §3b records. Nothing is posted — the provision is a journal the CA
+  raises — and Form C (Rule 4(c)) and Form D (Rule 5) are named rather than
+  produced.
+
 - **A DRAFT payroll run has deducted nothing** (PAY-04).
   `_tds_already_deducted_this_fy` and `_members_contributing_earlier_this_period`
   read `payroll_runs` with no status predicate while every other reader has
@@ -271,6 +359,63 @@ change. The code is the authority; keep this file in step with it.
   So it WARNS: `foreclosed_months` names them and the notice says to reverse
   and restart if the asset was acquired here. Same shape as Rule 46(b)'s
   invoice-number sequence gap, for the same reason.
+- **AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER, AND THAT IS THE FIX**
+  (FA-11a, migration 397). `fixed_assets` was the only place an asset could
+  live and everything in it is depreciated, so a client building a factory
+  either left it out — a balance sheet short by the whole of what had been
+  spent — or put it in and had depreciation charged on something not ready for
+  use, which overstates the expense, understates the asset and understates
+  every later year's charge because the written-down value starts lower. AS-10
+  paragraph 20 and Schedule II both start depreciation when the asset is
+  AVAILABLE FOR USE. `domain/fixed_assets/cwip.py` is the rule,
+  `services/cwip_service.py` fetches and posts, `routers/cwip.py` decides
+  nothing — and it is a SEPARATE router deliberately, because mounting it on
+  `/api/fixed-assets` is what makes the next reader reach for
+  `_SCHEDULE_II_PART_C`.
+  **AND IT IS A DISCLOSURE, NOT A CONVENIENCE.** MCA G.S.R. 207(E) of
+  24-03-2021 — the SAME notification behind the two ageing schedules migration
+  303 built — gives capital work-in-progress its own line under Non-current
+  assets immediately after PP&E, an **ageing schedule** (<1y / 1-2y / 2-3y /
+  >3y, split between *projects in progress* and *projects temporarily
+  suspended*), and a **completion schedule** for every project overdue against
+  its originally approved completion date OR over its originally approved cost.
+  **`capital_wip` HAS BEEN A DECLARED YEAR-END LINE SINCE `year_end_lines.py`
+  WAS WRITTEN and nothing could ever reach it** — no caption resolved there —
+  so the year-end balance sheet carried a structurally nil CWIP line for every
+  client. That is the half nobody could have seen.
+  **THE AGEING AGES MONEY, NOT PROJECTS**, which is why the cost is
+  `cwip_additions` with one row per tranche and its own `incurred_on`: a build
+  begun three years ago whose last contractor bill arrived last month has
+  amounts in three bands at once, and a project-level date would put all of it
+  in the oldest. Exactly one year falls in the SECOND band — "less than 1 year"
+  means less than — and months are counted on the calendar rather than days, so
+  the answer cannot disagree with itself across a leap year.
+  **SUSPENSION MOVES THE ROW AND NEVER THE BALANCE**: it is presentational, and
+  reading it as a removal would take the cost off the balance sheet, which is a
+  write-off nobody decided. **The schedules are AS AT A DATE** — a project
+  capitalised in June is CWIP in a 31 March note and a fixed asset in a 30
+  September one, which is why `capitalised_on` is recorded rather than the row
+  deleted, the same discipline `stock_position_as_at` applies to stock.
+  **TWO FACTS ARE REFUSED RATHER THAN GUESSED and both directions of the guess
+  are wrong**: `approved_completion_date` and `approved_cost_paise` are
+  nullable with no default, because defaulting the date to the project's start
+  reports every project overdue on day two and defaulting the cost to what has
+  been spent reports none over budget ever; a project with neither is NAMED as
+  undeterminable. A reportable project with no `expected_completion_date` is
+  named too rather than bucketed — a row in "more than 3 years" because nobody
+  said otherwise states something false.
+  **CAPITALISATION CREATES THE ASSET AND IS ONE WAY**: cost = the accumulated
+  tranches (each carrying its §17(5)-blocked tax, AS-10 paragraph 9 — the same
+  sentence AS-2 paragraph 6 applies to stock), `put_to_use_date` = the date it
+  became ready, and `purchase_date` the SAME date rather than the project's
+  start, or the register would charge three years of depreciation the moment
+  it is capitalised. `acquisition_mode` is deliberately left NULL (every
+  payment already happened on the tranches) and the trace lives on
+  `capital_work_in_progress.capitalised_asset_id`. The account is code **1504**
+  with subtype `Capital Work-in-Progress`, and the SUBTYPE is load-bearing:
+  `schedule_iii.classify` buckets on it and the CWIP branch is tested BEFORE
+  the tangible one, because "Capital Work in Progress - Plant" contains
+  "plant".
 - **The Finance (No. 2) Act 2024 forked capital gains on 23-07-2024, and it is
   the DATE OF TRANSFER that decides.** §111A 15%→20%, §112A 10%/₹1,00,000 →
   12.5%/₹1,25,000, §112 20%-with-indexation → 12.5%-without, and §2(42A)'s
@@ -340,6 +485,73 @@ change. The code is the authority; keep this file in step with it.
   most sources say the sub-section was omitted, one reads the Finance Act 2025
   as inserting a proviso that leaves the text in the Act and makes it
   inapplicable. Identical from 01-04-2025, different textually.
+- **A CLIENT IS ONE LEGAL PERSON AND MAY HOLD SEVERAL GSTINs, and until
+  migration 390 the return tables forbade it** (GST-20). CGST §25(1) requires
+  registration in EVERY State or Union territory a taxable supply is made from,
+  and §25(2)'s proviso allows a separate registration per place of business
+  within one state — so a depot, a second office, a warehouse-state e-commerce
+  registration are all the same legal person with several GSTINs and several
+  sets of returns. `clients.gstin` held exactly one, and **both
+  `gstr1_returns` and `gstr3b_returns` were `UNIQUE (client_id, period)`**, so a
+  second registration could not have had its own June GSTR-1 whatever the code
+  did; the CA's only route was a second fake "client" per GSTIN, which then
+  splits the ACCOUNTING of one entity across two ledgers and breaks every
+  client-scoped report. 390 narrows both keys to `(client_id, period, gstin)`.
+  `domain/gst/registrations.py` is the authority.
+  **`clients.gstin` IS NOT REPLACED and that is the part to read before
+  "tidying" it.** It stays the PRIMARY and remains the only place the primary is
+  stored; `client_gst_registrations` holds the ADDITIONAL ones ONLY, and
+  `all_registrations` presents the union. The obvious alternative — move every
+  registration into the table and leave `clients.gstin` as a cache — was
+  rejected because a cache needs ONE write path and that column already has
+  several (onboarding, the client edit screen, migration 073's seed), so it
+  would drift the first time somebody edited a client and surface as a return
+  filed under the wrong registration. **There is deliberately NO backfill**, for
+  the same reason.
+  **A GSTIN THE CLIENT DOES NOT HOLD IS REFUSED, NEVER DEFAULTED TO THE
+  PRIMARY** — in the domain module and again as a 422 in
+  `services/client_gst_registration_service.resolve` — because filing one
+  registration's return under another's number is the exact failure this
+  feature exists to prevent, and it is invisible until the portal rejects it or,
+  worse, accepts it. The PRIMARY COMES FIRST in the list for the mirror-image
+  reason: a screen opens on `[0]`, and that has to be the registration every
+  existing document already carries.
+  **The narrowed key made `_existing_return` load-bearing**: a save path still
+  matching on (client, period) alone now finds the OTHER registration's return
+  and revises it, silently replacing one state's figures with another's, so the
+  GSTIN is a required parameter there with no default.
+  ⚠️ **THE TWO `gstin` COLUMNS ARE NOT THE SAME SHAPE, and the difference
+  decides whether narrowing constrains anything.** `gstr1_returns.gstin` is NOT
+  NULL from migration 036; `gstr3b_returns.gstin` is NULLABLE, because 036's
+  CREATE TABLE omitted it and **migration 234 added it as a bare `TEXT`** with
+  nothing to back-fill from. Postgres treats NULLs as DISTINCT in a unique
+  index, so `(client_id, period, gstin)` enforces NOTHING on a row saved
+  without one — narrowing the key would have REMOVED what `UNIQUE (client_id,
+  period)` gave those rows rather than refining it. 390 closes it twice: it
+  **back-fills both tables' NULL gstin from `clients.gstin` BEFORE dropping the
+  old constraint** (that constraint guarantees at most one row per (client,
+  period), so the update cannot collide — and before 390 a client held exactly
+  one registration, so `clients.gstin` IS what such a row was prepared under: a
+  repair of 234's omission, not a guess), and keys both indexes on
+  **`coalesce(gstin, '')`**, which is a no-op on `gstr1_returns` today and is
+  written anyway because these two columns have already drifted apart once.
+  **No `SET NOT NULL`**: merging applies this to production with no review step
+  in front of it, and one unbackfillable row would abort the deploy and block
+  every later migration behind it.
+  **`files_gstr1_and_3b` exists so no caller tests the type by name** — a
+  composition dealer files CMP-08 and GSTR-4 under §10, an ISD files GSTR-6, a
+  §51 deductor GSTR-7 and a §52 operator GSTR-8, and `OTHER_RETURN_FORMS` holds
+  the sentence so the refusal names the form that registration actually owes
+  rather than saying only that this one is unavailable. An SEZ unit, an SEZ
+  developer, a casual and a non-resident taxable person DO file the ordinary
+  pair. **`state_code` is DERIVED from the GSTIN's first two characters**, never
+  taken from the caller (the column CHECKs `state_code = left(gstin, 2)`), and
+  the prefix is taken rather than `gstin.state_code` for `place_of_supply`'s
+  reason — the question is which state, not whether the check digit is right.
+  **Closing is not deleting**: §29 cancellation sets `effective_to`, because the
+  returns for every period the registration was live are still owed and the rows
+  already filed under it are keyed on its GSTIN; `withdraw` is for a
+  registration recorded in ERROR and is refused once any return exists under it.
 - **A PLACE OF SUPPLY HAS FOUR SOURCES AND ONE RESOLVER**, and the invoice
   declares the field TWICE. `domain/gst/place_of_supply.recipient_place_of_supply`
   is the chain — what the caller stated (CGST Rule 46(n) makes it the
@@ -357,6 +569,66 @@ change. The code is the authority; keep this file in step with it.
   the state list now (as `ReceiptIn.place_of_supply` has been since GST-15),
   the edit path too, and a request whose two disagree is refused rather than
   silently resolved one way.
+- **THE SALES CYCLE BEGINS BEFORE THE TAX INVOICE, AND ONLY ONE OF THE FOUR
+  DOCUMENTS IS THE ACT'S** (SALES-21, migration 392). A client quotes, takes an
+  order, delivers against it and bills afterwards; the product started at the
+  invoice, so a CA either raised it EARLY — declaring a supply that had not
+  happened and paying tax on it a month before the money arrived — or kept the
+  quotation in a spreadsheet and re-typed every line when it converted.
+  `domain/sales/order_cycle.py` is the commercial chain and
+  `domain/gst/delivery_challan.py` is CGST Rule 55; the service, the router and
+  the screen decide nothing either of them decides.
+  **A quotation, a proforma invoice and a sales order are COMMERCIAL papers the
+  Act does not know** — CGST §7 charges a SUPPLY and an offer is not one — so
+  none of the six tables carries a `journal_entry_id`, nothing posts, nothing
+  moves stock, and a test asserts no return builder reads any of them. **The
+  proforma is the trap**: it looks like an invoice, is often numbered like one,
+  and a GSTR-1 that picked one up would declare a supply that never happened.
+  **It is never numbered from the tax-invoice series** — Rule 46(b) requires
+  that series to be CONSECUTIVE and unique for the FY, so consuming a number
+  for a document that may never become a supply puts a permanent gap in it and
+  reusing the number later puts two documents on one. `series_kind_of` gives
+  each kind its own; uniqueness is per client PER KIND, so a quotation and a
+  proforma may share a number and two quotations may not.
+  **A DELIVERY CHALLAN IS THE ACT'S, AND TWO OF ITS REASONS START A CLOCK
+  WHOSE EXPIRY IS A DEEMED SUPPLY.** §143(3) deems inputs not received back
+  within ONE YEAR to have been supplied to the job worker **on the day they
+  were sent out** — so the tax falls due in a return already filed, with
+  §50(1) interest from that return's own due date — and §143(4) is the same at
+  THREE years for capital goods; §31(7) gives goods sent on approval SIX
+  MONTHS from removal. Neither clock is visible in any ledger (the goods left,
+  nothing was billed, no journal moved), so the challan is the only document
+  either can be computed from, which is the point of the module rather than a
+  convenience. **`goods_kind` is nullable with NO default and is REFUSED,
+  never guessed**: defaulting to inputs reports a deemed supply two years
+  early and defaulting to capital goods hides one for two years, and moulds,
+  dies, jigs, fixtures and tools are outside both (second proviso to §143(1)) —
+  named as its own answer, because "no clock" and "a clock nobody computed"
+  must not look the same on a screen. An extension under the proviso is
+  RECORDED and honoured only where it is LATER than the statutory date. A
+  month-end deadline walks BACK to the month's last day (31 August plus six
+  months is 28 February), never forward, because forward is a day late on a
+  deemed supply.
+  **Rule 55(1)'s nine clauses are checked and TWO ARE CONDITIONAL**: (vii) tax
+  rate and amount only "where the transportation is for supply to the
+  consignee" — so a job-work despatch carries none, and the service zeroes the
+  rate rather than asking the caller to remember — and (viii) place of supply
+  only on an inter-State movement. Rule 55(2)'s three legends are printed
+  verbatim because the rule prescribes the WORDS. **What an order still has
+  open is DERIVED, never stored** (migration 278's reasoning applied to a
+  quantity), from challan lines read `.in_` over THIS order's line ids and
+  their parents' statuses — a cancelled challan has delivered nothing.
+  Over-delivery is REFUSED, never clamped. Three things are named rather than
+  guessed: **ITC-04's periodicity** (Rule 45(3) turns on the principal's own
+  preceding-year turnover, which no column holds, so both readings are shown
+  and neither chosen), **what has been INVOICED against an order** (an invoice
+  line carries no link back to an order line, so the figure is honestly zero
+  rather than a description match), and Rule 55(5)'s four steps, whose gaps
+  are reported. ⚠️ Every period and every clause of Rule 55 is `[S]`-graded and
+  pinned by a test — egress is refused here — and `compute_line_gst` MOVED to
+  `domain/sales/line_tax.py` with `routers/sales_invoices` re-exporting it, so
+  `shared/gst-parity-vectors.json` still pins the one implementation.
+
 - **A §37(3) AMENDMENT RE-DECLARES THE WHOLE ENTRY, so an export amendment
   carries its shipping bill.** `domain/gst/amendments.build_invoice_amendment`
   emitted three empty strings for `sbpcode`/`sbnum`/`sbdt` on `expa`
@@ -502,6 +774,125 @@ change. The code is the authority; keep this file in step with it.
   FY-versioned authority and a second one in SQL is what the posting-kernel
   rule exists to prevent. A DROP is the right end state and needs the
   production-fixture refresh in `docs/schema-drift.md`.
+- **AN IMPORT OF GOODS IS PAID FOR TWICE AND ONLY ONE OF THEM IS THE SUPPLIER'S**
+  (PUR-18, migration 389). IGST on imported goods is not charged by the
+  supplier: IGST §5(1)'s proviso puts the levy under Customs Tariff Act §3(7),
+  collected under the Customs Act, so it is paid to CUSTOMS against a **Bill of
+  Entry** — often the largest single ITC item of an importer's month. This
+  product had no such document, so putting it on the vendor's bill overstated
+  Trade Payables by the whole of it and leaving it off lost the credit, while
+  GSTR-3B Table **4(A)(1) filed NIL** against a GSTR-2B whose own `impg`
+  section shows the document. `domain/gst/bill_of_entry.py` is the rule.
+  **THE ASSESSMENT IS NOT ONE FIGURE.** CGST §2(62)(a) puts "the integrated
+  goods and services tax charged on import of goods" in INPUT TAX and Rule
+  36(1)(d) makes the bill of entry the document it rests on; **basic customs
+  duty and the social welfare surcharge are recoverable from nobody**, so AS-2
+  paragraph 6 makes them COST — the same sentence that keeps blocked §17(5) GST
+  in the cost of goods (INV-05a), and the blocked part of the import's own tax
+  goes the same way. Treating the assessment as one figure claims credit that
+  does not exist. **`ImportOfGoods` IS ITS OWN TYPE, NOT A FLAG ON
+  `PurchaseTransaction`**, and it has no `is_reverse_charge` and no CGST or
+  SGST field: reverse-charge tax is SELF-assessed and creates a Table 3.1(d)
+  liability, this tax was collected by customs and creates none, and IGST §7(2)
+  makes an import inter-state so no other head can arise. A flag beside
+  `is_import_of_services` would invite the next reader to set
+  `is_reverse_charge` too — every other import is — and declare a liability the
+  client does not owe. **The journal touches NO accounts payable**: customs is
+  owed, not the supplier. **IMPG is capped LAST** of the five 4(A) rows, because
+  the two reverse-charge rows carry tax already paid in cash that Rule 36(4)
+  cannot reach, while import credit rides inside the cap (2B communicates it in
+  its own section). Only `status = 'posted'` documents reach the return — a
+  draft has no journal, and that gap is the books-vs-ledger difference the
+  reconciliation exists to catch. **4(A)(4) ISD is now the ONLY named 4(A)
+  gap.** Four refusals are recorded rather than guessed: deferred payment of
+  duty (Customs Act §47(2) proviso), a §27 refund, the duty is **not
+  apportioned into stock cost** (the basis is INV-05's open half and an owner
+  decision), and Rule 46(h)'s UQC has no line detail to come from. The seeded
+  `Customs Duty` account is code **5022** with subtype `Cost of Materials` —
+  both load-bearing: 5021 is Depreciation Expense and `ON CONFLICT DO NOTHING`
+  would have skipped the insert silently, and `schedule_iii.pl_bucket` has no
+  entry for `Direct Expense`, which is why migration 197 moved 5000 and 5001
+  off it.
+
+- **A REVERSE-CHARGE PURCHASE OWES TWO DOCUMENTS AND THEY ARE NOT ONE RULE WITH
+  TWO NAMES** (PUR-19, migration 388). The reverse-charge ACCOUNTING was
+  complete — the tax kept out of what the vendor is owed, the liability
+  self-accounted, GSTR-3B declaring it — and the product produced neither
+  document the CGST Act makes the RECIPIENT issue. **§31(3)(f) reaches only a
+  supply received from a supplier who is NOT REGISTERED; §31(3)(g) reaches
+  EVERY §9(3)/(4) payment**, registered supplier or not — so a payment to a
+  registered goods transport agency owes a voucher and owes no self-invoice,
+  and asking the registration question in `payment_voucher_due` would import
+  (f)'s limb into a section that does not carry it. The self-invoice is not
+  paperwork: it is the document the input credit RESTS on (Rule 36(1)(b) with
+  §16(2)(a)). `domain/gst/rcm_documents.py` is the authority and decides all of
+  it; the router and the screen decide nothing.
+  **REGISTRATION HAS THREE STATES AND THE THIRD IS REFUSED, NOT GUESSED.** A
+  valid GSTIN on the vendor IS the registration — read through
+  `domain/gst/gstin.problem_with`, so a malformed one reports itself instead of
+  being read as registered — `vendors.gst_registration_status` answers it where
+  there is no GSTIN, and NULL is *unrecorded*, named as a gap: one guess mints
+  a document the Act does not ask for and the other withholds the one the
+  credit rests on. The column is nullable with **no default** and CHECKed to
+  the two settled answers, so `unrecorded` cannot be STORED as a string; both
+  API doors (`VendorIn` and `VendorUpdateIn`) normalise case and refuse it with
+  a sentence saying it is the ABSENCE of a value, and both screens that record
+  it — the client Vendors tab and the firm-level Supplier Master — serve the
+  picker from `GET /api/rcm-documents/registration-states` rather than
+  spelling the pair. A `Decision`'s **`reasons` and `gaps` are different
+  things** and the panel renders them differently: reasons mean the Act does
+  not ask for the document (settled), gaps mean nobody can yet tell
+  (actionable). The particulars are built in the domain module rather than in
+  the PDF, so what the endpoint serves and what the CA prints are one object.
+  Four refusals are recorded rather than guessed: **no consolidated month-end
+  self-invoice** (`[S]`, tied to the withdrawn Notification 8/2017-CT(R)),
+  whether §9(4) applies is the bill's own `is_reverse_charge` and is the CA's
+  answer, a cancelled registration is not modelled, and **Rule 46(h)'s UQC is
+  absent because `purchase_bill_lines` has no unit column** — named, never
+  invented. Numbering goes through the one `domain/gst/invoice_series`
+  authority, and uniqueness is per client **per kind**, because Rule 46(b)
+  allows "one or multiple series" and these are two.
+
+- **A SECTION THE ENGINE CANNOT ANSWER FOR IS REFUSED WITH ITS OWN REASON, AND
+  THE REASONS ARE NOT INTERCHANGEABLE** (TDS-23). `deduction_section_refusal`
+  is the one place that decides it, and what a CA has to go and do differs per
+  section — a shared "no rate held" paragraph says the wrong thing about most
+  of them. **§192** computes a silent nil, **§206C** is TCS collected by a
+  seller, and **§194N is the third DIRECTION refusal**: it is charged on a
+  banking company, a co-operative bank or a post office on cash the ACCOUNT
+  HOLDER withdraws, so on a bill your client is PAYING there is nothing to
+  withhold — when it bites the client is the **deductee** and the credit
+  appears in their Form 26AS. Saying only "no rate held" there would invite
+  somebody to add one. **§194R, §194O and §194S are refused on the BASE as much
+  as the rate**, and each carries its own sentence in
+  `_SECTIONS_WITH_NO_FIGURE_AND_THE_REASON`: §194R's benefit is often in kind,
+  §194O's base is the *participant's* sale rather than any bill the operator
+  receives, and §194S has no virtual-digital-asset document at all — with
+  §194S(2) requiring the tax paid before consideration in kind is released.
+  **§194-IA/IB/M stay refused** because Form 26QB/26QC/26QD are
+  challan-cum-statements this product does not produce. A test asserts the
+  three answers are DIFFERENT, on the answers rather than on the data, so
+  moving a reason in or out cannot make it vacuous.
+
+- **A JOURNAL'S SUPPORTING DOCUMENTS ARE A DRAFT-ONLY EDIT, AND THE SCREEN SAYS
+  SO** (ACC-25). `JournalEntryIn` has taken validated attachments since the
+  first half of this finding; `JournalEntryUpdateIn` had none, so the editor
+  rendered the control on an entry being corrected, the CA typed a link, and
+  the PATCH sent everything except it. Both doors now validate through the same
+  `domain/attachments` parser — a validator on one door only is one PATCH from
+  being none, and this is the door reached SECOND, after the entry already
+  looks legitimate. `None` means unchanged; an **empty list removes them**,
+  which the service's header filter keeps and the `None` case drops.
+  **A POSTED entry is REFUSED rather than ignored**, because
+  `prevent_posted_journal_modification` (last defined in migration 274) lets a
+  posted header change only inside `journal_edit_in_progress()`, and the one
+  thing that sets it is `edit_posted_journal` — which rewrites LINES and
+  carries no attachments. Teaching it attachments means replacing the posting
+  kernel's own edit RPC, an owner decision rather than a convenience. The
+  editor gates on `attachmentsReadOnly = readOnly || isPosted`, a STRICTER
+  state than `readOnly` (a locked year or a filed return), so a CA is never
+  invited to type something the server will refuse.
+
 - **THE SUPPLIER MASTER IS `public.vendors`, AND `public.suppliers` IS RETIRED**
   (PUR-16). Migration 030 created a second one and `/accounting/suppliers` was
   its only writer, straight over PostgREST; every purchase path — bill
@@ -523,6 +914,53 @@ change. The code is the authority; keep this file in step with it.
   the database rather than DROPped, the same shape as migration 371 — a DROP
   moves both sides of the production-fixture comparison at once and needs the
   refresh in `docs/schema-drift.md`.
+- **THE PURCHASE CYCLE BEGINS BEFORE THE BILL, AND THE GOODS RECEIPT IS A
+  STATUTORY FACT** (PUR-25, migration 393). A client raises a purchase order,
+  receives the goods against it and only then books the supplier's invoice;
+  neither of the first two documents existed, so there was nothing to check
+  the bill against — and no record at all of WHEN the goods arrived. That
+  second absence is statutory twice over. **CGST §16(2)(b)** allows the input
+  tax credit only where the recipient "has received the goods or services",
+  and a March invoice for goods that arrive in April carries credit belonging
+  to April. **MSMED §15 runs its fifteen days from ACCEPTANCE**, and the
+  Explanation to §2(b) makes acceptance the day of ACTUAL DELIVERY — so
+  `domain/income_tax/section_43b_h.py` had to use the bill date as a proxy and
+  carried `ACCEPTANCE_DATE_NOT_HELD` on **every** answer. The proxy is the
+  EARLIER date and therefore manufactures disallowances on bills paid in time;
+  a goods receipt is the real one, and the caveat is now emitted only for the
+  bills that actually fell back.
+  `domain/purchases/order_cycle.py` is the commercial chain and
+  `domain/purchases/three_way_match.py` is the comparison and the two statutes
+  it settles.
+  **IT REPORTS; IT NEVER BLOCKS A BILL.** A supplier who short-ships or
+  over-charges has still sent one and the CA still has to book what arrived —
+  refusing would push the entry outside the system, which is worse than a
+  mismatch nobody looked at. The one thing refused is an over-RECEIPT against
+  the order, because goods on the premises in excess of what was ordered mean
+  the ORDER is wrong. **NO TOLERANCE IS APPLIED AND NONE IS INVENTED**: "within
+  2%" is a firm's procurement policy rather than a rule, and every answer says
+  so. **NO PRICE VARIANCE IS POSTED** — INV-05a costs a receipt at the BILL's
+  own taxable value plus its §17(5)-blocked tax, so the bill IS the cost and a
+  variance account would double-count. **A BILL WITH NO ORDER IS NOT A
+  FINDING**: most purchases a practice sees — fees, rent, utilities — are never
+  ordered.
+  **NEITHER DOCUMENT POSTS OR MOVES STOCK.** The expense, the credit and the
+  payable all arise when the bill is received. Goods received and not invoiced
+  are a real accrual and building one needs a GRNI account and a reversal path
+  — an owner decision, named rather than half-built.
+  **`rejected_qty` IS ITS OWN FIGURE, not a smaller quantity**, because
+  §16(2)(b) asks what was RECEIVED and §2(b) asks what was ACCEPTED and one
+  number cannot answer both; what the order still owes is measured on what was
+  KEPT. **The ACCEPTANCE date is the LAST receipt, not the first** — a
+  part-shipped order is accepted when the goods the bill covers have all
+  arrived — and an **objection removed** (§2(b)'s second limb) displaces it,
+  which is LATER and so can only remove a disallowance, never create one.
+  **The YEAR of the add-back is still the BILL's**: §43B(h) disallows a
+  deduction claimed in the year the expense ACCRUED in, so only the fifteen-day
+  clock moves. **`purchase_bill_lines` carries no `firm_id`** and is scoped
+  through its parent bill — naming the column would be PGRST204 and no read at
+  all, so the tenant check happens at the parent and a test pins both halves.
+
 - **§43B(h) IS DERIVED FROM THE PURCHASE LEDGER, AND THE LIMIT IS FIFTEEN DAYS**
   (PUR-15). The Finance Act 2023 inserted clause (h) with effect from AY
   2024-25: a sum payable to a MICRO or SMALL enterprise beyond the MSMED §15
@@ -576,6 +1014,34 @@ change. The code is the authority; keep this file in step with it.
   live. `GET /api/purchase-payments?purchase_bill_id=` unions the two and
   stamps `allocated_to_bill_paise`, because `amount_paise` stops being the
   bill's figure the moment one payment settles several.
+- **HOW LONG A CARRIED-FORWARD LOSS LIVES IS PER HEAD, AND ONE OF THEM IS NOT
+  EIGHT YEARS.** `domain/income_tax/loss_set_off.py` decides WHICH HEAD a
+  brought-forward loss may reach; `domain/income_tax/loss_carry_forward.py` is
+  the separate authority for HOW LONG — §72(3) eight assessment years for a
+  business loss, **§73(4) FOUR for a speculation loss**, §74(2) eight for
+  either capital head and §71B eight for house property. The computation
+  screen's own label read "§72 (Business, 8 yrs) · §74 (Capital, 8 yrs)",
+  hardcoded — true of three heads and silent about the fourth — and the
+  engine's expiry refusal quoted "§72(3)/§74's eight assessment years" for
+  every head including speculation. Both name the head's own section now, and
+  `GET /api/itr/loss-types` serves the vocabulary so the form holds neither a
+  head nor a period.
+  **`brought_forward_losses` WAS READ AND NEVER WRITTEN** (IT-10's other half):
+  `POST /api/itr/bf-losses` has existed since migration 156 with no caller and
+  the panel listing them was read-only, so every client showed "No
+  carried-forward losses recorded" for ever with a fully built set-off engine
+  behind it. **`expiry_assessment_year` was a REQUIRED caller-supplied field**,
+  so the one statutory fact in the row was whatever was typed; it is derived
+  now and a caller-supplied value still WINS (`domain/tds/deductor.resolve`'s
+  shape). **Two refusals rather than guesses**: `other` means the head is not
+  identified, so no section fixes a period and it is refused rather than given
+  eight years, and **§32(2) unabsorbed depreciation and §73A's specified-business
+  loss carry forward INDEFINITELY** and are absent from the stored vocabulary —
+  named on the form, because recording one as `other` with any expiry would
+  expire a loss that never expires. ⚠️ Every period is `[S]`-graded, `VERIFIED`
+  is False and each is pinned by a test: the error direction is unsafe BOTH
+  ways, since too short expires relief the client is entitled to and too long
+  claims relief they are not.
 - **A capital LOSS does not relieve other income** (§71(3), §74), and **§80G has
   a ceiling** (§80G(4): 10% of adjusted gross total income, where adjusted GTI
   is GTI less the capital-gains buckets and less every other Chapter VI-A
@@ -647,6 +1113,23 @@ change. The code is the authority; keep this file in step with it.
   same return is not. `domain/gst/gstr3b_computer.py` carries the circular's
   wording and is the authority; the pre-2022 layout looks plausible and gets the
   tax right, which is why it survived so long.
+- **A NIL ON A GSTR-3B SAYS WHICH KIND OF NIL IT IS.** Four rows of this
+  product's GSTR-3B are nil because nothing here can DERIVE them, and on a
+  filed return that is indistinguishable from a client who had none: **3.1.1(i)
+  and 3.1.1(ii)** (§9(5) e-commerce — nothing marks a supply as made through an
+  operator, so an aggregator's sales are counted in 3.1(a) like any other
+  outward supply), **Table 5** (exempt / nil-rated / non-GST INWARD supplies — a
+  purchase bill is not classified that way here) and **4(D)(2)** (§16(4) and the
+  place-of-supply rules, neither tracked). Each carried its reason in a source
+  COMMENT beside the literal zero, which is the right place for the next
+  programmer and no place at all for the CA about to file. `_undeclarable_rows`
+  in `services/gst_return_service.py` is the one list and it CALLS
+  `_table_4a_gaps` rather than restating it, so the 4(A) rows keep one
+  definition. **`table_4a_gaps` itself was served since GST-24 and rendered by
+  nothing**, so even the ISD sentence reached nobody; the client GST screen
+  renders the superset now. No figure changes — what an underivable row needs is
+  a document this product does not model, not a number from memory — and a test
+  asserts no reason states a rate or an amount.
 - **GSTR-3B TABLE 4(A) HAS FIVE ROWS, AN IMPORT OF SERVICES OWNS ONE OF THEM,
   AND TWO ARE STRUCTURALLY NIL** (GST-24). `itc_avl_rows` emits all five in the
   GSTN utility's order and used to put the WHOLE reverse-charge credit on
@@ -665,12 +1148,156 @@ change. The code is the authority; keep this file in step with it.
   branch and never added to it. **The two capped rows are capped IN ORDER**:
   IMPS takes the ceiling first and ISRC takes what is left, since capping each
   independently against the same ceiling lets them together exceed it and file
-  a 4(A) that does not reconcile with its own 4(C). **4(A)(1) IMPG and 4(A)(4)
-  ISD stay nil and NAME why** (`table_4a_gaps`): IGST on imported goods is paid
-  at customs against a Bill of Entry, never self-assessed on a purchase bill,
-  so it is not a reverse-charge document at all and no document type here
-  carries it; an ISD invoice is not modelled either. A nil meaning "we cannot
-  see it" is not a nil meaning "there was none".
+  a 4(A) that does not reconcile with its own 4(C). **4(A)(4) ISD stays nil and NAMES why**
+  (`table_4a_gaps`): an ISD invoice is not modelled. A nil meaning "we cannot
+  see it" is not a nil meaning "there was none". **4(A)(1) IMPG left that list
+  on 2026-09-14** — migration 389 gave the Bill of Entry a document, see the
+  PUR-18 bullet above — and it is still not a reverse-charge row: the tax is
+  collected at customs, not self-assessed, so it never touches 3.1(d).
+- **A BANK LINE THE CA MARKED AS CARRYING GST IS A DOCUMENT, AND THE
+  DOCUMENT IS THE TRANSACTION** (BANK-24). The posting drawer has always let a
+  CA say "there is 18% GST inside this ₹590", and `bank_posting_service` then
+  posts a real Dr GST Input leg (CGST §16 — a bank charge is an input service
+  received in the course or furtherance of business). GSTR-3B is built from
+  DOCUMENTS, and a bank line is not a purchase bill, so the credit the CA
+  declared never reached Table 4(A) — while `_gl_gst_movements` DOES read the
+  GST Input account, so the same rupees came back as an unexplained
+  books-vs-ledger ITC difference every month, on a return about to be filed.
+  Money IN was the same defect and worse: `build_inclusive_lines(is_credit=
+  True)` credits GST Output, so an outward supply's liability sat in the ledger
+  and no return declared it. Migration 382 records the rate that was POSTED on
+  `bank_transactions` — `draft_gst_rate_bps` (322) cannot serve, because the
+  caller may override it and a line posted with no draft carries NULL — and
+  **that is what keeps the reconciliation's two sides independently derived**:
+  reading the tax back out of `journal_lines` would make this slice compare the
+  ledger with itself, the same reason Table 4(B) is built from documents.
+  `domain/gst/bank_charge_gst.py` is the rule; the inward side goes to
+  **4(A)(5) "All other ITC"** (not 4(A)(3) — the bank charges the tax and pays
+  it over, and the reverse-charge row would also create a 3.1(d) liability that
+  does not exist) and the outward side to **3.1(a)** through the one
+  `_outward_transactions` Rule 43's turnover also reads. Three refusals are
+  deliberate: **a recorded ZERO declares nothing** (it posts identically to an
+  unmarked line, so nothing says whether a receipt is nil-rated, exempt,
+  outside the levy — or not a supply at all), **never Table 3.2** (no recipient
+  state, no recipient class; the `SalesTransaction` defaults keep it out by
+  construction — do not helpfully fill them in), and **no §17(5) split**. What
+  cannot be computed is NAMED on every answer that carries one: §16(2)(aa)
+  wants a supplier document a bank line does not hold, and an outward supply
+  with no tax invoice will not be in the GSTR-1 the portal compares this return
+  against (Rule 46). **No GSTIN is invented** — the finding's own suggested fix
+  would have put one on a bank table so the 2B match passed, which is claiming
+  a document exists.
+- **A FIXED-ASSET DISPOSAL IS A SUPPLY, AND CGST §18(6) CHARGES THE HIGHER OF
+  TWO LIMBS** (FA-08b, migration 383). `journal_for_asset_disposal` posted four
+  lines — accumulated depreciation cleared, the whole proceeds to bank, the
+  asset out at cost, the gain or loss balancing — and NO tax line at all, and
+  `DisposalIn` had no field that could have driven one. So the sale of a
+  capital asset was never declared: nothing in the ledger, nothing on the
+  return, and the CA had to remember to raise a separate sales invoice.
+  §18(6) charges "the input tax credit taken on the said capital goods ...
+  reduced by such percentage points as may be prescribed **or** the tax on the
+  transaction value ... **whichever is higher**", so an asset sold cheap early
+  in its life pays back CREDIT rather than tax on the price — the case a plain
+  output-tax line under-declares by an order of magnitude.
+  `domain/gst/section_18_6.py` is the authority.
+  ⚠️ **TWO RULES PRESCRIBE THE REDUCTION AND THEY DISAGREE**, so BOTH readings
+  are reported and neither is chosen — the `interest_on_rule_37_reversal`
+  shape, for the same reason: this is a sum the CA pays over. Rule 40(2) is
+  five percentage points per **quarter or part thereof** from the invoice date;
+  Rule 44(6), through Rule 44(1)(b), pro-rates the credit over the **remaining
+  useful life in months out of sixty**. At 38 months that is 35% against
+  36.67%. `[S]` — every `.gov.in` is refused at this environment's proxy.
+  **The part DAYS count in Rule 40(2)**: three months exactly is one quarter, a
+  single day more is two, so the count cannot be `ceil(whole_months / 3)`.
+  **The comparison is on the TOTAL**, not head by head — Rule 44(6)'s
+  "determined separately for ... central tax, State tax" governs how limb (a)
+  is worked out, not how the two limbs are ranked; ranking per head would pay
+  the credit limb on one head and the value limb on another, which is not a
+  figure the section describes. **Every rounding goes UP** (a sum the taxpayer
+  owes) and a part month does NOT count as elapsed, which leaves the remaining
+  life larger and the charge larger — the direction that cannot leave a
+  shortfall. **Only limb (b) is POSTED**: the tax on the transaction value is
+  what the buyer paid and is not in doubt, while the excess has two readings
+  and no invoice behind it, so the CA raises it — `itc_register_service`'s
+  judgement about Rule 37. The **proceeds are TAX-INCLUSIVE** and the tax is
+  backed out with `charge_gst.split_inclusive_charge`, so the journal balances
+  with no plug and the **gain is measured on the consideration NET of tax** —
+  the buyer's tax is not the seller's proceeds. Migration 383's three columns
+  are all STATED: `disposal_is_supply` (nullable, NO default — a scrapping for
+  nothing and a sale are the same row shape), `disposal_gst_rate_bps` and
+  `disposal_is_interstate` (an asset bought locally may be sold across a state
+  border, and §18(6) does not say which head the credit limb is then paid in —
+  NAMED, never resolved). The return reads those columns as the document and
+  declares the supply in **3.1(a), never 3.2**. Two more refusals: no credit
+  taken means §18(6) does not reach the supply at all (only §9 does), and an
+  asset that does not RECORD its credit position is a named gap rather than
+  assumed nil. `GET /api/fixed-assets/{id}/disposal-preview` writes nothing and
+  runs the same module, so what the CA is shown before confirming is what gets
+  posted.
+- **THE ANNUAL RETURN CONSOLIDATES THE YEAR'S OWN RETURNS, AND NOTHING ADDED
+  THEM UP** (GST-10). CGST §44 with Rule 80(1): GSTR-9 consolidates the
+  financial year's GSTR-1 and GSTR-3B, and the portal opens it once every one
+  of them is furnished and auto-populates from them. The GSTR-9 tab loaded a
+  saved draft and **nothing created one** — every figure was already in the
+  product and nothing totalled them. `domain/gst/gstr9_builder.py` is the
+  authority for Tables 4, 5, 6, 7, 8, 9 and 17; `services/gstr9_service.py`
+  fetches; `GET /api/gst-workspace/gstr9/compute` serves; the screen decides
+  nothing, saves nothing and files nothing.
+  **IT READS `payload_json`, NOT `gstr3b_returns`' OWN PER-HEAD PAISE COLUMNS.**
+  Migration 036 declared them and **`save_gstr3b` has never written one** — it
+  stores `tax_liability_paise`, `itc_claimed_paise`, `net_tax_paise`,
+  `rcm_cash_paise`, `cash_payable_paise` and the two JSON blobs, and every other
+  column keeps its `DEFAULT 0`. Reading them would give a confident nil for
+  every month of every client, which is the worst possible answer on an annual
+  return. Twenty-four header rows and their payloads for a year — proportional
+  to the ANSWER.
+  **A STORED RUPEE FIGURE COMES BACK THROUGH `Decimal(str(v))`, NEVER
+  `int(v * 100)`.** GSTR-1's payload is 2-decimal rupees and GSTR-3B's is whole
+  rupees, and in binary floating point `0.29 * 100` is 28.999999999999996 — a
+  paisa lost, on some values only, twelve months over, on a return that has to
+  foot. That is not a precision loss overall: the annual return consolidates
+  what was DECLARED, and what was declared was those rupees.
+  **TABLE 4(A)'s FIVE ROWS ARE TABLE 6's ROWS.** GST-24 split imports of
+  services out of the domestic reverse-charge line and PUR-18 gave imports of
+  goods a document, so IMPG→6E, IMPS→6F, ISRC→6C+6D and OTH→6B are already told
+  apart in the return being consolidated; there is nothing to apportion. And
+  the `b2b` section carries Tables **4B, 4D, 4E and 5B** at once, told apart
+  only by `inv_typ` — a test reads `gstr1_builder._INV_TYP` so a value added
+  there without a home here fails rather than falling into 4B and declaring a
+  deemed export as an ordinary B2B supply.
+  **TABLE 7 IS THE ONE GSTR-3B CANNOT ANSWER.** Its Table 4(B) has two boxes,
+  permanent and reclaimable, and Rules 38, 42, 43 and §17(5) share one;
+  `itc_reversal_register` records the statutory GROUND (migration 362), which
+  is exactly what Table 7 asks for. A ground with no row is NAMED and kept OUT
+  of the total rather than folded into "other reversals". **The year is
+  selected by `period`, the register's own MMYYYY of the GSTR-3B the row was
+  declared in** — there is no reversal DATE column, and §44 with Rule 80(1)
+  consolidates the returns FURNISHED for the year, so the period is the right
+  key as well as the only one. `.in_` over the twelve named periods and never
+  a range: MMYYYY is TEXT, so `'042025' > '032026'` and a `gte`/`lte` would
+  drop the first nine months of every year and keep three belonging to the
+  next. The first draft filtered on an invented `reversal_date` and the mock
+  suite agreed, because the FIXTURE invented it too — which is why that test
+  module now asserts every fixture key against the production snapshot.
+  **A NIL ON AN ANNUAL RETURN DECLARES THAT NOTHING WAS OWED, so a row nobody
+  can derive carries a NOTE and renders as a dash.** Six are refused and named:
+  Table **6B's three-way split** (inputs / capital goods / input services — no
+  column records it and it is a judgement about USE; the TOTAL is derived, only
+  the apportionment is not), **6C against 6D** (recorded on
+  `vendors.gst_registration_status` but not carried by the monthly 3B being
+  consolidated), **Rule 39 / 6G** (no ISD invoice is modelled), **TRAN-I and
+  TRAN-II**, **8C** (a fact about the NEXT year's returns), and **8A** (the
+  portal auto-populates it; totalling a year of `gstr2a_records` is a read
+  proportional to transaction volume for a four-number answer — a stored
+  per-period total is the right next step and is a migration). **A month FILED
+  but whose payload this product never held** is named too: its tax is in the
+  3B row and its Table 4 breakdown is not.
+  **Tables 10–14, 15, 16, 18 and 19 are NOT built and each says why** —
+  §47's late-fee rates are deliberately EMPTY in `domain/gst/late_filing.py`,
+  so Table 19 must not invent one. ⚠️ The FORM's own numbering and row labels
+  are `[S]`, written from knowledge because every `.gov.in` is refused at this
+  environment's proxy; the FIGURES are not affected, each being a total of
+  figures this product computed and the CA filed.
 - **GSTR-3B Table 3.1(a) carries GSTR-1 TABLE 11, and the ledger cannot.**
   §13(2) puts the time of supply for SERVICES at the earlier of invoice or
   payment, so tax on an advance received for services falls due on receipt,
@@ -729,6 +1356,41 @@ change. The code is the authority; keep this file in step with it.
   already filed. **A one-click "Post this reversal" is deliberately NOT built**
   — `itc_register_service` records why, and a guard asserts no such button
   appeared.
+- **RULE 37A IS THE SUPPLIER'S DEFAULT AND RULE 37 IS THE RECIPIENT'S; THEY
+  SHARE A BOX AND NOTHING ELSE** (GST-28, second half). `itc_reversal_register`
+  has accepted a `rule_37a` ground since migration 362 and GSTR-3B Table
+  4(B)(2) has a slot for it, and nothing produced a figure. Rule 37A
+  (Notification 26/2022-Central Tax): where a supplier DECLARED the invoice in
+  GSTR-1 but has not furnished the GSTR-3B for that period by the **30th of
+  September** following the end of the FY the credit was availed in, the
+  recipient reverses it by the **30th of November** following — and an
+  unreversed credit is payable with §50 interest. `domain/gst/rule_37a.py` is
+  the rule and `services/rule_37a_service.py` fetches.
+  **BOTH DATES HANG OFF THE END OF THE AVAILMENT YEAR**, which is the part that
+  is easy to get wrong twice over: the FY's own September and November would be
+  a year early, and "sixty days after the supplier's date" two months late.
+  **THE ONE FACT THIS PRODUCT CANNOT HOLD IS WHETHER THE SUPPLIER FILED**, and
+  it is NAMED on every answer rather than guessed — GSTR-2B is generated FROM
+  filed GSTR-1s, so a document appearing in it proves the GSTR-1 and says
+  nothing about the 3B, and `gstr2a_records.supplier_filed_on` is the trap
+  (it is the GSTR-1's date, so reading it would report every supplier as
+  compliant). Guessing "filed" leaves a reversal undone with interest running;
+  guessing "not filed" reverses credit the client is entitled to.
+  `supplier_filed_gstr3b` is typed `null` in the browser so a screen cannot
+  fill it in.
+  **THE POPULATION IS THE MATCHED DOCUMENTS**, read from `gstr2a_records`
+  rather than from `purchase_bills`: the rule reaches a supply whose invoice
+  the supplier DID declare in GSTR-1, which is exactly what a 2B match proves,
+  and a bill missing from 2B is §16(2)(aa) and belongs in the reconciliation.
+  An empty answer is a NAMED gap, not a clean bill of health. **The §50
+  interest is deliberately NOT computed** — the rule does not say which date it
+  runs from, and `late_filing.interest_on_rule_37_reversal` already shows two
+  readings for the same silence in Rule 37; a single figure here would be a
+  third answer to an open question. Nothing is posted: the CA raises the
+  journal and registers it with ground `rule_37a`, which is RECLAIMABLE
+  (4(B)(2), released into 4(D)(1)) because the rule lets the credit be
+  re-availed once the supplier files. ⚠️ Every date is `[S]`-graded and pinned.
+
 - **WHAT BEING LATE COSTS IS `domain/gst/late_filing.py`, and half of it is a
   REFUSAL.** §50(1) interest is COMPUTED — 18% (Notification 13/2017-Central
   Tax), and Rule 88B(1) is the load-bearing part: where the supplies are
@@ -853,6 +1515,55 @@ change. The code is the authority; keep this file in step with it.
   not restart each April** — the client-wide unique index would reject the
   collision — so the sequence keeps climbing, and that falls out of matching on the
   series head rather than being special-cased.
+- **A UNIT QUANTITY CODE IS A CODE, NOT A WORD, and the one module that knew
+  which codes exist had ZERO IMPORTERS.** `models/uqc.py` held CBIC's fixed
+  44-code list and named, in its own docstring, every place it was meant to be
+  used; three validators cited `VALID_UQC_CODES` in their COMMENTS and none
+  imported it. So `gstr1_builder` put `line.unit` straight into Table 12's
+  `uqc` and three things reached a return unremarked: **`'PIECES'`** where the
+  code is `PCS`, **`None`** — a JSON null where the schema wants a string — and
+  **10 BOX + 5 PCS summed to 15 and filed as BOX**, a quantity that is not a
+  quantity of either. The same `public.tds_section_limits` shape: a module
+  whose name reads like the authority and which nothing reads.
+  `domain/gst/uqc.py` is the authority now, with the RULE over the list —
+  `problem_with` is shaped like `gstin.problem_with` deliberately, one shape
+  for "what is wrong with this identifier". It moved out of `models/` because
+  that is the API boundary and a domain module importing from it is the wrong
+  direction, the same reasoning that moved Schedule II Part C out of
+  `routers/fixed_assets.py`; `models/uqc.py` re-exports.
+  **NOTHING REFUSES, AND THAT IS GST-29's SPLIT APPLIED TO A DIFFERENT
+  IDENTIFIER.** The carve-out the old validators recorded is still right — a
+  product or a line may carry a pre-dropdown free-text unit (`HRS` for service
+  hours), and refusing at the API boundary would make that row un-editable for
+  any unrelated change. What was wrong was the conclusion drawn from it, *"the
+  dropdown only offers valid UQC codes, so new data is compliant by
+  construction"*, which is a claim about EVERY write door — and this codebase
+  has found that claim false twice already. So the document is never refused
+  and the RETURN reports, as `payload_gaps`, which the GSTR-1 screen already
+  renders. The three answers are **NOT interchangeable** and a test says so:
+  an absent unit cites Rule 46(h), a wrong one names the code it probably
+  meant (`closest_code` is a suggestion and never a substitution, matched on
+  the LABEL rather than by edit distance, which would pair `TON` with `TUB`),
+  and a mixture names both units and says the quantity below is their sum.
+  **THE FILED FIGURE IS NOT CHANGED.** Whether Table 12 may carry two rows for
+  one HSN under different UQCs could not be checked — every `.gov.in` is
+  refused at this environment's proxy — so the mixed case is REPORTED and the
+  aggregation left alone, the `interest_on_rule_37_reversal` discipline: state
+  the open question rather than answer it from memory. The real fix is the
+  CA's anyway, since one HSN should have one unit.
+  **ALL SIX DOORS ASK THE AUTHORITY** — `ServiceCatalogueIn`/`UpdateIn`,
+  `InvoiceLineIn`, `PurchaseBillLineIn`, `FirmHsnLibraryIn`/`UpdateIn` — and
+  the last pair had **no validator at all**, which mattered most because
+  `routers/hsn.py` serves that `uqc` as a HINT that pre-fills an invoice line,
+  so a value typed there propagates. The guard derives the door list from the
+  AST and checks PER CLASS, because a module-level walk passes when only one of
+  a create/PATCH pair is guarded. **`apps/web/lib/constants/uqc.ts` is the
+  keystroke mirror** — seven editors render their dropdown from it — pinned
+  from the PYTHON side, the Schedule III caption lesson: a guard in `apps/web`
+  asserting the browser against a copy of itself passes whenever both drift
+  together. There is deliberately **no endpoint**: a 44-entry constant that
+  moves by CBIC notification would be a Singapore-to-Mumbai round trip, and the
+  parity test already prevents the drift an endpoint would.
 - **§34(2)'s window is measured from the ORIGINAL SUPPLY's financial year, not the
   note's own period, and the two diverge constantly.** A June 2025 invoice credited
   in January 2027 sits in a wide-open period — January 2027's GSTR-1 is not filed —
@@ -910,6 +1621,29 @@ change. The code is the authority; keep this file in step with it.
   questions in that order and refuses rather than guessing; §206AA's 20% no-PAN
   floor has a non-resident carve-out (§206AA(7) with Rule 37BC) residents do not
   get. Under-deducting disallows the WHOLE expenditure under §40(a)(i).
+- **§115BAC(6) WAS MODELLED AND NOTHING COULD ASK IT.**
+  `domain/income_tax/regime_election.py` has held both clauses with Rule 21AGA
+  since it was written and had **no production caller** — the only mention of
+  it outside its own file and tests was a COMMENT in
+  `domain/payroll/declarations.py`. Its own docstring says why that mattered:
+  *"A missed Form 10-IEA taxes a client on the new regime for a year they
+  planned around the old one, and it cannot be cured after the due date. A
+  withdrawal made without realising it is final closes an option worth lakhs
+  over a career. Neither failure is visible in the return — it computes
+  cleanly either way."* `GET /api/income-tax/regime-election` serves it and the
+  computation screen renders it **beside the regime picker**, because which
+  regime is CHEAPER is not the same question as what choosing it REQUIRES.
+  **A GET, deliberately** — it reads and writes nothing, and a POST would need
+  an entry on `test_write_requires_write_permission.py`'s compute-only
+  allowlist that every preview has to earn. The wire format for an earlier
+  year is `FY:action` (`2024-25:withdrew`), parsed in the ROUTER because the
+  format is the endpoint's business and the rule is not.
+  **PRIOR HISTORY IS AN INPUT AND SILENCE IS ITS OWN ANSWER.** The product
+  holds no filing history, so clause (i)'s once-only withdrawal cannot be
+  derived; supplying nothing is answered as `history_unknown`, which is a
+  DIFFERENT answer from "the option is available". Assuming availability is
+  the dangerous direction — it tells a CA the old regime is open when their
+  client spent it years ago.
 - **§192 withholding rests on THREE separate things, and conflating any two gets
   it wrong.** (1) The employee's regime INTIMATION to the employer — CBDT
   Circular 04/2023 — governs withholding only, and the same circular says
@@ -1339,6 +2073,38 @@ PostgREST. That is why:
   RLS is genuinely enforced on the API path too.
 - RBAC: `Partner > Manager > Executive > Reviewer > Client`
   (`core/permissions.py`, applied as `rbac(resource, action)`).
+- **THERE ARE THREE PRINCIPALS AND ONLY ONE OF THEM IS STAFF.** `rbac()` decides
+  a staff request; `core/portal_auth.get_current_portal_client` is the CLIENT
+  principal (a real Supabase JWT, no staff `users` row, no RBAC role); and
+  `get_current_portal_employee` is the EMPLOYEE one (PAY-26). All three are
+  authenticated — an employee has held a Supabase identity since migration 262,
+  `payroll_employees.auth_user_id` with `portal_enabled`, which is exactly what
+  that migration's RLS reads. What did not exist was any way for the API to
+  RESOLVE one, so everything the product COMPUTES was unreachable to an employee
+  however well it worked for the CA: the §192 projection answers off
+  `_compute_slip`, the run's own engine, and it is precisely the working an
+  employee asks their employer for in January.
+  **THE EMPLOYEE PRINCIPAL IS DELIBERATELY NARROWER THAN THE CLIENT ONE** (owner
+  decision, 14-09-2026): **read-only**, **self-scoped** and with **no client
+  switcher**. The self-scoping is what makes it safe and it is STRUCTURAL rather
+  than checked — no endpoint in `routers/portal_employee.py` takes an
+  `employee_id` or a `client_id`, so there is no parameter to tamper with, and a
+  test asserts that on the SIGNATURE so an id added later fails rather than
+  becoming a way in. `portal_enabled` is asked SEPARATELY from `auth_user_id`
+  because they are two different facts — `revoke_employee_portal` clears the
+  second and may leave the first, so a check on the binding alone keeps a
+  revoked employee signed in — and the refusal is one generic 403 for every
+  cause, the oracle `employee_portal_service` raises one generic 404 to avoid.
+  **`"PortalEmployee"` IS NOT AN RBAC ROLE**: `PERMISSIONS` has no entry for it,
+  so `rbac()` denies it everywhere, which is correct and is why no endpoint may
+  carry both. **The computation is the payroll module's** —
+  `routers/payroll.compute_tds_projection`, called by both doors, which answer
+  differently only about WHO may ask (200 with `success: false` for staff, 403
+  for an employee whose own principal no longer matches a live row). A second
+  withholding engine for the employee's side of the screen is exactly what
+  PAY-10 deleted. **There is deliberately no `/me`**: the portal already reads
+  its own `payroll_employees` row over PostgREST, and the reachability ratchet
+  named the duplicate on the first run.
 - **ACCESS IS BY ROLE, AND THERE IS NO PER-MEMBER OVERRIDE.** `rbac()` decides
   every request from the role alone. The Team screen used to render a "Module
   Access Matrix" of per-member toggles headed *"Changes are saved instantly.
@@ -1461,6 +2227,88 @@ statement went back to guessing from the subtype.
   rendered wherever the figures are — the Reports tab, the notes screen and
   both PDFs — because a movement shown without the sentence saying the ledger
   and the register disagree is exactly the disclosure a reader would rely on.
+
+## Opening balances — the ledger takes a total, ageing needs documents
+
+**AN OPENING BALANCE IS MADE OF DOCUMENTS, AND UNTIL MIGRATION 391 IT WAS THREE
+TOTALS** (ACC-14). `opening_balance_service._plan_opening` computes exactly
+three targets — aggregate Trade Receivables (Σ `customers.opening_balance_paise`),
+aggregate Trade Payables and each bank — which is the right shape for the
+GENERAL LEDGER and useless for ageing. Every AR/AP ageing screen and the
+Schedule III ageing note (MCA G.S.R. 207(E) of 24-03-2021) bucket by the DUE
+DATE of each open document, and a control-account total has no dates, so on day
+one the whole opening receivable ages to nothing. Tally takes opening balances
+bill by bill with dates for exactly this reason.
+
+- **An opening document is an ORDINARY row in `client_sales_invoices` /
+  `purchase_bills`** carrying the OLD system's own number and date, with
+  `is_opening` true. That is what makes a receipt allocate against it
+  (`receipt_allocations` is an FK to that very table), a statement list it, the
+  collections queue chase it and the bank match queue offer it — all unchanged.
+  A separate table would have needed every one of those taught about it.
+- **IT POSTS NO JOURNAL.** `customers.opening_balance_paise` stays the single
+  source of the ledger's AR leg and `opening_balance_service` is untouched. The
+  document is the BILL-WISE BREAKUP of that balance, not a second posting of it.
+  So the two must AGREE, and where they do not the difference is NAMED rather
+  than absorbed — `domain/accounting/opening_documents.reconcile`, rendered on
+  the Opening Balances tab. An ageing schedule that does not foot to its own
+  control account is worse than either figure alone.
+- **IT DECLARES NO TAX AND WITHHOLDS NOTHING.** The GST was charged and declared
+  where the document was issued; any TDS was deducted, deposited and reported on
+  a statement filed from there. Every tax field is zero and `total_paise` is
+  simply what is owed. That zero is also what keeps it out of the 26Q build,
+  whose own reads are `.gt("tds_paise", 0)` and `.eq("tds_section", "195")`.
+- **`purchase_bills.outstanding_paise` IS GENERATED FROM `net_payable_paise`,
+  NOT `total_paise`** (migration 278) — the one asymmetry between the two
+  tables, and writing only the total would leave every opening bill outstanding
+  at ZERO, invisible to AP ageing and to the Schedule III payables note. A
+  real-Postgres test proves it both ways round.
+- **`is_opening` SAYS ONE THING, and every reader that feeds a statutory output
+  asks it**: `domain/accounting/opening_documents.without_carried_over`. The
+  GSTR-1/3B build (declaring a carried-over supply again pays the tax twice, and
+  claiming its credit again doubles Table 4(A)), the GSTR-2B reconciliation (no
+  2B counterpart, ever — it would report as "missing in 2B" every month and send
+  the CA to chase a supplier about a bill from before the engagement), the Rule
+  37 report (the 180 days never started here), §43B(h) (the deduction was
+  claimed in a year whose return was prepared elsewhere), the tax-invoice PDF,
+  Rule 46(b)'s series, and all four §34 note routes. The list is the RULE, in
+  `tests/test_an_opening_balance_is_made_of_documents.py::EXCLUDES`, with the
+  readers that SHOULD see one recorded beside it so an absent filter is a
+  decision.
+- **THE FILTER READS THE KEY OFF THE ROW, so a narrow `select()` that omits
+  `is_opening` makes it a silent no-op.** A guard walks each module's AST and
+  fails a literal projection on either table that is neither `*` nor names the
+  column. And `carried_over` reads an ABSENT key as an ORDINARY document — the
+  direction that cannot silently drop a real supply from a return.
+- **§43B(h)'s other direction is NAMED, not computed**: an earlier year's
+  disallowance actually PAID during this year comes back as a deduction, and
+  nothing on a carried-over bill records whether it was disallowed. The answer
+  lists them rather than showing a nil that reads as "none".
+- **A §194 FY AGGREGATE CANNOT BE CARRIED OVER AT ALL**, and the module says so
+  rather than approximating. The aggregate is measured on what was CREDITED
+  during the year, while an opening balance records what is still OWED — a bill
+  credited in April and settled before the migration counts toward the limit and
+  is not carried over. `resolve_tds` already takes `fy_prior_taxable_paise` and
+  `fy_prior_tds_paise` from its caller for exactly this reason.
+- **THE OTHER DOUBLE COUNT: two mechanisms open one position and neither
+  corrects the other.** `opening_balance_service` posts the masters under
+  `source_type='Opening'`; `trial_balance_import_service` posts an imported
+  trial balance under `'TrialBalance'`, deliberately separate (its header
+  explains why, and that separation is right). Nothing COMPARED them, so a CA
+  who enters the bank opening balance on the bank master AND imports a trial
+  balance carrying a Bank row opens the account twice and the balance sheet is
+  out by exactly it, silently. `double_openings` reports every account with a
+  NON-ZERO position in both — non-zero on both sides, because a delta engine
+  legitimately leaves a net-zero pair behind on an account whose master balance
+  went to zero. **No difference is offered**: which of the two is the mistake is
+  the CA's answer, and a single netted figure would read as one to post.
+- **The old system's document NUMBER is not checked against Rule 46(b)** — it is
+  a fact about a document somebody else issued, the same way
+  `purchase_bills.bill_no` is the vendor's own, and refusing a series this
+  product never generated would make a migration impossible for the clients who
+  most need one. Per-client uniqueness still applies (migration 151), because a
+  carried-over number that collides with one this client will issue is a real
+  conflict the CA has to resolve.
 
 ## Reporting scope — "all clients" means the caller's clients
 
@@ -1593,11 +2441,190 @@ both move together, which is why a test asserts the expense account nets to
 ZERO across the two journals. A NULL `itc_eligible` reads as ELIGIBLE, matching
 migration 240's `NOT NULL DEFAULT true`; a blocked SERVICE line capitalises
 nothing because it never reaches the stock ledger at all; and a purchase RETURN
-relieves at the moving average, which now carries the tax. **Freight inward,
-insurance and customs duty are still NOT in cost** — the other two-thirds of
-INV-05 — and closing them is a migration AND an owner decision, because the
-apportionment basis (by value? by quantity? by weight?) is something Tally asks
-the user rather than deriving.
+relieves on the client's own cost formula (the moving average unless FIFO is
+recorded — see INV-02 below), which now carries the tax. **Freight inward,
+insurance and customs duty are in cost too since migration 396** — the other
+two-thirds of INV-05, see the next bullet.
+
+**WHAT ELSE THE GOODS COST TO GET HERE IS RECORDED AGAINST THE BILL, AND THE
+BASIS IS A POLICY THE STANDARD DOES NOT GIVE** (INV-05, migration 396). AS-2
+paragraph 6 puts "freight inwards and other expenditure directly attributable
+to the acquisition" in the cost of purchase alongside the non-recoverable
+duties above; the receipt costed a line at its taxable value plus its blocked
+tax and nothing else, so a client who paid to bring a consignment in carried
+stock at less than it cost, expensed the freight in the month it was billed
+rather than when the goods sold, and — the cost formula running off the same
+figure — got every later COGS wrong with it.
+`domain/inventory/landed_cost.py` is the rule and
+`services/landed_cost_service.py` fetches, previews and carries over.
+**AS-2 SETTLES WHAT GOES IN AND NOT HOW TO SPLIT IT**, so the basis is an
+accounting policy rather than a derivation — by value is wrong for a container
+of identical t-shirts, by quantity is wrong for 200 chairs and 20 tables, and
+₹50,000 of freight over exactly that consignment is ₹14,285.71 / ₹35,714.29 by
+value against ₹45,454.55 / ₹4,545.45 by quantity. **BOTH are built, value is
+the default**, the policy is `clients.landed_cost_basis` and one consignment
+may override it with `purchase_bills.landed_cost_basis` — the shape every
+product in this tier ships (TallyPrime appropriate-by-quantity / by-value per
+expense ledger, Zoho Books quantity/value on save, QuickBooks Enterprise
+quantity/amount/percentage; Xero has no allocation at all). Owner decision of
+14-09-2026. **Weight and volume are NAMED and not offered**: the most accurate
+basis for freight specifically, and `service_catalogue` holds no weight, so it
+needs a column and a figure typed per item first. Both columns are nullable
+with **no default and no backfill**, so a client with nothing recorded is told
+the default is a policy they have not stated.
+**`applied_at` IS THE BOUNDARY AND IT IS STAMPED AFTER THE JOURNAL.** A charge
+recorded after the receipt is KEPT and REPORTED rather than silently left out
+or quietly folded in — migration 251 makes the posted journal immutable, so
+whether to reverse is the CA's decision, and the row carries the sentence
+saying so. Stamping before the journal would leave a charge marked done on a
+receipt that failed, which is the one outcome the feature exists to stop.
+**EACH CHARGE KEEPS ITS OWN ACCOUNT**: the receipt credits the goods line's
+expense account for the line's own cost and each charge's account for its
+share, split with `split_pro_rata`, which returns the weights EXACTLY when the
+amount equals their total — so the ordinary case needs no branch and the
+journal balances with no plug. The split is largest remainder for the same
+reason `domain/gst/discount.py` is. **A SERVICE LINE TAKES NO SHARE** (it never
+reaches the stock ledger, so the share would simply vanish out of the cost),
+and a charge with nothing to attach to stays UNAPPLIED and keeps being
+reported rather than being marked done. **The Bill of Entry's non-creditable
+duty carries itself over** — basic customs duty and the social welfare
+surcharge, which migration 389 could name as cost and not act on for want of a
+basis — from BOTH doors, create and PATCH, because a carry-over on create
+alone is one correction away from a stale figure; restating is safe by
+construction since the update is `.is_("applied_at", "null")`.
+
+**THE COST FORMULA IS A CLIENT POLICY, AND ONLY ONE FUNCTION FORKS ON IT**
+(INV-02, migration 394). AS-2 paragraph 14 permits FIFO **or** weighted
+average, and the product had only the second — so a client whose books are
+kept on FIFO had a closing stock figure, and therefore a profit, that its own
+accounting policy note did not describe. `domain/inventory/costing.py` is the
+authority. **A RECEIPT COSTS THE SAME UNDER BOTH**: the formulas assign cost to
+what goes OUT, and the running value rises by the receipt's own invoice cost
+either way — so the fork is entirely inside `record_stock_out`, the
+oversold-absorb split is common to both, and `domain/reporting/stock_position`
+needs no change at all (a test asserts it never mentions the formula).
+**Paragraph 16 makes it a property of the ENTERPRISE'S inventories**, so it
+lives on `clients.inventory_costing_method` and no caller may choose one:
+`CostingPolicy` carries the client it belongs to and a movement REFUSES a
+policy that is not its own, which keeps passing it down a cached read rather
+than a choice — the posting paths resolve it once per document, because
+`clients` is a Singapore-to-Mumbai round trip and an invoice has as many lines
+as it has lines.
+**NULL IS NOT A DEFAULT DRESSED UP AS ONE.** The client column is nullable
+with no default and no backfill, and reads as the weighted average — which is
+a FACT, not a guess: every book in this product was kept that way because it
+was the only formula there was. The LEDGER column
+(`inventory_stock_ledger.costing_method`) IS defaulted and backfilled, for the
+opposite reason — the value is known for every existing row — and it is what
+makes AS-5 paragraph 32's disclosure derivable from the ledger instead of
+remembered. A CHANGE IS PROSPECTIVE: nothing is ever re-costed, so
+`switch_refusal` requires a date and refuses one stock has already moved on or
+after, because re-costing would move a closing stock figure already in a filed
+return.
+**A LAYER CARRIES ITS VALUE, NOT A UNIT COST**, and that is the same decision
+`_compute_stock_in` makes blending the average from the exact total: three
+units costing ₹100 have a unit cost of 3,333 paise and a value of 10,000, and
+`3 × 3,333` is 9,999. A layer takes the ledger's own `value_delta_paise`, a
+whole layer is consumed at its whole value and a part layer is split by
+quantity with the remainder keeping exactly what is left — so the layers tie
+to the books to the paise, and the one paise that would otherwise appear on
+every awkward receipt cannot be mistaken for the real difference a
+cancellation reversal leaves. **The layers are DERIVED from the ledger, never
+stored** (migration 278's reasoning), replayed forward from the last row whose
+running quantity was at or below zero — the force-close pairs that with a
+value of exactly zero, so nothing before it can matter — **carrying that row's
+own oversold deficit**, without which a receipt clearing an oversell becomes a
+layer of its whole quantity. **`record_stock_out_at_value` is deliberately NOT
+forked**: a cancellation reversal removes the value the original movement
+added because the journal side reverses that entry at its original value, which
+is not a FIFO concept at all, so `rebase` puts the layers back on the books
+afterwards rather than pretending the two agree. Standard cost is REFUSED and
+named (AS-2 paragraph 17 — two judgements no ledger holds, and it needs a
+variance account and a revision cycle to mean anything).
+
+**STOCK HAS A PLACE AND A LOT, AND ONE OF THEM CHANGES WHICH RETURN A MOVEMENT
+IS IN** (INV-03a, migration 398). `inventory_stock_ledger` recorded WHAT moved,
+WHEN and for how much, and never WHERE or WHICH LOT — so a client with two
+warehouses had one undifferentiated pile and a client whose goods expire had no
+way to say which ones. Owner decision of 14-09-2026 over the alternatives in the
+same finding (item group, reorder level, alternate unit): all three together,
+because all three touch the stock ledger.
+**A GODOWN IS NOT DECORATION.** CGST §25(1) requires registration in every State
+a taxable supply is made from and §25(2)'s proviso allows a second within one
+state, so a godown carries its own `state_code` and the registration it operates
+under. **Schedule I paragraph 2 with §25(4) then makes a transfer between two
+godowns under DIFFERENT registrations a supply even without consideration** — a
+tax invoice is owed — while a transfer under the SAME registration is not a
+supply at all and travels on a Rule 55(1)(c) delivery challan.
+`domain/inventory/location.py` states it and **REFUSES to mint the invoice**:
+the value is §15 with Rule 28 (open market value, like goods, or 90% of the
+recipient's onward price, at the supplier's option) and which the client elects
+is recorded nowhere here. The decision is a **TRI-STATE** — the third is where a
+registration is not recorded, because one guess mints a document the Act does
+not ask for and the other omits one it does. **The comparison is on the
+REGISTRATION, never the state**: two Maharashtra godowns under different GSTINs
+ARE distinct persons.
+**A BATCH IS A TRACEABILITY AND EXPIRY DEVICE AND NOT A COST FORMULA**, and that
+is the line the feature must not cross. AS-2 paragraph 14 permits FIFO or
+weighted average and migration 394 made the choice a client policy; paragraph
+13's specific identification — costing an issue at its own batch's cost — is a
+THIRD formula, and a batch column is exactly what invites it in silently. A test
+asserts `record_stock_out` never mentions a batch. **First-expiry-first-out is a
+PICKING order, suggested and never applied**, for the same reason.
+**BOTH LEDGER COLUMNS ARE NULLABLE AND NOTHING IS BACK-FILLED.** Every movement
+already recorded happened at a location and in a lot nobody wrote down; stamping
+a default godown on them would assert they all happened THERE. NULL is a REAL
+GROUP in the detail report, not a row to drop, and the total still ties to the
+Inventory control account because it is the same deltas either way.
+**`stock_position_detail_as_at` IS A SECOND GRAIN, NOT A SECOND ANSWER** — it
+sums the SAME deltas grouped per (item, godown, batch), so its total is
+`stock_position_as_at`'s total by construction, and a real-Postgres test asserts
+exactly that alongside the ordinary SQL/Python parity. **Stock is good ON its
+expiry date** (a shelf life runs to the end of the stated day; reading it the
+other way writes off a day of sound stock and reverses §17(5)(h) credit that is
+not yet due), and **a batch with no date is its own bucket, never "later"** —
+stock that does not expire and stock whose date nobody recorded are opposite
+situations. A **transfer posts NO journal**: within one entity the stock is
+worth what it was worth before it was carried across the yard, and the two rows
+carry equal and opposite value. **The value moved is the SOURCE godown's own**,
+not the item's blended average, or the per-godown position drifts from the total
+it must sum to.
+
+**A PHYSICAL STOCK COUNT IS ONE SESSION, AND THE VARIANCE IS A FACT ABOUT THE
+COUNT DATE** (INV-08, migration 387). Adjustment was one item per API call and
+one modal per item, reachable only from inside an item's ledger drill-down — so
+a 31 March stock-take with a hundred variances was a hundred retyped
+quantities, a hundred §17(5)(h) decisions and a hundred journals with no common
+reference tying them to the count. `domain/inventory/count_session.py` is the
+RULE (which lines vary, by how much, in which direction, and which cannot post
+yet); it reads nothing and posts nothing.
+`services/stock_count_service.py` fetches its inputs and posts through
+`domain/inventory_service.apply_stock_adjustment` once per varying line — the
+SAME function the single-item path calls, so there is no second stock write
+path — with the session's own `reference_no` on every one.
+**THE SYSTEM QUANTITY IS ON BOTH SIDES OF TIME.**
+`stock_count_lines.system_qty_units` is what the books said when the sheet was
+OPENED, kept so the CA can see the books moved under them; the variance that
+POSTS is recomputed at post time against the position AS AT THE COUNT DATE,
+because a 30 March purchase bill entered on 2 April changes what the books say
+for 31 March and posting the snapshot's variance would re-introduce the very
+difference that bill corrected. Where the two disagree the sheet SAYS so, and
+**no variance is stored** for the same reason — a stored one is wrong the
+moment a backdated document lands. **`reverse_itc` is nullable with no default
+and a SHORTAGE cannot post without it** (whether damaged stock's credit must be
+reversed is a CA judgement, since it might still be sold at a discount), while
+a SURPLUS needs no decision and is REFUSED if it claims one. Both refusals are
+per LINE: a hundred-line sheet with two undecided posts the ninety-eight and
+names the two, because refusing the batch sends the CA back to the
+hundred-clicks path. **The batch is not atomic and cannot be** — each
+adjustment is its own journal through the posting kernel — so a line that
+failed is NAMED in the response and re-posting the session is refused rather
+than doubling the lines that succeeded. **`post_session` asks BOTH period
+questions**, which `routers/inventory.py:adjust_stock` does not: a shortage
+registers its §17(5)(h) reversal on GSTR-3B Table 4(B)(1) (INV-06), so a count
+sheet IS a document that feeds a return and `period_lock_service.assert_open`
+applies — unconditionally, not gated on whether any line happens to carry a
+reversal, the same reasoning a fixed asset's acquisition takes.
 
 ## GSTR-2B reconciliation — the books are read in `apps/api`, and the answer is kept
 
@@ -1889,6 +2916,24 @@ no failing check to point at. Filter inside, in the `scope` job, as these workfl
   against the live Supabase project on every push to `main`, once tests and the
   migration ratchet pass. There is no manual review step in between. See
   `docs/deploy-migrations.md`.
+- **`CREATE OR REPLACE FUNCTION` REPLACES THE WHOLE DEFINITION, so derive the new
+  body from the migration that LAST defined that function — found by NUMBER, not
+  from memory and not from the one you happen to be reading.** A replacement either
+  carries every earlier change forward or silently reverts it, and the revert
+  compiles, deploys and passes a mock suite. Migration 384 got this wrong twice
+  before the real-Postgres suite caught it: the first attempt was hand-written and
+  lost the balance guard, the `jsonb_populate_record` column list and the
+  `deleted_at` filter; the second was derived faithfully from migration 243 — and
+  243 was the WRONG ANCESTOR, because 271 had made `post_journal_atomic` SECURITY
+  DEFINER and 274 had folded in the reversal stamp. Merging it would have
+  reproduced exactly the production incident 274's own header records:
+  `permission denied for table journal_entries`, 42501, the reversal committed and
+  its original left unflagged. `grep -ln "FUNCTION.*<name>" migrations/*.sql | sort
+  | tail -1` is the answer. The guard shape that survives is in
+  `tests/test_a_voucher_shows_its_lines_in_order.py`: it reconstructs the ancestor
+  by scanning the migration directory, so it cannot be pointed at a stale one, and
+  a parametrised clause test names the privilege model and every invariant a
+  careless rewrite drops.
 - `core/schema_guard.py` is the boot-time backstop: it surfaces code/schema drift loudly
   instead of letting writes fail silently behind broad `try/except`.
 
@@ -1966,6 +3011,112 @@ receipt/payment creation and is the path that already works; teaching
 where the FX gain or loss leg lands, and `_create_journal`'s balance assertion is
 exactly what an unbalanced FX leg breaks. `docs/audits/` and
 the batch completion reports are historical records, not current specs.
+
+**MULTI-CURRENCY HAS THREE GATES AND TWO OF THEM ARE NOW WRITABLE** (ACC-19).
+`resolve_currency_policy` is `active = L1 AND L2 AND L3` — the environment kill
+switch `MULTI_CURRENCY_ENABLED`, `firms.multi_currency_entitled` and
+`clients.multi_currency_enabled`. All five multi-currency phases are BUILT and
+none of it could be switched on: L2 and L3 (migration 146) were READ by policy.py
+and six routers and **WRITTEN BY NOTHING** — no endpoint, no Pydantic field, no
+screen, no seed — so only a manual UPDATE against the database could activate
+any of it. `PUT /api/currencies/entitlement` and
+`PUT /api/currencies/policy?client_id=` write them, Partner-only, and
+`/settings/multi-currency` is the screen. **SELF-SERVE is an owner decision of
+13-09-2026**: there is no billing or entitlement machinery in this product, so a
+commercial gate has nothing to hang off; if it is ever sold the column does not
+move and a plan check goes in FRONT of the endpoint. **The platform gate is shown
+and never offered** — `core/feature_flags` says "No DB dependency", which is the
+point of a kill switch. **The read says WHICH gate is down**, because `active:
+false` alone is what made the feature unusable: a Partner ticked something and
+could not tell. Turning a client ON is REFUSED with a sentence where it would be
+inert — the firm is not entitled, or the client's functional currency is not INR,
+Capability B (presentation and translation) being unbuilt — while turning it OFF
+is never refused. `GET /api/currencies/entitlement` answers the firm gate with no
+client in the request, because a firm with no clients yet is exactly the firm
+this gets switched on for.
+
+**THE AS 11 YEAR-END REVALUATION WAS BUILT, TESTED AND UNREACHABLE.** AS 11
+paragraph 11 retranslates a MONETARY item held in a foreign currency at the
+CLOSING rate on each balance sheet date and paragraph 13 takes the difference
+to the profit and loss account, so a client with an open USD receivable at
+31 March carries it at the rate it was invoiced at until somebody restates it.
+`domain/currency/fx_revaluation_service.py` has done exactly that since
+Multi-Currency Phase 4 — idempotent, self-healing, period-aware, posting
+through the one kernel and auto-reversing on day 1 of the next period — with
+**ZERO production importers**. `revalue()` is the only writer of
+`fx_revaluations`, so `GET /api/fx-reports/unrealized` reported a structural
+nil for every client however many foreign documents they held, while
+`services/fx_reporting_service.py`'s own header claimed those tables were
+"written by the Phase-4 settlement + revaluation paths" — true of settlement,
+false of revaluation. The `capital_wip` shape again. ACC-19 made migration
+122's gates WRITABLE on 13-09-2026, which turned a dormant phase into a live
+gap: a firm can now switch multi-currency on and the year-end step it needs
+has no door.
+`routers/fx_revaluation.py` is that door, and it is **its own router
+deliberately** — `routers/fx_reports.py` says "read-only FX reporting" in its
+first line, and a POST that writes journals under that prefix would make the
+next reader believe the contract still holds. Same reasoning that kept CWIP
+off `/api/fixed-assets`.
+**THE PREVIEW IS THE POSTING'S OWN WALK.** `plan()` was EXTRACTED from
+`revalue()` rather than written beside it, so what a CA is shown before
+confirming is what gets posted — two compositions of `_exposure` +
+`_prior_runs` would drift, and a test counts the `_exposure` call sites.
+`plan()` does **not raise on a missing rate**: a preview is most useful before
+any rate is typed, because the whole point of opening it is to learn which
+currencies need one, so a row with no rate carries `rate_gap` and no target.
+`revalue()` keeps its strict refusal — an exchange difference is a real
+posting and a rate nobody supplied cannot be guessed.
+**THE PREVIEW REPORTS `closure_reason`, NOT THE FIRM-FY VALIDATOR AND NOT
+`lock_reason`** — exactly what will actually refuse the post. The firm-FY
+validator alone UNDER-reports, because the kernel asks `period_closure_reason`
+for every entry (migration 361) and would refuse a finalised client year-end
+the preview had said nothing about; `lock_reason` would OVER-report, because
+**CGST Rule 34 fixes the rate of exchange at the TIME OF SUPPLY**, so
+restating the rupee carrying amount afterwards cannot change a figure any
+filed GSTR-1 or GSTR-3B reported. `revalue`'s own client-lock debt is
+pre-existing and stays acknowledged in
+`test_every_dated_posting_path_asserts_the_client_lock.py`.
+**Nothing schedules it** — the closing rate is a fact somebody records and the
+entry hits the P&L, so it is a CA action on a period they named; a test
+asserts no job mentions it. **Re-running is the CORRECTION path**, posting
+only the delta to the new target, and the panel SAYS so: a CA who believes a
+second run duplicates will avoid the button after a rate changes and the
+accounts stay wrong.
+
+**A COMPANY CREDIT CARD IS A BANK ACCOUNT, AND THE DOUBLE ENTRY NEEDED NO
+CHANGE** (BANK-21, migration 386). `bank_accounts.account_type` admitted four
+values and none of them was a card, so the statement could not be imported, the
+spend could not be coded through the bank workflow, and the monthly payment out
+of the current account posted to whatever ledger somebody picked.
+`domain/banking/account_kind.py` is the authority. **`posting_map.build_lines`
+is direction-driven, so a LIABILITY ledger makes it already right both ways
+round** — Dr Expense / Cr Card on a purchase (money out of the card account in
+exactly the sense the posting map means), Dr Card / Cr Bank on a payment — and
+nothing in the posting map, the settlement or the reversal moves. A test asserts
+the posting map still does not mention a card, because a branch on the account
+type there would be a second rule to keep in step. **What differs is the SIGN OF
+THE BALANCE**: a card's is a credit balance and its own statement states it the
+other way up, as an amount owed. So there is ONE convention inside the product —
+ledger sign, positive is a debit balance — and exactly three translations at the
+edge: the opening balance the CA types, the balances read off an imported
+statement (`mirror_imported_statement`, which must run BEFORE `statement_check`
+or a file that adds up perfectly is refused), and the register's response. A
+MOVEMENT never flips: a ₹500 purchase is ₹500 on either kind of account.
+**An OVERDRAFT is owed to the bank and is NOT mirrored** — it is drawn against a
+bank account whose balance the bank prints the ordinary way, overdrawn as
+negative; a card statement never prints a negative. **The Transfer derivation
+now asks a FACT** — is this chart row the linked ledger of one of the client's
+own bank accounts — because `_looks_like_bank_or_cash` requires `account_type ==
+'Asset'`, which a card's and an overdraft's ledger never is, so paying the
+company card out of the current account was coded "Other" and posted as an
+expense against a liability ledger instead of a Contra. `None` means "not
+established" and the name test answers as it always did. `entry_type_for` still
+calls a card purchase a "Payment"; that is recorded, not fixed — the three
+values are what `journal_entries.entry_type` allows and the accounting is right
+either way. ⚠️ The card subtype presents under **Short-term Borrowings** with
+the overdraft one; `[S]`, because Schedule III could not be read here and Other
+Current Liabilities is defensible — both are current liabilities, so no total
+moves, only which caption.
 
 **A MATCHING RULE SAYS WHICH FIELD IT READS AND WHICH RULE WINS** (migration
 380, BANK-11 steps 1 and 2). Until then `domain/banking/rules.rule_matches` was

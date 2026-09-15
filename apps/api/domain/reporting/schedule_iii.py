@@ -47,6 +47,13 @@ BALANCE_SHEET_CAPTIONS = (
     "Other Current Liabilities",
     "Intangible Fixed Assets",
     "Tangible Fixed Assets",
+    # Schedule III Division I presents Capital work-in-progress on its own line
+    # under Non-current assets, IMMEDIATELY AFTER Property, Plant and
+    # Equipment, and never merged into it (MCA G.S.R. 207(E), 24-03-2021 — the
+    # same amendment behind the two ageing schedules). Folding a CWIP balance
+    # into Tangible Fixed Assets would present an asset under construction as
+    # one in use, which is the whole of FA-11a.
+    "Capital Work-in-Progress",
     "Long-term Investments",
     "Inventories",
     "Trade Receivables",
@@ -210,7 +217,20 @@ def bs_bucket(account_type: str, account_subtype: str | None,
         # Short-term FIRST: the seeded subtype "Short Term Loan" contains
         # "term loan", so testing the long-term branch first presented every
         # working-capital loan as a non-current borrowing.
-        if "short term" in sub or "overdraft" in sub or "cc limit" in sub:
+        # "credit card": a company card outstanding is a loan repayable on
+        # demand from a bank, which is what Schedule III Division I puts under
+        # Short-term Borrowings — the same caption the overdraft subtype
+        # already lands in, and for the same reason. Added with the card
+        # account type (BANK-21, migration 386); without it the subtype
+        # 'Credit Card' would fall through to Other Current Liabilities BY
+        # ACCIDENT rather than by a decision.
+        # ⚠️ `[S]`. Schedule III could not be read here — icai.org and every
+        # .gov.in are refused at this environment's egress proxy — and the
+        # alternative presentation (Other Current Liabilities) is defensible.
+        # Both are current liabilities, so no total and no sub-total moves;
+        # only which of two captions the figure sits on.
+        if ("short term" in sub or "overdraft" in sub or "cc limit" in sub
+                or "credit card" in sub):
             return "Short-term Borrowings"
         if "long term" in sub or "term loan" in sub or "debenture" in sub:
             return "Long-term Borrowings"
@@ -220,6 +240,12 @@ def bs_bucket(account_type: str, account_subtype: str | None,
         # contains "asset"-family keywords the tangible test matches.
         if "intangible" in sub or "goodwill" in sub or "software" in sub:
             return "Intangible Fixed Assets"
+        # BEFORE the tangible test, whose keywords a hand-typed subtype like
+        # "Capital Work in Progress - Plant" would otherwise match first,
+        # presenting an asset under construction as one in use.
+        if ("work in progress" in sub or "cwip" in sub
+                or "capital work" in sub or "under construction" in sub):
+            return "Capital Work-in-Progress"
         if any(k in sub for k in (
             "fixed asset", "tangible", "plant", "machinery", "furniture", "building", "vehicle",
         )):

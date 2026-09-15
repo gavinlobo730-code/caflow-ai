@@ -116,12 +116,23 @@ class DerivedCategory:
         return self.auto_counter_key is not None
 
 
-def category_for_account(account: dict, *, is_credit: bool) -> DerivedCategory:
+def category_for_account(account: dict, *, is_credit: bool,
+                         is_bank_ledger: Optional[bool] = None) -> DerivedCategory:
     """The category implied by picking `account` for a bank line.
 
     `account` is a chart_of_accounts row; only account_type, account_subtype,
     account_name and system_account_key are read. `is_credit` is the bank line's
     direction — money INTO the bank.
+
+    `is_bank_ledger` is the FACT, supplied by the caller, that this chart row is
+    the linked ledger of one of the client's own bank_accounts rows. Added by
+    BANK-21 and it settles the Transfer question outright, where the name test
+    below only guesses at it — and the name test could not answer at all for the
+    two account types whose ledger is a LIABILITY. Before this, paying the
+    company credit card (or the overdraft) out of the current account was coded
+    "Other" and posted as an expense against a liability ledger instead of a
+    Contra between two of the client's own accounts. None means "not
+    established", and the name test then answers as it always did.
     """
     key = (account.get("system_account_key") or "").strip().lower() or None
     plain = _plain_category(account, is_credit=is_credit)
@@ -130,7 +141,7 @@ def category_for_account(account: dict, *, is_credit: bool) -> DerivedCategory:
     # between the client's own accounts. The picked account IS the destination,
     # which is how it reaches the posting engine (to_bank_account_id) — so this
     # needs no confirmation.
-    if key == BANK_KEY or _looks_like_bank_or_cash(account):
+    if is_bank_ledger or key == BANK_KEY or _looks_like_bank_or_cash(account):
         return DerivedCategory(TRANSFER, fallback=TRANSFER)
 
     auto = _KEY_TO_AUTO_CATEGORY.get(key) if key else None
@@ -157,6 +168,12 @@ def _looks_like_bank_or_cash(account: dict) -> bool:
     it. This is not new name-guessing — 092 states the resolver "falls back to
     name matching when NULL", and Transfer is the one derivation where getting it
     wrong changes the journal's SHAPE rather than only its label.
+
+    THE ASSET RESTRICTION IS WHY `is_bank_ledger` EXISTS. A credit card's and an
+    overdraft's own ledgers are Liabilities and would be refused here however
+    they were named, so a name test can never recognise them. The caller's fact
+    is asked FIRST and this stays exactly as it was for every chart the fact
+    cannot be established for.
     """
     if (account.get("account_type") or "").strip() != "Asset":
         return False

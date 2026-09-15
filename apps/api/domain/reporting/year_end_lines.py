@@ -141,6 +141,12 @@ CAPTION_TO_SCHEDULE_LINE = {
     "Other Current Liabilities":   "other_current_liabilities",
     "Intangible Fixed Assets":     "intangible_assets",
     "Tangible Fixed Assets":       "tangible_assets",
+    # `capital_wip` HAS BEEN DECLARED IN BS_ASSET_LINES SINCE THIS MODULE WAS
+    # WRITTEN and nothing could ever reach it: no caption resolved to it, so
+    # the year-end balance sheet carried a capital work-in-progress line that
+    # was structurally nil for every client. Migration 397 gives the caption
+    # its account and this row connects the two.
+    "Capital Work-in-Progress":    "capital_wip",
     "Long-term Investments":       "long_term_investments",
     "Inventories":                 "inventories",
     "Trade Receivables":           "trade_receivables",

@@ -21,6 +21,8 @@ from domain.income_tax.capital_gains_engine import (
     ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
 from domain.income_tax.assessee import AssesseeKind, assessee_kind_for_entity_type
+from domain.income_tax import reinvestment_exemption as rex
+from services import capital_gain_exemption_service as cgx
 from domain.income_tax.advance_tax_interest_engine import (
     compute_234a_interest, compute_234b_interest, compute_234c_interest,
     installment_schedule, installment_rules, InstallmentPayment, INSTALLMENT_RULES,
@@ -32,6 +34,7 @@ from domain.income_tax.presumptive import (
 )
 from services.compliance_obligation_service import itr_due_date_for_client, fy_end_year
 from models.fy import AYLabel, FYLabel, OptionalAYLabel, OptionalFYLabel
+from core.ist_clock import normalise_fy_label
 
 router = APIRouter(prefix="/api/income-tax", tags=["income-tax"])
 
@@ -562,6 +565,88 @@ def tax_audit_applicability(
     return api_response(True, data)
 
 
+@router.get("/regime-election")
+def regime_election(
+    wants_old_regime: bool = Query(..., description="What the client wants for this year"),
+    has_business_income: bool = Query(..., description="THE FACT THE WHOLE RULE TURNS ON — §115BAC(6) has two clauses, not one rule with variations"),
+    financial_year: Annotated[FYLabel, Query()] = ...,
+    form_10iea_filed_on: Optional[str] = Query(None, description="The date it was ACTUALLY filed (YYYY-MM-DD); omit if it has not been"),
+    is_audit: bool = Query(False),
+    has_transfer_pricing_report: bool = Query(False),
+    business_income_ceased: bool = Query(False, description="§115BAC(6)(i)'s escape — clause (ii) becomes available instead"),
+    prior: list[str] = Query(default_factory=list, description="An earlier year's election as FY:action, e.g. 2024-25:opted_out or 2025-26:withdrew. Repeat the parameter."),
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """Which regime applies, and what the CA must do to get there.
+
+    `domain/income_tax/regime_election.py` has held §115BAC(6) and Rule 21AGA
+    since it was written and **had no caller at all** — the module's own
+    docstring says why that mattered: a missed Form 10-IEA taxes a client on
+    the new regime for a year they planned around the old one and CANNOT be
+    cured after the due date, and a withdrawal made without realising it is
+    final closes an option worth lakhs over a career. Neither failure is
+    visible in the return, which computes cleanly either way.
+
+    Reads nothing and writes nothing — arithmetic and dates on facts the
+    caller states, like the §44AB and HRA endpoints beside it. The due date
+    comes from `compliance_engine.itr_due_date` through the domain module, so
+    a CBDT extension moves it here too.
+
+    PRIOR-YEAR HISTORY IS AN INPUT, NEVER ASSUMED. The product holds no filing
+    history, so clause (i)'s once-only withdrawal cannot be derived. Supplying
+    nothing is answered as `history_unknown`, which is a DIFFERENT answer from
+    "the option is available": assuming availability would tell a CA the old
+    regime is open when their client spent it years ago, and that is the
+    dangerous direction.
+    """
+    from domain.income_tax import regime_election as re_mod
+
+    filed_on = None
+    if form_10iea_filed_on:
+        try:
+            filed_on = date.fromisoformat(str(form_10iea_filed_on)[:10])
+        except ValueError:
+            return api_response(False, None,
+                                "form_10iea_filed_on must be a date (YYYY-MM-DD).")
+
+    # `FY:action`, parsed HERE rather than in the domain module: the wire
+    # format is this endpoint's business and the rule is not.
+    prior_elections: list[re_mod.PriorElection] = []
+    for raw in prior:
+        fy, _, action = str(raw).partition(":")
+        action = action.strip().lower()
+        if action not in ("opted_out", "withdrew"):
+            return api_response(False, None, (
+                f"'{raw}' is not a prior election. Use FY:action, where action "
+                f"is opted_out or withdrew — e.g. 2024-25:withdrew."))
+        try:
+            fy = normalise_fy_label(fy)
+        except ValueError as e:
+            return api_response(False, None, f"'{raw}': {e}")
+        prior_elections.append(re_mod.PriorElection(fy=fy, action=action))
+
+    result = re_mod.evaluate_election(
+        wants_old_regime=wants_old_regime,
+        has_business_income=has_business_income,
+        financial_year_end=fy_end_year(financial_year),
+        form_10iea_filed_on=filed_on,
+        is_audit=is_audit,
+        has_transfer_pricing_report=has_transfer_pricing_report,
+        prior_elections=prior_elections or None,
+        business_income_ceased=business_income_ceased,
+    )
+    return api_response(True, {
+        "financial_year": financial_year,
+        "regime": result.regime,
+        "route": result.route,
+        "form_10iea_required": result.form_10iea_required,
+        "due_date": result.due_date.isoformat() if result.due_date else None,
+        "election_is_available": result.election_is_available,
+        "history_unknown": result.history_unknown,
+        "reasons": list(result.reasons),
+    })
+
+
 @router.post("/hra/compute")
 def compute_hra(
     basic_salary_paise: int,
@@ -715,6 +800,20 @@ def list_capital_gains(
 class CreateCapitalGainsRequest(ComputeCapitalGainsRequest):
     client_id: str
     asset_description: str = Field(min_length=1)
+    # IT-19 — optional, because it decides no figure the create path computes.
+    # A gain recorded without it is a complete register entry; only the
+    # exemption working refuses, and it says what to record.
+    transferred_asset_nature: Optional[str] = None
+
+    @field_validator("transferred_asset_nature")
+    @classmethod
+    def known_nature(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if v not in rex.ASSET_NATURES:
+            raise ValueError(
+                f"transferred_asset_nature must be one of {sorted(rex.ASSET_NATURES)}")
+        return v
 
     @field_validator("asset_type")
     @classmethod
@@ -768,6 +867,12 @@ def create_capital_gains(
                                else result.indexed_cost_paise),
         "gain_type": "LTCG" if result.is_long_term else "STCG",
         "tax_rate_percent": result.tax_rate_percent,
+        # IT-19. What was SOLD, in the vocabulary the s.54 family charges on.
+        # `asset_type` cannot carry it: 'property' covers both a residential
+        # house and a plot, and s.54 reaches one while s.54F reaches the
+        # other. None is stored where the caller did not say, and the
+        # exemption working then REFUSES rather than guessing.
+        "transferred_asset_nature": req.transferred_asset_nature,
     }
     if not db:
         return api_response(True, {"id": "mock-id", **payload})
@@ -807,6 +912,208 @@ def delete_capital_gains(
     if not row.data:
         raise HTTPException(status_code=404, detail="Capital gains record not found")
     return api_response(True, {"id": record_id})
+
+
+# ── s.54 / 54B / 54EC / 54F reinvestment exemption (IT-19) ──────────────────
+# The engine is domain/income_tax/reinvestment_exemption.py and it computes
+# nothing here: this file reads the register entry and its claims and hands
+# them over. Every refusal comes back as a sentence, because a screen showing
+# a CA their register needs to say what to go and record.
+# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal
+
+
+class ReinvestmentIn(BaseModel):
+    section: str
+    new_asset_description: str = Field(min_length=1)
+    acquisition_kind: Optional[str] = None
+    acquisition_date: Optional[date] = None
+    cost_paise: int = Field(default=0, ge=0)
+    cgas_deposit_paise: int = Field(default=0, ge=0)
+    cgas_deposit_date: Optional[date] = None
+    # The two facts no ledger holds. Optional so a claim can be recorded
+    # before the CA has asked the client; the working then names the gap.
+    other_residential_houses_owned: Optional[int] = Field(default=None, ge=0)
+    agricultural_use_two_years: Optional[bool] = None
+    new_asset_transferred_on: Optional[date] = None
+    notes: Optional[str] = None
+
+    @field_validator("section")
+    @classmethod
+    def known_section(cls, v: str) -> str:
+        if v not in rex.SECTIONS:
+            raise ValueError(f"section must be one of {sorted(rex.SECTIONS)}")
+        return v
+
+    @field_validator("acquisition_kind")
+    @classmethod
+    def known_kind(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if v not in rex.ACQUISITION_KINDS:
+            raise ValueError(
+                f"acquisition_kind must be one of {sorted(rex.ACQUISITION_KINDS)}")
+        return v
+
+
+def _claim_response(c: rex.ClaimResult) -> dict:
+    return {
+        "section": c.section,
+        "heading": c.heading,
+        "allowed": c.allowed,
+        "exemption_paise": c.exemption_paise,
+        "amount_considered_paise": c.amount_considered_paise,
+        "deadline": c.deadline.isoformat() if c.deadline else None,
+        "within_time": c.within_time,
+        "working": c.working,
+        "gaps": c.gaps,
+        "caveats": c.caveats,
+    }
+
+
+def _exemption_response(r: rex.ExemptionResult, claim_rows: list[dict]) -> dict:
+    by_index = list(claim_rows)
+    claims = []
+    for i, c in enumerate(r.claims):
+        row = by_index[i] if i < len(by_index) else {}
+        claims.append({**_claim_response(c),
+                       "id": row.get("id"),
+                       "new_asset_description": row.get("new_asset_description")})
+    return {
+        "gain_paise": r.gain_paise,
+        "total_exemption_paise": r.total_exemption_paise,
+        "taxable_gain_paise": r.taxable_gain_paise,
+        "claims": claims,
+        "gaps": r.gaps,
+        "caveats": r.caveats,
+    }
+
+
+@router.get("/capital-gains/sections")
+def get_reinvestment_sections(
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The four sections and what each one reaches — served so the screen has
+    no second copy of the vocabulary to drift from."""
+    return api_response(True, {
+        "sections": [{
+            "section": r.section,
+            "heading": r.heading,
+            "reaches": list(r.reaches),
+            "requires_long_term": r.requires_long_term,
+            "new_asset": r.new_asset,
+            "proportionate": r.proportionate,
+            "cgas_available": r.cgas_available,
+            "invested_cap_paise": r.invested_cap_paise,
+            "lock_in_years": r.lock_in_years,
+        } for r in rex.RULES.values()],
+        "asset_natures": list(rex.ASSET_NATURES),
+        "acquisition_kinds": list(rex.ACQUISITION_KINDS),
+    })
+
+
+def _entry_and_claims(current_user: dict, record_id: str, db):
+    """The register entry, scope-checked, and its claims — or a 404."""
+    if db is None:
+        return None, []
+    row = (db.table("capital_gains").select("*").eq("id", record_id)
+           .eq("firm_id", current_user["firm_id"]).limit(1).execute())
+    entry = (row.data or [None])[0]
+    if not entry or not can_access_client(current_user, entry.get("client_id")):
+        raise HTTPException(status_code=404, detail="Capital gains record not found")
+    # THE PROJECTION IS SPELLED OUT rather than passed as `cgx.CLAIM_COLUMNS`,
+    # and that is not a style choice: `tests/test_backend_columns_exist_pg.py`
+    # reads every `.select()` against the real schema and can only do so on a
+    # literal — a constant is invisible to it and counts against the
+    # unreadable-reference budget. The service keeps CLAIM_COLUMNS as the
+    # documented projection and a test holds the two identical.
+    claims = (db.table("capital_gain_reinvestments").select(
+                  "id, capital_gain_id, section, new_asset_description, "
+                  "acquisition_kind, acquisition_date, cost_paise, "
+                  "cgas_deposit_paise, cgas_deposit_date, "
+                  "other_residential_houses_owned, agricultural_use_two_years, "
+                  "new_asset_transferred_on, notes, created_at")
+              .eq("capital_gain_id", record_id)
+              .eq("firm_id", current_user["firm_id"])
+              .order("created_at").execute())
+    return entry, (claims.data or [])
+
+
+@router.get("/capital-gains/{record_id}/exemption")
+def get_capital_gain_exemption(
+    record_id: str,
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """What s.54 / 54B / 54EC / 54F exempt on this transfer, claim by claim."""
+    db = _db()
+    if db is None:
+        return api_response(True, {"gain_paise": 0, "total_exemption_paise": 0,
+                                   "taxable_gain_paise": 0, "claims": [],
+                                   "gaps": [], "caveats": []})
+    entry, claim_rows = _entry_and_claims(current_user, record_id, db)
+    result = cgx.exemption_for_entry(entry, claim_rows,
+                                     client_id=entry["client_id"],
+                                     firm_id=current_user["firm_id"])
+    return api_response(True, _exemption_response(result, claim_rows))
+
+
+@router.post("/capital-gains/{record_id}/reinvestments")
+def add_capital_gain_reinvestment(
+    record_id: str,
+    req: ReinvestmentIn,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Record a claim against one register entry.
+
+    THE CLAIM IS RECORDED WHETHER OR NOT IT QUALIFIES, and the working says
+    which. A claim refused for a missing fact is the ordinary state of one
+    entered before the CA has asked the client how many other houses they own
+    — refusing the WRITE would leave them nowhere to put what they do know.
+    """
+    db = _db()
+    if db is None:
+        return api_response(True, {"id": "mock-id", **req.model_dump(mode="json")})
+    entry, _ = _entry_and_claims(current_user, record_id, db)
+    # Written inline for the same reason the projection above is: the column
+    # guard reads a literal dict and a `payload` variable is invisible to it.
+    row = db.table("capital_gain_reinvestments").insert({
+        "firm_id": current_user["firm_id"],
+        "client_id": entry["client_id"],
+        "capital_gain_id": record_id,
+        "section": req.section,
+        "new_asset_description": req.new_asset_description,
+        "acquisition_kind": req.acquisition_kind,
+        "acquisition_date": req.acquisition_date.isoformat() if req.acquisition_date else None,
+        "cost_paise": req.cost_paise,
+        "cgas_deposit_paise": req.cgas_deposit_paise,
+        "cgas_deposit_date": req.cgas_deposit_date.isoformat() if req.cgas_deposit_date else None,
+        "other_residential_houses_owned": req.other_residential_houses_owned,
+        "agricultural_use_two_years": req.agricultural_use_two_years,
+        "new_asset_transferred_on": (req.new_asset_transferred_on.isoformat()
+                                     if req.new_asset_transferred_on else None),
+        "notes": req.notes,
+        "created_by": current_user.get("id"),
+    }).execute()
+    return api_response(True, (row.data or [{}])[0])
+
+
+@router.delete("/capital-gains/{record_id}/reinvestments/{claim_id}")
+def delete_capital_gain_reinvestment(
+    record_id: str,
+    claim_id: str,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    db = _db()
+    if db is None:
+        return api_response(True, {"id": claim_id})
+    # Scope-checked through the parent entry, which is what carries the
+    # client_id — the same shape as _assert_capital_gains_scope.
+    _entry_and_claims(current_user, record_id, db)
+    row = (db.table("capital_gain_reinvestments").delete()
+           .eq("id", claim_id).eq("capital_gain_id", record_id)
+           .eq("firm_id", current_user["firm_id"]).execute())
+    if not row.data:
+        raise HTTPException(status_code=404, detail="Reinvestment claim not found")
+    return api_response(True, {"id": claim_id})
 
 
 # ── Advance tax interest (R3.13a) ───────────────────────────────────────────

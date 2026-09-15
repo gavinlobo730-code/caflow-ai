@@ -8,7 +8,9 @@ import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
+import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
+import GSTR9Working from "@/components/gst/GSTR9Working";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -128,7 +130,7 @@ function rupees(paise: number) {
   return `₹${(paise / 100).toLocaleString("en-IN")}`;
 }
 
-type GSTTab = "dashboard" | "gstr1" | "amendments" | "gstr3b" | "itc" | "gstr2b" | "history" | "gstr9";
+type GSTTab = "dashboard" | "gstr1" | "amendments" | "gstr3b" | "itc" | "gstr2b" | "history" | "gstr9" | "registrations";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-[#F1F5F9] text-[#334155]",
@@ -1248,6 +1250,92 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     </div>
                   );
                 })()}
+                {/* WHAT THE BANK LINES PUT ON THIS RETURN (BANK-24).
+                    A charge the CA marked as carrying GST posts a real
+                    Dr GST Input leg, so the credit was already in the ledger —
+                    it just never reached Table 4(A), and the same rupees came
+                    back as an unexplained books-vs-ledger difference every
+                    month. They are on the return now, and the two sentences
+                    below are the half that cannot be computed: §16(2)(aa)
+                    wants a supplier document a bank line does not carry, and
+                    an outward supply with no tax invoice will not be in the
+                    GSTR-1 the portal compares this return against. Both come
+                    from the server; nothing here derives them. */}
+                {(() => {
+                  const bank = (computeResult.reconciliation as Record<string, unknown> | undefined)
+                    ?.bank_lines as { itc_paise?: number; output_tax_paise?: number;
+                                      inward_line_count?: number; outward_line_count?: number } | undefined;
+                  const notes = (computeResult.bank_line_caveats as string[] | undefined) ?? [];
+                  if (!bank || (!bank.itc_paise && !bank.output_tax_paise)) return null;
+                  return (
+                    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm space-y-1">
+                      <p className="font-medium text-sky-900">From bank lines you marked as carrying GST</p>
+                      {(bank.itc_paise ?? 0) > 0 && (
+                        <div className="flex justify-between text-sky-900">
+                          <span>
+                            Input credit in Table 4(A)(5) — {bank.inward_line_count} line
+                            {bank.inward_line_count === 1 ? "" : "s"}
+                          </span>
+                          <span className="font-mono">{rupees(bank.itc_paise ?? 0)}</span>
+                        </div>
+                      )}
+                      {(bank.output_tax_paise ?? 0) > 0 && (
+                        <div className="flex justify-between text-sky-900">
+                          <span>
+                            Output tax in Table 3.1(a) — {bank.outward_line_count} line
+                            {bank.outward_line_count === 1 ? "" : "s"}
+                          </span>
+                          <span className="font-mono">{rupees(bank.output_tax_paise ?? 0)}</span>
+                        </div>
+                      )}
+                      {notes.map((c, i) => (
+                        <p key={i} className="text-[11px] text-sky-800 border-t border-sky-200 pt-1">{c}</p>
+                      ))}
+                    </div>
+                  );
+                })()}
+                {/* ROWS THIS RETURN DECLARES NIL AND CANNOT DERIVE.
+                    A nil that means "this client had none" and a nil that
+                    means "this product cannot see it" look identical on a
+                    filed return, and four rows of this GSTR-3B are the second
+                    kind: 3.1.1's two §9(5) e-commerce rows, Table 5's inward
+                    exempt/nil-rated/non-GST values, and 4(D)(2). Each already
+                    carried its reason in a source comment next to the literal
+                    zero — the right place for the next programmer and no place
+                    at all for the CA about to file.
+
+                    `table_4a_gaps` had the same problem one level up: served
+                    since GST-24 and rendered by nothing, so the ISD sentence
+                    reached nobody. `undeclarable_rows` is the superset and this
+                    is the one place it is shown. Every sentence is the
+                    server's; nothing here decides which rows are listed. */}
+                {(() => {
+                  const rows = (computeResult.undeclarable_rows as
+                    { row: string; label: string; reason: string }[] | undefined) ?? [];
+                  if (rows.length === 0) return null;
+                  return (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm space-y-2">
+                      <p className="font-medium text-[#334155]">
+                        Nil because this product cannot derive it — {rows.length} row
+                        {rows.length === 1 ? "" : "s"}
+                      </p>
+                      <p className="text-[11px] text-[#64748B]">
+                        These are filed as nil. That is correct for a client with none,
+                        and wrong for a client with any — nothing here can tell the two
+                        apart, so check each on the portal before you file.
+                      </p>
+                      <ul className="space-y-1.5">
+                        {rows.map((g) => (
+                          <li key={g.row} className="border-t border-slate-200 pt-1.5">
+                            <span className="font-mono text-xs text-[#334155]">Table {g.row}</span>
+                            <span className="text-xs text-[#475569]"> — {g.label}</span>
+                            <p className="text-[11px] text-[#64748B] mt-0.5">{g.reason}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
                 {/* THE TABLES, not just the totals.
                     The GSTN offline utility is table by table, and a CA
                     reviewing before filing is checking 3.1 and 4, not a single
@@ -2011,6 +2099,11 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
           )}
         </div>
       )}
+
+      {/* The consolidation itself (GST-10). Offered whether or not a draft has
+          been saved: the point is to produce the figures, and until GST-10 the
+          tab could only ever show a draft nothing created. */}
+      <GSTR9Working clientId={clientId} financialYear={fy} />
     </div>
   );
 }
@@ -2039,6 +2132,10 @@ const TABS: { id: GSTTab; label: string }[] = [
   { id: "gstr9", label: "GSTR-9" },
   { id: "gstr2b", label: "GSTR-2B Recon" },
   { id: "history", label: "Filing History" },
+  // GST-20. Last, because most clients hold one registration and never open
+  // it — but it is on THIS screen rather than the client record, because what
+  // it decides is which return is filed under which number.
+  { id: "registrations", label: "Registrations" },
 ];
 
 export default function GSTWorkspacePage() {
@@ -2080,6 +2177,7 @@ export default function GSTWorkspacePage() {
         {tab === "gstr2b" && <GSTR2BTab clientId={clientId} />}
         {tab === "history" && <FilingHistoryTab clientId={clientId} />}
         {tab === "gstr9" && <GSTR9Tab clientId={clientId} />}
+        {tab === "registrations" && <RegistrationsTab clientId={clientId} />}
       </div>
     </div>
   );

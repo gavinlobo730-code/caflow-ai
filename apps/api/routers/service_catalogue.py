@@ -40,6 +40,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from core.ist_clock import ist_today
 from services.period_validation_service import period_validation_service
+from domain.inventory import costing
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.service_catalogue")
@@ -564,16 +565,34 @@ def bulk_create_services(
                 if p.get("kind") == "good"
                 and _has_seedable_opening_balance(p.get("opening_qty_units"), p.get("opening_cost_paise"))
             })
+            # ONE read of `clients` for the whole batch, serving BOTH the
+            # default opening-balance date and the client's own cost formula
+            # (AS-2 par. 14, INV-02). Two reads would be two
+            # Singapore-to-Mumbai round trips for facts that live in the same
+            # row — and this is the function whose per-row loop is what made a
+            # 300-product import hang in the first place. Unconditional now:
+            # an explicit `opening_balance_date` removes the need for the FY
+            # start and not the need for the formula.
             default_date_by_client: dict = {}
-            if seedable_client_ids and not data.opening_balance_date:
-                fy_rows = (
-                    db.table("clients").select("id, financial_year_start")
+            policy_by_client: dict = {}
+            if seedable_client_ids:
+                client_rows = (
+                    db.table("clients")
+                    .select("id, financial_year_start, inventory_costing_method")
                     .in_("id", seedable_client_ids).execute().data or []
                 )
-                fy_start_by_client = {r["id"]: r.get("financial_year_start") for r in fy_rows}
-                default_date_by_client = {
-                    cid: _fy_start_or_april_default(fy_start_by_client.get(cid)) for cid in seedable_client_ids
+                by_client = {r["id"]: r for r in client_rows}
+                policy_by_client = {
+                    cid: costing.policy_for(
+                        cid, (by_client.get(cid) or {}).get("inventory_costing_method"))
+                    for cid in seedable_client_ids
                 }
+                if not data.opening_balance_date:
+                    default_date_by_client = {
+                        cid: _fy_start_or_april_default(
+                            (by_client.get(cid) or {}).get("financial_year_start"))
+                        for cid in seedable_client_ids
+                    }
 
             locked_fy_cache: dict = {}
             still_ok: list[tuple[int, dict]] = []
@@ -622,6 +641,9 @@ def bulk_create_services(
             seed_opening_balances_batch(
                 # journal_entries.created_by FK references users(id), not auth_user_id.
                 db, firm_id=firm_id, created_by=current_user.get("id"), rows=rows,
+                # Resolved above, out of the SAME `clients` read that gave the
+                # default date — so the batch does not go back for it.
+                policies=policy_by_client,
             )
 
         return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})

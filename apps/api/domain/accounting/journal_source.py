@@ -62,6 +62,11 @@ PURCHASE_BILL = "purchase_bill"
 DEBIT_NOTE = "debit_note"                   # purchase return — AP DECREASE
 PURCHASE_CREDIT_NOTE = "purchase_credit_note"   # purchase value/tax INCREASE
 PURCHASE_PAYMENT = "purchase_payment"
+#: An import of goods. The duty is assessed and collected by CUSTOMS against a
+#: Bill of Entry (IGST Act s.5(1) proviso with Customs Tariff Act s.3(7)), so
+#: it is not the supplier's invoice under another name and it touches no
+#: accounts payable. Migration 389.
+BILL_OF_ENTRY = "bill_of_entry"
 
 #: Payroll.
 PAYROLL_RUN = "payroll_run"
@@ -74,6 +79,13 @@ SETTLEMENT = "settlement"
 FIXED_ASSET = "fixed_asset"
 DEPRECIATION = "depreciation"
 ASSET_DISPOSAL = "asset_disposal"
+#: An asset UNDER CONSTRUCTION, which is not one of the four above and must not
+#: be (migration 397). Schedule III Division I presents capital work-in-progress
+#: on its own line and AS-10 paragraph 20 does not start depreciating it, so a
+#: CWIP cost tranche stamped `fixed_asset` would point a drill-through at a
+#: `fixed_assets` row that does not exist yet. Both point at the PROJECT.
+CWIP_ADDITION = "cwip_addition"
+CWIP_CAPITALISATION = "cwip_capitalisation"
 
 #: Banking.
 BANK_TRANSACTION = "bank_transaction"
@@ -90,8 +102,10 @@ ALL_SOURCES = frozenset({
     MANUAL,
     SALES_INVOICE, CREDIT_NOTE, SALES_DEBIT_NOTE, RECEIPT,
     PURCHASE_BILL, DEBIT_NOTE, PURCHASE_CREDIT_NOTE, PURCHASE_PAYMENT,
+    BILL_OF_ENTRY,
     PAYROLL_RUN, PAYROLL_DISBURSEMENT, SETTLEMENT,
     FIXED_ASSET, DEPRECIATION, ASSET_DISPOSAL,
+    CWIP_ADDITION, CWIP_CAPITALISATION,
     BANK_TRANSACTION, BANK_OVERPAYMENT,
     OPENING, TRIAL_BALANCE_IMPORT, YEAR_END_ADJUSTMENT,
 })
@@ -124,12 +138,15 @@ SOURCE_LABEL = {
     DEBIT_NOTE: "debit note",
     PURCHASE_CREDIT_NOTE: "credit note",
     PURCHASE_PAYMENT: "payment",
+    BILL_OF_ENTRY: "bill of entry",
     PAYROLL_RUN: "payroll run",
     PAYROLL_DISBURSEMENT: "salary disbursement",
     SETTLEMENT: "full and final settlement",
     FIXED_ASSET: "fixed asset",
     DEPRECIATION: "depreciation charge",
     ASSET_DISPOSAL: "asset disposal",
+    CWIP_ADDITION: "capital work-in-progress",
+    CWIP_CAPITALISATION: "capitalisation of work-in-progress",
     BANK_TRANSACTION: "bank entry",
     BANK_OVERPAYMENT: "bank entry",
     OPENING: "opening balance",

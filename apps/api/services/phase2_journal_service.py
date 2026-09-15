@@ -1646,15 +1646,207 @@ class Phase2JournalService:
             _logger.error("journal_for_depreciation error: %s", e, exc_info=True)
             raise
 
+    # ── Capital work-in-progress (FA-11a, migration 397) ────────────────────
+    #
+    # TWO ENTRIES, AND NEITHER IS AN ACQUISITION. Schedule III Division I puts
+    # capital work-in-progress on its own line under Non-current assets and
+    # AS-10 paragraph 20 does not depreciate it, so the cost sits in its own
+    # account until the asset is ready. `journal_for_asset_acquisition` above
+    # would debit a Plant & Machinery account and start the register
+    # depreciating something that is still being built.
+
+    def journal_for_cwip_addition(
+        self, addition: dict, firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """One tranche of construction cost.
+
+        Dr  Capital Work-in-Progress   (amount + any s.17(5)-blocked tax)
+        Dr  GST Input                  (eligible tax only)
+          Cr Bank / Trade Payables / Purchases
+
+        THE CREDIT SIDE IS THE ACQUISITION PATH'S, unchanged: `from_bill`
+        reclassifies out of the expense the bill already charged (touching
+        neither the payable nor cash), `credit` owes the vendor, and anything
+        else is paid from the account the money actually left, resolved by the
+        one `resolve_payment_account`. Repeating that logic with different
+        words is how two paths come to disagree about where money came from.
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_cwip_addition: %s", addition.get("description"))
+            return None
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            cwip_acct = self._find_account(
+                db, firm_id, client_id, "%Capital Work-in-Progress%",
+                system_key="cwip")
+            amount = int(addition.get("amount_paise") or 0)
+            tax = (int(addition.get("igst_paise") or 0)
+                   + int(addition.get("cgst_paise") or 0)
+                   + int(addition.get("sgst_paise") or 0))
+            eligible = addition.get("itc_eligible") is True
+            # Blocked tax is part of what the asset cost (AS-10 paragraph 9);
+            # eligible tax is a credit and is not. Same split the receipt and
+            # the acquisition both make.
+            capitalised = amount + (0 if eligible else tax)
+            claimable = tax if eligible else 0
+            mode = addition.get("acquisition_mode") or "paid"
+
+            lines = [{"account_id": cwip_acct, "debit_paise": capitalised,
+                      "credit_paise": 0,
+                      "narration": f"CWIP: {addition.get('description') or ''}".strip()}]
+            if claimable:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%GST Input%", system_key="gst_input"),
+                    "debit_paise": claimable, "credit_paise": 0,
+                    "narration": "Input tax credit on construction cost",
+                })
+
+            if mode == "from_bill":
+                expense_id = self._find_account(db, firm_id, client_id, "%Purchase%")
+                return self._create_journal(
+                    db=db, firm_id=firm_id, client_id=client_id,
+                    entry_date=addition["incurred_on"],
+                    reference_no=f"CWIP-{str(addition['id'])[:8]}",
+                    narration=(f"Capital work-in-progress: "
+                               f"{addition.get('project_name') or ''}").strip(),
+                    entry_type="Journal",
+                    lines=[
+                        {"account_id": cwip_acct, "debit_paise": capitalised,
+                         "credit_paise": 0,
+                         "narration": f"CWIP: {addition.get('description') or ''}".strip()},
+                        {"account_id": expense_id, "debit_paise": 0,
+                         "credit_paise": capitalised,
+                         "narration": "Reversed out of purchases — under construction"},
+                    ],
+                    source_type=JS.CWIP_ADDITION, source_id=addition.get("cwip_id"),
+                )
+
+            if mode == "credit":
+                credit_id = self._find_account(
+                    db, firm_id, client_id, "%Trade Payable%", system_key="ap")
+                credit_narration = "Payable to contractor"
+            else:
+                paid_from = resolve_payment_account(
+                    db, firm_id=firm_id, client_id=client_id,
+                    bank_account_id=addition.get("bank_account_id"),
+                    payment_mode=addition.get("payment_mode"),
+                    find_account=self._find_account)
+                credit_id = paid_from.account_id
+                credit_narration = ("Cash paid on construction"
+                                    if paid_from.source == "cash"
+                                    else "Bank payment on construction")
+
+            lines.append({"account_id": credit_id, "debit_paise": 0,
+                          "credit_paise": capitalised + claimable,
+                          "narration": credit_narration})
+
+            return self._create_journal(
+                db=db, firm_id=firm_id, client_id=client_id,
+                entry_date=addition["incurred_on"],
+                reference_no=f"CWIP-{str(addition['id'])[:8]}",
+                narration=(f"Capital work-in-progress: "
+                           f"{addition.get('project_name') or ''}").strip(),
+                entry_type="Journal", lines=lines,
+                # BOTH POINT AT THE PROJECT, never at a fixed_assets row: there
+                # is not one yet, and a drill-through offering a link that
+                # cannot resolve is worse than none.
+                source_type=JS.CWIP_ADDITION, source_id=addition.get("cwip_id"),
+            )
+        except Exception as e:  # noqa: BLE001
+            capture_posting_failure(e, operation="journal_for_cwip_addition",
+                                    cwip_id=addition.get("cwip_id"))
+            return None
+
+    def journal_for_cwip_capitalisation(
+        self, project: dict, asset: dict, cost_paise: int, entry_date: str,
+        firm_id: str, client_id: str
+    ) -> Optional[str]:
+        """The project becomes the asset.
+
+        Dr  Fixed Asset account for its category
+          Cr Capital Work-in-Progress
+
+        NO CASH AND NO PAYABLE MOVES. Every rupee was already paid for or owed
+        when the tranche was recorded; this entry only moves the accumulated
+        cost off the work-in-progress line and onto the asset, which is exactly
+        what Schedule III's two lines describe.
+        """
+        if _USE_MOCK:
+            _logger.info("[MOCK] journal_for_cwip_capitalisation: %s",
+                         project.get("project_name"))
+            return None
+        try:
+            from core.supabase_client import get_supabase
+            db = get_supabase()
+
+            category = asset.get("asset_category") or "Plant & Machinery"
+            cat_map = {
+                "Plant & Machinery":        "%Plant & Machinery%",
+                "Furniture & Fixtures":     "%Furniture & Fixtures%",
+                "Computer & IT Equipment":  "%Computers & Software%",
+                "Office Equipment":         "%Office Equipment%",
+                "Vehicles":                 "%Vehicles%",
+                "Building":                 "%Land & Building%",
+                "Land":                     "%Land & Building%",
+                "Intangibles":              "%Intangible Assets%",
+            }
+            asset_acct = self._find_account(
+                db, firm_id, client_id, cat_map.get(category, "%Plant & Machinery%"))
+            cwip_acct = self._find_account(
+                db, firm_id, client_id, "%Capital Work-in-Progress%",
+                system_key="cwip")
+
+            return self._create_journal(
+                db=db, firm_id=firm_id, client_id=client_id,
+                entry_date=entry_date,
+                reference_no=f"CWIP-CAP-{str(project['id'])[:8]}",
+                narration=(f"Capitalised: {project.get('project_name') or ''}").strip(),
+                entry_type="Journal",
+                lines=[
+                    {"account_id": asset_acct, "debit_paise": int(cost_paise),
+                     "credit_paise": 0,
+                     "narration": f"Asset ready for use: {asset.get('asset_name') or ''}".strip()},
+                    {"account_id": cwip_acct, "debit_paise": 0,
+                     "credit_paise": int(cost_paise),
+                     "narration": "Transferred out of capital work-in-progress"},
+                ],
+                source_type=JS.CWIP_CAPITALISATION, source_id=project.get("id"),
+            )
+        except Exception as e:  # noqa: BLE001
+            capture_posting_failure(e, operation="journal_for_cwip_capitalisation",
+                                    cwip_id=project.get("id"))
+            return None
+
     def journal_for_asset_disposal(
-        self, asset: dict, sale_proceeds_paise: int, firm_id: str, client_id: str
+        self, asset: dict, sale_proceeds_paise: int, firm_id: str, client_id: str,
+        output_tax: Optional[dict] = None,
     ) -> Optional[str]:
         """
         Asset disposal journal.
         Dr  Accumulated Depreciation  (accumulated_depreciation_paise)
-        Dr  Bank                      (sale_proceeds_paise)
+        Dr  Bank                      (sale_proceeds_paise, tax-INCLUSIVE)
+          Cr  GST Output CGST/SGST/IGST  (the tax inside the proceeds)
         Dr/Cr  P&L on Disposal        (balancing — loss or gain)
           Cr  Fixed Asset Account     (purchase_cost_paise)
+
+        `output_tax` is {"cgst_paise", "sgst_paise", "igst_paise"} — the tax on
+        the TRANSACTION VALUE under CGST Act s.15, backed out of the proceeds
+        by domain/gst/section_18_6 (FA-08b). A sale of a capital asset is a
+        supply and this journal carried no tax line at all, so the tax was
+        never declared and the CA had to remember to raise a separate invoice.
+
+        WHAT IS NOT POSTED HERE. s.18(6) charges the HIGHER of this and the
+        credit taken on the asset reduced for the time it was held. Where the
+        reduced credit is the higher limb, the EXCESS is left for the CA to
+        raise: two Rules prescribe the reduction and give different figures
+        (see section_18_6), and there is no invoice behind the difference. The
+        same judgement itc_register_service records about a Rule 37 reversal.
+
+        The gain or loss is then computed on the consideration NET of tax —
+        the buyer's tax is not the seller's proceeds.
         """
         if _USE_MOCK:
             return None
@@ -1688,7 +1880,13 @@ class Phase2JournalService:
             cost        = asset["purchase_cost_paise"]
             accum_depn  = asset.get("accumulated_depreciation_paise", 0)
             wdv         = cost - accum_depn
-            gain_loss   = sale_proceeds_paise - wdv  # positive = gain, negative = loss
+            tax         = output_tax or {}
+            tax_total   = (int(tax.get("cgst_paise") or 0)
+                           + int(tax.get("sgst_paise") or 0)
+                           + int(tax.get("igst_paise") or 0))
+            # The proceeds are what the buyer paid, tax included, so the
+            # consideration the gain is measured against is net of it.
+            gain_loss   = (sale_proceeds_paise - tax_total) - wdv
 
             lines = [
                 {"account_id": accum_dep_id, "debit_paise": accum_depn, "credit_paise": 0,
@@ -1700,6 +1898,24 @@ class Phase2JournalService:
                 {"account_id": asset_acct,    "debit_paise": 0, "credit_paise": cost,
                  "narration": f"Fixed asset removed: {asset['asset_name']}"},
             ]
+
+            # CGST Act s.9 levies on the outward supply; the head comes from
+            # what the CA stated about the sale, not from what the acquisition
+            # was. Resolved through the SAME _find_account the sales side uses,
+            # so a disposal and an invoice land on one liability — the reason
+            # bank_posting_service resolves it that way too.
+            for head, key in (("CGST", "cgst_paise"), ("SGST", "sgst_paise"),
+                              ("IGST", "igst_paise")):
+                amount = int(tax.get(key) or 0)
+                if amount <= 0:
+                    continue
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%GST Output%",
+                        system_key=f"gst_{head.lower()}"),
+                    "debit_paise": 0, "credit_paise": amount,
+                    "narration": f"Output {head} on asset disposal (CGST Act s.9)",
+                })
 
             if gain_loss > 0:
                 gain_id = self._find_account(db, firm_id, client_id, "%Profit on Asset Disposal%")
@@ -2182,8 +2398,15 @@ class Phase2JournalService:
             if not entry_resp.data:
                 raise RuntimeError(f"Failed to insert journal_entry for ref={reference_no}")
             entry_id = entry_resp.data[0]["id"]
+            # `line_order` is the position in the array, which is what
+            # post_journal_atomic's WITH ORDINALITY records on the RPC path
+            # (migration 384). Stamped here too so a database double without
+            # `rpc` produces the same rows the real one does — otherwise every
+            # mock-mode voucher falls back to the derived order and the tests
+            # cannot see the column working.
             db.table("journal_lines").insert(
-                [{**lp, "journal_entry_id": entry_id} for lp in line_payloads]
+                [{**lp, "journal_entry_id": entry_id, "line_order": i}
+                 for i, lp in enumerate(line_payloads)]
             ).execute()
 
         _logger.info(

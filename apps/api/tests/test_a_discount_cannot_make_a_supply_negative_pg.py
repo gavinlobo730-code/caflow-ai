@@ -177,11 +177,48 @@ def test_the_header_accepts_an_ordinary_discount(db):
 
 # ── §15(3)(b) is a different remedy, and the schema says so ──────────────────
 
+#: The documents a §15(3)(a) discount may be recorded on, each with the reason.
+#:
+#: A discount given BEFORE or at the time of supply and "duly recorded in the
+#: invoice" is excluded from the value of supply, so the document that CARRIES
+#: the supply carries it — and so does every document that BECOMES that one,
+#: because a quotation that offered 5% and an invoice that did not is the
+#: commonest complaint a customer makes.
+MAY_CARRY_A_DISCOUNT = {
+    "client_sales_invoices": "§15(3)(a) — the document the rule names",
+    "client_sales_invoice_lines": "the per-line share of it",
+    # SALES-21, migration 392.
+    "sales_quotations": "an offer becomes the invoice, and must offer the same",
+    "sales_quotation_lines": "the per-line share of it",
+    "sales_orders": "an acceptance becomes the invoice",
+    "sales_order_lines": "the per-line share of it",
+}
+
+#: The §34 notes. A post-supply discount is excluded only where it was agreed
+#: at or before the supply, is specifically linked to the invoices, AND the
+#: recipient has reversed the attributable ITC (§15(3)(b)) — which is the NOTE
+#: itself, never a field on one.
+MAY_NOT_CARRY_A_DISCOUNT = (
+    "credit_notes", "credit_note_lines", "debit_notes", "debit_note_lines",
+    "purchase_credit_notes", "purchase_credit_note_lines",
+    "sales_debit_notes", "sales_debit_note_lines",
+)
+
+
 def test_no_note_table_grew_a_discount_column(db):
     """A post-supply discount is excluded only where it was agreed before the
     supply, is linked to the invoices, and the recipient has reversed the
     attributable ITC (§15(3)(b)). That is the §34 note itself, not a field on
-    one — and a column here would be the invitation to treat it as a field."""
+    one — and a column here would be the invitation to treat it as a field.
+
+    STATED AS THE RULE, in two halves. The first draft asserted one exact list
+    of two tables, and migration 392 tripped it by adding a §15(3)(a) discount
+    to the quotation and the sales order — documents that BECOME the invoice
+    and must therefore carry it. A test that fails on a correct change teaches
+    the next reader to widen the list without reading why it was there. So:
+    the notes are named and must have NONE, and anything else carrying one
+    must be named in `MAY_CARRY_A_DISCOUNT` with its reason.
+    """
     r = _psql(db, """
         SELECT string_agg(DISTINCT table_name, ', ' ORDER BY table_name)
         FROM information_schema.columns
@@ -190,4 +227,26 @@ def test_no_note_table_grew_a_discount_column(db):
     """, tuples=True)
     assert r.returncode == 0, r.stderr
     tables = sorted((r.stdout.strip() or "").split(", ")) if r.stdout.strip() else []
-    assert tables == ["client_sales_invoice_lines", "client_sales_invoices"], tables
+
+    on_a_note = [t for t in tables if t in MAY_NOT_CARRY_A_DISCOUNT]
+    assert not on_a_note, (
+        f"these §34 note tables carry a discount column: {on_a_note}. "
+        f"§15(3)(b) is the note, not a field on one.")
+
+    unaccounted = [t for t in tables if t not in MAY_CARRY_A_DISCOUNT]
+    assert not unaccounted, (
+        f"{unaccounted} carry a discount column and are not named in "
+        f"MAY_CARRY_A_DISCOUNT. Add the table with the reason it may, or take "
+        f"the column off.")
+
+
+def test_the_note_tables_named_above_actually_exist(db):
+    """A misspelled table name in `MAY_NOT_CARRY_A_DISCOUNT` would make that
+    half of the rule vacuous — it would pass for a table nothing can add a
+    column to."""
+    live = set(_psql(db, """
+        SELECT string_agg(table_name, ', ' ORDER BY table_name)
+        FROM information_schema.tables WHERE table_schema = 'public';
+    """, tuples=True).stdout.strip().split(", "))
+    missing = [t for t in MAY_NOT_CARRY_A_DISCOUNT if t not in live]
+    assert not missing, f"named but not a table: {missing}"

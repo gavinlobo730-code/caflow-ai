@@ -369,15 +369,30 @@ class FromBooksRequest(BaseModel):
     # GSTR-1 has no interest or late-fee table of its own, so this reaches the
     # 3B path only.
     filed_on: Optional[date] = None
+    # WHICH REGISTRATION THIS RETURN IS FOR (GST-20). CGST Act s.25(1) makes
+    # registration state-wise and s.25(2) allows one per place of business, so
+    # one client may hold several GSTINs and each owes its own return.
+    #
+    # OPTIONAL, and omitting it means the PRIMARY — which is what every caller
+    # predating this meant and still means, so no existing screen changes
+    # behaviour. A GSTIN the client does not hold is REFUSED rather than
+    # falling back to the primary: filing one registration's return under
+    # another's number is the failure this exists to prevent.
+    gstin: Optional[str] = None
 
 
-def _client_gstin(db, firm_id: str, client_id: str) -> str:
-    """Fetch the client's GSTIN, firm-scoped. Raises 404 if the client isn't ours."""
-    row = (db.table("clients").select("gstin")
-           .eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data)
-    if not row:
-        raise HTTPException(status_code=404, detail="Client not found")
-    return (row[0].get("gstin") or "").strip()
+def _client_gstin(db, firm_id: str, client_id: str,
+                  gstin: Optional[str] = None) -> str:
+    """Which GST registration this request is for, firm-scoped.
+
+    Delegates to `domain/gst/registrations` through its service rather than
+    reading `clients.gstin` directly, so the answer is the same one the
+    registration screen shows and a second registration is reachable at all
+    (GST-20). With no `gstin` the answer is the primary, which is exactly what
+    this function returned before.
+    """
+    from services import client_gst_registration_service as regs
+    return regs.resolve(db, firm_id, client_id, gstin).gstin
 
 
 @router.post("/gstr3b/from-books")
@@ -393,7 +408,7 @@ def gstr3b_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depen
     from core.supabase_client import get_supabase
     db = get_supabase()
     firm_id = current_user.get("firm_id")
-    gstin = _client_gstin(db, firm_id, req.client_id)
+    gstin = _client_gstin(db, firm_id, req.client_id, req.gstin)
     errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
     if errs:
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
@@ -450,7 +465,7 @@ def gstr1_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depend
     from core.supabase_client import get_supabase
     db = get_supabase()
     firm_id = current_user.get("firm_id")
-    gstin = _client_gstin(db, firm_id, req.client_id)
+    gstin = _client_gstin(db, firm_id, req.client_id, req.gstin)
     errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
     if errs:
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
@@ -489,7 +504,7 @@ def gstr1_with_amendments_endpoint(req: FromBooksRequest, current_user: dict = D
     from core.supabase_client import get_supabase
     db = get_supabase()
     firm_id = current_user.get("firm_id")
-    gstin = _client_gstin(db, firm_id, req.client_id)
+    gstin = _client_gstin(db, firm_id, req.client_id, req.gstin)
     errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
     if errs:
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})

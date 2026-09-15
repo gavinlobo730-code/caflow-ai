@@ -34,6 +34,7 @@ from datetime import date
 from typing import Optional
 
 from core.db_paging import fetch_all
+from domain.accounting import opening_documents as _opening
 from domain.income_tax import section_43b_h as rule
 
 _logger = logging.getLogger("caflow.tax.msme_43bh")
@@ -55,15 +56,26 @@ def _iso(value) -> Optional[date]:
 
 
 def _bills(db, firm_id: str, client_id: str) -> list[dict]:
-    return fetch_all(
+    """Every live bill — EXCEPT the ones carried over from the old system.
+
+    s.43B(h) disallows a DEDUCTION claimed in this previous year. An opening
+    bill's expense was claimed in a year whose return was prepared elsewhere, so
+    adding it back here would tax the client on a deduction their own books
+    never took. ⚠️ The other direction is NAMED rather than computed: an opening
+    bill paid during this year could be an earlier year's disallowance coming
+    back as a deduction under the same clause, and nothing here records whether
+    it was disallowed — `_carried_over_named` reports them so the CA can decide
+    (ACC-14, migration 391).
+    """
+    return _opening.without_carried_over(fetch_all(
         lambda: (db.table("purchase_bills")
                  .select("id, bill_no, bill_date, vendor_id, status, "
                          "total_paise, taxable_amount_paise, tds_paise, "
                          "ineligible_itc_igst_paise, ineligible_itc_cgst_paise, "
-                         "ineligible_itc_sgst_paise")
+                         "ineligible_itc_sgst_paise, is_opening")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
                  .in_("status", list(LIVE_STATUSES))),
-        label="msme_43bh.purchase_bills")
+        label="msme_43bh.purchase_bills"))
 
 
 def _vendors(db, firm_id: str, client_id: str) -> dict:
@@ -159,6 +171,24 @@ def _capitalised(db, firm_id: str, client_id: str) -> set:
             if r.get("purchase_bill_id")}
 
 
+def _carried_over_bills(db, firm_id: str, client_id: str) -> list[dict]:
+    """The opening bills, so the answer can NAME what it left out."""
+    rows = fetch_all(
+        lambda: (db.table("purchase_bills")
+                 .select("id, bill_no, bill_date, vendor_id, total_paise, "
+                         "is_opening")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .in_("status", list(LIVE_STATUSES))),
+        label="msme_43bh.carried_over_bills")
+    return [
+        {"bill_id": str(r.get("id")), "bill_no": r.get("bill_no"),
+         "bill_date": str(r.get("bill_date") or "")[:10] or None,
+         "vendor_id": r.get("vendor_id"),
+         "total_paise": int(r.get("total_paise") or 0)}
+        for r in rows if _opening.carried_over(r)
+    ]
+
+
 def for_financial_year(db, firm_id: str, client_id: str,
                        financial_year: str) -> dict:
     """The §43B(h) working for one previous year.
@@ -168,9 +198,22 @@ def for_financial_year(db, firm_id: str, client_id: str,
     this year paid next year is disallowed now. Both need the whole ledger.
     """
     rows = _bills(db, firm_id, client_id)
+    carried_over = _carried_over_bills(db, firm_id, client_id)
     vendors = _vendors(db, firm_id, client_id)
     pays = _payments(db, firm_id, [str(r.get("id")) for r in rows])
     capitalised = _capitalised(db, firm_id, client_id)
+    # THE DAY MSMED §15 ACTUALLY RUNS FROM, where the books hold one (PUR-25,
+    # migration 393). §2(b)'s Explanation makes the day of acceptance the day
+    # of ACTUAL DELIVERY — a goods receipt — or, where the buyer objected in
+    # writing, the day the objection was removed. Read ONCE for the whole
+    # client rather than per bill: this walks every live bill, and a per-bill
+    # lookup would be a Singapore-to-Mumbai round trip each.
+    #
+    # A bill with no order, or an order with no receipt, is simply absent and
+    # `section_43b_h.compute` falls back to the bill date, saying so on that
+    # bill rather than on every answer.
+    from services.purchase_cycle_service import acceptance_dates_by_bill
+    accepted = acceptance_dates_by_bill(db, firm_id, client_id)
 
     bills = []
     for r in rows:
@@ -194,6 +237,7 @@ def for_financial_year(db, firm_id: str, client_id: str,
             agreed_days=v.get("msmed_agreement_days"),
             payments=tuple(pays.get(str(r.get("id"))) or ()),
             capitalised=str(r.get("id")) in capitalised,
+            acceptance_date=_iso(accepted.get(str(r.get("id")))),
         ))
 
     # Oldest first — a reader following the year through wants them in order.
@@ -203,7 +247,23 @@ def for_financial_year(db, firm_id: str, client_id: str,
     bills.sort(key=lambda b: (b.bill_date or date.min, b.bill_no or ""))
 
     out = rule.compute(bills, financial_year=financial_year).to_dict()
-    out["source"] = ("derived from purchase_bills, purchase_payment_allocations "
-                     "and vendors.msme_status")
+    out["source"] = ("derived from purchase_bills, purchase_payment_allocations, "
+                     "vendors.msme_status and goods_receipt_notes.received_on")
+    # THE OPENING BILLS ARE NAMED, NOT COUNTED (ACC-14, migration 391). They are
+    # out of the computation because their expense was claimed in a year whose
+    # return was prepared elsewhere — but s.43B(h)'s other direction is that an
+    # earlier year's disallowance ACTUALLY PAID during this year comes back as a
+    # deduction now, and nothing on a carried-over bill records whether it was
+    # disallowed. A nil here would read as "none", so the answer says which
+    # bills it could not speak for.
+    if carried_over:
+        out["carried_over_bills"] = carried_over
+        out.setdefault("gaps", []).append(
+            f"{len(carried_over)} bill(s) carried over from the system this "
+            f"client migrated from are outside this computation: the deduction "
+            f"was claimed in a year whose return was prepared elsewhere. If any "
+            f"of them was disallowed under s.43B(h) that year and has been paid "
+            f"during this one, it comes back as a deduction now — a fact these "
+            f"books do not hold.")
     out["ca_review_required"] = True
     return out

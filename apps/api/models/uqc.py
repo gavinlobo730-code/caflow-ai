@@ -1,57 +1,19 @@
 """
-Official CBIC Unit Quantity Code (UQC) list — the fixed set of unit codes
-GSTR-1's HSN summary and e-invoicing validate against. Used wherever this app
-lets a user pick a "unit" for a goods line: Product/Service catalogue,
-firm_hsn_library, and (for goods lines only) sales invoice / purchase bill
-line items. Deliberately NOT free text and NOT firm-configurable — an
-invalid UQC here would silently produce an invalid GST filing.
+THE UQC LIST MOVED TO `domain/gst/uqc.py`, WHICH IS THE AUTHORITY.
+
+This module held the official CBIC Unit Quantity Code list and had **zero
+importers** — three validators cited `VALID_UQC_CODES` in their comments and
+none of them imported it, so the one place that knew which codes exist was
+unreachable from every place that asks.
+
+It moved because the RULE over the list (what is wrong with a unit, and what
+to tell the CA about it) belongs in a domain module, and a domain module must
+not import from `models/`, which is the API boundary — the wrong direction and
+one refactor from a cycle. Same reasoning that moved Schedule II Part C out of
+`routers/fixed_assets.py`.
+
+Re-exported here so any import still resolves, exactly as
+`routers/fixed_assets.py` re-exports the Schedule II names. Prefer importing
+from `domain.gst.uqc` in new code.
 """
-
-UQC_CODES = [
-    ("BAG", "BAGS"),
-    ("BAL", "BALE"),
-    ("BDL", "BUNDLES"),
-    ("BKL", "BUCKLES"),
-    ("BOU", "BILLION OF UNITS"),
-    ("BOX", "BOX"),
-    ("BTL", "BOTTLES"),
-    ("BUN", "BUNCHES"),
-    ("CAN", "CANS"),
-    ("CBM", "CUBIC METERS"),
-    ("CCM", "CUBIC CENTIMETERS"),
-    ("CMS", "CENTIMETERS"),
-    ("CTN", "CARTONS"),
-    ("DOZ", "DOZENS"),
-    ("DRM", "DRUMS"),
-    ("GGK", "GREAT GROSS"),
-    ("GMS", "GRAMMES"),
-    ("GRS", "GROSS"),
-    ("GYD", "GROSS YARDS"),
-    ("KGS", "KILOGRAMS"),
-    ("KLR", "KILOLITRE"),
-    ("KME", "KILOMETRE"),
-    ("MLT", "MILILITRE"),
-    ("MTR", "METERS"),
-    ("MTS", "METRIC TON"),
-    ("NOS", "NUMBERS"),
-    ("PAC", "PACKS"),
-    ("PCS", "PIECES"),
-    ("PRS", "PAIRS"),
-    ("QTL", "QUINTAL"),
-    ("ROL", "ROLLS"),
-    ("SET", "SETS"),
-    ("SQF", "SQUARE FEET"),
-    ("SQM", "SQUARE METERS"),
-    ("SQY", "SQUARE YARDS"),
-    ("TBS", "TABLETS"),
-    ("TGM", "TEN GROSS"),
-    ("THD", "THOUSANDS"),
-    ("TON", "TONNES"),
-    ("TUB", "TUBES"),
-    ("UGS", "US GALLONS"),
-    ("UNT", "UNITS"),
-    ("YDS", "YARDS"),
-    ("OTH", "OTHERS"),
-]
-
-VALID_UQC_CODES = frozenset(code for code, _ in UQC_CODES)
+from domain.gst.uqc import UQC_CODES, VALID_UQC_CODES  # noqa: F401

@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
+from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services.audit_service import log_event
@@ -414,13 +415,16 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
             # against the same invoice, silently losing whichever wrote second.
             for _attempt in range(6):
                 inv_resp = (db.table("client_sales_invoices")
-                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status")
+                            .select("total_paise,paid_paise,credited_paise,debit_note_paise,status,is_opening")
                             .eq("id", inv_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute())
                 if not inv_resp.data:
                     raise HTTPException(status_code=422, detail="Linked invoice is not part of this client's books.")
                 inv = inv_resp.data[0]
                 if (inv.get("status") or "") in ("draft", "cancelled"):
                     raise HTTPException(status_code=422, detail=f"Cannot debit-note a {inv.get('status')} invoice.")
+                if _opening.carried_over(inv):
+                    raise HTTPException(status_code=422,
+                                        detail=_opening.note_refusal(_opening.RECEIVABLE))
                 total = int(inv.get("total_paise") or 0)
                 paid = int(inv.get("paid_paise") or 0)
                 credited = int(inv.get("credited_paise") or 0)

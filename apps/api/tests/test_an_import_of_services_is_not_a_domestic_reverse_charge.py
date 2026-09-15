@@ -215,26 +215,30 @@ def test_the_imported_service_reaches_the_payload_in_rupees():
 
 # ── What the books cannot see is named, not silently nil ─────────────────────
 
-def test_the_two_underivable_rows_are_named_with_their_reason():
+def test_the_one_underivable_row_is_named_with_its_reason():
+    """4(A)(1) LEFT THIS LIST ON 2026-09-14 (PUR-18). A Bill of Entry is a
+    document now — migration 389 — so the row is derived like any other credit.
+    ISD is still here: an Input Service Distributor invoice is a document type
+    nothing models, and a nil meaning "we cannot see it" is not a nil meaning
+    "there was none"."""
     from services.gst_return_service import _table_4a_gaps
 
     gaps = {g["row"]: g for g in _table_4a_gaps()}
-    assert set(gaps) == {"4(A)(1)", "4(A)(4)"}, (
-        "4(A)(2) is derived from the books now and must not be listed as a "
-        "gap; 4(A)(3) and 4(A)(5) always were")
-    assert "Bill of Entry" in gaps["4(A)(1)"]["reason"]
+    assert set(gaps) == {"4(A)(4)"}, (
+        "4(A)(1) and 4(A)(2) are derived from the books now and must not be "
+        "listed as gaps; 4(A)(3) and 4(A)(5) always were")
     assert "Input Service Distributor" in gaps["4(A)(4)"]["reason"]
     for g in gaps.values():
         assert g["label"] and g["reason"].endswith("Enter it on the portal.")
 
 
-def test_the_gaps_are_on_every_return_not_only_a_failing_one():
+def test_the_gap_is_on_every_return_not_only_a_failing_one():
     """A structural gap does not depend on the period's data — it is a fact
-    about what this product models. A CA reading a nil 4(A)(1) has to be told
-    the same thing whether or not they imported anything."""
+    about what this product models. A CA reading a nil 4(A)(4) has to be told
+    the same thing whether or not a head office distributed anything."""
     from services.gst_return_service import _table_4a_gaps
 
-    assert len(_table_4a_gaps()) == 2
+    assert len(_table_4a_gaps()) == 1
 
 
 # ── The books-side resolver ──────────────────────────────────────────────────
@@ -365,8 +369,8 @@ def test_the_three_kinds_are_separated_on_one_return(monkeypatch):
     assert out["rcm_cash_paise"] == 180000
 
 
-def test_the_return_names_the_two_rows_it_cannot_derive(monkeypatch):
+def test_the_return_names_the_row_it_cannot_derive(monkeypatch):
     db = _e2e_setup(monkeypatch)
     _e2e_bill(db, "B-NRI", "V-NRI", 5_00000)
     _, out = _e2e_avl(db)
-    assert [g["row"] for g in out["table_4a_gaps"]] == ["4(A)(1)", "4(A)(4)"]
+    assert [g["row"] for g in out["table_4a_gaps"]] == ["4(A)(4)"]

@@ -22,6 +22,9 @@ import type { Column } from "@/lib/table/types";
 import { formatServicePrice } from "@/lib/catalogue/service";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { StockCountSheetPanel } from "@/components/inventory/StockCountSheet";
+import { CostFormulaPanel } from "@/components/inventory/CostFormulaPanel";
+import { LocationsAndBatches } from "@/components/inventory/LocationsAndBatches";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 interface StockItem {
@@ -178,6 +181,41 @@ export default function InventoryPage() {
   // figure that ties to the Inventories line on the balance sheet. They are
   // genuinely different questions, so the subtitle says which one is on screen.
   const [asAt, setAsAt] = useState("");
+  // INV-08. The physical count is ONE sheet, not a hundred adjustments. The
+  // variance, its direction and whether a line may post are all the server's
+  // answers — this page only opens the sheet and reloads the register after.
+  const [countSessionId, setCountSessionId] = useState<string | null>(null);
+  const [countError, setCountError] = useState("");
+  // Opening a sheet is a server WRITE, so the button has to be disabled while
+  // it is in flight. Migration 387 allows only one OPEN sheet per client per
+  // date, so a double-click's second request would be refused at the
+  // constraint rather than duplicating — but the CA would see a failure for a
+  // click that worked.
+  const [openingCount, setOpeningCount] = useState(false);
+
+  async function startCount() {
+    if (!clientId || clientId === "_placeholder" || openingCount) return;
+    setCountError("");
+    setOpeningCount(true);
+    try {
+      // Reuse the OPEN sheet for this client if there is one. Migration 387
+      // allows only one open sheet per client per date, and a second attempt
+      // should reopen the CA's work rather than fail at the constraint.
+      const list = await api.inventory.countSessions({ client_id: clientId });
+      const existing = list.success
+        ? (list.data ?? []).find((r) => r.status === "open")
+        : undefined;
+      if (existing) { setCountSessionId(existing.id); return; }
+      const res = await api.inventory.openCountSession({
+        client_id: clientId, count_date: asAt || undefined });
+      if (!res.success || !res.data?.id) throw new Error(res.error ?? "Couldn't open a count sheet.");
+      setCountSessionId(res.data.id);
+    } catch (e) {
+      setCountError(e instanceof Error ? e.message : "Couldn't open a count sheet.");
+    } finally {
+      setOpeningCount(false);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -359,6 +397,10 @@ export default function InventoryPage() {
               Show today
             </button>
           ) : null}
+          <button onClick={startCount} disabled={openingCount}
+                  className="px-3 py-[7px] text-xs border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 whitespace-nowrap disabled:opacity-50">
+            {openingCount ? "Opening…" : "Physical count"}
+          </button>
           <button onClick={load} className="p-1.5 mb-0.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
@@ -366,6 +408,20 @@ export default function InventoryPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 min-h-0">
+        {/* INV-02 — AS-2 par. 14's cost formula. Above the register because
+            it is what every value in it was computed on, and a CA reading a
+            closing stock figure needs to know which formula produced it. */}
+        <div className="mb-4">
+          <CostFormulaPanel clientId={clientId} />
+        </div>
+
+        {/* INV-03a — where the stock is and which lot it came from. Below the
+            register rather than above it: the register is still the answer to
+            "what do I hold", and this answers "where, and how long has it
+            got". The as-at date is the register's own, so the two agree. */}
+        <div className="mb-4">
+          <LocationsAndBatches clientId={clientId} asOf={asAt || todayLocalISO()} />
+        </div>
         <DataTable
           data={items}
           columns={columns}
@@ -383,6 +439,21 @@ export default function InventoryPage() {
           onRowClick={(item) => setDrillDown(item)}
         />
       </div>
+
+      {countError && (
+        <div className="mx-6 mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+          {countError}
+        </div>
+      )}
+
+      {countSessionId && (
+        <StockCountSheetPanel
+          clientId={clientId}
+          sessionId={countSessionId}
+          onClose={() => setCountSessionId(null)}
+          onPosted={load}
+        />
+      )}
 
       {drillDown && (
         <StockLedgerDrillDown clientId={clientId} item={drillDown} onClose={() => setDrillDown(null)} onAdjusted={load} />

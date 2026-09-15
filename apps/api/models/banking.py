@@ -9,6 +9,7 @@ that never existed as columns.
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from typing import Optional
 
+from domain.banking import account_kind
 from domain.banking.register import OPENING_DATE_REQUIRED
 from decimal import Decimal
 
@@ -33,6 +34,20 @@ class BankAccountIn(BaseModel):
         if not v.strip():
             raise ValueError("Field cannot be blank.")
         return v.strip()
+
+    @field_validator("account_type")
+    @classmethod
+    def known_account_type(cls, v: str) -> str:
+        """BANK-21. The DB CHECK was the only enforcement, so a value outside
+        it reached Postgres and came back as a 500-shaped error rather than a
+        refusal naming the field. It also decides the LEDGER — a card and an
+        overdraft carry a liability where a current account carries an asset —
+        so an unrecognised value would silently take the asset branch."""
+        value = (v or "").strip()
+        if value not in account_kind.ACCOUNT_TYPES:
+            raise ValueError(
+                f"account_type must be one of {list(account_kind.ACCOUNT_TYPES)}")
+        return value
 
     @field_validator("currency")
     @classmethod
@@ -80,6 +95,19 @@ class BankAccountUpdateIn(BaseModel):
     opening_balance_date: Optional[str] = None
     coa_account_id: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("account_type")
+    @classmethod
+    def known_account_type(cls, v: Optional[str]) -> Optional[str]:
+        """A validator only at the create door is one PATCH from being none —
+        the same rule the UAN and IFSC checks follow."""
+        if v is None:
+            return None
+        value = v.strip()
+        if value not in account_kind.ACCOUNT_TYPES:
+            raise ValueError(
+                f"account_type must be one of {list(account_kind.ACCOUNT_TYPES)}")
+        return value
 
 
 class StatementImportRow(BaseModel):

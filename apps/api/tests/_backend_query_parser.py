@@ -488,6 +488,26 @@ def insert_payloads(api_root: Path) -> tuple[list[tuple[str, int, str, set[str]]
                 arg = node.args[0]
                 if isinstance(arg, ast.Dict):
                     keys, readable = _dict_keys(arg)
+                elif isinstance(arg, (ast.ListComp, ast.GeneratorExp)) and isinstance(arg.elt, ast.Dict):
+                    # A BULK insert built by comprehension. Every row it
+                    # produces has the SAME keys — the single `elt` — so this
+                    # is exactly as certain as an inline dict and there is
+                    # nothing to guess. It was counted unreadable before, which
+                    # left one row per stock item, per payroll slip and per
+                    # imported statement line unchecked against NOT NULL: the
+                    # bulk writes, which is where a forgotten column costs most.
+                    keys, readable = _dict_keys(arg.elt)
+                elif (isinstance(arg, ast.List) and arg.elts
+                      and all(isinstance(e, ast.Dict) for e in arg.elts)):
+                    # A literal list of literal rows. Each row must satisfy
+                    # NOT NULL on its OWN, so what every row supplies is the
+                    # INTERSECTION — a key present in one row and missing from
+                    # the next is a row that omits it, and taking the union
+                    # would report the whole insert as safe on the strength of
+                    # its most complete row.
+                    per = [_dict_keys(e) for e in arg.elts]
+                    readable = all(r for _, r in per)
+                    keys = set.intersection(*[k for k, _ in per]) if readable else set()
                 elif isinstance(arg, ast.Name) and arg.id in local:
                     keys, readable = local[arg.id]
                 else:
@@ -508,3 +528,125 @@ def insert_payloads(api_root: Path) -> tuple[list[tuple[str, int, str, set[str]]
         if k not in best or len(keys) > len(best[k]):
             best[k] = keys
     return [(f, ln, rel, keys) for (f, ln, rel), keys in sorted(best.items())], unreadable
+
+
+# ── Relations and functions: the names a query asks Postgres to RESOLVE ──────
+#
+# scan() above reads the COLUMNS inside a chain and reports the relation only
+# so the caller can key on it. The relation itself, and the function name in a
+# .rpc() call, are a separate question with a separate failure mode: PostgREST
+# answers 42P01 / 42883 before a row is considered, so the whole statement is
+# rejected and — where the call sits in a broad except — the endpoint returns
+# HTTP 200 with success: false.
+#
+# These readers exist because test_backend_tables_exist_pg.py was CITED by two
+# other modules, at three sites, as the check that covers a relation missing
+# from the schema — and was never written. Both of those modules SKIP that case
+# rather than report it, so until now nothing looked at it at all.
+
+_CREATE_RELATION = re.compile(
+    r'CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?(?:TABLE|VIEW)\s+'
+    r'(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?"?([a-z_0-9]+)"?', re.I)
+_CREATE_FUNCTION = re.compile(
+    r'CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?"?([a-z_0-9]+)"?', re.I)
+_RENAMED_TO = re.compile(
+    r'ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:public\.)?"?[a-z_0-9]+"?\s+'
+    r'RENAME\s+TO\s+"?([a-z_0-9]+)"?', re.I)
+
+
+def _without_sql_comments(sql: str) -> str:
+    """Strip `--` and `/* */`, because a migration's own rollback hint is
+    usually a commented-out DROP or CREATE.
+
+    Worth saying why this is here and not on columns_declared_in() above: these
+    readers feed an EXCLUSION list, so a commented-out CREATE would quietly
+    widen the blind spot rather than cry wolf. The same argument applies to
+    columns_declared_in, but changing it moves a budget three other tests are
+    pinned to, so it is left alone deliberately rather than by oversight.
+    """
+    sql = re.sub(r"/\*[\s\S]*?\*/", " ", sql)
+    return "\n".join(re.sub(r"--.*$", "", line) for line in sql.splitlines())
+
+
+def relations_declared_in(sql: str) -> set[str]:
+    """Every relation name a migration file would create, if it ran.
+
+    Tables, views and materialized views alike — PostgREST serves all three
+    through the same `.table("x")` call, and public.accounts is a compatibility
+    VIEW, so a reader that knew only about tables would report it as a phantom.
+    It has already done exactly that twice: once in this repository's own
+    frontend guard (whose docstring carries the correction) and once in the
+    sweep that led to this function being written.
+    """
+    body = _without_sql_comments(sql)
+    return ({m.group(1).lower() for m in _CREATE_RELATION.finditer(body)}
+            | {m.group(1).lower() for m in _RENAMED_TO.finditer(body)})
+
+
+def functions_declared_in(sql: str) -> set[str]:
+    """Every function name a migration file would create, if it ran."""
+    return {m.group(1).lower()
+            for m in _CREATE_FUNCTION.finditer(_without_sql_comments(sql))}
+
+
+def _declared_by_failed(migrations_dir: Path, failed: set[str], reader) -> set[str]:
+    seen: set[str] = set()
+    for name in failed:
+        path = migrations_dir / name
+        if path.exists():
+            seen |= reader(path.read_text(encoding="utf-8"))
+    return seen
+
+
+def unverifiable_relations(migrations_dir: Path, failed: set[str]) -> set[str]:
+    return _declared_by_failed(migrations_dir, failed, relations_declared_in)
+
+
+def unverifiable_functions(migrations_dir: Path, failed: set[str]) -> set[str]:
+    return _declared_by_failed(migrations_dir, failed, functions_declared_in)
+
+
+def relation_refs(api_root: Path) -> list[tuple[str, str]]:
+    """[(relpath, relation)] — one entry per readable chain, deduplicated.
+
+    Derived from scan() rather than from a second pass over the source, so the
+    relation this check tests and the relation the column check keys on are the
+    SAME reading of the SAME call site. Two parsers would eventually disagree
+    about which relation a chain is rooted at, and the disagreement would show
+    up as one of them going quietly silent.
+    """
+    found, _ = scan(api_root)
+    return sorted({(path, rel) for path, rel, _col in found})
+
+
+def rpc_calls(api_root: Path) -> tuple[list[tuple[str, int, str]], int]:
+    """[(relpath, lineno, function)] for every `.rpc("name", …)`, and a count
+    of calls whose name arrives as a variable.
+
+    services/period_lock_service.py builds `fn_name` at runtime — it asks the
+    database for one of two period predicates — so it is unreadable here by
+    construction rather than by neglect, and is budgeted like the dynamic
+    table names above.
+    """
+    found: list[tuple[str, int, str]] = []
+    unreadable = 0
+    for path in sorted(api_root.rglob("*.py")):
+        if _SKIP_DIRS & set(path.relative_to(api_root).parts):
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            unreadable += 1
+            continue
+        for node in ast.walk(tree):
+            if (not isinstance(node, ast.Call)
+                    or not isinstance(node.func, ast.Attribute)
+                    or node.func.attr != "rpc"
+                    or not node.args):
+                continue
+            name = _string_arg(node)
+            if name is None:
+                unreadable += 1
+            else:
+                found.append((str(path), node.lineno, name))
+    return found, unreadable

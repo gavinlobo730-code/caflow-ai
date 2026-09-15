@@ -159,6 +159,89 @@ def position(movements: Iterable[dict], as_of: str,
     }
 
 
+def position_detail(movements: Iterable[dict], as_of: str,
+                    names: Optional[dict] = None,
+                    godowns: Optional[dict] = None,
+                    batches: Optional[dict] = None) -> dict:
+    """The same position one grain finer — per (item, godown, batch) — in the
+    shape public.stock_position_detail_as_at returns (INV-03a, migration 398).
+
+    A SECOND GRAIN, NOT A SECOND ANSWER. It sums the SAME deltas over the SAME
+    rows with the same date filter, so `total_value_paise` is `position()`'s
+    total by construction; a parity test asserts exactly that, because two
+    aggregates over one table that can disagree is how a register stops tying
+    to its own ledger.
+
+    NULL godown and NULL batch are REAL GROUPS. Every movement recorded before
+    migration 398 has both, nothing is back-filled, and dropping those rows
+    would make the detail sum to less than the total with nothing saying why.
+    """
+    names = names or {}
+    godowns = godowns or {}
+    batches = batches or {}
+    by_key: dict[tuple, dict] = {}
+
+    for m in movements:
+        when = str(m.get("movement_date") or "")[:10]
+        if not when or when > as_of:
+            continue
+        item_id = m.get("service_catalogue_id")
+        if not item_id:
+            continue
+        godown_id = m.get("godown_id") or None
+        batch_id = m.get("batch_id") or None
+        key = (str(item_id),
+               str(godown_id) if godown_id else None,
+               str(batch_id) if batch_id else None)
+        acc = by_key.setdefault(key, {
+            "qty": Decimal("0"), "value_paise": 0,
+            "last_movement_date": None, "movements": 0,
+        })
+        acc["qty"] += _as_qty(m.get("quantity_delta"))
+        acc["value_paise"] += _as_int(m.get("value_delta_paise"))
+        acc["movements"] += 1
+        if acc["last_movement_date"] is None or when > acc["last_movement_date"]:
+            acc["last_movement_date"] = when
+
+    rows = []
+    for (item_id, godown_id, batch_id), acc in by_key.items():
+        cat = names.get(item_id) or {}
+        god = godowns.get(godown_id) or {}
+        bat = batches.get(batch_id) or {}
+        rows.append({
+            "service_catalogue_id": item_id,
+            "item_name": cat.get("name") or "(deleted item)",
+            "unit": cat.get("unit"),
+            "godown_id": godown_id,
+            "godown_name": god.get("name"),
+            "godown_state_code": god.get("state_code"),
+            "godown_gstin": god.get("gstin"),
+            "batch_id": batch_id,
+            "batch_no": bat.get("batch_no"),
+            "expiry_date": (str(bat["expiry_date"])[:10]
+                            if bat.get("expiry_date") else None),
+            "qty_units": str(acc["qty"]),
+            "value_paise": acc["value_paise"],
+            "last_movement_date": acc["last_movement_date"],
+            "movements": acc["movements"],
+        })
+
+    # NULLS FIRST on the godown and on the batch number, NULLS LAST on the
+    # expiry date — transcribed from the SQL's own ORDER BY so the two agree
+    # row for row and not merely in total.
+    rows.sort(key=lambda r: (
+        r["item_name"] or "", r["service_catalogue_id"],
+        (r["godown_name"] is not None, r["godown_name"] or ""),
+        (r["expiry_date"] is None, r["expiry_date"] or ""),
+        (r["batch_no"] is not None, r["batch_no"] or ""),
+    ))
+    return {
+        "as_of": as_of,
+        "rows": rows,
+        "total_value_paise": sum(r["value_paise"] for r in rows),
+    }
+
+
 def ledger_with_balances(rows: Iterable[dict], opening_qty: Decimal,
                          opening_value_paise: int) -> list[dict]:
     """Adds `balance_qty_units` and `balance_value_paise` to each row, running

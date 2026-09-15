@@ -1,5 +1,37 @@
 {
  "constraint": {
+  "account_budgets.account_budgets_account_id_fkey": {
+   "detail": "f",
+   "expr_md5": "dd20eff30c74d1b15dd4a96aab67feaf"
+  },
+  "account_budgets.account_budgets_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "account_budgets.account_budgets_created_by_fkey": {
+   "detail": "f",
+   "expr_md5": "f2ec412d6c280402cdf6c98b7739d275"
+  },
+  "account_budgets.account_budgets_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "account_budgets.account_budgets_fy_is_a_label": {
+   "detail": "c",
+   "expr_md5": "90ae003584bd4eae8b018ac938b192b0"
+  },
+  "account_budgets.account_budgets_one_per_account_year": {
+   "detail": "u",
+   "expr_md5": "19a4f56cf17f4fff03eb8faac536498b"
+  },
+  "account_budgets.account_budgets_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "account_budgets.account_budgets_updated_by_fkey": {
+   "detail": "f",
+   "expr_md5": "8fd8d299692a885b516f0dd32bff8bce"
+  },
   "account_group_mappings.account_group_mappings_firm_id_account_id_key": {
    "detail": "u",
    "expr_md5": "15c2a83888c5a849088b9c366abbc107"
@@ -403,6 +435,14 @@
   "bank_matching_rules.bank_matching_rules_gst_rate_bps_check": {
    "detail": "c",
    "expr_md5": "6311010a21cd8b53ef65e62a1ffb7eff"
+  },
+  "bank_matching_rules.bank_matching_rules_match_field_check": {
+   "detail": "c",
+   "expr_md5": "e1fd936a2d697cc6d6548078622f3b4e"
+  },
+  "bank_matching_rules.bank_matching_rules_match_operator_check": {
+   "detail": "c",
+   "expr_md5": "c3ef4767823b3f7681d4baa0815763ab"
   },
   "bank_matching_rules.bank_matching_rules_pkey": {
    "detail": "p",
@@ -988,6 +1028,18 @@
    "detail": "f",
    "expr_md5": "8fd8d299692a885b516f0dd32bff8bce"
   },
+  "client_sales_invoice_lines.client_sales_invoice_lines_cess_paise_check": {
+   "detail": "c",
+   "expr_md5": "9720fab6d2f099e0eeecdd9748d6ba62"
+  },
+  "client_sales_invoice_lines.client_sales_invoice_lines_cess_rate_bps_check": {
+   "detail": "c",
+   "expr_md5": "c2f2c488b697a843b1085056985663b1"
+  },
+  "client_sales_invoice_lines.client_sales_invoice_lines_cess_specific_paise_per_unit_check": {
+   "detail": "c",
+   "expr_md5": "c1180b2cd424f5ec88aaa36668d5ee09"
+  },
   "client_sales_invoice_lines.client_sales_invoice_lines_discount_non_negative": {
    "detail": "c",
    "expr_md5": "69ff448a54c3457cf525137ccaf8f3ad"
@@ -1011,6 +1063,10 @@
   "client_sales_invoices.client_sales_invoices_billing_schedule_id_fkey": {
    "detail": "f",
    "expr_md5": "aca4e8859b756a402392f133dd88aeb6"
+  },
+  "client_sales_invoices.client_sales_invoices_cess_paise_check": {
+   "detail": "c",
+   "expr_md5": "9720fab6d2f099e0eeecdd9748d6ba62"
   },
   "client_sales_invoices.client_sales_invoices_client_id_fkey": {
    "detail": "f",
@@ -2160,6 +2216,10 @@
    "detail": "f",
    "expr_md5": "45326f96ff7d4bdca1a2591ca7949f66"
   },
+  "fixed_assets.fixed_assets_rule_43_use_check": {
+   "detail": "c",
+   "expr_md5": "e85b904566ca8c5ad6b3e078d264f7d7"
+  },
   "fixed_assets.fixed_assets_vendor_id_fkey": {
    "detail": "f",
    "expr_md5": "d9e0922947999545421481aecb274c43"
@@ -2820,10 +2880,6 @@
    "detail": "f",
    "expr_md5": "f2ec412d6c280402cdf6c98b7739d275"
   },
-  "itr_filings.itr_filings_firm_id_client_id_financial_year_itr_form_key": {
-   "detail": "u",
-   "expr_md5": "f4409f339772b5f2db814db1caa01a2a"
-  },
   "itr_filings.itr_filings_firm_id_fkey": {
    "detail": "f",
    "expr_md5": "01ca1f5964137c673767ee9fc7184374"
@@ -2832,6 +2888,14 @@
    "detail": "c",
    "expr_md5": "5bd8c83167523ad5ac7fafd5bf376eb2"
   },
+  "itr_filings.itr_filings_original_filing_id_fkey": {
+   "detail": "f",
+   "expr_md5": "805e5685cbdbc94dae6921a71284480b"
+  },
+  "itr_filings.itr_filings_original_is_not_self_check": {
+   "detail": "c",
+   "expr_md5": "179da9a56a2d501642cd0e7ac261e22f"
+  },
   "itr_filings.itr_filings_partner_reviewed_by_fkey": {
    "detail": "f",
    "expr_md5": "080e25f4bf10a085d9612f3f1987ace8"
@@ -2839,6 +2903,10 @@
   "itr_filings.itr_filings_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "itr_filings.itr_filings_return_type_check": {
+   "detail": "c",
+   "expr_md5": "c18b4663353a7a2dcfb0e18b727433eb"
   },
   "itr_filings.itr_filings_reviewed_by_fkey": {
    "detail": "f",
@@ -2867,6 +2935,10 @@
   "journal_entries.journal_entries_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "journal_entries.journal_entries_recurring_template_id_fkey": {
+   "detail": "f",
+   "expr_md5": "6db4385fed3e4ae0539217e3d358739f"
   },
   "journal_entries.journal_entries_reversal_of_fkey": {
    "detail": "f",
@@ -3720,6 +3792,18 @@
    "detail": "c",
    "expr_md5": "ce297b0d46f3580c4a02f15e86932d47"
   },
+  "purchase_bill_lines.purchase_bill_lines_cess_paise_check": {
+   "detail": "c",
+   "expr_md5": "9720fab6d2f099e0eeecdd9748d6ba62"
+  },
+  "purchase_bill_lines.purchase_bill_lines_cess_rate_bps_check": {
+   "detail": "c",
+   "expr_md5": "c2f2c488b697a843b1085056985663b1"
+  },
+  "purchase_bill_lines.purchase_bill_lines_cess_specific_paise_per_unit_check": {
+   "detail": "c",
+   "expr_md5": "c1180b2cd424f5ec88aaa36668d5ee09"
+  },
   "purchase_bill_lines.purchase_bill_lines_pkey": {
    "detail": "p",
    "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
@@ -3735,6 +3819,10 @@
   "purchase_bills.purchase_bills_advance_adjustment_is_within_the_bill": {
    "detail": "c",
    "expr_md5": "3a3ced8455469c2760bc3da523816858"
+  },
+  "purchase_bills.purchase_bills_cess_paise_check": {
+   "detail": "c",
+   "expr_md5": "9720fab6d2f099e0eeecdd9748d6ba62"
   },
   "purchase_bills.purchase_bills_client_id_fkey": {
    "detail": "f",
@@ -3755,6 +3843,10 @@
   "purchase_bills.purchase_bills_rate_type_check": {
    "detail": "c",
    "expr_md5": "0446e18f008cc30e8755ad00f0e1839f"
+  },
+  "purchase_bills.purchase_bills_recurring_template_id_fkey": {
+   "detail": "f",
+   "expr_md5": "bec942c6de6e96d380a126ebcbd4be1b"
   },
   "purchase_bills.purchase_bills_status_check": {
    "detail": "c",
@@ -4039,6 +4131,166 @@
   "recurring_invoice_templates.recurring_invoice_templates_supply_type_check": {
    "detail": "c",
    "expr_md5": "3cdbb5afc3b62486f6abcba3311e5f6b"
+  },
+  "recurring_journal_runs.recurring_journal_runs_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "recurring_journal_runs.recurring_journal_runs_journal_entry_id_fkey": {
+   "detail": "f",
+   "expr_md5": "de1209e014606c6dbba76222631f27df"
+  },
+  "recurring_journal_runs.recurring_journal_runs_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "recurring_journal_runs.recurring_journal_runs_status_check": {
+   "detail": "c",
+   "expr_md5": "e229409741eca47d1b5ea45b7c1889fd"
+  },
+  "recurring_journal_runs.recurring_journal_runs_template_id_fkey": {
+   "detail": "f",
+   "expr_md5": "32a036f5298ea51c0f62940a90d6b53a"
+  },
+  "recurring_journal_runs.recurring_journal_runs_template_id_occurrence_date_key": {
+   "detail": "u",
+   "expr_md5": "f27b965bf600a2acc437703acf40a88e"
+  },
+  "recurring_journal_template_lines.recurring_journal_line_has_one_side": {
+   "detail": "c",
+   "expr_md5": "b9b57e0176db69a0b935b384d6d49946"
+  },
+  "recurring_journal_template_lines.recurring_journal_template_lines_account_id_fkey": {
+   "detail": "f",
+   "expr_md5": "dd20eff30c74d1b15dd4a96aab67feaf"
+  },
+  "recurring_journal_template_lines.recurring_journal_template_lines_credit_paise_check": {
+   "detail": "c",
+   "expr_md5": "f9c9714fe8f0c9514347a928c87d3e14"
+  },
+  "recurring_journal_template_lines.recurring_journal_template_lines_debit_paise_check": {
+   "detail": "c",
+   "expr_md5": "03731cf15f068315ae6ecd4bb64c4f22"
+  },
+  "recurring_journal_template_lines.recurring_journal_template_lines_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "recurring_journal_template_lines.recurring_journal_template_lines_template_id_fkey": {
+   "detail": "f",
+   "expr_md5": "32a036f5298ea51c0f62940a90d6b53a"
+  },
+  "recurring_journal_templates.recurring_journal_period_is_a_period": {
+   "detail": "c",
+   "expr_md5": "cf98ec79c60e881f4cf71632835f9f3f"
+  },
+  "recurring_journal_templates.recurring_journal_templates_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "recurring_journal_templates.recurring_journal_templates_created_by_fkey": {
+   "detail": "f",
+   "expr_md5": "f2ec412d6c280402cdf6c98b7739d275"
+  },
+  "recurring_journal_templates.recurring_journal_templates_day_of_month_check": {
+   "detail": "c",
+   "expr_md5": "5ed01346191ae7d87d647101f82f9475"
+  },
+  "recurring_journal_templates.recurring_journal_templates_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "recurring_journal_templates.recurring_journal_templates_frequency_check": {
+   "detail": "c",
+   "expr_md5": "e49891ba7efe3696c43417720e3f06cd"
+  },
+  "recurring_journal_templates.recurring_journal_templates_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "recurring_journal_templates.recurring_journal_templates_status_check": {
+   "detail": "c",
+   "expr_md5": "304e0a1a58f47b028c1de42ddbe1f6bf"
+  },
+  "recurring_purchase_bill_runs.recurring_purchase_bill_runs_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "recurring_purchase_bill_runs.recurring_purchase_bill_runs_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "recurring_purchase_bill_runs.recurring_purchase_bill_runs_purchase_bill_id_fkey": {
+   "detail": "f",
+   "expr_md5": "45326f96ff7d4bdca1a2591ca7949f66"
+  },
+  "recurring_purchase_bill_runs.recurring_purchase_bill_runs_status_check": {
+   "detail": "c",
+   "expr_md5": "e229409741eca47d1b5ea45b7c1889fd"
+  },
+  "recurring_purchase_bill_runs.recurring_purchase_bill_runs_template_id_fkey": {
+   "detail": "f",
+   "expr_md5": "f1a4e2bd7bc63aac3e5c5d14967721ab"
+  },
+  "recurring_purchase_bill_runs.recurring_purchase_bill_runs_template_id_occurrence_date_key": {
+   "detail": "u",
+   "expr_md5": "f27b965bf600a2acc437703acf40a88e"
+  },
+  "recurring_purchase_bill_template_lines.recurring_purchase_bill_template_line_service_catalogue_id_fkey": {
+   "detail": "f",
+   "expr_md5": "748b13c5dcdc4b31bffb01c6910ee66d"
+  },
+  "recurring_purchase_bill_template_lines.recurring_purchase_bill_template_lines_expense_account_id_fkey": {
+   "detail": "f",
+   "expr_md5": "fb4c6cf5651b5e1c5acbbbd3d04b7e93"
+  },
+  "recurring_purchase_bill_template_lines.recurring_purchase_bill_template_lines_gst_rate_bps_check": {
+   "detail": "c",
+   "expr_md5": "40a191997c817634d7b8919e3c3e4d62"
+  },
+  "recurring_purchase_bill_template_lines.recurring_purchase_bill_template_lines_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "recurring_purchase_bill_template_lines.recurring_purchase_bill_template_lines_rate_paise_check": {
+   "detail": "c",
+   "expr_md5": "2e81715a26421b04a1cfbed7185efce2"
+  },
+  "recurring_purchase_bill_template_lines.recurring_purchase_bill_template_lines_template_id_fkey": {
+   "detail": "f",
+   "expr_md5": "f1a4e2bd7bc63aac3e5c5d14967721ab"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_period_is_a_period": {
+   "detail": "c",
+   "expr_md5": "cf98ec79c60e881f4cf71632835f9f3f"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_client_id_fkey": {
+   "detail": "f",
+   "expr_md5": "31b94b5a3625e0541829e365e9082440"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_created_by_fkey": {
+   "detail": "f",
+   "expr_md5": "f2ec412d6c280402cdf6c98b7739d275"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_firm_id_fkey": {
+   "detail": "f",
+   "expr_md5": "c122d302961235f761772c28254940be"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_frequency_check": {
+   "detail": "c",
+   "expr_md5": "e49891ba7efe3696c43417720e3f06cd"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_pkey": {
+   "detail": "p",
+   "expr_md5": "4c6419b3704337bbfe50f018842a9ad3"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_status_check": {
+   "detail": "c",
+   "expr_md5": "304e0a1a58f47b028c1de42ddbe1f6bf"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_vendor_id_fkey": {
+   "detail": "f",
+   "expr_md5": "842dfa50d7788c042262452af145f7e7"
   },
   "related_party_loans.related_party_loans_client_id_fkey": {
    "detail": "f",
@@ -4980,6 +5232,10 @@
    "detail": "c",
    "expr_md5": "bc9baa8cffa5c92fe91c1de98c4cb331"
   },
+  "vendors.vendors_credit_limit_paise_check": {
+   "detail": "c",
+   "expr_md5": "0ad491035638f0ca1d8c94e2ae28fc10"
+  },
   "vendors.vendors_firm_id_fkey": {
    "detail": "f",
    "expr_md5": "c122d302961235f761772c28254940be"
@@ -4991,6 +5247,10 @@
   "vendors.vendors_msme_status_check": {
    "detail": "c",
    "expr_md5": "0f2c4cb5d8a59130770d9b47013546d8"
+  },
+  "vendors.vendors_msmed_agreement_days_check": {
+   "detail": "c",
+   "expr_md5": "cec9b5a93c482d733e0767f8a3602aff"
   },
   "vendors.vendors_no_pe_declaration_by_fkey": {
    "detail": "f",
@@ -5278,6 +5538,26 @@
   }
  },
  "policy": {
+  "account_budgets.account_budgets_assignment_scope": {
+   "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
+   "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
+  },
+  "account_budgets.account_budgets_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "account_budgets.account_budgets_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "63fa92c5dc00145e2d8ca640432e0364"
+  },
+  "account_budgets.account_budgets_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "8b5b925bbc98a6a1458c66192748ce73"
+  },
+  "account_budgets.firm_account_budgets": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
   "account_group_mappings.account_group_mappings_firm_isolation": {
    "detail": "permissive cmd=* roles=PUBLIC",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
@@ -7254,6 +7534,62 @@
    "detail": "permissive cmd=* roles=authenticated",
    "expr_md5": "4d0911850190b9ede8105a166617d4ac"
   },
+  "recurring_journal_runs.firm_recurring_journal_runs": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "recurring_journal_template_lines.firm_recurring_journal_lines": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "b3d4c4355e96735f535b6388eba64ef1"
+  },
+  "recurring_journal_templates.firm_recurring_journal_templates": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "recurring_journal_templates.recurring_journal_templates_assignment_scope": {
+   "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
+   "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
+  },
+  "recurring_journal_templates.recurring_journal_templates_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "recurring_journal_templates.recurring_journal_templates_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "fe15002f4dc2866a0180f896d03038bb"
+  },
+  "recurring_journal_templates.recurring_journal_templates_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "70158a0a5215c9e83715df3edc962014"
+  },
+  "recurring_purchase_bill_runs.firm_recurring_purchase_bill_runs": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "recurring_purchase_bill_template_lines.firm_recurring_purchase_bill_lines": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "f2f78294c34714aa051db1f5ab49ec12"
+  },
+  "recurring_purchase_bill_templates.firm_recurring_purchase_bill_templates": {
+   "detail": "permissive cmd=* roles=authenticated",
+   "expr_md5": "4d0911850190b9ede8105a166617d4ac"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_assignment_scope": {
+   "detail": "RESTRICTIVE cmd=* roles=PUBLIC",
+   "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_role_delete": {
+   "detail": "RESTRICTIVE cmd=d roles=PUBLIC",
+   "expr_md5": "34aa28d1d1034e1d640de0fdecfaa604"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_role_insert": {
+   "detail": "RESTRICTIVE cmd=a roles=PUBLIC",
+   "expr_md5": "fe15002f4dc2866a0180f896d03038bb"
+  },
+  "recurring_purchase_bill_templates.recurring_purchase_bill_templates_role_update": {
+   "detail": "RESTRICTIVE cmd=w roles=PUBLIC",
+   "expr_md5": "70158a0a5215c9e83715df3edc962014"
+  },
   "related_party_loans.related_party_loans_assignment_scope": {
    "detail": "RESTRICTIVE cmd=* roles=authenticated",
    "expr_md5": "42a420da0b73ef69445bf1653b5a3b0b"
@@ -7985,6 +8321,10 @@
    "expr_md5": ""
   },
   "_mig247_targets": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "account_budgets": {
    "detail": "on",
    "expr_md5": ""
   },
@@ -8781,6 +9121,30 @@
    "expr_md5": ""
   },
   "recurring_invoice_templates": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "recurring_journal_runs": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "recurring_journal_template_lines": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "recurring_journal_templates": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "recurring_purchase_bill_runs": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "recurring_purchase_bill_template_lines": {
+   "detail": "on",
+   "expr_md5": ""
+  },
+  "recurring_purchase_bill_templates": {
    "detail": "on",
    "expr_md5": ""
   },

@@ -39,14 +39,17 @@ import {
   downloadGSTR3BJSON,
   getGSTR3BReturn,
   fetchRule37Report,
+  fetchRule37AReport,
   fetchRule43Working,
   toPeriod,
   type GSTR3BComputeResult,
   type GSTReturnStatus,
   type Rule37Report,
+  type Rule37AReport,
   type Rule43Working,
 } from "@/lib/data/gst";
 import { periodEndDate, splitRule37Bills } from "@/lib/gst/rule37Period";
+import { financialYearOfMonth } from "@/lib/dates/periods";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -100,6 +103,11 @@ export default function GSTR3BPage() {
   // panel below for why the two must stay separate.
   const [rule37, setRule37] = useState<Rule37Report | null>(null);
   const [rule37Error, setRule37Error] = useState<string | null>(null);
+  /* CGST Rule 37A — the SUPPLIER's default, not the recipient's. It is asked
+     for the FINANCIAL YEAR the credit was availed in, because both of its
+     deadlines hang off the end of that year and off no month at all. */
+  const [rule37a, setRule37a] = useState<Rule37AReport | null>(null);
+  const [rule37aError, setRule37aError] = useState<string | null>(null);
 
   // Rule 43: the capital-goods twin of Rule 37 above, and reported the same
   // way — beside the return, never folded into it, because no journal has been
@@ -128,6 +136,8 @@ export default function GSTR3BPage() {
     setResult(null);
     setRule37(null);
     setRule37Error(null);
+    setRule37a(null);
+    setRule37aError(null);
     setRule43(null);
     setRule43Error(null);
     try {
@@ -143,6 +153,17 @@ export default function GSTR3BPage() {
         setRule37(await fetchRule37Report(clientId, periodEndDate(yearMonth)));
       } catch (e) {
         setRule37Error(e instanceof Error ? e.message : "Could not check Rule 37");
+      }
+      // Rule 37A is asked for the FINANCIAL YEAR, not the month: the supplier
+      // has until 30 September following the end of the availment year to file
+      // their GSTR-3B, and the client until 30 November to reverse. Failing
+      // must not fail the return, same as Rule 37 above.
+      try {
+        setRule37a(await fetchRule37AReport(
+          clientId, financialYearOfMonth(yearMonth)));
+      } catch (e) {
+        setRule37aError(
+          e instanceof Error ? e.message : "Could not check Rule 37A");
       }
       // Asked for the PERIOD, not a date: Rule 43 apportions per tax period,
       // and the sixty instalments are counted from the invoice month. Failing
@@ -784,6 +805,92 @@ export default function GSTR3BPage() {
               </p>
             )}
           </section>
+
+          {/* Rule 37A — the SUPPLIER's default. Reported beside the return and
+              never folded into it, same as Rule 37 above, and separately from
+              it because they are unrelated rules that share one box. */}
+          {(rule37a || rule37aError) && (
+            <section className="bg-white border border-[#E2E8F0] rounded-xl">
+              <header className="px-5 py-3 border-b border-[#E2E8F0]">
+                <h3 className="text-sm font-semibold text-[#0F172A]">
+                  Rule 37A — credit resting on a supplier&apos;s GSTR-3B
+                </h3>
+                {rule37a && (
+                  <p className="mt-0.5 text-xs text-[#64748B]">{rule37a.rule}</p>
+                )}
+              </header>
+
+              {rule37aError ? (
+                <p className="px-5 py-4 text-sm text-[#64748B]">
+                  <strong className="text-[#334155]">Rule 37A not checked.</strong>{" "}
+                  {rule37aError} The figures above are unaffected.
+                </p>
+              ) : rule37a ? (
+                <div className="px-5 py-4 space-y-3 text-sm">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <p className="text-[#334155]">
+                      Supplier files GSTR-3B by{" "}
+                      <strong>{rule37a.supplier_deadline}</strong>
+                      {rule37a.supplier_deadline_passed && " — passed"}
+                    </p>
+                    <p className="text-[#334155]">
+                      Client reverses by{" "}
+                      <strong>{rule37a.recipient_deadline}</strong>
+                      {rule37a.recipient_deadline_passed && " — passed"}
+                    </p>
+                  </div>
+
+                  {rule37a.suppliers.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="text-left text-xs uppercase text-[#64748B]">
+                          <tr>
+                            <th className="py-1">Supplier</th>
+                            <th className="py-1">GSTIN</th>
+                            <th className="py-1">Documents</th>
+                            <th className="py-1 text-right">Credit at risk</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rule37a.suppliers.map((s) => (
+                            <tr key={`${s.vendor_id ?? s.vendor_name}`}
+                                className="border-t border-[#F1F5F9]">
+                              <td className="py-1">{s.vendor_name}</td>
+                              <td className="py-1 font-mono text-xs">
+                                {s.vendor_gstin ?? "—"}
+                              </td>
+                              <td className="py-1 tabular-nums">{s.bill_count}</td>
+                              <td className="py-1 text-right tabular-nums">
+                                {r(s.total_paise)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t border-[#E2E8F0] font-medium">
+                            <td className="py-1" colSpan={3}>
+                              {rule37a.totals.supplier_count} supplier(s),{" "}
+                              {rule37a.totals.bill_count} document(s)
+                            </td>
+                            <td className="py-1 text-right tabular-nums">
+                              {r(rule37a.totals.total_paise)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ) : null}
+
+                  {rule37a.gaps.map((g) => (
+                    <p key={g} className="text-xs text-[#92400E]">{g}</p>
+                  ))}
+                  {rule37a.caveats.map((c) => (
+                    <p key={c} className="text-xs text-[#64748B]">{c}</p>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          )}
 
           {/* Rule 37 — reported beside the return, never folded into it */}
           {(rule37 || rule37Error) && (() => {
