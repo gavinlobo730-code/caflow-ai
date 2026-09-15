@@ -148,6 +148,35 @@ CREATE INDEX IF NOT EXISTS idx_ledger_godown
 CREATE INDEX IF NOT EXISTS idx_ledger_batch
   ON public.inventory_stock_ledger (firm_id, client_id, batch_id, movement_date);
 
+-- A TRANSFER IS A NEW MOVEMENT KIND AND THE COLUMN'S CHECK HAS TO ADMIT IT.
+--
+-- Without this the two rows a godown transfer writes are rejected by Postgres
+-- outright — the feature works in mock mode, where no CHECK is enforced, and
+-- fails on the first real transfer. `tests/test_status_vocabularies_pg.py` is
+-- what caught it, and it exists for exactly this: a rejected write in an error
+-- path or a background task is usually swallowed, and the feature silently
+-- stops working.
+--
+-- The list is CARRIED FORWARD FROM MIGRATION 191, which last defined this
+-- constraint, rather than written from memory — an ADD CONSTRAINT replaces the
+-- whole definition, so omitting a value silently forbids it. `grep -ln
+-- "movement_type" migrations/*.sql | sort | tail -1` is how that ancestor was
+-- found, the same rule CLAUDE.md states for CREATE OR REPLACE FUNCTION.
+--
+-- Widening a CHECK is additive and cannot fail on existing data: every row
+-- already satisfies the narrower list. 'transfer' is its own value rather than
+-- an 'adjustment' for the reason 191 gave 'nrv_writedown' its own — an
+-- adjustment is a quantity CHANGE (a count, damage, theft) and a transfer
+-- changes nothing at the item level, only where the stock sits.
+ALTER TABLE public.inventory_stock_ledger
+  DROP CONSTRAINT IF EXISTS inventory_stock_ledger_movement_type_check;
+ALTER TABLE public.inventory_stock_ledger
+  ADD CONSTRAINT inventory_stock_ledger_movement_type_check
+    CHECK (movement_type IN
+      ('opening', 'purchase', 'sale', 'sale_reversal', 'purchase_reversal',
+       'adjustment', 'sale_return', 'purchase_return', 'nrv_writedown',
+       'transfer'));
+
 ALTER TABLE public.godowns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inventory_batches ENABLE ROW LEVEL SECURITY;
 

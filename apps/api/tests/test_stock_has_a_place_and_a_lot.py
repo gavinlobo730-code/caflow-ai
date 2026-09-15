@@ -463,3 +463,48 @@ def test_marking_a_new_default_clears_the_old_one():
                       is_default=True, notes=None, actor_id=None)
     defaults = [g for g in db.rows("godowns") if g.get("is_default")]
     assert [g["name"] for g in defaults] == ["Nagpur"]
+
+
+def test_the_movement_type_a_transfer_writes_is_ADMITTED_by_the_column():
+    """A THREE-SECOND TRIPWIRE FOR A THIRTY-SIX-MINUTE FAILURE.
+
+    `inventory_stock_ledger.movement_type` carries a CHECK, and the first
+    version of the transfer wrote 'transfer' into a constraint that did not
+    admit it — so Postgres rejected both rows outright. Mock mode enforces no
+    CHECK, so every test in this module passed and the whole feature was
+    broken in production.
+
+    `tests/test_status_vocabularies_pg.py` is the AUTHORITY and caught it, by
+    reading the live constraint. It needs a real database and the full
+    real-Postgres suite takes about half an hour. This reads the migrations
+    instead — the same question, asked where the answer is cheap. It is a
+    tripwire and not a second authority: if the two ever disagree, the one
+    talking to Postgres is right.
+    """
+    import re
+    from pathlib import Path
+
+    API = Path(__file__).resolve().parents[1]
+    # ROLLBACKS EXCLUDED: 398's rollback correctly narrows the list back
+    # to 191's, and reading it as the definition in force inverts the
+    # answer — which is exactly what the first draft of this test did.
+    migrations = sorted(x for x in (API / "migrations").glob("[0-9][0-9][0-9]_*.sql")
+                        if not x.name.endswith("_rollback.sql"))
+    last = None
+    for path in migrations:
+        text = path.read_text()
+        if "inventory_stock_ledger_movement_type_check" in text and "ADD CONSTRAINT" in text:
+            last = (path, text)
+    assert last, "no migration defines the movement_type CHECK"
+    path, text = last
+    # The final ADD CONSTRAINT in that file is the definition in force.
+    block = text[text.rindex("inventory_stock_ledger_movement_type_check"):]
+    admitted = set(re.findall(r"'([a-z_]+)'", block))
+    assert "transfer" in admitted, (
+        f"{path.name} is the last migration to define "
+        f"inventory_stock_ledger_movement_type_check and its list does not "
+        f"admit 'transfer' — Postgres will reject every godown transfer. "
+        f"Admitted: {sorted(admitted)}")
+    # And the service must still be writing that value, not a renamed one.
+    service = (API / "services" / "inventory_location_service.py").read_text()
+    assert '"movement_type": "transfer"' in service
