@@ -69,7 +69,7 @@ WEB = pathlib.Path(__file__).resolve().parents[3] / "apps" / "web"
 #: that file stays the stricter check for its own module, and this one is the
 #: floor under every other.
 BUDGET: dict[str, int] = {
-    "/api/year-end": 10, "/api/task-recurring": 9, "/api/itr": 8,
+    "/api/year-end": 10, "/api/task-recurring": 9, "/api/itr": 6,
     "/api/tasks": 8, "/api/engagements": 7, "/api/relationships": 7,
     "/api/income-tax": 6, "/api/gst-portal": 5, "/api/lifecycle": 5,
     "/api/health": 4, "/api/mca-workspace": 4, "/api/sales-invoices": 4,
@@ -92,7 +92,13 @@ BUDGET: dict[str, int] = {
 # screen, so the module needs no budget of its own; the spare 1 the total had
 # been carrying is given back rather than absorbed, which is the only direction
 # this number is allowed to move.
-TOTAL_BUDGET = 132
+# 132 -> 130: the computation screen can now RECORD a brought-forward loss.
+# POST /api/itr/bf-losses had existed since migration 156 with no caller, so
+# the panel that lists them said "No carried-forward losses recorded" for every
+# client for ever while the §72/§73/§74/§71B engine sat behind it. Wiring the
+# form reached that endpoint and its GET sibling, and added GET
+# /api/itr/loss-types, which the head dropdown is built from.
+TOTAL_BUDGET = 130
 
 
 def _sources() -> str:

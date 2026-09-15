@@ -120,9 +120,17 @@ def _ay_end_year(assessment_year: str | None) -> int | None:
 
 def _is_available(loss: BroughtForwardLoss, assessment_year: str | None) -> tuple[bool, str]:
     if loss.is_expired:
-        return False, (f"The loss is marked expired, so §72(3)/§74's eight "
-                       f"assessment years have run out and it is no longer "
-                       f"available.")
+        # NAME THE HEAD'S OWN SECTION. This used to say "§72(3)/§74's eight
+        # assessment years" for every head, speculation included — and §73(4)
+        # gives a speculation loss FOUR. Two sections quoted at a third is how
+        # four silently becomes eight on a screen a CA reads.
+        from domain.income_tax.loss_carry_forward import rule_for
+        rule = rule_for(loss.loss_type)
+        if rule is not None and rule.years is not None:
+            return False, (f"The loss is marked expired: {rule.section} allows "
+                           f"{rule.years} assessment years and they have run out.")
+        return False, ("The loss is marked expired, so it is no longer "
+                       "available.")
     if loss.amount_paise <= 0:
         return False, "Nothing remains of this loss to set off."
     here = _ay_end_year(assessment_year)

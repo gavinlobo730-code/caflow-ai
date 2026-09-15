@@ -1176,6 +1176,13 @@ EXEMPT: dict[str, str] = {
         "the statutory TDS rate table for a financial year (domain/tds/"
         "section_rates.py). Reference data from the IT Act, identical for "
         "every firm and every client.",
+    "/api/itr/loss-types":
+        "the carry-forward period per loss type — §72(3) eight assessment "
+        "years, §73(4) FOUR, §74(2) and §71B eight (domain/income_tax/"
+        "loss_carry_forward.py). Reference data from the IT Act, identical for "
+        "every firm and every client, served so the form holds no vocabulary "
+        "and no period. Same shape as /api/tds/sections above; the request "
+        "model has no client_id to check.",
     "/api/lifecycle/dashboard":
         "aggregate counts only: lead stage tallies, a proposal count, an "
         "overdue-renewal count. No client is named and no per-client figure is "

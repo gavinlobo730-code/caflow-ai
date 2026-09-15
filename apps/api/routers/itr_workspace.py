@@ -10,13 +10,13 @@ import logging
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
 from services.timeline_service import timeline_service
-from models.fy import AYLabel, FYLabel
+from models.fy import AYLabel, FYLabel, OptionalAYLabel
 
 router = APIRouter(prefix="/api/itr", tags=["itr_workspace"])
 _logger = logging.getLogger("caflow.itr.router")
@@ -144,9 +144,33 @@ class BFLossRequest(BaseModel):
     assessment_year: AYLabel
     loss_type: str
     original_amount_paise: int = Field(..., ge=0)
-    expiry_assessment_year: AYLabel
+    #: HOW LONG THE LOSS LIVES IS A STATUTORY FACT, AND IT WAS TYPED.
+    #: §72(3) gives a business loss eight assessment years, §73(4) gives a
+    #: SPECULATION loss four, §74(2) and §71B eight — so the one field in this
+    #: row that the Act decides was whatever the caller sent. Optional now:
+    #: `domain/income_tax/loss_carry_forward.expiry_for` derives it from the
+    #: loss type and the year it was computed. A caller-supplied value still
+    #: WINS where one is given — the shape domain/tds/deductor.resolve uses —
+    #: because the derivation exists to spare the CA eight-year arithmetic,
+    #: not to overrule them.
+    expiry_assessment_year: OptionalAYLabel = None
     source_itr_ack: Optional[str] = None
     notes: Optional[str] = None
+
+    @field_validator("loss_type")
+    @classmethod
+    def _known_loss_type(cls, v: str) -> str:
+        """Refuse a type the store does not hold, HERE rather than at the
+        database. Without this the value reaches migration 319's CHECK, the
+        insert raises, and create_bf_loss's `except Exception` turns it into a
+        500 with the constraint name in it."""
+        from domain.income_tax.loss_set_off import KNOWN_LOSS_TYPES
+        text = str(v or "").strip().lower()
+        if text not in KNOWN_LOSS_TYPES:
+            raise ValueError(
+                f"Unknown loss type '{v}'. One of: "
+                + ", ".join(sorted(KNOWN_LOSS_TYPES)) + ".")
+        return text
 
 
 class UtilizeLossRequest(BaseModel):
@@ -625,7 +649,22 @@ def create_bf_loss(
     IT Act Section 72 (business loss, 8 years), Section 74 (capital loss, 8 years).
     """
     assert_client_access(current_user, req.client_id)
+    from domain.income_tax import loss_carry_forward
     from domain.income_tax.computation_workspace import create_bf_loss as _create
+
+    # THE EXPIRY IS DERIVED WHERE THE CALLER DID NOT STATE ONE, and refused
+    # rather than guessed where no section fixes a period — `other`, whose head
+    # is not identified. Defaulting that to eight years would silently end a
+    # loss the Act may not end, and there is no direction that fails safe here:
+    # a period too short expires relief the client is entitled to, one too long
+    # claims relief they are not.
+    expiry = req.expiry_assessment_year
+    derivation = None
+    if not expiry:
+        expiry, derivation = loss_carry_forward.expiry_for(
+            req.loss_type, req.assessment_year)
+        if not expiry:
+            raise HTTPException(status_code=422, detail=derivation)
     try:
         result = _create(
             firm_id=current_user["firm_id"],
@@ -633,14 +672,46 @@ def create_bf_loss(
             assessment_year=req.assessment_year,
             loss_type=req.loss_type,
             original_amount_paise=req.original_amount_paise,
-            expiry_assessment_year=req.expiry_assessment_year,
+            expiry_assessment_year=expiry,
             created_by=current_user["id"],
             source_itr_ack=req.source_itr_ack,
             notes=req.notes,
         )
+        # The working travels with the row so the screen can SAY which section
+        # fixed the date rather than showing a year with no provenance.
+        if derivation and isinstance(result, dict):
+            result = {**result, "expiry_derivation": derivation}
         return api_response(True, result)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, detail=str(e))
+
+
+@router.get("/loss-types")
+def loss_types(
+    current_user: dict = Depends(rbac("income_tax", "read")),
+):
+    """The loss types a brought-forward loss may carry, each with the section
+    that fixes its carry-forward period and how long that is.
+
+    Served so the FORM holds no vocabulary and no period. §73(4)'s four years
+    against everything else's eight is exactly the kind of difference a
+    hardcoded dropdown gets wrong, and `loss_carry_forward` is the one place
+    that knows it. `not_modelled` is part of the answer: §32(2) unabsorbed
+    depreciation and §73A both carry forward indefinitely and have no row here,
+    so the screen says why instead of inviting one under `other`.
+    """
+    from domain.income_tax import loss_carry_forward as lcf
+    return api_response(True, {
+        "types": [
+            {"loss_type": r.loss_type, "section": r.section,
+             "years": r.years, "note": r.note}
+            for r in lcf.known_types()
+        ],
+        "not_modelled": [{"what": k, "why": v} for k, v in lcf.NOT_MODELLED.items()],
+        "verified": lcf.VERIFIED,
+    })
 
 
 @router.get("/bf-losses")

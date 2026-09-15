@@ -233,6 +233,15 @@ interface PresumptiveResult {
   workings: string[];
 }
 
+interface LossTypeRule {
+  loss_type: string;
+  section: string;
+  /** Assessment years the loss may be carried into. null where no section
+   *  fixes a period, which is `other` — the head is not identified. */
+  years: number | null;
+  note: string;
+}
+
 interface BFLoss {
   id: string;
   assessment_year: string;
@@ -257,6 +266,19 @@ export default function TaxComputationPage() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [disallowances, setDisallowances] = useState<Disallowance[]>([]);
   const [bfLosses, setBfLosses] = useState<BFLoss[]>([]);
+  // IT-10's other half. `brought_forward_losses` was READ by this screen and
+  // written by nothing — POST /api/itr/bf-losses has existed all along with no
+  // caller — so the panel below said "No carried-forward losses recorded" for
+  // every client for ever, while the engine that sets them off under §72, §73,
+  // §74 and §71B sat behind it fully built. §72 carries a business loss eight
+  // assessment years; letting it lapse because there was nowhere to type it is
+  // relief the client never gets back.
+  const [lossTypes, setLossTypes] = useState<LossTypeRule[]>([]);
+  const [lossNotModelled, setLossNotModelled] = useState<{ what: string; why: string }[]>([]);
+  const [showAddLoss, setShowAddLoss] = useState(false);
+  const [lossForm, setLossForm] = useState({ assessment_year: "", loss_type: "", amount: "", expiry: "" });
+  const [savingLoss, setSavingLoss] = useState(false);
+  const [lossError, setLossError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>("overview");
 
   // The client's own entity type, read from the client record and passed
@@ -368,7 +390,7 @@ export default function TaxComputationPage() {
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
-  const actionInFlight = computing || savingDisall || presComputing;
+  const actionInFlight = computing || savingDisall || presComputing || savingLoss;
 
   // Distinguishes "fetch failed" from "nothing recorded yet" — a masked
   // failure previously rendered the whole workspace (snapshots,
@@ -384,6 +406,54 @@ export default function TaxComputationPage() {
    *  been checked, so the button below is what unblocks the filing workflow. */
   const [reviewing, setReviewing] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
+
+  // THE VOCABULARY AND EVERY PERIOD ARE THE SERVER'S. §72(3) gives eight
+  // assessment years, §73(4) gives a SPECULATION loss FOUR, §74(2) and §71B
+  // eight — a hardcoded dropdown here is how four silently becomes eight.
+  useEffect(() => {
+    (async () => {
+      const res = await apiFetch("/api/itr/loss-types");
+      if (res?.success && res.data) {
+        setLossTypes(res.data.types ?? []);
+        setLossNotModelled(res.data.not_modelled ?? []);
+      }
+    })();
+  }, []);
+
+  const saveLoss = async () => {
+    setLossError(null);
+    const paise = paiseFromRupeeInput(lossForm.amount);
+    if (paise === null || paise <= 0) { setLossError("Enter the loss amount."); return; }
+    if (!lossForm.assessment_year) { setLossError("Which assessment year was the loss computed in?"); return; }
+    if (!lossForm.loss_type) { setLossError("Which head is the loss under?"); return; }
+    setSavingLoss(true);
+    try {
+      // expiry_assessment_year is sent ONLY when the CA typed one. Left out,
+      // the server derives it from the head's own section — and refuses rather
+      // than guessing for `other`, whose head is not identified.
+      const res = await apiFetch("/api/itr/bf-losses", {
+        method: "POST",
+        body: JSON.stringify({
+          client_id: clientId,
+          assessment_year: lossForm.assessment_year,
+          loss_type: lossForm.loss_type,
+          original_amount_paise: paise,
+          ...(lossForm.expiry ? { expiry_assessment_year: lossForm.expiry } : {}),
+        }),
+      });
+      if (res?.success) {
+        setShowAddLoss(false);
+        setLossForm({ assessment_year: "", loss_type: "", amount: "", expiry: "" });
+        await load();
+      } else {
+        setLossError(res?.detail ?? res?.error ?? "The loss was not recorded.");
+      }
+    } catch (e) {
+      setLossError(e instanceof Error ? e.message : "The loss was not recorded.");
+    } finally {
+      setSavingLoss(false);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -1825,7 +1895,134 @@ export default function TaxComputationPage() {
 
         {activeSection === "losses" && (
           <div className="px-5 pb-5 border-t border-[#F1F5F9] pt-4 space-y-3">
-            <p className="text-[11px] text-[#64748B]">IT Act §72 (Business, 8 yrs) · §74 (Capital, 8 yrs)</p>
+            {/* THE PERIODS COME FROM THE SERVER, one line per head. The old
+                text here read "§72 (Business, 8 yrs) · §74 (Capital, 8 yrs)"
+                and was hardcoded — true of three heads and wrong about
+                speculation, which §73(4) carries for FOUR years. */}
+            {lossTypes.length > 0 && (
+              <p className="text-[11px] text-[#64748B]">
+                IT Act{" "}
+                {lossTypes.filter(t => t.years !== null).map((t, i) => (
+                  <span key={t.loss_type}>
+                    {i > 0 ? " · " : ""}{t.section} ({t.loss_type.replace(/_/g, " ")}, {t.years} yrs)
+                  </span>
+                ))}
+              </p>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => { setShowAddLoss(v => !v); setLossError(null); }}
+                disabled={actionInFlight}
+                className="text-[11px] px-2.5 py-1 disabled:opacity-40 rounded border border-[#E2E8F0] text-[#334155] hover:bg-[#F8FAFC] inline-flex items-center gap-1"
+              >
+                <Plus size={11} /> {showAddLoss ? "Cancel" : "Record a loss"}
+              </button>
+            </div>
+
+            {showAddLoss && (
+              <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-[11px] text-[#64748B]">
+                    Assessment year the loss was computed in
+                    <select
+                      id="bf-loss-ay"
+                      className="mt-1 w-full border border-[#E2E8F0] rounded px-2 py-1 text-xs bg-white"
+                      value={lossForm.assessment_year}
+                      onChange={e => setLossForm(f => ({ ...f, assessment_year: e.target.value }))}
+                    >
+                      <option value="">Select…</option>
+                      {assessmentYearChoicesAround(null, 10).map(ay => (
+                        <option key={ay} value={ay}>{ay}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-[11px] text-[#64748B]">
+                    Head
+                    <select
+                      id="bf-loss-type"
+                      className="mt-1 w-full border border-[#E2E8F0] rounded px-2 py-1 text-xs bg-white"
+                      value={lossForm.loss_type}
+                      onChange={e => setLossForm(f => ({ ...f, loss_type: e.target.value }))}
+                    >
+                      <option value="">Select…</option>
+                      {lossTypes.map(t => (
+                        <option key={t.loss_type} value={t.loss_type}>
+                          {t.loss_type.replace(/_/g, " ")} — {t.section}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {/* The head's own rule, in the server's words. A CA picking
+                    "speculation" should see that it is four years and reaches
+                    only speculation income before they save. */}
+                {lossForm.loss_type && (
+                  <p className="text-[11px] text-[#64748B] bg-white border border-[#E2E8F0] rounded px-2 py-1">
+                    {lossTypes.find(t => t.loss_type === lossForm.loss_type)?.note}
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-[11px] text-[#64748B]">
+                    Loss amount (₹)
+                    <input
+                      id="bf-loss-amount"
+                      inputMode="decimal"
+                      className="mt-1 w-full border border-[#E2E8F0] rounded px-2 py-1 text-xs font-mono bg-white"
+                      placeholder="0"
+                      value={lossForm.amount}
+                      onChange={e => setLossForm(f => ({ ...f, amount: e.target.value }))}
+                    />
+                  </label>
+                  <label className="text-[11px] text-[#64748B]">
+                    Last assessment year it may be set off in
+                    <select
+                      id="bf-loss-expiry"
+                      className="mt-1 w-full border border-[#E2E8F0] rounded px-2 py-1 text-xs bg-white"
+                      value={lossForm.expiry}
+                      onChange={e => setLossForm(f => ({ ...f, expiry: e.target.value }))}
+                    >
+                      <option value="">Work it out from the section</option>
+                      {assessmentYearChoicesAround(null, 12).map(ay => (
+                        <option key={ay} value={ay}>{ay}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className="text-[10px] text-[#94A3B8]">
+                  Left blank, the expiry is worked out from the head&apos;s own section.
+                  Set one only where you mean to override it.
+                </p>
+
+                {lossNotModelled.length > 0 && (
+                  <ul className="space-y-0.5">
+                    {lossNotModelled.map(n => (
+                      <li key={n.what} className="text-[10px] text-[#92400E] bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                        <span className="font-medium">{n.what}</span> — {n.why}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {lossError && (
+                  <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{lossError}</p>
+                )}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={saveLoss}
+                    disabled={actionInFlight}
+                    className="px-3 py-1.5 rounded bg-[#1E293B] text-white text-xs font-medium disabled:opacity-40"
+                  >
+                    {savingLoss ? "Recording…" : "Record loss"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {bfLosses.length === 0 ? (
               <p className="text-xs text-[#94A3B8] py-4 text-center">No carried-forward losses recorded</p>
             ) : (
