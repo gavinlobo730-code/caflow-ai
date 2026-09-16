@@ -45,11 +45,11 @@ _Last updated: 2026-09-16_
 
 | track | what | owner | size | status |
 |---|---|---|---|---|
-| **T1** | Repair the safety net | 🔧 C | 4–6d | `DOING` — 6 of 7 done |
+| **T1** | Repair the safety net | 🔧 C | 4–6d | `DONE` — 7 of 7 |
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `TODO` |
-| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `BLOCKED` on T1 |
+| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `TODO` — unblocked 16 Sep |
 | **T4** | Token adoption | 🔧 C | 5–8d | `BLOCKED` on T3 |
-| **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `BLOCKED` on T1 |
+| **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `TODO` — unblocked 16 Sep |
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
 | **T7** | Analytics & AI | 🔧 C | 3 layers | `BLOCKED` on T3 |
 | **T8** | The portals | 🔧 C | 8–12d | `BLOCKED` on T4 |
@@ -96,7 +96,7 @@ auto-submit to a government portal.
 
 # T1 — Repair the safety net
 
-**Owner 🔧 C · 4–6 days · BLOCKS T3, T5, T6 · status `DOING`**
+**Owner 🔧 C · 4–6 days · BLOCKED T3, T5, T6 · status `DONE` (16 Sep)**
 
 **Why first.** Track 1 of the old plan was built on 13 September and the
 13 September note told you it was "finished and green". It is not. Two of its
@@ -122,12 +122,23 @@ required CI checks green and nothing having verified it. Measured:
 | T1-d | Triage every failure T1-c exposes | 2–3d | `DONE` | `pnpm smoke` exits 0 with all 159 routes rendering their own screen |
 | T1-e | Per-route content assertion + fail the run if > 5 screenshots share an md5 | 1d | `DONE` | `pnpm smoke` exits 0 today; with the seeded rows removed — the harness exactly as it stood on 12 September — it exits 1 with **147 of 159** routes reporting, 143 of them "landed on /onboarding". That run exited **0**. |
 | T1-f | Add `error.tsx` to every module route | 0.5d | `DONE` | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 (was **0**, now 65) |
-| T1-g | Refresh both snapshots at HEAD in a reviewed commit | 0.5h | `TODO` | 128 unprotected endpoints → 0; screen snapshot 159 → 160 |
+| T1-g | Refresh both snapshots at HEAD in a reviewed commit | 0.5h | `DONE` | Unprotected endpoints **0** (was 128); screen snapshot **159 → 160**. The 160th was `/settings/multi-currency`, and it crashed the first time anything visited it — see below. |
 
-**Risk to expect:** T1-c turns a green walk red across many routes at once.
-That is the correct outcome and will look like a regression caused by the fix.
-T1-d is the unpredictable part — nobody has ever seen these screens render
-under this harness.
+**Risk that materialised, twice.** Each fix in this track exposed the next
+defect, which is what a safety net is for:
+
+- T1-c seeded the `users` row; **13 screens crashed** the first time anything
+  could see them.
+- T1-e's landing check found the product's **front door** bouncing to the
+  onboarding wizard — `DashboardContent` reads `firms.name` and the stub
+  answered null — so the dashboard had never rendered under the harness either.
+- T1-g refreshed the screen snapshot from 159 to 160, and the screen nobody had
+  ever walked, `/settings/multi-currency`, **threw on mount**: `data` came back
+  `[]`, `[] ?? null` is `[]`, and `firmGates?.platform.on` read `.on` off
+  undefined. Its error boundary (T1-f) contained it, which is the first time
+  that has been observed working.
+
+All three are fixed. `pnpm smoke` walks 160 routes and exits 0.
 
 ---
 
@@ -522,8 +533,8 @@ c=collections.Counter(v['status'] for v in d['findings'].values()); print(c['ope
 
 | check | 16 Sep 2026 | target | track |
 |---|---|---|---|
-| distinct smoke screenshots | ~~11~~ **154** of 159 | ≥ 150 | ✅ T1-c |
-| distinct rendered bodies | ~~11~~ **149** of 153 that stay put | largest group ≤ 5 | ✅ T1-e |
+| distinct smoke screenshots | ~~11~~ **154** of 160 | ≥ 150 | ✅ T1-c |
+| distinct rendered bodies | ~~11~~ **150** of 154 that stay put | largest group ≤ 5 | ✅ T1-e |
 | routes landing on someone else's screen | ~~143~~ **0** unpinned | 0 | ✅ T1-e |
 | error boundaries | ~~0~~ **65** | ≥ 14 | ✅ T1-f |
 | endpoints reached by an uncalled api-client method | ~~110~~ **0** of 797 | 0 | ✅ T1-b |
