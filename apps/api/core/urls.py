@@ -42,6 +42,18 @@ import os
 # backend; tests/test_public_urls_have_one_source.py fails if another appears.
 _FALLBACK_ORIGIN = "https://caflow-ai.pages.dev"
 
+# The live Cloudflare Pages subdomain for apps/marketing, which is a SEPARATE
+# Pages project from apps/web and therefore a separate origin. Used only when
+# MARKETING_URL is unset.
+#
+# It has to be known here because the marketing site makes exactly one
+# cross-origin request to this API — POST /api/public/demo-request, the "Book a
+# demo" form — and a browser will not send it unless this origin is in the CORS
+# allow-list. That is also why this host is in core/urls.py rather than beside
+# the endpoint: tests/test_public_urls_have_one_source.py forbids a public host
+# anywhere else, and it is right to.
+_MARKETING_FALLBACK_ORIGIN = "https://practicesync.pages.dev"
+
 
 def frontend_base() -> str:
     """The app's public origin, without a trailing slash.
@@ -77,11 +89,36 @@ def portal_login_url() -> str:
     return f"{frontend_base()}/portal/login"
 
 
+def marketing_base() -> str:
+    """The MARKETING site's public origin, without a trailing slash.
+
+    A different Cloudflare Pages project from the app, so a different origin,
+    so its own variable. Blank falls through to the default for the same reason
+    frontend_base() does: an empty dashboard field is easier to create than to
+    notice, and an empty origin in a CORS allow-list silently matches nothing.
+    """
+    raw = (os.environ.get("MARKETING_URL") or "").strip().rstrip("/")
+    return raw or _MARKETING_FALLBACK_ORIGIN
+
+
 def default_allowed_origins() -> str:
-    """CORS fallback: local dev plus wherever the frontend actually is.
+    """CORS fallback: local dev plus the two origins this API actually serves.
 
     Only applies when ALLOWED_ORIGINS is unset. Kept in the same shape the
     parser expects (comma-separated) rather than a list, so the caller's
     parsing stays the single code path for both configured and default values.
+
+    THE MARKETING ORIGIN IS IN HERE AND THAT IS NOT COSMETIC. apps/marketing
+    posts the "Book a demo" form to /api/public/demo-request, and a browser
+    refuses a cross-origin POST whose origin is not on this list — so a demo
+    request from the live site would fail in the browser before reaching any of
+    the endpoint's own careful refusals. Local dev gets both ports because the
+    two sites run side by side (apps/web on 3000, apps/marketing on 3001).
+
+    ⚠️ This is the fallback only. A deployment that SETS ALLOWED_ORIGINS
+    overrides all of it, and must list the marketing origin itself.
     """
-    return f"http://localhost:3000,{frontend_base()}"
+    return (
+        "http://localhost:3000,http://localhost:3001,"
+        f"{frontend_base()},{marketing_base()}"
+    )

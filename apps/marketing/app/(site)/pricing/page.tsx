@@ -78,7 +78,7 @@ const TIERS: Tier[] = [
       "Audit logs",
       "SLA & account manager",
     ],
-    cta: { label: "Contact sales", href: "/support", external: false },
+    cta: { label: "Book a demo", href: "/demo", external: false },
     highlighted: false,
     badge: null,
   },
@@ -87,7 +87,7 @@ const TIERS: Tier[] = [
 const INCLUDED = [
   { title: "Data hosted in India", desc: "Your firm's and clients' data stays on infrastructure hosted in India." },
   { title: "Two-factor authentication", desc: "MFA and role-based access on every account, so only your team gets in." },
-  { title: "Nothing auto-submitted", desc: "A CA confirms every filing — no return is sent to a government portal automatically." },
+  { title: "Nothing auto-submitted", desc: "PracticeSync prepares the return; a CA files it on the portal. The software never transmits anything to a government portal." },
   { title: "Free trial, no card", desc: "Start on any plan with a free trial and no credit card required." },
 ];
 
@@ -105,8 +105,8 @@ const FAQS = [
     a: "Your data is hosted in India, encrypted, and protected with two-factor authentication and role-based access, so only your team sees your clients' information.",
   },
   {
-    q: "Do you file returns automatically?",
-    a: "No. PracticeSync prepares everything and flags what needs attention, but nothing is auto-filed — a CA must click to submit every GST, ITR, TDS or MCA return.",
+    q: "Does PracticeSync file returns for me?",
+    a: "No — and it is worth being precise about this. PracticeSync computes the return from your books and produces a file that is ready to submit. You upload and sign it on the government portal yourself, then record it back here, which is what locks the period. The software never transmits anything to a portal, for GST, ITR, TDS or MCA.",
   },
   {
     q: "Can I change plans later?",
@@ -118,8 +118,9 @@ export default function PricingPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none">
+      <Panel theme="dark" flush>
         <SerifHeading
+          layout="split"
           eyebrow="Pricing"
           lines={[{ text: "Simple pricing for" }, { text: "firms of every size.", italic: true }]}
           subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms. Start free, no credit card."
@@ -127,7 +128,7 @@ export default function PricingPage() {
       </Panel>
 
       {/* ── Tiers ────────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <div className="grid gap-6 md:grid-cols-3">
           {TIERS.map((tier, i) => (
             <Reveal key={tier.name} variant="up" delay={i * 120} className="h-full">
@@ -188,8 +189,9 @@ export default function PricingPage() {
       </Panel>
 
       {/* ── Included in every plan ───────────────────────────────────────── */}
-      <Panel theme="dark" seam="rising-left">
+      <Panel theme="dark">
         <SerifHeading
+          layout="split"
           eyebrow="Every plan"
           lines={[{ text: "Included with", italic: false }, { text: "every plan.", italic: true }]}
           subtitle="Whatever size your firm is today, these come as standard on Solo, Practice and Firm."
@@ -207,9 +209,10 @@ export default function PricingPage() {
       </Panel>
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <SerifHeading
-          eyebrow="FAQ"
+          layout="split"
+          eyebrow="Common questions"
           theme="light"
           lines={[{ text: "Questions,", italic: false }, { text: "answered.", italic: true }]}
           subtitle="A few things CAs ask us before getting started."

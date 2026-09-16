@@ -36,6 +36,24 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "rlig" 1, "calt" 1;
+
+  /* MANROPE TURNS "(c)" INTO "©" AND THIS SITE IS ABOUT INDIAN TAX LAW.
+     Clause letters are everywhere in the copy — GSTR-3B Table 3.1 row (c),
+     §16(2)(c), §49(5)(c), §139(1)(a) — and the font ships that substitution as
+     a COMMON ligature, so it fires by default and renders a statutory row
+     label as a copyright symbol. It was doing exactly that in the GSTR-3B
+     screen of the product showcase.
+
+     `font-feature-settings` cannot switch it off: measured, "(c)" is 12.7px
+     with "calt" 0, "rlig" 0 and `normal` alike, and 18.6px only under
+     font-variant-ligatures. So it has to be this property.
+
+     `no-common-ligatures` rather than `none` is the narrowest thing that
+     works, and it costs nothing here: with it, "(r)" and "(tm)" are unchanged
+     (Manrope does not substitute those at all) and a string full of fi/fl
+     pairs moves by 0.3px across 68 — i.e. Manrope has no real common
+     ligatures apart from this one. */
+  font-variant-ligatures: no-common-ligatures;
   overflow-x: hidden;
 }
 
@@ -276,6 +294,16 @@ body {
   to { stroke-dashoffset: 0; }
 }
 
+/* ─── Hero scroll cue ─────────────────────────────────────────────────────── */
+/* The one ambient animation that survives from the static homepage's own
+   stylesheet. Named ps-bob rather than bob because this file is shared with
+   every page and a two-letter generic keyframe name is how two of them end up
+   fighting over one definition. */
+@keyframes ps-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(8px); }
+}
+
 /* ─── Ambient shimmer line under section eyebrows ─────────────────────────── */
 @keyframes fade-up-simple {
   from { opacity: 0; transform: translateY(10px); }
@@ -380,4 +408,46 @@ html.cursor-none * {
   .btn-shine::after { display: none; }
   .card-lift, .card-lift:hover { transform: none; }
   .cursor-dot, .cursor-ring, .cursor-glow { display: none !important; }
+}
+
+/* ── A split heading responds to ITS OWN box, never the viewport ────────────
+ *
+ * `SerifHeading layout="split"` sets the headline and its standfirst in two
+ * columns. The first version did that at Tailwind's `lg:` breakpoint, which is
+ * a VIEWPORT width — and viewport width is exactly the wrong signal, because
+ * the question is how wide THIS HEADING's box is. On /demo the heading sits in
+ * a 372px grid column of a 1440px page: `lg:` applied, the split fired, and
+ * "See it run against a practice like yours." wrapped to eight lines.
+ *
+ * A container query asks the right question, so no page has to remember where a
+ * heading may be split and no reviewer has to notice. Below the threshold the
+ * grid stays one column, which IS the stacked layout — so a browser with no
+ * container-query support degrades to the correct thing rather than to a broken
+ * one.
+ *
+ * 760px is where two columns of roughly 45ch each stop being a measure and
+ * start being a column of loose words. */
+.ps-split {
+  container-type: inline-size;
+}
+.ps-split-grid {
+  display: grid;
+}
+@container (min-width: 760px) {
+  .ps-split-grid {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    column-gap: 3.5rem;
+    /* The standfirst sits on the headline's own baseline block rather than
+       floating at the top of a taller column, which is what makes the two read
+       as one heading instead of two things side by side. */
+    align-items: end;
+  }
+  /* The standfirst is always the <p> in the second cell; in two columns it
+     needs no top margin, only the optical nudge off the last baseline. */
+  .ps-split-aside > p {
+    margin-top: 0;
+  }
+  .ps-split-aside {
+    padding-bottom: 0.5rem;
+  }
 }

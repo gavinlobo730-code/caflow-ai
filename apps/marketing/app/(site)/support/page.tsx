@@ -17,7 +17,6 @@ export const metadata = {
 // single source of truth, CONTACT.phone — digits only, keeping the leading +.
 const emailHref = `mailto:${CONTACT.email}`;
 const telHref = `tel:${CONTACT.phone.replace(/[^\d+]/g, "")}`;
-const demoHref = `mailto:${CONTACT.email}?subject=${encodeURIComponent("Demo request")}`;
 
 const CHANNELS = [
   {
@@ -57,7 +56,7 @@ const CHANNELS = [
 const FAQ = [
   {
     q: "How do I get started?",
-    a: "Start a free trial, add your firm and import your first clients — most firms are up and running within a day. No credit card is needed to try PracticeSync.",
+    a: "Sign up for the free trial, add your firm, and import your first clients from Tally or a spreadsheet. No credit card is needed to try PracticeSync.",
   },
   {
     q: "Can you help migrate my existing data?",
@@ -73,7 +72,7 @@ const FAQ = [
   },
   {
     q: "How is my data protected?",
-    a: "Your data is hosted in India, secured with two-factor authentication and role-based access, and every action is captured in a full audit log. Nothing is ever filed to a government portal without an explicit click from a CA.",
+    a: "Your data is hosted in India, secured with two-factor authentication and role-based access, and every action is captured in a full audit log. PracticeSync also never transmits anything to a government portal — it prepares the return and a CA files it themselves.",
   },
 ];
 
@@ -84,8 +83,9 @@ export default function SupportPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none">
+      <Panel theme="dark" flush>
         <SerifHeading
+          layout="split"
           eyebrow="Support"
           lines={[{ text: "We're here to help" }, { text: "your firm succeed.", italic: true }]}
           subtitle="From your first client to peak filing season, our team knows Indian practice inside out — and we're ready to help by guide, email or phone."
@@ -93,8 +93,9 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Channels ─────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <SerifHeading
+          layout="split"
           eyebrow="How we help"
           theme="light"
           lines={[{ text: "Help, whichever" }, { text: "way suits you.", italic: true }]}
@@ -123,8 +124,9 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Get in touch ─────────────────────────────────────────────────── */}
-      <Panel id="get-in-touch" theme="dark" seam="rising-left">
+      <Panel id="get-in-touch" theme="dark">
         <SerifHeading
+          layout="split"
           eyebrow="Get in touch"
           lines={[{ text: "Talk to a" }, { text: "real person.", italic: true }]}
           subtitle="No bots, no ticket black holes. Reach us directly — we usually reply within one business day, Monday to Saturday."
@@ -176,8 +178,11 @@ export default function SupportPage() {
                 See PracticeSync mapped to your firm&apos;s workflow in a short, no-pressure walkthrough tailored to how you work.
               </p>
               <p className="mt-4 self-start text-[13px] font-medium text-slate-400">Typically around 30 minutes.</p>
-              <Button href={demoHref} external variant="light" className="mt-auto w-full">
-                Request a demo <ArrowRight size={16} />
+              {/* Was a mailto: — the only "book a demo" the site had before
+                  /demo existed. The form is the route in now; the address is
+                  still on that page, and is what it offers if a send fails. */}
+              <Button href="/demo" variant="light" className="mt-auto w-full">
+                Book a demo <ArrowRight size={16} />
               </Button>
             </GlassCard>
           </Reveal>
@@ -185,8 +190,9 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Common questions ─────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <SerifHeading
+          layout="split"
           eyebrow="Common questions"
           theme="light"
           lines={[{ text: "Answers before" }, { text: "you switch.", italic: true }]}

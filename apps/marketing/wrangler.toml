@@ -13,3 +13,8 @@ pages_build_output_dir = "out"
 # Origin of the actual application (apps/web). Currently its Cloudflare Pages URL;
 # change to https://app.<yourdomain> once a custom domain is attached.
 NEXT_PUBLIC_APP_URL = "https://caflow-ai.pages.dev"
+# Origin of the FastAPI backend (apps/api on Render, Singapore). The marketing
+# site reaches it for one unauthenticated endpoint only — POST
+# /api/public/demo-request, which is how the "Book a demo" form sends mail,
+# since a static export has no server of its own. Same value apps/web uses.
+NEXT_PUBLIC_API_URL = "https://practicesync-api.onrender.com"

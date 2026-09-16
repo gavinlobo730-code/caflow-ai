@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "PracticeSync — AI practice management for Indian CAs",
     description:
-      "Compliance, accounting, payroll and clients in one AI-first platform built for Indian CA firms.",
+      "Compliance, accounting, payroll and clients in one place — the AI-first platform for Indian CA firms.",
     type: "website",
   },
 };

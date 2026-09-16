@@ -15,13 +15,26 @@ export const appLinks = {
   /** Client portal sign-in (email + password; access is provisioned by the CA,
    *  who sends an invite the client uses once to set their password). */
   clientPortal: `${APP_URL}/portal/login`,
+  /** Employee portal sign-in — payslips, leave, Form 12BB and tax deducted, for
+   *  the staff of a client whose payroll runs here. The SAME sign-in page as
+   *  the client portal: one password login serves both, and apps/web routes the
+   *  identity to the right portal after it resolves who they are. Named
+   *  separately so the two are distinguishable in copy and analytics even
+   *  though the URL is shared today. */
+  employeePortal: `${APP_URL}/portal/login`,
   /** New-firm signup / free trial. */
   signup: `${APP_URL}/signup`,
 };
 
-/** Primary navigation shown in the site header. */
+/** Primary navigation shown in the site header.
+ *
+ *  Every entry is a PAGE. "Our Story" pointed at `/#story` until 16-09-2026 —
+ *  an anchor onto a homepage panel — so the one nav item promising to explain
+ *  the company scrolled you a screen and a half down the page you were already
+ *  on. A fragment in the primary nav is also invisible to a reader who arrives
+ *  from anywhere else, since the browser restores it without a page change. */
 export const NAV = [
-  { label: "Our Story", href: "/#story" },
+  { label: "Our Story", href: "/story" },
   { label: "Products", href: "/products" },
   { label: "Pricing", href: "/pricing" },
   { label: "Support", href: "/support" },

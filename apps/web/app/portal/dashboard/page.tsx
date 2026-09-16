@@ -9,13 +9,14 @@
 // All amounts are integer paise from the server; the frontend only formats them.
 
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   FileText, FolderOpen, MessageSquare, Receipt, ScrollText, BellRing, ShieldCheck,
   Download, AlertCircle, CreditCard, type LucideIcon,
 } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
 import { PageLoader } from "@/components/ui/skeleton";
 
@@ -68,6 +69,7 @@ function StatusBadge({ status, danger }: { status: string | null; danger?: boole
 
 export default function PortalDashboardPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const inviteToken = searchParams.get("invite");
 
   const [memberships, setMemberships] = useState<Membership[]>([]);
@@ -91,6 +93,10 @@ export default function PortalDashboardPage() {
   // it kept spinning underneath the (correctly firing) `notice` banner
   // instead of resolving to a retryable error state.
   const [sectionFailed, setSectionFailed] = useState<Record<string, boolean>>({});
+  // True once we know this identity belongs in the EMPLOYEE portal and the
+  // navigation there has been asked for but not yet happened. Keeps the loading
+  // state up across that gap; see the redirect below.
+  const [redirecting, setRedirecting] = useState(false);
 
   // 1. Accept a pending invite (F22 fix — a single-use token, not an auto-bind
   // on email/URL match), then resolve the identity's client memberships (one
@@ -117,6 +123,24 @@ export default function PortalDashboardPage() {
         }
         const res = await api.portalSelf.memberships() as ApiResp<{ memberships: Membership[] }>;
         const ms = res.data?.memberships ?? [];
+        // No CLIENT memberships is not the same as no access. /portal/login
+        // pushes every portal sign-in here, and an employee of a client is a
+        // portal user with no client membership at all — so this branch used to
+        // tell an activated employee "ask your accountant to invite you" and
+        // leave them with no route to their own payslips but the original
+        // invite link. Send them to the portal that is actually theirs.
+        if (ms.length === 0 && await hasEmployeePortalAccess()) {
+          if (!cancelled) {
+            // Stays true through the navigation. `finally` below clears
+            // `loading`, and without this the zero-memberships branch would
+            // paint "you don't have access" for a frame or two on the way out —
+            // the exact message this redirect exists to stop them seeing.
+            setRedirecting(true);
+            router.replace("/portal/employee");
+          }
+          return;
+        }
+        if (cancelled) return;
         setMemberships(ms);
         if (ms.length === 1) setActiveClient(ms[0].client_id);
       } catch (e) {
@@ -217,7 +241,7 @@ export default function PortalDashboardPage() {
     finally { setBusy(false); }
   };
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading your portal…</div>;
+  if (loading || redirecting) return <div className="p-8 text-sm text-gray-500">Loading your portal…</div>;
   if (error) {
     return (
       <div className="p-8 max-w-md">
