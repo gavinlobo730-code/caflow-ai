@@ -46,7 +46,7 @@ _Last updated: 2026-09-16_
 | track | what | owner | size | status |
 |---|---|---|---|---|
 | **T1** | Repair the safety net | 🔧 C | 4–6d | `DONE` — 7 of 7 |
-| **T2** | A demo firm that exists | 🔧 C | 2–3d | `TODO` |
+| **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
 | **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `TODO` — unblocked 16 Sep |
 | **T4** | Token adoption | 🔧 C | 5–8d | `BLOCKED` on T3 |
 | **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `TODO` — unblocked 16 Sep |
@@ -168,7 +168,7 @@ wipe and re-seed freely.
 | ID | item | size | DONE WHEN |
 |---|---|---|---|
 | T2-a | Make `seed_data.py` runnable — one command, idempotent, with a reset | 1d | One command creates the firm; running it twice is a no-op |
-| T2-0 | Correct the 18 GSTINs, computing each check digit | 1h | `problem_with` returns None for every seeded GSTIN, asserted by a test |
+| T2-0 | Correct the 18 GSTINs, computing each check digit | 1h | `DONE` 16 Sep — `tests/test_the_demo_firm_can_be_created_at_all.py`, 64 tests; 18 fail against the uncorrected data. Three further copies of one of them were found in `mock_data.py` and the document-intelligence specimens, and corrected too. |
 | T2-b | Extend to a **full financial year** of transactions across every module — sales, purchases, bank, payroll, GST returns, TDS, fixed assets, inventory | 1–2d | Every one of the 15 tiles has real figures on it; no screen shows an empty state |
 
 **Deliberately included:** at least one client with a locked period, one with a
