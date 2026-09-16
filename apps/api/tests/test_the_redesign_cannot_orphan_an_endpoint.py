@@ -13,8 +13,10 @@ CA discovers on a Tuesday in November that the button which used to reverse a
 depreciation posting is gone.
 
 So this file pins the SET, not the count. `tests/fixtures/reachable_endpoints.json`
-records every mounted endpoint that some screen named on the day it was written.
-Afterwards:
+records every mounted endpoint a screen could reach on the day it was written —
+"could reach" in the sense `_sources()` defines, which since 16-09-2026 means a
+call chain starting in `app/` or `components/`, not merely a URL written down
+somewhere in the repository. Afterwards:
 
   * an endpoint in the snapshot that is STILL MOUNTED and no longer reached is a
     FAILURE, named individually — a screen that called it was deleted or
@@ -28,9 +30,15 @@ Afterwards:
 WHAT IT CANNOT SEE is inherited wholesale from the ratchet, deliberately: the
 match is on PATHS, not (method, path) pairs, and a path built from a variable
 (`${API}/api/public/engagement-letters/${token}${path}`) matches everything of
-that shape. A green run here means "some file in apps/web still names a URL of
-this shape", never "the screen still works". It is the floor, not the ceiling —
-the Playwright walk over the converted modules is what checks the rest.
+that shape. A green run here means "some screen still reaches a URL of this
+shape", never "the screen still works". It is the floor, not the ceiling — the
+Playwright walk over the converted modules is what checks the rest.
+
+And the floor is only as high as the attribution: a screen whose every endpoint
+is ALSO called by a second screen can be deleted with this file quiet, because
+nothing was orphaned. Measured on 16-09-2026, 77 of 159 route pages are in that
+position — down from 133 under the concatenation, and the remainder is the
+walk's job rather than a hole here.
 
 REFRESHING IT IS DELIBERATE AND SHOULD BE RARE:
 
@@ -60,7 +68,9 @@ SNAPSHOT = pathlib.Path(__file__).resolve().parent / "fixtures" / "reachable_end
 MIN_STILL_MOUNTED = 0.80
 
 #: A truncated or half-written fixture passes every other test in here
-#: vacuously. The tree of 2026-09-12 reaches ~770 of 904 routes.
+#: vacuously. The tree of 2026-09-16 reaches 797 of 1,036 routes — and reached
+#: 907 of them the day before, when `_sources()` still counted a URL literal in
+#: an api-client method nobody called.
 MIN_ENTRIES = 600
 
 
@@ -69,7 +79,7 @@ def _snapshot() -> list[str]:
 
 
 def reached_now() -> set[str]:
-    """Every mounted endpoint some non-test file in apps/web names."""
+    """Every mounted endpoint a screen in either frontend can reach."""
     blob = _sources()
     return {
         f"{method} {path}"

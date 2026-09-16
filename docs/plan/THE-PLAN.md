@@ -45,7 +45,7 @@ _Last updated: 2026-09-16_
 
 | track | what | owner | size | status |
 |---|---|---|---|---|
-| **T1** | Repair the safety net | 🔧 C | 4–6d | `TODO` |
+| **T1** | Repair the safety net | 🔧 C | 4–6d | `DOING` — 5 of 7 done |
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `TODO` |
 | **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `BLOCKED` on T1 |
 | **T4** | Token adoption | 🔧 C | 5–8d | `BLOCKED` on T3 |
@@ -96,7 +96,7 @@ auto-submit to a government portal.
 
 # T1 — Repair the safety net
 
-**Owner 🔧 C · 4–6 days · BLOCKS T3, T5, T6 · status `TODO`**
+**Owner 🔧 C · 4–6 days · BLOCKS T3, T5, T6 · status `DOING`**
 
 **Why first.** Track 1 of the old plan was built on 13 September and the
 13 September note told you it was "finished and green". It is not. Two of its
@@ -105,22 +105,24 @@ required CI checks green and nothing having verified it. Measured:
 
 - **148 of 159 smoke-walk screenshots are byte-identical** — the onboarding
   wizard. Zero product modules have ever rendered under the harness.
-- **134 of 160 screens (83%) can be deleted entirely** with the reachability
-  guard reporting zero losses.
+- **133 of 159 route pages (84%) can be deleted entirely** with the reachability
+  guard reporting zero losses. ✅ **T1-b, 16 Sep: now 77.** The rest share every
+  endpoint they call with a second screen, so deleting one orphans nothing —
+  that residual is the smoke walk's job, not this guard's.
 - **The required backend check reports green without running** on any
   `apps/web`-only PR — which is exactly what a module conversion is.
 - **Zero `error.tsx` across 160 routes**, so "if something breaks it is one
   module" is false at runtime.
 
-| ID | item | size | DONE WHEN |
-|---|---|---|---|
-| T1-a | Widen `backend-ci.yml` scope to `apps/web/`, or add a third job scoped to the two reachability tests. Make `frontend-ci` a required check. | 2h | A frontend-only PR shows the backend job **ran**, not "reported green without running" |
-| T1-b | Attribute reachability to a calling file under `app/` or `components/`, not the `lib/` blob | 1d | The 469 figure in §T1 is **0** — every protected endpoint is named by a real screen |
-| T1-c | Seed the smoke walk's `users` read so `hasFirm` resolves true and screens actually render | 1h | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 (is **11**) |
-| T1-d | Triage every failure T1-c exposes | 2–3d | `pnpm smoke` exits 0 with all 159 routes rendering their own screen |
-| T1-e | Per-route content assertion + fail the run if > 5 screenshots share an md5 | 1d | The guard that would have caught this on 12 September exists and passes |
-| T1-f | Add `error.tsx` to every module route | 0.5d | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 (is **0**) |
-| T1-g | Refresh both snapshots at HEAD in a reviewed commit | 0.5h | 128 unprotected endpoints → 0; screen snapshot 159 → 160 |
+| ID | item | size | status | DONE WHEN |
+|---|---|---|---|---|
+| T1-a | Widen `backend-ci.yml` scope to `apps/web/`, or add a third job scoped to the two reachability tests. Make `frontend-ci` a required check. | 2h | `DONE` | A frontend-only PR shows the backend job **ran**, not "reported green without running" |
+| T1-b | Attribute reachability to a calling file under `app/` or `components/`, not the `lib/` blob | 1d | `DONE` | `_sources()` counts a URL literal only where a screen can reach it. Endpoints reached falls 907 → **797**; the 110 between were named by nothing but an api-client method with no caller |
+| T1-c | Seed the smoke walk's `users` read so `hasFirm` resolves true and screens actually render | 1h | `DONE` | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 (was **11**, now 154) |
+| T1-d | Triage every failure T1-c exposes | 2–3d | `DONE` | `pnpm smoke` exits 0 with all 159 routes rendering their own screen |
+| T1-e | Per-route content assertion + fail the run if > 5 screenshots share an md5 | 1d | `TODO` | The guard that would have caught this on 12 September exists and passes |
+| T1-f | Add `error.tsx` to every module route | 0.5d | `DONE` | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 (was **0**, now 65) |
+| T1-g | Refresh both snapshots at HEAD in a reviewed commit | 0.5h | `TODO` | 128 unprotected endpoints → 0; screen snapshot 159 → 160 |
 
 **Risk to expect:** T1-c turns a green walk red across many routes at once.
 That is the correct outcome and will look like a regression caused by the fix.
@@ -437,7 +439,7 @@ from memory puts a wrong number in somebody's pay or return.
 |---|---|---|
 | V-1 | Smoke walk renders the product | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 |
 | V-2 | Required checks actually run on a web-only PR | Open one and read the job log |
-| V-3 | Reachability attributed to screens | The 469 figure is 0 |
+| V-3 | Reachability attributed to screens | `pytest tests/test_reachability_is_attributed_to_a_screen.py` passes |
 | V-4 | A demo firm exists | One command builds it |
 | V-5 | Error boundaries | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 |
 
@@ -496,6 +498,11 @@ cd /path/to/caflow-ai
 # T1-c/V-1  distinct smoke screenshots            now 11      target >=150
 md5sum apps/web/.smoke/*.jpg | awk '{print $1}' | sort -u | wc -l
 
+# T1-b/V-3  endpoints a screen can actually reach    now 797    was 907
+cd apps/api && python3 -c "from tests.test_every_mounted_endpoint_has_a_way_in \
+  import _sources, _pattern, _routes; b = _sources(); \
+  print(sum(1 for m, p in _routes() if _pattern(p).search(b)))"
+
 # T1-f/V-5  error boundaries                      now 0       target >=14
 find apps/web/app -name error.tsx | wc -l
 
@@ -517,8 +524,8 @@ c=collections.Counter(v['status'] for v in d['findings'].values()); print(c['ope
 |---|---|---|---|
 | distinct smoke screenshots | **11** of 159 | ≥ 150 | T1-c |
 | error boundaries | **0** | ≥ 14 | T1-f |
-| endpoints reached only via `lib/` | **469** of 777 | 0 | T1-b |
-| screens deletable in silence | **134** of 160 | 0 | T1-b |
+| endpoints reached by an uncalled api-client method | ~~110~~ **0** of 797 | 0 | ✅ T1-b |
+| screens deletable in silence | ~~133~~ **77** of 159 | see note | T1-b done, rest → T1-e |
 | redirect rules used | **98** of 100 | ≤ 90 | T6-a |
 | hardcoded hex colours | **10,850** | 0 | T4-a |
 | money formatters | **53** | 1 | T3-c |
