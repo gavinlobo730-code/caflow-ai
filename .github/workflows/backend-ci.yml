@@ -82,9 +82,15 @@ jobs:
           fi
           # A frontend-only diff used to leave EVERY python guard unrun, which
           # is how `browser-contract` below came to exist. See its header.
-          if printf '%s\n' "$changed" | grep -qE '^apps/web/'; then
+          # BOTH frontends. apps/marketing is a second Next.js app on its own
+          # Cloudflare project, and a marketing-only diff touches no apps/api
+          # file — so without it here it would skip every python guard exactly
+          # as an apps/web diff did, and
+          # test_the_marketing_site_says_what_the_product_does.py would never
+          # run on the change it exists to check.
+          if printf '%s\n' "$changed" | grep -qE '^apps/(web|marketing)/'; then
             echo "web=true" >> "$GITHUB_OUTPUT"
-            echo "apps/web changed — the browser-contract guards will run."
+            echo "A frontend changed — the browser-contract guards will run."
           else
             echo "web=false" >> "$GITHUB_OUTPUT"
           fi
@@ -255,7 +261,7 @@ jobs:
   # variant reading the committed production snapshot in tests/fixtures/
   # instead of a live database; that is a build, not a config change.
   browser-contract:
-    name: browser contract — python guards that read apps/web
+    name: browser contract — python guards that read a frontend
     runs-on: ubuntu-latest
     needs: scope
     # Runs when apps/web changed. When apps/api changed too, the full suite
@@ -279,7 +285,7 @@ jobs:
         working-directory: apps/api
         run: pip install -r requirements.txt
 
-      - name: Run the guards that read apps/web
+      - name: Run the guards that read a frontend
         working-directory: apps/api
         env:
           APP_ENV: development
@@ -288,7 +294,7 @@ jobs:
           # The script exits non-zero if it finds nothing, so an empty list can
           # never become a bare `pytest` over the whole suite.
           mapfile -t modules < <(python3 scripts/ci/tests_reading_the_browser.py)
-          echo "Running ${#modules[@]} modules that read apps/web:"
+          echo "Running ${#modules[@]} modules that read a frontend:"
           printf '  %s\n' "${modules[@]}"
           pytest "${modules[@]}" -v --tb=short
 

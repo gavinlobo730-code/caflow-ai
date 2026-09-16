@@ -1,4 +1,4 @@
-"""Print the test modules that read `apps/web`, for CI to run on a frontend PR.
+"""Print the test modules that read a frontend, for CI to run on a frontend PR.
 
 WHY THIS EXISTS. `.github/workflows/backend-ci.yml` skips the whole backend
 suite when a diff touches no `apps/api/` file, and says so in its own output:
@@ -46,9 +46,18 @@ import sys
 
 TESTS = pathlib.Path(__file__).resolve().parents[2] / "tests"
 
-# `<something> / "apps" / "web"` — the expression that opens the browser tree.
-# Deliberately not the bare string: see the docstring.
-_BUILDS_WEB_PATH = re.compile(r'/\s*"apps"\s*/\s*"web"')
+# `<something> / "apps" / "web"` (or "marketing") — the expression that opens a
+# frontend tree. Deliberately not the bare string: see the docstring.
+#
+# BOTH FRONTENDS, because the hole is the same one directory over. apps/
+# marketing is a second Next.js app on its own Cloudflare project, and on
+# 16-09-2026 test_every_mounted_endpoint_has_a_way_in.py was taught to scan it
+# — the demo form is the most-used public endpoint on the site and the scanner
+# had been calling it unreachable. A marketing-only PR touches no apps/api
+# file, so without this it would skip the whole suite exactly as an apps/web
+# PR did, and test_the_marketing_site_says_what_the_product_does.py would
+# never run on the diff it exists to check.
+_BUILDS_WEB_PATH = re.compile(r'/\s*"apps"\s*/\s*"(web|marketing)"')
 
 
 def _module_name(path: pathlib.Path) -> str:

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import importlib.util
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -79,6 +80,17 @@ def test_it_follows_imports_to_a_guard_with_no_path_of_its_own() -> None:
     )
 
 
+def test_it_covers_the_marketing_frontend_too() -> None:
+    """apps/marketing is a second frontend with the same hole one dir over."""
+    names = {p.name for p in _load().modules_reading_the_browser()}
+    target = "test_the_marketing_site_says_what_the_product_does.py"
+    assert target in names, (
+        f"{target} reads apps/marketing and is not selected. A marketing-only "
+        "PR touches no apps/api file, so the full suite skips and this guard "
+        "would never run on the diff it exists to check."
+    )
+
+
 def test_a_comment_mentioning_apps_web_is_not_a_read() -> None:
     """Matching the bare string finds ~89 modules; most only talk about it."""
     selected = _load().modules_reading_the_browser()
@@ -95,11 +107,18 @@ def test_a_comment_mentioning_apps_web_is_not_a_read() -> None:
 
 def test_finding_nothing_is_a_failure_not_an_empty_run() -> None:
     """An empty argv makes pytest collect everything — that must not happen."""
-    broken = SCRIPT.read_text().replace(
-        '_BUILDS_WEB_PATH = re.compile(r\'/\\s*"apps"\\s*/\\s*"web"\')',
+    # Matched by SHAPE rather than by the exact pattern string: the pattern
+    # legitimately changes (it gained "marketing" on 16-09-2026) and a test
+    # that pins its spelling silently stops patching anything. The assert
+    # below is what caught that, so keep it.
+    broken, n = re.subn(
+        r"^_BUILDS_WEB_PATH = re\.compile\(.*$",
         "_BUILDS_WEB_PATH = re.compile(r'ZZZ_MATCHES_NOTHING')",
+        SCRIPT.read_text(),
+        count=1,
+        flags=re.MULTILINE,
     )
-    assert "ZZZ_MATCHES_NOTHING" in broken, "patch did not apply — rewrite this test"
+    assert n == 1, "_BUILDS_WEB_PATH assignment not found — rewrite this test"
 
     tmp = API_ROOT / "tests" / "_selector_negative_control.py"
     tmp.write_text(broken)
