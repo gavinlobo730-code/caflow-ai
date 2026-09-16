@@ -278,7 +278,7 @@ export default function AdvanceTaxPage() {
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
                 {(presumptive ? [4] : [1, 2, 3, 4]).map(n => {
-                  const inst = result?.installments.find(i => i.installment_number === n);
+                  const inst = result?.installments?.find(i => i.installment_number === n);
                   const dueDate = inst?.due_date ?? "";
                   // No local fallback. [15, 45, 75, 100] was §208's schedule
                   // written into the browser, and it is wrong for a §44AD/§44ADA

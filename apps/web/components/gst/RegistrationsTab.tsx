@@ -320,7 +320,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                     ))}
                 </select>
                 {(() => {
-                  const chosen = kinds?.registration_types.find(t => t.value === form.registration_type);
+                  const chosen = kinds?.registration_types?.find(t => t.value === form.registration_type);
                   return chosen?.other_return_form ? (
                     <span className="block text-[10px] text-amber-800 mt-1 leading-tight">
                       {chosen.other_return_form} — which this product does not build, so

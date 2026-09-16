@@ -14,6 +14,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { api } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { fmt, BankAccount } from "@/components/banking/shared";
+import { objectOrNull } from "@/lib/api/shape";
 
 // ── Bank register (Tier 1.1) ───────────────────────────────────────────────
 // The ledger view of one account. READ-ONLY by design: posted journals are
@@ -142,7 +143,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
         offset: String(page * PAGE_SIZE),
       })) as { success: boolean; data: RegisterPayload; error: string | null };
       if (!res.success) throw new Error(res.error ?? "Couldn't load the register.");
-      setData(res.data);
+      setData(objectOrNull(res.data));
     } catch (e) {
       setData(null);
       setLoadError(e instanceof Error ? e.message : "Couldn't load the register.");

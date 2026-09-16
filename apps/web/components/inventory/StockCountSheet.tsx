@@ -159,7 +159,7 @@ export function StockCountSheetPanel({
             </div>
           )}
 
-          {sheet?.gaps.map((g, i) => (
+          {sheet?.gaps?.map((g, i) => (
             <p key={i} className="text-[11px] text-amber-900 flex gap-1.5">
               <AlertTriangle size={12} className="shrink-0 mt-0.5" />{g}
             </p>
@@ -248,7 +248,7 @@ export function StockCountSheetPanel({
                     </td>
                   </tr>
                 ))}
-                {!sheet?.lines.length && (
+                {!sheet?.lines?.length && (
                   <tr><td colSpan={6} className="px-3 py-8 text-center text-[#94A3B8]">
                     No stock-tracked products on this sheet.
                   </td></tr>

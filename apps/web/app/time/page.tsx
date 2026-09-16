@@ -23,6 +23,7 @@ import {
 import { getClients } from "@/lib/data/clients";
 import type { TimeEntry, Client } from "@/lib/types";
 import { formatDate as fmt } from "@/lib/services/formatting";
+import { arrayOrEmpty } from "@/lib/api/shape";
 
 function fmtTime(iso: string) {
   const d = new Date(iso);
@@ -80,7 +81,7 @@ export default function TimeTrackingPage() {
   const loadEntries = useCallback(async () => {
     try {
       const { entries: e } = await listTimeEntries({ limit: 100 });
-      setEntries(e);
+      setEntries(arrayOrEmpty(e));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load entries");
     }

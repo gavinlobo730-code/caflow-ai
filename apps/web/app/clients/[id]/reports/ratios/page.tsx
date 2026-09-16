@@ -9,6 +9,7 @@ import {
 import { formatPaise } from "@/lib/services/formatting";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { objectOrNull } from "@/lib/api/shape";
 
 /**
  * The eleven Schedule III ratios — Division I, General Instructions, Additional
@@ -89,7 +90,7 @@ export default function ClientRatioNotePage() {
     try {
       const r = await api.accounting.scheduleIiiRatios(clientId, fy);
       if (!r.success) throw new Error(r.error ?? "Could not build the ratio note");
-      setNote(r.data);
+      setNote(objectOrNull(r.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not build the ratio note");
     } finally {

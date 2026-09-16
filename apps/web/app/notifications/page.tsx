@@ -12,6 +12,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import type { Notification, InsightSeverity } from "@/lib/types";
+import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -82,8 +83,9 @@ export default function NotificationsPage() {
         total: number;
       }>(`/api/notifications?${params}`);
       if (!resp.success) throw new Error(resp.error ?? "Failed to load");
-      setNotifications(resp.data.notifications);
-      setUnreadCount(resp.data.unread_count);
+      const payload = objectOrNull<{ notifications?: unknown[]; unread_count?: number }>(resp.data);
+      setNotifications(arrayOrEmpty(payload?.notifications) as typeof notifications);
+      setUnreadCount(payload?.unread_count ?? 0);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load notifications");
     } finally {
