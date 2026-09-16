@@ -44,6 +44,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { getClients } from "@/lib/data/clients";
 import { api, type Vendor, type VendorWrite } from "@/lib/api";
 import { listTdsSections, computeTdsAmount, type TDSSection, type TDSAmountResult } from "@/lib/data/tds";
+import { arrayOrEmpty } from "@/lib/api/shape";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -179,7 +180,7 @@ export default function SuppliersPage() {
   useEffect(() => { loadVendors(); }, [loadVendors]);
 
   useEffect(() => {
-    listTdsSections().then(r => setTdsSections(r.sections)).catch(() => setTdsSections([]));
+    listTdsSections().then(r => setTdsSections(arrayOrEmpty(r?.sections))).catch(() => setTdsSections([]));
   }, []);
 
   useEffect(() => {

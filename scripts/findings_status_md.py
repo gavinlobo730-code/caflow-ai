@@ -88,7 +88,13 @@ def main() -> None:
         "here.\n\n" + table("closed_by_commit_only")
     ) if c.get("closed_by_commit_only") else ""
 
-    OUT.write_text(f"""# Where the 278 findings stand
+    retired_row = (
+        f"| closed_by_commit | **{c['closed_by_commit']}** | named in a merged commit on `main` "
+        "**and** in an in-code comment saying what it closed. Two independent traces; not a "
+        "re-read. **Retired on 16-09-2026** — do not put a finding back here, re-read it. |\n"
+    ) if c.get("closed_by_commit") else ""
+
+    OUT.write_text(f"""# Where the {len(led)} findings stand
 
 Generated from `findings-status.json`. That file is the record; this one is it,
 readable. Regenerate with `python3 scripts/findings_status_md.py`.
@@ -98,8 +104,7 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 | state | count | what it means |
 |---|---|---|
 | closed | **{c.get('closed',0)}** | re-read against the code. The defect is gone. |
-| closed_by_commit | **{c.get('closed_by_commit',0)}** | named in a merged commit on `main` **and** in an in-code comment saying what it closed. Two independent traces; not a re-read. |
-{zero_rows}| partial | **{c.get('partial',0)}** | part of the finding is answered, part is not. Each says which. |
+{retired_row}{zero_rows}| partial | **{c.get('partial',0)}** | part of the finding is answered, part is not. Each says which. |
 | open | **{c.get('open',0)}** | re-read and still true. |
 | not a defect as stated | **{c.get('not_a_defect_as_stated',0)}** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **{c.get('deferred_to_the_redesign',0)}** | a navigation complaint the module hub answers. |
@@ -107,7 +112,7 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 **The work left is {left} items — {c.get('open',0)} open and {c.get('partial',0)} partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
-findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
+findings fixed weeks ago. **Every one of the {len(led)} now carries a verdict**; none
 is left as "unknown".
 
 **And of the {c.get('open',0)} open, most are not code problems.** Nearly every one needs a

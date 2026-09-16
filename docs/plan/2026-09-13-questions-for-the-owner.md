@@ -1,5 +1,9 @@
 # Questions waiting for the owner
 
+> **📋 HISTORY. The live plan is `docs/plan/THE-PLAN.md` — read that.**
+> This file is kept for its reasoning and its measurements; its status,
+> sizes and open questions are superseded.
+
 Written overnight on 12–13 September 2026, while the owner was asleep, at their
 request: *"if you have questions please write them down."*
 
@@ -130,5 +134,17 @@ else is built.
   `POST /api/purchase-payments` through `create_payment_core` so the two paths
   to one job become one — a change to a money path that posts to the general
   ledger. Not a change to make overnight with nobody reachable.
-- **The redesign itself.** Track 1's safety net is finished and green; Track 2
-  starts with your decision on the reference module.
+- **The redesign itself.** Track 2 starts with your decision on the reference
+  module.
+
+  ⚠️ **This bullet originally read "Track 1's safety net is finished and green".
+  That was true of the tests and false of the coverage, and it is corrected here
+  on 16-09-2026 rather than left to be read again.** All four pieces exist and
+  all pass — but the Playwright walk renders the onboarding wizard for 148 of
+  159 routes (so ZERO product modules have ever been observed), the endpoint
+  reachability guard is skipped by every `apps/web`-only PR because
+  `backend-ci.yml:74` gates on an `apps/api/` diff, and 60% of the endpoints
+  that guard protects are held "reached" by a URL literal in `lib/api/index.ts`
+  rather than by any screen. See `2026-09-16-the-redesign-plan-revised.md` §1.
+  Track 1 is NOT a finished safety net; it is a set of sound tests wired to
+  observe almost nothing.

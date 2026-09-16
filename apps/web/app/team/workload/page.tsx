@@ -206,9 +206,9 @@ export default function WorkloadPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const overloaded = workload?.members.filter(m => m.is_overloaded) ?? [];
-  const underutilised = workload?.members.filter(m => m.is_underutilised) ?? [];
-  const healthy = workload?.members.filter(m => !m.is_overloaded && !m.is_underutilised) ?? [];
+  const overloaded = workload?.members?.filter(m => m.is_overloaded) ?? [];
+  const underutilised = workload?.members?.filter(m => m.is_underutilised) ?? [];
+  const healthy = workload?.members?.filter(m => !m.is_overloaded && !m.is_underutilised) ?? [];
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -239,7 +239,7 @@ export default function WorkloadPage() {
             <Card>
               <CardContent className="py-4">
                 <p className="text-xs text-[#64748B]">Team Members</p>
-                <p className="text-2xl font-bold text-[#0F172A] mt-1">{workload.members.length}</p>
+                <p className="text-2xl font-bold text-[#0F172A] mt-1">{workload.members?.length ?? 0}</p>
               </CardContent>
             </Card>
             <Card>
@@ -330,7 +330,7 @@ export default function WorkloadPage() {
             </div>
           )}
 
-          {workload.members.length === 0 && (
+          {workload.members?.length === 0 && (
             <Card>
               <CardContent className="py-16 text-center text-[#94A3B8]">
                 <Users size={32} className="mx-auto mb-3 opacity-30" />

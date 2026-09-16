@@ -7,6 +7,7 @@ import {
   ArrowUpRight, ArrowDownRight, ShieldAlert, Clock, Star,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { objectOrNull } from "@/lib/api/shape";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -158,7 +159,7 @@ export default function ExecutiveDashboardPage() {
     setError(null);
     try {
       const res = (await api.copilotV2.executiveDashboard()) as { data: ExecutiveDashboard };
-      setData(res.data);
+      setData(objectOrNull(res.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load executive dashboard");
     } finally {

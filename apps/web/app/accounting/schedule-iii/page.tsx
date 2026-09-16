@@ -480,7 +480,7 @@ export default function ScheduleIIIPage() {
                   </div>
                   <ColumnHeads current={`As at 31 Mar ${Number(fy.start.split("-")[0]) + 1}`}
                                prior={priorLabel} />
-                  {bs?.equityAndLiabilities.map((sec) => (
+                  {bs?.equityAndLiabilities?.map((sec) => (
                     <SectionTable key={sec.heading} section={sec} showPrior={showPrior} />
                   ))}
                   <GrandTotal label="TOTAL EQUITY AND LIABILITIES"
@@ -496,7 +496,7 @@ export default function ScheduleIIIPage() {
                   </div>
                   <ColumnHeads current={`As at 31 Mar ${Number(fy.start.split("-")[0]) + 1}`}
                                prior={priorLabel} />
-                  {bs?.assets.map((sec) => (
+                  {bs?.assets?.map((sec) => (
                     <SectionTable key={sec.heading} section={sec} showPrior={showPrior} />
                   ))}
                   <GrandTotal label="TOTAL ASSETS"
@@ -544,12 +544,12 @@ export default function ScheduleIIIPage() {
                   ? `Year ended 31 Mar ${data.comparatives.period.fy_end.slice(0, 4)}`
                   : null} />
               {/* Revenue */}
-              {pl?.revenue.map((sec) => (
+              {pl?.revenue?.map((sec) => (
                 <SectionTable key={sec.heading} section={sec} showPrior={showPrior} />
               ))}
 
               {/* Expenses */}
-              {pl?.expenses.map((sec) => (
+              {pl?.expenses?.map((sec) => (
                 <SectionTable key={sec.heading} section={sec} showPrior={showPrior} />
               ))}
 

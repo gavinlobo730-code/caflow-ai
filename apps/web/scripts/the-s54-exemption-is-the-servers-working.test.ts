@@ -47,7 +47,10 @@ test("the register asks what was SOLD, which asset_type cannot say", () => {
 test("the exemption panel renders the server's claims and computes nothing", () => {
   const src = code(SCREEN);
   assert.match(src, /getCapitalGainExemption\(/, "the working is fetched");
-  assert.match(src, /exemption\?\.claims\.map/, "…and rendered claim by claim");
+  // `\??` on the second hop — see the note in
+  // a-physical-count-is-one-sheet.test.ts: the rule is that claims are
+  // rendered, not the number of optional-chain operators.
+  assert.match(src, /exemption\?\.claims\??\.map/, "…and rendered claim by claim");
   assert.match(src, /c\.exemption_paise/, "the figure is the server's");
   // No apportionment, no cap, no window arithmetic in the browser.
   assert.doesNotMatch(src, /gain[\w.]*\s*\*\s*cost/i, "no s.54F fraction here");

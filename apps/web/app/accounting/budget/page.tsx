@@ -134,7 +134,7 @@ export default function BudgetPage() {
   // ── Summary ────────────────────────────────────────────────────────────
 
   const rows = data?.rows ?? [];
-  const quarterLabels = data?.quarters.map(q => q.label) ?? [];
+  const quarterLabels = data?.quarters?.map(q => q.label) ?? [];
   const revenueRows = rows.filter(r => r.account_type === "Revenue" || r.account_type === "Income");
   const expenseRows = rows.filter(r => r.account_type === "Expense");
 

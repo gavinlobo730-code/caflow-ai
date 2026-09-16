@@ -190,7 +190,7 @@ export function CwipTab({ clientId, asOf }: { clientId: string; asOf: string }) 
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
-                {register?.projects.map((p) => (
+                {register?.projects?.map((p) => (
                   <tr key={p.id}>
                     <td className="px-5 py-2 text-[#1E293B]">
                       {p.project_name}

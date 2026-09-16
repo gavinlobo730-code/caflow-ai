@@ -129,6 +129,35 @@ const FAKE_SESSION = {
   expires_at: 4102444800, refresh_token: "smoke.refresh", user: FAKE_USER,
 };
 
+/**
+ * THE ONE ROW WITHOUT WHICH THIS WALK SEES NOTHING.
+ *
+ * AuthGuard sits in the ROOT layout, so it wraps every screen.
+ * `resolveUserContext` (lib/auth/AuthContext.tsx) reads the `users` table for
+ * the signed-in auth id and sets `hasFirm` from `!!data?.firm_id`;
+ * `mayRenderProtected` (lib/auth/guardDecision.ts) then returns false for
+ * `hasFirm === false`, and AuthGuard renders null and redirects to
+ * /onboarding.
+ *
+ * With this read answered `[]` — as every PostgREST read was until 16 Sep 2026
+ * — that branch fires on every protected route, so the page component is never
+ * invoked and the walk photographs the onboarding wizard instead of the
+ * screen. Measured on the 12 Sep artefacts: 148 of 159 screenshots byte-
+ * identical, zero of the fourteen modules ever rendered, and the run reported
+ * green because a wizard has a non-empty body and throws nothing.
+ *
+ * Partner because it is the only role `core/permissions.py` gives every
+ * resource: a narrower role would hide action controls and the walk would then
+ * be proving that a screen renders with its buttons missing.
+ */
+const FAKE_USERS_ROW = {
+  id: "00000000-0000-4000-8000-000000000002",
+  auth_user_id: FAKE_USER.id,
+  role: "Partner",
+  firm_id: "00000000-0000-4000-8000-0000000000f1",
+  full_name: "Smoke Walker",
+};
+
 function sendJson(res, body, status = 200) {
   const s = JSON.stringify(body);
   res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(s) });
@@ -155,7 +184,23 @@ function serve(root) {
         if (url.endsWith("/logout")) return sendJson(res, {});
         return sendJson(res, { ...FAKE_SESSION });
       }
-      if (url.startsWith("/__supabase/rest/v1/")) return sendJson(res, []);
+      if (url.startsWith("/__supabase/rest/v1/")) {
+        // `.single()` / `.maybeSingle()` ask PostgREST for ONE OBJECT via the
+        // Accept header, and supabase-js does not unwrap an array when it did.
+        // Discriminating on the header rather than on the path is how
+        // PostgREST itself decides, so this stays right for a caller added
+        // later.
+        const wantsObject = String(req.headers.accept || "")
+          .includes("vnd.pgrst.object+json");
+        if (url.startsWith("/__supabase/rest/v1/users")) {
+          return sendJson(res, wantsObject ? FAKE_USERS_ROW : [FAKE_USERS_ROW]);
+        }
+        // Everything else stays EMPTY, deliberately. The no-data state is the
+        // one a developer with a seeded database never looks at and the one a
+        // redesign most often breaks — see the note above `serve`. This row
+        // exists to get past the guard, not to seed the product.
+        return sendJson(res, wantsObject ? null : []);
+      }
       if (url.startsWith("/__supabase/storage/")) return sendJson(res, []);
       if (url.startsWith("/__supabase/")) return sendJson(res, {});
       if (url.startsWith("/__api/")) {

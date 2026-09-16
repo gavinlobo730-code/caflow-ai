@@ -10,6 +10,7 @@ import {
 import { api, type MultiYearTrend, type TrendSeries, type TrendRatioSeries } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { objectOrNull } from "@/lib/api/shape";
 
 /**
  * The multi-year trend — Schedule III captions and the clause (Q) ratios across
@@ -101,7 +102,7 @@ export default function ClientTrendPage() {
     try {
       const r = await api.accounting.scheduleIiiTrend(clientId, years, toFy);
       if (!r.success) throw new Error(r.error ?? "Could not build the trend");
-      setTrend(r.data);
+      setTrend(objectOrNull<MultiYearTrend>(r.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not build the trend");
     } finally {

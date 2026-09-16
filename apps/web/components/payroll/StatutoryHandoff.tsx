@@ -884,7 +884,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
         </p>
       ) : null}
 
-      {handoff?.obligations.length ? (
+      {handoff?.obligations?.length ? (
         handoff.obligations.map((o) => (
           <ObligationCard key={o.key} o={o} clientId={clientId} runId={runId}
             onChanged={() => { load(); toast({ title: "Recorded" }); }} />

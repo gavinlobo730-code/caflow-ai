@@ -341,23 +341,23 @@ export default function DeductionsPage() {
   // Old regime is the only response with non-zero Chapter VI-A deductions —
   // the new regime disallows all of these except the standard deduction AND
   // Section 80CCD(2) (see itr_engine.py's regime-conditional deduction block).
-  const elig80c = oldResult?.deductions.s80c_paise ?? 0;
-  const eligNps = oldResult?.deductions.s80ccd_paise ?? 0;
+  const elig80c = oldResult?.deductions?.s80c_paise ?? 0;
+  const eligNps = oldResult?.deductions?.s80ccd_paise ?? 0;
   // 80CCD(2) is identical in both regime responses (survives 115BAC) — read
   // from newResult so it's populated even before an old-regime call resolves.
-  const eligCcd2 = newResult?.deductions.s80ccd2_paise ?? 0;
-  const elig80d = oldResult?.deductions.s80d_paise ?? 0;
-  const elig80g = oldResult?.deductions.s80g_paise ?? 0;
-  const eligTta = oldResult?.deductions.s80tta_paise ?? 0;
-  const hraExemption = oldResult?.deductions.hra_paise ?? 0;
-  const elig24b = oldResult?.deductions.s24b_paise ?? 0;
-  const standardDed = newResult?.income.standard_deduction_paise ?? 0;
-  const totalDeductions = oldResult?.income.total_deductions_paise ?? 0;
+  const eligCcd2 = newResult?.deductions?.s80ccd2_paise ?? 0;
+  const elig80d = oldResult?.deductions?.s80d_paise ?? 0;
+  const elig80g = oldResult?.deductions?.s80g_paise ?? 0;
+  const eligTta = oldResult?.deductions?.s80tta_paise ?? 0;
+  const hraExemption = oldResult?.deductions?.hra_paise ?? 0;
+  const elig24b = oldResult?.deductions?.s24b_paise ?? 0;
+  const standardDed = newResult?.income?.standard_deduction_paise ?? 0;
+  const totalDeductions = oldResult?.income?.total_deductions_paise ?? 0;
 
-  const netTaxableNew = newResult?.income.taxable_income_paise ?? 0;
-  const netTaxableOld = oldResult?.income.taxable_income_paise ?? 0;
-  const newRegimeTax = newResult?.tax.total_tax_paise ?? 0;
-  const oldRegimeTax = oldResult?.tax.total_tax_paise ?? 0;
+  const netTaxableNew = newResult?.income?.taxable_income_paise ?? 0;
+  const netTaxableOld = oldResult?.income?.taxable_income_paise ?? 0;
+  const newRegimeTax = newResult?.tax?.total_tax_paise ?? 0;
+  const oldRegimeTax = oldResult?.tax?.total_tax_paise ?? 0;
   const fy = newResult?.fy || oldResult?.fy || "";
   const ratesVerified = (newResult?.rates_verified ?? true) && (oldResult?.rates_verified ?? true);
 
