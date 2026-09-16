@@ -109,6 +109,29 @@ const CARD_MIN_PX = 196;
  */
 const MAX_RIGHT_ANCHOR = 74;
 
+/**
+ * The furthest LEFT a `side: "left"` card may be anchored, and it is a
+ * different rule from the one above rather than its mirror.
+ *
+ * Such a card is positioned by its RIGHT edge at `x%` and grows leftward, so it
+ * occupies `[x% - cardWidth, x%]`. Beyond the stage's left edge is not empty
+ * space — it is the hero's headline, standfirst and buttons. So here the card
+ * really must stay inside the STAGE, which is the constraint explicitly
+ * rejected for the right-hand side, where the only thing past the stage is
+ * background.
+ *
+ * MEASURED: at 1280 the Practice analytics card's left edge landed at x=454
+ * while the copy column runs to x=528, so it sat on top of "From clients and
+ * compliance to accounts and advisory". At 1440 it cleared, which is why a
+ * single-width check missed it — the copy column and the stage move toward each
+ * other as the viewport narrows.
+ *
+ * The widest card is Banking at 232px (`minWidth` is a floor; the label sets
+ * the real width), so the limit is 232 / 640 = 36.3%.
+ */
+const MAX_CARD_PX = 232;
+const MIN_LEFT_ANCHOR = 37;
+
 const TINT = {
   sky: "#8fb6ff",
   gold: "#d8b07a",
@@ -117,13 +140,13 @@ const TINT = {
 } as const;
 
 const MODULES: Module[] = [
-  { key: "compliance", title: "Compliance", line: "GST, TDS, ITR & ROC", icon: <FileText size={16} />, x: 20, y: 16, side: "left", tint: TINT.sky },
+  { key: "compliance", title: "Compliance", line: "GST, TDS, ITR & ROC", icon: <FileText size={16} />, x: 38, y: 16, side: "left", tint: TINT.sky },
   { key: "accounting", title: "Accounting", line: "A ledger that foots", icon: <Calculator size={16} />, x: 72, y: 12, side: "right", tint: TINT.gold },
-  { key: "clients", title: "Clients", line: "Every entity, one record", icon: <Building size={16} />, x: 13, y: 41, side: "left", tint: TINT.indigo },
+  { key: "clients", title: "Clients", line: "Every entity, one record", icon: <Building size={16} />, x: 37, y: 41, side: "left", tint: TINT.indigo },
   { key: "payroll", title: "Payroll", line: "Salary, PF, ESI & TDS", icon: <Users size={16} />, x: 74, y: 37, side: "right", tint: TINT.aqua },
-  { key: "analytics", title: "Practice analytics", line: "The whole firm at a glance", icon: <BarChart size={16} />, x: 15, y: 63, side: "left", secondary: true, tint: TINT.gold },
+  { key: "analytics", title: "Practice analytics", line: "The whole firm at a glance", icon: <BarChart size={16} />, x: 39, y: 63, side: "left", secondary: true, tint: TINT.gold },
   { key: "documents", title: "Documents", line: "Read by AI, checked by you", icon: <Layers size={16} />, x: 73, y: 62, side: "right", tint: TINT.sky },
-  { key: "banking", title: "Banking", line: "Statements become vouchers", icon: <Landmark size={16} />, x: 30, y: 88, side: "left", secondary: true, tint: TINT.aqua },
+  { key: "banking", title: "Banking", line: "Statements become vouchers", icon: <Landmark size={16} />, x: 48, y: 88, side: "left", secondary: true, tint: TINT.aqua },
   { key: "ai", title: "AI assistant", line: "It knows your practice", icon: <Sparkles size={16} />, x: 68, y: 89, side: "right", tint: TINT.indigo },
 ];
 
@@ -165,19 +188,38 @@ export function HeroVisual({ className = "" }: { className?: string }) {
       {/* Module cards */}
       <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true">
         {MODULES.map((m, i) => (
+          /* TWO ELEMENTS, AND THAT IS THE WHOLE POINT. The placement transform
+             and the bob CANNOT share one element: `.floaty`'s keyframes set
+             `transform` outright, and an animation's value beats an inline
+             one — so the `translate(-100%, -50%)` that is supposed to hang a
+             left-hand card off its anchor was being thrown away on every
+             frame.
+
+             `side: "left"` therefore did NOTHING. Every card grew rightward
+             from its anchor, left and right alike, and the vertical -50%
+             centring was lost too. Measured: the Compliance card's LEFT edge
+             sat exactly at its x%, where a left-hand card should have its
+             RIGHT edge there.
+
+             It reads as a styling detail and it is not — it is why the left
+             column had to be crowded onto the globe to keep clear of the
+             headline, and why two cards could be laid out 218px apart and
+             measure 21px apart. The outer element positions; the inner one
+             bobs. */
           <div
             key={m.key}
-            className={`absolute ${m.secondary ? "hidden xl:block" : ""} ${
-              i % 2 === 0 ? "floaty" : "floaty-2"
-            }`}
+            className={`absolute ${m.secondary ? "hidden xl:block" : ""}`}
             style={{
               left: `${m.x}%`,
               top: `${m.y}%`,
               transform:
                 m.side === "left" ? "translate(-100%, -50%)" : "translate(0, -50%)",
-              animationDelay: `${i * 420}ms`,
             }}
           >
+            <div
+              className={i % 2 === 0 ? "floaty" : "floaty-2"}
+              style={{ animationDelay: `${i * 420}ms` }}
+            >
             <div
               className="flex items-center gap-3 rounded-2xl border border-white/[0.16] bg-white/[0.07] px-3.5 py-3 shadow-[0_14px_40px_rgba(3,8,24,0.5)] backdrop-blur-md"
               style={{ minWidth: CARD_MIN_PX }}
@@ -200,6 +242,7 @@ export function HeroVisual({ className = "" }: { className?: string }) {
                   {m.line}
                 </span>
               </span>
+            </div>
             </div>
           </div>
         ))}

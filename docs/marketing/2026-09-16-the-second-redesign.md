@@ -338,3 +338,50 @@ Two further things only measurement caught:
   delay, so two cards in a column drift up to 12px relative and that 17px closes
   for part of every cycle. The check now requires a 24px moat, and the pair is
   laid out far enough apart to survive the bob.
+
+## `side: "left"` had never worked, and the guard for it was vacuous
+
+Two findings from measuring the card layout, both worth recording because each
+one was invisible in review and in the rendered page.
+
+### The placement transform was being thrown away every frame
+
+Each card carried both its placement transform — `translate(-100%, -50%)`, what
+hangs a left-hand card off its anchor — **and** the `.floaty` class. `.floaty`'s
+keyframes set `transform` outright, and an animation's value beats an inline
+one, so the placement was discarded on every frame.
+
+**`side: "left"` therefore did nothing at all.** Every card grew rightward from
+its anchor, left and right alike, and the vertical `-50%` centring went with it.
+Measured: the Compliance card's *left* edge sat exactly at its own `x%`, where a
+left-hand card should have its *right* edge there.
+
+It reads as a styling detail and it is not. It is why the left column had to be
+crowded onto the globe to stay clear of the headline, and why two cards laid out
+218px apart measured 21px apart. The fix is structural — an outer element
+positions, an inner one bobs — because CSS has no error for this and the page
+looks plausible either way.
+
+It also means the two anchor rules are **not** mirrors of one another, and that
+asymmetry is real rather than an oversight:
+
+- **Right**: past the stage is background, so the limit is the viewport at
+  1024px. "Fits inside the stage" was tried and is wrong — it crowds every card
+  onto the globe's face.
+- **Left**: past the stage is the hero's own headline and buttons, so the card
+  must stay inside the stage. `MIN_LEFT_ANCHOR = 37` is the widest card
+  (232px) over the 640px stage.
+
+### And the guard written for it passed having examined nothing
+
+The first version of the pattern was edited in through `sed`, which turned the
+`\b` into a literal **backspace byte**. `<div\x08[^>]*>` matches nothing, so the
+loop ran zero times and the test reported green — while the bug it describes sat
+in the file two lines from the assertion. It survived a negative control, twice,
+because reintroducing the bug changed nothing about a loop that never ran.
+
+This is precisely the failure #527 landed on `main` for — *"the redesign's
+safety net was reporting green having observed nothing"* — reproduced one
+directory over, within the hour. The test now asserts the match **count** before
+it asserts the rule, and a repo-wide scan confirmed no other source file carries
+a stray control byte.
