@@ -165,8 +165,9 @@ export default function ProductsPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
+      <Panel theme="dark" flush>
         <SerifHeading
+          layout="split"
           eyebrow="The platform"
           lines={[
             { text: "One platform for" },
@@ -186,7 +187,7 @@ export default function ProductsPage() {
       </Panel>
 
       {/* ── Intro ────────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <SerifHeading
           eyebrow="Eleven modules, one workspace"
           theme="light"
@@ -199,17 +200,10 @@ export default function ProductsPage() {
       {/* ── Modules ──────────────────────────────────────────────────────── */}
       {MODULES.map((m, i) => {
         const theme = i % 2 === 0 ? "dark" : "light";
-        const seam = theme === "dark" ? "rising-left" : "rising-right";
         const flip = i % 2 === 1;
         const headTone = theme === "dark" ? "text-white" : "text-brand-dark";
         return (
-          <Panel
-            key={m.eyebrow}
-            theme={theme}
-            seam={seam}
-            numeral={String(i + 1).padStart(2, "0")}
-            numeralCorner={theme === "dark" ? "top-right" : "bottom-left"}
-          >
+          <Panel key={m.eyebrow} theme={theme}>
             <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
               <Reveal variant={flip ? "right" : "left"} className={flip ? "lg:order-2" : ""}>
                 <span
@@ -238,8 +232,9 @@ export default function ProductsPage() {
       })}
 
       {/* ── Security & trust ─────────────────────────────────────────────── */}
-      <Panel id="security" theme="light" seam="rising-right">
+      <Panel id="security" theme="light">
         <SerifHeading
+          layout="split"
           eyebrow="Security & trust"
           theme="light"
           lines={[{ text: "Your clients' data —" }, { text: "and your sign-off — protected.", italic: true }]}

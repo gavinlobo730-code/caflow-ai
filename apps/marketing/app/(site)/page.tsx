@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Panel, SerifHeading, CineReveal } from "@/components/cinematic";
 import { Button } from "@/components/ui";
 import { Reveal } from "@/components/motion";
+import Link from "next/link";
 import { ArrowRight, Shield, Lock, Users, FileText, Landmark, Sparkles } from "@/components/icons";
 import { Hero } from "@/components/home/Hero";
 import { Ecosystem } from "@/components/home/Ecosystem";
@@ -131,11 +132,18 @@ export default function HomePage() {
         </ScrollMarquee>
       </div>
 
-      {/* 02 — the positioning statement, and the problem ───────────────── */}
-      <Panel id="story" theme="light" seam="rising-right" numeral="02" numeralCorner="bottom-left">
+      {/* 02 — the positioning statement, and the problem ─────────────────
+          Deliberately SHORT, and it hands off. The long version — the problem,
+          the four decisions the product is built on, the four things it refuses
+          to do — is /story, which exists because the "Our Story" nav item used
+          to point at this very panel. `id="story"` is kept because `/#story` is
+          in the wild. */}
+      <Panel id="story" theme="light">
         <SerifHeading
+          layout="split"
           theme="light"
-          eyebrow="Everything your practice needs, connected"
+          index="02"
+          eyebrow="Where it starts"
           lines={[
             { text: "Every CA firm runs like this." },
             { text: "Five tools. Five logins.", italic: true },
@@ -143,12 +151,23 @@ export default function HomePage() {
           ]}
           subtitle="PracticeSync replaces Tally, ClearTax, Winman and WhatsApp with a single workspace for compliance, accounting, banking, payroll, clients and documents — where every return is computed from the books rather than assembled beside them."
         />
+        <CineReveal delay={140}>
+          <Link
+            href="/story"
+            className="mt-9 inline-flex items-center gap-2 border-b border-brand/25 pb-1 text-[14px] font-semibold text-brand transition-colors hover:border-brand hover:text-brand-hover"
+          >
+            Read why we built it
+            <ArrowRight size={15} />
+          </Link>
+        </CineReveal>
       </Panel>
 
       {/* 03 — the platform ecosystem ───────────────────────────────────── */}
-      <Panel theme="dark" seam="rising-left" numeral="03" numeralCorner="top-right">
+      <Panel theme="dark">
         <SerifHeading
-          eyebrow="The platform"
+          layout="split"
+          index="03"
+          eyebrow="One connected workspace"
           lines={[{ text: "One workspace." }, { text: "Every part of the practice.", italic: true }]}
           subtitle="Not a suite of products that integrate. One system, one ledger, one source of truth — and each part reads what the others wrote."
         />
@@ -158,9 +177,11 @@ export default function HomePage() {
       </Panel>
 
       {/* 04 — the old way against the PracticeSync way ─────────────────── */}
-      <Panel theme="light" seam="rising-right" numeral="04" numeralCorner="bottom-left">
+      <Panel theme="light">
         <SerifHeading
+          layout="split"
           theme="light"
+          index="04"
           eyebrow="Before and after"
           lines={[{ text: "The difference is not features." }, { text: "It is the shape.", italic: true }]}
           subtitle="What changes when a practice moves onto one platform is the number of places a thing can be."
@@ -171,8 +192,10 @@ export default function HomePage() {
       </Panel>
 
       {/* 05 — the actual software ──────────────────────────────────────── */}
-      <Panel theme="dark" seam="rising-left" numeral="05" numeralCorner="top-right">
+      <Panel theme="dark">
         <SerifHeading
+          layout="split"
+          index="05"
           eyebrow="The product"
           lines={[{ text: "This is the software," }, { text: "not an impression of it.", italic: true }]}
           subtitle="Four screens a CA would use in an ordinary week, built from the product's own components and carrying its own words."
@@ -183,9 +206,11 @@ export default function HomePage() {
       </Panel>
 
       {/* 06 — AI in action ─────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right" numeral="06" numeralCorner="bottom-left">
+      <Panel theme="light">
         <SerifHeading
+          layout="split"
           theme="light"
+          index="06"
           eyebrow="Intelligence, across the practice"
           lines={[{ text: "Not a chatbot in the corner." }, { text: "A bill, end to end.", italic: true }]}
           subtitle="One real chain, from the moment a client photographs a purchase bill to the moment the deadline lands on your calendar — and the point at which the software deliberately stops."
@@ -194,9 +219,11 @@ export default function HomePage() {
       </Panel>
 
       {/* 07 — control, and what the numbers actually are ───────────────── */}
-      <Panel theme="dark" seam="rising-left" numeral="07" numeralCorner="top-right">
+      <Panel theme="dark">
         <SerifHeading
-          eyebrow="Control & trust"
+          layout="split"
+          index="07"
+          eyebrow="How filing works"
           lines={[{ text: "We compute it." }, { text: "You file it.", italic: true }]}
           subtitle="PracticeSync reads your books and produces the return — GSTR-1, GSTR-3B, GSTR-9, the ITR JSON, 24Q and 26Q — computed, reconciled and ready to file. You upload and sign on the government portal, then record the ARN here and the period locks. No software files in your name."
         />
@@ -221,10 +248,12 @@ export default function HomePage() {
       </Panel>
 
       {/* 08 — security ─────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right" numeral="08" numeralCorner="bottom-left">
+      <Panel theme="light">
         <SerifHeading
+          layout="split"
           theme="light"
-          eyebrow="Trust, security & reliability"
+          index="08"
+          eyebrow="Security & trust"
           lines={[{ text: "Your clients' data —" }, { text: "and your sign-off.", italic: true }]}
           subtitle="Six things that are true about how this is built. There are no certification badges on this page, because there are no certifications to show."
         />
@@ -261,7 +290,7 @@ export default function HomePage() {
       </Panel>
 
       {/* 09 — where to go next ─────────────────────────────────────────── */}
-      <Panel theme="dark" seam="rising-left" innerClassName="text-center">
+      <Panel theme="dark" innerClassName="text-center">
         <SerifHeading
           align="center"
           lines={[{ text: "Bring your whole practice" }, { text: "into one place.", italic: true }]}
@@ -285,7 +314,7 @@ export default function HomePage() {
           </a>
           {" · "}
           <a href={appLinks.signup} className="underline underline-offset-4 hover:text-white">
-            Start a free trial
+            Start free trial
           </a>
         </p>
       </Panel>

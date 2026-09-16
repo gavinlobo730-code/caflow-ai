@@ -55,17 +55,30 @@ type Module = {
   side: "left" | "right";
   /** Dropped first when the stage narrows. */
   secondary?: boolean;
+  /** Icon tint. FOUR colours, each used twice, and all of them inside the
+   *  brand's own blue-to-gold range — the reference image tints its icons and a
+   *  grid of identical grey chips is what made this composition read as a
+   *  diagram. Eight different colours would read as a toy; four reads as a
+   *  system. */
+  tint: string;
 };
 
+const TINT = {
+  sky: "#8fb6ff",
+  gold: "#d8b07a",
+  indigo: "#a9a5f4",
+  aqua: "#7fd4d0",
+} as const;
+
 const MODULES: Module[] = [
-  { key: "compliance", title: "Compliance", line: "GST, TDS, ITR & ROC", icon: <FileText size={15} />, x: 17, y: 20, side: "left" },
-  { key: "accounting", title: "Accounting", line: "A ledger that foots", icon: <Calculator size={15} />, x: 79, y: 15, side: "right" },
-  { key: "clients", title: "Clients", line: "Every entity, one record", icon: <Building size={15} />, x: 8, y: 42, side: "left" },
-  { key: "payroll", title: "Payroll", line: "Salary, PF, ESI & TDS", icon: <Users size={15} />, x: 89, y: 37, side: "right" },
-  { key: "analytics", title: "Practice analytics", line: "The whole firm at a glance", icon: <BarChart size={15} />, x: 11, y: 64, side: "left", secondary: true },
-  { key: "documents", title: "Documents", line: "Read by AI, checked by you", icon: <Layers size={15} />, x: 87, y: 60, side: "right" },
-  { key: "banking", title: "Banking", line: "Statements become vouchers", icon: <Landmark size={15} />, x: 30, y: 82, side: "left", secondary: true },
-  { key: "ai", title: "AI assistant", line: "It knows your practice", icon: <Sparkles size={15} />, x: 72, y: 80, side: "right" },
+  { key: "compliance", title: "Compliance", line: "GST, TDS, ITR & ROC", icon: <FileText size={16} />, x: 15, y: 19, side: "left", tint: TINT.sky },
+  { key: "accounting", title: "Accounting", line: "A ledger that foots", icon: <Calculator size={16} />, x: 81, y: 14, side: "right", tint: TINT.gold },
+  { key: "clients", title: "Clients", line: "Every entity, one record", icon: <Building size={16} />, x: 6, y: 42, side: "left", tint: TINT.indigo },
+  { key: "payroll", title: "Payroll", line: "Salary, PF, ESI & TDS", icon: <Users size={16} />, x: 91, y: 37, side: "right", tint: TINT.aqua },
+  { key: "analytics", title: "Practice analytics", line: "The whole firm at a glance", icon: <BarChart size={16} />, x: 9, y: 66, side: "left", secondary: true, tint: TINT.gold },
+  { key: "documents", title: "Documents", line: "Read by AI, checked by you", icon: <Layers size={16} />, x: 89, y: 61, side: "right", tint: TINT.sky },
+  { key: "banking", title: "Banking", line: "Statements become vouchers", icon: <Landmark size={16} />, x: 29, y: 84, side: "left", secondary: true, tint: TINT.aqua },
+  { key: "ai", title: "AI assistant", line: "It knows your practice", icon: <Sparkles size={16} />, x: 74, y: 82, side: "right", tint: TINT.indigo },
 ];
 
 export function HeroVisual({ className = "" }: { className?: string }) {
@@ -80,13 +93,12 @@ export function HeroVisual({ className = "" }: { className?: string }) {
         preserveAspectRatio="none"
         aria-hidden="true"
       >
-        <defs>
-          <linearGradient id="ps-connector" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#7fa0ec" stopOpacity="0.05" />
-            <stop offset="55%" stopColor="#7fa0ec" stopOpacity="0.42" />
-            <stop offset="100%" stopColor="#cfe0ff" stopOpacity="0.6" />
-          </linearGradient>
-        </defs>
+        {/* Flat and faint. These used to run from 5% to 60% opacity along a
+            gradient, brightest where they met in the middle — eight bright
+            lines converging on one point, drawn straight across the face of the
+            planet. With the centre badge gone they now converge on the lit
+            subcontinent itself, which is the picture: a network running into
+            India. That only reads if the lines stay quieter than the globe. */}
         {MODULES.map((m) => (
           <line
             key={m.key}
@@ -94,7 +106,8 @@ export function HeroVisual({ className = "" }: { className?: string }) {
             y1={m.y}
             x2={50}
             y2={50}
-            stroke="url(#ps-connector)"
+            stroke="#7fa0ec"
+            strokeOpacity="0.22"
             strokeWidth="1"
             vectorEffect="non-scaling-stroke"
             className={m.secondary ? "hidden xl:block" : undefined}
@@ -119,17 +132,24 @@ export function HeroVisual({ className = "" }: { className?: string }) {
             }}
           >
             <div
-              className="flex items-center gap-2.5 rounded-xl border border-white/[0.14] bg-white/[0.055] px-3 py-2.5 shadow-[0_10px_30px_rgba(3,8,24,0.45)] backdrop-blur-md"
-              style={{ minWidth: 168 }}
+              className="flex items-center gap-3 rounded-2xl border border-white/[0.16] bg-white/[0.07] px-3.5 py-3 shadow-[0_14px_40px_rgba(3,8,24,0.5)] backdrop-blur-md"
+              style={{ minWidth: 196 }}
             >
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-light/[0.14] text-brand-light ring-1 ring-white/10">
+              <span
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl ring-1"
+                style={{
+                  color: m.tint,
+                  backgroundColor: `${m.tint}1f`,
+                  boxShadow: `inset 0 0 0 1px ${m.tint}33`,
+                }}
+              >
                 {m.icon}
               </span>
               <span className="min-w-0">
-                <span className="block whitespace-nowrap text-[12.5px] font-semibold leading-none text-white">
+                <span className="block whitespace-nowrap text-[13.5px] font-semibold leading-none text-white">
                   {m.title}
                 </span>
-                <span className="mt-1 block whitespace-nowrap text-[10.5px] leading-none text-white/55">
+                <span className="mt-1.5 block whitespace-nowrap text-[11px] leading-none text-white/60">
                   {m.line}
                 </span>
               </span>
@@ -138,34 +158,14 @@ export function HeroVisual({ className = "" }: { className?: string }) {
         ))}
       </div>
 
-      {/* The mark at the centre of the system. */}
-      <div
-        className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 lg:block"
-        aria-hidden="true"
-      >
-        <span className="grid h-[52px] w-[52px] place-items-center rounded-full border border-white/20 bg-[#0b1430]/85 shadow-[0_0_40px_rgba(88,122,217,0.55)] backdrop-blur-sm">
-          <svg width="26" height="26" viewBox="0 0 64 64" fill="none">
-            <circle cx="32" cy="32" r="24" strokeWidth="3" stroke="rgba(255,255,255,0.22)" />
-            <circle
-              cx="32"
-              cy="32"
-              r="24"
-              strokeWidth="5"
-              strokeLinecap="round"
-              className="logo-arc"
-              stroke="#7fa0ec"
-              strokeDasharray="29.3 121.5"
-            />
-            <path
-              d="M20,33 L28,41 L45,22"
-              strokeWidth="6.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              stroke="#ffffff"
-            />
-          </svg>
-        </span>
-      </div>
+      {/* THE CENTRE MARK IS GONE (16-09-2026). A 52px badge sat at exactly
+          50%/50% — which is exactly where the globe now puts INDIA, so the one
+          feature the brief asks to be "visibly central" was underneath it. The
+          badge made sense when the globe was an abstract sphere with nothing in
+          particular at its centre; once the sphere became an Earth, it was
+          covering the subject. The connectors converge on the lit subcontinent
+          instead, which says the same thing the badge did and says it with the
+          picture rather than on top of it. */}
     </div>
   );
 }

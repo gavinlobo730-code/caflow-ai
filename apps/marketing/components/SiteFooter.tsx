@@ -16,7 +16,7 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Company",
     links: [
-      { label: "Our Story", href: "/#story" },
+      { label: "Our Story", href: "/story" },
       { label: "Support", href: "/support" },
       { label: "Contact", href: `mailto:${CONTACT.email}`, external: true },
     ],
@@ -49,7 +49,7 @@ export function SiteFooter() {
           <div className="max-w-xs">
             <Logo theme="dark" />
             <p className="mt-4 text-[13px] leading-relaxed text-slate-400">
-              The AI-first operating system for Indian CA practices — compliance,
+              The AI-first platform for Indian CA firms — compliance,
               accounting, payroll and clients in one place.
             </p>
           </div>

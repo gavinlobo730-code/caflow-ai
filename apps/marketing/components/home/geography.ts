@@ -6,16 +6,24 @@
  * abstract icosahedron — a sphere with no place in it — so "India central"
  * needed a source of truth, and there were two ways to get one.
  *
- * A land texture or a coastline mask was rejected. Either would have to be
- * written from memory here (this environment's egress proxy refuses outbound
- * fetches), and a world map with the wrong coastline on the homepage of a
- * product sold to Indian professionals is a worse error than no map at all.
+ * The cities below are where Indian practices actually are, to two decimal
+ * places, and the network arcs run between them. That makes "India central" a
+ * fact about the data rather than an illustration, and it is on-message — the
+ * product is sold in one country, and the globe says so.
  *
- * So the globe is built from REAL COORDINATES instead: the cities below are
- * where Indian practices actually are, to two decimal places, and the network
- * arcs run between them. That makes "India central" a fact about the data
- * rather than an illustration, and it is on-message — the product is sold in
- * one country, and the globe says so.
+ * ⚠️ THIS FILE USED TO CARRY A REJECTION OF THE COASTLINE, AND IT IS WITHDRAWN.
+ * It said a land mask "would have to be written from memory here … and a world
+ * map with the wrong coastline on the homepage of a product sold to Indian
+ * professionals is a worse error than no map at all." The conclusion followed
+ * from its premise and the premise was false: Natural Earth's shoreline
+ * installs from npm, so the mask is a MEASURED coastline rather than a
+ * recollection of one. See scripts/build-landmask.mjs and ./landmask.ts, which
+ * is generated from a vendored copy of it and pinned by eleven coordinate
+ * checks in the backend suite.
+ *
+ * The cities did not become redundant when the coastline arrived. The mask says
+ * where land is; these say where the PRACTICES are, which is what the arcs and
+ * the bright hubs are drawn between.
  *
  * Latitudes are north-positive and longitudes east-positive, the ordinary
  * convention; `latLonToVec3` in HeroGlobe.tsx is the only place that converts.

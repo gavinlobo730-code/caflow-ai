@@ -15,7 +15,7 @@ import { instrumentSerif, manrope } from "@/lib/fonts";
 //
 // SiteHeader is `position: fixed` (not sticky) to match the homepage's own nav
 // exactly. `main` deliberately has NO top padding to compensate: every page's
-// own hero (cinematic.tsx's Panel, seam="none") already has 96-150px of top
+// own hero (cinematic.tsx's Panel, `flush`) already has 80-130px of top
 // padding on its inner content, well clear of the 68px header — and the
 // section's own BACKGROUND must start at y:0 so it extends full-bleed behind
 // the fixed header. An earlier version added `pt-[68px]` here to "compensate"

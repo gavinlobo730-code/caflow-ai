@@ -146,7 +146,7 @@ export default function AccessPage() {
             <p className="text-[14px] text-slate-300">
               New firm?{" "}
               <a href={appLinks.signup} className="font-semibold text-brand-light underline-offset-4 hover:underline">
-                Start a free trial →
+                Start free trial →
               </a>
             </p>
             <p className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-3.5 py-1.5 text-[12px] text-white/50">

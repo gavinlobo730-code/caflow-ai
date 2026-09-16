@@ -56,7 +56,7 @@ const CHANNELS = [
 const FAQ = [
   {
     q: "How do I get started?",
-    a: "Start a free trial, add your firm and import your first clients — most firms are up and running within a day. No credit card is needed to try PracticeSync.",
+    a: "Sign up for the free trial, add your firm, and import your first clients from Tally or a spreadsheet. No credit card is needed to try PracticeSync.",
   },
   {
     q: "Can you help migrate my existing data?",
@@ -83,8 +83,9 @@ export default function SupportPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none">
+      <Panel theme="dark" flush>
         <SerifHeading
+          layout="split"
           eyebrow="Support"
           lines={[{ text: "We're here to help" }, { text: "your firm succeed.", italic: true }]}
           subtitle="From your first client to peak filing season, our team knows Indian practice inside out — and we're ready to help by guide, email or phone."
@@ -92,8 +93,9 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Channels ─────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <SerifHeading
+          layout="split"
           eyebrow="How we help"
           theme="light"
           lines={[{ text: "Help, whichever" }, { text: "way suits you.", italic: true }]}
@@ -122,8 +124,9 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Get in touch ─────────────────────────────────────────────────── */}
-      <Panel id="get-in-touch" theme="dark" seam="rising-left">
+      <Panel id="get-in-touch" theme="dark">
         <SerifHeading
+          layout="split"
           eyebrow="Get in touch"
           lines={[{ text: "Talk to a" }, { text: "real person.", italic: true }]}
           subtitle="No bots, no ticket black holes. Reach us directly — we usually reply within one business day, Monday to Saturday."
@@ -187,8 +190,9 @@ export default function SupportPage() {
       </Panel>
 
       {/* ── Common questions ─────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <SerifHeading
+          layout="split"
           eyebrow="Common questions"
           theme="light"
           lines={[{ text: "Answers before" }, { text: "you switch.", italic: true }]}
