@@ -521,3 +521,141 @@ def test_the_product_is_described_the_same_way_everywhere():
         f"the product is described {len(variants)} different ways: "
         f"{sorted(variants)}. It is a PLATFORM for Indian CA FIRMS, everywhere."
     )
+
+
+def test_no_hero_card_is_anchored_off_the_edge_of_the_screen():
+    """The hero's module cards, and the one bug the hero is built to hide.
+
+    A `side: "right"` card is positioned by its LEFT edge at `x%` of the stage
+    and grows rightward, so its outer edge is `stageLeft + x% x 640 + 196`. With
+    anchors at 89 and 91 the Payroll and Documents cards ran past the right edge
+    of the VIEWPORT — measured at 71px over at 1280, 56px at 1366 and 19px at
+    1440, so on the three commonest laptop widths those cards were sliced in
+    half. It shipped.
+
+    IT SHIPPED BECAUSE THE HERO IS `overflow-hidden`. The cards were clipped
+    rather than pushed out, so the document never gained a horizontal
+    scrollbar — and the check that was supposed to catch this measured
+    `scrollWidth` against `clientWidth` and saw a clean page at every width.
+    Only measuring the CARDS finds it, which is why this reads their anchors.
+
+    The limit lives beside them as MAX_RIGHT_ANCHOR with its derivation; this
+    asserts every right-hand entry respects it, and that the constant has not
+    been quietly raised past what 1024px allows.
+    """
+    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+
+    m = re.search(r"const MAX_RIGHT_ANCHOR = ([\d.]+);", src)
+    assert m, "HeroVisual no longer declares MAX_RIGHT_ANCHOR"
+    limit = float(m.group(1))
+    # 1024px is the narrowest width that still renders cards (the `lg:` gate and
+    # canRunGlobe() agree on it): content 902px, stage 640px starting at x=323,
+    # card 196px, so (1009 - 196 - 323) / 640 = 76.6%.
+    assert limit <= 76.6, (
+        f"MAX_RIGHT_ANCHOR is {limit}, past what 1024px allows (76.6). A card "
+        f"anchored there is clipped by the hero's overflow-hidden rather than "
+        f"pushing the page wide, so nothing else will report it."
+    )
+
+    entries = re.findall(r'key: "(\w+)".*?x: (\d+), y: (\d+), side: "(left|right)"', src)
+    assert len(entries) >= 6, f"only found {len(entries)} module anchors — has the shape changed?"
+
+    offenders = [
+        f"{key} at x={x}" for key, x, _y, side in entries
+        if side == "right" and float(x) > limit
+    ]
+    assert not offenders, (
+        f"these right-hand hero cards are anchored past MAX_RIGHT_ANCHOR "
+        f"({limit}%) and will be clipped at 1024-1440px: {offenders}"
+    )
+
+    # Vacuity: the rule protects nothing if no card is a right-hand one, and it
+    # is toothless if they all sit far inside the limit anyway.
+    rights = [float(x) for _k, x, _y, side in entries if side == "right"]
+    assert rights, "no right-hand cards left — this rule has nothing to check"
+    assert max(rights) > limit - 15, (
+        "every right-hand card now sits well inside the limit, so this test "
+        "would pass however wrong the limit was. Either the layout changed "
+        "shape or the constant needs re-deriving."
+    )
+
+    # The LEFT side has its own limit and it is not the mirror of this one:
+    # past the stage's left edge is the hero's own headline and buttons, not
+    # background, so a left-hand card must stay inside the stage.
+    m = re.search(r"const MIN_LEFT_ANCHOR = ([\d.]+);", src)
+    assert m, "HeroVisual no longer declares MIN_LEFT_ANCHOR"
+    floor = float(m.group(1))
+    widest = re.search(r"const MAX_CARD_PX = (\d+);", src)
+    stage = re.search(r"const STAGE_MAX_PX = (\d+);", src)
+    assert widest and stage
+    needed = 100 * int(widest.group(1)) / int(stage.group(1))
+    assert floor >= needed, (
+        f"MIN_LEFT_ANCHOR is {floor} but the widest card ({widest.group(1)}px of "
+        f"a {stage.group(1)}px stage) needs {needed:.1f}. Below it the card hangs "
+        f"into the copy column and sits on the headline."
+    )
+    under = [
+        f"{key} at x={x}" for key, x, _y, side in entries
+        if side == "left" and float(x) < floor
+    ]
+    assert not under, (
+        f"these left-hand hero cards are anchored inside MIN_LEFT_ANCHOR "
+        f"({floor}%) and will overlap the hero copy: {under}"
+    )
+
+
+def test_a_hero_card_does_not_position_itself_on_the_element_that_bobs():
+    """`side: "left"` did nothing at all, for a month, because of one CSS rule.
+
+    Each card carried BOTH its placement transform — `translate(-100%, -50%)`,
+    which is what hangs a left-hand card off its anchor — and the `.floaty`
+    class. `.floaty`'s keyframes set `transform` outright, and an animation's
+    value beats an inline one, so the placement was thrown away on every frame.
+    Every card grew rightward from its anchor, left and right alike, and the
+    vertical centring went with it.
+
+    MEASURED: the Compliance card's LEFT edge sat exactly at its own `x%`, where
+    a left-hand card should have its RIGHT edge there. It reads as a styling
+    detail and it is not — it is why the left column had to be crowded onto the
+    globe to stay clear of the headline, and why two cards laid out 218px apart
+    measured 21px apart.
+
+    The fix is structural: an outer element positions, an inner one bobs. This
+    asserts they stay separate, because nothing about the rendered page says
+    otherwise — the bug is silent, and CSS has no error for it.
+    """
+    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+
+    # Find every element that carries a bob class, and check none of them also
+    # carries a transform. Elements are matched loosely (the file is JSX, not
+    # something with a parser here) but the two attributes are distinctive.
+    blocks = re.findall(r"<div\b[^>]*>", src, re.S)
+
+    # THE COUNT IS ASSERTED BEFORE THE RULE, and not out of caution. The first
+    # version of this pattern was edited in through `sed`, which turned the `\b`
+    # into a literal BACKSPACE byte — `<div\x08[^>]*>` matches nothing, so the
+    # loop below ran zero times and this test passed green while the bug it
+    # describes was sitting in the file two lines away. That is exactly the
+    # failure #527 landed on main for ("the redesign's safety net was reporting
+    # green having observed nothing"), reproduced one directory over, within an
+    # hour of merging it. A loop over an empty list is not a passing test.
+    assert len(blocks) >= 4, (
+        f"only matched {len(blocks)} <div> openings in HeroVisual — the pattern "
+        f"is broken, and a loop over nothing passes for any input whatsoever."
+    )
+
+    for block in blocks:
+        bobs = "floaty" in block
+        places = "transform:" in block or "translate(" in block
+        assert not (bobs and places), (
+            "a hero card element carries BOTH a .floaty bob and a transform. "
+            "The animation's keyframes set `transform`, so they will not "
+            "coexist — the placement is silently discarded. Put the bob on a "
+            "child element.\n  " + block[:200]
+        )
+
+    assert "floaty" in src, "no bob left in HeroVisual — this rule guards nothing"
+    assert "translate(-100%, -50%)" in src, (
+        "no left-hand placement transform left in HeroVisual — this rule "
+        "guards nothing"
+    )

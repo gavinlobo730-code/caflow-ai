@@ -83,21 +83,49 @@ import {
 
 const GLOBE_FRAME_MS = 33;
 const SCROLL_QUIET_MS = 150;
-const PARTICLE_COUNT = 140;
+const PARTICLE_COUNT = 190;
 const R = 1;
 
 /**
  * How many candidate points are walked to build the land field.
  *
- * About 29% of the globe is land, so this yields roughly 13,500 points on the
- * continents. It is a startup cost only — 47,000 iterations of a mask lookup,
- * under a frame — and it is not a per-frame cost, which is the number that
- * matters: the draw is one Points object either way.
+ * About 29% of the globe is land, so this yields roughly 26,000 points on the
+ * continents. It is a startup cost only — a mask lookup per candidate, well
+ * under a frame — and NOT a per-frame cost, which is the number that matters:
+ * the draw is one Points object whatever the count.
+ *
+ * It was 47,000 candidates (~13,500 points) and the owner compared the result
+ * against the reference again: "i want you to exactly copy the globe as it is
+ * in the image". The reference reads as CITY LIGHTS — a fine, dense stipple —
+ * and half this many dots at nearly twice this size reads as a dot matrix
+ * instead. Density and dot size move together: more points only helps if each
+ * one gets smaller, or the continents blur into a solid mass.
  */
-const LAND_CANDIDATES = 47000;
+const LAND_CANDIDATES = 90000;
 
 /** Vertical field of view, degrees. The point shader needs it — see `projScale`. */
 const FOV = 40;
+
+/**
+ * The X tilt that puts INDIA WHERE THE REFERENCE PUTS IT — above the centre of
+ * the disc, not on it.
+ *
+ * This is measurable rather than a taste: in the reference image the globe's
+ * centre and the subcontinent are about 45% of the radius apart, vertically,
+ * and the white tick badge sits at the centre with India clear above it.
+ *
+ * Rotating the group about +X by `a` sends a surface point (0, y, z) to
+ * y' = y·cos a − z·sin a. India is at latitude 22N facing the camera, so
+ * (y, z) = (sin 22°, cos 22°) = (0.375, 0.927), and solving
+ * 0.375·cos a − 0.927·sin a = 0.41 gives a ≈ −0.045. NEGATIVE — the previous
+ * +0.28 tipped the north pole toward the viewer and pushed India DOWN to 10% of
+ * the radius, which is why it landed under the badge.
+ *
+ * That is also the real fix for the badge. It was removed on 16-09-2026 for
+ * covering the subcontinent; the reference has both, because it has them at
+ * different heights. Moving the planet was the answer, not deleting the mark.
+ */
+const INDIA_TILT_X = -0.045;
 
 /**
  * The diameter, in WORLD units, of an ordinary land dot.
@@ -108,9 +136,12 @@ const FOV = 40;
  * with `aSize` starting at 1 — which made every dot about 70 pixels across and
  * rendered the planet as one white disc. The arithmetic below is the real
  * projection and it is worth writing down rather than tuning by eye.
+ *
+ * At the hero's size this lands each dot a shade over one pixel, which is what
+ * makes the field read as lights rather than as a grid of circles.
  */
-const LAND_DOT_WORLD = 0.0125;
-const HUB_DOT_WORLD = { major: 0.058, minor: 0.038 };
+const LAND_DOT_WORLD = 0.0088;
+const HUB_DOT_WORLD = { major: 0.055, minor: 0.036 };
 
 /** Geographic latitude/longitude to a point on a sphere of radius `r`. */
 function latLonToVec3(lat: number, lon: number, r: number): [number, number, number] {
@@ -216,10 +247,15 @@ function buildLandField() {
     const d = angularDistanceDeg(lat, ((((lon % 360) + 540) % 360) - 180), INDIA_CENTRE.lat, INDIA_CENTRE.lon);
     const home = Math.max(0, 1 - d / 26); // the subcontinent itself
     const region = Math.max(0, 1 - d / 70); // and its neighbourhood, softly
+    // A cool white-cyan that goes to near-white over India. The previous values
+    // started at (0.34, 0.46, 0.74) — a mid blue-grey, which against a navy
+    // sphere gave the continents almost no separation from the ocean. The
+    // reference picks them out in light, so the contrast has to come from BOTH
+    // ends: these lift, and the core below drops to near-black.
     col.push(
-      0.34 + region * 0.2 + home * 0.5,
-      0.46 + region * 0.22 + home * 0.4,
-      0.74 + region * 0.16 + home * 0.18
+      0.62 + region * 0.18 + home * 0.2,
+      0.79 + region * 0.13 + home * 0.21,
+      0.97 + region * 0.03 + home * 0.03
     );
     // WORLD units, not a multiplier — see PROJECTED_PX for why the shader needs
     // a real size rather than an arbitrary one scaled by the canvas height.
@@ -299,7 +335,7 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         // the rotation order happens to be, which is exactly the kind of thing
         // that silently puts the Pacific in the middle.
         const tilt = new THREE.Group();
-        tilt.rotation.x = 0.28;
+        tilt.rotation.x = INDIA_TILT_X;
         const spin = new THREE.Group();
         const baseY = rotationFacing(INDIA_CENTRE.lon);
         spin.rotation.y = baseY;
@@ -328,8 +364,13 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
           vertexShader: CORE_VERTEX,
           fragmentShader: CORE_FRAGMENT,
           uniforms: {
-            uCentre: { value: new THREE.Color(0x10203f) },
-            uLimb: { value: new THREE.Color(0x050b1d) },
+            // NEAR-BLACK, not navy. Contrast is what makes a lit coastline
+            // read, and it is made at both ends: the dots lift toward white and
+            // the ocean drops away under them. At 0x10203f the continents and
+            // the sea were close enough in value that the land read as texture
+            // rather than as light.
+            uCentre: { value: new THREE.Color(0x071223) },
+            uLimb: { value: new THREE.Color(0x01040c) },
           },
         });
         spin.add(new THREE.Mesh(coreGeo, coreMat));
@@ -395,23 +436,31 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         // A tube rather than a line: the reference's sweeps have width and a
         // gradient, and a LineBasicMaterial has neither. 48 segments along and 5
         // around is the coarsest that still reads as round at this scale.
+        //
+        // THIN, AND THEY HUG THE SURFACE. Every city in geography.ts is in
+        // India, so twelve arcs between them all bunch into the same few
+        // degrees of the globe — at 0.0055 with a 0.17 bulge that bunching was
+        // a bright tangle sitting on the subcontinent, which is the one part of
+        // the picture that has to stay legible. Halving the width and the bulge
+        // makes them the fine tracery the reference has; the travelling spark
+        // stays bright, so the movement is not lost with the bulk.
         const arcMats: any[] = [];
         ARCS.forEach(([ai, bi], i) => {
-          const pts = arcPoints(hubVecs[ai], hubVecs[bi], 48, 0.17).map(
+          const pts = arcPoints(hubVecs[ai], hubVecs[bi], 48, 0.1).map(
             ([x, y, z]) => new THREE.Vector3(x, y, z)
           );
           const curve = new THREE.CatmullRomCurve3(pts);
-          const g = new THREE.TubeGeometry(curve, 64, 0.0055, 5, false);
+          const g = new THREE.TubeGeometry(curve, 64, 0.0032, 5, false);
           const m = new THREE.ShaderMaterial({
             vertexShader: ARC_VERTEX,
             fragmentShader: ARC_FRAGMENT,
             uniforms: {
-              uColor: { value: new THREE.Color(0x5f8ae8) },
-              uSpark: { value: new THREE.Color(0xeaf2ff) },
+              uColor: { value: new THREE.Color(0x76a8f2) },
+              uSpark: { value: new THREE.Color(0xffffff) },
               uTime: { value: 0 },
               uPhase: { value: (i / ARCS.length) % 1 },
               uSpeed: { value: 0.16 },
-              uBase: { value: 0.34 },
+              uBase: { value: 0.3 },
             },
             transparent: true,
             depthWrite: false,
@@ -423,16 +472,23 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         });
 
         // ── Atmosphere ────────────────────────────────────────────────────
-        const atmGeo = new THREE.SphereGeometry(R * 1.19, 48, 36);
+        const atmGeo = new THREE.SphereGeometry(R * 1.085, 48, 36);
         const atmMat = new THREE.ShaderMaterial({
           vertexShader: ATMOSPHERE_VERTEX,
           fragmentShader: ATMOSPHERE_FRAGMENT,
           uniforms: {
-            uColor: { value: new THREE.Color(0x5e8ae8) },
-            uPower: { value: 3.4 },
-            // 1.15 here was a full-strength additive rim and it blew the
-            // silhouette to white. The halo has to read as air.
-            uIntensity: { value: 0.5 },
+            uColor: { value: new THREE.Color(0x74b4f5) },
+            // A HIGH power is what keeps this a rim. The fresnel term falls off
+            // as pow(1 - facing, uPower), so a low exponent spreads it inward
+            // across the whole disc — at 3.0 on a 1.19R shell it read as a fat
+            // blue band wrapped round the planet rather than as air above it.
+            // Tighter shell, steeper falloff.
+            uPower: { value: 4.6 },
+            // 1.15 blew the silhouette to white and 0.5 was too timid against
+            // the darker planet below. The rim has to be clearly there —
+            // the reference's is — without becoming the brightest thing in the
+            // frame, which is the continents.
+            uIntensity: { value: 0.82 },
           },
           side: THREE.BackSide,
           transparent: true,
@@ -453,8 +509,8 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
           // The centre stop is nearly clear on purpose: this sprite sits
           // BEHIND the planet and is meant to be a halo escaping past the
           // silhouette, not a wash over the face of it.
-          grad.addColorStop(0, "rgba(86,124,228,0.30)");
-          grad.addColorStop(0.5, "rgba(80,116,220,0.13)");
+          grad.addColorStop(0, "rgba(96,150,240,0.22)");
+          grad.addColorStop(0.5, "rgba(88,132,228,0.08)");
           grad.addColorStop(1, "rgba(80,116,220,0)");
           gctx.fillStyle = grad;
           gctx.fillRect(0, 0, 128, 128);
@@ -467,23 +523,32 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
           depthWrite: false,
         });
         const glowSprite = new THREE.Sprite(glowMat);
-        glowSprite.scale.set(3.6, 3.6, 1);
+        glowSprite.scale.set(3.1, 3.1, 1);
         glowSprite.position.z = -1.4; // behind the planet, so it haloes rather than washes
         tilt.add(glowSprite);
         disposables.push(glowTex, glowMat);
 
         // ── Orbital sweeps ────────────────────────────────────────────────
-        // Two rather than the old three, each thicker and brighter. Three thin
-        // ones read as a diagram; two heavier ones read as motion, which is what
-        // the reference has.
+        // FOUR, thin and bright. There were two heavy ones, on the reasoning
+        // that "three thin ones read as a diagram"; holding the render beside
+        // the reference shows that to be wrong about this picture. It has four
+        // or five fine bright arcs at clearly different inclinations, crossing
+        // in front of the planet and behind it, and the count is what makes it
+        // read as an orbital system rather than as a ringed planet.
+        //
+        // Thin AND bright, not thick and dim: a 1px line at high opacity reads
+        // as a drawn arc, which is what the reference has. Below about 0.004
+        // world units they alias into dashes at this size, so that is the floor.
         const rings: any[] = [];
         [
-          { r: 1.34, tube: 0.0085, rx: 0.36, ry: 0, rz: 0.1, opacity: 0.5, speed: 0.0021 },
-          { r: 1.66, tube: 0.0065, rx: 1.18, ry: 0.5, rz: 0, opacity: 0.33, speed: -0.0015 },
+          { r: 1.22, tube: 0.0045, rx: 0.34, ry: 0, rz: 0.12, opacity: 0.72, speed: 0.0020 },
+          { r: 1.42, tube: 0.0042, rx: 1.24, ry: 0.42, rz: 0, opacity: 0.5, speed: -0.0015 },
+          { r: 1.63, tube: 0.004, rx: -0.42, ry: 0.22, rz: 0.92, opacity: 0.42, speed: 0.0012 },
+          { r: 1.86, tube: 0.004, rx: 1.46, ry: -0.3, rz: 0.4, opacity: 0.3, speed: -0.0009 },
         ].forEach((def) => {
-          const g = new THREE.TorusGeometry(def.r, def.tube, 8, 96);
+          const g = new THREE.TorusGeometry(def.r, def.tube, 8, 128);
           const m = new THREE.MeshBasicMaterial({
-            color: 0x6d93ee,
+            color: 0x8dc0f8,
             transparent: true,
             opacity: def.opacity,
             blending: THREE.AdditiveBlending,
@@ -511,10 +576,10 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         const partGeo = new THREE.BufferGeometry();
         partGeo.setAttribute("position", new THREE.BufferAttribute(partPos, 3));
         const partMat = new THREE.PointsMaterial({
-          color: 0x6d93ee,
-          size: 0.032,
+          color: 0x9cc6fa,
+          size: 0.026,
           transparent: true,
-          opacity: 0.6,
+          opacity: 0.8,
           sizeAttenuation: true,
           blending: THREE.AdditiveBlending,
           depthWrite: false,
@@ -568,12 +633,18 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
             hubMat.uniforms.uTime.value = time;
             for (const m of arcMats) m.uniforms.uTime.value = time;
 
-            // India stays facing the camera. The globe OSCILLATES around that
-            // pose rather than spinning: a continuous spin would carry the
-            // subcontinent out of view inside a minute, and "India visibly
-            // central" is the brief's own requirement, not a starting pose.
-            spin.rotation.y = baseY + Math.sin(t * 0.0045) * 0.26;
-            tilt.rotation.x = 0.28 + Math.sin(t * 0.0031) * 0.05;
+            // THE EARTH ITSELF IS LOCKED, and that is the owner's call:
+            // "even if the globe is not moving its fine but i want you to
+            // exactly copy the globe as it is in the image". It used to
+            // oscillate +/- 15 degrees in Y and +/- 3 in X, which is the one
+            // thing that cannot be reconciled with copying a still frame —
+            // for most of every cycle the planet is NOT in the reference's
+            // pose, and India drifts out from under the composition built
+            // around it.
+            //
+            // The scene is still alive: the orbital sweeps turn, the arc
+            // pulses run, the hubs breathe and the particles fall inward.
+            // Only the globe holds its mark.
 
             rings.forEach((ring) => {
               ring.rotation.z += ring.userData.speed;
@@ -663,16 +734,16 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
  * SO IT GETS THE CONTINENTS TOO. It used to be a wireframe of ellipses, and
  * leaving it that way while the WebGL scene grew a coastline would mean the
  * majority of visitors never saw the thing the owner asked for. Same mask, same
- * India-facing pose, orthographically projected, sampled at a coarse 2.2-degree
- * step because this is inline markup in the HTML payload rather than a buffer —
- * about 1,100 visible dots, which is a few KB and gzips to almost nothing.
+ * India-facing pose, orthographically projected, sampled at a 1.7-degree step
+ * because this is inline markup in the HTML payload rather than a buffer — a
+ * few thousand visible dots, which gzips to almost nothing.
  *
  * The dot RADIUS and opacity fall off toward the limb for the same reason the
  * shader darkens there: it is what stops a field of dots reading as a disc.
  */
 function StaticGlobe({ className = "", style }: { className?: string; style?: React.CSSProperties }) {
   const a = rotationFacing(INDIA_CENTRE.lon);
-  const tiltA = 0.28;
+  const tiltA = INDIA_TILT_X;
   const cosA = Math.cos(a);
   const sinA = Math.sin(a);
   const cosT = Math.cos(tiltA);
@@ -693,17 +764,17 @@ function StaticGlobe({ className = "", style }: { className?: string; style?: Re
   // page's own HTML — at ~1,500 dots that difference is around 35 KB of the
   // document, for a gradient no eye can resolve at three steps or at thirty.
   const BANDS = [
-    { min: 0.06, max: 0.33, r: 0.5, opacity: 0.34 },
-    { min: 0.33, max: 0.66, r: 0.72, opacity: 0.62 },
-    { min: 0.66, max: 1.01, r: 0.9, opacity: 0.88 },
+    { min: 0.06, max: 0.33, r: 0.38, opacity: 0.4 },
+    { min: 0.33, max: 0.66, r: 0.5, opacity: 0.68 },
+    { min: 0.66, max: 1.01, r: 0.62, opacity: 0.95 },
   ];
   const bands: { x: string; y: string }[][] = BANDS.map(() => []);
 
-  for (let lat = -84; lat <= 84; lat += 2.2) {
+  for (let lat = -84; lat <= 84; lat += 1.7) {
     // Constant spacing ON THE GROUND rather than in degrees: a fixed longitude
     // step piles points up at the poles, which on this projection is a bright
     // smear at the top and bottom of the disc.
-    const step = 2.2 / Math.max(0.16, Math.cos((lat * Math.PI) / 180));
+    const step = 1.7 / Math.max(0.16, Math.cos((lat * Math.PI) / 180));
     for (let lon = -180; lon < 180; lon += step) {
       if (!isLand(lat, lon)) continue;
       const p = project(lat, lon);
@@ -722,13 +793,13 @@ function StaticGlobe({ className = "", style }: { className?: string; style?: Re
     <svg viewBox="0 0 200 200" className={className} style={style} aria-hidden="true">
       <defs>
         <radialGradient id="ps-globe-atm" cx="50%" cy="50%" r="50%">
-          <stop offset="55%" stopColor="#5e8ae8" stopOpacity="0" />
-          <stop offset="80%" stopColor="#5e8ae8" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="#5e8ae8" stopOpacity="0" />
+          <stop offset="55%" stopColor="#74b4f5" stopOpacity="0" />
+          <stop offset="80%" stopColor="#74b4f5" stopOpacity="0.42" />
+          <stop offset="100%" stopColor="#74b4f5" stopOpacity="0" />
         </radialGradient>
         <radialGradient id="ps-globe-face" cx="42%" cy="36%" r="76%">
-          <stop offset="0%" stopColor="#122243" />
-          <stop offset="100%" stopColor="#050b1d" />
+          <stop offset="0%" stopColor="#0a1628" />
+          <stop offset="100%" stopColor="#01040c" />
         </radialGradient>
       </defs>
 
@@ -736,7 +807,7 @@ function StaticGlobe({ className = "", style }: { className?: string; style?: Re
       <circle cx="100" cy="100" r="78" fill="url(#ps-globe-face)" />
 
       {BANDS.map((b, bi) => (
-        <g key={bi} fill="#7ea3f0" opacity={b.opacity}>
+        <g key={bi} fill="#b6d8fb" opacity={b.opacity}>
           {bands[bi].map((d, i) => (
             <circle key={i} cx={d.x} cy={d.y} r={b.r} />
           ))}
@@ -756,11 +827,12 @@ function StaticGlobe({ className = "", style }: { className?: string; style?: Re
         ))}
       </g>
 
-      <g stroke="#6d93ee" fill="none" strokeWidth="0.55">
-        <ellipse cx="100" cy="100" rx="94" ry="34" strokeOpacity="0.42" transform="rotate(-18 100 100)" />
-        <ellipse cx="100" cy="100" rx="88" ry="52" strokeOpacity="0.24" transform="rotate(24 100 100)" />
+      <g stroke="#8dc0f8" fill="none" strokeWidth="0.5">
+        <ellipse cx="100" cy="100" rx="95" ry="30" strokeOpacity="0.62" transform="rotate(-16 100 100)" />
+        <ellipse cx="100" cy="100" rx="90" ry="48" strokeOpacity="0.4" transform="rotate(26 100 100)" />
+        <ellipse cx="100" cy="100" rx="84" ry="64" strokeOpacity="0.26" transform="rotate(-52 100 100)" />
       </g>
-      <circle cx="100" cy="100" r="78" fill="none" stroke="#8fb6ff" strokeOpacity="0.32" strokeWidth="0.7" />
+      <circle cx="100" cy="100" r="78" fill="none" stroke="#9ecbfb" strokeOpacity="0.4" strokeWidth="0.7" />
     </svg>
   );
 }

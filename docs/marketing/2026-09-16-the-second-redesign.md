@@ -254,3 +254,134 @@ sitting there while the support FAQ said "most firms are up and running within a
 day" — the identical unmeasured claim, in words the literal pattern could not
 see. The entry is now about any promise that setting up takes a stated length of
 time, and the vacuity test carries both spellings.
+
+---
+
+# Addendum — the globe, again (same day)
+
+The redesign merged as #526 and the owner compared the deployed hero with the
+reference once more: *"even if the globe is not moving its fine but i want you
+to exactly copy the globe as it is in the image if you yourself compare you can
+spot the difference right?"*
+
+They were right, and holding the two side by side there were six differences,
+not one.
+
+| Reference | What #526 shipped | Fix |
+|---|---|---|
+| Sphere is near-**black** | Navy `0x10203f` | `0x071223` / limb `0x01040c` |
+| Continents are fine bright **white-cyan lights** | Coarse blue-grey `(0.34, 0.46, 0.74)` dots at 0.0125 | `(0.62, 0.79, 0.97)` at 0.0088, 90k candidates (~26k points) |
+| India sits **above** the centre | Dead centre | `INDIA_TILT_X = -0.045` |
+| The white tick badge is **on the globe** | Removed in #526 | Restored |
+| **Four-plus** bright thin sweeps | Two thick dim ones | Four at 0.004–0.0045, brighter |
+| Connector web is **clearly visible** | Flat 0.22 | 0.42, thinner stroke |
+
+## The badge: a fix that addressed the symptom
+
+#526 removed the centre mark *because it was covering India*. That reasoning
+only holds if India has to be at the centre — and the reference has both, at
+different heights. **The planet was in the wrong pose, not the mark in the wrong
+place.** `INDIA_TILT_X` is derived rather than dialled in: rotating about +X by
+`a` sends a surface point to `y' = y·cos a − z·sin a`, and India at 22°N facing
+the camera is `(0.375, 0.927)`, so `0.375·cos a − 0.927·sin a = 0.41` gives
+`a ≈ −0.045`. The old `+0.28` pushed India *down* to 10% of the radius, which is
+how it ended up under a badge at 50%/50%.
+
+## The Earth is now locked
+
+Owner's call — *"even if the globe is not moving its fine"*. It used to
+oscillate ±15° in Y and ±3° in X, which cannot be reconciled with copying a
+still frame: for most of every cycle the planet is **not** in the reference's
+pose, and India drifts out from under the composition built around it. The
+sweeps still turn, the arc pulses run, the hubs breathe and the particles fall.
+Only the globe holds its mark.
+
+## Two corrections to #526's own reasoning
+
+- **"Three thin rings read as a diagram; two heavier ones read as motion."**
+  Wrong about this picture. The reference has four or five *fine bright* arcs at
+  different inclinations, and the count is what makes it an orbital system
+  rather than a ringed planet. Thin and bright, not thick and dim.
+- **Limb darkening at `0.16 + 0.84·limb`.** Too aggressive: the outer third of
+  every continent dissolved, so Africa and East Asia were ghosts at the edges.
+  The reference keeps its coastlines lit almost to the silhouette and lets the
+  atmosphere do the rounding. Now `0.48 + 0.52·limb` over a tighter ramp.
+
+## And a real bug the redesign shipped
+
+**Two hero cards were clipped off the side of the screen**, at every common
+laptop width:
+
+```
+Payroll    71px past the right edge at 1280,  56px at 1366,  19px at 1440
+Documents  71px                               56px           19px
+```
+
+`MAX_RIGHT_ANCHOR` now carries the derivation and a test reads the anchors.
+
+**It shipped because the hero is `overflow-hidden`.** The cards were clipped
+rather than pushed out, so the document never gained a horizontal scrollbar —
+and #526's verification measured exactly that (`scrollWidth` vs `clientWidth`,
+"no horizontal overflow on any of the seven routes at 390px or 768px") and saw a
+clean page. The check was sound and measured the wrong thing: *only measuring
+the cards finds it.*
+
+Two further things only measurement caught:
+
+- **"Fits inside the stage" is not the rule.** It is tempting because it needs no
+  page arithmetic — and it yields 69.4%, which drags every right-hand card onto
+  the face of the globe where they overlap each other and the centre mark. The
+  cards belong outside the disc. The binding constraint is the viewport at
+  1024px, the narrowest width that still shows cards.
+- **Non-overlap is not a gap.** Practice analytics and Banking measured 17px
+  apart and read as one block — and `.floaty` bobs each card 12px on its own
+  delay, so two cards in a column drift up to 12px relative and that 17px closes
+  for part of every cycle. The check now requires a 24px moat, and the pair is
+  laid out far enough apart to survive the bob.
+
+## `side: "left"` had never worked, and the guard for it was vacuous
+
+Two findings from measuring the card layout, both worth recording because each
+one was invisible in review and in the rendered page.
+
+### The placement transform was being thrown away every frame
+
+Each card carried both its placement transform — `translate(-100%, -50%)`, what
+hangs a left-hand card off its anchor — **and** the `.floaty` class. `.floaty`'s
+keyframes set `transform` outright, and an animation's value beats an inline
+one, so the placement was discarded on every frame.
+
+**`side: "left"` therefore did nothing at all.** Every card grew rightward from
+its anchor, left and right alike, and the vertical `-50%` centring went with it.
+Measured: the Compliance card's *left* edge sat exactly at its own `x%`, where a
+left-hand card should have its *right* edge there.
+
+It reads as a styling detail and it is not. It is why the left column had to be
+crowded onto the globe to stay clear of the headline, and why two cards laid out
+218px apart measured 21px apart. The fix is structural — an outer element
+positions, an inner one bobs — because CSS has no error for this and the page
+looks plausible either way.
+
+It also means the two anchor rules are **not** mirrors of one another, and that
+asymmetry is real rather than an oversight:
+
+- **Right**: past the stage is background, so the limit is the viewport at
+  1024px. "Fits inside the stage" was tried and is wrong — it crowds every card
+  onto the globe's face.
+- **Left**: past the stage is the hero's own headline and buttons, so the card
+  must stay inside the stage. `MIN_LEFT_ANCHOR = 37` is the widest card
+  (232px) over the 640px stage.
+
+### And the guard written for it passed having examined nothing
+
+The first version of the pattern was edited in through `sed`, which turned the
+`\b` into a literal **backspace byte**. `<div\x08[^>]*>` matches nothing, so the
+loop ran zero times and the test reported green — while the bug it describes sat
+in the file two lines from the assertion. It survived a negative control, twice,
+because reintroducing the bug changed nothing about a loop that never ran.
+
+This is precisely the failure #527 landed on `main` for — *"the redesign's
+safety net was reporting green having observed nothing"* — reproduced one
+directory over, within the hour. The test now asserts the match **count** before
+it asserts the rule, and a repo-wide scan confirmed no other source file carries
+a stray control byte.
