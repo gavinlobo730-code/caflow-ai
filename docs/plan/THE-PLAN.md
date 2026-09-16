@@ -45,7 +45,7 @@ _Last updated: 2026-09-16_
 
 | track | what | owner | size | status |
 |---|---|---|---|---|
-| **T1** | Repair the safety net | 🔧 C | 4–6d | `DOING` — 5 of 7 done |
+| **T1** | Repair the safety net | 🔧 C | 4–6d | `DOING` — 6 of 7 done |
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `TODO` |
 | **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `BLOCKED` on T1 |
 | **T4** | Token adoption | 🔧 C | 5–8d | `BLOCKED` on T3 |
@@ -120,7 +120,7 @@ required CI checks green and nothing having verified it. Measured:
 | T1-b | Attribute reachability to a calling file under `app/` or `components/`, not the `lib/` blob | 1d | `DONE` | `_sources()` counts a URL literal only where a screen can reach it. Endpoints reached falls 907 → **797**; the 110 between were named by nothing but an api-client method with no caller |
 | T1-c | Seed the smoke walk's `users` read so `hasFirm` resolves true and screens actually render | 1h | `DONE` | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 (was **11**, now 154) |
 | T1-d | Triage every failure T1-c exposes | 2–3d | `DONE` | `pnpm smoke` exits 0 with all 159 routes rendering their own screen |
-| T1-e | Per-route content assertion + fail the run if > 5 screenshots share an md5 | 1d | `TODO` | The guard that would have caught this on 12 September exists and passes |
+| T1-e | Per-route content assertion + fail the run if > 5 screenshots share an md5 | 1d | `DONE` | `pnpm smoke` exits 0 today; with the seeded rows removed — the harness exactly as it stood on 12 September — it exits 1 with **147 of 159** routes reporting, 143 of them "landed on /onboarding". That run exited **0**. |
 | T1-f | Add `error.tsx` to every module route | 0.5d | `DONE` | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 (was **0**, now 65) |
 | T1-g | Refresh both snapshots at HEAD in a reviewed commit | 0.5h | `TODO` | 128 unprotected endpoints → 0; screen snapshot 159 → 160 |
 
@@ -522,8 +522,10 @@ c=collections.Counter(v['status'] for v in d['findings'].values()); print(c['ope
 
 | check | 16 Sep 2026 | target | track |
 |---|---|---|---|
-| distinct smoke screenshots | **11** of 159 | ≥ 150 | T1-c |
-| error boundaries | **0** | ≥ 14 | T1-f |
+| distinct smoke screenshots | ~~11~~ **154** of 159 | ≥ 150 | ✅ T1-c |
+| distinct rendered bodies | ~~11~~ **149** of 153 that stay put | largest group ≤ 5 | ✅ T1-e |
+| routes landing on someone else's screen | ~~143~~ **0** unpinned | 0 | ✅ T1-e |
+| error boundaries | ~~0~~ **65** | ≥ 14 | ✅ T1-f |
 | endpoints reached by an uncalled api-client method | ~~110~~ **0** of 797 | 0 | ✅ T1-b |
 | screens deletable in silence | ~~133~~ **77** of 159 | see note | T1-b done, rest → T1-e |
 | redirect rules used | **98** of 100 | ≤ 90 | T6-a |
