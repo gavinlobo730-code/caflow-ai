@@ -228,9 +228,14 @@ export function CineCTA({
     { text: "Bring your whole practice", italic: true },
     { text: "into one place." },
   ],
-  subtitle = "Start a free trial today, or talk to us about moving your firm across from Tally, ClearTax or Winman.",
-  primary = { href: appLinks.signup, label: "Start free trial", external: true },
-  secondary = { href: "/support", label: "Talk to us" },
+  // Book a demo is the site's primary conversion goal (owner decision,
+  // 16-09-2026), so it is the filled button on every closing CTA and the free
+  // trial is the outlined one beside it. The two were the other way round until
+  // that decision; this component is the single place the order is set, which
+  // is why changing the funnel was one edit rather than five.
+  subtitle = "Book a demo and we'll walk a real client's month end to end — or start a free trial and look around on your own.",
+  primary = { href: "/demo", label: "Book a demo" },
+  secondary = { href: appLinks.signup, label: "Start free trial", external: true },
 }: {
   titleLines?: { text: string; italic?: boolean }[];
   subtitle?: string;

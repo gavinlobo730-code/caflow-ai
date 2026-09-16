@@ -256,12 +256,16 @@ export function CTASection({
         </Reveal>
         <Reveal delay={150}>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button href={appLinks.signup} external variant="light" className="px-6 py-3.5">
-              Start free trial
+            {/* Book a demo leads; the trial is the alternative beside it. Same
+                order as cinematic.tsx's CineCTA, which is what most pages use —
+                two closing CTAs that disagree about the primary action is how a
+                funnel change half-lands. */}
+            <Button href="/demo" variant="light" className="px-6 py-3.5">
+              Book a demo
               <ArrowRight size={16} />
             </Button>
-            <Button href="/support" variant="ghost-light" className="px-6 py-3.5">
-              Talk to us
+            <Button href={appLinks.signup} external variant="ghost-light" className="px-6 py-3.5">
+              Start free trial
             </Button>
           </div>
         </Reveal>

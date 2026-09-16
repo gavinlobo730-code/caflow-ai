@@ -36,6 +36,24 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "rlig" 1, "calt" 1;
+
+  /* MANROPE TURNS "(c)" INTO "©" AND THIS SITE IS ABOUT INDIAN TAX LAW.
+     Clause letters are everywhere in the copy — GSTR-3B Table 3.1 row (c),
+     §16(2)(c), §49(5)(c), §139(1)(a) — and the font ships that substitution as
+     a COMMON ligature, so it fires by default and renders a statutory row
+     label as a copyright symbol. It was doing exactly that in the GSTR-3B
+     screen of the product showcase.
+
+     `font-feature-settings` cannot switch it off: measured, "(c)" is 12.7px
+     with "calt" 0, "rlig" 0 and `normal` alike, and 18.6px only under
+     font-variant-ligatures. So it has to be this property.
+
+     `no-common-ligatures` rather than `none` is the narrowest thing that
+     works, and it costs nothing here: with it, "(r)" and "(tm)" are unchanged
+     (Manrope does not substitute those at all) and a string full of fi/fl
+     pairs moves by 0.3px across 68 — i.e. Manrope has no real common
+     ligatures apart from this one. */
+  font-variant-ligatures: no-common-ligatures;
   overflow-x: hidden;
 }
 
@@ -274,6 +292,16 @@ body {
 }
 @keyframes draw {
   to { stroke-dashoffset: 0; }
+}
+
+/* ─── Hero scroll cue ─────────────────────────────────────────────────────── */
+/* The one ambient animation that survives from the static homepage's own
+   stylesheet. Named ps-bob rather than bob because this file is shared with
+   every page and a two-letter generic keyframe name is how two of them end up
+   fighting over one definition. */
+@keyframes ps-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(8px); }
 }
 
 /* ─── Ambient shimmer line under section eyebrows ─────────────────────────── */

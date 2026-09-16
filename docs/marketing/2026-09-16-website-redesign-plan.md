@@ -12,6 +12,45 @@ code disagree, the disagreement is named rather than resolved silently.
 
 ---
 
+## STATUS — all stages built, 16 September 2026
+
+Stage 0 shipped on its own (`cf7fe670`). Stages 1–5 shipped together. What
+follows is the plan as written; this block records where the build differed
+from it, because those differences are decisions rather than drift.
+
+| Stage | State | Differs from the plan |
+|---|---|---|
+| 0 — truth pass | done | — |
+| 1 — port the homepage into React | done | `scripts/substitute-app-url.js` was DELETED rather than updated. It existed only because the static homepage could not read `NEXT_PUBLIC_APP_URL`; a React page can, so the build step had nothing left to do |
+| 2 — hero, rotating word, globe, `/demo`, CTA swap | done | the rotation already existed and needed the brief's sequence, cadence and an actual transition — not a new feature. The globe gained real Indian city coordinates (`components/home/geography.ts`) rather than a coastline mask nobody here could verify |
+| 3 — real product UI | done | four screens, not the three the plan floated: banking, GSTR-3B, copilot, client workspace |
+| 4 — ecosystem, before/after, AI, trust | done | — |
+| 5 — inner pages, logo, QA | done | the logo mark was NOT redesigned. §4 asks to "explore" a proprietary tick-in-ring; what it got is the existing mark drawn in `currentColor` so it cross-fades with the header. A new mark is a brand decision, not an engineering one, and is the one item of the brief deliberately left open |
+
+**Three things found during the build that were not in the brief:**
+
+1. **Manrope renders `(c)` as `©`**, as a COMMON ligature that
+   `font-feature-settings` cannot switch off. It was live in the GSTR-3B screen
+   — statutory row `(c)` rendering as a copyright symbol — and it would have hit
+   every clause letter in the site's copy. Fixed with
+   `font-variant-ligatures: no-common-ligatures` and pinned by a test.
+2. **A 1px header regression, reintroduced and then caught.** The scrolled state
+   was first written with a `border-b`, which put the bar at 69px against the
+   68px it is everywhere else — exactly the defect an earlier session had fixed.
+   It is an inset shadow now.
+3. **CORS.** The marketing site is a separate origin from the API, so the demo
+   form's POST needs it on the allow-list. `core/urls.marketing_base()` adds it
+   to the FALLBACK list — ⚠️ **a deployment that SETS `ALLOWED_ORIGINS` overrides
+   the whole list and must name the marketing origin itself.**
+
+**Two operational steps this cannot do from inside the repo**, both of which
+make the demo form work and neither of which is code: set `DEMO_REQUEST_TO` on
+Render, and make sure `ALLOWED_ORIGINS` (if set) includes the marketing origin.
+Until the first is set the endpoint refuses with a 503 and the page shows the
+email address — loudly, by design, rather than dropping the lead.
+
+---
+
 ## 0. The question that was asked first: is the employee portal there?
 
 **Yes. It is shipped, it works, and the website barely mentions it.**

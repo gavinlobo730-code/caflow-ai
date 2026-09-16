@@ -38,7 +38,7 @@ import pytest
 API_ROOT = Path(__file__).resolve().parents[1]
 URLS_MODULE = API_ROOT / "core" / "urls.py"
 
-_URL_ENV = ("FRONTEND_URL", "PORTAL_BASE_URL")
+_URL_ENV = ("FRONTEND_URL", "PORTAL_BASE_URL", "MARKETING_URL")
 
 # Hosts that must not appear outside core/urls.py: any Cloudflare Pages project
 # and the bare domain that was written into the invitation email.
@@ -104,8 +104,43 @@ def test_frontend_url_drives_every_derived_url(monkeypatch):
     assert frontend_base() == "https://books.example-ca.in"
     assert portal_activate_url() == "https://books.example-ca.in/portal/activate"
     assert portal_login_url() == "https://books.example-ca.in/portal/login"
-    assert default_allowed_origins() == \
-        "http://localhost:3000,https://books.example-ca.in"
+    # The marketing origin is a SEPARATE Cloudflare Pages project, so
+    # FRONTEND_URL must not move it — a deployment that points the app at a
+    # custom domain has not thereby moved the marketing site.
+    assert default_allowed_origins() == (
+        "http://localhost:3000,http://localhost:3001,"
+        "https://books.example-ca.in,https://practicesync.pages.dev"
+    )
+
+
+def test_the_marketing_origin_is_allowed_so_the_demo_form_can_post(monkeypatch):
+    """apps/marketing is its own origin and posts the "Book a demo" form to
+    /api/public/demo-request. A browser refuses that POST outright unless the
+    origin is on the CORS list, so it would fail before reaching any of the
+    endpoint's own refusals — and look exactly like the endpoint being down."""
+    from core.urls import default_allowed_origins, marketing_base
+
+    assert marketing_base() == "https://practicesync.pages.dev"
+    assert marketing_base() in default_allowed_origins()
+
+
+def test_marketing_url_overrides_the_marketing_origin(monkeypatch):
+    from core.urls import default_allowed_origins, marketing_base
+    monkeypatch.setenv("MARKETING_URL", "https://www.example-ca.in/")
+
+    assert marketing_base() == "https://www.example-ca.in"
+    assert "https://www.example-ca.in" in default_allowed_origins()
+    assert "practicesync.pages.dev" not in default_allowed_origins()
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "/"])
+def test_a_blank_marketing_url_falls_back(monkeypatch, blank):
+    """An empty origin in a CORS allow-list matches nothing and reports nothing
+    — the same class of silent failure a blank FRONTEND_URL causes below."""
+    from core.urls import marketing_base
+    monkeypatch.setenv("MARKETING_URL", blank)
+
+    assert marketing_base().startswith("https://")
 
 
 @pytest.mark.parametrize("configured", ["https://x.example.com/", "https://x.example.com///"])

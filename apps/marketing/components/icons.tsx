@@ -219,3 +219,37 @@ export const PlayCircle = (p: IconProps) => (
     <path d="m10 8 6 4-6 4V8Z" />
   </Icon>
 );
+
+// Added for the redesigned hero's module cards and the platform-ecosystem
+// section. Banking and inventory are shipped subsystems the site was silent
+// about until the September 2026 truth pass, so they needed marks of their own
+// rather than borrowing Receipt and Building from payroll and clients.
+export const Landmark = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 21h18M4 10v8M9 10v8M15 10v8M20 10v8M2 10h20L12 3 2 10Z" />
+  </Icon>
+);
+
+export const Layers = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m12 3 9 5-9 5-9-5 9-5Z" />
+    <path d="m3 13 9 5 9-5M3 16.5l9 5 9-5" />
+  </Icon>
+);
+
+export const Workflow = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3" width="6" height="6" rx="1.5" />
+    <rect x="15" y="15" width="6" height="6" rx="1.5" />
+    <path d="M6 9v4.5A2.5 2.5 0 0 0 8.5 16H15" />
+  </Icon>
+);
+
+export const Boxes = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+    <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+    <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+    <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+  </Icon>
+);

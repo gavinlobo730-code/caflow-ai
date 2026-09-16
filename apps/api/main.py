@@ -452,6 +452,12 @@ app.include_router(payments.router)
 # Intentionally public, like the hosted payment link. NOT behind _CLIENT_GUARD.
 from routers import engagement_sign_public
 app.include_router(engagement_sign_public.router)
+# Demo requests from the marketing site. Public for the same reason the two
+# above are: the sender has no account, which is the point. It reads nothing,
+# writes no row and takes no firm_id — a honeypot, a rate limit and Pydantic's
+# length caps stand in for the auth it cannot have. NOT behind _CLIENT_GUARD.
+from routers import demo_request
+app.include_router(demo_request.router)
 # Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
 from routers.practice import router as practice_router
 app.include_router(practice_router, dependencies=_MFA_GUARD)

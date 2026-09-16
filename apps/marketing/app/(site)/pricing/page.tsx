@@ -78,7 +78,7 @@ const TIERS: Tier[] = [
       "Audit logs",
       "SLA & account manager",
     ],
-    cta: { label: "Contact sales", href: "/support", external: false },
+    cta: { label: "Book a demo", href: "/demo", external: false },
     highlighted: false,
     badge: null,
   },

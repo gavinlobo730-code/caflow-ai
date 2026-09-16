@@ -175,8 +175,8 @@ export default function ProductsPage() {
           subtitle="PracticeSync brings compliance, accounting, payroll, clients, documents and analytics into a single AI-first workspace — replacing Tally, ClearTax, Winman and WhatsApp for Indian CA firms."
         />
         <div className="mt-10 flex flex-wrap items-center gap-5">
-          <Button href={appLinks.signup} external variant="accent" className="px-6 py-3.5">
-            Start free trial
+          <Button href="/demo" variant="accent" className="px-6 py-3.5">
+            Book a demo
             <ArrowRight size={16} />
           </Button>
           <Button href="/pricing" variant="ghost-light" className="px-6 py-3.5">

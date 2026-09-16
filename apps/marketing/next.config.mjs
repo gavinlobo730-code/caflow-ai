@@ -22,6 +22,21 @@ const nextConfig = {
       (process.env.NODE_ENV === "production"
         ? "https://caflow-ai.pages.dev"
         : "http://localhost:3000"),
+    // The FastAPI backend (apps/api on Render). The marketing site reaches it
+    // for exactly one thing — posting a "Book a demo" request to the public
+    // /api/public/demo-request endpoint — because a static export has no
+    // server of its own to send mail from. It holds no key and reads nothing:
+    // that endpoint is unauthenticated by design and takes no tenant id.
+    //
+    // Inlined at build time like NEXT_PUBLIC_APP_URL above, so production must
+    // resolve to the real API origin rather than localhost. When it is left at
+    // the localhost default in a deployed build the form says so and offers the
+    // mailto instead of failing silently — see app/(site)/demo/page.tsx.
+    NEXT_PUBLIC_API_URL:
+      process.env.NEXT_PUBLIC_API_URL ||
+      (process.env.NODE_ENV === "production"
+        ? "https://practicesync-api.onrender.com"
+        : "http://localhost:8000"),
   },
 };
 

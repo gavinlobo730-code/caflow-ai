@@ -17,7 +17,6 @@ export const metadata = {
 // single source of truth, CONTACT.phone — digits only, keeping the leading +.
 const emailHref = `mailto:${CONTACT.email}`;
 const telHref = `tel:${CONTACT.phone.replace(/[^\d+]/g, "")}`;
-const demoHref = `mailto:${CONTACT.email}?subject=${encodeURIComponent("Demo request")}`;
 
 const CHANNELS = [
   {
@@ -176,8 +175,11 @@ export default function SupportPage() {
                 See PracticeSync mapped to your firm&apos;s workflow in a short, no-pressure walkthrough tailored to how you work.
               </p>
               <p className="mt-4 self-start text-[13px] font-medium text-slate-400">Typically around 30 minutes.</p>
-              <Button href={demoHref} external variant="light" className="mt-auto w-full">
-                Request a demo <ArrowRight size={16} />
+              {/* Was a mailto: — the only "book a demo" the site had before
+                  /demo existed. The form is the route in now; the address is
+                  still on that page, and is what it offers if a send fails. */}
+              <Button href="/demo" variant="light" className="mt-auto w-full">
+                Book a demo <ArrowRight size={16} />
               </Button>
             </GlassCard>
           </Reveal>
