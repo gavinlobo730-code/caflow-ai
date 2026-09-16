@@ -32,8 +32,9 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Get started",
     links: [
+      { label: "Book a demo", href: "/demo" },
       { label: "Start free trial", href: appLinks.signup, external: true },
-      { label: "Firm login", href: "/access" },
+      { label: "Sign in", href: "/access" },
       { label: "Client portal", href: appLinks.clientPortal, external: true },
     ],
   },

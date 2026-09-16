@@ -125,6 +125,23 @@ services:
       # that serves the portal from a DIFFERENT host than the app.
       - key: PORTAL_BASE_URL
         sync: false
+      # Where a "Book a demo" form submission from the marketing site is sent.
+      # routers/demo_request.py REFUSES with a 503 when this is unset rather
+      # than guessing an address — an unset value here means every lead the
+      # website collects is dropped, and a lead dropped quietly is worse than a
+      # form that says it is broken.
+      - key: DEMO_REQUEST_TO
+        sync: false
+      # Origin of the MARKETING site (apps/marketing — a separate Cloudflare
+      # Pages project from apps/web, so a separate origin). Optional: unset, it
+      # falls back to the live practicesync.pages.dev subdomain. It is in the
+      # CORS allow-list because the "Book a demo" form posts cross-origin to
+      # /api/public/demo-request, and a browser refuses that POST outright if
+      # the origin is not listed — which looks identical to the API being down.
+      # ⚠️ Only the FALLBACK list includes it. A deployment that sets
+      # ALLOWED_ORIGINS replaces the whole list and must name this origin too.
+      - key: MARKETING_URL
+        sync: false
 
       # --- Scheduled jobs --------------------------------------------------
       # Off unless this reads exactly "true". When unset, jobs/scheduler.py

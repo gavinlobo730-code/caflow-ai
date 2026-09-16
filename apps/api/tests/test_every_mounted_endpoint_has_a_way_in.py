@@ -58,7 +58,16 @@ import pytest
 
 from main import app
 
-WEB = pathlib.Path(__file__).resolve().parents[3] / "apps" / "web"
+_REPO = pathlib.Path(__file__).resolve().parents[3]
+WEB = _REPO / "apps" / "web"
+#: The MARKETING site is a caller too, and until 16-09-2026 this scanner could
+#: not see it. apps/marketing is a second frontend on its own origin, and it
+#: reaches exactly one endpoint — POST /api/public/demo-request, the "Book a
+#: demo" form, plus the GET that serves its firm-size options. Scanning only
+#: apps/web reported both as unreachable, which is the opposite of true: they
+#: are the most-used public endpoints on the site. An endpoint is reachable if
+#: SOME frontend in this repository calls it.
+MARKETING = _REPO / "apps" / "marketing"
 
 #: Per-prefix ceilings, measured against the tree of 2026-09-11. Lower one in
 #: the same commit that wires a screen up; raising one is a claim that a new
@@ -107,16 +116,17 @@ TOTAL_BUDGET = 129
 
 
 def _sources() -> str:
-    """Every .ts/.tsx in the product, minus its own tests.
+    """Every .ts/.tsx in EITHER frontend, minus their own tests.
 
     Tests are excluded so a test that merely NAMES an endpoint cannot make it
     look reachable — the exact mistake this guards against, one level up.
     """
     out = []
-    for folder in ("app", "lib", "components"):
-        for path in (WEB / folder).rglob("*"):
-            if path.suffix in (".ts", ".tsx") and ".test." not in path.name:
-                out.append(path.read_text(errors="ignore"))
+    for root in (WEB, MARKETING):
+        for folder in ("app", "lib", "components"):
+            for path in (root / folder).rglob("*"):
+                if path.suffix in (".ts", ".tsx") and ".test." not in path.name:
+                    out.append(path.read_text(errors="ignore"))
     return "\n".join(out)
 
 

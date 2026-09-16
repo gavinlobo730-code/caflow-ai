@@ -8,45 +8,92 @@ import { appLinks } from "@/lib/site";
 export const metadata = {
   title: "Products",
   description:
-    "Explore the PracticeSync platform — compliance, accounting, payroll, clients & CRM, an AI assistant and practice analytics in one workspace built for Indian CA firms.",
+    "Explore the PracticeSync platform — compliance, accounting, sales & purchases, banking, inventory, payroll and the employee portal, clients & CRM, an AI assistant, workflow automation and practice analytics in one workspace built for Indian CA firms.",
 };
 
+// One entry per shipped subsystem. Five were added in the September 2026 truth
+// pass — banking, sales & purchases, inventory, workflow automation and the
+// Tally migration were all live in the product and entirely absent from this
+// page, which is a bigger content gap than anything in the redesign brief.
+//
+// Every claim here is checked against a route or a service in this repo. The
+// verb for anything statutory is PREPARE: PracticeSync computes the return and
+// produces the file, and a human uploads and signs it on the government portal.
+// Filing through the software needs GSP (GSTN) and ERI (CBDT) registration,
+// neither of which is held — see docs/compliance/07-getting-permission-to-file.md.
 const MODULES = [
   {
     eyebrow: "Compliance",
-    title: "Every return and every deadline, tracked per client",
-    desc: "GST, Income Tax, TDS and MCA — from working papers to the final filing — with a due-date tracker that watches the whole financial year for you.",
+    title: "Every return computed from the books, and every deadline tracked",
+    desc: "GST, Income Tax, TDS and MCA — from working papers to a file-ready return — with a due-date tracker that watches the whole financial year for you.",
     points: [
-      "GST returns — GSTR-1 (due the 11th), GSTR-3B (due the 20th) and the GSTR-9 annual return (due 31 December)",
-      "Income Tax — ITR preparation, tax computation and advance-tax scheduling",
-      "TDS returns — quarterly 24Q and 26Q",
-      "MCA filings for companies and LLPs",
+      "GST returns — GSTR-1 (due the 11th), GSTR-3B (due the 20th) and the GSTR-9 annual return (due 31 December), computed from your ledgers",
+      "GSTR-2B reconciliation — which bills your supplier has not filed, and how much input credit to hold back",
+      "Income Tax — ITR preparation against the department's own JSON schemas, tax computation and advance-tax scheduling",
+      "TDS — quarterly 24Q, 26Q and 27Q statements, with the 2026 Act's renumbered forms handled alongside the old ones",
+      "MCA and ROC forms for companies and LLPs, dated from the AGM",
       "Built-in due-date tracking across every client, GSTIN and PAN",
-      "Nothing is auto-submitted — a CA confirms every government filing",
+      "You file and sign on the portal, then record the ARN here — and the period locks",
     ],
   },
   {
     eyebrow: "Accounting",
     title: "Books that are ready for the balance sheet",
-    desc: "From daily ledgers to signed year-end statements, structured the way Indian statutory accounts are meant to be.",
+    desc: "A double-entry general ledger where every posting balances and nothing posted can be quietly rewritten — through to signed year-end statements, structured the way Indian statutory accounts are meant to be.",
     points: [
       "Ledgers and a live trial balance",
       "Trial-balance import from your existing books",
-      "Schedule III mapping for statutory financial statements",
-      "Fixed-asset register with depreciation",
-      "MSME dues tracker for reporting",
-      "Year-end financial statements",
+      "Schedule III mapping for statutory financial statements, with both ageing notes",
+      "Fixed-asset register with Schedule II depreciation",
+      "MSME dues tracker, for the §43B(h) disclosure",
+      "Corrections are append-only reversals, so the audit trail always foots",
     ],
   },
   {
-    eyebrow: "Payroll",
-    title: "Salary runs with the statutory built in",
-    desc: "Run payroll for your clients' teams, generate payslips and keep PF, ESI and TDS on salary in line — with a portal employees can use themselves.",
+    eyebrow: "Sales & purchases",
+    title: "The documents the returns are made of",
+    desc: "Raise invoices, record bills and issue credit and debit notes — with GST computed per line, in integer paise, so the books and the return agree by construction rather than by reconciliation.",
     points: [
-      "Monthly salary runs",
-      "Payslip generation",
-      "Statutory PF, ESI and TDS on salary",
-      "Employee self-service portal",
+      "Sales invoices with per-line GST and §15(3)(a) invoice discounts",
+      "Purchase bills, with TDS resolved by section as you enter them",
+      "Credit and debit notes under §34",
+      "E-invoice IRN and e-way bill records, prepared for the IRP",
+      "Customer and supplier masters, with GSTIN checked to its check digit",
+    ],
+  },
+  {
+    eyebrow: "Banking",
+    title: "A bank statement becomes a voucher, not a spreadsheet",
+    desc: "Upload a statement and every line arrives with a proposed entry already on it — Receipt, Payment or Contra, decided by direction. You review a page of them at a time and pass the ones that are right.",
+    points: [
+      "CSV and XLSX statement import, parsed and normalised on the server",
+      "A drafted voucher on every line, graded ready or proposed with a reason",
+      "Pass the ready ones in bulk — chunked and resumable",
+      "Rules you can mark trusted, so recurring lines post themselves",
+      "Bank book and reconciliation per account",
+    ],
+  },
+  {
+    eyebrow: "Inventory",
+    title: "Stock that ties back to the control account",
+    desc: "Item-wise movements that post to the ledger as they happen, so closing stock as at any date is a figure you can stand behind rather than one you assemble at year end.",
+    points: [
+      "Item master with a movement ledger",
+      "Closing stock as at any date, summed from the movements themselves",
+      "Every movement posts its own journal, so the Inventory control account agrees",
+    ],
+  },
+  {
+    eyebrow: "Payroll & the employee portal",
+    title: "Salary runs with the statutory built in — and a portal your client's staff use themselves",
+    desc: "Run payroll for your clients' teams, generate payslips and keep PF, ESI and TDS on salary in line. Employees get their own secure login for payslips, leave and their tax declaration, so nobody emails HR for a salary slip again.",
+    points: [
+      "Monthly salary runs and payslip generation",
+      "EPF on the Code on Social Security wage base, ESI, and §192 TDS on salary",
+      "Employee portal — payslips to download, leave balance, and the tax deducted so far",
+      "Form 12BB tax declarations filed by the employee, not retyped by you",
+      "Full-and-final settlement, gratuity and leave encashment",
+      "Where a state's professional tax or LWF is not modelled, the run says so instead of deducting nothing silently",
     ],
   },
   {
@@ -56,8 +103,8 @@ const MODULES = [
     points: [
       "One record per client, with all their entities together",
       "Entity relationships and ownership maps",
-      "Client-health scoring",
-      "Tasks and engagement letters",
+      "Client-health scoring and lifecycle tracking",
+      "Tasks and engagement letters, signed by the client on a link",
       "Secure client portal for documents and updates",
     ],
   },
@@ -67,9 +114,20 @@ const MODULES = [
     desc: "Ask about any client in plain language, pull data straight out of invoices and documents, and let proactive insights surface what needs attention — always reviewed by you before anything is acted on.",
     points: [
       "Chat and ask about any client or engagement",
-      "Auto-extract data from invoices and documents",
+      "Auto-extract data from invoices and bills — typed PDFs and photographed ones",
       "Draft client replies and notices",
       "Proactive insights and deadline reminders",
+    ],
+  },
+  {
+    eyebrow: "Workflow automation",
+    title: "The routine work of a practice, running itself",
+    desc: "Templates that fire on a trigger and walk a job through its steps, with approvals where a human has to look. The parts of the month that are the same every month stop needing somebody to remember them.",
+    points: [
+      "Workflow templates with triggers, and a record of every run",
+      "Approval steps routed by role",
+      "Task templates for recurring engagements",
+      "Deadline reminders and team notifications",
     ],
   },
   {
@@ -78,9 +136,20 @@ const MODULES = [
     desc: "Revenue, receivables and deadline load in one executive view — so partners can run the practice, not just the compliance.",
     points: [
       "Firm revenue and billing",
-      "Receivables and collections",
-      "Deadline load across the team",
+      "Receivables, collections and time recorded",
+      "Deadline load and work allocation across the team",
       "Executive dashboard for partners",
+    ],
+  },
+  {
+    eyebrow: "Moving from Tally",
+    title: "Bring the history with you",
+    desc: "A staged import that parses, validates and shows you a preview before anything is written — and rolls the whole batch back if the preview is wrong.",
+    points: [
+      "Ledgers, journals, customers, vendors, masters and opening balances",
+      "Parse → validate → preview → import, with the preview before the write",
+      "Roll a completed batch back if it went in wrong",
+      "Imported entries post through the same ledger as everything else",
     ],
   },
 ];
@@ -89,7 +158,7 @@ const SECURITY = [
   { title: "Data hosted in India", desc: "Your firm's and your clients' data is stored on infrastructure hosted in India." },
   { title: "Role-based access", desc: "Give every team member exactly the access their role needs — and nothing more." },
   { title: "Two-factor authentication", desc: "TOTP-based MFA protects every firm sign-in to the platform." },
-  { title: "Full audit logs", desc: "A complete record of who viewed, edited and filed what, for every client." },
+  { title: "Full audit logs", desc: "A complete record of who viewed, edited, approved and recorded as filed — for every client." },
 ];
 
 export default function ProductsPage() {
@@ -106,8 +175,8 @@ export default function ProductsPage() {
           subtitle="PracticeSync brings compliance, accounting, payroll, clients, documents and analytics into a single AI-first workspace — replacing Tally, ClearTax, Winman and WhatsApp for Indian CA firms."
         />
         <div className="mt-10 flex flex-wrap items-center gap-5">
-          <Button href={appLinks.signup} external variant="accent" className="px-6 py-3.5">
-            Start free trial
+          <Button href="/demo" variant="accent" className="px-6 py-3.5">
+            Book a demo
             <ArrowRight size={16} />
           </Button>
           <Button href="/pricing" variant="ghost-light" className="px-6 py-3.5">
@@ -119,11 +188,11 @@ export default function ProductsPage() {
       {/* ── Intro ────────────────────────────────────────────────────────── */}
       <Panel theme="light" seam="rising-right">
         <SerifHeading
-          eyebrow="Six modules, one workspace"
+          eyebrow="Eleven modules, one workspace"
           theme="light"
           align="center"
           lines={[{ text: "Everything your practice" }, { text: "runs on, connected.", italic: true }]}
-          subtitle="Compliance, accounting, payroll, clients, documents and analytics share one source of truth — so a client's returns, books and paperwork never live in separate tools again."
+          subtitle="Compliance, accounting, sales and purchases, banking, inventory, payroll, clients, documents and analytics share one ledger and one source of truth — so a client's returns, books and paperwork never live in separate tools again."
         />
       </Panel>
 
@@ -194,10 +263,16 @@ export default function ProductsPage() {
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold ring-1 ring-gold/25">
               <Shield size={22} />
             </span>
+            {/* Reworded in the truth pass: the old line said returns "are sent to
+                any government portal", which implied the software transmits them.
+                It does not — filing needs GSP and ERI registration that is not
+                held (docs/compliance/07). PracticeSync prepares; a CA files. */}
             <p className="text-[15px] leading-relaxed text-brand-dark md:text-[16px]">
-              <span className="font-semibold">Nothing is auto-submitted.</span>{" "}
-              Every GST return, income-tax filing, TDS statement and MCA form waits for an explicit
-              confirmation click from a Chartered Accountant before it is sent to any government portal.
+              <span className="font-semibold">Nothing leaves your hands on its own.</span>{" "}
+              PracticeSync computes the GST return, the income-tax return, the TDS statement and the MCA
+              form from your books and hands you a file that is ready to go. A Chartered Accountant
+              uploads and signs it on the government portal — and then records it here, which is what
+              locks the period. No return is ever transmitted by the software.
             </p>
           </div>
         </CineReveal>

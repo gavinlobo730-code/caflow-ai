@@ -15,6 +15,13 @@ export const appLinks = {
   /** Client portal sign-in (email + password; access is provisioned by the CA,
    *  who sends an invite the client uses once to set their password). */
   clientPortal: `${APP_URL}/portal/login`,
+  /** Employee portal sign-in — payslips, leave, Form 12BB and tax deducted, for
+   *  the staff of a client whose payroll runs here. The SAME sign-in page as
+   *  the client portal: one password login serves both, and apps/web routes the
+   *  identity to the right portal after it resolves who they are. Named
+   *  separately so the two are distinguishable in copy and analytics even
+   *  though the URL is shared today. */
+  employeePortal: `${APP_URL}/portal/login`,
   /** New-firm signup / free trial. */
   signup: `${APP_URL}/signup`,
 };
