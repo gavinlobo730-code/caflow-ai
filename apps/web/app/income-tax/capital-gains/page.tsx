@@ -128,7 +128,7 @@ export default function CapitalGainsPage() {
   // never used to compute anything client-side) ──
   const [ciiByFy, setCiiByFy] = useState<Record<string, number>>({});
   useEffect(() => {
-    getCiiTable().then(({ ciiByFy }) => setCiiByFy(ciiByFy)).catch(() => {});
+    getCiiTable().then(({ ciiByFy }) => setCiiByFy(ciiByFy ?? {})).catch(() => {});
   }, []);
   const ciiYears = Object.keys(ciiByFy).sort();
 
@@ -808,7 +808,7 @@ export default function CapitalGainsPage() {
                     </div>
                   )}
 
-                  {exemption?.claims.map(c => (
+                  {exemption?.claims?.map(c => (
                     <div key={c.id ?? c.section}
                          className={`rounded-lg border px-3 py-2.5 space-y-1.5 ${c.allowed ? "border-emerald-200 bg-emerald-50/40" : "border-[#E2E8F0] bg-[#F8FAFC]"}`}>
                       <div className="flex items-start justify-between gap-3">

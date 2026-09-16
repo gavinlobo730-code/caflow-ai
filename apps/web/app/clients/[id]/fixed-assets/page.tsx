@@ -1988,7 +1988,7 @@ function ReportsTab({ clientId, financialYear }: { clientId: string; financialYe
         </div>
         {loading ? (
           <TableSkeleton cols={7} rows={4} bare />
-        ) : (movement?.classes.length ?? 0) === 0 ? (
+        ) : (movement?.classes?.length ?? 0) === 0 ? (
           <p className="px-5 py-8 text-xs text-[#94A3B8] text-center">
             No assets in the register for this client.
           </p>

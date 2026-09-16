@@ -128,7 +128,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {book && book.negative_days.length > 0 && (
+      {book && (book.negative_days?.length ?? 0) > 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
           <div className="flex items-center gap-1.5">
             <AlertTriangle size={13} className="text-amber-700" />
@@ -151,7 +151,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
         </p>
       )}
 
-      {book?.accounts.map((a) => (
+      {book?.accounts?.map((a) => (
         <div key={a.account_id} className="rounded-xl border border-[#F1F5F9] bg-white">
           <div className="flex items-baseline justify-between px-4 py-2.5 border-b border-[#F1F5F9]">
             <h3 className="text-xs font-semibold text-[#1E293B]">
@@ -164,7 +164,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
               </span>
             </p>
           </div>
-          {a.lines.length === 0 ? (
+          {(a.lines?.length ?? 0) === 0 ? (
             <p className="px-4 py-3 text-[11px] text-[#94A3B8]">
               No cash movements in this period.
             </p>

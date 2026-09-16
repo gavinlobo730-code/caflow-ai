@@ -116,7 +116,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
 
   const partyLabel = kind === "receivable" ? "Customer" : "Vendor";
   const numberLabel = useMemo(
-    () => kinds?.kinds.find((k) => k.value === kind)?.number
+    () => kinds?.kinds?.find((k) => k.value === kind)?.number
       ?? (kind === "receivable" ? "Invoice number" : "Bill number"),
     [kinds, kind]);
 
@@ -199,7 +199,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
           <button key={k} onClick={() => setKind(k)}
             className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
               kind === k ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>
-            {kinds?.kinds.find((x) => x.value === k)?.label
+            {kinds?.kinds?.find((x) => x.value === k)?.label
               ?? (k === "receivable" ? "Receivable" : "Payable")}
           </button>
         ))}

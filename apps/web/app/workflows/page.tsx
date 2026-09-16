@@ -286,7 +286,7 @@ export default function WorkflowsPage() {
           ) : (
             <div className="grid gap-4">
               {filtered.map((template: WorkflowTemplate) => {
-                const analyticsRow = analytics?.by_template.find((a: WorkflowAnalytics["by_template"][number]) => a.template_id === template.id);
+                const analyticsRow = analytics?.by_template?.find((a: WorkflowAnalytics["by_template"][number]) => a.template_id === template.id);
                 return (
                   <div key={template.id} className="bg-white border border-[#E2E8F0] rounded-xl p-5 hover:shadow-sm transition-shadow">
                     <div className="flex items-start justify-between gap-4">

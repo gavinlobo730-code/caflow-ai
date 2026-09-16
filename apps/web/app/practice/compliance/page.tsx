@@ -7,6 +7,7 @@ import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { todayLocalISO } from "@/lib/dateMath";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
+import { objectOrNull } from "@/lib/api/shape";
 
 // Compliance lifecycle (mirrors the server-side VALID_TRANSITIONS — presentation
 // only; the backend is the source of truth and rejects invalid transitions).
@@ -66,7 +67,7 @@ function ComplianceDashboard() {
     setLoading(true); setError(null);
     try {
       const d = await api.complianceOps.dashboard() as ApiResp<Dashboard>;
-      setDash(d.data);
+      setDash(objectOrNull(d.data));
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to load compliance dashboard"); }
     finally { setLoading(false); }
   }, []);
@@ -159,7 +160,7 @@ function ComplianceDashboard() {
           <div className="flex items-center gap-2">
             <CalendarClock size={15} className="text-[#182350]" />
             <h2 className="text-sm font-semibold text-[#182350]">Compliance queue</h2>
-            <span className="text-[11px] text-gray-400">{queue.length} of {dash?.queue.length ?? 0}</span>
+            <span className="text-[11px] text-gray-400">{queue.length} of {dash?.queue?.length ?? 0}</span>
           </div>
           <div className="flex gap-2">
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}

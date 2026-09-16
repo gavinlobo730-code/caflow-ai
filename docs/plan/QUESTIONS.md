@@ -57,3 +57,40 @@ rather than hide it. **The proper fix** is a mock-mode variant reading the
 committed production snapshot in `tests/fixtures/` instead of a live database —
 a build of maybe half a day, not a config change. Tell me if you want it and I
 will do it; otherwise it stays named.
+
+
+---
+
+## Q3 — 12 more sites of the *shape* that crashed 13 screens · `DEFAULTED` · low
+
+**Raised while doing T1-d, 16 Sep 2026.**
+
+The smoke walk's 13 crashes were all one defect: a screen reading a nested
+field off an API payload that did not have it. Two spellings:
+
+* `x?.y.z` — the author wrote `?.` on the first hop and not the second. **I
+  swept all 17 of these**, because writing `?.` once is an explicit statement
+  that the value can be absent, so leaving the next hop bare is an oversight
+  rather than a decision.
+* `x && x.y.z` — the root is guarded, the field is not. **I fixed only the one
+  the walk proved** (`CashBook.tsx:131`, `book.negative_days.length`) and left
+  the other 12.
+
+**Why the second group was left.** `x && x.y.z` reads as a deliberate guard on
+the root by an author who may know the field is always present. Sweeping it
+would be changing 12 files on a pattern match with no evidence any of them
+fails — the kind of blind edit this codebase's own guard history warns about.
+
+They are in: `fixed-assets/page.tsx`, `capital-gains/page.tsx` (×2),
+`SalesDebitNoteEditor.tsx` (×2), `SalesCreditNoteEditor.tsx` (×2),
+`PurchaseBillEditor.tsx`, and four others. Find them with:
+
+```sh
+grep -rnoE "\b(\w+) && \1\.\w+\.(length|map|filter|find|some|every|reduce)\b" \
+  apps/web/app apps/web/components
+```
+
+**Default taken:** leave them and let the walk decide. Now that it renders
+every screen, any of these that actually fails will show up as a named route on
+the next run rather than as a guess today. Tell me if you would rather have
+them all guarded pre-emptively.

@@ -17,6 +17,7 @@ import {
 } from "@/lib/data/taskTemplates";
 import { getClients } from "@/lib/data/clients";
 import type { TaskTemplate, Client } from "@/lib/types";
+import { arrayOrEmpty } from "@/lib/api/shape";
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-[#F1F5F9] text-[#475569]",
@@ -69,7 +70,7 @@ export default function TaskTemplatesPage() {
     setError(null);
     try {
       const { templates: t } = await listTaskTemplates();
-      setTemplates(t);
+      setTemplates(arrayOrEmpty(t));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load templates");
     } finally {
@@ -92,7 +93,7 @@ export default function TaskTemplatesPage() {
       description: t.description ?? "",
       default_priority: t.default_priority,
       estimated_hours: t.estimated_hours ? String(t.estimated_hours) : "",
-      tags: t.tags.join(", "),
+      tags: (t.tags ?? []).join(", "),
       default_assignee_role: t.default_assignee_role ?? "",
     });
     setShowForm(true);
@@ -267,9 +268,9 @@ export default function TaskTemplatesPage() {
                     <Badge className="text-[11px] px-2 py-0.5 bg-violet-100 text-violet-700">System</Badge>
                   )}
                 </div>
-                {t.tags.length > 0 && (
+                {(t.tags?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {t.tags.map((tag) => (
+                    {(t.tags ?? []).map((tag) => (
                       <span key={tag} className="flex items-center gap-0.5 text-[11px] bg-[#F1F5F9] text-[#475569] px-2 py-0.5 rounded-full">
                         <Tag size={9} /> {tag}
                       </span>

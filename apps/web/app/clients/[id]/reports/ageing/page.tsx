@@ -14,6 +14,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { objectOrNull } from "@/lib/api/shape";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
  * balance sheet required by Schedule III to the Companies Act 2013 as amended
@@ -191,7 +192,7 @@ export default function ClientAgeingSchedulePage() {
     try {
       const r = await api.accounting.scheduleIiiAgeing(clientId, asOf) as ApiResp<AgeingSchedule>;
       if (!r.success) throw new Error(r.error ?? "Could not build the ageing schedule");
-      setSchedule(r.data);
+      setSchedule(objectOrNull(r.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not build the ageing schedule");
     } finally {

@@ -65,7 +65,11 @@ test("every refusal shown is a sentence that came off the wire", () => {
   const src = code(SHEET);
   assert.match(src, /l\.gaps\.map/, "why a line will not post");
   assert.match(src, /l\.caveats\.map/, "and what the server could not settle");
-  assert.match(src, /sheet\?\.gaps\.map/, "and the sheet-level ones");
+  // `\??` on the second hop: the rule is that the sheet-level gaps are
+  // RENDERED, not how many optional-chain operators it took. A guard that
+  // pins the spelling fails when somebody completes the chain — which is a
+  // fix, not a regression, and is what happened on 16-09-2026.
+  assert.match(src, /sheet\?\.gaps\??\.map/, "and the sheet-level ones");
   assert.doesNotMatch(src, /Not counted yet/,
     "the server says why a line is blocked; a second wording here would drift");
 });
