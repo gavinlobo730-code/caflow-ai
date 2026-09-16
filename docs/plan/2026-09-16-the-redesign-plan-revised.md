@@ -88,8 +88,21 @@ reached ONLY by lib/ (no screen names it)     469   <-- 60% of the snapshot
 ```
 
 **60% of the endpoints the guard claims to protect are held "reached" purely by
-a URL literal in the API client library.** Every screen that calls them can be
-deleted and the guard reports nothing. A skeptic reproduced the end-to-end case on
+a URL literal in the API client library.**
+
+Stated the way that actually matters — deleting each of the 160 `page.tsx`
+files in turn and asking the guard what it lost:
+
+```
+SCREENS THAT CAN BE DELETED ENTIRELY WITH THE GUARD REPORTING ZERO LOSS:
+   134 of 160   (83%)
+   caught: 26
+```
+
+**83% of the product's screens can be deleted outright — not degraded, deleted —
+and the guard written to protect this redesign reports nothing.** The 26 it
+catches are the screens that happen to build a URL inline instead of going
+through `lib/api`. A skeptic reproduced the end-to-end case on
 `app/clients/[id]/reports/ageing/page.tsx` — deleting the whole file reports
 nothing, and with it goes the only writer of `vendors.msme_status`, the MSMED
 §2(n) fact CLAUDE.md records as changing taxable income under §43B(h).
