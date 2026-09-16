@@ -1,5 +1,16 @@
 # The plan: compliance and craft
 
+> **⚠️ SUPERSEDED ON 16 SEPTEMBER 2026 by
+> `2026-09-16-the-redesign-plan-revised.md`. Read that first.**
+>
+> The JUDGEMENTS below still hold — light only, tables get the width, prose
+> keeps its measure, one PR per module. The FACTS and the SIZES do not. Track 1
+> was built the day after this was written, and two of its four pieces observe
+> nothing; Tracks 2, 3 and 4 are each roughly twice the size stated here; and
+> three pieces of work are missing entirely (token adoption, the portals, a demo
+> seed). Do not schedule from this document.
+
+
 Written 12 September 2026, at the owner's request, after the decision to change
 the platform's design.
 
