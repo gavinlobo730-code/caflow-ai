@@ -31,6 +31,13 @@ import {
  * the frame-budget reasons in HeroGlobe.tsx. As DOM they are real text that
  * costs the compositor a transform.
  *
+ * ANCHORS NEED MORE CLEARANCE THAN THEY LOOK LIKE THEY DO, because every card
+ * BOBS. `.floaty` translates 12px vertically on a 6s loop and each card carries
+ * its own `animationDelay`, so two cards in the same column drift up to 12px
+ * relative to one another — a pair laid out 17px apart touches for part of
+ * every cycle. Practice analytics and Banking did exactly that. Leave a gap
+ * that survives the bob, not one that measures clear in a screenshot.
+ *
  * DENSITY DROPS WITH WIDTH, per §14. Eight cards at ≥1280px, six between 1024
  * and 1280 ("Tablet: reduce orbit/card density"), none below that — where §14
  * asks for the headline first and a simplified globe beneath it, so the whole
@@ -63,6 +70,45 @@ type Module = {
   tint: string;
 };
 
+/**
+ * The stage's own width, and the card's, in pixels.
+ *
+ * The hero grid gives this composition `minmax(0, 640px)` (see Hero.tsx), and
+ * every card below declares `minWidth: CARD_MIN_PX`. Those two numbers are what
+ * decide whether a card fits, so they are named rather than repeated.
+ */
+const STAGE_MAX_PX = 640;
+const CARD_MIN_PX = 196;
+
+/**
+ * The furthest right a `side: "right"` card may be anchored.
+ *
+ * Such a card is positioned by its LEFT edge at `x%` of the stage and grows
+ * rightward, so its outer edge lands at `stageLeft + x% x stageWidth + 196`,
+ * and that has to stay inside the viewport.
+ *
+ * MEASURED, BECAUSE IT WAS WRONG AND SHIPPED. With anchors at 89 and 91 the
+ * Payroll and Documents cards ran past the right edge of the viewport — by
+ * 71px at 1280, 56px at 1366 and 19px at 1440 — so on the three commonest
+ * laptop widths the hero's own module cards were sliced in half. It survived
+ * review because the hero section is `overflow-hidden`: the cards were clipped
+ * rather than pushed out, so the page never gained a horizontal scrollbar and
+ * a `scrollWidth` check saw nothing wrong. Only measuring the CARDS finds it.
+ *
+ * The binding case is the narrowest width that still shows cards — 1024px,
+ * where `canRunGlobe()` and the `lg:` gate both still apply. There the content
+ * column is 902px, the stage is the grid's 640px second column and starts at
+ * page x 323, so the limit is (1009 - 196 - 323) / 640 = 76.6%.
+ *
+ * ⚠️ AND "FITS INSIDE THE STAGE" IS NOT THE RULE, though it is tempting
+ * because it needs no page arithmetic. Tried: it gives 69.4%, which drags every
+ * right-hand card onto the face of the globe, where they overlap each other and
+ * the centre mark. The cards belong OUTSIDE the disc — the reference has them
+ * grazing its limb, not sitting on it — so the stage is the wrong box to
+ * measure against. 74 leaves a little room under the real limit.
+ */
+const MAX_RIGHT_ANCHOR = 74;
+
 const TINT = {
   sky: "#8fb6ff",
   gold: "#d8b07a",
@@ -71,14 +117,14 @@ const TINT = {
 } as const;
 
 const MODULES: Module[] = [
-  { key: "compliance", title: "Compliance", line: "GST, TDS, ITR & ROC", icon: <FileText size={16} />, x: 15, y: 19, side: "left", tint: TINT.sky },
-  { key: "accounting", title: "Accounting", line: "A ledger that foots", icon: <Calculator size={16} />, x: 81, y: 14, side: "right", tint: TINT.gold },
-  { key: "clients", title: "Clients", line: "Every entity, one record", icon: <Building size={16} />, x: 6, y: 42, side: "left", tint: TINT.indigo },
-  { key: "payroll", title: "Payroll", line: "Salary, PF, ESI & TDS", icon: <Users size={16} />, x: 91, y: 37, side: "right", tint: TINT.aqua },
-  { key: "analytics", title: "Practice analytics", line: "The whole firm at a glance", icon: <BarChart size={16} />, x: 9, y: 66, side: "left", secondary: true, tint: TINT.gold },
-  { key: "documents", title: "Documents", line: "Read by AI, checked by you", icon: <Layers size={16} />, x: 89, y: 61, side: "right", tint: TINT.sky },
-  { key: "banking", title: "Banking", line: "Statements become vouchers", icon: <Landmark size={16} />, x: 29, y: 84, side: "left", secondary: true, tint: TINT.aqua },
-  { key: "ai", title: "AI assistant", line: "It knows your practice", icon: <Sparkles size={16} />, x: 74, y: 82, side: "right", tint: TINT.indigo },
+  { key: "compliance", title: "Compliance", line: "GST, TDS, ITR & ROC", icon: <FileText size={16} />, x: 20, y: 16, side: "left", tint: TINT.sky },
+  { key: "accounting", title: "Accounting", line: "A ledger that foots", icon: <Calculator size={16} />, x: 72, y: 12, side: "right", tint: TINT.gold },
+  { key: "clients", title: "Clients", line: "Every entity, one record", icon: <Building size={16} />, x: 13, y: 41, side: "left", tint: TINT.indigo },
+  { key: "payroll", title: "Payroll", line: "Salary, PF, ESI & TDS", icon: <Users size={16} />, x: 74, y: 37, side: "right", tint: TINT.aqua },
+  { key: "analytics", title: "Practice analytics", line: "The whole firm at a glance", icon: <BarChart size={16} />, x: 15, y: 63, side: "left", secondary: true, tint: TINT.gold },
+  { key: "documents", title: "Documents", line: "Read by AI, checked by you", icon: <Layers size={16} />, x: 73, y: 62, side: "right", tint: TINT.sky },
+  { key: "banking", title: "Banking", line: "Statements become vouchers", icon: <Landmark size={16} />, x: 30, y: 88, side: "left", secondary: true, tint: TINT.aqua },
+  { key: "ai", title: "AI assistant", line: "It knows your practice", icon: <Sparkles size={16} />, x: 68, y: 89, side: "right", tint: TINT.indigo },
 ];
 
 export function HeroVisual({ className = "" }: { className?: string }) {
@@ -93,12 +139,13 @@ export function HeroVisual({ className = "" }: { className?: string }) {
         preserveAspectRatio="none"
         aria-hidden="true"
       >
-        {/* Flat and faint. These used to run from 5% to 60% opacity along a
-            gradient, brightest where they met in the middle — eight bright
-            lines converging on one point, drawn straight across the face of the
-            planet. With the centre badge gone they now converge on the lit
-            subcontinent itself, which is the picture: a network running into
-            India. That only reads if the lines stay quieter than the globe. */}
+        {/* Flat, thin and clearly VISIBLE. These went from a 5%-to-60%
+            gradient (eight bright lines converging on one point, drawn across
+            the planet's face) to a flat 0.22, which over-corrected: in the
+            reference the web is one of the picture's strongest elements — fine
+            bright lines running from every card into the mark at the centre.
+            0.22 made them a smudge. Thin and bright rather than thick and dim
+            is the same call the orbital sweeps take. */}
         {MODULES.map((m) => (
           <line
             key={m.key}
@@ -106,9 +153,9 @@ export function HeroVisual({ className = "" }: { className?: string }) {
             y1={m.y}
             x2={50}
             y2={50}
-            stroke="#7fa0ec"
-            strokeOpacity="0.22"
-            strokeWidth="1"
+            stroke="#9dc4f5"
+            strokeOpacity="0.42"
+            strokeWidth="0.9"
             vectorEffect="non-scaling-stroke"
             className={m.secondary ? "hidden xl:block" : undefined}
           />
@@ -133,7 +180,7 @@ export function HeroVisual({ className = "" }: { className?: string }) {
           >
             <div
               className="flex items-center gap-3 rounded-2xl border border-white/[0.16] bg-white/[0.07] px-3.5 py-3 shadow-[0_14px_40px_rgba(3,8,24,0.5)] backdrop-blur-md"
-              style={{ minWidth: 196 }}
+              style={{ minWidth: CARD_MIN_PX }}
             >
               <span
                 className="grid h-9 w-9 shrink-0 place-items-center rounded-xl ring-1"
@@ -158,14 +205,42 @@ export function HeroVisual({ className = "" }: { className?: string }) {
         ))}
       </div>
 
-      {/* THE CENTRE MARK IS GONE (16-09-2026). A 52px badge sat at exactly
-          50%/50% — which is exactly where the globe now puts INDIA, so the one
-          feature the brief asks to be "visibly central" was underneath it. The
-          badge made sense when the globe was an abstract sphere with nothing in
-          particular at its centre; once the sphere became an Earth, it was
-          covering the subject. The connectors converge on the lit subcontinent
-          instead, which says the same thing the badge did and says it with the
-          picture rather than on top of it. */}
+      {/* The mark at the centre of the system.
+          REMOVED ON 16-09-2026 AND RESTORED THE SAME DAY, which is worth
+          recording because the removal fixed the symptom and not the cause. It
+          sat at 50%/50% and the globe put INDIA at 50%/50%, so the badge
+          covered the subcontinent — and the conclusion drawn was that the badge
+          had to go. The reference image has BOTH: the mark dead centre and
+          India clearly above it. The planet was in the wrong pose, not the mark
+          in the wrong place, and HeroGlobe's INDIA_TILT_X is the actual fix. */}
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 lg:block"
+        aria-hidden="true"
+      >
+        <span className="grid h-[52px] w-[52px] place-items-center rounded-full border border-white/25 bg-[#070f22]/85 shadow-[0_0_48px_rgba(116,180,245,0.55)] backdrop-blur-sm">
+          <svg width="26" height="26" viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="24" strokeWidth="3" stroke="rgba(255,255,255,0.22)" />
+            <circle
+              cx="32"
+              cy="32"
+              r="24"
+              strokeWidth="5"
+              strokeLinecap="round"
+              className="logo-arc"
+              stroke="#8dc0f8"
+              strokeDasharray="29.3 121.5"
+            />
+            <path
+              d="M20,33 L28,41 L45,22"
+              strokeWidth="6.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              stroke="#ffffff"
+            />
+          </svg>
+        </span>
+      </div>
+
     </div>
   );
 }

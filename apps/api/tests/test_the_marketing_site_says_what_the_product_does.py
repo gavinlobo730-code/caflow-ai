@@ -521,3 +521,60 @@ def test_the_product_is_described_the_same_way_everywhere():
         f"the product is described {len(variants)} different ways: "
         f"{sorted(variants)}. It is a PLATFORM for Indian CA FIRMS, everywhere."
     )
+
+
+def test_no_hero_card_is_anchored_off_the_edge_of_the_screen():
+    """The hero's module cards, and the one bug the hero is built to hide.
+
+    A `side: "right"` card is positioned by its LEFT edge at `x%` of the stage
+    and grows rightward, so its outer edge is `stageLeft + x% x 640 + 196`. With
+    anchors at 89 and 91 the Payroll and Documents cards ran past the right edge
+    of the VIEWPORT — measured at 71px over at 1280, 56px at 1366 and 19px at
+    1440, so on the three commonest laptop widths those cards were sliced in
+    half. It shipped.
+
+    IT SHIPPED BECAUSE THE HERO IS `overflow-hidden`. The cards were clipped
+    rather than pushed out, so the document never gained a horizontal
+    scrollbar — and the check that was supposed to catch this measured
+    `scrollWidth` against `clientWidth` and saw a clean page at every width.
+    Only measuring the CARDS finds it, which is why this reads their anchors.
+
+    The limit lives beside them as MAX_RIGHT_ANCHOR with its derivation; this
+    asserts every right-hand entry respects it, and that the constant has not
+    been quietly raised past what 1024px allows.
+    """
+    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+
+    m = re.search(r"const MAX_RIGHT_ANCHOR = ([\d.]+);", src)
+    assert m, "HeroVisual no longer declares MAX_RIGHT_ANCHOR"
+    limit = float(m.group(1))
+    # 1024px is the narrowest width that still renders cards (the `lg:` gate and
+    # canRunGlobe() agree on it): content 902px, stage 640px starting at x=323,
+    # card 196px, so (1009 - 196 - 323) / 640 = 76.6%.
+    assert limit <= 76.6, (
+        f"MAX_RIGHT_ANCHOR is {limit}, past what 1024px allows (76.6). A card "
+        f"anchored there is clipped by the hero's overflow-hidden rather than "
+        f"pushing the page wide, so nothing else will report it."
+    )
+
+    entries = re.findall(r'key: "(\w+)".*?x: (\d+), y: (\d+), side: "(left|right)"', src)
+    assert len(entries) >= 6, f"only found {len(entries)} module anchors — has the shape changed?"
+
+    offenders = [
+        f"{key} at x={x}" for key, x, _y, side in entries
+        if side == "right" and float(x) > limit
+    ]
+    assert not offenders, (
+        f"these right-hand hero cards are anchored past MAX_RIGHT_ANCHOR "
+        f"({limit}%) and will be clipped at 1024-1440px: {offenders}"
+    )
+
+    # Vacuity: the rule protects nothing if no card is a right-hand one, and it
+    # is toothless if they all sit far inside the limit anyway.
+    rights = [float(x) for _k, x, _y, side in entries if side == "right"]
+    assert rights, "no right-hand cards left — this rule has nothing to check"
+    assert max(rights) > limit - 15, (
+        "every right-hand card now sits well inside the limit, so this test "
+        "would pass however wrong the limit was. Either the layout changed "
+        "shape or the constant needs re-deriving."
+    )

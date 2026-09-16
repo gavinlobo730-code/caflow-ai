@@ -124,8 +124,14 @@ void main() {
   float disc = smoothstep(0.5, 0.08, r);
   // Limb darkening: points near the silhouette are seen at a glancing angle and
   // fade, which is what makes a flat field of dots read as a sphere.
-  float limb = smoothstep(0.04, 0.42, vFacing);
-  gl_FragColor = vec4(vColor, disc * (0.16 + 0.84 * limb));
+  //
+  // GENTLY. At (0.16 + 0.84 * limb) over a 0.04-0.42 ramp the outer third of
+  // every continent dissolved, so Africa and East Asia were ghosts at the
+  // edges — the reference keeps its coastlines lit almost to the silhouette
+  // and lets the atmosphere do the rounding instead. The floor is what matters
+  // here: a point at the limb keeps half its brightness rather than a sixth.
+  float limb = smoothstep(0.02, 0.3, vFacing);
+  gl_FragColor = vec4(vColor, disc * (0.48 + 0.52 * limb));
 }
 `;
 

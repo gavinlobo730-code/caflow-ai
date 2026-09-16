@@ -254,3 +254,87 @@ sitting there while the support FAQ said "most firms are up and running within a
 day" — the identical unmeasured claim, in words the literal pattern could not
 see. The entry is now about any promise that setting up takes a stated length of
 time, and the vacuity test carries both spellings.
+
+---
+
+# Addendum — the globe, again (same day)
+
+The redesign merged as #526 and the owner compared the deployed hero with the
+reference once more: *"even if the globe is not moving its fine but i want you
+to exactly copy the globe as it is in the image if you yourself compare you can
+spot the difference right?"*
+
+They were right, and holding the two side by side there were six differences,
+not one.
+
+| Reference | What #526 shipped | Fix |
+|---|---|---|
+| Sphere is near-**black** | Navy `0x10203f` | `0x071223` / limb `0x01040c` |
+| Continents are fine bright **white-cyan lights** | Coarse blue-grey `(0.34, 0.46, 0.74)` dots at 0.0125 | `(0.62, 0.79, 0.97)` at 0.0088, 90k candidates (~26k points) |
+| India sits **above** the centre | Dead centre | `INDIA_TILT_X = -0.045` |
+| The white tick badge is **on the globe** | Removed in #526 | Restored |
+| **Four-plus** bright thin sweeps | Two thick dim ones | Four at 0.004–0.0045, brighter |
+| Connector web is **clearly visible** | Flat 0.22 | 0.42, thinner stroke |
+
+## The badge: a fix that addressed the symptom
+
+#526 removed the centre mark *because it was covering India*. That reasoning
+only holds if India has to be at the centre — and the reference has both, at
+different heights. **The planet was in the wrong pose, not the mark in the wrong
+place.** `INDIA_TILT_X` is derived rather than dialled in: rotating about +X by
+`a` sends a surface point to `y' = y·cos a − z·sin a`, and India at 22°N facing
+the camera is `(0.375, 0.927)`, so `0.375·cos a − 0.927·sin a = 0.41` gives
+`a ≈ −0.045`. The old `+0.28` pushed India *down* to 10% of the radius, which is
+how it ended up under a badge at 50%/50%.
+
+## The Earth is now locked
+
+Owner's call — *"even if the globe is not moving its fine"*. It used to
+oscillate ±15° in Y and ±3° in X, which cannot be reconciled with copying a
+still frame: for most of every cycle the planet is **not** in the reference's
+pose, and India drifts out from under the composition built around it. The
+sweeps still turn, the arc pulses run, the hubs breathe and the particles fall.
+Only the globe holds its mark.
+
+## Two corrections to #526's own reasoning
+
+- **"Three thin rings read as a diagram; two heavier ones read as motion."**
+  Wrong about this picture. The reference has four or five *fine bright* arcs at
+  different inclinations, and the count is what makes it an orbital system
+  rather than a ringed planet. Thin and bright, not thick and dim.
+- **Limb darkening at `0.16 + 0.84·limb`.** Too aggressive: the outer third of
+  every continent dissolved, so Africa and East Asia were ghosts at the edges.
+  The reference keeps its coastlines lit almost to the silhouette and lets the
+  atmosphere do the rounding. Now `0.48 + 0.52·limb` over a tighter ramp.
+
+## And a real bug the redesign shipped
+
+**Two hero cards were clipped off the side of the screen**, at every common
+laptop width:
+
+```
+Payroll    71px past the right edge at 1280,  56px at 1366,  19px at 1440
+Documents  71px                               56px           19px
+```
+
+`MAX_RIGHT_ANCHOR` now carries the derivation and a test reads the anchors.
+
+**It shipped because the hero is `overflow-hidden`.** The cards were clipped
+rather than pushed out, so the document never gained a horizontal scrollbar —
+and #526's verification measured exactly that (`scrollWidth` vs `clientWidth`,
+"no horizontal overflow on any of the seven routes at 390px or 768px") and saw a
+clean page. The check was sound and measured the wrong thing: *only measuring
+the cards finds it.*
+
+Two further things only measurement caught:
+
+- **"Fits inside the stage" is not the rule.** It is tempting because it needs no
+  page arithmetic — and it yields 69.4%, which drags every right-hand card onto
+  the face of the globe where they overlap each other and the centre mark. The
+  cards belong outside the disc. The binding constraint is the viewport at
+  1024px, the narrowest width that still shows cards.
+- **Non-overlap is not a gap.** Practice analytics and Banking measured 17px
+  apart and read as one block — and `.floaty` bobs each card 12px on its own
+  delay, so two cards in a column drift up to 12px relative and that 17px closes
+  for part of every cycle. The check now requires a 24px moat, and the pair is
+  laid out far enough apart to survive the bob.
