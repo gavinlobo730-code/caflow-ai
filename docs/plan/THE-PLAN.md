@@ -147,9 +147,17 @@ All three are fixed. `pnpm smoke` walks 160 routes and exits 0.
 **Owner 🔧 C · 2–3 days · parallel with T1 · status `TODO`**
 
 `apps/api/seed/seed_data.py` — 164 lines, a full demo firm, five users, twenty
-named clients with valid PANs and GSTINs — has **zero importers**. No demo
-mode, no reset path. The only way into the product is a 940-line three-step
-OTP-gated onboarding wizard.
+named clients — has **zero importers**. No demo mode, no reset path. The only
+way into the product is a 940-line three-step OTP-gated onboarding wizard.
+
+**"valid PANs and GSTINs" was wrong, and it is measured now.** Checked against
+`domain/gst/gstin.checksum_char` on 16 Sep: **17 of the 20 client GSTINs carry
+the wrong check digit, and so does the firm's own.** That is not cosmetic —
+GST-29 made the check enforced at every door a human types one, `POST
+/api/onboarding/firm` refuses a firm GSTIN that fails it, and the GSTR-1 build
+refuses the client's own. Seeded as they stand, the demo could not file. The
+first 14 characters are fine; only the last needs recomputing, and it must be
+COMPUTED rather than typed.
 
 This is why T1-c is needed at all (nothing to seed → stub everything empty →
 land on the wizard) **and** it is on the critical path for the CA demo.
@@ -160,11 +168,39 @@ wipe and re-seed freely.
 | ID | item | size | DONE WHEN |
 |---|---|---|---|
 | T2-a | Make `seed_data.py` runnable — one command, idempotent, with a reset | 1d | One command creates the firm; running it twice is a no-op |
+| T2-0 | Correct the 18 GSTINs, computing each check digit | 1h | `problem_with` returns None for every seeded GSTIN, asserted by a test |
 | T2-b | Extend to a **full financial year** of transactions across every module — sales, purchases, bank, payroll, GST returns, TDS, fixed assets, inventory | 1–2d | Every one of the 15 tiles has real figures on it; no screen shows an empty state |
 
 **Deliberately included:** at least one client with a locked period, one with a
 filed return, one with a statutory gap. A demo where nothing is ever refused
 teaches a CA the wrong thing about the product.
+
+**Two facts settled on 16 Sep that decide HOW T2-a is built, recorded so the
+build does not re-derive them:**
+
+1. **Creating a firm is four steps, not one insert.** `routers/onboarding.py`
+   does `firms` → `users` → `coa_seed_service.seed_firm_coa(firm_id)` →
+   `internal_client_service.provision(...)`. The chart of accounts is
+   FIRM-level (migration 057: one master chart, `client_id IS NULL`), and
+   `STANDARD_COA` is its one authority. A seeder that writes accounts of its
+   own would be a second one — so the seeder must either call that service or
+   GENERATE its rows from `STANDARD_COA`, never restate them.
+
+2. **Mock mode cannot verify a seeder, and that is by design.**
+   `seed_firm_coa` short-circuits to `{"skipped": True, "mock": True}` when
+   `SUPABASE_URL` is unset, because mock mode is an in-memory double for the
+   test suite rather than a database. So "running it twice is a no-op" is
+   checkable only against real Postgres. The practical shape is therefore a
+   Python generator that emits SQL from the existing Python authorities and
+   applies it with `psql --dsn`, the way `scripts/db/apply_migrations.py`
+   already does — verifiable against a local cluster, and runnable against the
+   Supabase DSN when the owner chooses.
+
+**⚠️ A seeded user cannot sign in.** `users.auth_user_id` references a Supabase
+auth identity, and the seeder must not mint one — that is credential creation.
+So either the owner passes the auth id of an account they have already signed
+up with, or the rows exist and nobody can log in. Whichever is chosen, the
+seeder must SAY which, not leave it to be discovered.
 
 ---
 
