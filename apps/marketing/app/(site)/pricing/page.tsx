@@ -118,8 +118,9 @@ export default function PricingPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none">
+      <Panel theme="dark" flush>
         <SerifHeading
+          layout="split"
           eyebrow="Pricing"
           lines={[{ text: "Simple pricing for" }, { text: "firms of every size.", italic: true }]}
           subtitle="One AI-first platform for GST, ITR, TDS, accounting, payroll and clients — priced for solo practitioners through to established firms. Start free, no credit card."
@@ -127,7 +128,7 @@ export default function PricingPage() {
       </Panel>
 
       {/* ── Tiers ────────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <div className="grid gap-6 md:grid-cols-3">
           {TIERS.map((tier, i) => (
             <Reveal key={tier.name} variant="up" delay={i * 120} className="h-full">
@@ -188,8 +189,9 @@ export default function PricingPage() {
       </Panel>
 
       {/* ── Included in every plan ───────────────────────────────────────── */}
-      <Panel theme="dark" seam="rising-left">
+      <Panel theme="dark">
         <SerifHeading
+          layout="split"
           eyebrow="Every plan"
           lines={[{ text: "Included with", italic: false }, { text: "every plan.", italic: true }]}
           subtitle="Whatever size your firm is today, these come as standard on Solo, Practice and Firm."
@@ -207,9 +209,10 @@ export default function PricingPage() {
       </Panel>
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <SerifHeading
-          eyebrow="FAQ"
+          layout="split"
+          eyebrow="Common questions"
           theme="light"
           lines={[{ text: "Questions,", italic: false }, { text: "answered.", italic: true }]}
           subtitle="A few things CAs ask us before getting started."

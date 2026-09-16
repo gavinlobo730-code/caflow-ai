@@ -31,12 +31,10 @@ export function Hero() {
       className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-brand-dark text-white"
       style={{ boxShadow: "inset 0 0 180px rgba(0,0,0,0.4)" }}
     >
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -right-5 -top-[60px] z-0 select-none font-display leading-none text-white/[0.045] text-[clamp(220px,32vw,460px)]"
-      >
-        01
-      </div>
+      {/* The 460px watermark "01" that used to sit here is gone, with the rest
+          of the panel numerals — owner review, 16-09-2026: "the 01 and the
+          numbering in the big light on all pages they also dont look asthetic".
+          Section numbering now lives in SerifHeading's `index`, at 13px. */}
 
       <div className="relative z-[1] mx-auto grid w-full max-w-[1320px] items-center gap-12 px-[clamp(20px,6vw,72px)] pb-20 pt-[clamp(120px,16vh,180px)] lg:grid-cols-[minmax(0,1fr)_minmax(0,640px)] lg:gap-10">
         {/* ── Copy ──────────────────────────────────────────────────────── */}

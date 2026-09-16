@@ -10,31 +10,40 @@ import { NAV } from "@/lib/site";
 /**
  * The site header.
  *
- * TRANSPARENT OVER THE TOP OF THE PAGE, FROSTED ONCE SCROLLED — brief §3:
- * "On the hero, consider a transparent/dark navigation treatment so the page
- * feels like one continuous premium experience. On scroll, use a refined sticky
- * navigation with restrained contrast and no bulky header."
+ * TRANSPARENT OVER THE TOP OF THE PAGE, NAVY ONCE SCROLLED — brief §3: "On the
+ * hero, consider a transparent/dark navigation treatment so the page feels like
+ * one continuous premium experience. On scroll, use a refined sticky navigation
+ * with restrained contrast and no bulky header."
  *
- * THIS IS ONLY SAFE BECAUSE EVERY PAGE IN THIS GROUP OPENS DARK. The homepage
- * hero, and the first `<Panel theme="dark">` on products, pricing, support,
- * resources and demo alike — so the transparent state always sits on navy and
- * always reads in white, on every route. A treatment that applied to the
- * homepage alone is exactly the drift the whole redesign exists to end: for
- * months the homepage was a standalone HTML file whose nav looked subtly
- * different from this one, and every one of those differences had to be found
- * and fixed twice. There is one header, it behaves identically everywhere, and
- * if a page is ever added that opens light, it is that page that has to change.
+ * THE SCROLLED STATE WAS AN OFF-WHITE UNTIL 16 SEPTEMBER 2026, and the owner
+ * named it: "the top bar is grey right we shouldnt keep it gry you know we
+ * should keep it blue the same blue that is our whole websote and the
+ * platform." It was `#f3f5f8` — a colour the palette does not contain, on a
+ * site whose every surface is either brand navy or ps-bg.
+ *
+ * MAKING IT NAVY DELETED A CLASS OF BUG RATHER THAN RECOLOURING ONE. The old
+ * bar cross-faded between two palettes: the logo swapped mark, every nav link
+ * swapped from white/75 to brand-dark/75, the mobile toggle swapped, and the
+ * mobile sheet was a third colour again — all because the scrolled bar belonged
+ * to a different colour family from the page it floated over. Navy in both
+ * states means the logo is white always, links are white always, and there is
+ * no `onNavy` fork left to get wrong. The only thing that now changes on scroll
+ * is a background and a hairline fading in, which is what §3 actually asks for.
+ *
+ * THIS IS ONLY SAFE BECAUSE EVERY PAGE IN THIS GROUP OPENS DARK — the homepage
+ * hero, and the first `<Panel theme="dark">` on story, products, pricing,
+ * support, resources and demo alike. A treatment that applied to the homepage
+ * alone is exactly the drift the redesign exists to end. If a page is ever
+ * added that opens light, it is that page that has to change.
  *
  * NO SIZE CHANGE ON SCROLL. The earlier condense (shrinking height plus a
  * shadow) is what made the bar feel like it was jumping, and §3 asks for "no
- * bulky header" rather than a smaller one. Only the background, the hairline
- * and the text colour cross-fade; the bar is a constant 68px, so nothing
- * below it moves — see the note on the element about why that hairline is a
- * shadow rather than a border.
+ * bulky header" rather than a smaller one. The bar is a constant 68px, so
+ * nothing below it moves — see the note on the element about why that hairline
+ * is a shadow rather than a border.
  *
- * The threshold is deliberately small (24px). It has to fire before the reader
- * has scrolled far enough for the navy to leave the top of the viewport, or
- * there is a moment of white-on-white.
+ * The threshold is deliberately small (24px): it has to fire before the reader
+ * has scrolled far enough for anything to look unanchored.
  */
 
 const SOLID_AFTER_PX = 24;
@@ -63,28 +72,28 @@ export function SiteHeader() {
   // The mobile panel is opaque whatever the scroll position — a translucent
   // sheet over a moving page is unreadable, and it is the one surface here that
   // carries a full list of links.
-  const onNavy = !solid && !open;
+  const filled = solid || open;
 
-  const linkCls = onNavy
-    ? "text-[13px] font-medium leading-none text-white/75 transition-colors hover:text-white"
-    : "text-[13px] font-medium leading-none text-brand-dark/75 transition-colors hover:text-brand-dark";
+  const linkCls =
+    "text-[13px] font-medium leading-none text-white/70 transition-colors hover:text-white";
 
   return (
-    // The hairline under the scrolled state is an INSET SHADOW, not a border.
-    // A border — even a transparent one in the other state — adds a 69th pixel
-    // to a bar that is exactly 68px everywhere else on the site, and a header
-    // that changes height by a pixel as you start scrolling is precisely the
-    // drift this redesign was meant to end. An inset shadow draws the same line
-    // and costs no layout.
+    // The hairline under the scrolled state is an INSET SHADOW, not a border. A
+    // border — even a transparent one in the other state — adds a 69th pixel to
+    // a bar that is exactly 68px everywhere else on the site, and a header that
+    // changes height by a pixel as you start scrolling is precisely the drift
+    // this redesign was meant to end. An inset shadow draws the same line and
+    // costs no layout.
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,backdrop-filter] duration-300 ${
-        onNavy
-          ? "bg-transparent"
-          : "bg-[#f3f5f8]/80 shadow-[inset_0_-1px_0_rgba(0,0,0,0.06)] backdrop-blur-[10px]"
+        filled
+          ? "bg-brand-dark/85 shadow-[inset_0_-1px_0_rgba(175,210,250,0.14)] backdrop-blur-[14px]"
+          : "bg-transparent"
       }`}
     >
       <div className="container-ps flex h-[68px] items-center justify-between gap-4">
-        <Logo theme={onNavy ? "dark" : "light"} />
+        {/* One mark, one colour, in both states — see the header note. */}
+        <Logo theme="dark" />
 
         {/* Desktop nav */}
         <nav className="hidden items-center gap-[clamp(14px,2.5vw,34px)] lg:flex">
@@ -93,10 +102,11 @@ export function SiteHeader() {
               {item.label}
             </Link>
           ))}
-          {/* §3 wants "Sign in and Book a Demo prominent". Sign in is the word
+          {/* §3 wants "Sign in and Book a Demo prominent" (the brief's own
+              capitalisation, quoted). Sign in is the word
               the destination itself uses — /access is headed "Sign in to
-              PracticeSync." — where this said "Login", which matched neither
-              the page nor the brief. */}
+              PracticeSync." — where this said "Login", which matched neither the
+              page nor the brief. */}
           <Link href="/access" className={linkCls}>
             Sign in
           </Link>
@@ -115,9 +125,7 @@ export function SiteHeader() {
         {/* Mobile toggle */}
         <button
           onClick={() => setOpen((v) => !v)}
-          className={`rounded-lg p-2 transition-colors lg:hidden ${
-            onNavy ? "text-white hover:bg-white/10" : "text-brand hover:bg-black/[0.04]"
-          }`}
+          className="rounded-lg p-2 text-white transition-colors hover:bg-white/10 lg:hidden"
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
         >
@@ -127,24 +135,24 @@ export function SiteHeader() {
 
       {/* Mobile panel */}
       {open && (
-        <div className="border-t border-black/[0.06] bg-[#f3f4f6] lg:hidden">
+        <div className="border-t border-white/10 bg-brand-dark lg:hidden">
           <div className="container-ps flex flex-col gap-1 py-4">
             {NAV.map((item, i) => (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className="fade-up rounded-lg px-3 py-2.5 text-[15px] font-medium text-brand-dark/80 hover:bg-black/[0.04]"
+                className="fade-up rounded-lg px-3 py-2.5 text-[15px] font-medium text-white/80 hover:bg-white/[0.06]"
                 style={{ animationDelay: `${i * 50}ms` }}
               >
                 {item.label}
               </Link>
             ))}
-            <div className="mt-2 flex flex-col gap-2 border-t border-black/[0.06] pt-4">
+            <div className="mt-2 flex flex-col gap-2 border-t border-white/10 pt-4">
               <Link
                 href="/access"
                 onClick={() => setOpen(false)}
-                className="rounded-lg border border-black/10 px-4 py-2.5 text-center text-[15px] font-semibold text-brand"
+                className="rounded-lg border border-white/20 px-4 py-2.5 text-center text-[15px] font-semibold text-white"
               >
                 Sign in
               </Link>

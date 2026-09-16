@@ -409,3 +409,45 @@ html.cursor-none * {
   .card-lift, .card-lift:hover { transform: none; }
   .cursor-dot, .cursor-ring, .cursor-glow { display: none !important; }
 }
+
+/* ── A split heading responds to ITS OWN box, never the viewport ────────────
+ *
+ * `SerifHeading layout="split"` sets the headline and its standfirst in two
+ * columns. The first version did that at Tailwind's `lg:` breakpoint, which is
+ * a VIEWPORT width — and viewport width is exactly the wrong signal, because
+ * the question is how wide THIS HEADING's box is. On /demo the heading sits in
+ * a 372px grid column of a 1440px page: `lg:` applied, the split fired, and
+ * "See it run against a practice like yours." wrapped to eight lines.
+ *
+ * A container query asks the right question, so no page has to remember where a
+ * heading may be split and no reviewer has to notice. Below the threshold the
+ * grid stays one column, which IS the stacked layout — so a browser with no
+ * container-query support degrades to the correct thing rather than to a broken
+ * one.
+ *
+ * 760px is where two columns of roughly 45ch each stop being a measure and
+ * start being a column of loose words. */
+.ps-split {
+  container-type: inline-size;
+}
+.ps-split-grid {
+  display: grid;
+}
+@container (min-width: 760px) {
+  .ps-split-grid {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    column-gap: 3.5rem;
+    /* The standfirst sits on the headline's own baseline block rather than
+       floating at the top of a taller column, which is what makes the two read
+       as one heading instead of two things side by side. */
+    align-items: end;
+  }
+  /* The standfirst is always the <p> in the second cell; in two columns it
+     needs no top margin, only the optical nudge off the last baseline. */
+  .ps-split-aside > p {
+    margin-top: 0;
+  }
+  .ps-split-aside {
+    padding-bottom: 0.5rem;
+  }
+}

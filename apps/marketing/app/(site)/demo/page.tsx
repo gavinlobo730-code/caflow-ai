@@ -48,10 +48,11 @@ const BRING = [
 export default function DemoPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
-      <Panel theme="dark" seam="none" numeral="01" numeralCorner="top-right">
+      <Panel theme="dark" flush>
         <div className="grid gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)] lg:gap-16">
           <div>
             <SerifHeading
+          layout="split"
               eyebrow="Book a demo"
               lines={[
                 { text: "See it run against" },

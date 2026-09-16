@@ -131,8 +131,9 @@ export default function ResourcesPage() {
   return (
     <div className={`${instrumentSerif.variable} ${manrope.variable} font-manrope`}>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <Panel theme="dark" seam="none">
+      <Panel theme="dark" flush>
         <SerifHeading
+          layout="split"
           eyebrow="Resources"
           lines={[{ text: "Guides & tools for" }, { text: "Indian CA practices.", italic: true }]}
           subtitle="Practical references for running a CA firm — filing rhythms, migration steps and close checklists, plus a quick-reference due-date table you can keep close at hand."
@@ -140,8 +141,9 @@ export default function ResourcesPage() {
       </Panel>
 
       {/* ── Quick-reference guides ───────────────────────────────────────── */}
-      <Panel theme="light" seam="rising-right">
+      <Panel theme="light">
         <SerifHeading
+          layout="split"
           eyebrow="Quick references"
           theme="light"
           lines={[{ text: "The essentials," }, { text: "on one card each.", italic: true }]}
@@ -181,8 +183,9 @@ export default function ResourcesPage() {
       </Panel>
 
       {/* ── Compliance calendar ──────────────────────────────────────────── */}
-      <Panel id="calendar" theme="dark" seam="rising-left" innerClassName="scroll-mt-24">
+      <Panel id="calendar" theme="dark" innerClassName="scroll-mt-24">
         <SerifHeading
+          layout="split"
           eyebrow="Compliance calendar"
           lines={[{ text: "Key statutory due" }, { text: "dates at a glance.", italic: true }]}
           subtitle="The deadlines every Indian practice tracks, in one place. PracticeSync watches these for each client so nothing slips through."
