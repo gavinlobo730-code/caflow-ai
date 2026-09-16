@@ -141,6 +141,29 @@ const INDIA_TILT_X = -0.045;
  * makes the field read as lights rather than as a grid of circles.
  */
 const LAND_DOT_WORLD = 0.0088;
+
+/**
+ * Where the light comes from, in VIEW space.
+ *
+ * View space rather than world space on purpose: the terminator is a
+ * composition decision — the reference has its sunrise on the upper right —
+ * and anchoring it to the camera keeps it there whatever pose the globe is
+ * put in. A world-space sun would swing the gold edge around as INDIA_TILT_X
+ * is tuned, which is two things fighting over one number.
+ */
+const SUN_DIR: [number, number, number] = [0.72, 0.52, 0.45];
+
+/** Warm limb and warm city lights — the same amber, so they read as one light. */
+const WARM = 0xffb257;
+
+/**
+ * Where the mirror sits, in world units.
+ *
+ * The globe's south pole is at y = -1, so this is a hair below it: a real
+ * reflection meets its object, and a gap reads as two globes rather than one
+ * standing on a surface.
+ */
+const REFLECTION_MIRROR_Y = -1.015;
 const HUB_DOT_WORLD = { major: 0.055, minor: 0.036 };
 
 /** Geographic latitude/longitude to a point on a sphere of radius `r`. */
@@ -247,15 +270,24 @@ function buildLandField() {
     const d = angularDistanceDeg(lat, ((((lon % 360) + 540) % 360) - 180), INDIA_CENTRE.lat, INDIA_CENTRE.lon);
     const home = Math.max(0, 1 - d / 26); // the subcontinent itself
     const region = Math.max(0, 1 - d / 70); // and its neighbourhood, softly
-    // A cool white-cyan that goes to near-white over India. The previous values
-    // started at (0.34, 0.46, 0.74) — a mid blue-grey, which against a navy
-    // sphere gave the continents almost no separation from the ocean. The
-    // reference picks them out in light, so the contrast has to come from BOTH
-    // ends: these lift, and the core below drops to near-black.
+    // GOLD, not white-cyan. The second reference (17-09-2026) is a night-side
+    // Earth whose cities burn amber, and that one change does more for the
+    // "premium" read than anything else in the scene: a blue planet under blue
+    // orbital sweeps is monochrome, while warm land against cool orbits gives
+    // the picture a temperature contrast to hang on.
+    //
+    // India is near-white-hot at the core of the falloff and the rest of the
+    // world settles into a deeper amber, which is also how a real night-lights
+    // composite looks — a few dense regions far brighter than the rest.
+    // India gets BRIGHTER, not whiter. Lifting blue to 0.74 at the centre of
+    // the falloff turned the subcontinent white against an amber world, which
+    // inverts the reference: there India is the most intensely GOLD part of the
+    // picture. Blue rises far less than red and green, so the hottest cities
+    // land on a warm gold-white rather than a neutral one.
     col.push(
-      0.62 + region * 0.18 + home * 0.2,
-      0.79 + region * 0.13 + home * 0.21,
-      0.97 + region * 0.03 + home * 0.03
+      0.72 + region * 0.16 + home * 0.28,
+      0.50 + region * 0.16 + home * 0.40,
+      0.22 + region * 0.10 + home * 0.22
     );
     // WORLD units, not a multiplier — see PROJECTED_PX for why the shader needs
     // a real size rather than an arbitrary one scaled by the canvas height.
@@ -385,7 +417,17 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         const landMat = new THREE.ShaderMaterial({
           vertexShader: LAND_VERTEX,
           fragmentShader: LAND_FRAGMENT,
-          uniforms: { uScale: { value: projScale() } },
+          uniforms: {
+            uScale: { value: projScale() },
+            uSun: { value: new THREE.Vector3(...SUN_DIR).normalize() },
+            uWarm: { value: new THREE.Color(0xfff0d0) },
+            uWarmGain: { value: 0.85 },
+            uOpacity: { value: 1 },
+            // Equal bounds disable the depth fade; only the reflection sets a
+            // window. See LAND_FRAGMENT.
+            uFadeFrom: { value: 0 },
+            uFadeTo: { value: 0 },
+          },
           transparent: true,
           depthWrite: false,
           // NOT additive. The land field is the planet's lit SURFACE, and the
@@ -396,6 +438,42 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         });
         spin.add(new THREE.Points(landGeo, landMat));
         disposables.push(landGeo, landMat);
+
+        // ── The reflection ────────────────────────────────────────────────
+        // The owner pointed at it specifically: "even i can see its
+        // reflection". It is what puts the globe ON something instead of
+        // floating in a void, and it costs one draw call because it REUSES the
+        // land geometry — 26,000 points already uploaded, drawn a second time
+        // through a mirrored matrix. No second buffer, no second build.
+        //
+        // scale.y = -1 mirrors it; position.y places the mirror line just under
+        // the globe's south pole, so the two nearly touch the way a real
+        // reflection does. The fade is in the shader (uFadeFrom/uFadeTo read a
+        // world Y) rather than a gradient overlay, because an overlay would
+        // have to sit above the canvas and would dim the real globe too.
+        //
+        // The HUBS, ARCS AND SWEEPS ARE DELIBERATELY NOT MIRRORED. A reflection
+        // of a glow is a smear, and doubling every additive element is how the
+        // first version of this scene turned into a white disc. The land alone
+        // is what reads.
+        const reflection = new THREE.Group();
+        reflection.scale.set(1, -1, 1);
+        reflection.position.y = REFLECTION_MIRROR_Y * 2;
+        const reflectMat = landMat.clone();
+        reflectMat.uniforms = THREE.UniformsUtils.clone(landMat.uniforms);
+        reflectMat.uniforms.uOpacity.value = 0.3;
+        reflectMat.uniforms.uFadeFrom.value = REFLECTION_MIRROR_Y;
+        // A SHORT window. Faded over 1.5 units the mirrored continents stayed
+        // faintly legible most of the way down, which reads as a second globe
+        // rather than as a reflection; over 0.75 it is an echo that dies just
+        // below the planet, like a surface with some roughness to it.
+        reflectMat.uniforms.uFadeTo.value = REFLECTION_MIRROR_Y - 0.75;
+        const reflectPoints = new THREE.Points(landGeo, reflectMat);
+        reflection.add(reflectPoints);
+        // Mirrored into the SPIN group so it inherits the same pose; a copy
+        // hung off the scene root would show a different face than the globe.
+        spin.add(reflection);
+        disposables.push(reflectMat);
 
         // ── City hubs ─────────────────────────────────────────────────────
         const hubVecs = CITIES.map((c) => latLonToVec3(c.lat, c.lon, R * 1.012));
@@ -477,7 +555,10 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
           vertexShader: ATMOSPHERE_VERTEX,
           fragmentShader: ATMOSPHERE_FRAGMENT,
           uniforms: {
-            uColor: { value: new THREE.Color(0x74b4f5) },
+            uColor: { value: new THREE.Color(0x5f9ae8) },
+            uWarm: { value: new THREE.Color(WARM) },
+            uSun: { value: new THREE.Vector3(...SUN_DIR).normalize() },
+            uWarmGain: { value: 1.0 },
             // A HIGH power is what keeps this a rim. The fresnel term falls off
             // as pow(1 - facing, uPower), so a low exponent spreads it inward
             // across the whole disc — at 3.0 on a 1.19R shell it read as a fat
@@ -801,13 +882,35 @@ function StaticGlobe({ className = "", style }: { className?: string; style?: Re
           <stop offset="0%" stopColor="#0a1628" />
           <stop offset="100%" stopColor="#01040c" />
         </radialGradient>
+        {/* The city lights, warm toward the sunrise edge. A linear ramp across
+            the disc rather than a real terminator — the SVG has no normals to
+            light — but at this size it reads as the same picture. */}
+        <linearGradient id="ps-globe-lights" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stopColor="#c98f3e" />
+          <stop offset="55%" stopColor="#f0c074" />
+          <stop offset="100%" stopColor="#fff1d6" />
+        </linearGradient>
+        {/* The warm limb. */}
+        <linearGradient id="ps-globe-sun" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="55%" stopColor="#ffb257" stopOpacity="0" />
+          <stop offset="100%" stopColor="#ffb257" stopOpacity="0.85" />
+        </linearGradient>
+        {/* The reflection fades with depth; SVG has no shader, so the mirrored
+            copy is masked by a gradient instead. */}
+        <linearGradient id="ps-globe-mirror-fade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fff" stopOpacity="0.32" />
+          <stop offset="70%" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <mask id="ps-globe-mirror">
+          <rect x="0" y="180" width="200" height="60" fill="url(#ps-globe-mirror-fade)" />
+        </mask>
       </defs>
 
       <circle cx="100" cy="100" r="97" fill="url(#ps-globe-atm)" />
       <circle cx="100" cy="100" r="78" fill="url(#ps-globe-face)" />
 
       {BANDS.map((b, bi) => (
-        <g key={bi} fill="#b6d8fb" opacity={b.opacity}>
+        <g key={bi} fill="url(#ps-globe-lights)" opacity={b.opacity}>
           {bands[bi].map((d, i) => (
             <circle key={i} cx={d.x} cy={d.y} r={b.r} />
           ))}
@@ -833,6 +936,22 @@ function StaticGlobe({ className = "", style }: { className?: string; style?: Re
         <ellipse cx="100" cy="100" rx="84" ry="64" strokeOpacity="0.26" transform="rotate(-52 100 100)" />
       </g>
       <circle cx="100" cy="100" r="78" fill="none" stroke="#9ecbfb" strokeOpacity="0.4" strokeWidth="0.7" />
+      {/* The sunrise arc. */}
+      <circle cx="100" cy="100" r="78.5" fill="none" stroke="url(#ps-globe-sun)" strokeWidth="2.6" />
+
+      {/* The reflection, which the owner asked for by name. The land groups are
+          re-emitted mirrored about the globe's south pole and masked to fade —
+          the same short echo the WebGL scene draws, by the only means an inline
+          SVG has. */}
+      <g mask="url(#ps-globe-mirror)" transform="translate(0,357) scale(1,-1)">
+        {BANDS.map((b, bi) => (
+          <g key={`m${bi}`} fill="url(#ps-globe-lights)" opacity={b.opacity}>
+            {bands[bi].map((d, i) => (
+              <circle key={i} cx={d.x} cy={d.y} r={b.r} />
+            ))}
+          </g>
+        ))}
+      </g>
     </svg>
   );
 }

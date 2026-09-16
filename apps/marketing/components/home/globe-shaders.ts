@@ -75,12 +75,34 @@ void main() {
 export const ATMOSPHERE_VERTEX = SURFACE_VERTEX;
 export const ATMOSPHERE_FRAGMENT = `
 uniform vec3 uColor;
+uniform vec3 uWarm;
+uniform vec3 uSun;
 uniform float uPower;
 uniform float uIntensity;
+uniform float uWarmGain;
 ${SURFACE_VARYINGS}
 void main() {
   float rim = 1.0 - abs(dot(vNormal, normalize(-vView)));
-  gl_FragColor = vec4(uColor, pow(rim, uPower) * uIntensity);
+  float band = pow(rim, uPower);
+
+  // THE TERMINATOR. A single-colour rim is a halo; a planet has a SIDE the
+  // light comes from, and that is most of what separates the reference image
+  // from a glowing ball. uSun is a view-space direction, so the warm edge
+  // stays put as the globe is posed rather than swinging with the geometry.
+  //
+  // smoothstep rather than a raw dot: the daylight edge on a real limb is a
+  // narrow band, and a linear falloff spreads gold halfway round the sphere.
+  // The WINDOW is what decides whether this is a sunrise or a ring. At
+  // (0.05, 0.85) the warm band ran from about 11 o'clock round to 6 — half the
+  // limb, which reads as an orange hoop bolted to the planet. A real
+  // terminator is a narrow arc, so the ramp starts most of the way toward the
+  // sun and the unlit majority stays cool.
+  float lit = smoothstep(0.42, 0.97, dot(normalize(vNormal), normalize(uSun)));
+  vec3 tint = mix(uColor, uWarm, lit * uWarmGain);
+
+  // The lit side also burns brighter, which is what reads as sunrise rather
+  // than as a differently-coloured rim.
+  gl_FragColor = vec4(tint, band * uIntensity * (1.0 + lit * 0.9));
 }
 `;
 
@@ -101,20 +123,40 @@ export const LAND_VERTEX = `
 attribute float aSize;
 attribute vec3 aColor;
 uniform float uScale;
+uniform vec3 uSun;
 varying vec3 vColor;
 varying float vFacing;
+varying float vLit;
+varying float vWorldY;
 void main() {
   vec3 n = normalize(normalMatrix * normalize(position));
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   vFacing = dot(n, normalize(-mv.xyz));
   vColor = aColor;
+
+  // How much daylight this point catches — used to lift the lights toward the
+  // sunrise edge, so the gold is a property of WHERE ON THE PLANET a city is
+  // rather than a flat colour wash over all of them.
+  vLit = smoothstep(0.15, 0.95, dot(n, normalize(uSun)));
+
+  // World height, so the mirrored copy below can fade out with depth. It is
+  // the only way the reflection knows how far under the globe it has got.
+  vWorldY = (modelMatrix * vec4(position, 1.0)).y;
+
   gl_Position = projectionMatrix * mv;
   gl_PointSize = aSize * uScale / max(0.0001, -mv.z);
 }
 `;
 export const LAND_FRAGMENT = `
+uniform vec3 uWarm;
+uniform float uWarmGain;
+uniform float uOpacity;
+uniform float uFadeFrom;
+uniform float uFadeTo;
 varying vec3 vColor;
 varying float vFacing;
+varying float vLit;
+varying float vWorldY;
 void main() {
   if (vFacing < 0.04) discard;
   // A round, soft-edged dot. Without this every point is a hard square and the
@@ -131,7 +173,18 @@ void main() {
   // and lets the atmosphere do the rounding instead. The floor is what matters
   // here: a point at the limb keeps half its brightness rather than a sixth.
   float limb = smoothstep(0.02, 0.3, vFacing);
-  gl_FragColor = vec4(vColor, disc * (0.48 + 0.52 * limb));
+
+  // Cities toward the daylight edge burn warmer and brighter.
+  vec3 lit = mix(vColor, uWarm, vLit * uWarmGain);
+  lit *= 1.0 + vLit * 0.5;
+
+  // uFadeTo equal to uFadeFrom disables the fade, which is what the real globe
+  // passes; only the mirrored copy sets a window.
+  float depth = uFadeTo == uFadeFrom
+    ? 1.0
+    : clamp((vWorldY - uFadeTo) / (uFadeFrom - uFadeTo), 0.0, 1.0);
+
+  gl_FragColor = vec4(lit, disc * (0.48 + 0.52 * limb) * uOpacity * depth);
 }
 `;
 

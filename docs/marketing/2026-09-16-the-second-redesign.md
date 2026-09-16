@@ -385,3 +385,93 @@ safety net was reporting green having observed nothing"* — reproduced one
 directory over, within the hour. The test now asserts the match **count** before
 it asserts the rule, and a repo-wide scan confirmed no other source file carries
 a stray control byte.
+
+---
+
+# Addendum 2 — the golden globe (17 September 2026)
+
+A second reference image, and the owner's read of it: *"the golden effect the
+shadow the finish the premium look … can you exactly copy the same image … even
+i can see its reflection"*, with *"im okay if it is a stable image … even a
+static image is perfect for me"*.
+
+## What was taken
+
+| Reference | Built |
+|---|---|
+| Golden city lights | Land points are amber; India gold-white at the core of the falloff |
+| A warm sunrise on the limb | A real terminator — `SUN_DIR` in the shader, narrowed to an arc |
+| A reflection under the globe | A mirrored copy of the land, fading over ¾ of a unit |
+| Vertical rail | PEOPLE / DATA / COMPLIANCE / GROWTH / ALL IN SYNC |
+| Closing tagline | SYNC TODAY. A STRONGER TOMORROW. |
+| A stats row | Same shape, different figures — see below |
+
+**The sun is in VIEW space, not world space.** The terminator is a composition
+decision — the reference puts its sunrise on the upper right — so anchoring it
+to the camera keeps it there whatever pose the globe is in. A world-space sun
+would swing the gold edge around every time `INDIA_TILT_X` is touched, which is
+two things fighting over one number.
+
+**The window is what makes it a sunrise rather than a ring.** At
+`smoothstep(0.05, 0.85)` the warm band ran from about 11 o'clock round to 6 —
+half the limb, which reads as an orange hoop bolted to the planet. `(0.42, 0.97)`
+is an arc.
+
+**India gets brighter, not whiter.** Lifting blue to 0.74 at the centre of the
+falloff turned the subcontinent white against an amber world, inverting the
+reference, where India is the most intensely *gold* part of the picture. Blue now
+rises far less than red and green.
+
+**The reflection reuses the land geometry** — 26,000 points already uploaded,
+drawn again through a mirrored matrix. No second buffer, no second build, one
+extra draw call. The fade is a shader term reading world Y, not a gradient
+overlay, because an overlay would sit above the canvas and dim the real globe
+too. **Hubs, arcs and sweeps are deliberately not mirrored**: a reflection of a
+glow is a smear, and doubling every additive element is what turned this scene
+into a white disc the first time.
+
+## What was refused, and why
+
+The reference's stats row reads **"500+ CA Firms · 10M+ Documents Processed ·
+99.9% Uptime · 4.8/5 Customer Rating"**. Not one is true: there are no
+customers, nothing measures uptime, there is no status page or SLA, and there
+are no ratings. §16 rules out unverified claims, and the guard already forbade
+"Trusted by Growing Practices" from the *first* reference for the same reason.
+
+The row keeps the shape — it is good composition and the hero was thin without
+it — and takes the four figures the page already states further down, each
+countable in this repository. A number that appears twice on one page had better
+agree with itself.
+
+`FORBIDDEN` gained four entries written as the **claim** rather than the four
+literals, because the onboarding-speed entry already taught that a literal bans
+only its own spelling: any customer count, any uptime percentage, any star
+rating, any processed-document volume. Checked both ways — all four reference
+strings caught, none of the honest figures touched.
+
+Also refused: the reference's **search icon** in the nav. There is no site
+search, and a control that does nothing is worse than no control.
+
+## And the scan that fired on its own explanation
+
+Adding those entries made five tests fail — on the comment in `Hero.tsx`
+explaining why the strings are banned.
+
+Every scan in the guard file skipped comments by asking whether a line *started*
+with `//`, `*` or `/*`. A multi-line JSX comment has continuation lines that
+begin with ordinary words, so they were read as shipped copy. The hole had been
+there since the file was written; it only surfaced when a comment first needed
+to quote something forbidden.
+
+`_live_lines` blanks comment spans while preserving line numbers, and every scan
+goes through it. `://` is excluded, or the `//` in each https URL would blank the
+rest of its line — and one scan looks for a path inside a URL. Two tests hold it:
+one on the stripper directly, one confirming the three banned strings are still
+caught when they appear in live markup rather than in a comment.
+
+## Fitting above the fold
+
+The stats row pushed the hero past the viewport — measured at 46px over at
+1440×900 and 150px over at 1366×768. Rather than drop the row, the vertical
+rhythm was tightened and the headline reduced about 20%: now −84px at 1440×900,
+−23px at 800-tall, and 2px at 1366×768.
