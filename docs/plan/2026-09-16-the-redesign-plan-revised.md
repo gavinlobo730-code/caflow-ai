@@ -1,5 +1,9 @@
 # The redesign plan, revised against the code
 
+> **📋 HISTORY. The live plan is `docs/plan/THE-PLAN.md` — read that.**
+> This file is kept for its reasoning and its measurements; its status,
+> sizes and open questions are superseded.
+
 Written 16 September 2026, replacing the sizing and the sequence in
 `2026-09-12-compliance-and-craft.md`. That document's JUDGEMENTS still hold —
 light only, tables get the width, prose keeps its measure, one PR per module.

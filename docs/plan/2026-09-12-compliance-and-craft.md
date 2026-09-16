@@ -1,5 +1,9 @@
 # The plan: compliance and craft
 
+> **📋 HISTORY. The live plan is `docs/plan/THE-PLAN.md` — read that.**
+> This file is kept for its reasoning and its measurements; its status,
+> sizes and open questions are superseded.
+
 > **⚠️ SUPERSEDED ON 16 SEPTEMBER 2026 by
 > `2026-09-16-the-redesign-plan-revised.md`. Read that first.**
 >

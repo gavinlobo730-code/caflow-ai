@@ -1,5 +1,9 @@
 # Questions waiting for the owner
 
+> **📋 HISTORY. The live plan is `docs/plan/THE-PLAN.md` — read that.**
+> This file is kept for its reasoning and its measurements; its status,
+> sizes and open questions are superseded.
+
 Written overnight on 12–13 September 2026, while the owner was asleep, at their
 request: *"if you have questions please write them down."*
 
