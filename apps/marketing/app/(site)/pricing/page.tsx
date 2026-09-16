@@ -87,7 +87,7 @@ const TIERS: Tier[] = [
 const INCLUDED = [
   { title: "Data hosted in India", desc: "Your firm's and clients' data stays on infrastructure hosted in India." },
   { title: "Two-factor authentication", desc: "MFA and role-based access on every account, so only your team gets in." },
-  { title: "Nothing auto-submitted", desc: "A CA confirms every filing — no return is sent to a government portal automatically." },
+  { title: "Nothing auto-submitted", desc: "PracticeSync prepares the return; a CA files it on the portal. The software never transmits anything to a government portal." },
   { title: "Free trial, no card", desc: "Start on any plan with a free trial and no credit card required." },
 ];
 
@@ -105,8 +105,8 @@ const FAQS = [
     a: "Your data is hosted in India, encrypted, and protected with two-factor authentication and role-based access, so only your team sees your clients' information.",
   },
   {
-    q: "Do you file returns automatically?",
-    a: "No. PracticeSync prepares everything and flags what needs attention, but nothing is auto-filed — a CA must click to submit every GST, ITR, TDS or MCA return.",
+    q: "Does PracticeSync file returns for me?",
+    a: "No — and it is worth being precise about this. PracticeSync computes the return from your books and produces a file that is ready to submit. You upload and sign it on the government portal yourself, then record it back here, which is what locks the period. The software never transmits anything to a portal, for GST, ITR, TDS or MCA.",
   },
   {
     q: "Can I change plans later?",

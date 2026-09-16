@@ -97,7 +97,10 @@
             <a href="#control" class="anchor-link" style="font:600 14px/1 'Manrope',sans-serif; border-bottom:1px solid currentColor; padding-bottom:3px; opacity:0.85; display:inline-block;">See how it works &rarr;</a>
           </div>
           <div class="hero-fade" style="margin-top:44px; display:flex; gap:28px; flex-wrap:wrap; font:500 12.5px/1 'Manrope',sans-serif; opacity:0; transform:translateY(16px); transition:opacity 0.8s cubic-bezier(0.16,1,0.3,1), transform 0.8s cubic-bezier(0.16,1,0.3,1);">
-            <span style="opacity:0.5;">No credit card needed</span><span style="opacity:0.5;">Data hosted in India</span><span style="opacity:0.5;">Set up in a day</span>
+            <!-- "Set up in a day" was here. Nobody has measured that, and §16 of the
+                 redesign brief rules out unverified claims. The two that remain are
+                 facts: the trial takes no card, and Supabase runs in ap-south-1. -->
+            <span style="opacity:0.5;">No credit card needed</span><span style="opacity:0.5;">Data hosted in India</span><span style="opacity:0.5;">Nothing filed without your click</span>
           </div>
         </div>
         <div style="justify-self:end; align-self:center; position:relative; width:min(90vw,380px); height:360px; perspective:900px;">
@@ -135,27 +138,39 @@
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-1</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-3B</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-9</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
-          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ITR FILING</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ITR PREPARATION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TDS 24Q</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TDS 26Q</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
-          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">MCA FILINGS</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">MCA &amp; ROC FORMS</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ADVANCE TAX</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">PAYROLL &amp; PF/ESI</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">SCHEDULE III</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">AI DOCUMENT EXTRACTION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-2B RECONCILIATION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">BANKING &amp; RECONCILIATION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">SALES &amp; PURCHASES</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">INVENTORY</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">EMPLOYEE PORTAL</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TALLY MIGRATION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
         </div>
         <div aria-hidden="true" style="display:flex; align-items:center; gap:26px; padding-right:26px; white-space:nowrap;">
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-1</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-3B</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-9</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
-          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ITR FILING</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ITR PREPARATION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TDS 24Q</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TDS 26Q</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
-          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">MCA FILINGS</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">MCA &amp; ROC FORMS</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">ADVANCE TAX</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">PAYROLL &amp; PF/ESI</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">SCHEDULE III</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
           <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">AI DOCUMENT EXTRACTION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">GSTR-2B RECONCILIATION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">BANKING &amp; RECONCILIATION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">SALES &amp; PURCHASES</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">INVENTORY</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">EMPLOYEE PORTAL</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
+          <span style="font:600 13px/1 'Manrope',sans-serif; letter-spacing:0.1em; color:oklch(97% 0.004 267 / 0.6);">TALLY MIGRATION</span><span style="color:oklch(58% 0.13 267);">&bull;</span>
         </div>
       </div>
     </div>
@@ -179,7 +194,7 @@
         <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-size:clamp(28px,4vw,46px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 6px;"><span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">One</span> <span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">workspace.</span></div>
         <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-style:italic; font-size:clamp(30px,4.6vw,54px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 6px;"><span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">Every</span> <span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">compliance</span> <span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">domain.</span></div>
         <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-size:clamp(28px,4vw,46px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 44px;"><span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">Nothing</span> <span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">falls</span> <span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">through.</span></div>
-        <p class="focus-reveal" data-target-opacity="0.6" data-dir="left" style="font:500 14px/1.9 'Manrope',sans-serif; max-width:900px; opacity:0.15;">GSTR-1 &nbsp;/&nbsp; GSTR-3B &nbsp;/&nbsp; GSTR-9 &nbsp;/&nbsp; ITR filing &nbsp;/&nbsp; TDS 24Q &amp; 26Q &nbsp;/&nbsp; MCA filings &nbsp;/&nbsp; Advance tax &nbsp;/&nbsp; Payroll &amp; PF/ESI &nbsp;/&nbsp; Schedule III &nbsp;/&nbsp; AI document extraction &nbsp;/&nbsp; Client portal &nbsp;/&nbsp; Practice analytics</p>
+        <p class="focus-reveal" data-target-opacity="0.6" data-dir="left" style="font:500 14px/1.9 'Manrope',sans-serif; max-width:900px; opacity:0.15;">GSTR-1 &nbsp;/&nbsp; GSTR-3B &nbsp;/&nbsp; GSTR-9 &nbsp;/&nbsp; GSTR-2B reconciliation &nbsp;/&nbsp; ITR preparation &nbsp;/&nbsp; TDS 24Q &amp; 26Q &nbsp;/&nbsp; MCA &amp; ROC forms &nbsp;/&nbsp; Advance tax &nbsp;/&nbsp; Sales &amp; purchases &nbsp;/&nbsp; Banking &amp; reconciliation &nbsp;/&nbsp; Inventory &nbsp;/&nbsp; Payroll, PF &amp; ESI &nbsp;/&nbsp; Employee portal &nbsp;/&nbsp; Schedule III &nbsp;/&nbsp; Fixed assets &nbsp;/&nbsp; AI document extraction &nbsp;/&nbsp; Client portal &nbsp;/&nbsp; Workflow automation &nbsp;/&nbsp; Tally migration &nbsp;/&nbsp; Practice analytics</p>
       </div>
     </section>
 
@@ -208,10 +223,21 @@
     </section>
 
     <section style="position:relative; overflow:hidden; margin-top:-64px; clip-path:polygon(0 64px, 100% 0, 100% 100%, 0 100%); background:oklch(97% 0.004 260); color:oklch(20% 0.01 267); padding:calc(clamp(100px,16vw,170px) + 64px) clamp(20px,6vw,72px) clamp(100px,16vw,170px); max-width:960px; margin-left:auto; margin-right:auto; text-align:center;">
-      <div style="position:absolute; left:0; top:-60px; font-family:'Instrument Serif',serif; font-style:italic; font-size:clamp(260px,34vw,440px); line-height:1; color:oklch(20% 0.01 267 / 0.06); z-index:0; pointer-events:none; user-select:none;">&ldquo;</div>
+      <!-- This slot used to hold a pull-quote attributed to a named CA at a named
+           firm. There is no such customer. It is replaced by a product fact,
+           which is what this slot was reaching for anyway: a reason to trust the
+           software. Stating the filing boundary plainly is the strongest thing
+           this page can say to a CA, because every competitor blurs it. -->
+      <!-- Sized and placed like the other section numerals. It was clamp(260,34vw,440)
+           at left:0 because it used to be a quotation glyph, which wants to be
+           oversized and bled off the edge; a numeral at that size crowds the
+           heading instead of sitting behind it. -->
+      <div style="position:absolute; left:-30px; bottom:-50px; font-family:'Instrument Serif',serif; font-size:clamp(200px,28vw,400px); line-height:1; color:oklch(20% 0.01 267 / 0.05); z-index:0; pointer-events:none; user-select:none;">05</div>
       <div style="position:relative; z-index:1;">
-        <div class="focus-reveal" style="font-family:'Instrument Serif', serif; font-style:italic; font-size:clamp(26px,3.6vw,40px); line-height:1.4; letter-spacing:-0.01em; opacity:0.15;">"We shut down four subscriptions and a dozen spreadsheets. My team finally sees every client's deadlines, books and documents in one screen — and the AI catches mismatches before we file."</div>
-        <div class="focus-reveal" data-target-opacity="0.6" style="margin-top:34px; font:600 13px/1.5 'Manrope',sans-serif; opacity:0.15;">CA Rohan Agarwal — Partner, Agarwal &amp; Co., Bengaluru</div>
+        <div class="parallax-slow" style="font:600 12px/1 'Manrope',sans-serif; letter-spacing:0.18em; opacity:0.45; margin-bottom:26px;">HOW FILING ACTUALLY WORKS</div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-size:clamp(28px,4vw,46px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 6px;"><span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">We</span> <span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">compute</span> <span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">it.</span></div>
+        <div class="kinetic-line" style="font-family:'Instrument Serif', serif; font-style:italic; font-size:clamp(30px,4.6vw,54px); line-height:1.18; letter-spacing:-0.015em; margin:0 0 34px;"><span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">You</span> <span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">file</span> <span style="display:inline-block; opacity:0; transform:translateY(0.6em) rotate(2deg);">it.</span></div>
+        <p class="focus-reveal" data-target-opacity="0.65" style="font:400 17px/1.65 'Manrope',sans-serif; max-width:56ch; margin:0 auto; opacity:0.15;">PracticeSync reads your books and produces the return — GSTR-1, GSTR-3B, GSTR-9, the ITR JSON, 24Q and 26Q — computed, reconciled and ready to file. You upload and sign on the government portal, then record the ARN here and the period locks. No software files in your name.</p>
       </div>
     </section>
 

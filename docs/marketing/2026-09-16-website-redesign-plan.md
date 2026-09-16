@@ -169,6 +169,10 @@ Independent of every decision below. Small, and it makes the rest safe.
    platform-domains line, and `/products`' Compliance bullets. Keep and promote
    "Nothing is auto-submitted — a CA confirms every government filing".
 3. Drop "Set up in a day".
+
+The CTA change from §5.1 is deliberately **not** in this stage. It is a strategy
+change, not a correction, and it needs the `/demo` page to exist before the
+button can point anywhere honest. It lands in Stage 2 with the new hero.
 4. Add the six missing subsystems from §1 to `/products`: banking &
    reconciliation, GSTR-2B recon, sales & purchases, inventory, workflow
    automation, Tally migration. Promote the employee portal out of a bullet.
@@ -269,22 +273,45 @@ Four candidates that are both genuinely impressive and genuinely shipped:
 
 ---
 
-## 5. Open questions
+## 5. Decisions taken (owner, 16 September 2026)
 
-These change the work rather than the polish, so they are asked rather than
-assumed.
+Four questions changed the work rather than the polish, so they were asked before
+any of it started. All four are now settled.
 
-1. **Primary CTA.** The brief (§2, §13) makes *Book a Demo* the primary
-   conversion goal. The site today is self-serve — every primary CTA goes to
-   `caflow-ai.pages.dev/signup` — and there is no booking system: `/support`'s
-   "Book a demo" is a `mailto:` link. Switching the primary CTA changes the
-   funnel and needs something behind it (a scheduling link, a form, or the
-   mailto).
-2. **Homepage architecture** — port into React (recommended, §3) or keep the
-   standalone HTML file?
-3. **Product UI** — recreations built from source (recommended, Stage 3) or real
-   screenshots supplied by the owner?
-4. **The testimonial** — real and approved for publication, or remove?
+**5.1 Primary CTA — Book a Demo, with a real booking page.** The brief's funnel
+wins over the current self-serve one. *Start free trial* is demoted to secondary
+everywhere, and a first-party demo-request page is built: name, firm, firm size,
+message. **No third-party scheduler** — no Cal.com, no Calendly, no embedded
+widget.
+
+How it sends, since a static export has no server: `apps/api` already has a
+working transport — `services/email_service.py` on Resend (`RESEND_API_KEY`,
+declared optional in `core/config_validation.py`). The form therefore posts to a
+**new public, unauthenticated endpoint on `apps/api`** that reuses it. That
+carries four obligations, none optional:
+
+- the endpoint is the only unauthenticated write surface on the API, so it needs
+  a honeypot field, a rate limit and a hard payload cap;
+- it writes no tenant data and touches no `firm_id`-scoped table;
+- `apps/marketing` does not currently know the API origin — it only has
+  `NEXT_PUBLIC_APP_URL`. A `NEXT_PUBLIC_API_URL` must be added to
+  `next.config.mjs` **and** `wrangler.toml`;
+- any new backend env var must be declared in `render.yaml` —
+  `tests/test_render_manifest_matches_code.py` enforces that in both directions.
+
+If Resend is unset the endpoint must fail loudly to the visitor rather than
+returning success, or demo requests vanish silently. That is the same
+false-clean-result failure the codebase has fixed repeatedly elsewhere.
+
+**5.2 Architecture — port the homepage into React.** §3's recommendation is
+adopted. `practicesync-homepage.html` and its `_redirects` rewrite are retired
+once parity is proven.
+
+**5.3 Product UI — recreations built from source.** Stage 3's recommendation is
+adopted. No screenshots.
+
+**5.4 The testimonial is not real — remove it.** The Rohan Agarwal pull-quote and
+its section go in Stage 0. Nothing replaces it with another customer claim.
 
 ---
 

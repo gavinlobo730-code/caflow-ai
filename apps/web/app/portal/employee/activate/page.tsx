@@ -34,6 +34,7 @@ import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
+import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 import { Eye, EyeOff, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
 
 const MIN_LENGTH = 10;
@@ -42,28 +43,14 @@ const SESSION_WAIT_INTERVAL_MS = 500;
 
 type Stage = "verifying" | "invalid" | "form" | "reauth" | "done";
 
-/** Does this identity already have employee-portal access?
+/** Does this identity already have employee-portal access? A spent single-use
+ *  token is only an error if they have no access yet, so this decides whether
+ *  to show "invalid" or send them on to their payslips.
  *
- * Asked of the database, not the API: migration 262's employee_sees_own_record
- * returns their own row only once auth_user_id is bound AND portal_enabled is
- * true — exactly the state acceptance produces. So one row back means they are
- * already activated, and a spent token is nothing to worry about. */
-async function alreadyActivated(): Promise<boolean> {
-  try {
-    const sb = getSupabaseClient();
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) return false;
-    const { data } = await sb
-      .from("payroll_employees")
-      .select("id")
-      .eq("auth_user_id", session.user.id)
-      .eq("portal_enabled", true)
-      .maybeSingle();
-    return Boolean(data);
-  } catch {
-    return false;
-  }
-}
+ *  The query moved to lib/portal/employeeAccess because /portal/dashboard needs
+ *  the same answer to stop telling an activated employee they have no access.
+ *  See the module header for why one implementation rather than two. */
+const alreadyActivated = hasEmployeePortalAccess;
 
 export default function EmployeeActivatePage() {
   const router = useRouter();

@@ -73,7 +73,7 @@ const FAQ = [
   },
   {
     q: "How is my data protected?",
-    a: "Your data is hosted in India, secured with two-factor authentication and role-based access, and every action is captured in a full audit log. Nothing is ever filed to a government portal without an explicit click from a CA.",
+    a: "Your data is hosted in India, secured with two-factor authentication and role-based access, and every action is captured in a full audit log. PracticeSync also never transmits anything to a government portal — it prepares the return and a CA files it themselves.",
   },
 ];
 

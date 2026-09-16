@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
-import { Building, Users, ArrowRight, ArrowLeft, Check, Lock } from "@/components/icons";
+import { Building, Users, Receipt, ArrowRight, ArrowLeft, Check, Lock } from "@/components/icons";
 import { instrumentSerif, manrope } from "@/lib/fonts";
 import { appLinks } from "@/lib/site";
 
@@ -29,9 +29,26 @@ const OPTIONS = [
     icon: <Users size={24} />,
     title: "Client & SME",
     tag: "Client portal",
-    desc: "View documents, approve invoices and access payslips shared by your CA.",
+    desc: "View documents, approve invoices and see what your accountant needs from you.",
     points: ["For clients invited by their firm", "Email & password sign-in"],
     href: appLinks.clientPortal,
+    primary: false,
+  },
+  // Third door, added in the September 2026 truth pass. The employee portal
+  // (payslips, leave, Form 12BB, tax deducted) has been shipped for months and
+  // the website had nowhere to send anyone to it — an employee of a CA's client
+  // is neither firm staff nor the client, so neither card above was theirs.
+  //
+  // It points at the SAME /portal/login as the client card, because that is the
+  // one password sign-in both kinds of portal user share.
+  {
+    key: "employee",
+    icon: <Receipt size={24} />,
+    title: "Employee",
+    tag: "Employee portal",
+    desc: "Download your payslips, check your leave balance and file your own tax declaration.",
+    points: ["For staff whose employer runs payroll here", "Email & password sign-in"],
+    href: appLinks.employeePortal,
     primary: false,
   },
 ];
@@ -45,7 +62,9 @@ export default function AccessPage() {
       {/* soft brand wash from the top, echoing the homepage's dark panels */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-brand-light/[0.06] to-transparent" />
 
-      <div className="relative z-[1] mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-8">
+      {/* 5xl rather than 4xl: three sign-in cards at 4xl leave each one too
+          narrow for its feature list to breathe. */}
+      <div className="relative z-[1] mx-auto flex min-h-screen max-w-5xl flex-col px-6 py-8">
         {/* Top bar */}
         <div className="flex items-center justify-between">
           <Logo theme="dark" />
@@ -70,7 +89,10 @@ export default function AccessPage() {
             </p>
           </div>
 
-          <div className="mt-12 grid gap-5 sm:grid-cols-2">
+          {/* Three doors since the employee portal was added, so the grid is
+              three-up on desktop and single-column below it. Two-up would
+              orphan the third card on its own row. */}
+          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {OPTIONS.map((opt, i) => (
               <a
                 key={opt.key}
