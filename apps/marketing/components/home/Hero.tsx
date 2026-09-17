@@ -41,6 +41,20 @@ import { Parallax } from "../motion";
 const ARTWORK = "/hero/earth-network.webp";
 
 /**
+ * The deep-space field that carries the artwork across the rest of the hero.
+ *
+ * DERIVED FROM `ARTWORK`, not drawn: `scripts/build-space-field.py` cuts the
+ * artwork's own stars out of its cleanest deep-space tiles and re-scatters
+ * them, so the left of the hero is the same picture's sky rather than a
+ * starfield somebody generated. Purely decorative — it carries no content, so
+ * unlike the artwork it takes an empty `alt`.
+ *
+ * Re-run that script if the artwork is ever re-exported; the stars come from
+ * it.
+ */
+const STARS = "/hero/space-field.webp";
+
+/**
  * The eight modules the artwork has baked into it, in reading order.
  *
  * Kept as a list rather than written into one long string so that it is
@@ -121,11 +135,86 @@ export function Hero() {
         brief forbids. So the colour lives here, on the one section that needs
         to disappear behind a specific asset.
       */
+      /*
+        AND THE TWO GRADIENTS ARE THE COLOUR OF SPACE ON THE HALF THE ARTWORK
+        DOES NOT REACH.
+
+        Owner review, 17-09-2026: *"can we you know create the background image
+        a bit more universy like see the image is already right but only the
+        right side it is but the left is blank so i was thinking that the whole
+        screen gets that look"*, then, on scope: *"there should be only one
+        page and the page with the hero that is the original page"* — this
+        section, not the site.
+
+        BOTH COLOURS ARE MEASURED OFF THE ARTWORK rather than picked: #0c254b
+        is the mean of its own pixels in the 26-46 luminance band, its haze,
+        and #010817 the mean below 14, its deep space, which is the #010918
+        this section already carried. So the left half is lit in the picture's
+        own palette and reads as the same photograph continuing, not as a
+        tinted panel beside it.
+
+        WHY A GRADIENT AND NOT MORE IMAGE. Two attempts put this wash in the
+        asset, derived from the artwork as a tiny flipped thumbnail — see
+        `scripts/build-space-field.py`, which records both. The first kept
+        enough of the artwork's bright limb to read as a galaxy arm, which §12
+        prohibits outright; the second was structureless and then BANDED into
+        concentric rings, because a smooth gradient at that strength spans
+        about twenty of the 256 levels 8-bit gives you. Dithering fixed the
+        rings and multiplied the file by ten. The browser renders a gradient at
+        higher precision than the file format can hold, so it simply does not
+        band, and it weighs nothing. It is also not one of the four things the
+        brief says not to recreate — the globe, the city lights, the starfield
+        and the cards are all still the owner's own pixels.
+
+        Sized in PERCENTAGES, so the wash is a proportion of the hero at every
+        width; a px-sized ellipse is most of a phone and a corner of a 27-inch
+        monitor. Off-centre and of two different sizes because one centred
+        ellipse reads as a vignette.
+      */
       style={{
         backgroundColor: "#010918",
+        backgroundImage: [
+          "radial-gradient(115% 95% at 20% 36%, rgba(12,37,75,0.50), rgba(12,37,75,0) 68%)",
+          "radial-gradient(85% 70% at 46% 88%, rgba(12,37,75,0.30), rgba(12,37,75,0) 72%)",
+        ].join(","),
         boxShadow: "inset 0 0 180px rgba(0,0,0,0.4)",
       }}
     >
+      {/*
+        ── The stars ──────────────────────────────────────────────────────────
+
+        EVERY STAR HERE IS ONE OF THE ARTWORK'S OWN, MOVED.
+        `scripts/build-space-field.py` cuts them out of the artwork's cleanest
+        deep-space tiles and scatters them at new positions under a fixed seed,
+        which is the one way to extend the picture leftwards without either
+        drawing a starfield in code (§23 of the brief forbids it by name) or
+        mirroring a patch, which the eye catches immediately because repeated
+        constellations are the easiest pattern there is to see.
+
+        BEFORE the artwork in the DOM and at the same z-index, so it paints
+        underneath: the artwork is the subject and this is the room it is in.
+
+        `object-cover` with `object-left`. On a box wider than 16:9 cover
+        scales by width and the horizontal anchor does not matter; on a
+        narrower one it scales by height and crops WIDTH, and anchoring left
+        keeps the populated side and throws away the faded side rather than the
+        other way round. The asset's own alpha already fades it out before the
+        artwork's opaque half begins, so the two star populations never overlap
+        and there is no density step down the middle of the hero.
+      */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={STARS}
+          alt=""
+          width={1920}
+          height={1080}
+          loading="eager"
+          decoding="async"
+          className="h-full w-full object-cover object-left"
+        />
+      </div>
+
       {/* The 460px watermark "01" that used to sit here is gone, with the rest
           of the panel numerals — owner review, 16-09-2026: "the 01 and the
           numbering in the big light on all pages they also dont look asthetic".

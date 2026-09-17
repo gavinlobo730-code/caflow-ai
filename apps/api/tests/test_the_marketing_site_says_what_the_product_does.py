@@ -606,10 +606,37 @@ def test_the_artwork_names_the_eight_modules_it_has_baked_in():
         "the module names are in Hero.tsx but are not reaching the image's alt "
         "attribute, which is the only thing that makes them readable."
     )
-    assert 'alt=""' not in hero, (
-        "the hero artwork has an empty alt. It is not decorative — it carries "
-        "eight of the page's content labels."
+    # AND THE EMPTY-ALT CHECK IS PER IMAGE, NOT PER FILE, because the hero has
+    # two of them and they need OPPOSITE alts. The artwork carries eight
+    # content labels and must never have `alt=""`; the star field behind it
+    # carries nothing and must always have one, since a decorative image with
+    # descriptive alt text makes a screen reader read out scenery. A file-level
+    # `'alt=""' not in hero` was the first version of this and it failed the
+    # moment the correct second image was added — a guard that forbids the
+    # right answer somewhere else in the file.
+    # Comment spans blanked first: the artwork's own note says "A plain <img>,
+    # deliberately", and a raw scan counts that prose as a third image.
+    live = "\n".join(line for _no, line in _live_lines(hero))
+    tags = [("<img" + chunk).split(">")[0] for chunk in live.split("<img")[1:]]
+    assert len(tags) == 2, (
+        f"expected the hero to have exactly two images — the artwork and the "
+        f"decorative star field — and found {len(tags)}. If a third arrived, "
+        f"decide which kind it is and extend this check."
     )
+    for tag in tags:
+        if "ARTWORK" in tag and "STARS" not in tag:
+            assert 'alt=""' not in tag, (
+                "the hero artwork has an empty alt. It is not decorative — it "
+                "carries eight of the page's content labels, and the alt is "
+                "the only route by which they reach assistive technology."
+            )
+            assert "alt={" in tag, "the artwork's alt is not an expression naming the cards."
+        elif "STARS" in tag:
+            assert 'alt=""' in tag, (
+                "the decorative star field needs an empty alt. It carries no "
+                "content, so describing it makes a screen reader read out "
+                "scenery between the eyebrow and the headline."
+            )
 
 
 def test_no_two_pages_carry_the_same_headline():
