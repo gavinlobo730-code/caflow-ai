@@ -53,7 +53,7 @@ _Last updated: 2026-09-16_
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
 | **T7** | Analytics & AI | 🔧 C | 3 layers | `BLOCKED` on T3 |
 | **T8** | The portals | 🔧 C | 8–12d | `BLOCKED` on T4 |
-| **T9** | Backend backlog (8 items) | 🔧 C | 14–17d | `TODO` — parallel, starts now |
+| **T9** | Backend backlog (8 → 14 items) | 🔧 C | 14–17d | `TODO` — parallel, starts now |
 | **D** | Owner decisions | 👤 O | — | 8 of 8 `DONE` |
 | **F** | Documents to fetch | 👤 O | — | `TODO` |
 | **V** | Pre-demo verification | 🤝 B | 1 session | `BLOCKED` on T8 |
@@ -562,7 +562,7 @@ grep -rEoh '#[0-9a-fA-F]{6}' apps/web/app apps/web/components | wc -l
 # T5b       browser-side Excel writers            now 7       target 0
 grep -rl 'XLSX.write' apps/web/app apps/web/components | wc -l
 
-# T9        backlog: open + partial               now 35      target <=10 (rest blocked)
+# T9        backlog: open + partial               now 49      target <=10 (rest blocked)
 python3 -c "import json,collections; d=json.load(open('docs/audits/findings-status.json')); \
 c=collections.Counter(v['status'] for v in d['findings'].values()); print(c['open']+c['partial'])"
 ```
@@ -580,7 +580,7 @@ c=collections.Counter(v['status'] for v in d['findings'].values()); print(c['ope
 | money formatters | **53** | 1 | T3-c |
 | browser Excel writers | **7** | 0 | T5b |
 | analytical endpoints with no screen | **~40** | 0 | T7-L1 |
-| backlog open + partial | **35** | ≤ 10 | T9 |
+| backlog open + partial | ~~35~~ **49** | ≤ 10 | T9 |
 
 ---
 
