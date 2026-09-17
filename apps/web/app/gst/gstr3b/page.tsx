@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   computeGSTR3B,
@@ -1165,6 +1166,23 @@ export default function GSTR3BPage() {
               </section>
             );
           })()}
+
+          {/* THE THREE PARTS OF THE RETURN'S FACE THAT ARE NOT FIGURES (GST-22).
+              Table 5.1 (what being late costs), what the bank lines a CA marked
+              as carrying GST put on this return, and the rows filed nil because
+              nothing here can derive them. All three came back from
+              /from-books, `computeGSTR3B` dropped them, and this screen showed
+              none of them — while the per-client GST tab showed all three, so
+              the two GSTR-3B screens disagreed about how much of the return
+              they show. One component, both screens. */}
+          <div className="space-y-3">
+            <Gstr3bFindings
+              lateFiling={result.late_filing}
+              reconciliation={result.reconciliation}
+              bankLineCaveats={result.bank_line_caveats}
+              undeclarableRows={result.undeclarable_rows}
+            />
+          </div>
 
           {/* Validation warnings */}
           {result.validation_warnings.length > 0 && (

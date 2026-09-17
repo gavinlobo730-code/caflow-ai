@@ -1184,10 +1184,18 @@ change. The code is the authority; keep this file in step with it.
   in `services/gst_return_service.py` is the one list and it CALLS
   `_table_4a_gaps` rather than restating it, so the 4(A) rows keep one
   definition. **`table_4a_gaps` itself was served since GST-24 and rendered by
-  nothing**, so even the ISD sentence reached nobody; the client GST screen
-  renders the superset now. No figure changes — what an underivable row needs is
-  a document this product does not model, not a number from memory — and a test
-  asserts no reason states a rate or an amount.
+  nothing**, so even the ISD sentence reached nobody. No figure changes — what
+  an underivable row needs is a document this product does not model, not a
+  number from memory — and a test asserts no reason states a rate or an amount.
+  **BOTH GSTR-3B SCREENS RENDER IT, FROM ONE COMPONENT** (GST-22).
+  `components/gst/Gstr3bFindings.tsx` carries this panel, Table 5.1 and the
+  bank-line note; the per-client tab spelled all three out inline and
+  `computeGSTR3B` dropped the four keys on the way through, so the FIRM-LEVEL
+  screen showed none of them and the two disagreed about how much of the return
+  they show. Three older guards had that page's PATH written into them and
+  failed on a move that did not break their rule — `scripts/panelSource.ts`
+  resolves a panel by a phrase only it contains and asserts there is exactly
+  one, which is the same rule stated once instead of three times.
 - **GSTR-3B TABLE 4(A) HAS FIVE ROWS, AN IMPORT OF SERVICES OWNS ONE OF THEM,
   AND TWO ARE STRUCTURALLY NIL** (GST-24). `itc_avl_rows` emits all five in the
   GSTN utility's order and used to put the WHOLE reverse-charge credit on

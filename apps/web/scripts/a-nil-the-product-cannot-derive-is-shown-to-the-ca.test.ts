@@ -16,6 +16,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
+import { panelSource } from "./panelSource.ts";
+
 const WEB = path.resolve(import.meta.dirname, "..");
 const PAGE = path.join(WEB, "app/clients/[id]/compliance/gst/page.tsx");
 
@@ -32,24 +34,34 @@ const raw = fs.readFileSync(PAGE, "utf8");
 const code = withoutComments(raw);
 
 /**
- * THE PANEL, not the whole file.
+ * THE PANEL, not the whole file, and not a path either.
  *
- * A negative control found this the hard way: asserting `rows.map(` against the
- * whole page passed while this panel's render was replaced by a dead `[].map`,
- * because a different table on the same 3,000-line screen also maps a variable
- * called `rows`. An assertion another call site can satisfy is not an
- * assertion. So the scan is the block that READS the server's key, from that
- * read to the end of its own IIFE.
+ * A negative control found the first half the hard way: asserting `rows.map(`
+ * against the whole page passed while this panel's render was replaced by a
+ * dead `[].map`, because a different table on the same 3,000-line screen also
+ * maps a variable called `rows`. An assertion another call site can satisfy is
+ * not an assertion.
+ *
+ * The second half was found when the panel MOVED. It lived inline on the
+ * per-client GST tab until the firm-level GSTR-3B screen needed the same three
+ * panels (GST-22), and this guard had that page's path written into it — so it
+ * failed on a move that did not break the rule. `panelSource` resolves the file
+ * by a phrase only this panel contains, and asserts there is exactly one.
  */
 function panelOf(src: string): string {
-  const start = src.indexOf("computeResult.undeclarable_rows");
-  assert.notEqual(start, -1, "the screen no longer reads the server's list at all");
-  const end = src.indexOf("})()}", start);
-  assert.notEqual(end, -1, "could not find the end of the panel that reads it");
-  return src.slice(start, end);
+  const start = src.indexOf("export function Gstr3bUndeclarableRows");
+  assert.notEqual(start, -1, "the panel that renders the server's list is gone");
+  const end = src.indexOf("\nexport ", start + 1);
+  return end === -1 ? src.slice(start) : src.slice(start, end);
 }
 
-const panel = panelOf(code);
+const panelFile = withoutComments(panelSource("Nil because this product cannot derive it"));
+const panel = panelOf(panelFile);
+
+/** Everything the browser could spell these rows in: the screen that computes
+ *  and the panel that renders. Splitting them would let a sentence move from
+ *  one to the other and the "the list is the server's" test go quiet. */
+const browser = code + "\n" + panelFile;
 
 test("a nil the product cannot derive is shown to the CA", async (t) => {
   await t.test("the list is read from the server and rendered", () => {
@@ -69,13 +81,13 @@ test("a nil the product cannot derive is shown to the CA", async (t) => {
 
   await t.test("the browser decides which rows are underivable for none of them", () => {
     for (const p of [/3\.1\.1/, /4\(D\)\(2\)/, /9\(5\)/, /16\(4\)/, /\bISD\b/]) {
-      assert.ok(!p.test(code), `${p} is spelled in the browser — the list is the server's`);
+      assert.ok(!p.test(browser), `${p} is spelled in the browser — the list is the server's`);
     }
   });
 
   await t.test("it does not restate the server's reason in its own words", () => {
     for (const p of [/e-?commerce operator/i, /nil-rated/i, /Input Service Distributor/i]) {
-      assert.ok(!p.test(code), `${p} is written into the screen`);
+      assert.ok(!p.test(browser), `${p} is written into the screen`);
     }
   });
 
@@ -89,5 +101,8 @@ test("a nil the product cannot derive is shown to the CA", async (t) => {
   await t.test("the comment strip does not make the scan vacuous", () => {
     assert.ok(code.length > raw.length / 2, "too much of the file was stripped");
     assert.ok(panel.length > 400, "the panel slice collapsed — the scan would be vacuous");
+    assert.match(code, /<Gstr3bFindings\b/,
+      "the screen no longer renders the panel at all, which is the defect this " +
+      "file exists to stop coming back");
   });
 });

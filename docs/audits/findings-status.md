@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **232** | re-read against the code. The defect is gone. |
-| partial | **32** | part of the finding is answered, part is not. Each says which. |
+| closed | **233** | re-read against the code. The defect is gone. |
+| partial | **31** | part of the finding is answered, part is not. Each says which. |
 | open | **9** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 41 items — 9 open and 32 partial — not 254.**
+**The work left is 40 items — 9 open and 31 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -67,7 +67,6 @@ is left as "unknown".
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **GST-19** | Rule 36(4) is applied as an aggregate per-head cap, not invoice-level 2B matching, and the cappe |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
-| medium | **GST-22** | The GSTR-3B screen prints taxable VALUES in the IGST column and shows none of tables 3.1(d), 3.1 |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **IT-20** | §80CCD(2) is capped at 10% of salary for a non-government employee under the NEW regime, where t |
@@ -235,6 +234,7 @@ is left as "unknown".
 | medium | **GST-06** | Non-GST outward supplies are dropped from GSTR-3B Table 3.1(e) and counted nowhere |
 | medium | **GST-09** | The correction window always reports 30 November — the "or the annual return, whichever is earli |
 | medium | **GST-15** | GSTR-1 Table 11 advance tax is computed into the filed payload while the advances report tells t |
+| medium | **GST-22** | The GSTR-3B screen prints taxable VALUES in the IGST column and shows none of tables 3.1(d), 3.1 |
 | medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |
 | medium | **GST-27** | The 2A/2B reconciliation engine is business logic in TypeScript and parses money with parseFloat |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |

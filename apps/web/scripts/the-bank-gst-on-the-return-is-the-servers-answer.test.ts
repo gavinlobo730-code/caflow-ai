@@ -22,22 +22,31 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { panelSource } from "./panelSource.ts";
 
 const WEB = path.resolve(import.meta.dirname, "..");
 const SCREEN = "app/clients/[id]/compliance/gst/page.tsx";
 
-function code(rel: string): string {
-  return fs.readFileSync(path.join(WEB, rel), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/^\s*\/\/.*$/gm, " ");
+function strip(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
 }
 
+function code(rel: string): string {
+  return strip(fs.readFileSync(path.join(WEB, rel), "utf8"));
+}
+
+// THE PANEL, resolved by what it SAYS. It lived inline on the per-client GST
+// tab until the firm-level GSTR-3B screen needed the same three panels
+// (GST-22); a path written in here would have to move with it, and did not.
+const panel = strip(panelSource("From bank lines you marked as carrying GST"));
+
 test("the screen renders the server's bank-line caveats", () => {
-  const src = code(SCREEN);
-  assert.match(src, /computeResult\.bank_line_caveats/,
+  assert.match(code(SCREEN), /<Gstr3bFindings\b/,
+    "the screen must render the panel at all");
+  assert.match(panel, /caveats/,
     "the §16(2)(aa) and Rule 46 sentences come back on the return — a CA about "
     + "to file has to see that this credit has no 2B document behind it");
-  assert.match(src, /bank_lines/,
+  assert.match(panel, /bank_lines/,
     "and the figures those sentences are about must be shown beside them");
 });
 
@@ -45,7 +54,7 @@ test("the screen does not work out the split itself", () => {
   // The tax-inclusive back-out lives in domain/banking/charge_gst.py and its
   // one keystroke mirror. A third copy here would be a statutory calculation
   // in the browser, and it would drift.
-  const src = code(SCREEN);
+  const src = code(SCREEN) + "\n" + panel;
   assert.doesNotMatch(src, /10000\s*\+\s*(rate|gst)/i,
     "no inclusive-GST back-out in the browser");
   // The sentences are RENDERED from the array, never written out here. A
@@ -53,8 +62,8 @@ test("the screen does not work out the split itself", () => {
   // the amount — the server's does. (§16(2)(aa) itself is named elsewhere on
   // this screen, in the 2B reconciliation panel, so its mere presence proves
   // nothing; what matters is that the bank-line notes come off the payload.)
-  assert.match(src, /const notes = \(computeResult\.bank_line_caveats/,
+  assert.match(panel, /const notes = caveats \?\? \[\]/,
     "the notes come off the payload");
-  assert.match(src, /\{notes\.map\(/,
+  assert.match(panel, /\{notes\.map\(/,
     "…and are rendered from that array rather than written out here");
 });

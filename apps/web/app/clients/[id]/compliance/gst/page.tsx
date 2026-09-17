@@ -12,6 +12,8 @@ import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
 import GSTR9Working from "@/components/gst/GSTR9Working";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
+import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
+import type { GLReconciliation, LateFilingBlock, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -1202,157 +1204,21 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     pay from the credit ledger and {rupees(cf)} carries into the next return.
                   </p>
                 )}
-                {/* TABLE 5.1 — WHAT BEING LATE COSTS (GST-21).
-                    The interest is computed PER HEAD on the CASH payable, not
-                    on the gross output tax: Rule 88B(1) charges only "that
-                    portion of the tax which is paid by debiting the electronic
-                    cash ledger", so a head the credit ledger discharged in
-                    full bears none however late the return is.
-                    The LATE FEE is a refusal, and the sentence naming the
-                    notification to read is the server's — §47's notified rates
-                    are not held, and a fee written from memory is a number a
-                    CA would pay over. */}
-                {(() => {
-                  const lf = computeResult.late_filing as {
-                    available?: boolean; reason?: string; due_date?: string;
-                    days_late?: number; interest_total_paise?: number;
-                    interest_by_head?: { head: string; base_paise: number; days: number;
-                                         interest_paise: number }[];
-                    late_fee?: { refused?: boolean; reason?: string; fee_paise?: number };
-                    caveats?: string[];
-                  } | undefined;
-                  if (!lf) return null;
-                  if (!lf.available) {
-                    return (
-                      <p className="text-xs text-[#94A3B8] border-t pt-2">{lf.reason}</p>
-                    );
-                  }
-                  const heads = (lf.interest_by_head ?? []).filter((h) => h.base_paise > 0);
-                  return (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm space-y-1">
-                      <p className="font-medium text-amber-900">
-                        Table 5.1 — {lf.days_late} day{lf.days_late === 1 ? "" : "s"} after the
-                        due date of {lf.due_date}
-                      </p>
-                      <div className="flex justify-between text-amber-900">
-                        <span>§50(1) interest at 18% on the cash payable</span>
-                        <span className="font-mono">{rupees(lf.interest_total_paise ?? 0)}</span>
-                      </div>
-                      {heads.length > 0 && (
-                        <table className="w-full text-[11px] text-amber-800">
-                          <tbody>
-                            {heads.map((h) => (
-                              <tr key={h.head}>
-                                <td className="uppercase py-0.5">{h.head}</td>
-                                <td className="py-0.5">{rupees(h.base_paise)} × 18% × {h.days}/365</td>
-                                <td className="py-0.5 text-right font-mono">{rupees(h.interest_paise)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                      {lf.late_fee?.refused ? (
-                        <p className="text-[11px] text-amber-800 border-t border-amber-200 pt-1">
-                          {lf.late_fee.reason}
-                        </p>
-                      ) : (
-                        <div className="flex justify-between text-amber-900 border-t border-amber-200 pt-1">
-                          <span>§47 late fee</span>
-                          <span className="font-mono">{rupees(lf.late_fee?.fee_paise ?? 0)}</span>
-                        </div>
-                      )}
-                      {(lf.caveats ?? []).map((c, i) => (
-                        <p key={i} className="text-[11px] text-amber-700">{c}</p>
-                      ))}
-                    </div>
-                  );
-                })()}
-                {/* WHAT THE BANK LINES PUT ON THIS RETURN (BANK-24).
-                    A charge the CA marked as carrying GST posts a real
-                    Dr GST Input leg, so the credit was already in the ledger —
-                    it just never reached Table 4(A), and the same rupees came
-                    back as an unexplained books-vs-ledger difference every
-                    month. They are on the return now, and the two sentences
-                    below are the half that cannot be computed: §16(2)(aa)
-                    wants a supplier document a bank line does not carry, and
-                    an outward supply with no tax invoice will not be in the
-                    GSTR-1 the portal compares this return against. Both come
-                    from the server; nothing here derives them. */}
-                {(() => {
-                  const bank = (computeResult.reconciliation as Record<string, unknown> | undefined)
-                    ?.bank_lines as { itc_paise?: number; output_tax_paise?: number;
-                                      inward_line_count?: number; outward_line_count?: number } | undefined;
-                  const notes = (computeResult.bank_line_caveats as string[] | undefined) ?? [];
-                  if (!bank || (!bank.itc_paise && !bank.output_tax_paise)) return null;
-                  return (
-                    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm space-y-1">
-                      <p className="font-medium text-sky-900">From bank lines you marked as carrying GST</p>
-                      {(bank.itc_paise ?? 0) > 0 && (
-                        <div className="flex justify-between text-sky-900">
-                          <span>
-                            Input credit in Table 4(A)(5) — {bank.inward_line_count} line
-                            {bank.inward_line_count === 1 ? "" : "s"}
-                          </span>
-                          <span className="font-mono">{rupees(bank.itc_paise ?? 0)}</span>
-                        </div>
-                      )}
-                      {(bank.output_tax_paise ?? 0) > 0 && (
-                        <div className="flex justify-between text-sky-900">
-                          <span>
-                            Output tax in Table 3.1(a) — {bank.outward_line_count} line
-                            {bank.outward_line_count === 1 ? "" : "s"}
-                          </span>
-                          <span className="font-mono">{rupees(bank.output_tax_paise ?? 0)}</span>
-                        </div>
-                      )}
-                      {notes.map((c, i) => (
-                        <p key={i} className="text-[11px] text-sky-800 border-t border-sky-200 pt-1">{c}</p>
-                      ))}
-                    </div>
-                  );
-                })()}
-                {/* ROWS THIS RETURN DECLARES NIL AND CANNOT DERIVE.
-                    A nil that means "this client had none" and a nil that
-                    means "this product cannot see it" look identical on a
-                    filed return, and four rows of this GSTR-3B are the second
-                    kind: 3.1.1's two §9(5) e-commerce rows, Table 5's inward
-                    exempt/nil-rated/non-GST values, and 4(D)(2). Each already
-                    carried its reason in a source comment next to the literal
-                    zero — the right place for the next programmer and no place
-                    at all for the CA about to file.
-
-                    `table_4a_gaps` had the same problem one level up: served
-                    since GST-24 and rendered by nothing, so the ISD sentence
-                    reached nobody. `undeclarable_rows` is the superset and this
-                    is the one place it is shown. Every sentence is the
-                    server's; nothing here decides which rows are listed. */}
-                {(() => {
-                  const rows = (computeResult.undeclarable_rows as
-                    { row: string; label: string; reason: string }[] | undefined) ?? [];
-                  if (rows.length === 0) return null;
-                  return (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm space-y-2">
-                      <p className="font-medium text-[#334155]">
-                        Nil because this product cannot derive it — {rows.length} row
-                        {rows.length === 1 ? "" : "s"}
-                      </p>
-                      <p className="text-[11px] text-[#64748B]">
-                        These are filed as nil. That is correct for a client with none,
-                        and wrong for a client with any — nothing here can tell the two
-                        apart, so check each on the portal before you file.
-                      </p>
-                      <ul className="space-y-1.5">
-                        {rows.map((g) => (
-                          <li key={g.row} className="border-t border-slate-200 pt-1.5">
-                            <span className="font-mono text-xs text-[#334155]">Table {g.row}</span>
-                            <span className="text-xs text-[#475569]"> — {g.label}</span>
-                            <p className="text-[11px] text-[#64748B] mt-0.5">{g.reason}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })()}
+                {/* THE THREE PARTS OF THE RETURN'S FACE THAT ARE NOT FIGURES.
+                    Table 5.1 (what being late costs, GST-21), what the bank
+                    lines you marked as carrying GST put on this return
+                    (BANK-24), and the rows filed nil because nothing here can
+                    derive them. All three were spelled out inline here and the
+                    FIRM-LEVEL GSTR-3B screen showed none of them (GST-22), so
+                    the two screens disagreed about how much of the return they
+                    show. One component, both screens; every sentence in it is
+                    the server's. */}
+                <Gstr3bFindings
+                  lateFiling={computeResult.late_filing as LateFilingBlock | undefined}
+                  reconciliation={computeResult.reconciliation as GLReconciliation | undefined}
+                  bankLineCaveats={computeResult.bank_line_caveats as string[] | undefined}
+                  undeclarableRows={computeResult.undeclarable_rows as UndeclarableRow[] | undefined}
+                />
                 {/* THE TABLES, not just the totals.
                     The GSTN offline utility is table by table, and a CA
                     reviewing before filing is checking 3.1 and 4, not a single

@@ -250,6 +250,16 @@ export interface GSTR3BComputeResult {
   period: string;
   gstin: string;
   ca_review_required: true;
+  /** THE THREE PARTS OF THE RETURN'S FACE THAT ARE NOT FIGURES (GST-22).
+   *  All three came back from `/from-books` and this shaper dropped them, so
+   *  the firm-level GSTR-3B screen showed none of them while the per-client
+   *  panel showed all three — two screens disagreeing about how much of the
+   *  return they show. `components/gst/Gstr3bFindings` renders them and both
+   *  screens use it. */
+  late_filing?: LateFilingBlock;
+  undeclarable_rows?: UndeclarableRow[];
+  bank_line_caveats?: string[];
+  reconciliation?: GLReconciliation;
 }
 
 /** Books-vs-ledger agreement, returned by every from-books computation. The
@@ -316,6 +326,37 @@ interface FromBooksGSTR1 {
 }
 
 /** Raw shape of POST /api/gst/gstr3b/from-books. */
+/** §50 interest and the §47 refusal for one period (GST-21). `available: false`
+ *  where no filing date was given — a return being prepared has none, and using
+ *  today would give the figure a value that changes every day it is not filed. */
+export interface LateFilingBlock {
+  available: boolean;
+  reason?: string;
+  due_date?: string;
+  days_late?: number;
+  interest_total_paise?: number;
+  interest_by_head?: { head: string; base_paise: number; days: number; interest_paise: number }[];
+  late_fee?: { refused?: boolean; reason?: string; fee_paise?: number };
+  caveats?: string[];
+}
+
+/** A row this GSTR-3B files as NIL because nothing here can derive it. A nil
+ *  meaning "this client had none" and a nil meaning "we cannot see it" are
+ *  identical on a filed return, and these are the second kind. */
+export interface UndeclarableRow {
+  row: string;
+  label: string;
+  reason: string;
+}
+
+/** What the bank lines a CA marked as carrying GST put on this return (BANK-24). */
+export interface BankLineTotals {
+  itc_paise?: number;
+  output_tax_paise?: number;
+  inward_line_count?: number;
+  outward_line_count?: number;
+}
+
 interface FromBooksGSTR3B {
   period: string;
   gstin: string;
@@ -324,6 +365,9 @@ interface FromBooksGSTR3B {
   reconciliation: GLReconciliation;
   validation_errors: ValidationError[];
   validation_warnings: ValidationError[];
+  late_filing?: LateFilingBlock;
+  undeclarable_rows?: UndeclarableRow[];
+  bank_line_caveats?: string[];
 }
 
 export interface ClassifyResult {
@@ -663,6 +707,11 @@ export async function computeGSTR3B(
     period: result.period,
     gstin: result.gstin,
     ca_review_required: true,
+    // CARRIED, not dropped (GST-22) — see the note on the interface.
+    late_filing: result.late_filing,
+    undeclarable_rows: result.undeclarable_rows,
+    bank_line_caveats: result.bank_line_caveats,
+    reconciliation: result.reconciliation,
   };
 
   await saveGSTR3BReturn(clientId, period, result.gstin, shaped);

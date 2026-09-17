@@ -101,17 +101,3 @@ export function Gstr1Findings({ errors, warnings, gaps, compact = false }: Gstr1
     </>
   );
 }
-
-/** A one-line count for a header strip — "2 errors · 1 not declared". */
-export function gstr1FindingCounts(
-  errors: ValidationError[], warnings: ValidationError[], gaps: PayloadGap[],
-): { label: string; tone: "red" | "amber" } | null {
-  const parts: string[] = [];
-  if (gaps.length) parts.push(`${gaps.length} not declared`);
-  if (errors.length) parts.push(`${errors.length} error${errors.length !== 1 ? "s" : ""}`);
-  if (warnings.length) parts.push(`${warnings.length} warning${warnings.length !== 1 ? "s" : ""}`);
-  if (!parts.length) return null;
-  // A GAP is red as well as an error: the return is short either way, and only
-  // the reason differs.
-  return { label: parts.join(" · "), tone: (gaps.length || errors.length) ? "red" : "amber" };
-}
