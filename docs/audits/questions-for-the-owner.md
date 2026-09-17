@@ -151,9 +151,10 @@ That is a correction to my own earlier note, which had the mechanism as
 "Notification 09/2022 notified 18%". 9/2022 brought the provisions into force;
 the rate change was s.116 + the Sixth Schedule.
 
-**Decided: 18%.** `SECTION_50_3_NOTIFIED_RATE_BPS = 1800`, `[S]`-graded,
-`verified=False`, sources named, pinned by a test. The Act's own 24% ceiling
-stays recorded as the ceiling it is.
+**Decided: 18%. BUILT** — `SECTION_50_3_NOTIFIED_RATE_BPS = 1800`,
+`SECTION_50_3_RATE_VERIFIED = False`, the source on every charge as a caveat,
+the Act's own 24% ceiling still recorded as the ceiling it is, and the constant
+left `Optional` with a test exercising the withdrawal branch so it cannot rot.
 
 **Why I am comfortable deciding this:** the direction of the doubt was what
 made me refuse before — 24% takes a third more money from a taxpayer who does

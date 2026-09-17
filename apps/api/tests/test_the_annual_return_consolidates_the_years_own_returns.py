@@ -377,11 +377,29 @@ def test_each_unbuilt_table_says_WHY(table):
 
 
 def test_the_late_fee_table_points_at_the_refusal_that_already_exists():
-    """s.47's rates are EMPTY in `domain/gst/late_filing.py` on purpose — the
-    figure in force depends on the return, the year and the taxpayer's own
-    turnover. Table 19 must not invent one."""
-    from domain.gst.late_filing import LATE_FEE_RATES
-    assert LATE_FEE_RATES == {} or not LATE_FEE_RATES
+    """Table 19 must not invent a late fee for the ANNUAL return.
+
+    THIS TEST NAMED A SPELLING AND THE SPELLING MOVED. It asserted
+    `LATE_FEE_RATES == {}`, which was a fine proxy while the table was empty
+    for every return — and the notified GSTR-1 and GSTR-3B ladders
+    (Notifications 19/2021 and 20/2021) have since been written in, so the
+    proxy failed on a change that did not touch this rule at all. The fourth
+    or fifth time this pattern has been fixed in this repository.
+
+    The RULE is about GSTR-9 specifically, and it still holds. s.47(2)'s
+    annual-return fee is a DIFFERENT figure from the monthly one — ₹200 a day
+    combined, capped at a percentage of the taxpayer's turnover in the State,
+    reduced again by its own notifications — and none of it is held here. So
+    the assertion is what it was always about: ask for a GSTR-9 late fee and be
+    REFUSED, whatever other returns the table has learned."""
+    from datetime import date as _d
+    from domain.gst.late_filing import late_fee
+    out = late_fee(return_type="gstr9", financial_year="2025-26",
+                   due_date=_d(2026, 12, 31), filed_on=_d(2027, 2, 15))
+    assert out["refused"] is True, (
+        "s.47(2)'s annual-return fee is not held — Table 19 must not invent one"
+    )
+    assert "fee_paise" not in out
     assert "late_filing" in g9.NOT_BUILT["19"]
 
 
