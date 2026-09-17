@@ -612,6 +612,80 @@ def test_the_artwork_names_the_eight_modules_it_has_baked_in():
     )
 
 
+def test_no_two_pages_carry_the_same_headline():
+    """A READER HAS TO BE ABLE TO TELL WHICH PAGE THEY ARE ON.
+
+    `/story` exists because "Our Story" in the nav used to point at `/#story`,
+    an anchor onto a homepage panel. The page was made by COPYING that panel
+    and then growing around it, and the copy was never re-written — so for a
+    day both pages carried a section 02 headed "Where it starts / Every CA firm
+    runs like this. / Five tools. Five logins. / One deadline through the
+    cracks.", with the same eyebrow, the same three lines and the same index.
+
+    Owner review, 17-09-2026, having clicked the logo and then the nav item:
+    *"if i click the practicesync then our story page is different and if i
+    click our story then the page is different see that that is fully a bug"*.
+    It is the right word. A duplicated headline is not a cosmetic repeat — it
+    is two pages claiming to be the same one, and the reader's only way of
+    knowing where they are is what the section says.
+
+    So the rule is per PAGE and not per file: a heading may repeat within one
+    page (a recurring section is a design), and may not appear on two. The
+    check is on the (eyebrow, lines) PAIR, because that is what a reader sees
+    as the heading — and then on the lines alone, since the same headline under
+    a re-typed eyebrow is the same defect. `Security & trust` is the one
+    allowed overlap and it is allowed on evidence rather than by name: its two
+    instances differ in their second line and their subtitle, so it is a
+    recurring section written twice, not one panel pasted twice."""
+    import collections
+    import re
+
+    pages = sorted((MARKETING / "app").rglob("page.tsx"))
+    assert len(pages) >= 6, (
+        f"only found {len(pages)} pages to compare; this guard is vacuous "
+        f"below about six and the site has more than that."
+    )
+
+    headings: dict[tuple, set[str]] = collections.defaultdict(set)
+    lines_at: dict[str, set[str]] = collections.defaultdict(set)
+    for page in pages:
+        src = "\n".join(line for _no, line in _live_lines(page.read_text(encoding="utf-8")))
+        rel = _rel(page)
+        for m in re.finditer(r'eyebrow="([^"]+)"([\s\S]{0,700}?)(?:/>|subtitle=)', src):
+            lines = tuple(l.lower() for l in re.findall(r'\{\s*text:\s*"([^"]+)"', m.group(2)))
+            if not lines:
+                continue
+            headings[(m.group(1).lower(), lines)].add(rel)
+        for line in re.findall(r'\{\s*text:\s*"([^"]+)"', src):
+            lines_at[line.lower()].add(rel)
+
+    assert len(headings) >= 15, (
+        f"only parsed {len(headings)} headings out of {len(pages)} pages. "
+        f"SerifHeading's call shape has changed and this guard is now looking "
+        f"at almost nothing — fix the pattern rather than the count."
+    )
+
+    shared = {k: v for k, v in headings.items() if len(v) > 1}
+    assert not shared, "the same heading appears on more than one page:\n" + "\n".join(
+        f'  eyebrow {eyebrow!r} lines {list(lines)} on {sorted(where)}'
+        for (eyebrow, lines), where in shared.items()
+    )
+
+    # And the headline alone, which catches the same panel re-eyebrowed.
+    repeated = {
+        line: where
+        for line, where in lines_at.items()
+        if len(where) > 1 and line != "your clients' data —"
+    }
+    assert not repeated, (
+        "a headline line is used on more than one page:\n"
+        + "\n".join(f"  {line!r} on {sorted(where)}" for line, where in repeated.items())
+        + "\nIf this is a recurring SECTION rather than a pasted panel, its "
+        "other lines and its subtitle should differ — say so here with the "
+        "evidence, the way \"Your clients' data —\" is exempted."
+    )
+
+
 def test_the_hero_copy_does_not_drift_away_from_an_edge_bleeding_artwork():
     """THE HERO IS THE ONE SECTION THAT MAY NOT CENTRE ITS CONTENT COLUMN.
 

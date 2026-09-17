@@ -16,6 +16,13 @@ import { Shield } from "@/components/icons";
  * say what this is, above the fold of the second screen) and links here. The
  * anchor keeps working, because it is in the wild.
  *
+ * ⚠️ THE SPLIT WAS DONE BY COPYING, AND THE COPY WAS NEVER RE-WRITTEN. For a
+ * day this page's section 02 was the homepage's section 02 verbatim — same
+ * eyebrow, same three headline lines, same number — which the owner found by
+ * clicking the logo and then the nav item and landing on the same panel twice.
+ * It is re-headed now; see the comment on that panel, which records the rule
+ * they settled it with.
+ *
  * WHAT IS ON IT. A CA evaluating a new platform is not asking for a founding
  * anecdote; they are asking whether the people who built it understand what
  * they are signing. So this page is the decisions — what was chosen, and more
@@ -89,17 +96,38 @@ export default function StoryPage() {
         />
       </Panel>
 
-      {/* ── The problem ──────────────────────────────────────────────────── */}
+      {/* ── The problem ──────────────────────────────────────────────────────
+
+          ⚠️ THIS HEADING USED TO BE THE HOMEPAGE'S, WORD FOR WORD, AND THAT WAS
+          THE BUG. Both pages carried a section 02 headed "Where it starts —
+          Every CA firm runs like this. / Five tools. Five logins. / One
+          deadline through the cracks.", with the same eyebrow, the same three
+          lines and the same index. Owner review, 17-09-2026: *"if i click the
+          practicesync then our story page is different and if i click our
+          story then the page is different see that that is fully a bug"* — a
+          reader who follows the logo and a reader who follows the nav item
+          arrive at the same panel and cannot tell which page they are on.
+
+          The rule they gave for fixing it was *"there should be only one page
+          and the page with the hero that is the original page"*, so the
+          homepage keeps that heading untouched and this one is re-written. It
+          is re-written rather than DELETED because the panel carries two
+          paragraphs the homepage does not have — the cost of carrying a figure
+          by hand, and the question no one tool can answer — and the heading is
+          what introduces them. Deleting the panel to remove a duplicated
+          headline would have thrown away the only copy of its body.
+
+          A guard in the backend suite now fails any headline used on two pages,
+          so this cannot come back by a copy-paste. */}
       <Panel theme="light">
         <SerifHeading
           layout="split"
           theme="light"
           index="02"
-          eyebrow="Where it starts"
+          eyebrow="What the split costs"
           lines={[
-            { text: "Every CA firm runs like this." },
-            { text: "Five tools. Five logins.", italic: true },
-            { text: "One deadline through the cracks." },
+            { text: "Nothing is wrong until" },
+            { text: "a figure has to cross.", italic: true },
           ]}
           subtitle="Tally holds the books. ClearTax or the portal holds GST. Winman holds the returns. A spreadsheet holds the deadlines. WhatsApp holds everything the client actually said. None of them can see the others."
         />
