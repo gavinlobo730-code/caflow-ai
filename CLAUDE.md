@@ -155,7 +155,22 @@ change. The code is the authority; keep this file in step with it.
   it did not (mock mode, the in-memory doubles). A settlement candidate carries
   BOTH figures — `amount_paise` is the document's face value, `outstanding_paise`
   what is left — because `FindMatchModal` renders "· ₹X open" only when the two
-  differ.
+  differ. **And every piece of MATCHING ARITHMETIC runs on the second**
+  (BANK-10): `matcher.candidate_open_paise` is the one definition, read by the
+  fetch band, the in-memory re-test, `rank_suggestions` and
+  `candidate_search.search` alike. The ranker was the last place still
+  subtracting the FACE value, so a ₹1,18,000 invoice half settled by an advance
+  and cleared by a ₹59,000 credit came out "short by ₹59,000" — outside the 25%
+  band, so offered nowhere, on the commonest settlement an Indian practice sees.
+  Two things fall out of it and both are deliberate: the old +15 "matches
+  outstanding balance" bonus is GONE, because it now restates `difference == 0`
+  exactly and a term restating its own branch only inflates documents that
+  happen to carry the column; and a bank line LARGER than what is open is no
+  longer offered by the ranker at all, because offering it invites an allocation
+  bigger than the document can take — the unbanded search still finds it and
+  says the line is larger, which is what that screen is for. `None` means the
+  face value IS the open figure, which is true of the three candidate kinds that
+  carry no such column.
 - `created_by` / `posted_by` FK to `public.users.id` (the internal user id), **not** the
   Supabase auth id.
 - Money crosses the API as raw integer `*_paise`. The frontend formats to ₹. Rupee
