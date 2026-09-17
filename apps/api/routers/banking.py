@@ -2516,6 +2516,9 @@ def create_rule(
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     assert_client_access(current_user, data.client_id)
+    # BANK-11 step 3 — before the mock short-circuit, so the refusal is the same
+    # in both modes. The model has already checked the TYPE; this is the PAIR.
+    _refuse_an_unresolvable_party(data.model_dump())
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
@@ -2584,6 +2587,7 @@ def update_rule(
             status_code=422,
             detail=("A GST rate needs a ledger to code the amount to — "
                     "the split books the ex-tax amount there."))
+    _refuse_an_unresolvable_party(merged)
     row = (db.table("bank_matching_rules").update(fields)
            .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
     # What the rule proposes may have changed; what it is trusted to do has not
@@ -2592,13 +2596,39 @@ def update_rule(
     # `description_patterns` all change WHICH lines this rule covers or which
     # rule wins, so each of them re-proposes for the same reason the pattern
     # does. Leaving them out would show the CA an old draft under a new rule.
+    # BANK-11 step 3 — the party travels on the draft, so changing it changes
+    # what a CA is shown and has to re-propose like every other payload field.
     if any(k in fields for k in ("description_pattern", "description_patterns",
                                  "amount_min_paise", "amount_max_paise",
                                  "txn_type", "priority", "match_field", "match_operator",
                                  "suggested_account_id", "suggested_category",
-                                 "suggested_gst_rate_bps", "suggested_is_interstate", "is_active")):
+                                 "suggested_gst_rate_bps", "suggested_is_interstate",
+                                 "payee_type", "payee_id", "is_active")):
         bank_entry_service.mark_stale(db, current_user["firm_id"], rule["client_id"])
     return api_response(True, (row.data or [{}])[0])
+
+
+def _refuse_an_unresolvable_party(rule: dict) -> None:
+    """BANK-11 step 3, migration 404's CHECK said at the door.
+
+    Judged on the MERGED rule for the GST pairing's reason: the model sees one
+    patch, and "id supplied, type already stored" is perfectly valid. Both
+    directions are refused because both produce a tag nothing can apply —
+    `bank_payee_service.apply_rule_party` would silently drop it, and a rule
+    that silently does nothing is worse than one that refuses to be saved.
+    """
+    from domain.banking.rules import PAYEE_TYPES_WITH_AN_ID
+    ptype = (rule.get("payee_type") or "").strip().lower()
+    pid = rule.get("payee_id") or None
+    if pid and ptype not in PAYEE_TYPES_WITH_AN_ID:
+        raise HTTPException(
+            status_code=422,
+            detail="A linked party must be a customer or a vendor. Use 'other' for a "
+                   "party that is neither — it tags a name and no link.")
+    if ptype in PAYEE_TYPES_WITH_AN_ID and not pid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Choose the {ptype} this rule tags, or tag the party as 'other'.")
 
 
 def _now_iso() -> str:

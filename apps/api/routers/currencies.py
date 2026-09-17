@@ -417,15 +417,29 @@ def record_fx_rate(
                 .eq("base", base).eq("quote", quote).eq("rate_date", when)
                 .eq("rate_type", rate_type).eq("source", "manual")
                 .limit(1).execute().data) or []
+    # THE KEYS ARE WRITTEN OUT AT EACH CALL, not passed as a variable.
+    # `tests/test_backend_columns_exist_pg.py` reads an insert or update payload
+    # as a dict LITERAL, so a `payload` built above and handed in is invisible
+    # to it — a column renamed out from under this would be found in production
+    # rather than in CI. The duplication is the price, and it is the same
+    # decision `domain/firm/identity` and `_document_numbers` both record.
+    # created_by FKs to public.users.id (the INTERNAL id), not the Supabase auth
+    # id — CLAUDE.md.
+    if existing:
+        (db.table("fx_rates").update({
+            "base": base, "quote": quote, "rate_date": when,
+            "rate_type": rate_type, "rate": str(parsed), "source": "manual",
+            "created_by": current_user.get("id"),
+        }).eq("id", existing[0]["id"]).execute())
+    else:
+        db.table("fx_rates").insert({
+            "base": base, "quote": quote, "rate_date": when,
+            "rate_type": rate_type, "rate": str(parsed), "source": "manual",
+            "created_by": current_user.get("id"),
+        }).execute()
     payload = {"base": base, "quote": quote, "rate_date": when,
                "rate_type": rate_type, "rate": str(parsed), "source": "manual",
-               # created_by FKs to public.users.id (the INTERNAL id), not the
-               # Supabase auth id — CLAUDE.md.
                "created_by": current_user.get("id")}
-    if existing:
-        db.table("fx_rates").update(payload).eq("id", existing[0]["id"]).execute()
-    else:
-        db.table("fx_rates").insert(payload).execute()
     _logger.info("caflow.currencies %s %s/%s %s %s=%s by %s",
                  "replaced" if existing else "recorded", base, quote, when,
                  rate_type, parsed, current_user.get("id"))

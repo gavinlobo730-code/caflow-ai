@@ -79,14 +79,13 @@ from domain.banking.matcher import bill_open_paise, invoice_open_paise
 
 _logger = logging.getLogger(__name__)
 
-# Every column a rule reads, plus the two keys that resolve a matched document.
-# Written out rather than `*`: tests/test_backend_columns_exist_pg.py reads
-# these as TEXT against the real schema, and a projection reached through a
-# name is invisible to it.
-_TXN_COLUMNS = (
-    "id, transaction_date, description, payee_name, debit_paise, credit_paise, "
-    "account_id, category, match_status, matched_entity_type, matched_entity_id"
-)
+# EVERY PROJECTION IN THIS MODULE IS A LITERAL AT ITS OWN CALL SITE.
+# `tests/test_backend_columns_exist_pg.py` reads `.select()` arguments as TEXT
+# against the real schema, so a projection reached through a module constant,
+# an f-string or a `", ".join(...)` is invisible to it — and a column renamed
+# out from under one would be discovered in production instead of in CI. The
+# repetition is the price, and it is the same decision `domain/firm/identity`
+# and `BankEntryService._document_numbers` both record.
 
 # How many pages the "seen before" probe may read before it gives up and says
 # so. Each page is 1,000 rows, so this is a generous bound on a question that
@@ -124,16 +123,27 @@ def _period_rows(db, firm_id: str, client_id: str, *, from_date: str, to_date: s
     lo = (date.fromisoformat(from_date) - timedelta(days=margin_days)).isoformat()
     hi = (date.fromisoformat(to_date) + timedelta(days=margin_days)).isoformat()
 
-    def build(q):
-        # firm_id explicitly, not RLS alone — CLAUDE.md: the app-layer filter is
-        # the primary isolation control.
-        q = (q.eq("firm_id", firm_id).eq("client_id", client_id)
+    # Resolved ONCE, outside the page builder: `fetch_all` calls it per page and
+    # this is a read of its own.
+    statements = _statement_ids(db, firm_id, bank_account_id) if bank_account_id else None
+
+    def one_page():
+        # The whole chain is written out here rather than assembled through a
+        # helper taking `q`: the column guard follows `.eq()`/`.gte()` back to
+        # the table the chain STARTED on, and a builder passed in as a
+        # parameter breaks that trail. firm_id explicitly, not RLS alone —
+        # CLAUDE.md: the app-layer filter is the primary isolation control.
+        q = (db.table("bank_transactions")
+             .select("id, transaction_date, description, payee_name, debit_paise, "
+                     "credit_paise, account_id, category, match_status, "
+                     "matched_entity_type, matched_entity_id")
+             .eq("firm_id", firm_id).eq("client_id", client_id)
              .gte("transaction_date", lo).lte("transaction_date", hi))
-        if bank_account_id:
-            q = q.in_("statement_id", _statement_ids(db, firm_id, bank_account_id))
+        if statements is not None:
+            q = q.in_("statement_id", statements)
         return q
 
-    return fetch_all(lambda: build(db.table("bank_transactions").select(_TXN_COLUMNS)))
+    return fetch_all(one_page)
 
 
 def _statement_ids(db, firm_id: str, bank_account_id: str) -> list[str]:
@@ -159,8 +169,13 @@ def _seen_before(db, firm_id: str, client_id: str, *, column: str, wanted: set[s
     page_size, last_id = 1000, None
     statements = _statement_ids(db, firm_id, bank_account_id) if bank_account_id else None
     for _ in range(_HISTORY_PAGE_CAP):
-        q = (db.table("bank_transactions").select(f"id, {column}")
-             .eq("firm_id", firm_id).eq("client_id", client_id)
+        # The two questions are spelled out rather than interpolated, for the
+        # reason at the top of this module: `f"id, {column}"` is a projection
+        # the column guard cannot read.
+        base = db.table("bank_transactions")
+        q = (base.select("id, payee_name") if column == "payee_name"
+             else base.select("id, account_id"))
+        q = (q.eq("firm_id", firm_id).eq("client_id", client_id)
              .lt("transaction_date", before)
              .in_(column, sorted(wanted - seen))
              .order("id").limit(page_size))
@@ -222,26 +237,38 @@ def _matched_documents(db, firm_id: str, rows: list[dict]) -> tuple[dict, bool]:
             chunk = ordered[i:i + 200]
             try:
                 if kind == "sales_invoice":
+                    # THE §34 NOTE COLUMNS ARE NOT SYMMETRIC AND THE NAMES DO
+                    # NOT TELL YOU WHICH WAY THEY GO. On an invoice it is
+                    # `credited_paise` (subtracts) and `debit_note_paise`
+                    # (adds); on a bill it is `credit_note_paise` (adds) and
+                    # `debited_paise` (subtracts) — migration 210 added the
+                    # INCREASE document to both sides at once. The first draft
+                    # of this had them crossed on both tables and
+                    # test_backend_columns_exist_pg caught it, which is what
+                    # that guard is for: `invoice_open_paise` reads the key off
+                    # the row, so a wrong name is a silent zero, not an error.
                     found = (db.table("client_sales_invoices").select(
                         "id, invoice_no, total_paise, paid_paise, credited_paise, "
-                        "debited_paise, outstanding_paise, customer_name")
+                        "debit_note_paise, outstanding_paise, customer_id")
                         .eq("firm_id", firm_id).in_("id", chunk).execute().data) or []
                     for r in found:
                         out[(kind, str(r["id"]))] = {
                             "outstanding_paise": invoice_open_paise(r),
                             "document_no": r.get("invoice_no"),
-                            "party_name": r.get("customer_name"),
+                            "party_kind": "customer",
+                            "party_id": (str(r["customer_id"]) if r.get("customer_id") else None),
                         }
                 else:
                     found = (db.table("purchase_bills").select(
                         "id, bill_no, net_payable_paise, paid_paise, credit_note_paise, "
-                        "debit_note_paise, outstanding_paise, vendor_name")
+                        "debited_paise, outstanding_paise, vendor_id")
                         .eq("firm_id", firm_id).in_("id", chunk).execute().data) or []
                     for r in found:
                         out[(kind, str(r["id"]))] = {
                             "outstanding_paise": bill_open_paise(r),
                             "document_no": r.get("bill_no"),
-                            "party_name": r.get("vendor_name"),
+                            "party_kind": "vendor",
+                            "party_id": (str(r["vendor_id"]) if r.get("vendor_id") else None),
                         }
             except Exception as e:                            # pragma: no cover
                 # Never fatal: a document that cannot be read costs those lines
@@ -253,6 +280,46 @@ def _matched_documents(db, firm_id: str, rows: list[dict]) -> tuple[dict, bool]:
                 capture_soft_failure(e, operation="bank_exceptions.matched_document",
                                      entity_type=kind)
                 complete = False
+
+    # The document rows carry a party ID, and `_weak_match` asks whether the
+    # party's NAME appears in the narration. Resolved here, chunked, one query
+    # per party type — never one per document. Dropping it instead would make
+    # that rule fire on every inexact amount, which is the opposite of a list a
+    # partner can trust.
+    wanted_parties: dict[str, set[str]] = {}
+    for meta in out.values():
+        if meta.get("party_id"):
+            wanted_parties.setdefault(meta["party_kind"], set()).add(meta["party_id"])
+    names: dict[tuple[str, str], str] = {}
+    for kind, ids in wanted_parties.items():
+        ordered = sorted(ids)
+        for i in range(0, len(ordered), 200):
+            chunk = ordered[i:i + 200]
+            try:
+                # EACH TABLE IS WRITTEN OUT AT ITS OWN CALL, and the branch is
+                # the price of that. `tests/test_backend_columns_exist_pg.py`
+                # reads these references as TEXT, so a `db.table(table)` with a
+                # variable is invisible to it and a column renamed out from
+                # under this would be found in production rather than in CI —
+                # BankEntryService._document_numbers records the same reasoning
+                # and it is why the first draft of this raised that guard's
+                # unreadable-reference budget instead of obeying it.
+                if kind == "customer":
+                    rows = (db.table("customers").select("id, name")
+                            .eq("firm_id", firm_id).in_("id", chunk).execute().data) or []
+                else:
+                    rows = (db.table("vendors").select("id, name")
+                            .eq("firm_id", firm_id).in_("id", chunk).execute().data) or []
+            except Exception as e:                            # pragma: no cover
+                capture_soft_failure(e, operation="bank_exceptions.party_name",
+                                     entity_type=kind)
+                complete = False
+                continue
+            for r in rows:
+                if r.get("name"):
+                    names[(kind, str(r["id"]))] = str(r["name"])
+    for meta in out.values():
+        meta["party_name"] = names.get((meta.get("party_kind"), meta.get("party_id")))
     return out, complete
 
 

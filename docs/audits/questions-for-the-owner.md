@@ -347,7 +347,28 @@ merging them is invisible and moves money — their ledgers, their ageing and
 their §43B(h) position all become one. Report, never block, is the shape the
 three-way match already takes.
 
-## A trusted rule may propose split legs and a party — never a TDS treatment  *(was §11, BANK-11 step 3)*
+## A trusted rule may propose split legs and a party — never a TDS treatment  *(was §11, BANK-11 step 3)*  **— PARTY BUILT 17-09-2026; the split half was already there, and the rest is a different question**
+
+**The worked example in the decision was ALREADY BUILT.** "₹11,800 = ₹10,000
+rent + ₹1,800 GST" is `bank_matching_rules.suggested_gst_rate_bps` +
+`suggested_is_interstate` (migration 254), which travel through
+`draft_gst_rate_bps` into `bank_posting_service.build_inclusive_lines` and have
+posted unattended for months. Checking that before building is the fifth time a
+recorded premise has turned out to be wrong.
+
+So what needed building was the PARTY, and migration 404 is only that:
+`payee_type` / `payee_id` on the rule, `draft_payee_*` on the transaction, and
+`bank_payee_service.apply_rule_party` — which goes through `set_payee`, the
+human door, so the firm-and-client check on a polymorphic id still runs.
+**What the line already says wins**: a rule saying "this is vendor X" does not
+rewrite what the statement called the counterparty.
+
+**A GENERAL SPLIT LEG IS STILL OUT, because the decision does not settle its
+shape.** A rule cannot know a future amount, so fixed amounts fire only on
+identical totals and PERCENTAGES are the only form that generalises — 60%
+factory / 40% office on a bill that differs every month. That is a different
+feature from the example above and is worth having; it needs its own decision.
+**TDS stays out** and the guard asserts both by name.
 
 **Decided: option (a).** A trusted rule can post "₹11,800 = ₹10,000 rent +
 ₹1,800 GST" in one go, and can tag the party. That is where the repetitive

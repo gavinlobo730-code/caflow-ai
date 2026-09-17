@@ -312,14 +312,114 @@ def test_the_database_check_allows_exactly_what_the_engine_knows():
 
 # ── What a rule may PROPOSE is untouched ─────────────────────────────────────
 
-def test_this_change_added_nothing_to_what_a_rule_can_propose():
-    """A trusted rule posts with no click. Split legs, a party and a TDS
-    treatment are BANK-11's step 3 and are an owner decision — a guard, because
-    the obvious next commit is to add one to `RuleSuggestion` and it would go
-    straight into the unattended path."""
+def test_what_a_rule_may_propose_is_exactly_this():
+    """A trusted rule posts with no click, so widening the PAYLOAD widens what
+    happens with nobody watching.
+
+    UPDATED DELIBERATELY ON 17-09-2026 for BANK-11 step 3, which the owner
+    decided as option (a): a rule may tag the PARTY, and a TDS treatment stays
+    out. The party is safe for a reason that has to hold for anything added
+    here — it LABELS the transaction and is not a journal leg, so nothing in
+    `posting_map.build_lines`, the settlement or the reversal reads it and no
+    figure moves. The test below asserts that property rather than trusting
+    this sentence.
+
+    A general SPLIT LEG is still refused, and checking the decision's own
+    premise is why: its worked example — "₹11,800 = ₹10,000 rent + ₹1,800 GST"
+    — was ALREADY BUILT as `suggested_gst_rate_bps` and has posted unattended
+    for months. What it does NOT settle is the shape of a split a rule could
+    express in general: a rule cannot know a future amount, so fixed amounts
+    fire only on identical totals and PERCENTAGES are the only form that
+    generalises. That is a different feature from the one the decision
+    describes, so it stays out and stays named."""
     from dataclasses import fields as dataclass_fields
     from domain.banking.rules import RuleSuggestion
     assert {f.name for f in dataclass_fields(RuleSuggestion)} == {
         "rule_id", "rule_name", "category", "account_id", "narration",
-        "gst_rate_bps", "is_interstate",
+        "gst_rate_bps", "is_interstate", "payee_type", "payee_id",
     }
+
+
+def test_a_tds_treatment_and_a_split_leg_are_still_refused():
+    """The two halves of step 3 that were NOT taken. Asserted by NAME because
+    each would go straight into the unattended path: a withholding decides a
+    statutory liability under s.201 and belongs in front of a human however
+    trusted the rule, and a split leg has no settled shape."""
+    from dataclasses import fields as dataclass_fields
+    from domain.banking.rules import RuleSuggestion
+    names = {f.name for f in dataclass_fields(RuleSuggestion)}
+    for forbidden in ("tds_section", "tds_rate_bps", "tds_applicable",
+                      "splits", "split_legs", "split_percentages"):
+        assert forbidden not in names, (
+            f"{forbidden} would let a trusted rule decide it unattended")
+
+
+def test_the_party_is_a_label_and_never_a_journal_leg():
+    """The property that makes the party safe, asserted on the CODE rather than
+    on the docstring: the posting map, the settlement builder and
+    `coded_by_a_human` must not read it. If one ever does, the party stops
+    being a label and this whole decision needs re-taking."""
+    import pathlib as _p
+    api = _p.Path(__file__).resolve().parents[1]
+    for rel in ("domain/banking/posting_map.py",):
+        src = (api / rel).read_text()
+        assert "payee_type" not in src and "payee_id" not in src, rel
+    entry = (api / "domain/banking/entry.py").read_text()
+    body = entry[entry.index("def coded_by_a_human"):]
+    body = body[:body.index("\n\n")]
+    assert "payee" not in body, (
+        "coded_by_a_human must not count a party — a tagged line with no ledger "
+        "is still a line the CA has to code")
+
+
+def test_the_party_kinds_match_both_migrations():
+    """404's CHECK, 257's CHECK and the engine's tuple are three statements of
+    one list. Read the files rather than restate them — `_validate_match_field`
+    records the same reasoning for the match fields."""
+    import pathlib as _p
+    from domain.banking.rules import PAYEE_TYPES, PAYEE_TYPES_WITH_AN_ID
+    mig = _p.Path(__file__).resolve().parents[1] / "migrations"
+    for name in ("404_a_trusted_rule_may_tag_the_party.sql",
+                 "257_bank_transaction_payee.sql"):
+        sql = (mig / name).read_text()
+        for t in PAYEE_TYPES:
+            assert f"'{t}'" in sql, f"{t} missing from {name}"
+    assert set(PAYEE_TYPES_WITH_AN_ID) < set(PAYEE_TYPES)
+    assert "other" not in PAYEE_TYPES_WITH_AN_ID, (
+        "'other' names a party this product does not hold, so there is nothing "
+        "for an id to point into")
+
+
+def test_a_rule_that_names_only_a_party_proposes_nothing():
+    """`is_empty` deliberately does not count the party, for gst_rate_bps'
+    reason turned around: such a rule would win precedence over a later one
+    that actually codes the line, and the CA would get a tagged transaction
+    still sitting in the queue."""
+    from domain.banking.rules import RuleSuggestion
+    tag_only = RuleSuggestion(rule_id="r", rule_name="n", category=None,
+                              account_id=None, narration=None,
+                              payee_type="vendor", payee_id="v1")
+    assert tag_only.is_empty()
+    codes_and_tags = RuleSuggestion(rule_id="r", rule_name="n", category=None,
+                                    account_id="a1", narration=None,
+                                    payee_type="vendor", payee_id="v1")
+    assert not codes_and_tags.is_empty()
+
+
+def test_the_party_travels_on_the_draft_and_the_columns_agree():
+    """A proposal is stored on the row like every other one, so the ordinary
+    Pass applies it and the screen can show it before anybody clicks."""
+    from domain.banking.entry import Draft, EMPTY_DRAFT_COLUMNS, from_rule
+    from domain.banking.rules import RuleSuggestion
+    d = Draft(source="rule", grade="ready", label="x", reason="y",
+              payee_type="vendor", payee_id="v1")
+    cols = d.as_columns()
+    assert cols["draft_payee_type"] == "vendor" and cols["draft_payee_id"] == "v1"
+    # EMPTY_DRAFT_COLUMNS is what CLEARS a draft. A key in one and not the
+    # other leaves a stale proposal behind after a redraft.
+    assert set(cols) == set(EMPTY_DRAFT_COLUMNS)
+    carried = from_rule(RuleSuggestion(rule_id="r", rule_name="n", category=None,
+                                       account_id="a1", narration=None,
+                                       payee_type="customer", payee_id="c1"), "Sales")
+    assert carried is not None
+    assert carried.payee_type == "customer" and carried.payee_id == "c1"

@@ -57,6 +57,15 @@ class RuleSuggestion:
     narration: Optional[str]
     gst_rate_bps: Optional[int] = None
     is_interstate: bool = False
+    # BANK-11 step 3, migration 404 — WHO the money went to or came from.
+    # These LABEL the transaction and are not a journal leg: nothing in
+    # posting_map.build_lines, the settlement or the reversal reads them, and
+    # the settlement target is matched_entity_type/matched_entity_id, a
+    # different pair. That is what makes them safe for a trusted rule to apply
+    # unattended, and it is why a SPLIT LEG and a TDS treatment are still
+    # refused — see the module header.
+    payee_type: Optional[str] = None
+    payee_id: Optional[str] = None
 
     def is_empty(self) -> bool:
         # gst_rate_bps is deliberately NOT counted. It is a modifier on how the
@@ -64,7 +73,24 @@ class RuleSuggestion:
         # a rate and nothing else has no account to code the taxable value to,
         # so it would only block a later rule that does. Migration 254 enforces
         # the same pairing with a CHECK.
+        # The PARTY is deliberately NOT counted either, for gst_rate_bps'
+        # reason turned around: a rule that names only a party proposes no
+        # posting at all, so treating it as a payload would let it win
+        # precedence over a later rule that does code the line — and the CA
+        # would get a tagged transaction still sitting in the queue. A rule
+        # that codes AND tags carries both.
         return not (self.category or self.account_id or self.narration)
+
+
+#: The party kinds a rule may name — migration 404's CHECK and migration 257's
+#: are the same three, and a test reads BOTH files so a value added to one and
+#: not the other fails in CI rather than at INSERT time on production.
+PAYEE_TYPES: tuple[str, ...] = ("customer", "vendor", "other")
+
+#: 'other' names a party this product does not hold — the electricity board,
+#: the landlord — so there is nothing for an id to point INTO. The same pairing
+#: bank_payee_service enforces on the human door.
+PAYEE_TYPES_WITH_AN_ID: tuple[str, ...] = ("customer", "vendor")
 
 
 #: Which text of the transaction a pattern is read against (migration 380).
@@ -195,6 +221,13 @@ def match_rule(narration: str, amount_paise: int, is_debit: bool,
             # back into "the rule says nothing", which is a different answer.
             gst_rate_bps=int(rate) if rate is not None else None,
             is_interstate=bool(rule.get("suggested_is_interstate")),
+            # Read off the rule as stored. The PAIR is checked by migration
+            # 404's CHECK and the id is resolved against the real table at
+            # APPLY time by bank_payee_service — the same door a human uses —
+            # because payee_id is polymorphic and carries no foreign key
+            # (migration 257 records why).
+            payee_type=(rule.get("payee_type") or None),
+            payee_id=(rule.get("payee_id") or None),
         )
         if not suggestion.is_empty():
             return suggestion

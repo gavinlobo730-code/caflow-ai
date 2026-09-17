@@ -639,6 +639,23 @@ class BankEntryService:
                                             derive_category=not category)
             elif not category:
                 raise HTTPException(status_code=422, detail="The proposal names no ledger.")
+            # BANK-11 step 3 — the party the rule proposed, applied through
+            # bank_payee_service (the human door, so the firm-and-client check
+            # on a polymorphic payee_id runs). Deliberately AFTER the coding and
+            # deliberately NOT fatal: a party tag is a LABEL — nothing in the
+            # posting map, the settlement or the reversal reads it — so a
+            # tagging that fails must not stop the line being coded and posted,
+            # which is what the CA actually asked for.
+            if txn.get("draft_payee_type"):
+                try:
+                    bank_payee_service.apply_rule_party(
+                        db, firm_id, txn_id,
+                        payee_type=txn.get("draft_payee_type"),
+                        payee_id=txn.get("draft_payee_id"), actor_id=actor_id)
+                except Exception as e:
+                    from core.observability import capture_soft_failure
+                    capture_soft_failure(e, operation="bank_entries.rule_party",
+                                         transaction_id=str(txn_id))
             return txn_id, txn.get("draft_gst_rate_bps"), bool(txn.get("draft_is_interstate"))
         if source == E.SOURCE_DOCUMENT:
             if txn.get("draft_grade") != E.GRADE_READY:
