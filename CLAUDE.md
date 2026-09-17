@@ -103,6 +103,25 @@ change. The code is the authority; keep this file in step with it.
   every June receipt, payment, bank entry, depreciation charge and payroll accrual from
   the 11th onwards. `services/period_lock_service.py` holds the Python twins, pinned to
   the SQL by `tests/test_period_lock_reason_parity_pg.py`.
+  **A RECEIPT IS ONE OF THOSE DOCUMENTS FOR ONE CLASS OF CLIENT, AND THE
+  ARGUMENT FOR LEAVING EVERY OTHER RECEIPT OPEN STILL STANDS** (SALES-15).
+  Both receipt paths asked only the firm-FY validator, on a recorded argument
+  — "a receipt moves Bank and Debtors and touches no output tax" — that GST-15
+  falsified by half: for a client marked `gst_advance_tax_applicable`, CGST
+  §13(2) charges tax on an advance for SERVICES when it is RECEIVED, so the
+  receipt is declared in GSTR-1 Table 11A and discharged in GSTR-3B Table
+  3.1(a). `receipt_service._assert_open_where_a_receipt_feeds_a_return` asks
+  the lock for exactly those clients. **It is UNCONDITIONAL on the receipt's
+  own shape**, the fixed asset's reasoning below: gating on whether the receipt
+  leaves an unallocated balance would be wrong twice, because
+  `table_11_sections` measures what was adjusted BY THE PERIOD END off the
+  ALLOCATION's `created_at` — so a back-dated receipt allocated in full today
+  has no allocation dated inside June and its whole amount lands in June's 11A
+  — and a receipt with no rate or place of supply is NAMED in that return's
+  `gaps`, which is also part of what was filed. **Every other client is
+  untouched and that is the point**: Notification 66/2017-Central Tax removed
+  the charge on advances for GOODS, the flag is off by default, and recording a
+  20 June payment on 15 July stays an ordinary thing to do.
   **A FIXED ASSET is one of those documents.** `create_asset` asked only
   `period_validation_service.validate_posting_date` — firm-FY, no client_id, so
   it cannot see a filed return — while `correct_asset` and `delete_asset` both
