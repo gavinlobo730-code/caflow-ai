@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Panel, SerifHeading, CineReveal, CineCTA } from "@/components/cinematic";
 import { Reveal } from "@/components/motion";
-import { Shield } from "@/components/icons";
 
 /**
  * Our Story.
@@ -212,19 +211,23 @@ export default function StoryPage() {
           ))}
         </div>
 
-        <CineReveal delay={120}>
-          <div className="mt-14 flex flex-col items-start gap-5 rounded-2xl border border-gold/30 bg-gold/[0.06] p-6 sm:flex-row sm:items-center md:p-8">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold ring-1 ring-gold/25">
-              <Shield size={22} />
-            </span>
-            <p className="text-[15px] leading-relaxed text-brand-dark md:text-[16px]">
-              <span className="font-semibold">Nothing leaves your hands on its own.</span>{" "}
-              Every GST return, income-tax return, TDS statement and MCA form waits for an
-              explicit confirmation from a Chartered Accountant — and even then, it is that
-              CA who files it on the portal.
-            </p>
-          </div>
-        </CineReveal>
+        {/* ⚠️ THE GOLD "NOTHING LEAVES YOUR HANDS ON ITS OWN" CALLOUT USED TO
+            SIT HERE, AND IT WAS THE HOMEPAGE'S. Same Shield, same classes, same
+            bold lead sentence, and a body differing from the homepage's only by
+            its last clause — the second half of the same copy-paste that left
+            two of section 02, and the half the first fix missed because that
+            guard compared HEADINGS and this is body copy.
+
+            It is deleted rather than re-written, which is the opposite call
+            from the one taken on section 02 and for a stated reason: that panel
+            carried two paragraphs nothing else had, so its heading was the only
+            thing to change. This callout carries nothing of its own. It
+            restates the four refusals immediately above it — the first of which
+            is "We do not file anything" — so on THIS page it was redundant
+            twice over: against the homepage, and against the section it was in.
+
+            The guard now compares body prose across pages as well as headings,
+            so neither half can come back. */}
       </Panel>
 
       {/* ── Where it is now ──────────────────────────────────────────────── */}
