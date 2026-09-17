@@ -3472,10 +3472,30 @@ called.
   the shape this file records going wrong on `clients.gstin` and on the retired
   supplier table. **A narrow `select()` that names one column and not the other
   makes the fallback a silent no-op** — `routers/practice.py` did exactly that
-  — so `identity.COLUMNS` is the list to project, the same trap
+  — so every read names BOTH, the same trap
   `domain/accounting/opening_documents` records for `is_opening`.
-  ⚠️ The end state is one column, and that is a **migration** (back-fill, then
-  drop) and so an owner decision.
+  **AND EACH OF THE THREE PROJECTIONS IS WRITTEN OUT AT ITS CALL SITE rather
+  than shared through `identity.COLUMNS`**, which reads like the thing to
+  factor out and is not: `tests/test_backend_columns_exist_pg.py` checks every
+  `.select()` in `apps/api` against the real schema AS A STRING, and a
+  projection reached through a name — a `", ".join(...)`, a module constant —
+  is invisible to it; so is the guard written for this very feature, which
+  passed having looked at NOTHING until the three became literals. That guard
+  reads the **AST** now, not a regex, because the literal these fifteen columns
+  produce spans three adjacent strings and a regex sees only the first — it was
+  vacuous twice, for two different reasons, and carries a floor saying how many
+  projections it must find.
+  **Migration 399 back-fills `gstin` from `gst_number`** where the first is
+  empty and comments both columns, so the fallback is inert for every existing
+  row. It deliberately does NOT drop `gst_number` (that moves both sides of the
+  production-fixture comparison at once and needs the refresh in
+  `docs/schema-drift.md` — migration 371's decision about
+  `public.tds_section_limits`), does not `SET NOT NULL`, and **leaves a row
+  whose `gstin` is malformed but not empty alone**: `firms_gstin_format` is NOT
+  VALID, so such a row can exist, and preferring the superseded column over a
+  value somebody recorded in the canonical one would be a guess about the
+  firm's own legal identity. ⚠️ The shape carries over; the CHECK DIGIT does
+  not, and the migration says so.
 
 - **A UAN and an IFSC are format-checked at every door; an ESIC number is
   not, and that is a decision.** Both patterns live once, in

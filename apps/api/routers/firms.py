@@ -71,10 +71,25 @@ class FirmProfileIn(BaseModel):
     pincode: Optional[str] = None
 
 
-def _projection() -> str:
-    return ("id, name, email, phone, website, icai_mrn, pan, address, "
-            "address_line1, address_line2, city, state, pincode, "
-            + ", ".join(firm_identity.COLUMNS))
+# THE PROJECTION IS WRITTEN OUT AT BOTH CALL SITES BELOW, not shared through a
+# constant and not built from `firm_identity.COLUMNS`. Repeating it looks like
+# the thing to factor out and is not, for three reasons:
+#
+#   * `tests/test_backend_columns_exist_pg.py` reads every `.select()` in
+#     `apps/api` as a STRING and checks each column against the real schema. A
+#     projection reached through a name — a `", ".join(...)` or a module
+#     constant — is invisible to it and counts as an "unreadable reference".
+#     That file's own budget comment records the same decision being taken
+#     twice before, for `services/sales_cycle_service` and
+#     `services/purchase_cycle_service`: remove the unreadability rather than
+#     budget it wherever a literal will do.
+#   * `test_a_narrow_projection_names_both_columns`, this feature's OWN guard,
+#     matches a literal `.select("…gstin…")`. Behind a constant it never fired
+#     on the two reads it was written for — the guard was vacuous here.
+#   * both must name BOTH gstin columns, because `firm_identity.gstin_of` falls
+#     back to `gst_number` and a row fetched without it makes that fallback a
+#     silent no-op. Two literals that a guard checks beat one constant no guard
+#     can see; a test also asserts the two are identical.
 
 
 def _served(firm: dict) -> dict:
@@ -97,7 +112,10 @@ def get_firm_profile(current_user: dict = Depends(rbac("firm", "read"))):
         raise HTTPException(status_code=404, detail="This user does not belong to a firm.")
     from core.supabase_client import get_service_supabase
 
-    rows = (get_service_supabase().table("firms").select(_projection())
+    rows = (get_service_supabase().table("firms")
+            .select("id, name, email, phone, website, icai_mrn, pan, address, "
+                    "address_line1, address_line2, city, state, pincode, "
+                    "gstin, gst_number")
             .eq("id", firm_id).limit(1).execute().data or [])
     if not rows:
         raise HTTPException(status_code=404, detail="Firm not found.")
@@ -170,6 +188,9 @@ def update_firm_profile(
     _logger.info("caflow.firms firm %s profile updated: %s",
                  firm_id, sorted(update))
 
-    rows = (db.table("firms").select(_projection()).eq("id", firm_id)
-            .limit(1).execute().data or [])
+    rows = (db.table("firms")
+            .select("id, name, email, phone, website, icai_mrn, pan, address, "
+                    "address_line1, address_line2, city, state, pincode, "
+                    "gstin, gst_number")
+            .eq("id", firm_id).limit(1).execute().data or [])
     return api_response(True, _served(rows[0] if rows else {"id": firm_id}))

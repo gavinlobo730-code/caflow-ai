@@ -61,9 +61,11 @@ def provision_practice(current_user: dict = Depends(rbac("practice", "write"))):
                                    "message": "Provisioning is a no-op in mock mode."})
     # BOTH gstin columns, or gstin_of's fallback is a silent no-op — the same
     # trap a narrow projection sets for `is_opening` (see domain/accounting/
-    # opening_documents). domain/firm/identity.COLUMNS is the list.
+    # opening_documents). domain/firm/identity.COLUMNS is the list; it is spelled
+    # out here rather than joined so both the schema check and this feature's own
+    # narrow-projection guard can read it — see routers/firms._PROJECTION.
     firm = (_db().table("firms")
-            .select("name, pan, state, " + ", ".join(firm_identity.COLUMNS))
+            .select("name, pan, state, gstin, gst_number")
             .eq("id", firm_id).maybe_single().execute().data)
     if not firm:
         return api_response(False, None, "Firm not found")

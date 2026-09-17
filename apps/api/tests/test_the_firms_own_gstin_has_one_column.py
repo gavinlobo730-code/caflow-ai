@@ -37,6 +37,7 @@ migration applies it to production.
 """
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -116,18 +117,60 @@ def test_a_narrow_projection_names_both_columns():
     would have made `gstin_of` answer None for exactly the rows the fallback
     exists for. Same trap `domain/accounting/opening_documents` records for
     `is_opening`.
+
+    READ OFF THE AST, NOT A REGEX, and the first draft is why. It matched a
+    ``.select(`` followed by one quoted run containing "gstin", which sees the
+    OPENING string
+    of the call and nothing else — so a projection written across three
+    adjacent literals (the shape `routers/firms.py` ended up with, because
+    fifteen columns do not fit on a line) matched on `"id, name, email, …"`,
+    found no `gstin` in it, and skipped the query. The two reads this guard
+    exists for were invisible to it. Python folds adjacent literals into one
+    `ast.Constant` before this code ever runs, which is exactly the rule wanted:
+    a projection that is a constant string can be checked, and one reached
+    through a name — a `", ".join(identity.COLUMNS)`, a module constant — is
+    refused below rather than silently skipped.
     """
     from domain.firm import identity
+    seen = []
     for rel, text in _python_sources():
-        for m in re.finditer(r'\.select\(\s*(["\'])([^"\']*gst(?:in|_number)[^"\']*)\1', text):
-            projection = m.group(2)
-            if "firms" not in text[max(0, m.start() - 400):m.start()]:
-                continue          # not a firms read
-            named = [c for c in identity.COLUMNS if re.search(rf"\b{c}\b", projection)]
+        for node in ast.walk(ast.parse(text)):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "select"
+                    and node.args):
+                continue
+            chain = ast.unparse(node.func)
+            if '"firms"' not in chain and "'firms'" not in chain:
+                continue          # not a read of public.firms
+            arg = node.args[0]
+            assert isinstance(arg, ast.Constant) and isinstance(arg.value, str), (
+                f"{rel}:{node.lineno} projects off `firms` through a name rather "
+                f"than a literal, so neither this guard nor "
+                f"tests/test_backend_columns_exist_pg.py can read which columns "
+                f"it asks for. Write the projection out at the call site — "
+                f"routers/firms.py says why.\n  {ast.unparse(arg)}")
+            projection = arg.value
+            if not any(c in projection for c in identity.COLUMNS):
+                continue          # a firms read that wants no GSTIN at all
+            seen.append(f"{rel}:{node.lineno} {projection}")
+            named = [c for c in identity.COLUMNS
+                     if re.search(rf"\b{c}\b", projection)]
             assert len(named) != 1, (
-                f"{rel} projects {named[0]!r} off `firms` without the other "
-                f"column, so domain/firm/identity.gstin_of cannot fall back. "
-                f"Name both — identity.COLUMNS is the list.\n  {projection}")
+                f"{rel}:{node.lineno} projects {named[0]!r} off `firms` without "
+                f"the other column, so domain/firm/identity.gstin_of cannot fall "
+                f"back. Name both — identity.COLUMNS is the list.\n  {projection}")
+
+    # A FLOOR, BECAUSE THIS GUARD WAS VACUOUS ON ITS FIRST DAY — twice over, for
+    # two different reasons, which is why it is worth a number. The three reads
+    # first assembled their projection with `", ".join(identity.COLUMNS)`, which
+    # no string check can see; made literals, they became MULTI-LINE literals,
+    # which the regex above could not see either. Both times the test passed
+    # having looked at nothing, on exactly the queries it exists for.
+    assert len(seen) >= 3, (
+        "fewer than the three firms projections that must name both gstin "
+        "columns were found — one was probably moved, or narrowed to drop the "
+        "GSTIN entirely:\n  " + "\n  ".join(seen))
 
 
 # ── the browser writes it through the API, not PostgREST ────────────────────
