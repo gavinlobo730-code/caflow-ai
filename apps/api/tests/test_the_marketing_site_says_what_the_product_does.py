@@ -682,9 +682,25 @@ def test_a_hero_card_does_not_position_itself_on_the_element_that_bobs():
     globe to stay clear of the headline, and why two cards laid out 218px apart
     measured 21px apart.
 
-    The fix is structural: an outer element positions, an inner one bobs. This
-    asserts they stay separate, because nothing about the rendered page says
-    otherwise — the bug is silent, and CSS has no error for it.
+    The fix is structural: an outer element positions, an inner one is styled.
+    This asserts they stay separate, because nothing about the rendered page
+    says otherwise — the bug is silent, and CSS has no error for it.
+
+    ⚠️ THE BOB ITSELF IS CURRENTLY OFF, AND THIS RULE OUTLIVES IT. The hero
+    rebuild of 17-09-2026 is static by instruction — "no card floating", among
+    a list of movement to evaluate the design without — so `.floaty` appears on
+    no card today. An earlier version of this test ended by asserting `"floaty"
+    in src` as its anti-vacuity check, which would now fail for a reason that
+    is not a defect.
+
+    Deleting the test would be wrong: the bug is one CSS class away from coming
+    back the moment the animation stage starts, and that is precisely when
+    nobody will be re-reading this file. So the rule is kept in force for
+    whenever a bob exists, and the vacuity check is moved onto the STRUCTURE
+    that makes a bob safe — placement on the outer element, the card's own
+    transform on the inner one. That property is true right now, is what the
+    fix actually was, and fails loudly if the two elements are ever collapsed
+    back into one.
     """
     src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
 
@@ -716,11 +732,24 @@ def test_a_hero_card_does_not_position_itself_on_the_element_that_bobs():
             "child element.\n  " + block[:200]
         )
 
-    assert "floaty" in src, "no bob left in HeroVisual — this rule guards nothing"
+    # VACUITY, ON THE STRUCTURE RATHER THAN ON THE ANIMATION. See the ⚠️ in the
+    # docstring: the bob is off, so "a bob exists" can no longer be the check.
+    # What must stay true is the two-element split it was fixed with.
     assert "translate(-100%, -50%)" in src, (
         "no left-hand placement transform left in HeroVisual — this rule "
         "guards nothing"
     )
+
+    placing = [b for b in blocks if "translate(-100%, -50%)" in b]
+    assert placing, "the placement transform is no longer on a <div> this pattern sees"
+    for block in placing:
+        assert "scale(" not in block, (
+            "the element that POSITIONS a hero card also carries its scale. "
+            "Two transforms on one element means one wins, which is the same "
+            "shape as the bug this test is named for — and it leaves nowhere "
+            "for the idle animation to go when it is switched back on.\n  "
+            + block[:200]
+        )
 
 
 def test_a_card_that_bobs_is_not_inside_something_with_an_opacity():
