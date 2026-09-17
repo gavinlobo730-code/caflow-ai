@@ -26,6 +26,7 @@ from fastapi import HTTPException
 import routers.gst_workspace as gw
 import routers.gst_portal as gp
 import routers.gst as g
+from domain.gst import registrations
 
 FIRM = "firm-1"
 MINE, THEIRS = "client-mine", "client-theirs"
@@ -433,6 +434,12 @@ def _from_books(client_id):
     return g.FromBooksRequest(client_id=client_id, period="012026")
 
 
+# The compute paths resolve the WHOLE registration, not its number alone
+# (GST-11) — the return's window follows that row's filing_frequency.
+_REGISTRATION = registrations.Registration(
+    gstin="27AAPFU0939F1ZV", state_code="27", is_primary=True)
+
+
 @pytest.mark.parametrize("fn,service", [
     ("gstr3b_from_books_endpoint", "gstr3b_from_books"),
     ("gstr1_from_books_endpoint", "gstr1_from_books"),
@@ -444,8 +451,8 @@ def test_building_a_return_from_another_clients_books_is_refused(fn, service, de
     reached = []
     monkeypatch.setattr("core.supabase_client.get_supabase",
                         lambda: reached.append("db") or object())
-    monkeypatch.setattr(g, "_client_gstin",
-                        lambda *a, **k: reached.append("gstin") or "27AAPFU0939F1ZV")
+    monkeypatch.setattr(g, "_client_registration",
+                        lambda *a, **k: reached.append("gstin") or _REGISTRATION)
     monkeypatch.setattr(g.gst_return_service, service,
                         lambda *a, **k: reached.append(service) or {})
     with pytest.raises(HTTPException) as e:
@@ -460,7 +467,7 @@ def test_building_a_return_from_another_clients_books_is_refused(fn, service, de
 ])
 def test_building_from_your_own_books_still_works(fn, service, deny, monkeypatch):
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: object())
-    monkeypatch.setattr(g, "_client_gstin", lambda *a, **k: "27AAPFU0939F1ZV")
+    monkeypatch.setattr(g, "_client_registration", lambda *a, **k: _REGISTRATION)
     monkeypatch.setattr(g.gst_return_service, service, lambda *a, **k: {"ok": True})
     out = getattr(g, fn)(_from_books(MINE), current_user=USER)
     assert out["success"] is True

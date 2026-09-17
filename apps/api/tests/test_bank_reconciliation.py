@@ -60,6 +60,12 @@ class _Q:
     def eq(self, k, v): self.f.append((k, v)); return self
     def in_(self, k, vals): self.f.append((k, ("__in__", list(vals)))); return self
     def is_(self, k, v): self.f.append((k, ("__is__", v))); return self
+    # BANK-07 narrowed the reconciliation fetch to the session's own period, so
+    # this stub needs the two comparisons that expresses. Kept to exactly that
+    # — the shared `tests/e2e_harness.FakeDB` is the full stand-in, and a
+    # second PostgREST implementation growing here is the thing not to do.
+    def gte(self, k, v): self.f.append((k, ("__gte__", v))); return self
+    def lte(self, k, v): self.f.append((k, ("__lte__", v))); return self
     def limit(self, _n): return self
     def order(self, c, desc=False): self.order_, self.desc = c, desc; return self
     def single(self): self.single_ = True; return self
@@ -71,6 +77,10 @@ class _Q:
             for k, v in self.f:
                 if isinstance(v, tuple) and v and v[0] == "__in__":
                     if r.get(k) not in v[1]: ok = False; break
+                elif isinstance(v, tuple) and v and v[0] == "__gte__":
+                    if not (r.get(k) is not None and str(r[k]) >= str(v[1])): ok = False; break
+                elif isinstance(v, tuple) and v and v[0] == "__lte__":
+                    if not (r.get(k) is not None and str(r[k]) <= str(v[1])): ok = False; break
                 elif isinstance(v, tuple) and v and v[0] == "__is__":
                     want = v[1]
                     rv = r.get(k)

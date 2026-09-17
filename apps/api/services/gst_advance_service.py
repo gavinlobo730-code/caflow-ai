@@ -191,7 +191,8 @@ def advance_tax_applicable(db, firm_id: str, client_id: str) -> bool:
     return bool(rows and rows[0].get("gst_advance_tax_applicable"))
 
 
-def table_11_sections(db, firm_id: str, client_id: str, period: str) -> dict:
+def table_11_sections(db, firm_id: str, client_id: str, period: str,
+                      bounds: "tuple[str, str] | None" = None) -> dict:
     """GSTR-1 Tables 11A (`at`) and 11B (`txpd`), or empty when not applicable.
 
     Empty for a client whose gst_advance_tax_applicable is false, which is the
@@ -199,12 +200,20 @@ def table_11_sections(db, firm_id: str, client_id: str, period: str) -> dict:
     for GOODS, so most registered persons have no Table 11 at all. A supplier
     of SERVICES turns it on (CGST Act §13(2)).
 
+    `bounds` overrides the month derived from `period`, and exists for ONE
+    reason: a QRMP registration's return covers a QUARTER (Rule 61A), and
+    11A measures what was received and still unadjusted AT THE PERIOD END
+    while 11B measures what was adjusted INSIDE it — so a quarter read as its
+    first month declares one month of advances on a three-month return and
+    leaves two months' tax undeclared (GST-11). The caller resolves the window
+    through `domain/gst/return_period`; nothing here decides what a period is.
+
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
     """
     if not advance_tax_applicable(db, firm_id, client_id):
         return {"at": [], "txpd": [], "applicable": False, "gaps": []}
 
-    start, end = _period_bounds(period)
+    start, end = bounds if bounds else _period_bounds(period)
     receipts = _paginate_all(lambda: db.table("receipts")
         .select("id, receipt_date, amount_paise, gst_rate_bps, "
                 "place_of_supply, is_interstate")

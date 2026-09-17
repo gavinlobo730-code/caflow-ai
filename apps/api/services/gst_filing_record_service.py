@@ -39,11 +39,11 @@ IMMUTABILITY
 """
 from __future__ import annotations
 
-import calendar
 import logging
 from typing import Optional
 
 from core.ist_clock import ist_today
+from domain.gst import return_period
 
 _logger = logging.getLogger("caflow.gst_filing")
 
@@ -57,22 +57,25 @@ FILING_TYPE_GSTR3B = "GSTR-3B"
 _FILED = "filed"
 
 
-def period_bounds(period: str) -> tuple[str, str]:
-    """'MMYYYY' → (first_iso, last_iso) of that calendar month.
+def period_bounds(period: str, frequency: Optional[str] = None) -> tuple[str, str]:
+    """'MMYYYY' → (first_iso, last_iso) of the period the return covered.
 
     The lock asks `date BETWEEN period_start AND period_end`, so these are the
-    two values that decide which entries a filed return freezes. Deliberately a
-    duplicate of gst_return_service._period_bounds rather than an import: this
-    module is imported by the router and importing the whole return engine to
-    get a date pair would drag the ledger reader in with it.
+    two values that decide which entries a filed return freezes.
+
+    A MONTH unless the registration is on QRMP (Rule 61A with the proviso to
+    CGST s.39(1)), in which case it is the QUARTER — the return really did
+    cover three months, and locking one of them leaves the other two editable
+    after a return declaring them has been filed (GST-11).
+
+    It delegates to `domain/gst/return_period`, which is a leaf domain module
+    with no database handle, rather than to `gst_return_service._period_bounds`
+    — importing the return ENGINE from a module the router imports would drag
+    the ledger reader in with it, which is the reason the duplicate existed in
+    the first place. There is no second statement of the rule now, only a
+    second door onto it.
     """
-    if len(period) != 6 or not period.isdigit():
-        raise ValueError("period must be MMYYYY")
-    mm, yyyy = int(period[:2]), int(period[2:])
-    if not 1 <= mm <= 12:
-        raise ValueError("period month must be 01-12")
-    last = calendar.monthrange(yyyy, mm)[1]
-    return f"{yyyy:04d}-{mm:02d}-01", f"{yyyy:04d}-{mm:02d}-{last:02d}"
+    return return_period.bounds(period, frequency)
 
 
 def build_filings_row(
@@ -80,6 +83,7 @@ def build_filings_row(
     filed_date: str, arn: Optional[str] = None,
     tax_payable_paise: Optional[int] = None, summary: Optional[dict] = None,
     bounds: Optional[tuple[str, str]] = None,
+    frequency: Optional[str] = None,
 ) -> dict:
     """The `filings` row for a submitted return.
 
@@ -99,12 +103,23 @@ def build_filings_row(
     (migration 001) and the actor we have is a users.id, which would either
     violate the FK or record the wrong person.
     """
-    # `bounds` overrides the month derived from `period`, and exists for ONE
-    # reason: a QRMP client's obligation covers a QUARTER. The compliance
-    # calendar stores that quarter's real start and end, and deriving a month
-    # from it would write a filings row covering April when the return filed
-    # covered April to June — under-locking two of the three months, silently.
-    start, end = bounds if bounds else period_bounds(period)
+    # TWO WAYS TO SAY THE SAME THING, FOR TWO CALLERS THAT HOLD DIFFERENT
+    # FACTS, and `bounds` wins where both are given.
+    #
+    # `bounds` is a window somebody RECORDED: the compliance calendar stores a
+    # QRMP obligation's real start and end, and deriving a month from it would
+    # write a filings row covering April when the return filed covered April to
+    # June — under-locking two of the three months, silently.
+    #
+    # `frequency` is the REGISTRATION's, for the workspace path, which holds
+    # `gstr1_returns.period` and the GSTIN it was filed under and no window at
+    # all. It derives the same quarter through the one authority rather than
+    # the router doing the arithmetic (GST-11).
+    #
+    # `bounds` wins because it is a recorded fact and the frequency is only the
+    # rule for deriving one; if a caller has both and they disagree, what the
+    # obligation says the return covered is the answer.
+    start, end = bounds if bounds else period_bounds(period, frequency)
     row = {
         "firm_id": firm_id,
         "client_id": client_id,
@@ -128,6 +143,7 @@ def record_filing(
     filed_date: Optional[str] = None, arn: Optional[str] = None,
     tax_payable_paise: Optional[int] = None, summary: Optional[dict] = None,
     bounds: Optional[tuple[str, str]] = None,
+    frequency: Optional[str] = None,
 ) -> dict:
     """Write (or refresh) the `filings` row for a submitted return.
 
@@ -142,7 +158,7 @@ def record_filing(
         firm_id=firm_id, client_id=client_id, filing_type=filing_type,
         period=period, filed_date=filed_date or ist_today().isoformat(),
         arn=arn, tax_payable_paise=tax_payable_paise, summary=summary,
-        bounds=bounds,
+        bounds=bounds, frequency=frequency,
     )
     existing = (db.table("filings").select("id")
                 .eq("client_id", client_id)

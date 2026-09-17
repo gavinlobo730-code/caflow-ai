@@ -885,7 +885,13 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         }
         return <span className="text-[10px] text-[#64748B]">{r.match_status}</span>;
       } },
-  ], [recon2B]);
+    // `reconciledPeriods` is read at two accessors above and loads ASYNC — it
+    // starts as an empty Set. Omitting it here built the columns once against
+    // that empty Set and never rebuilt them, so every bill read "not
+    // reconciled" for ever, however many 2Bs had been uploaded. The sibling
+    // memo below has always carried it; this one was missed when ACC-22 added
+    // the drill-through.
+  ], [recon2B, reconciledPeriods]);
 
   const billFilters: FilterDef<PurchaseBillRow>[] = useMemo(() => [
     { key: "status", label: "Status", type: "select", accessor: (b) => b.status,

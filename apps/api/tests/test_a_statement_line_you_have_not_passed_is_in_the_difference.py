@@ -208,25 +208,42 @@ def test_the_other_buckets_keep_their_meaning(db):                         # noq
     assert [t["id"] for t in rep["not_passed"]] == ["t4"]
 
 
-def test_one_fetch_serves_all_four_buckets(db):                            # noqa: F811
-    """apps/api is in Singapore and Postgres in Mumbai, so a second query for
-    the unpassed half would be a second crossing. `_posted_account_txns` is now
-    derived from `_account_txns` rather than fetching again."""
-    calls = []
-    original = brs_mod.BankReconciliationService._account_txns
+def test_the_buckets_do_not_each_get_their_own_query(db):                  # noqa: F811
+    """apps/api is in Singapore and Postgres in Mumbai, so a query PER BUCKET
+    would be four crossings to answer one question. The four buckets are split
+    in `_classify`, in Python, from what one fetch already brought back.
 
-    def counted(self, db_, firm_id, bank_account_id):
-        calls.append(bank_account_id)
-        return original(self, db_, firm_id, bank_account_id)
+    THIS GUARD USED TO COUNT CALLS TO `_account_txns` AND EXPECT EXACTLY ONE,
+    which is a spelling of the rule rather than the rule. BANK-07 narrowed the
+    fetch to the session's own period and its own claims — two bounded reads
+    instead of one unbounded scan of the account's whole history — and the old
+    assertion failed on a change that made the thing it cares about strictly
+    better. So it counts reads of the TABLE and bounds them by a number that
+    does not grow with the buckets.
 
-    brs_mod.BankReconciliationService._account_txns = counted
+    Two is the ceiling and it is deliberate, not slack: the period window and
+    the lines this session already claimed. `_session_txns` explains why those
+    cannot be one query without teaching every fake in this suite to parse a
+    PostgREST or-expression. A third would mean a bucket had gone and got its
+    own, which is the thing forbidden."""
+    reads = []
+    original_table = type(db).table
+
+    def counted(self, name):
+        if name == "bank_transactions":
+            reads.append(name)
+        return original_table(self, name)
+
+    type(db).table = counted
     try:
         rid = _rid(db)
-        calls.clear()
+        reads.clear()
         svc.report(db, FIRM, rid)
-        assert len(calls) == 1, f"the report fetched the account {len(calls)} times"
+        assert len(reads) <= 2, (
+            f"the report read bank_transactions {len(reads)} times; the four "
+            "buckets are split in Python from what the fetch already returned")
     finally:
-        brs_mod.BankReconciliationService._account_txns = original
+        type(db).table = original_table
 
 
 # ── 5. a report from before this existed still prints ────────────────────────

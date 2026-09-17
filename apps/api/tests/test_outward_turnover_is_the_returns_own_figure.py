@@ -142,7 +142,17 @@ def test_a_period_with_no_supplies_answers_zero_rather_than_raising(books):
     assert t == {"period": PERIOD, "exempt_paise": 0, "total_paise": 0,
                  "breakdown": {"taxable_paise": 0, "zero_rated_paise": 0,
                                "nil_exempt_paise": 0, "non_gst_paise": 0},
-                 "caveats": []}
+                 "caveats": [],
+                 # WHICH WINDOW E AND F WERE MEASURED OVER (GST-11). The Rule
+                 # 43 caller still asks for a MONTH and deliberately passes no
+                 # filing frequency — whether a QRMP filer's Rule 43(1)(c) tax
+                 # period is the quarter could not be settled — so this says
+                 # `monthly` rather than leaving the reader to assume it.
+                 "period_window": {
+                     "key": PERIOD, "frequency": "monthly",
+                     "start": "2025-06-01", "end": "2025-06-30",
+                     "months": [PERIOD], "label": "June 2025",
+                     "requested": PERIOD, "months_covered": 1}}
 
 
 def test_the_figures_are_VALUES_not_tax(books):

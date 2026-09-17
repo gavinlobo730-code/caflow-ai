@@ -1,0 +1,451 @@
+{
+  "_comment": [
+    "CGST Rule 48(4) — must this supply be prepared by obtaining an IRN?",
+    "",
+    "Read by apps/api/tests/test_irn_parity.py and",
+    "apps/web/scripts/irn-parity.test.ts. Two implementations of one statutory",
+    "rule exist because the Compliance panel recomputes on every keystroke and",
+    "a round trip per keystroke is not a panel; this file is what stops them",
+    "drifting, the same arrangement as shared/eway-parity-vectors.json and",
+    "shared/gst-parity-vectors.json.",
+    "",
+    "apps/api/domain/gst/irn_scope.py is the AUTHORITY. The browser copy is a",
+    "fallback for the window where the frontend has redeployed ahead of the",
+    "backend, and the panel prefers the served answer.",
+    "",
+    "THE RULE HAS TWO LIMBS AND BOTH MUST HOLD: the PERSON limb (aggregate",
+    "turnover above the notified threshold) and the SUPPLY limb (B2B, export or",
+    "SEZ; B2C is outside). The vectors below exercise them separately and",
+    "together, because they are facts about different things.",
+    "",
+    "Every amount is integer paise. Rs 5 crore is 5,00,00,000 rupees, which is",
+    "500,00,00,000 paise = 5000000000.",
+    "",
+    "highest_aato_paise is the HIGHEST aggregate turnover recorded across every",
+    "qualifying financial year, not the preceding year's: Rule 48(4) reads on",
+    "'any preceding financial year from 2017-18 onwards', so e-invoicing",
+    "latches and a client who shrinks does not fall out of it. null means",
+    "nobody has recorded one, which is NOT zero.",
+    "",
+    "WARNING: every threshold and every effective date here is [S]-graded —",
+    "written from knowledge because direct egress to .gov.in is refused at this",
+    "environment's proxy. apps/api/tests/test_which_supplies_must_carry_an_irn.py",
+    "pins each one exactly and says so."
+  ],
+  "vectors": [
+    {
+      "label": "B2B above the current Rs 5 crore threshold — required",
+      "why": "The ordinary in-scope case. A registered recipient is the supply limb; turnover above the threshold in force on the invoice's date is the person limb. Rule 48(5) makes an invoice this reaches, issued without an IRN, not an invoice at all — the recipient's credit goes with it.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 10000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "B2B below the threshold — not required",
+      "why": "The person limb fails, so the rule does not reach the supply however B2B it is. The one gap on the 'required' answers (the exempted classes) is absent here on purpose: an exemption can only REMOVE a requirement, so it cannot change an answer that is already not required.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 200000000
+      },
+      "expected": {
+        "verdict": "not_required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": false,
+        "turnover_unknown": false,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "exactly AT Rs 5 crore — NOT required",
+      "why": "The notification's own word is 'exceeds'. A strict inequality, the same boundary Rule 138(1)'s Rs 50,000 has: writing >= here brings a client into e-invoicing one rupee early.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 5000000000
+      },
+      "expected": {
+        "verdict": "not_required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": false,
+        "turnover_unknown": false,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "one paise over Rs 5 crore — required",
+      "why": "The other side of the same boundary.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 5000000001
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "B2C at any turnover — not required, and the person limb is not even reported on",
+      "why": "Rule 48(4) reaches a supply to a registered person, an export or an SEZ supply. A domestic supply to an unregistered recipient is outside it whatever the client's turnover, which is why the supply limb short-circuits: naming the exempted-classes proviso beside a B2C invoice would send a CA to check something that cannot change the answer.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": null,
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 100000000000
+      },
+      "expected": {
+        "verdict": "not_required",
+        "supply_in_scope": false,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": null,
+        "turnover_unknown": false,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "an export to a buyer with no GSTIN — required",
+      "why": "The limb reads 'to a registered person, OR for export'. A foreign buyer holds no GSTIN and the rule still reaches the invoice, so the treatment is asked BEFORE the recipient's registration. Collapsing the supply limb into a single GSTIN test would take every export out of scope.",
+      "input": {
+        "treatment": "export_with_payment",
+        "recipient_gstin": null,
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 10000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "an export under LUT to a buyer with no GSTIN — required",
+      "why": "IGST s.16(3)(a) against (b) is about which refund route the exporter takes, not about whether Rule 48(4) reaches the supply. Both export treatments are in scope.",
+      "input": {
+        "treatment": "export_without_payment",
+        "recipient_gstin": null,
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 10000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "a supply TO an SEZ with no recipient GSTIN — required",
+      "why": "A supply to an SEZ unit or developer is a zero-rated supply under IGST s.16(1)(b) and is in scope on its own footing. This is the direction that must not be confused with the exempted-classes proviso, which exempts an SEZ UNIT as a SUPPLIER — the opposite party.",
+      "input": {
+        "treatment": "sez_without_payment",
+        "recipient_gstin": null,
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 10000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "a deemed export — required",
+      "why": "A deemed export is made to a registered person in any event, and the treatment settles it without asking.",
+      "input": {
+        "treatment": "deemed_export",
+        "recipient_gstin": "27AABCU9603R1ZX",
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 10000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "no recorded turnover on a B2B supply — REQUIRED, flagged, and two gaps",
+      "why": "None is a third state and is never 0. Rule 48(5) makes the omitted-IRN direction cost the recipient their input tax credit, while reporting a requirement to a client who does not owe it costs a glance — so the strict reading is taken and turnover_unknown says it was. The two gaps are the unrecorded turnover and the exempted classes.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": null
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": null,
+        "turnover_unknown": true,
+        "gaps": 2
+      }
+    },
+    {
+      "label": "no recorded turnover on a B2C supply — still not required, and NOT flagged",
+      "why": "The supply limb fails first, so the turnover is never reached and nothing is reported about it. A screen that named an unrecorded turnover on every B2C invoice would bury the clients where it actually decides something.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": null,
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": null
+      },
+      "expected": {
+        "verdict": "not_required",
+        "supply_in_scope": false,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": null,
+        "turnover_unknown": false,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "a malformed recipient GSTIN — read as B2B, and SAID so",
+      "why": "Three states, and the third is named rather than guessed. Reading a mistyped GSTIN as 'unregistered' takes the invoice out of the supply limb entirely and Rule 48(5) then voids a document that needed an IRN. Fifteen wrong characters are far likelier a real registered customer than a walk-in, so it is treated as B2B and the gap names it.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA",
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 10000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 2
+      }
+    },
+    {
+      "label": "before 01-10-2020 no class was notified — not required at any turnover",
+      "why": "Rule 48(4) was inserted in 2019 and notified its first class from 01-10-2020. An invoice dated before that owes no IRN however large the client, and threshold_paise is null because there was no threshold rather than because none was found.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2020-06-01",
+        "highest_aato_paise": 100000000000
+      },
+      "expected": {
+        "verdict": "not_required",
+        "supply_in_scope": true,
+        "threshold_paise": null,
+        "turnover_exceeds": null,
+        "turnover_unknown": false,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "01-10-2020, the first notified class, Rs 500 crore",
+      "why": "The first step. This Rs 150 crore client was outside e-invoicing on this date and inside it three months later — which is why the threshold forks on the invoice's own date instead of being read as today's.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2020-10-01",
+        "highest_aato_paise": 150000000000
+      },
+      "expected": {
+        "verdict": "not_required",
+        "supply_in_scope": true,
+        "threshold_paise": 500000000000,
+        "turnover_exceeds": false,
+        "turnover_unknown": false,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "01-01-2021 — Rs 100 crore, and the same client is now in scope",
+      "why": "The SAME Rs 150 crore turnover as the vector above, three months later. The pair is the fork: a belated or amended 2020 invoice keeps 2020's threshold indefinitely, so reading today's Rs 5 crore onto it would report an IRN owed on a document for which none was.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2021-01-01",
+        "highest_aato_paise": 150000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 100000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "01-04-2021 — Rs 50 crore",
+      "why": "Third step, Notification 05/2021-CT.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2021-04-01",
+        "highest_aato_paise": 50000000001
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 50000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "31-03-2022 — still Rs 50 crore on the day before the next step",
+      "why": "The day-before side of the 01-04-2022 boundary. A step is in force FROM its date, so the previous threshold governs up to and including the day before.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2022-03-31",
+        "highest_aato_paise": 30000000000
+      },
+      "expected": {
+        "verdict": "not_required",
+        "supply_in_scope": true,
+        "threshold_paise": 50000000000,
+        "turnover_exceeds": false,
+        "turnover_unknown": false,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "01-04-2022 — Rs 20 crore, and the same Rs 30 crore client crosses",
+      "why": "The other side of that boundary, on the identical turnover. This pair is what a single 'current threshold' constant would get wrong on every historical invoice.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2022-04-01",
+        "highest_aato_paise": 30000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 20000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "01-10-2022 — Rs 10 crore",
+      "why": "Fifth step, Notification 17/2022-CT.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2022-10-01",
+        "highest_aato_paise": 10000000001
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 10000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "01-08-2023 — Rs 5 crore, the current step",
+      "why": "Sixth and latest, Notification 10/2023-CT. A client at Rs 6 crore came into e-invoicing on this date.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2023-08-01",
+        "highest_aato_paise": 6000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 1
+      }
+    },
+    {
+      "label": "an invoice with NO DATE takes the strictest threshold, not 'no threshold'",
+      "why": "An absent date is not a pre-2020 date. Both would answer 'no threshold' if they shared a branch, so an invoice whose date nobody recorded would be reported as owing no IRN — the direction Rule 48(5) makes expensive. The strictest (most recent, lowest) threshold is shown and the gap says the date is missing. Note the threshold is Rs 5 crore, not null.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "",
+        "highest_aato_paise": 10000000000
+      },
+      "expected": {
+        "verdict": "required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": true,
+        "turnover_unknown": false,
+        "gaps": 2
+      }
+    },
+    {
+      "label": "an undated B2C invoice still reports nothing — the supply limb decides first",
+      "why": "The missing date is named only once the supply limb has passed, for the same reason the exempted classes are: on a B2C invoice the threshold decides nothing, so a missing date decides nothing either.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": null,
+        "invoice_date": "",
+        "highest_aato_paise": null
+      },
+      "expected": {
+        "verdict": "not_required",
+        "supply_in_scope": false,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": null,
+        "turnover_unknown": false,
+        "gaps": 0
+      }
+    },
+    {
+      "label": "a client who turned over nothing — zero is a real figure, not an absence",
+      "why": "0 means the client turned over nothing and is comfortably below every threshold; null means nobody has said. Producing the same answer for both is the bug GST-17 closed on the HSN side, where a defaulted 0 silently told every client HSN was optional. Note turnover_unknown is false here and the answer carries no gap.",
+      "input": {
+        "treatment": "regular",
+        "recipient_gstin": "27AAAAA0000A1Z5",
+        "invoice_date": "2026-06-01",
+        "highest_aato_paise": 0
+      },
+      "expected": {
+        "verdict": "not_required",
+        "supply_in_scope": true,
+        "threshold_paise": 5000000000,
+        "turnover_exceeds": false,
+        "turnover_unknown": false,
+        "gaps": 0
+      }
+    }
+  ]
+}

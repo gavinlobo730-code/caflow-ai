@@ -1177,6 +1177,8 @@ export default function GSTR3BPage() {
               they show. One component, both screens. */}
           <div className="space-y-3">
             <Gstr3bFindings
+              periodWindow={result.period_window}
+              monthsWithout2b={result.months_without_gstr2b}
               lateFiling={result.late_filing}
               reconciliation={result.reconciliation}
               bankLineCaveats={result.bank_line_caveats}

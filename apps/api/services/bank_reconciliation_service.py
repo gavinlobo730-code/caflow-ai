@@ -136,6 +136,69 @@ class BankReconciliationService:
                      .eq("firm_id", firm_id).in_("statement_id", stmt_ids)),
             label="reconciliation._account_txns")
 
+    def _session_txns(self, db, firm_id: str, session: dict) -> list[dict]:
+        """The lines ONE session can reach — the period, plus its own claims.
+
+        BANK-07's second half. `_account_txns` fetches every transaction the
+        account has ever carried and `_classify` then throws most of them away
+        in Python, so a client three years into an engagement ships three years
+        of statement lines across the Singapore-to-Mumbai hop to answer a
+        question about one month. That is the rule in CLAUDE.md under
+        "Reporting performance": what crosses the wire is proportional to the
+        ANSWER, not to the ledger.
+
+        THE OBVIOUS PREDICATE IS WRONG, AND THAT IS THE WHOLE DIFFICULTY.
+        A plain `transaction_date BETWEEN start AND end` is the natural reading
+        of "bound it to the period", and it silently breaks the `reconciled`
+        bucket — the one bucket `_classify` deliberately does NOT apply
+        `in_range` to. A cheque written on 28 March and cleared on 3 April is
+        claimed by the April session and belongs to it whatever its own date
+        says; dropping it would take its amount out of the tie-out and out of
+        the certified summary, which is the failure this screen exists to
+        prevent. What the four buckets need is the UNION:
+
+            transaction_date within the period    (any reconciliation)
+            OR reconciliation_id = this session   (any date)
+
+        TWO QUERIES RATHER THAN ONE `or_`, and the trade is the opposite of the
+        one `_account_txns` records. There the rejected second crossing would
+        have been the SAME SIZE as the first — half the statement either way.
+        Here the second is bounded by what this one session has already
+        claimed, and it is what removes an unbounded scan of the account's
+        whole history; two small crossings beat one that grows for ever. It
+        also keeps a PostgREST or-expression out of the code, which matters
+        because the fakes that stand in for the database in this suite would
+        each need to parse one.
+
+        `_classify` is UNCHANGED and still filters in Python: it is the
+        definition of the four buckets, and narrowing the fetch must not become
+        a second, quieter copy of it. A test asserts the two agree on a fixture
+        carrying a row in each limb.
+        """
+        stmt_ids = self._account_statement_ids(db, firm_id, session["bank_account_id"])
+        if not stmt_ids:
+            return []
+        # PAGED for _account_txns' reason: a reconciliation that saw only the
+        # first 1000 lines would tie out against part of the statement and call
+        # the rest a difference. `select("*")` carries the cursor column.
+        in_period = fetch_all(
+            lambda: (db.table("bank_transactions").select("*")
+                     .eq("firm_id", firm_id).in_("statement_id", stmt_ids)
+                     .gte("transaction_date", session["period_start"])
+                     .lte("transaction_date", session["period_end"])),
+            label="reconciliation._session_txns.period")
+        ours = fetch_all(
+            lambda: (db.table("bank_transactions").select("*")
+                     .eq("firm_id", firm_id).in_("statement_id", stmt_ids)
+                     .eq("reconciliation_id", session["id"])),
+            label="reconciliation._session_txns.claimed")
+        # Merged on id: a line can satisfy both limbs, and counting it twice
+        # would double its amount in the tie-out.
+        by_id = {t["id"]: t for t in in_period}
+        for t in ours:
+            by_id.setdefault(t["id"], t)
+        return list(by_id.values())
+
     def _posted_account_txns(self, db, firm_id: str, bank_account_id: str) -> list[dict]:
         """All POSTED transactions belonging to the account's statements.
 
@@ -408,7 +471,7 @@ class BankReconciliationService:
         snap = self._frozen_snapshot(session)
         if snap is not None:  # completed → serve frozen summary/counts
             return {**snap["reconciliation"], "summary": snap["summary"], "counts": snap["counts"]}
-        txns = self._account_txns(db, firm_id, session["bank_account_id"])
+        txns = self._session_txns(db, firm_id, session)
         buckets = self._classify(session, txns)
         view = self._session_view(session)
         view["summary"] = self._summary(session, buckets["reconciled"])
@@ -682,13 +745,40 @@ class BankReconciliationService:
         return {"reconciliation": self._session_view(session), **out, "frozen": False}
 
     # ── B.4.2 manual reconcile / unreconcile (human confirmation only) ──────────
-    def _index_account_txns(self, db, firm_id, session) -> dict:
-        return {t["id"]: t for t in self._posted_account_txns(db, firm_id, session["bank_account_id"])}
+    def _index_account_txns(self, db, firm_id, session, txn_ids) -> dict:
+        """The POSTED lines among exactly the ids asked about.
+
+        BANK-07's other half, and the worse of the two: this resolves the
+        handful of ids a CA just ticked, and it used to read every transaction
+        the account has ever carried to do it. The answer is `len(txn_ids)`
+        rows, so that is what crosses the wire.
+
+        The predicate is unchanged in MEANING — same firm, same account's
+        statements, posted only — so a missing id still means exactly what the
+        caller's 422 says it means: not a posted transaction for this account.
+        The date check stays at the call site, because "outside the statement
+        period" is a DIFFERENT refusal and folding it in here would collapse
+        two messages a CA needs to tell apart.
+
+        Not paged, deliberately: `txn_ids` is what a human ticked on one screen.
+        `.in_()` on a list that long is the wrong shape long before 1000 rows
+        is, and a caller sending that many has a different problem.
+        """
+        ids = [str(t) for t in (txn_ids or [])]
+        if not ids:
+            return {}
+        stmt_ids = self._account_statement_ids(db, firm_id, session["bank_account_id"])
+        if not stmt_ids:
+            return {}
+        res = (db.table("bank_transactions").select("*")
+               .eq("firm_id", firm_id).in_("statement_id", stmt_ids)
+               .in_("id", ids).execute())
+        return {t["id"]: t for t in (res.data or []) if t.get("posted_journal_id")}
 
     def reconcile(self, db, firm_id, recon_id, txn_ids: list[str], actor_id=None) -> dict:
         session = self._get_session(db, firm_id, recon_id)
         self._require_mutable(session)
-        by_id = self._index_account_txns(db, firm_id, session)
+        by_id = self._index_account_txns(db, firm_id, session, txn_ids)
         start, end = _d(session["period_start"]), _d(session["period_end"])
         for tid in txn_ids:
             t = by_id.get(tid)
@@ -730,7 +820,7 @@ class BankReconciliationService:
     def unreconcile(self, db, firm_id, recon_id, txn_ids: list[str], actor_id=None) -> dict:
         session = self._get_session(db, firm_id, recon_id)
         self._require_mutable(session)
-        by_id = self._index_account_txns(db, firm_id, session)
+        by_id = self._index_account_txns(db, firm_id, session, txn_ids)
         for tid in txn_ids:
             t = by_id.get(tid)
             if not t or t.get("reconciliation_id") != recon_id:
@@ -761,7 +851,7 @@ class BankReconciliationService:
         session = self._get_session(db, firm_id, recon_id)
         if session.get("status") == "completed":
             raise HTTPException(status_code=409, detail="Reconciliation is already completed.")
-        txns = self._account_txns(db, firm_id, session["bank_account_id"])
+        txns = self._session_txns(db, firm_id, session)
         buckets = self._classify(session, txns)
         summary = self._summary(session, buckets["reconciled"])
         # F1 Condition 2: every in-period statement line must be reviewed. A clean
@@ -849,7 +939,7 @@ class BankReconciliationService:
         Read-only. Nothing is written; nothing is reconciled.
         """
         session = self._get_session(db, firm_id, recon_id)
-        txns = self._account_txns(db, firm_id, session["bank_account_id"])
+        txns = self._session_txns(db, firm_id, session)
         buckets = self._classify(session, txns)
 
         candidates = set(transaction_ids or [])
@@ -1044,7 +1134,7 @@ class BankReconciliationService:
         snap = self._frozen_snapshot(session)
         if snap is not None:
             return snap
-        txns = self._account_txns(db, firm_id, session["bank_account_id"])
+        txns = self._session_txns(db, firm_id, session)
         return self._compute_report(session, txns)
 
     def report_csv(self, db, firm_id, recon_id) -> str:

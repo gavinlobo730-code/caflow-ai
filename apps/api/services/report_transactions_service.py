@@ -211,6 +211,11 @@ def gst_summary(db, firm_id: str, client_id: str, month: str) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 — a missing GSTIN must not fail the report
         gstin = ""
 
+    # NO FILING FREQUENCY, DELIBERATELY. This is a MONTHLY movement report and
+    # the screen asks for a month — a QRMP registration's quarterly RETURN is a
+    # different question, asked at /gstr3b/from-books, which resolves the
+    # registration's own regime (GST-11). Passing it here would make "March" on
+    # a reports screen silently mean January to March.
     r = gst_return_service.gstr3b_from_books(db, firm_id, client_id, period, gstin)
     w = r["working"]
     out, itc, net = w["outward"], w["itc"], w["net_payable"]

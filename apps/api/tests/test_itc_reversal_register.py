@@ -47,6 +47,9 @@ class _Q:
     def insert(self, p): self.op, self.payload = "insert", p; return self
     def eq(self, k, v): self.f.append((k, v)); return self
     def gt(self, k, v): self.f.append(("__gt__" + k, v)); return self
+    # `.in_` because a QRMP quarter names its three months one by one (GST-11)
+    # — MMYYYY is TEXT and sorts wrong, so the engine never ranges over it.
+    def in_(self, k, vals): self.f.append(("__in__" + k, list(vals))); return self
     def order(self, *_a, **_k): return self
     def limit(self, _n): return self
 
@@ -74,6 +77,9 @@ class _Q:
             for k, v in self.f:
                 if k.startswith("__gt__"):
                     if not (str(r.get(k[6:]) or "") > str(v)):
+                        ok = False
+                elif k.startswith("__in__"):
+                    if r.get(k[6:]) not in v:
                         ok = False
                 elif r.get(k) != v:
                     ok = False

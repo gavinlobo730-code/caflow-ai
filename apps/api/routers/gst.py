@@ -12,7 +12,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from models.common import api_response
 from core.permissions import rbac
@@ -389,10 +389,37 @@ class FromBooksRequest(BaseModel):
     # falling back to the primary: filing one registration's return under
     # another's number is the failure this exists to prevent.
     gstin: Optional[str] = None
+    # WHICH REGIME THIS RETURN IS BUILT UNDER (GST-11). Rule 61A with the
+    # proviso to CGST s.39(1) lets a person with up to Rs 5 crore of
+    # preceding-year turnover furnish GSTR-1 and GSTR-3B QUARTERLY, and the
+    # registration records which. OMITTING IT MEANS THE REGISTRATION'S OWN,
+    # which is the answer nearly every caller wants.
+    #
+    # It is settable because `filing_frequency` is the position TODAY and a
+    # return may be rebuilt for an earlier period: a client who moved off QRMP
+    # last April would otherwise have last year's quarters recomputed as
+    # months. There is no history column to read, so the caller may SAY — the
+    # `domain/tds/deductor.resolve` shape — and what was used comes back in
+    # `period_window` either way.
+    filing_frequency: Optional[str] = None
+
+    @field_validator("filing_frequency")
+    @classmethod
+    def _a_frequency_the_act_has(cls, v):
+        """Refused at the boundary, against the ENGINE's own vocabulary.
+
+        Both database columns CHECK to the two values, so a third one means
+        the caller invented it — and coercing it to monthly would build a
+        one-month return for somebody who asked for a quarter and say nothing.
+        """
+        if v is None or not str(v).strip():
+            return None
+        from domain.gst import return_period
+        return return_period.normalise_frequency(v)
 
 
-def _client_gstin(db, firm_id: str, client_id: str,
-                  gstin: Optional[str] = None) -> str:
+def _client_registration(db, firm_id: str, client_id: str,
+                         gstin: Optional[str] = None):
     """Which GST registration this request is for, firm-scoped.
 
     Delegates to `domain/gst/registrations` through its service rather than
@@ -400,9 +427,20 @@ def _client_gstin(db, firm_id: str, client_id: str,
     registration screen shows and a second registration is reachable at all
     (GST-20). With no `gstin` the answer is the primary, which is exactly what
     this function returned before.
+
+    THE WHOLE REGISTRATION, not only its number (GST-11). It has always carried
+    `filing_frequency` and `state_code`, and the return engine threw both away
+    — so a QRMP registration (Rule 61A) was quoted the quarterly due date by
+    the compliance layer and then handed a one-month return by this one.
     """
     from services import client_gst_registration_service as regs
-    return regs.resolve(db, firm_id, client_id, gstin).gstin
+    return regs.resolve(db, firm_id, client_id, gstin)
+
+
+def _client_gstin(db, firm_id: str, client_id: str,
+                  gstin: Optional[str] = None) -> str:
+    """The registration's GSTIN alone, for callers that need nothing else."""
+    return _client_registration(db, firm_id, client_id, gstin).gstin
 
 
 @router.post("/gstr3b/from-books")
@@ -418,13 +456,19 @@ def gstr3b_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depen
     from core.supabase_client import get_supabase
     db = get_supabase()
     firm_id = current_user.get("firm_id")
-    gstin = _client_gstin(db, firm_id, req.client_id, req.gstin)
+    reg = _client_registration(db, firm_id, req.client_id, req.gstin)
+    gstin = reg.gstin
     errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
     if errs:
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
     try:
         data = gst_return_service.gstr3b_from_books(
-            db, firm_id, req.client_id, req.period, gstin, filed_on=req.filed_on)
+            db, firm_id, req.client_id, req.period, gstin, filed_on=req.filed_on,
+            # The REGISTRATION's own regime (GST-11). A QRMP filer's return
+            # covers the quarter and its s.50(1) clock runs off the 22nd/24th
+            # by state, which is why both travel together.
+            frequency=req.filing_frequency or reg.filing_frequency,
+            state_code=reg.state_code)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     return api_response(True, data)
@@ -435,6 +479,8 @@ def gstr3b_detail_endpoint(
     client_id: str = Query(...),
     period: str = Query(..., description="MMYYYY e.g. 042026"),
     line: str = Query(..., description="One of 3.1a, 3.1d, 4A, 4B1, 4B2"),
+    gstin: Optional[str] = Query(
+        None, description="Which registration — omit for the primary (GST-20)"),
     current_user: dict = Depends(rbac("gst", "read")),
 ):
     """The documents behind one GSTR-3B figure — the detail half of the return.
@@ -447,17 +493,24 @@ def gstr3b_detail_endpoint(
     Reads the SAME fetchers gstr3b_from_books uses, so the detail and the summary
     cannot disagree, and returns its own totals so the screen can print both.
 
+    AND THE SAME WINDOW (GST-11): the registration's own filing frequency is
+    resolved here too, so a QRMP client's drill-down lists the quarter's
+    documents rather than one month of them against a three-month figure.
+
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     """
     assert_client_access(current_user, client_id)
     from core.supabase_client import get_supabase
     db = get_supabase()
+    firm_id = current_user.get("firm_id")
     errs = _validator.validate_period(period)
     if errs:
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
+    reg = _client_registration(db, firm_id, client_id, gstin)
     try:
         data = gst_return_service.gstr3b_detail(
-            db, current_user.get("firm_id"), client_id, period, line)
+            db, firm_id, client_id, period, line,
+            frequency=reg.filing_frequency)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     return api_response(True, data)
@@ -475,13 +528,16 @@ def gstr1_from_books_endpoint(req: FromBooksRequest, current_user: dict = Depend
     from core.supabase_client import get_supabase
     db = get_supabase()
     firm_id = current_user.get("firm_id")
-    gstin = _client_gstin(db, firm_id, req.client_id, req.gstin)
+    reg = _client_registration(db, firm_id, req.client_id, req.gstin)
+    gstin = reg.gstin
     errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
     if errs:
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
     try:
         data = gst_return_service.gstr1_from_books(
-            db, firm_id, req.client_id, req.period, gstin, req.aggregate_turnover_paise)
+            db, firm_id, req.client_id, req.period, gstin,
+            req.aggregate_turnover_paise,
+            frequency=req.filing_frequency or reg.filing_frequency)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     return api_response(True, data)
@@ -514,17 +570,26 @@ def gstr1_with_amendments_endpoint(req: FromBooksRequest, current_user: dict = D
     from core.supabase_client import get_supabase
     db = get_supabase()
     firm_id = current_user.get("firm_id")
-    gstin = _client_gstin(db, firm_id, req.client_id, req.gstin)
+    reg = _client_registration(db, firm_id, req.client_id, req.gstin)
+    gstin = reg.gstin
     errs = _validator.validate_gstin(gstin) + _validator.validate_period(req.period)
     if errs:
         raise HTTPException(status_code=422, detail={"validation_errors": [e.as_dict() for e in errs]})
     from services.gst_amendment_service import apply_amendments, outstanding_amendments
     try:
         base = gst_return_service.gstr1_from_books(
-            db, firm_id, req.client_id, req.period, gstin, req.aggregate_turnover_paise)
+            db, firm_id, req.client_id, req.period, gstin,
+            req.aggregate_turnover_paise,
+            frequency=req.filing_frequency or reg.filing_frequency)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
-    outstanding = outstanding_amendments(db, firm_id, req.client_id, req.period)
+    # THE PERIOD THE RETURN WAS ACTUALLY BUILT FOR, not the month asked for
+    # (GST-11). A QRMP quarter is keyed on its first month, and which earlier
+    # corrections are still inside the s.37(3) window is measured against THAT
+    # period — asking with a month two later would carry amendments this return
+    # does not declare.
+    outstanding = outstanding_amendments(db, firm_id, req.client_id,
+                                         base.get("period") or req.period)
     return api_response(True, {
         **base,
         "payload": apply_amendments(base["payload"], outstanding),

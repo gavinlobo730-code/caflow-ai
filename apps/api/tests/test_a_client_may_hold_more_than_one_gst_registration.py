@@ -265,18 +265,55 @@ def test_closing_is_not_deleting():
 
 
 def test_the_compute_paths_take_a_gstin_and_default_to_the_primary():
+    """THE RULE, NOT A SPELLING OF IT. This used to count one exact call
+    string, and broke when the three compute paths began resolving the WHOLE
+    registration rather than its number alone (GST-11) — a change that does
+    not touch the rule it was written for. What matters is that every endpoint
+    taking a `FromBooksRequest` resolves the registration from the request's
+    own optional `gstin`, and that nothing reads `clients.gstin` to do it."""
     src = (API / "routers" / "gst.py").read_text()
     assert "gstin: Optional[str] = None" in src
-    assert src.count("_client_gstin(db, firm_id, req.client_id, req.gstin)") == 3
+
+    import ast
+    import routers.gst as gst_router
+
+    tree = ast.parse(src)
+    resolved = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        takes_from_books = any(
+            isinstance(a.annotation, ast.Name) and a.annotation.id == "FromBooksRequest"
+            for a in node.args.args if a.annotation is not None)
+        if not takes_from_books:
+            continue
+        body = ast.get_source_segment(src, node) or ""
+        assert "_client_registration(db, firm_id, req.client_id, req.gstin)" in body, (
+            f"{node.name} takes a FromBooksRequest and must resolve the "
+            "registration from its own optional gstin — defaulting to the "
+            "primary, never reading clients.gstin")
+        resolved += 1
+    assert resolved == 3, (
+        f"expected the three from-books compute paths, found {resolved}")
+
+    # And the drill-down, which is a Query endpoint rather than a body one but
+    # must cover the same registration's window.
+    assert "_client_registration(db, firm_id, client_id, gstin)" in src, (
+        "the GSTR-3B detail path resolves the registration too")
 
 
 def test_the_gstin_resolver_goes_through_the_registration_service():
     """Reading `clients.gstin` directly is what made a second registration
     unreachable. One resolver, and it is the one the screen shows."""
     import routers.gst as gst_router
-    src = inspect.getsource(gst_router._client_gstin)
+    src = inspect.getsource(gst_router._client_registration)
     assert "client_gst_registration_service" in src
     assert 'table("clients")' not in src
+    # `_client_gstin` survives for callers that want the number alone, and it
+    # must go through the same resolver rather than growing a second read.
+    thin = inspect.getsource(gst_router._client_gstin)
+    assert "_client_registration(" in thin
+    assert 'table("clients")' not in thin
 
 
 def test_writes_are_a_CLIENT_action_not_a_gst_one():

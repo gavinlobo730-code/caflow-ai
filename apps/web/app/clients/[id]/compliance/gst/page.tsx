@@ -13,7 +13,7 @@ import { todayLocalISO } from "@/lib/dateMath";
 import GSTR9Working from "@/components/gst/GSTR9Working";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
-import type { GLReconciliation, LateFilingBlock, UndeclarableRow } from "@/lib/data/gst";
+import type { GLReconciliation, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
 import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -1214,6 +1214,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     show. One component, both screens; every sentence in it is
                     the server's. */}
                 <Gstr3bFindings
+                  periodWindow={computeResult.period_window as ReturnPeriodWindow | undefined}
+                  monthsWithout2b={computeResult.months_without_gstr2b as string[] | undefined}
                   lateFiling={computeResult.late_filing as LateFilingBlock | undefined}
                   reconciliation={computeResult.reconciliation as GLReconciliation | undefined}
                   bankLineCaveats={computeResult.bank_line_caveats as string[] | undefined}

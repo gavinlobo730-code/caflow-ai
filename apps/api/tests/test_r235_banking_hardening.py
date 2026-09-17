@@ -206,7 +206,10 @@ def test_reconcile_rejects_when_transaction_claimed_between_read_and_write(monke
     # Stale pre-check snapshot: session B's read sees the transaction as UNCLAIMED
     # (reconciliation_id=None), even though the real FakeDB row already has it
     # claimed by session A -- this is the race window.
-    monkeypatch.setattr(svc, "_index_account_txns", lambda db, firm_id, session: {
+    # `txn_ids` is BANK-07: the lookup now reads only the ids asked about
+    # rather than the whole account. The stale snapshot this stub stands in
+    # for is the point of the test and is unchanged.
+    monkeypatch.setattr(svc, "_index_account_txns", lambda db, firm_id, session, txn_ids: {
         "txn-1": {**db.rows("bank_transactions")[0], "reconciliation_id": None},
     })
 
@@ -246,7 +249,10 @@ def test_unreconcile_rejects_when_transaction_already_moved(monkeypatch):
     monkeypatch.setattr(svc, "_require_mutable", lambda session: None)
     # Stale pre-check snapshot: reads the transaction as still reconciled to
     # recon-A, even though the real row already has it cleared.
-    monkeypatch.setattr(svc, "_index_account_txns", lambda db, firm_id, session: {
+    # `txn_ids` is BANK-07: the lookup now reads only the ids asked about
+    # rather than the whole account. The stale snapshot this stub stands in
+    # for is the point of the test and is unchanged.
+    monkeypatch.setattr(svc, "_index_account_txns", lambda db, firm_id, session, txn_ids: {
         "txn-1": {**db.rows("bank_transactions")[0], "reconciliation_id": "recon-A"},
     })
 

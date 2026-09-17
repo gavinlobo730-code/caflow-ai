@@ -135,6 +135,14 @@ def for_period(db, firm_id: str, client_id: str, period: str,
         turnover_caveats: list = []
     else:
         import services.gst_return_service as gst_return_service
+        # NO FILING FREQUENCY, DELIBERATELY, AND THIS IS AN OPEN QUESTION
+        # RATHER THAN AN OVERSIGHT (GST-11). `outward_turnover` can now read a
+        # QRMP quarter, and Rule 43(1)(c) reverses Tm = Tc ÷ 60 per TAX PERIOD
+        # — whether a quarterly filer's tax period for that fraction is the
+        # quarter or still each month was not confirmable here, and reading it
+        # as a quarter would silently triple E and F against a one-sixtieth
+        # that did not move. So this stays the month it has always been, and
+        # `rule_43.compute` keeps its own `period` semantics.
         book = gst_return_service.outward_turnover(db, firm_id, client_id, period)
         t = rule_43.Turnover(exempt_paise=int(book["exempt_paise"]),
                              total_paise=int(book["total_paise"]))

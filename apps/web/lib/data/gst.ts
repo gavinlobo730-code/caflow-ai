@@ -260,6 +260,29 @@ export interface GSTR3BComputeResult {
   undeclarable_rows?: UndeclarableRow[];
   bank_line_caveats?: string[];
   reconciliation?: GLReconciliation;
+  /** WHAT THIS RETURN ACTUALLY COVERS (GST-11). A month for an ordinary
+   *  registration; the whole QUARTER for a QRMP one (CGST Rule 61A), keyed on
+   *  its first month. The frequency is a fact about the REGISTRATION and the
+   *  browser holds no registration, so this is the server's answer and the
+   *  screen only prints it. */
+  period_window?: ReturnPeriodWindow;
+  /** Months of this window with no GSTR-2B reconciled. A quarter has three,
+   *  and Rule 36(4)'s ceiling is built from the ones on file — so a short
+   *  ceiling has to say which month is missing rather than read as the
+   *  supplier's fault. */
+  months_without_gstr2b?: string[];
+}
+
+/** One GSTR-1 or GSTR-3B period, as the server resolved it. */
+export interface ReturnPeriodWindow {
+  key: string;
+  frequency: "monthly" | "quarterly";
+  start: string;
+  end: string;
+  months: string[];
+  label: string;
+  requested: string;
+  months_covered: number;
 }
 
 /** Books-vs-ledger agreement, returned by every from-books computation. The
@@ -368,6 +391,8 @@ interface FromBooksGSTR3B {
   late_filing?: LateFilingBlock;
   undeclarable_rows?: UndeclarableRow[];
   bank_line_caveats?: string[];
+  period_window?: ReturnPeriodWindow;
+  months_without_gstr2b?: string[];
 }
 
 export interface ClassifyResult {
@@ -712,9 +737,17 @@ export async function computeGSTR3B(
     undeclarable_rows: result.undeclarable_rows,
     bank_line_caveats: result.bank_line_caveats,
     reconciliation: result.reconciliation,
+    period_window: result.period_window,
+    months_without_gstr2b: result.months_without_gstr2b,
   };
 
-  await saveGSTR3BReturn(clientId, period, result.gstin, shaped);
+  // `result.period`, NEVER the month that was asked for (GST-11). A QRMP
+  // registration's return is keyed on its QUARTER's first month, so saving
+  // under the requested month would open a second row for one quarter —
+  // migration 390 keys `gstr3b_returns` on (client_id, period, gstin) — and
+  // the `filings` row the period lock reads would then name a period no
+  // stored return matches.
+  await saveGSTR3BReturn(clientId, result.period, result.gstin, shaped);
   return shaped;
 }
 
@@ -838,7 +871,9 @@ export async function buildGSTR1(
     ca_review_required: true,
   };
 
-  await saveGSTR1Return(clientId, period, result.gstin, shaped);
+  // The SERVER's key — see computeGSTR3B. A quarter is stored under its first
+  // month whichever of its three months was asked for.
+  await saveGSTR1Return(clientId, result.period, result.gstin, shaped);
   return shaped;
 }
 
