@@ -163,10 +163,9 @@
     "GST-11": {
       "status": "partial",
       "verified_on": "2026-09-17",
-      "why": "the DUE-DATE half is built: compliance_engine.gstr1_due_date takes a frequency, gstr3b_due_date resolves the 22nd/24th through gst_state_category, pmt06_due_date and iff_due_date exist, and _gst_obligations emits the quarterly set for a QRMP client",
-      "needs": "",
-      "reread_on": "2026-09-17",
-      "what_is_left": "the RETURN ENGINE, which is what the finding names: gst_return_service._period_bounds still raises on anything but MMYYYY and returns one calendar month, both gstr1_from_books and gstr3b_from_books open on it, nothing in the engine reads gst_filing_frequency, the GSTR-3B screen builds twelve monthly options, there is no IFF builder, and routers/gst_workspace.py's own record_filing calls (571, 799) pass no `bounds` so a filed quarter locks one month"
+      "why": "The RETURN ENGINE is done. domain/gst/return_period.py is the authority, both from-books builders take a quarter, the filing record, the ITC reversal register, Table 11 advances and Rule 36(4) all read the quarter's three months, and the frequency comes off client_gst_registrations (GST-20's fact), never inferred from turnover. A quarter is keyed on its FIRST month because routers/compliance.py already writes and reads that key.",
+      "what_is_left": "Rule 59(2)'s INVOICE FURNISHING FACILITY \u2014 a different return with its own due date and no storage of its own. Deliberately not built: it is widening the engine rather than making a period mean three months, and it is NAMED on every quarterly GSTR-1 so a CA knows the recipient's credit waits. Also open and named rather than resolved: whether the form's own fp/ret_period wants the quarter's first or last month ([S], egress refused), and whether Rule 43(1)(c)'s tax period is the quarter for a QRMP filer.",
+      "note": "The finding's own fix was materially INCOMPLETE. It named only the date-ranged reads; GSTR-2B is generated MONTHLY for a quarterly filer too, so following it literally gives a return whose documents cover three months and whose Rule 36(4) ceiling, ITC reversal register and Table 11 advances cover one \u2014 silently, with the tax coming out plausible. Its premise was also stale: GST-20 moved filing frequency onto the REGISTRATION."
     },
     "GST-20": {
       "status": "closed",
@@ -328,12 +327,11 @@
       "reread_on": "2026-09-17"
     },
     "IT-19": {
-      "status": "partial",
+      "status": "closed",
       "verified_on": "2026-09-17",
-      "why": "the four reinvestment sections are built and wired \u2014 reinvestment_exemption.compute_exemption, capital_gain_exemption_service, GET /api/income-tax/capital-gains/{id}/exemption and the register screen, with migration 385",
-      "needs": "",
-      "reread_on": "2026-09-17",
-      "what_is_left": "the finding's other named half: \u00a7112A grandfathering under \u00a755(2)(ac). capital_gains_engine computes gain = sale \u2212 cost and applies \u00a7112A to that gross figure with no 31-01-2018 fair-market-value substitution, compute_capital_gains has no FMV parameter, and \u2014 unlike the listed-bond gap \u2014 it is not recorded as a known gap anywhere, so LTCG on shares bought before 2018 is overstated by the whole pre-2018 appreciation"
+      "closed_by": "IT-19",
+      "why": "Both halves are now built. The four reinvestment sections closed earlier (migration 385); s.55(2)(ac) grandfathering closes here. The deemed cost is max(actual cost, min(31-01-2018 FMV, full value of consideration)) \u2014 the statute exactly. Probed on the previous code: a 2012 equity holding sold for \u20b911 lakh showed \u20b91,09,375 of tax against \u20b921,875, five times over.",
+      "note": "The 31-01-2018 FMV is per scrip per date and is REFUSED when absent rather than defaulted, with the direction argued rather than asserted: limb (i) makes the actual cost a floor on the deemed cost, so the gain reported without it is an upper bound on the tax, not a guess at it."
     },
     "IT-22": {
       "status": "closed",
@@ -354,11 +352,11 @@
       "reread_on": "2026-09-17"
     },
     "IT-28": {
-      "status": "partial",
+      "status": "closed",
       "verified_on": "2026-09-17",
-      "why": "the \u00a750AA limb is closed: `asset_type in _DEBT_MF_LIKE and purchase_date >= SECTION_50AA_FROM` (2023-04-01)",
-      "reread_on": "2026-09-17",
-      "what_is_left": "the listed-security limb. _EQUITY_LIKE excludes 'bonds', so long_term_threshold_months gives a bond 24 months \u2014 probed, a bond held 17 months returns is_long_term False at 30% 'Section 48' and is persisted \u2014 and the proviso to \u00a7112(1)'s pre-23-07-2024 10%-without-indexation option is never offered. Both are documented in capital_gains_engine as erring towards more tax, and both need a listed/unlisted asset type the register's vocabulary lacks"
+      "closed_by": "IT-28",
+      "why": "s.2(42A)'s proviso gives a LISTED security twelve months. Probed on the previous code: a listed bond held 17 months came back short-term and was charged \u20b91,50,000 where s.112 charges \u20b962,500 \u2014 and the wrong classification was persisted into gain_type and tax_rate_percent. Migration 402 records the listing as its own tri-state; unrecorded takes the unlisted period and SAYS so.",
+      "note": "The finding's suggested fix \u2014 add a listed-security asset_type \u2014 was NOT followed. It conflates two independent facts: a debenture is the same asset listed or not, so a new enum value would widen migration 030's CHECK and still leave 'bonds' meaning 'unknown'. Three things stay refused: the proviso to s.112(1)'s option (its own limbs could not be read), the s.2(48) zero-coupon limb, and the listing itself when unrecorded."
     },
     "TDS-10": {
       "status": "not_a_defect_as_stated",
@@ -621,11 +619,11 @@
       "reread_on": "2026-09-17"
     },
     "SALES-18": {
-      "status": "partial",
+      "status": "closed",
       "verified_on": "2026-09-17",
-      "why": "the Rule 138 half is closed \u2014 domain/gst/eway.py is the authority, the browser prefers the served assessment through compliance.ts::fromServed, and shared/eway-parity-vectors.json is read by both suites",
-      "reread_on": "2026-09-17",
-      "what_is_left": "Rule 48(4)'s IRN scope test. compliance.ts::irnEligibility is still the only implementation of the B2B/export/SEZ blocker \u2014 no Python twin (grep over apps/api finds only a docstring in routers/einvoice.py), no parity fixture \u2014 and a live 'Prepare IRN' action is gated on it. The closing note of 13-09 described irnEligibility as field presence plus a posted check and did not account for the scope test"
+      "closed_by": "SALES-18",
+      "why": "domain/gst/irn_scope.py is the authority; compliance.ts is a keystroke mirror pinned from the Python side by shared/irn-parity-vectors.json, which both suites read. The PERSON limb is answered rather than declined \u2014 migration 401 landed the s.2(6) figure \u2014 and it is a RATCHET, not the preceding year: Rule 48(4) reads on turnover in ANY preceding FY from 2017-18 onwards, so the service takes the maximum across qualifying years.",
+      "note": "The obvious move \u2014 reuse hsn_digits.governing_financial_year, the sibling rule \u2014 would have let a client who crossed a threshold once and shrank back OUT of e-invoicing, issuing documents Rule 48(5) says are not invoices, taking the recipient's ITC with them. The probe pass had recorded the person limb as unbuildable for want of a turnover figure; GST-17 falsified that."
     },
     "SALES-24": {
       "status": "closed",

@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **238** | re-read against the code. The defect is gone. |
-| partial | **30** | part of the finding is answered, part is not. Each says which. |
+| closed | **241** | re-read against the code. The defect is gone. |
+| partial | **27** | part of the finding is answered, part is not. Each says which. |
 | open | **5** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 35 items — 5 open and 30 partial — not 254.**
+**The work left is 32 items — 5 open and 27 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -52,7 +52,6 @@ is left as "unknown".
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
 | high | **IT-17** | itr_field_placements() — 'this figure goes in this field' against the Department's own committed |
-| high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
 | high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
@@ -65,7 +64,6 @@ is left as "unknown".
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **IT-20** | §80CCD(2) is capped at 10% of salary for a non-government employee under the NEW regime, where t |
-| medium | **IT-28** | §50AA is applied to every debt mutual fund regardless of acquisition date, and listed bonds and  |
 | medium | **IT-32** | The Chapter VI-A surface stops at seven sections — no §80E, §80EE/EEA, §80DD/DDB, §80U, §80GG, § |
 | medium | **PAY-13** | The client workspace's own employee form collects neither PAN, joining date, UAN, ESIC number, b |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
@@ -73,7 +71,6 @@ is left as "unknown".
 | medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |
 | low | **INV-09** | Stock quantity is NUMERIC(10,3) with no unit conversion, so high-count or fine-grained items bre |
 | low | **PUR-32** | Duplicate-bill detection is exact-match on vendor plus bill number only, so an OCR typo or a dup |
-| low | **SALES-18** | Statutory rules live in TypeScript with no backend counterpart, against the house rule "zero bus |
 
 
 ## Not a defect as stated
@@ -155,6 +152,7 @@ is left as "unknown".
 | high | **IT-15** | The ITR deadline tracker conflates assessment year with financial year — the period it stores an |
 | high | **IT-16** | The presumptive engine for §44AD, §44ADA and §44AE is reachable from nothing — no endpoint, no r |
 | high | **IT-18** | The AIS screen persists nothing — the whole reconciliation lives in React state and is gone on r |
+| high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
 | high | **IT-22** | The Budget-2024 grandfathered 20%-with-indexation option is offered for property acquired ON OR  |
 | high | **PAY-03** | The payslip PDF is headed with the CA FIRM's name, not the client company that actually employs  |
 | high | **PAY-06** | The §10(13A) HRA salary base is annualised as this month × 12 regardless of how many months the  |
@@ -248,6 +246,7 @@ is left as "unknown".
 | medium | **IT-24** | The Form 26AS parser is fixed-column and silently drops every line it cannot read, then marks th |
 | medium | **IT-25** | The ITR due date is chosen by entity type rather than by whether an audit applies, so a small fi |
 | medium | **IT-27** | The §115BAC(6) regime-election engine — Form 10-IEA, the due date, the once-only withdrawal lock |
+| medium | **IT-28** | §50AA is applied to every debt mutual fund regardless of acquisition date, and listed bonds and  |
 | medium | **IT-29** | The Cost Inflation Index stops at FY 2025-26, so every indexed cost computed and STORED in the c |
 | medium | **IT-31** | 26AS reconciliation never feeds the computation — the TDS credit on the return is a number the C |
 | medium | **PAY-04** | A draft payroll run that was never finalised is counted as TDS already deducted, months already  |
@@ -326,6 +325,7 @@ is left as "unknown".
 | low | **PUR-29** | Reverse charge and §17(5) eligibility have no test coverage on the purchase-bill compute path at |
 | low | **PUR-30** | A dead _TDS_DEFAULT_BPS table at the top of purchase_bills.py carries a §194H rate that is 2.5x  |
 | low | **PUR-31** | Vendor payment numbering is count+1, so a deleted or compensated payment guarantees a collision  |
+| low | **SALES-18** | Statutory rules live in TypeScript with no backend counterpart, against the house rule "zero bus |
 | low | **SALES-30** | A credit note's is_interstate can be inherited from another client's invoice in the same firm |
 | low | **SALES-31** | SalesInvoiceIn.place_of_supply is accepted by the API and silently ignored in production |
 | low | **SALES-32** | No TCS on sales, and the rate registry's note about §206C(1H) looks stale |
