@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **237** | re-read against the code. The defect is gone. |
-| partial | **31** | part of the finding is answered, part is not. Each says which. |
+| closed | **238** | re-read against the code. The defect is gone. |
+| partial | **30** | part of the finding is answered, part is not. Each says which. |
 | open | **5** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 36 items — 5 open and 31 partial — not 254.**
+**The work left is 35 items — 5 open and 30 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -45,7 +45,6 @@ is left as "unknown".
 | severity | finding | what it is |
 |---|---|---|
 | high | **ACC-03** | Every receipt and vendor payment posts to one generic "Bank Account" ledger, while bank-statemen |
-| high | **BANK-07** | The Bank Book fetches every transaction on the account and computes the running balance in Pytho |
 | high | **FA-06** | IT Act §32 block-of-assets depreciation does not exist, and the book-to-tax bridge that needs it |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-13** | The module's most differentiating backend work — amendments, exception report, ITC register, adv |
@@ -129,6 +128,7 @@ is left as "unknown".
 | high | **BANK-04** | The "Bank Reconciliation Statement" is a statement-line tick-off; it has no unpresented cheques  |
 | high | **BANK-05** | "Adjustments" is an unexplained plug number that can force a reconciliation to tie out and produ |
 | high | **BANK-06** | There is no way to delete or undo a mis-imported statement — nothing in the backend or the UI |
+| high | **BANK-07** | The Bank Book fetches every transaction on the account and computes the running balance in Pytho |
 | high | **BANK-08** | The statement upload endpoint is `async def` but does blocking PDF rasterisation and up to twent |
 | high | **BANK-09** | Two genuinely identical transactions on a statement with no balance column are silently merged i |
 | high | **BANK-20** | There is no cash book — no cash vouchers, no cash register, no petty-cash screen |

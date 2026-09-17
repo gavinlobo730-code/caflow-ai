@@ -2591,6 +2591,43 @@ the query, and what crosses the wire is what is OWED rather than everything ever
 billed. Both obey the rule. Which shape a report needs is decided by the size of
 its ANSWER, not by the table it reads.
 
+**PAGING IS NOT THE SAME AS BOUNDING, AND A RECONCILIATION NEEDED BOTH**
+(BANK-07). `bank_reconciliation_service._account_txns` was correctly PAGED and
+still read every transaction the account had ever carried, because `_classify`
+did the period filtering in Python — so a client three years into an engagement
+shipped three years of statement lines to answer a question about one month.
+Paging stops a silent truncation; it does nothing about a read that is
+proportional to the ledger. `_session_txns` is the bounded one and the four
+`_classify` callers use it. **`_index_account_txns` was the worse of the two**
+and had no finding: it resolved the handful of ids a CA had just ticked by
+reading the whole account, where the answer is `len(txn_ids)` rows.
+⚠️ **THE FINDING'S OWN SUGGESTED FIX WAS WRONG, and the reason generalises.**
+"Apply the period predicate in the query" is the natural reading and it breaks
+the `reconciled` bucket — the ONE bucket `_classify` deliberately does not
+date-filter, because a cheque written on 28 March and cleared on 3 April is
+claimed by the April session whatever its own date says. A plain `BETWEEN`
+would take its amount out of a tie-out that has already been certified. So the
+fetch is the UNION of what the four buckets need: **the period, OR claimed by
+this session**. Before narrowing any read, check which consumer does NOT apply
+the filter you are about to push down.
+**TWO QUERIES RATHER THAN ONE `or_`**, which is the opposite trade from the one
+`_account_txns` records in its own docstring — there the rejected second
+crossing was the SAME SIZE as the first, here it is bounded by what one session
+has claimed and it removes an unbounded scan. It also keeps a PostgREST
+or-expression out of the code, which matters because two separate fakes stand in
+for the database in this suite and each would need to parse one.
+**`_classify` IS UNCHANGED and still filters in Python**: it is the definition
+of the four buckets, and a narrowed fetch must not become a second, quieter copy
+of it. A test asserts the narrowed and unbounded fetches classify IDENTICALLY on
+a fixture with a row in each limb.
+**AND THE GUARD THAT BROKE WAS NAMING A METHOD AGAIN.**
+`test_one_fetch_serves_all_four_buckets` counted calls to `_account_txns` and
+expected exactly one — a spelling of "no bucket gets its own query" — so it
+failed on a change that made the thing it cares about strictly better. It counts
+reads of the TABLE now, bounded by a number that does not grow with the buckets.
+That is the fourth time this pattern has been fixed; write the rule, not a
+spelling of it.
+
 **A read that IS a row set has its own rule, and it is one line: page it.**
 PostgREST caps a response at ~1000 rows (`db-max-rows`) and reports nothing
 when it does, so a truncated read is indistinguishable from a complete one and

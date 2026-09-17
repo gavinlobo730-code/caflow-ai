@@ -916,11 +916,11 @@
       "reread_on": "2026-09-16"
     },
     "BANK-07": {
-      "status": "partial",
+      "status": "closed",
       "verified_on": "2026-09-17",
-      "why": "the SQL half is built \u2014 bank_register_service._sql_register calls migration 353's public.bank_register and the quadratic min(filtered, key=all_lines.index) is gone, pinned by tests/test_bank_register_sql_parity_pg.py",
-      "reread_on": "2026-09-17",
-      "what_is_left": "bank_reconciliation_service._account_txns still fetch_alls EVERY bank_transactions row on the account with no period predicate (in_range is applied in Python inside _classify), and opening_suggestion reads it through _posted_account_txns on every session create to produce one scalar \u2014 the second half of the finding's own evidence, and recorded nowhere as a decision"
+      "why": "Both reads are now proportional to the answer. `_session_txns` fetches the session's own period plus the lines this session already claimed (two bounded reads, merged on id) and the four `_classify` callers use it; `_index_account_txns` reads only the ids asked about instead of the whole account. `_account_txns` survives unnarrowed for its one honest caller, the opening-balance accumulation, which spans every completed session and has no single period.",
+      "note": "The finding's own suggested fix \u2014 apply the period predicate in the query \u2014 would have been WRONG. `_classify` deliberately does not date-filter the `reconciled` bucket, so a plain BETWEEN would silently drop a cheque dated before the period and cleared inside it, taking its amount out of a certified tie-out.",
+      "closed_by": "BANK-07"
     },
     "BANK-08": {
       "status": "closed",
