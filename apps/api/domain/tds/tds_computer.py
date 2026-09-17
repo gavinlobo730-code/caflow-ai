@@ -140,6 +140,19 @@ class TDS27QDeducteeRecord:
     #: not an FVU remark code: those are a published list and guessing one would
     #: put a wrong code in a filed return (migration 312).
     non_deduction_reason: Optional[str] = None
+    #: NO is_lower_deduction / lower_deduction_cert, unlike TDSDeducteeRecord,
+    #: and that is the §195 engine's decision showing through rather than an
+    #: omission. §197(1) DOES reach §195 — the section is in
+    #: domain/tds/lower_deduction.SECTIONS_197 — but
+    #: `services/vendor_tds.resolve_withholding` deliberately does not APPLY a
+    #: certificate to a non-resident payee: §195 is resolved by the nature of
+    #: the income under §115A and Part II's surcharge ladders, with the DTAA
+    #: under §90(2), and a flat certified rate would be a fourth figure in a
+    #: comparison the statute already defines. So it withholds at the §195 rate,
+    #: tells the CA the certificate was not used, and leaves
+    #: `purchase_bills.tds_certificate_no` NULL. A pair of columns here would
+    #: therefore be False and None on every row ever built — asserting "no
+    #: certificate" where the truth is "one was refused, on purpose".
 
 
 @dataclass
