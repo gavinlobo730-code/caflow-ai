@@ -807,10 +807,16 @@ export async function buildGSTR1(
   yearMonth: string,
 ): Promise<GSTR1BuildResult> {
   const period = toPeriod(yearMonth);
+  // NO `aggregate_turnover_paise` (GST-17). It used to send 0, which is a REAL
+  // turnover meaning "below every threshold", so Table 12's HSN digit
+  // requirement read as optional for every client and nothing was ever
+  // reported. Omitting it lets the server resolve the figure the CA recorded
+  // on the client's GST → Registrations tab for the PRECEDING financial year —
+  // which is what Notification 78/2020-Central Tax reads on — and NAME the gap
+  // where nobody has recorded one.
   const result = await apiPost<FromBooksGSTR1>("/api/gst/gstr1/from-books", {
     client_id: clientId,
     period,
-    aggregate_turnover_paise: 0,   // CA can override on the client GST screen
   });
 
   const shaped: GSTR1BuildResult = {

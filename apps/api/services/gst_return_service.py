@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import calendar
 from datetime import date
+from typing import Optional
 
 from core.ist_clock import ist_fy_label
 
@@ -26,6 +27,7 @@ import services.gst_2b_reconciliation_service as gst_2b_reconciliation_service
 import services.gst_advance_service as gst_advance_service
 import services.itc_register_service as itc_register_service
 import services.bill_of_entry_service as bill_of_entry_service
+import services.client_gst_turnover_service as client_gst_turnover_service
 from domain.gst.gstr3b_computer import (
     SalesTransaction, PurchaseTransaction, ITCReversal, GSTR2ARecord,
     ImportOfGoods,
@@ -320,10 +322,11 @@ def _document_lines(db, table: str, fk: str, doc_ids: list[str]) -> dict[str, li
         SAC code ever reached the return, while the line rows behind it all
         carried one.
 
-        That is a filing defect above the turnover thresholds the builder
-        already encodes in _required_hsn_digits — 6 digits above ₹5 crore,
-        4 above ₹1.5 crore (CGST Rule 59 / the CBIC HSN notifications). The
-        digit count was computed correctly and then had nothing to truncate.
+        That is a filing defect above the turnover thresholds in
+        `domain/gst/hsn_digits` — Notification 78/2020-Central Tax, 6 digits
+        above ₹5 crore and 4 on B2B at or below it. (The builder's own
+        threshold table used to say "4 above ₹1.5 crore", which was a hybrid of
+        two notifications and is GST-17.)
 
     CESS IS READ FROM THE LINE WHERE THE LINE HAS IT, AND IS 0 WHERE IT DOES
     NOT. Migration 374 gave `client_sales_invoice_lines` a `cess_paise`; the
@@ -1774,10 +1777,18 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
 
 
 def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
-                     aggregate_turnover_paise: int = 0) -> dict:
+                     aggregate_turnover_paise: Optional[int] = None) -> dict:
     """Build GSTR-1 from posted sales invoices + issued credit/debit notes, and
     reconcile the total output tax to the General Ledger GST-output control
-    accounts."""
+    accounts.
+
+    `aggregate_turnover_paise` is the client's CGST §2(6) aggregate turnover for
+    the PRECEDING financial year — what Notification 78/2020-Central Tax reads
+    on for Table 12's HSN digits. **None means nobody recorded it**, which the
+    return reports as a gap; it used to default to `0`, a real turnover meaning
+    "below every threshold", so every client was silently told HSN was optional
+    (GST-17).
+    """
     start, end = _period_bounds(period)
 
     invoices_raw = _posted_sales(db, firm_id, client_id, start, end)
@@ -1945,6 +1956,24 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         )
         for inv in invoices
     ])
+
+    # THE CALLER'S FIGURE WINS, AND THE BOOKS ANSWER WHERE THERE IS NONE —
+    # `domain/tds/deductor.resolve`'s shape. A screen that has one (a CA typing
+    # over it for a one-off build) is honoured; every other caller gets the
+    # figure recorded on `client_gst_turnover` for the PRECEDING financial
+    # year, which is what Notification 78/2020 reads on. Still None where
+    # nobody has recorded one, and the return NAMES that rather than filing a
+    # zero that reads as "below every threshold".
+    if aggregate_turnover_paise is None:
+        try:
+            aggregate_turnover_paise = (
+                client_gst_turnover_service.turnover_governing_period(
+                    db, firm_id, client_id, start))
+        except Exception:  # noqa: BLE001 — a missing table or a failed read
+            # must not take the whole return down: the requirement then falls
+            # back to the strictest reading and is reported as unrecorded,
+            # which is exactly the state this resolves.
+            aggregate_turnover_paise = None
 
     payload = build_gstr1(invoices, gstin, period, aggregate_turnover_paise)
 

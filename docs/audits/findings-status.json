@@ -111,11 +111,10 @@
       "reread_on": "2026-09-17"
     },
     "GST-17": {
-      "status": "open",
+      "status": "closed",
       "verified_on": "2026-09-17",
-      "why": "the `why` recorded task #165, which stopped Table 12 filing one OTH row — a different defect. gstr1_builder._required_hsn_digits still returns 6/4/0 off the ABOLISHED ₹1.5 crore rung, and its only consumer is `(line.hsn_sac_code or '')[:max(required, len(...))]`, a slice that can never shorten: a 2-digit HSN at ₹10 crore turnover comes back as '99' with an empty gap list",
-      "reread_on": "2026-09-17",
-      "what_is_left": "Notification 78/2020's two tiers (6 digits above ₹5 crore, 4 on B2B up to it), turning the digit count into a REPORTED validation rather than a dead truncation, and the Table 12 B2B/B2C split. Blocked on the client's AATO, which nothing stores — lib/data/gst.ts still sends aggregate_turnover_paise: 0"
+      "why": "domain/gst/hsn_digits.py is the authority and holds BOTH tables, forked on Notification 78/2020-Central Tax's 01-04-2021 commencement: six digits above ₹5 crore and four on B2B at or below it from that date, the pre-2021 4/2/0 table before it. The abolished ₹1.5 crore rung is gone from the current rule. The truncating slice `[:max(required, len(code))]` — which could never shorten — is deleted: the code is filed exactly as recorded and a shortfall is REPORTED in payload_gaps, which the GSTR-1 screen already renders. The B2B/B2C split is resolved per INVOICE off classifier.B2B_SECTION_CATEGORIES, not once per return. Migration 401 gives the AATO a home (client_gst_turnover, per financial year), client_gst_turnover_service reads and writes it, GET/PUT /api/client-gst-registrations/turnover serve it, the Registrations tab records it, and lib/data/gst.ts no longer sends `aggregate_turnover_paise: 0` — the server resolves the PRECEDING year's figure. None is a third state: an unrecorded turnover takes the strictest reading and is NAMED, never read as zero",
+      "reread_on": "2026-09-17"
     },
     "GST-18": {
       "status": "open",

@@ -7,25 +7,24 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **235** | re-read against the code. The defect is gone. |
+| closed | **236** | re-read against the code. The defect is gone. |
 | partial | **31** | part of the finding is answered, part is not. Each says which. |
-| open | **7** | re-read and still true. |
+| open | **6** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 38 items — 7 open and 31 partial — not 254.**
+**The work left is 37 items — 6 open and 31 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**Of the 7 open, 4 are blocked on something outside the code** — a statutory schema, a file layout, a registration — and each blocker is named below. The other 3 are ordinary code work with nothing in front of them.
+**Of the 6 open, 4 are blocked on something outside the code** — a statutory schema, a file layout, a registration — and each blocker is named below. The other 2 are ordinary code work with nothing in front of them.
 
 ## Open
 
 | severity | finding | what it is |
 |---|---|---|
-| medium | **GST-17** | The HSN digit requirement is computed and then never applied or warned about, and the thresholds |
 | medium | **GST-18** | GSTR-1 Table 13 (documents issued) is missing the serial-number range the form requires |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
@@ -233,6 +232,7 @@ is left as "unknown".
 | medium | **GST-06** | Non-GST outward supplies are dropped from GSTR-3B Table 3.1(e) and counted nowhere |
 | medium | **GST-09** | The correction window always reports 30 November — the "or the annual return, whichever is earli |
 | medium | **GST-15** | GSTR-1 Table 11 advance tax is computed into the filed payload while the advances report tells t |
+| medium | **GST-17** | The HSN digit requirement is computed and then never applied or warned about, and the thresholds |
 | medium | **GST-22** | The GSTR-3B screen prints taxable VALUES in the IGST column and shows none of tables 3.1(d), 3.1 |
 | medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |
 | medium | **GST-27** | The 2A/2B reconciliation engine is business logic in TypeScript and parses money with parseFloat |

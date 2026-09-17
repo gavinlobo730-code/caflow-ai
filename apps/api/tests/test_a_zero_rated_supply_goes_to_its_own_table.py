@@ -251,9 +251,13 @@ def test_a_note_table_9b_has_no_row_for_is_reported_too():
 
     out = _payload([note])
     assert "cdnur" not in out.payload
-    assert [g["kind"] for g in out.gaps] == ["CDNUR"]
-    assert out.gaps[0]["reference_no"] == "CN-1"
-    assert "Table 7" in out.gaps[0]["reason"], (
+    # This fixture carries no line detail, so Table 12 files it under 'OTH' and
+    # the HSN digit requirement reports it too (GST-17) — correctly, and about
+    # a different question. Filtered so this test keeps asserting its own rule.
+    own = [g for g in out.gaps if not str(g["kind"]).startswith("hsn_")]
+    assert [g["kind"] for g in own] == ["CDNUR"]
+    assert own[0]["reference_no"] == "CN-1"
+    assert "Table 7" in own[0]["reason"], (
         "a gap has to say what to do about it, or it is just a count")
 
 
@@ -271,4 +275,4 @@ def test_an_inter_state_note_to_an_unregistered_person_is_filable():
 
     out = _payload([note])
     assert out.payload["cdnur"]
-    assert out.gaps == []
+    assert [g for g in out.gaps if not str(g["kind"]).startswith("hsn_")] == []

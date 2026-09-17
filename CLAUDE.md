@@ -1646,6 +1646,56 @@ change. The code is the authority; keep this file in step with it.
   not restart each April** — the client-wide unique index would reject the
   collision — so the sequence keeps climbing, and that falls out of matching on the
   series head rather than being special-cased.
+- **HOW MANY DIGITS OF HSN A RETURN MUST CARRY IS `domain/gst/hsn_digits`, AND
+  THE TABLE THAT USED TO LIVE IN THE BUILDER WAS A HYBRID OF TWO
+  NOTIFICATIONS** (GST-17, migration 401). `_required_hsn_digits` returned 6
+  above ₹5 crore, 4 above ₹1.5 crore and 0 below — the ₹1.5 crore rung is the
+  PRE-2021 table's and the digit counts beside it are the POST-2021 table's,
+  so it existed in no notification at all. **Notification 78/2020-Central Tax**
+  (15-10-2020, in force 01-04-2021) is 6 digits above ₹5 crore on every supply
+  and **4 digits on B2B at or below it**, optional only on B2C — so a client
+  with ₹1 crore of turnover was told HSN was optional when four digits are
+  required on every B2B supply however small the turnover. Both tables are
+  held and the PERIOD decides, because a belated GSTR-1 for a 2019 period is
+  filed under the rule in force then: the fork shape again.
+  **NOTHING TRUNCATES, AND NOTHING EVER DID.** The requirement's one consumer
+  was `code = (line.hsn_sac_code or "")[:max(required, len(code))]`, a slice
+  whose length is the LARGER of the requirement and the code's own length — so
+  it can never shorten anything. A 2-digit HSN at ₹10 crore came back as `99`,
+  was filed as `99`, and appeared in no gap list. The code is filed exactly as
+  recorded now (the notification sets a FLOOR, so a longer code is already
+  compliant and truncating for real would file a number the client never
+  issued) and the shortfall is REPORTED in `payload_gaps`, beside Table 12's
+  unit gaps and for GST-29's reasons. **The digit check runs BEFORE the walk's
+  `continue`**, which is the one place it must differ from the UQC gap: a line
+  with no HSN is exactly what the requirement is about and is the line Table 12
+  drops, so checking after the skip would report every shortfall except the
+  complete absence.
+  **THE SPLIT IS PER SUPPLY, NOT PER RETURN** — resolved inside the loop from
+  the invoice's own category against `classifier.B2B_SECTION_CATEGORIES`
+  (derived, not listed, because B2C is the side where the requirement falls
+  away and a miss would UNDER-report).
+  **AGGREGATE TURNOVER IS THE PRECEDING YEAR'S, IS RECORDED, AND `None` IS A
+  THIRD STATE.** CGST §2(6) is computed on the PAN, ALL-INDIA, and includes
+  exempt supplies, exports and inter-State supplies between distinct persons —
+  a second registration's supplies count toward it — so it cannot be derived
+  from one client's books, and it is NOT `tax_audits.turnover_paise` (§44AB
+  turnover, different figure, different year). Migration 401's
+  `client_gst_turnover` holds it per financial year (a single column on
+  `clients` would be overwritten each April and re-tier every belated return),
+  keyed on the year the figure MEASURES with the preceding-year hop in
+  `governing_financial_year`. `lib/data/gst.ts` used to send
+  `aggregate_turnover_paise: 0`, which is a REAL turnover meaning "below every
+  threshold" — so every client was silently told HSN was optional and no gap
+  was ever reported. It sends nothing now and the service resolves it; `None`
+  takes the STRICTEST reading and says so, because under-reporting the
+  requirement files a return the portal rejects while over-reporting costs a
+  glance. The unrecorded sentence is emitted ONCE and only where a shortfall
+  was actually found — a client whose codes are all six digits owes nothing
+  whatever their turnover was. ⚠️ Both tables are `[S]`-graded (egress is
+  refused here) and every threshold and digit count is pinned exactly by
+  `tests/test_how_many_hsn_digits_a_return_must_carry.py`.
+
 - **A UNIT QUANTITY CODE IS A CODE, NOT A WORD, and the one module that knew
   which codes exist had ZERO IMPORTERS.** `models/uqc.py` held CBIC's fixed
   44-code list and named, in its own docstring, every place it was meant to be

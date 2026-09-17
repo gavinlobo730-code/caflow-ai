@@ -233,11 +233,30 @@ def test_two_HSNs_each_in_their_own_unit_is_NOT_a_mixture():
     assert uqc.GAP_UQC_MIXED_FOR_ONE_HSN not in _kinds(out)
 
 
-def test_a_line_with_NO_HSN_is_not_reported_because_it_is_not_declared():
-    """The gap walk and the row walk must agree about what is in scope."""
+def test_a_line_with_NO_HSN_has_its_UNIT_left_alone():
+    """The UNIT gap walk and the row walk must agree about what is in scope.
+
+    A line with no HSN is not in Table 12 at all, so reporting the unit it was
+    supplied in would send a CA to fix a line this table does not carry.
+
+    THE DIGIT GAP IS THE OPPOSITE AND DELIBERATELY SO (GST-17): a line with no
+    HSN is precisely what the digit requirement is about, and it is missing
+    from Table 12 BECAUSE of the thing being reported. Two questions, two
+    scopes — the next test is the other half.
+    """
     out = _build([_invoice("INV/1", [_line(hsn="", unit="PIECES"),
                                      _line(hsn="8471", unit="PCS")])])
-    assert out.gaps == []
+    assert uqc.GAP_UQC_NOT_A_CODE not in _kinds(out)
+    assert uqc.GAP_UQC_NOT_RECORDED not in _kinds(out)
+
+
+def test_a_line_with_NO_HSN_is_reported_for_its_MISSING_CODE():
+    from domain.gst.gstr1_builder import GAP_HSN_DIGITS
+    out = _build([_invoice("INV/1", [_line(hsn="", unit="PCS"),
+                                     _line(hsn="8471", unit="PCS")])])
+    assert GAP_HSN_DIGITS in _kinds(out)
+    gap = next(g for g in out.gaps if g["kind"] == GAP_HSN_DIGITS)
+    assert gap["reference_no"] == "INV/1"
 
 
 def test_a_credit_notes_lines_are_reported_too():
