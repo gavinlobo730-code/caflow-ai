@@ -145,8 +145,15 @@ def exemption_for_entry(entry: dict, claim_rows: list[dict], *,
 
     long_term = bool(entry.get("gain_type") == "LTCG")
     if entry.get("gain_type") is None and purchase_date is not None:
+        # IT-28. The fallback asks the classifier, so it must ask it with the
+        # same fact the classifier now takes: a LISTED bond is long-term after
+        # twelve months, and reading the row without `is_listed_security`
+        # would give this path a different answer from the one stored in
+        # `gain_type` on every entry that has one. `None` is the register's
+        # own "not recorded" and the classifier reads it as unlisted.
         long_term = is_long_term(entry.get("asset_type") or "other",
-                                 purchase_date, transfer_date)
+                                 purchase_date, transfer_date,
+                                 entry.get("is_listed_security"))
 
     due_date, decided = _due_date(client_id, firm_id, transfer_date)
 

@@ -264,6 +264,18 @@ export interface ComputeCapitalGainsRequest {
    *  unanswered question reads as one, rather than as a claim nobody was
    *  entitled to make. */
   assessee_type?: CapitalGainsAssesseeType;
+  /** IT-28. Whether the security is LISTED in a recognised stock exchange in
+   *  India — the proviso to s.2(42A) gives it a 12-month holding period
+   *  against 24 for everything else, and `asset_type` cannot carry it.
+   *  A TRI-STATE: `null`/omitted means NOT RECORDED, which takes the unlisted
+   *  period (more tax, never less) and comes back as a named gap. */
+  is_listed_security?: boolean | null;
+  /** IT-19. Fair market value on 31-01-2018 of the WHOLE holding sold — not a
+   *  per-share price. s.55(2)(ac) deems the cost of a s.112A asset acquired
+   *  before 01-02-2018 to be the higher of the actual cost and the lower of
+   *  this and the sale value. Omitted leaves the actual cost standing, which
+   *  over-states the gain, and the response names it. */
+  fmv_31_01_2018_paise?: number | null;
 }
 
 export interface CapitalGainsComputeResult {
@@ -285,6 +297,16 @@ export interface CapitalGainsComputeResult {
   section_ref: string;
   note: string;
   is_slab_rate_estimate: boolean;
+  /** The cost s.48 was actually computed on — the actual cost of acquisition,
+   *  or the s.55(2)(ac) deemed cost where the substitution ran. */
+  cost_of_acquisition_paise?: number;
+  grandfathered_cost_is_applied?: boolean;
+  grandfathering_working?: string[];
+  /** NOT interchangeable, and rendered differently: `gaps` are facts nobody
+   *  recorded that a CA has to go and find, `caveats` are settled reasons a
+   *  section does not reach this transfer. */
+  gaps?: string[];
+  caveats?: string[];
 }
 
 export interface CapitalGainsRecord {
@@ -301,6 +323,10 @@ export interface CapitalGainsRecord {
   gain_type: "STCG" | "LTCG" | null;
   tax_rate_percent: number | null;
   transferred_asset_nature: TransferredAssetNature | null;
+  /** Migration 402. Both nullable with no default and nothing back-filled —
+   *  `null` is NOT RECORDED, never a guess. */
+  is_listed_security: boolean | null;
+  fmv_31_01_2018_paise: number | null;
   created_at: string;
 }
 

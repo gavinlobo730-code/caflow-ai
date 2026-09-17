@@ -4,7 +4,31 @@ Capital gains computation — IT Act 1961 Section 45 (chargeability), Section 48
 classification), Section 111A (STCG, listed equity/equity MF), Section 112A
 (LTCG, listed equity/equity MF), Section 112 (LTCG, other assets), Section
 115BBH (VDA/cryptocurrency), Section 50AA (debt mutual funds, Finance Act
-2023).
+2023), Section 55(2)(ac) (the Section 112A grandfathered cost).
+
+## TWO FACTS DECIDE MONEY HERE AND NEITHER IS DERIVABLE FROM THE OTHERS
+
+Both are tri-state inputs carried on `public.capital_gains` by migration 402,
+nullable with no default and no backfill, and both are REFUSED AND NAMED
+rather than guessed — the same shape as `transferred_asset_nature`
+(migration 385) and `fixed_assets.rule_43_use`.
+
+  * `is_listed_security` (IT-28). The proviso to Section 2(42A) gives a
+    security listed in a recognised stock exchange in India — a bond or a
+    debenture as much as a share — a TWELVE-month holding period where an
+    unlisted one needs twenty-four. The asset type cannot carry it, because a
+    debenture is the same kind of asset either way. Unrecorded takes the
+    unlisted period, which over-states the tax, and `listing_gap` says so.
+
+  * `fmv_31_01_2018_paise` (IT-19). Section 55(2)(ac) deems the cost of a
+    Section 112A asset acquired before 01-02-2018 to be the higher of the
+    actual cost and the lower of the 31-01-2018 fair market value and the
+    sale value. That fair market value is a fact about one scrip on one day —
+    the highest quoted price, or the net asset value for an unlisted unit —
+    which nothing in this product holds and nothing can derive. Unrecorded
+    leaves the ACTUAL cost standing, which is limb (i)'s own floor, so the
+    gain reported is the LARGEST the section can produce; the gap names the
+    over-statement rather than hiding it.
 
 R3.1b: this capability did not exist in the backend at all before this
 module — apps/web/app/income-tax/capital-gains/page.tsx computed AND
@@ -78,6 +102,33 @@ FINANCE_NO2_ACT_2024 = date(2024, 7, 23)
 # A unit acquired before that date is an ordinary capital asset and keeps
 # the Section 2(42A)/112 treatment — see the debt-MF branch below.
 SECTION_50AA_FROM = date(2023, 4, 1)
+
+# ── Section 55(2)(ac) — the Section 112A grandfathered cost ─────────────────
+# Section 112A charged listed equity to tax for the first time from AY
+# 2019-20, and Section 55(2)(ac) protects the appreciation that had already
+# happened when it did: for such an asset ACQUIRED BEFORE 1 FEBRUARY 2018 the
+# cost of acquisition is deemed to be
+#
+#     HIGHER of  (i)  the actual cost, and
+#                (ii) LOWER of (a) the fair market value on 31 JANUARY 2018
+#                              (b) the full value of the consideration.
+#
+# Both limbs matter and each guards against one failure. Limb (i) is why the
+# substitution can never CREATE a loss out of a fall since 2018 — a real loss
+# on the actual cost still comes through, because the actual cost wins. Limb
+# (ii)(b) is why it can never turn a gain into a loss — capped at the sale
+# value, the deemed cost gives a nil gain at worst.
+#
+# ⚠️ `[S]`. Direct egress is refused at this environment's proxy,
+# incometax.gov.in included, so neither date was read against the bare Act.
+# Both are pinned exactly by a test so a correction is one edit and shows up
+# as a deliberate change.
+SECTION_55_2_AC_FMV_DATE = date(2018, 1, 31)
+#: "acquired before the 1st day of February, 2018" — so the test is strictly
+#: `purchase_date < this`, and an asset bought ON 1 February 2018 is outside.
+#: Written as its own constant rather than as `FMV_DATE + 1 day`, because
+#: they are two facts of the section that happen to be adjacent.
+SECTION_55_2_AC_ACQUIRED_BEFORE = date(2018, 2, 1)
 
 
 # ── Cost Inflation Index (CII) — IT Act Section 48, 2nd proviso ─────────────
@@ -180,20 +231,49 @@ def fy_for_date(d: date) -> str:
 # treatment. "bonds"/"other"/"unlisted"/"gold" are all "other assets" under
 # Section 112.
 #
-# KNOWN GAP: "bonds" does not say whether the bond is LISTED. A listed
-# security has a 12-month holding threshold under the third proviso to
-# Section 2(42A), and pre-23-07-2024 a listed security also carried the
-# 10%-without-indexation option in the proviso to Section 112(1). Neither is
-# modelled — a "bonds" row is treated as an unlisted other asset, which
-# classifies more gains as short-term and never offers the 10% option, i.e.
-# it errs towards MORE tax, never less. Splitting listed from unlisted needs
-# a field the register does not have.
+# WHETHER A SECURITY IS LISTED IS A DIFFERENT FACT FROM WHAT KIND OF ASSET IT
+# IS, AND IT DECIDES THE HOLDING PERIOD (IT-28). The asset type says "bonds";
+# the proviso to Section 2(42A) turns on whether that bond is a security
+# LISTED in a recognised stock exchange in India, and a listed one is
+# long-term after twelve months where an unlisted one needs twenty-four. The
+# two cannot be collapsed into the asset type — a debenture is the same kind
+# of asset listed or not — so `is_listed_security` is its own tri-state
+# parameter, carried on the register by migration 402 and REFUSED rather than
+# guessed where nobody has recorded it. `listing_gap` below says what
+# unrecorded does and why that direction is the safe one.
 _EQUITY_LIKE = frozenset({"equity", "equity_shares", "mutual_funds"})
 _PROPERTY_LIKE = frozenset({"property"})
 _DEBT_MF_LIKE = frozenset({"debt_mf"})
 _VDA_LIKE = frozenset({"vda"})
 # Everything else (unlisted, gold, bonds, other, ...) falls through to the
 # generic "other assets" Section 112 treatment.
+
+#: The asset types for which "is it listed?" is a LIVE, UNANSWERED question.
+#:
+#: Derived from what the proviso to Section 2(42A) reaches rather than from a
+#: list of things that sounded plausible, and every exclusion is its own
+#: decision:
+#:
+#:   * `equity` / `equity_shares` / `mutual_funds` are already on twelve
+#:     months — a listed equity share and a unit of an equity-oriented fund
+#:     are both named there, so the asset type has already answered it.
+#:   * `property` and `gold` are not securities and cannot be listed.
+#:   * `vda` is charged under Section 115BBH whatever the holding period.
+#:   * `unlisted` ANSWERS THE QUESTION IN ITS OWN NAME. Honouring
+#:     `is_listed_security=True` against it would let a caller contradict the
+#:     asset type the same row was created with.
+#:   * `debt_mf` is a UNIT, and the twelve-month limb reaches a security
+#:     "OTHER THAN A UNIT". A listed debt-fund unit is still twenty-four
+#:     months, so accepting the flag there would classify a real short-term
+#:     gain as long-term — UNDER-taxing, the direction that costs the client
+#:     Section 234B interest.
+#:
+#: KNOWN GAP, named rather than modelled: the same limb of Section 2(42A) also
+#: reaches a ZERO COUPON BOND (Section 2(48)) whether or not it is listed.
+#: Whether a bond is a notified zero coupon bond is a THIRD fact nobody here
+#: holds and it is not derivable from the other two, so an unlisted zero
+#: coupon bond gets twenty-four months — over-taxing, never under.
+_LISTING_IS_ASKED = frozenset({"bonds", "other"})
 
 ASSET_TYPES = ("equity", "debt_mf", "property", "unlisted", "vda", "gold")
 REGISTER_ASSET_TYPES = ("equity_shares", "mutual_funds", "property", "bonds", "other")
@@ -236,12 +316,27 @@ _LTCG_112A_EXEMPTION_PAISE = 125_000_00           # ₹1,25,000, from 23-07-2024
 _LTCG_112A_EXEMPTION_PRE_2024_PAISE = 100_000_00  # ₹1,00,000, before that
 
 
-def long_term_threshold_months(asset_type: str, sale_date: date) -> int:
-    """The Section 2(42A) threshold in force on the date of TRANSFER."""
+def long_term_threshold_months(
+    asset_type: str,
+    sale_date: date,
+    is_listed_security: Optional[bool] = None,
+) -> int:
+    """The Section 2(42A) threshold in force on the date of TRANSFER.
+
+    `is_listed_security` is a TRI-STATE: True (listed on a recognised stock
+    exchange in India), False (not listed), None (nobody recorded it). None
+    takes the unlisted threshold and the caller reports the gap — see
+    `listing_gap`."""
     if asset_type in _EQUITY_LIKE:
-        # Third proviso to Section 2(42A) — a listed security (and a unit of
-        # an equity-oriented fund) has been 12 months throughout the period
-        # this module covers.
+        # Proviso to Section 2(42A) — a listed security (and a unit of an
+        # equity-oriented fund) has been 12 months throughout the period this
+        # module covers.
+        return _LONG_TERM_MONTHS_LISTED
+    if is_listed_security is True and asset_type in _LISTING_IS_ASKED:
+        # The same limb, reached by the same words. A listed debenture or
+        # bond is "a security (other than a unit) listed in a recognised
+        # stock exchange in India" and has carried 12 months on both sides of
+        # the Finance (No. 2) Act 2024 fork, so no date branch is needed.
         return _LONG_TERM_MONTHS_LISTED
     if sale_date >= FINANCE_NO2_ACT_2024:
         return _LONG_TERM_MONTHS_OTHER_FROM_23_JUL_2024
@@ -284,14 +379,195 @@ def holding_months(purchase_date: date, sale_date: date) -> int:
     return max(0, n)
 
 
-def is_long_term(asset_type: str, purchase_date: date, sale_date: date) -> bool:
+def is_long_term(
+    asset_type: str,
+    purchase_date: date,
+    sale_date: date,
+    is_listed_security: Optional[bool] = None,
+) -> bool:
     """Section 2(42A) classification from the two DATES, not from a month
     count. The asset is long-term only where the period of holding EXCEEDS
     the threshold: sold exactly N months after it was bought, the asset has
     been held for N months (the date of transfer itself being excluded) and
     is still short-term."""
-    threshold = long_term_threshold_months(asset_type, sale_date)
+    threshold = long_term_threshold_months(asset_type, sale_date, is_listed_security)
     return sale_date > _add_months(purchase_date, threshold)
+
+
+def listing_gap(
+    asset_type: str,
+    purchase_date: date,
+    sale_date: date,
+    is_listed_security: Optional[bool] = None,
+) -> Optional[str]:
+    """The sentence naming an unrecorded listing, or None where the fact
+    changes nothing (IT-28).
+
+    THE GAP IS REPORTED ONLY WHERE THE ANSWER WOULD MOVE THE CLASSIFICATION,
+    which is the same discipline `domain/gst/hsn_digits` applies to an
+    unrecorded aggregate turnover: a client whose holding is five years long
+    is long-term listed or not, and telling them to go and record something
+    that decides nothing is how a CA learns to ignore these sentences. The
+    test is written as the RULE — ask the classifier both ways — rather than
+    as the month band it happens to produce today.
+
+    UNTIL IT IS RECORDED THE UNLISTED THRESHOLD APPLIES, and that is the safe
+    direction rather than an accident. A wrongly LONG-TERM classification is
+    the expensive one: it charges 12.5% under Section 112 where the slab was
+    due, it opens the Section 112A annual exemption, and it lets the Section
+    54/54EC/54F family — which `reinvestment_exemption` gates on
+    `is_long_term` — exempt a gain those sections do not reach. A wrongly
+    SHORT-TERM one over-states the tax on a screen a CA reads before filing,
+    which is what this sentence is for."""
+    if asset_type not in _LISTING_IS_ASKED or is_listed_security is not None:
+        return None
+    if (is_long_term(asset_type, purchase_date, sale_date, True)
+            == is_long_term(asset_type, purchase_date, sale_date, False)):
+        return None
+    return (
+        "Whether this security is LISTED on a recognised stock exchange in "
+        "India is not recorded, and it decides the holding period: the "
+        "proviso to s.2(42A) makes a listed security (other than a unit) "
+        f"long-term after {_LONG_TERM_MONTHS_LISTED} months, where an "
+        "unlisted one needs "
+        f"{long_term_threshold_months(asset_type, sale_date, False)}. It has "
+        "been treated as UNLISTED, which over-states the tax rather than "
+        "under-stating it. Record it on the register entry. A notified zero "
+        "coupon bond (s.2(48)) also takes the shorter period whether or not "
+        "it is listed, and that is a fact this product does not hold at all.")
+
+
+@dataclass(frozen=True)
+class GrandfatheredCost:
+    """What Section 55(2)(ac) makes the cost of acquisition, and why."""
+    cost_paise: int
+    #: True only where the SUBSTITUTION actually ran — the section reached the
+    #: transfer AND a 31-01-2018 fair market value was supplied.
+    applied: bool
+    #: Facts nobody recorded. Actionable: a CA goes and finds the figure.
+    gaps: tuple[str, ...] = ()
+    #: Settled reasons. A value the caller supplied that the section does not
+    #: reach is named here rather than silently discarded.
+    caveats: tuple[str, ...] = ()
+    working: tuple[str, ...] = ()
+
+
+def _rupees(paise: int) -> str:
+    """DISPLAY ONLY, for the working sentences — the same helper and the same
+    carve-out as `reinvestment_exemption._rupees`. Nothing computed from this
+    is stored or returned as an amount; every figure this module answers with
+    stays in integer paise."""
+    return f"Rs {paise / 100:,.2f}"
+
+
+def section_55_2_ac_cost(
+    *,
+    asset_type: str,
+    purchase_date: date,
+    sale_date: date,
+    purchase_cost_paise: int,
+    sale_value_paise: int,
+    fmv_31_01_2018_paise: Optional[int] = None,
+    is_listed_security: Optional[bool] = None,
+) -> GrandfatheredCost:
+    """The Section 112A grandfathered cost of acquisition (IT-19).
+
+    Section 55(2)(ac) deems the cost of a long-term capital asset being an
+    equity share, a unit of an equity-oriented fund or a unit of a business
+    trust — the assets Section 112A charges — ACQUIRED BEFORE 01-02-2018 to be
+    the HIGHER of the actual cost and the LOWER of the 31-01-2018 fair market
+    value and the full value of the consideration.
+
+    NO ROUNDING HAPPENS HERE AND NONE IS NEEDED: every limb is a `max` or a
+    `min` of amounts already in integer paise, so there is no division to take
+    a direction on. That is worth stating rather than leaving to inference —
+    the two roundings this repository argues about (ESI up, the GST discount
+    down) both exist because a quotient had to land somewhere, and this one
+    has no quotient.
+
+    THE 31-01-2018 FAIR MARKET VALUE IS AN INPUT AND IS REFUSED WHEN ABSENT.
+    The Explanation to the clause makes it the highest price quoted on that
+    date (or the last preceding trading day) for a listed share, and the net
+    asset value for an unlisted unit — a fact per scrip, per date, that no
+    ledger in this product holds and that cannot be derived from the cost or
+    the sale value. So the section is NOT applied, the ACTUAL cost stands, and
+    the gap is NAMED. That is honest rather than conservative: limb (i) makes
+    the actual cost a FLOOR on the deemed cost, so the gain reported without
+    the substitution is the LARGEST the section can produce — an upper bound
+    on the tax, not a guess at it.
+
+    THE FIGURE IS THE WHOLE HOLDING'S, not a per-share price: the register
+    holds no quantity, and `purchase_cost_paise` and `sale_value_paise` are
+    both totals for what was transferred, so the fair market value must be the
+    same shape or the three limbs are not comparable.
+    """
+    long_term = is_long_term(asset_type, purchase_date, sale_date, is_listed_security)
+    reaches = (asset_type in _EQUITY_LIKE
+               and long_term
+               and purchase_date < SECTION_55_2_AC_ACQUIRED_BEFORE)
+
+    if not reaches:
+        caveats: tuple[str, ...] = ()
+        if fmv_31_01_2018_paise is not None:
+            # A supplied value that is not used is NAMED, never silently
+            # dropped — the SALES-31 shape, where a caller filled in a field
+            # that was honoured under test and discarded in production.
+            if asset_type not in _EQUITY_LIKE:
+                why = ("s.55(2)(ac) reaches only an equity share, a unit of an "
+                       "equity-oriented fund or a unit of a business trust — the "
+                       "assets s.112A charges.")
+            elif not long_term:
+                why = ("s.55(2)(ac) reaches a LONG-TERM capital asset, and this "
+                       "transfer is short-term; s.111A charges it on the actual "
+                       "cost.")
+            else:
+                why = (f"s.55(2)(ac) reaches an asset acquired before "
+                       f"{SECTION_55_2_AC_ACQUIRED_BEFORE.strftime('%d-%m-%Y')}, "
+                       f"and this one was acquired on "
+                       f"{purchase_date.strftime('%d-%m-%Y')}.")
+            caveats = (
+                "The 31-01-2018 fair market value supplied has NOT been used: "
+                + why,)
+        return GrandfatheredCost(cost_paise=purchase_cost_paise, applied=False,
+                                 caveats=caveats)
+
+    if fmv_31_01_2018_paise is None:
+        return GrandfatheredCost(
+            cost_paise=purchase_cost_paise,
+            applied=False,
+            gaps=(
+                "This holding was acquired before "
+                f"{SECTION_55_2_AC_ACQUIRED_BEFORE.strftime('%d-%m-%Y')}, so "
+                "s.55(2)(ac) substitutes a grandfathered cost — the higher of "
+                "the actual cost and the lower of the "
+                f"{SECTION_55_2_AC_FMV_DATE.strftime('%d-%m-%Y')} fair market "
+                "value and the sale value. That fair market value is a fact "
+                "about the scrip on one day (the Explanation makes it the "
+                "highest quoted price, or the net asset value for an unlisted "
+                "unit) and nothing in this product holds it, so the ACTUAL "
+                "cost has been used and the gain below is the LARGEST the "
+                "section can give — it is over-stated by the whole of the "
+                "appreciation up to 31-01-2018. Record the figure for the "
+                "WHOLE holding sold, not per share.",),
+        )
+
+    # (ii): lower of the 31-01-2018 fair market value and the full value of
+    # the consideration. (i) then floors it at the actual cost.
+    capped_fmv = min(fmv_31_01_2018_paise, sale_value_paise)
+    deemed = max(purchase_cost_paise, capped_fmv)
+    return GrandfatheredCost(
+        cost_paise=deemed,
+        applied=True,
+        working=(
+            f"s.55(2)(ac)(ii): lower of the 31-01-2018 fair market value "
+            f"{_rupees(fmv_31_01_2018_paise)} and the full value of the "
+            f"consideration {_rupees(sale_value_paise)} = "
+            f"{_rupees(capped_fmv)}.",
+            f"s.55(2)(ac)(i): higher of the actual cost "
+            f"{_rupees(purchase_cost_paise)} and that = {_rupees(deemed)}, "
+            f"which is the deemed cost of acquisition.",
+        ),
+    )
 
 
 def _round_paise(numerator: int, denominator: int) -> int:
@@ -337,6 +613,20 @@ class CapitalGainsResult:
     # construction in this module keeps working; set by compute_capital_gains.
     indexation_is_estimated: bool = False
     indexation_note: str = ""
+    # THE COST THE GAIN WAS ACTUALLY COMPUTED ON (IT-19) — the actual cost of
+    # acquisition, or the Section 55(2)(ac) deemed cost where the substitution
+    # ran. Improvement is NOT in it: that is a separate limb of Section 48 and
+    # is added on top, exactly as `gain_paise` does.
+    cost_of_acquisition_paise: int = 0
+    grandfathered_cost_is_applied: bool = False
+    # FACTS NOBODY RECORDED, one sentence each, never a guess — and a DIFFERENT
+    # thing from `caveats`, which are settled reasons. The panel renders them
+    # differently: a gap is actionable (go and record this), a caveat says the
+    # section does not reach the transfer. Same split as
+    # `domain/gst/rcm_documents.Decision`.
+    gaps: tuple[str, ...] = ()
+    caveats: tuple[str, ...] = ()
+    grandfathering_working: tuple[str, ...] = ()
 
 
 def compute_capital_gains(
@@ -347,18 +637,42 @@ def compute_capital_gains(
     sale_value_paise: int,
     improvement_cost_paise: int = 0,
     assessee_type: str = ASSESSEE_UNSPECIFIED,
+    is_listed_security: Optional[bool] = None,
+    fmv_31_01_2018_paise: Optional[int] = None,
 ) -> CapitalGainsResult:
     """Section 45/48 gain, Section 2(42A) classification, and the applicable
     special tax rate — integer paise throughout, and every rate chosen by the
     date of TRANSFER (see the module docstring's 23-07-2024 fork).
 
-    The indexation flag is stamped HERE, once, rather than on each of the eight
-    branches below: it is a property of the two DATES and nothing any branch
-    decides, so threading it through every construction would be eight chances
-    to forget it on the branch that matters (IT-29)."""
+    The indexation flag, the Section 55(2)(ac) cost and the two refusals are
+    stamped HERE, once, rather than on each of the eight branches below: each
+    is a property of the INPUTS and nothing any branch decides, so threading
+    them through every construction would be eight chances to forget it on the
+    branch that matters (IT-29)."""
+    grandfathered = section_55_2_ac_cost(
+        asset_type=asset_type, purchase_date=purchase_date, sale_date=sale_date,
+        purchase_cost_paise=purchase_cost_paise, sale_value_paise=sale_value_paise,
+        fmv_31_01_2018_paise=fmv_31_01_2018_paise,
+        is_listed_security=is_listed_security)
     result = _compute_capital_gains(
         asset_type, purchase_date, sale_date, purchase_cost_paise,
-        sale_value_paise, improvement_cost_paise, assessee_type)
+        sale_value_paise, improvement_cost_paise, assessee_type,
+        is_listed_security, grandfathered.cost_paise)
+
+    gaps = list(grandfathered.gaps)
+    unrecorded_listing = listing_gap(
+        asset_type, purchase_date, sale_date, is_listed_security)
+    if unrecorded_listing:
+        gaps.append(unrecorded_listing)
+    result = replace(
+        result,
+        cost_of_acquisition_paise=grandfathered.cost_paise,
+        grandfathered_cost_is_applied=grandfathered.applied,
+        gaps=tuple(gaps),
+        caveats=grandfathered.caveats,
+        grandfathering_working=grandfathered.working,
+    )
+
     purchase_fy = fy_for_date(purchase_date)
     sale_fy = fy_for_date(sale_date)
     missing = [fy for fy in (purchase_fy, sale_fy) if not cii_is_notified(fy)]
@@ -386,20 +700,33 @@ def _compute_capital_gains(
     sale_value_paise: int,
     improvement_cost_paise: int = 0,
     assessee_type: str = ASSESSEE_UNSPECIFIED,
+    is_listed_security: Optional[bool] = None,
+    cost_of_acquisition_paise: Optional[int] = None,
 ) -> CapitalGainsResult:
     months = holding_months(purchase_date, sale_date)
-    long_term = is_long_term(asset_type, purchase_date, sale_date)
+    long_term = is_long_term(asset_type, purchase_date, sale_date, is_listed_security)
     # Transfers on or after 23-07-2024 are governed by the Finance (No. 2)
     # Act 2024 amendments; anything earlier keeps the pre-amendment law.
     pre_2024 = sale_date < FINANCE_NO2_ACT_2024
 
-    cost_paise = purchase_cost_paise + improvement_cost_paise
+    # Section 48 is computed on the cost of acquisition, which Section
+    # 55(2)(ac) may DEEM to be something other than what was paid. The
+    # substitution is resolved by the caller above so it happens once; None
+    # means "nobody asked", and the actual cost stands.
+    acquisition_paise = (purchase_cost_paise if cost_of_acquisition_paise is None
+                         else cost_of_acquisition_paise)
+    cost_paise = acquisition_paise + improvement_cost_paise
     gain_paise = sale_value_paise - cost_paise
 
     purchase_fy = fy_for_date(purchase_date)
     sale_fy = fy_for_date(sale_date)
     cii_purchase = cii_for(purchase_fy)
     cii_sale = cii_for(sale_fy)
+    # Indexation runs on the ACTUAL cost, not the Section 55(2)(ac) deemed
+    # one: the substitution reaches only assets Section 112A charges, and
+    # Section 112A allows no indexation at all — so the two never meet, and
+    # taking the deemed cost here would put a figure on the indexed line of a
+    # transfer whose indexed line is never read.
     indexed_cost_paise = _round_paise(purchase_cost_paise * cii_sale, cii_purchase) + improvement_cost_paise
     gain_with_indexation_paise = sale_value_paise - indexed_cost_paise
 
@@ -431,7 +758,11 @@ def _compute_capital_gains(
                 False,
             )
         # Section 112A: 10% over ₹1,00,000 before 23-07-2024, 12.5% over
-        # ₹1,25,000 from that date.
+        # ₹1,25,000 from that date — on the gain computed above, which for a
+        # holding acquired before 01-02-2018 is measured against the Section
+        # 55(2)(ac) GRANDFATHERED cost where the caller supplied a 31-01-2018
+        # fair market value, and against the actual cost (with the gap named)
+        # where they did not. See `section_55_2_ac_cost`.
         #
         # Both ceilings are ANNUAL — Section 112A(2) exempts the first slice
         # of the assessee's aggregate 112A gain for the year, not of each
@@ -521,11 +852,23 @@ def _compute_capital_gains(
         # 20% on the INDEXED cost. Indexation was mandatory, not an option,
         # so there is no lower-of comparison to make here.
         #
-        # KNOWN GAP: the proviso to Section 112(1) let a LISTED security,
-        # a unit and a zero-coupon bond be charged at 10% without indexation
-        # where that was lower. Whether a row is listed is not recorded (see
-        # the asset-type note above), so that option is not offered; the
-        # direction of the error is more tax, never less.
+        # KNOWN GAP, AND ITS REASON CHANGED WITH IT-28 — read this before
+        # "finishing the job". The proviso to Section 112(1) let a LISTED
+        # security, a unit and a zero coupon bond be charged at 10% WITHOUT
+        # indexation where that came to less than 20% with it. Until IT-28 the
+        # reason it was not offered was that nothing recorded whether the row
+        # was listed; `is_listed_security` records that now, so the reason is
+        # no longer true and the option is STILL not offered, deliberately:
+        # the proviso's own limbs — which assessees it reaches, and whether
+        # the comparison is made before or after the second proviso to Section
+        # 48 — could not be read against the Act, because direct egress is
+        # refused at this environment's proxy. A rate written from memory that
+        # REDUCES what a client pays is the direction this repository refuses
+        # (`SECTION_50_3_NOTIFIED_RATE_BPS`, the Section 194I(a)/194J(a)
+        # limbs): an under-charge is a shortfall carrying Section 234B
+        # interest, an over-charge is a figure a CA checks. So the answer
+        # stays 20% with indexation, which errs towards MORE tax, and this
+        # note stays until somebody reads the proviso.
         taxable_indexed = max(0, gain_with_indexation_paise)
         tax_indexed = _round_paise(taxable_indexed * 20, 100)
         return CapitalGainsResult(
