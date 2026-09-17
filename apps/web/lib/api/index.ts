@@ -1318,6 +1318,30 @@ export type ClientGstRegistration = {
   other_return_form: string | null;
 };
 
+/** One financial year's CGST s.2(6) aggregate turnover, as the CA recorded it. */
+export type ClientGstTurnoverYear = {
+  id: string;
+  /** The year the figure MEASURES, canonical "YYYY-YY". The preceding-year hop
+   *  Notification 78/2020 requires is done server-side when the return is
+   *  built, so this is not the year it governs. */
+  financial_year: string;
+  aggregate_turnover_paise: number;
+  source_note: string | null;
+  updated_at?: string | null;
+};
+
+export type ClientGstTurnover = {
+  years: ClientGstTurnoverYear[];
+  /** Which year's figure governs a return prepared today. */
+  governing_financial_year: string;
+  /** NULL means no row — nobody has recorded it. Never 0, which is a client
+   *  who genuinely turned over nothing, and which would make the HSN
+   *  requirement read as optional. */
+  governing_turnover_paise: number | null;
+  /** The server's own sentence when the governing year is unrecorded. */
+  note: string | null;
+};
+
 export type GstRegistrationKinds = {
   registration_types: {
     value: string;
@@ -4414,6 +4438,26 @@ export const api = {
       request<ApiResp<{ id: string; deleted: boolean }>>(
         `/api/client-gst-registrations/${id}?client_id=${encodeURIComponent(clientId)}`,
         { method: "DELETE" }),
+    /** The client's CGST s.2(6) aggregate turnover per financial year (GST-17).
+     *
+     *  Notification 78/2020-Central Tax sets the GSTR-1 Table 12 HSN digit
+     *  requirement from the PRECEDING year's figure, and nothing in this
+     *  product can derive it: s.2(6) is computed on the PAN, all-India, and
+     *  includes exempt supplies and exports, so a second registration's
+     *  supplies count toward it. `governing_turnover_paise` is `null` when
+     *  nobody has recorded the year that governs — never 0, which is a client
+     *  who genuinely turned over nothing. */
+    turnover: (clientId: string) =>
+      request<ApiResp<ClientGstTurnover>>(
+        `/api/client-gst-registrations/turnover?client_id=${encodeURIComponent(clientId)}`),
+    recordTurnover: (body: {
+      client_id: string;
+      financial_year: string;
+      aggregate_turnover_paise: number;
+      source_note?: string | null;
+    }) => request<ApiResp<ClientGstTurnoverYear>>(
+      "/api/client-gst-registrations/turnover",
+      { method: "PUT", body: JSON.stringify(body) }),
   },
 
   /** The customs assessment on an import of goods (PUR-18).

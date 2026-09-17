@@ -25,8 +25,10 @@ from pydantic import BaseModel
 from core.authz import assert_client_access
 from core.permissions import rbac
 from models.common import api_response
-from domain.gst import registrations as reg
+from models.fy import FYLabel
+from domain.gst import hsn_digits, registrations as reg
 from services import client_gst_registration_service as svc
+from services import client_gst_turnover_service as turnover_svc
 
 router = APIRouter(prefix="/api/client-gst-registrations",
                    tags=["client_gst_registrations"])
@@ -174,3 +176,90 @@ def withdraw_registration(
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), old_data=row)
     return api_response(True, {"id": registration_id, "deleted": True})
+
+
+# ── Aggregate turnover (GST-17) ──────────────────────────────────────────────
+#
+# WHY IT LIVES BESIDE THE REGISTRATIONS rather than on a GST-workspace route:
+# it is the same KIND of fact — something about the client's own registration
+# status that no book of theirs can answer — and it takes the same permission
+# split for the same reason. Reading it is `gst.read`, because every GSTR-1
+# screen needs it to say which HSN requirement applies; writing it is
+# `client.write`, because it is a fact about the entity and not a return.
+
+
+class TurnoverIn(BaseModel):
+    """One financial year's CGST s.2(6) aggregate turnover.
+
+    `financial_year` is the year the figure MEASURES. The preceding-year hop
+    that Notification 78/2020 requires is done when the return is built
+    (`hsn_digits.governing_financial_year`), so a CA records what happened in a
+    year rather than working out which return it will govern.
+    """
+    client_id: str
+    financial_year: FYLabel
+    aggregate_turnover_paise: int
+    source_note: Optional[str] = None
+
+
+@router.get("/turnover")
+def list_turnover(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """Every aggregate turnover recorded for this client, newest year first.
+
+    Also says which year governs a return being prepared NOW and whether that
+    one is recorded — the question a CA opening the GSTR-1 screen actually has,
+    and one a bare list makes them work out.
+    """
+    assert_client_access(current_user, client_id)
+    from core.ist_clock import ist_today
+    governing_fy = hsn_digits.governing_financial_year(ist_today().isoformat())
+    if _mock_enabled():
+        return api_response(True, {
+            "years": [], "governing_financial_year": governing_fy,
+            "governing_turnover_paise": None,
+            "note": hsn_digits.TURNOVER_NOT_RECORDED,
+        })
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    years = turnover_svc.list_for_client(db, firm_id, client_id)
+    governing = turnover_svc.turnover_for_fy(db, firm_id, client_id, governing_fy)
+    return api_response(True, {
+        "years": years,
+        "governing_financial_year": governing_fy,
+        # None means NO ROW — never 0, which is a client who turned over
+        # nothing. The screen renders the two differently.
+        "governing_turnover_paise": governing,
+        "note": None if governing is not None else hsn_digits.TURNOVER_NOT_RECORDED,
+    })
+
+
+@router.put("/turnover")
+def record_turnover(
+    data: TurnoverIn,
+    current_user: dict = Depends(rbac("client", "write")),
+):
+    """Record or correct one year's aggregate turnover.
+
+    PUT rather than POST: (client, financial_year) is migration 401's unique
+    key, so recording 2025-26 twice is a correction and not a second figure.
+    """
+    assert_client_access(current_user, data.client_id)
+    if data.aggregate_turnover_paise < 0:
+        return api_response(False, None, "Aggregate turnover cannot be negative.")
+    if _mock_enabled():
+        return api_response(True, {"id": "mock-turnover", **data.model_dump()})
+    from core.supabase_client import get_supabase
+    from services.audit_service import log_event
+    row = turnover_svc.record(
+        get_supabase(), current_user.get("firm_id"), data.client_id,
+        data.financial_year, data.aggregate_turnover_paise,
+        source_note=data.source_note, recorded_by=current_user.get("id"))
+    log_event(current_user.get("firm_id") or "", "client_gst_turnover",
+              row.get("id") or "", "record",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data=row)
+    return api_response(True, row)

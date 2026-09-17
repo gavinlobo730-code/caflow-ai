@@ -84,9 +84,18 @@ class GSTR1Request(BaseModel):
         default={},
         description="Map of transaction_id → list of transaction_line records"
     )
-    aggregate_turnover_paise: int = Field(
-        default=0,
-        description="Annual aggregate turnover for HSN digit requirement"
+    aggregate_turnover_paise: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "The client's CGST s.2(6) aggregate turnover for the PRECEDING "
+            "financial year, in paise — what Notification 78/2020-Central Tax "
+            "reads on for the Table 12 HSN digit requirement. Omit it where "
+            "nobody has recorded one: the return then reports the strictest "
+            "requirement AND says the figure is missing. It used to default to "
+            "0, which is a real turnover meaning 'below every threshold', so "
+            "an unrecorded client was silently told HSN was optional (GST-17)."
+        ),
     )
 
 
@@ -359,7 +368,8 @@ def compute_gstr3b_endpoint(req: GSTR3BRequest, current_user: dict = Depends(rba
 class FromBooksRequest(BaseModel):
     client_id: str
     period: str  # MMYYYY
-    aggregate_turnover_paise: int = 0
+    #: See BuildGSTR1Request above — None means unrecorded, not zero.
+    aggregate_turnover_paise: Optional[int] = None
     # The date the return is (or will be) filed — GST-21. OPTIONAL, and that is
     # the point: a return being prepared has no filing date, and substituting
     # today would give Table 5.1 an interest figure that changes every day it

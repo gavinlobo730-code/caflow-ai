@@ -520,3 +520,49 @@ money: their ledgers, their ageing and their §43B(h) position all become one.
 
 Either way it is a small change; what it needs is your answer to "is a same-name
 supplier the same supplier?".
+
+## H. SALES-23, automated payment reminders to your clients' customers — **not yet asked**
+
+**Nothing is built and nothing is half-built.** This is the ONE finding still
+marked `open` that is not blocked on a document I cannot fetch — the other four
+wait on the NSDL FVU spec, the IRP schema, three more statutory forms and a
+bank's NEFT layout. This one waits on you.
+
+The finding asks for an automated reminder CADENCE: the product decides a
+receivable is overdue and emails the customer, on a schedule, without anybody
+pressing anything. A manual "send reminder" already exists and works.
+
+**Why I stopped rather than built it.** The recipient is not your user and not
+your client. It is your client's CUSTOMER — a third party who never signed up
+for anything here, whose email address arrived in a CSV, and who will read the
+message as coming from the client's business. Three things follow:
+
+1. **It is outbound mail nobody in the loop authorised per message.** The CA
+   configures a cadence once; the tenth reminder goes out months later to a
+   customer who may have paid, disputed the invoice, or gone elsewhere. The
+   product's standing rule everywhere else — never auto-submit, always an
+   explicit confirmation click — exists for exactly this shape.
+2. **DPDP.** `docs/compliance/06-data-protection-dpdp.md` already treats
+   counterparty data as the largest population of third-party data principals
+   in the product. Sending them mail is processing of a different order from
+   storing a name off an invoice, and it needs a notice and a basis.
+3. **It is the client's commercial relationship, not ours.** A reminder that
+   annoys a customer costs the CLIENT the customer, and the CA carries the
+   complaint. Every other product in this tier makes this opt-in per customer
+   for that reason.
+
+**Three ways to go:**
+
+1. **Leave it manual.** The CA presses send, one customer at a time, as today.
+   Costs nothing, decides nothing, and the finding closes as "not a defect as
+   stated".
+2. **A cadence the CA arms per CLIENT, with a per-customer opt-out and a
+   preview of every message before the first one goes.** Automated after that.
+   This is what I would build if you want it.
+3. **A queue, not a sender.** The product proposes the reminders due today and
+   the CA sends the batch with one click. No unattended outbound mail at all,
+   and it removes most of the manual labour the finding is really about. This
+   is the cheapest honest answer and it is the `Pass N ready` shape the bank
+   queue already uses.
+
+I have built none of them. Tell me which, or tell me to leave it.
