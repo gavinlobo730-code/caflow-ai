@@ -423,3 +423,53 @@ def test_the_party_travels_on_the_draft_and_the_columns_agree():
                                        payee_type="customer", payee_id="c1"), "Sales")
     assert carried is not None
     assert carried.payee_type == "customer" and carried.payee_id == "c1"
+
+
+def test_a_failed_pass_puts_the_party_back():
+    """The rollback snapshot's own comment is the argument: "a pass that then
+    fails would leave the machine's coding on the row looking like the CA's
+    answer — and the next reader would trust it."
+
+    That applies word for word to a party tag. Being a LABEL rather than a
+    posting is what makes a trusted rule safe to APPLY it; it is not a reason
+    to leave a wrong one behind. Asserted on `_CODING_COLS` and on the restore
+    body, because the snapshot and the restore are two lists that have to
+    agree — a column in one and not the other is a silent half-rollback."""
+    import ast
+    import pathlib as _p
+    from services.bank_entry_service import _CODING_COLS
+
+    party = ("payee_name", "payee_type", "payee_id")
+    for col in party:
+        assert col in _CODING_COLS, f"{col} is not snapshotted before a pass"
+
+    src = (_p.Path(__file__).resolve().parents[1]
+           / "services/bank_entry_service.py").read_text()
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "_unapply")
+    restored = {k.value for n in ast.walk(fn) if isinstance(n, ast.Dict)
+                for k in n.keys if isinstance(k, ast.Constant)}
+    for col in party:
+        assert col in restored, f"_unapply does not restore {col}"
+    # And every OTHER snapshotted column is restored too — the property, not
+    # just the three this test is about.
+    for col in _CODING_COLS:
+        assert col in restored, f"{col} is snapshotted and never put back"
+
+
+def test_the_party_is_applied_through_the_human_door():
+    """`bank_payee_service.set_payee` carries the firm-and-client check on a
+    polymorphic `payee_id` — migration 257 records that it is the only thing
+    between a typo and a bank line pointing at another client's customer. A
+    second write path would be a second place to forget it, so the rule's tag
+    delegates rather than updating the row."""
+    import ast
+    import pathlib as _p
+    src = (_p.Path(__file__).resolve().parents[1]
+           / "services/bank_payee_service.py").read_text()
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "apply_rule_party")
+    called = {n.func.attr for n in ast.walk(fn)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+    assert "set_payee" in called
+    assert "update" not in called, "apply_rule_party must not write the row itself"
