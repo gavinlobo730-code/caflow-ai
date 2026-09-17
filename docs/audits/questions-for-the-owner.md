@@ -246,7 +246,27 @@ work rather than a blocked item.
   nothing reads it. Both DROPs need the production-fixture refresh in
   `docs/schema-drift.md`, which is why they are one change and not four.
 
-## The bank exception rules get a "Worth a look" list  *(was §12a)*
+## The bank exception rules get a "Worth a look" list  *(was §12a)*  **— BUILT 17-09-2026**
+
+`services/bank_exception_service.py` — the collaborator the module's own
+docstring named and which did not exist — plus
+`GET /api/banking/worth-a-look` and a fourth Bank tab. Read-only: it holds no
+threshold, no severity order and no message, and a test asserts it never calls
+`blocks_posting` and issues no write of any kind.
+
+Three things the build decided, each written down where it happened:
+**the period is required and has no default** (an optional one is how a report
+comes to read the whole ledger — BANK-07's shape); **"have we seen this payee
+before" is asked the other way round**, `.in_()` over the PERIOD's own payees
+rather than reading the history, stopping as soon as each is answered; and
+**the history has THREE states, not two** — complete, truncated, and EMPTY.
+The third was found by writing the test: on a client's earliest period every
+payee is a first payee and every account one not used before, so both rules
+fire on every row and the review list is the statement back again. Truncated
+and empty each withhold those two rules, under their own sentence, because
+"there is nothing to have seen" is a different thing to tell a partner from
+"we could not tell".
+
 
 `domain/banking/exceptions.py` — 315 careful lines deciding what a partner
 should look at, whose only importer is its own test, and whose stated

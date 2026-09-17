@@ -75,17 +75,6 @@ NO_READER_YET: dict[str, str] = {
         "module uses 'Rs.' (no space, for a table cell). They are two "
         "answers to two questions; unifying them would change a document a "
         "client receives.",
-    "domain/banking/exceptions.py":
-        "A REAL GAP, named rather than silently fixed. 315 lines of rules for "
-        "'what a partner should look at' on a bank transaction, and the only "
-        "importer is its own test. Its docstring says the context is gathered "
-        "by `services/bank_exception_service.py` — THAT FILE DOES NOT EXIST. "
-        "So no flag is raised, no partner sees one, and `blocking` is "
-        "computed by nobody. The module itself records that nothing here "
-        "gating a posting is a PRODUCT DECISION and not an oversight, and "
-        "surfacing it is a review queue somebody has to want: it is in "
-        "docs/audits/questions-for-the-owner.md rather than built on a guess "
-        "about how a firm reviews.",
 }
 
 

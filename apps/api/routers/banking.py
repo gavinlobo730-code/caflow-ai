@@ -22,6 +22,7 @@ from models.common import api_response
 from services import bank_erasure
 from services.audit_service import log_event
 from core.authz import assert_client_access, filter_by_client
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.banking")
 
@@ -1430,6 +1431,54 @@ def list_transactions(
         min_amount_paise=min_amount_paise, max_amount_paise=max_amount_paise,
     )
     return api_response(True, _scope_rows(current_user, client_id, rows))
+
+
+@router.get("/worth-a-look")
+def worth_a_look(
+    client_id: str = Query(..., description="The client whose bank is being reviewed."),
+    from_date: str = Query(..., description="Period start, YYYY-MM-DD. REQUIRED."),
+    to_date: str = Query(..., description="Period end, YYYY-MM-DD. REQUIRED."),
+    bank_account_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("banking", "read")),
+):
+    """Posted bank lines carrying a reason for a partner to look, worst first.
+
+    `domain/banking/exceptions.py` decides which and why;
+    `services/bank_exception_service.py` gathers what the rules need. This
+    endpoint decides nothing.
+
+    READ-ONLY AND ADVISORY. Nothing here blocks or reverses a posting — the
+    owner's decision of 17-09-2026, and the domain module's own argument: a
+    platform should not hold a CA's books hostage to a threshold it invented,
+    and raising a flag is not blocking a posting. Each exception carries the
+    rules' own `blocking` so the screen can say a rule WOULD stop this if
+    anything did; nothing acts on it.
+
+    THE PERIOD IS REQUIRED, not defaulted. The subjects are one period's posted
+    lines and the ledger behind them is unbounded, so an optional period is how
+    a report comes to read the whole ledger — the BANK-07 shape.
+    """
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        # Mock mode has no statements to review. An empty `flagged` with no gap
+        # would read as "reviewed and clean", which is a stronger claim than
+        # mock mode can make — the `probe_near_duplicates` bargain.
+        return api_response(True, {
+            "from_date": from_date, "to_date": to_date,
+            "bank_account_id": bank_account_id, "reviewed_count": 0,
+            "flagged": [], "gaps": [{"code": "not_checked",
+                                     "message": "No bank data is available here."}],
+            "policy": {}})
+    try:
+        from services import bank_exception_service
+        return api_response(True, bank_exception_service.review_list(
+            db, current_user["firm_id"], client_id,
+            from_date=from_date, to_date=to_date, bank_account_id=bank_account_id))
+    except Exception as e:
+        _logger.error("worth_a_look: %s", e)
+        capture_soft_failure(e, operation="bank_worth_a_look")
+        return api_response(False, None, "Unable to build the review list.")
 
 
 # ─── Bank register (Tier 1.1) ────────────────────────────────────────────────

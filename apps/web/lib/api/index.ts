@@ -801,6 +801,40 @@ export type StockCountPostResult = {
 };
 
 /** One entry of GET /api/banking/account-types. */
+export type WorthALookException = {
+  code: string;
+  severity: "high" | "medium" | "low";
+  message: string;
+  /** The rules' own judgement that this WOULD stop a posting if anything did.
+   *  Nothing acts on it — domain/banking/exceptions.py is the authority on why
+   *  the default is advisory. Shown, never enforced. */
+  blocking: boolean;
+  detail: Record<string, unknown>;
+};
+
+export type WorthALookRow = {
+  transaction_id: string;
+  transaction_date: string;
+  description: string | null;
+  payee_name: string | null;
+  debit_paise: number;
+  credit_paise: number;
+  matched_document_no: string | null;
+  exceptions: WorthALookException[];
+};
+
+export type WorthALook = {
+  from_date: string;
+  to_date: string;
+  bank_account_id: string | null;
+  reviewed_count: number;
+  flagged: WorthALookRow[];
+  /** What could NOT be asked, and why. A rule that did not run looks exactly
+   *  like one that passed, so these are rendered rather than swallowed. */
+  gaps: { code: string; message: string }[];
+  policy: Record<string, number>;
+};
+
 export type BankAccountTypeInfo = {
   value: string;
   ledger_account_type: string;
@@ -2604,6 +2638,16 @@ export const api = {
   // Banking (Phase B.0): all bank mutations go through the backend banking
   // service — the frontend never writes bank rows or journals to Supabase.
   banking: {
+    /** BANK — "Worth a look": the posted lines of ONE PERIOD carrying a reason
+     *  for a partner to look, worst first, with what could not be asked.
+     *  Read-only and advisory: nothing it returns blocks or reverses a posting.
+     *  `from_date` and `to_date` are required by the server and are not
+     *  defaulted here either — an optional period is how a report comes to read
+     *  the whole ledger. */
+    worthALook: (params: { client_id: string; from_date: string; to_date: string;
+                           bank_account_id?: string }) =>
+      request<ApiResp<WorthALook>>(
+        `/api/banking/worth-a-look?${new URLSearchParams(params as Record<string, string>)}`),
     // BANK-21 — the five kinds of account and what each one is. The TYPE
     // decides whether the ledger is an asset or a liability and, for a card,
     // which way up its balance reads, so the form must not hold its own list.

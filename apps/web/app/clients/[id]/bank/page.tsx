@@ -7,6 +7,9 @@
  *              CA. Importing a statement and managing the bank accounts are
  *              reached from here too — they are setup, not a step.
  *   Reconcile  the BRS — statement against books, signed off per period
+ *   Worth a…   risk-based review: which POSTED lines carry a reason for a
+ *              partner to look, and why. Read-only, and deliberately so —
+ *              domain/banking/exceptions.py carries the argument.
  *   Rules      what the machine proposes, and what it may pass on its own
  *
  * Rebuilt 2026-09-03 around ENTRIES — docs/architecture/09-bank-entries.md —
@@ -25,13 +28,15 @@ import type { Account } from "@/components/banking/shared";
 import { EntriesTab } from "@/components/banking/EntriesTab";
 import { BankReconciliation } from "@/components/banking/ReconcileTab";
 import { RulesTab } from "@/components/banking/RulesTab";
+import { WorthALookTab } from "@/components/banking/WorthALookTab";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 
-type BankTab = "entries" | "reconcile" | "rules";
+type BankTab = "entries" | "reconcile" | "worth-a-look" | "rules";
 
 const TABS: { id: BankTab; label: string; title: string }[] = [
   { id: "entries",   label: "Entries",   title: "Turn statement lines into entries and pass them" },
   { id: "reconcile", label: "Reconcile", title: "Bank Reconciliation Statement" },
+  { id: "worth-a-look", label: "Worth a Look", title: "Posted lines a partner should test, and why — read-only" },
   { id: "rules",     label: "Rules",     title: "What the machine proposes, and what it may pass on its own" },
 ];
 
@@ -102,6 +107,7 @@ export default function BankPage() {
         {tab === "entries"   && <EntriesTab clientId={clientId} accounts={accounts} focusBankAccountId={entriesFocus} openDoc={openDoc} />}
         {tab === "reconcile" && <BankReconciliation clientId={clientId}
                                   onGoToEntries={(id) => { setEntriesFocus(id); setTab("entries"); }} />}
+        {tab === "worth-a-look" && <WorthALookTab clientId={clientId} />}
         {tab === "rules"     && <RulesTab clientId={clientId} accounts={accounts} />}
       </div>
     </div>
