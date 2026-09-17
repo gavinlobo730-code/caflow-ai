@@ -610,3 +610,67 @@ def test_the_artwork_names_the_eight_modules_it_has_baked_in():
         "the hero artwork has an empty alt. It is not decorative — it carries "
         "eight of the page's content labels."
     )
+
+
+def test_the_hero_copy_does_not_drift_away_from_an_edge_bleeding_artwork():
+    """THE HERO IS THE ONE SECTION THAT MAY NOT CENTRE ITS CONTENT COLUMN.
+
+    Every other section sits in a capped, centred column, so its left gutter
+    grows by half of every pixel added to the window. That is right when both
+    sides of a section are measured from the same origin, and wrong here: the
+    hero's artwork is pinned to the VIEWPORT's right edge and grows at a
+    fraction of the viewport. A centred column and a viewport-anchored image
+    advance at different rates from different origins — they converge, and then
+    the text is on the picture.
+
+    It was not theoretical. Measured on the page shipped 17-09-2026, the copy's
+    left gutter ran 72px at 1280, 125 at 1440, 205 at 1600 and 365 at 1920
+    against a right gutter of 0 at every one of them, and a render harness
+    (copy column hidden, so every bright pixel is the artwork's) found the
+    supporting paragraph over visible artwork at 1366, 1440, 1600 AND 1920 —
+    the four commonest desktop widths there are. At 1920 the rotating word, the
+    second headline line and a trust figure were over it too.
+
+    The rule this guard states is the DRIFT, not a spelling of the fix: if the
+    hero's content container caps or centres itself, it must neutralise both
+    from `lg` up, where the artwork exists. A browser is what proves the
+    clearance and this suite has none, so what is held here is the property
+    that made the clearance disappear."""
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+
+    # The container is the one element that holds both the copy column and the
+    # reserved artwork track, so it is the one carrying `grid-cols` at `lg`.
+    containers = [
+        line
+        for _no, line in _live_lines(hero)
+        if "className=" in line and "grid" in line and "lg:grid-cols-[" in line
+    ]
+    assert len(containers) == 1, (
+        f"expected exactly one hero grid container to check, found "
+        f"{len(containers)}. If the hero's layout moved, move this guard with "
+        f"it — do not delete it."
+    )
+    container = containers[0]
+
+    if "mx-auto" in container:
+        assert "lg:mx-0" in container, (
+            "the hero's content container centres itself (`mx-auto`) and never "
+            "stops. The artwork is anchored to the viewport's right edge, so a "
+            "centred column drifts away from it as the window widens until the "
+            "copy is sitting on the planet. Neutralise it with `lg:mx-0`."
+        )
+    if "max-w-[" in container:
+        assert "lg:max-w-none" in container, (
+            "the hero's content container is capped, so past the cap its left "
+            "gutter grows at half the viewport's rate while the artwork grows "
+            "at 62% of it. Release the cap from `lg` up with `lg:max-w-none`."
+        )
+
+    # And the copy itself must stay bounded, or releasing the cap hands the
+    # headline the whole viewport and runs it back under the artwork — the
+    # opposite failure, reached by the same fix applied carelessly.
+    assert "lg:grid-cols-[minmax(0,clamp(" in container, (
+        "the hero's copy column is not capped. With the container uncapped, a "
+        "plain `1fr` copy column takes the full viewport width and the "
+        "headline runs out under the artwork. Cap the first track."
+    )
