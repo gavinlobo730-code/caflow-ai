@@ -32,11 +32,13 @@ class _DB:
         self.rows: dict[str, dict] = {}
         self.deleted: list[str] = []
         self._pending_delete = False
+        self._selected = None
         self._filters: dict = {}
 
     def table(self, name):
         assert name == "tds_deductions", name
         self._pending_delete = False
+        self._selected = None
         self._filters = {}
         return self
 
@@ -49,6 +51,20 @@ class _DB:
         self._pending_delete = True
         return self
 
+    def select(self, projection):
+        # PUR-23. The register reads the EXISTING row's challan facts before
+        # reporting a note, because which of the two lawful answers applies
+        # turns on whether the tax has gone. The projection is asserted rather
+        # than ignored: a narrow select that omits either column makes the
+        # branch a silent no-op that always answers "not yet deposited", which
+        # is the wrong answer for a bill whose challan has gone.
+        self._selected = projection
+        assert "challan_date" in projection and "status" in projection, projection
+        return self
+
+    def limit(self, _n):
+        return self
+
     def eq(self, col, val):
         self._filters[col] = val
         return self
@@ -58,6 +74,10 @@ class _DB:
             bid = self._filters.get("purchase_bill_id")
             self.deleted.append(bid)
             self.rows.pop(bid, None)
+            return type("R", (), {"data": []})()
+        if self._selected is not None:
+            prior = self.rows.get(self._filters.get("purchase_bill_id"))
+            return type("R", (), {"data": [prior] if prior else []})()
         return type("R", (), {"data": []})()
 
 
