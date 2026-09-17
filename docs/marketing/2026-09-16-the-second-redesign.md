@@ -385,3 +385,396 @@ safety net was reporting green having observed nothing"* — reproduced one
 directory over, within the hour. The test now asserts the match **count** before
 it asserts the rule, and a repo-wide scan confirmed no other source file carries
 a stray control byte.
+
+---
+
+# Addendum 2 — the golden globe (17 September 2026)
+
+A second reference image, and the owner's read of it: *"the golden effect the
+shadow the finish the premium look … can you exactly copy the same image … even
+i can see its reflection"*, with *"im okay if it is a stable image … even a
+static image is perfect for me"*.
+
+## What was taken
+
+| Reference | Built |
+|---|---|
+| Golden city lights | Land points are amber; India gold-white at the core of the falloff |
+| A warm sunrise on the limb | A real terminator — `SUN_DIR` in the shader, narrowed to an arc |
+| A reflection under the globe | A mirrored copy of the land, fading over ¾ of a unit |
+| Vertical rail | PEOPLE / DATA / COMPLIANCE / GROWTH / ALL IN SYNC |
+| Closing tagline | SYNC TODAY. A STRONGER TOMORROW. |
+| A stats row | Same shape, different figures — see below |
+
+**The sun is in VIEW space, not world space.** The terminator is a composition
+decision — the reference puts its sunrise on the upper right — so anchoring it
+to the camera keeps it there whatever pose the globe is in. A world-space sun
+would swing the gold edge around every time `INDIA_TILT_X` is touched, which is
+two things fighting over one number.
+
+**The window is what makes it a sunrise rather than a ring.** At
+`smoothstep(0.05, 0.85)` the warm band ran from about 11 o'clock round to 6 —
+half the limb, which reads as an orange hoop bolted to the planet. `(0.42, 0.97)`
+is an arc.
+
+**India gets brighter, not whiter.** Lifting blue to 0.74 at the centre of the
+falloff turned the subcontinent white against an amber world, inverting the
+reference, where India is the most intensely *gold* part of the picture. Blue now
+rises far less than red and green.
+
+**The reflection reuses the land geometry** — 26,000 points already uploaded,
+drawn again through a mirrored matrix. No second buffer, no second build, one
+extra draw call. The fade is a shader term reading world Y, not a gradient
+overlay, because an overlay would sit above the canvas and dim the real globe
+too. **Hubs, arcs and sweeps are deliberately not mirrored**: a reflection of a
+glow is a smear, and doubling every additive element is what turned this scene
+into a white disc the first time.
+
+## What was refused, and why
+
+The reference's stats row reads **"500+ CA Firms · 10M+ Documents Processed ·
+99.9% Uptime · 4.8/5 Customer Rating"**. Not one is true: there are no
+customers, nothing measures uptime, there is no status page or SLA, and there
+are no ratings. §16 rules out unverified claims, and the guard already forbade
+"Trusted by Growing Practices" from the *first* reference for the same reason.
+
+The row keeps the shape — it is good composition and the hero was thin without
+it — and takes the four figures the page already states further down, each
+countable in this repository. A number that appears twice on one page had better
+agree with itself.
+
+`FORBIDDEN` gained four entries written as the **claim** rather than the four
+literals, because the onboarding-speed entry already taught that a literal bans
+only its own spelling: any customer count, any uptime percentage, any star
+rating, any processed-document volume. Checked both ways — all four reference
+strings caught, none of the honest figures touched.
+
+Also refused: the reference's **search icon** in the nav. There is no site
+search, and a control that does nothing is worse than no control.
+
+## And the scan that fired on its own explanation
+
+Adding those entries made five tests fail — on the comment in `Hero.tsx`
+explaining why the strings are banned.
+
+Every scan in the guard file skipped comments by asking whether a line *started*
+with `//`, `*` or `/*`. A multi-line JSX comment has continuation lines that
+begin with ordinary words, so they were read as shipped copy. The hole had been
+there since the file was written; it only surfaced when a comment first needed
+to quote something forbidden.
+
+`_live_lines` blanks comment spans while preserving line numbers, and every scan
+goes through it. `://` is excluded, or the `//` in each https URL would blank the
+rest of its line — and one scan looks for a path inside a URL. Two tests hold it:
+one on the stripper directly, one confirming the three banned strings are still
+caught when they appear in live markup rather than in a comment.
+
+## Fitting above the fold
+
+The stats row pushed the hero past the viewport — measured at 46px over at
+1440×900 and 150px over at 1366×768. Rather than drop the row, the vertical
+rhythm was tightened and the headline reduced about 20%: now −84px at 1440×900,
+−23px at 800-tall, and 2px at 1366×768.
+
+---
+
+# Addendum 3 — the hero globe, rebuilt static (17 September 2026)
+
+A third brief, and this one is about one element only:
+
+> "I want to work ONLY on the HERO GLOBE right now. Do not modify the rest of
+> the website."
+>
+> "Study the reference carefully and recreate the globe as a high-quality static
+> 3D/WebGL-style visual first. IMPORTANT: Do NOT make it interactive or animated
+> yet … First we need to get the STATIC visual looking exceptional."
+>
+> "The current globe is too small and too flat. Do not solve this simply by
+> increasing its CSS width. The actual visual complexity and depth need to
+> increase."
+
+Both halves of that are structural, so both were answered structurally rather
+than by tuning colours.
+
+## The scene is drawn ONCE, and that is what pays for everything else
+
+There is no `requestAnimationFrame` loop in `HeroGlobe.tsx` any more. `draw()`
+renders a single frame and runs again only when the stage resizes.
+
+That is not a lesser version of the animated scene — it is the budget that
+everything below is bought with. The previous revision was redrawing thirty
+times a second on integrated GPUs, and every decision in it was shaped by fill
+rate:
+
+| | before | after |
+|---|---|---|
+| device pixel ratio | capped at **1.25** | capped at **2** |
+| land points | ~26,000 | ~38,000 |
+| orbital paths | 4 torus rings, 128 segments | 7 tube ellipses, 240 segments |
+| surface network | none | ~50 nodes, ~80 great-circle links |
+| star field / motes | 190 drifting points | 460 + 150, positioned |
+| frame budget | 33 ms, scroll-quiet, viewport check | none — it draws once |
+
+The DPR change alone does more for "premium" than any amount of colour work: at
+1.25 the one-pixel city lights were being resampled and the continents read as
+a smear.
+
+**Every animatable thing is still parameterised by time.** `uTime` stays on the
+arc, hub and orbit materials, and each already produces a fixed, varied state at
+t = 0 — a head parked partway along each arc, twenty hubs at twenty
+brightnesses, each orbit's bright stretch somewhere different. Animation is
+"advance the uniforms and call `draw()`" in a rAF; the look does not have to be
+rebuilt for it, which is what the brief asked to be left possible.
+
+**And a scene with no loop cannot repair a lost WebGL context**, which an
+animated one does for free on its next frame. The buffers go with the context so
+there is nothing to redraw; `webglcontextlost` uncovers the SVG globe that has
+been sitting underneath all along. A `ResizeObserver` on the stage went in for
+the mirror-image reason: without a loop, that observer and the window listener
+are the *only* things that will ever draw a second frame, and a grid cell can
+change width from a late font metric with no window event at all.
+
+## 81% wider, and the width is the smallest part of it
+
+`CAMERA_Z` went from 5.05 to 4.3. A sphere of radius r at distance d projects to
+a circle whose radius, as a fraction of half the canvas height, is
+`(r / sqrt(d² - r²)) / tan(fov/2)` — 0.55 before, **0.657** now.
+
+The rest came from the canvas rather than from the grid. **The globe's canvas is
+hung outside its cell**: 132% of the stage's width and 136% of its height,
+offset by half the overhang so the planet stays centred on the cell. The grid
+column is still `minmax(0, 640px)`, every card anchor is still a percentage of
+it, and `MAX_RIGHT_ANCHOR` / `MIN_LEFT_ANCHOR` are still derived from that 640 —
+so the brief's "may extend beyond the normal boundaries of the hero composition
+slightly" cost the hero's layout nothing. What spills over is the atmosphere,
+the outer orbits and the star field, and the section is `overflow-hidden`.
+
+`Hero.tsx` changed by one number: `min(80vh, 640px)` → `min(84vh, 720px)`. That
+is the whole of the diff to the hero's own layout, which was the constraint.
+
+Net: **355 → 643 CSS pixels** of planet. The camera accounts for a fifth of
+that (0.555 of the canvas height to 0.657); the oversized canvas is the rest.
+
+## What made it stop being flat
+
+Six things, none of them a colour tweak:
+
+1. **The palette inverted.** The world is cool blue and white; gold is confined
+   to India and its neighbourhood. The previous revision had it the other way
+   round, which made a warm planet under cool orbits — attractive, and not what
+   this brief asks for.
+2. **Coastlines are detected from the mask** (four probes per land cell) and
+   drawn brighter and larger than inland. A continent is recognised by its
+   *edge*; a uniform fill at the same value as its outline is a blob with a
+   shape.
+3. **Density varies.** A smooth field over the sphere decides whether a land
+   cell is lit at all, so the Sahara, the Amazon and Siberia are sparse and the
+   coasts are dense. Drawing every land cell is the single thing that makes a
+   masked point field read as a stencil.
+4. **A global surface network** — nodes on land, linked to their nearest
+   neighbours by fine great-circle lines, cool and faint. This one is the
+   brief's own argument: India "should naturally emerge from the Earth's
+   network/light structure", and it cannot emerge from a structure that only
+   exists over India, which is all the previous scene had.
+5. **The orbits are ellipses** with their own inclinations, eccentricities and
+   centre offsets, each knowing whether it is passing in front of the planet or
+   behind it, each with a bright stretch and a faint one, each fading out before
+   the canvas edge rather than being guillotined by it.
+6. **Three real depth layers** — a star slab and a nebula wash behind, the
+   orbits and motes in the middle, the Earth and its atmosphere in front — with
+   `renderOrder` set explicitly, because Three sorts transparents by object
+   centre and the planet, the orbits and the sprites all share one.
+
+## Four things that were wrong on the way, and only one of them was visible
+
+**The atmosphere was a hoop.** The alpha ran `band × intensity × (1 + lit × 1.2)`,
+so the shaded side's rim was at full strength and the ring was the brightest
+thing in the frame all the way round. The floor is 0.45 now and the lit
+multiplier 1.7 — a lit atmosphere is nearly invisible on the night side and
+fierce on the day side, and that ratio is the whole difference between a limb
+and a band bolted to the planet.
+
+**Two edge-on orbits both ran horizontal**, and stacked across the middle of the
+planet — which is where the control node is — they drew a clean X over it. An
+orbit's screen angle is set by its normal after the Y then X rotations, so the
+fix is in `ry`; `rz` turns the ellipse inside its own plane, which does nothing
+at all to a near-circle.
+
+**The Fibonacci lattice was visible.** At this density the spiral showed as fine
+diagonal pinstripes across Europe and Russia — the one thing that says
+"generated" about an otherwise photographic field. Each point is now jittered by
+under half a lattice spacing, *after* the mask test so the land decision is
+still made at the lattice point. The first attempt used a whole spacing and
+killed the coastlines with the pattern.
+
+**And the silent one: `opacity` on a card's positioning element kills its
+glass.** An element with opacity below 1 is a *backdrop root*, so
+`backdrop-filter` on anything inside it samples that element's own contents
+instead of the page — the card renders as a flat translucent rectangle with no
+blur, and there is no warning, no failed style and nothing in a computed-style
+dump that says so. It is also the first thing anyone reaches for to express
+depth. Depth is expressed in the card's own colours instead — fill, border, blur
+radius, shadow and text contrast — which is the truer cue anyway: something
+further away is lower in *contrast*, not see-through.
+
+## Measured, not eyeballed
+
+An overlap harness drives the built site at 1024, 1280, 1366, 1440, 1600 and
+1920, and reports every pair of hero elements closer than the 12px `.floaty` bob
+can survive — cards, interface fragments, the vertical rail, the tagline and the
+copy column. It found four real collisions this brief introduced:
+
+- **Payroll landed inside the vertical rail** at 1280 and 1440. The rail is
+  viewport-centred, so it sits in the same band as the middle of the globe; the
+  right-hand column now avoids roughly 36-61% of the stage height.
+- **A 62×76 document-sheet fragment had nowhere to go.** Measured at every
+  position on both sides, it fouled Payroll, the rail, or both. A document reads
+  as a document from three ruled lines and a highlighted one; the page around
+  them was what needed the room, so it is 78×26 now.
+- The sparkline and the gauge each sat under a card.
+
+## What was refused
+
+**The reflection is gone, and that is a decision.** The previous revision
+mirrored the land field below the south pole, because the reference it was
+copying stood the globe on a dark surface and the owner asked for it by name.
+This brief replaces that reference with a *space* composition — "deep navy/black
+atmospheric space", three depth layers, orbits passing behind and in front — and
+a floor reflection contradicts it. At this size it would also be clipped to a
+56px sliver by the bottom of the stage. Restoring it is a mirrored group and a
+fade window; it is left out rather than lost, and the shader still carries the
+`uFadeFrom`/`uFadeTo` window it needs.
+
+**The card scale never exceeds 1.** Both anchor limits are derived from a card's
+own width, and a card scaled above 1 grows past its anchor in both directions
+and silently invalidates them. Depth works downward from full size.
+
+**`GLOBE_RX` is deliberately understated.** The connector SVG's viewBox is a
+unit square stretched over the stage, so the planet's radius in x depends on the
+stage's aspect — about 41% of the width on a short laptop, 50% on a tall
+monitor. Taking the short end lands every data line further *inside* the
+planet's face; taking the tall end would put an endpoint past the limb on
+exactly the screens where the stage is shortest.
+
+**Nothing else on the site was touched.** No navigation, no other section, no
+new section, and no hero typography: the rotating word, the fixed line beneath
+it, the standfirst, the buttons, the chips and the four figures are all exactly
+as they were.
+
+## Guards added
+
+| Test | What it catches |
+|---|---|
+| `test_a_card_that_bobs_is_not_inside_something_with_an_opacity` | a backdrop-filtered card inside an `opacity` ancestor — the glass dies with no error anywhere. Walks the div/span tree and asserts both vacuity directions: that it saw a backdrop filter at all, and that its stack balanced |
+| `test_the_globe_canvas_is_larger_than_the_cell_it_is_given` | the canvas oversize being "tidied" back to `inset-0`, which costs the planet a third of its diameter, changes no anchor, breaks no layout and produces no error |
+
+Both were negative-controlled: restoring the `opacity`, shrinking the canvas to
+100%, unbalancing the tree and off-centring the offset each fail the intended
+test and only that test.
+
+---
+
+# Addendum 4 — the hero globe against a reference (17 September 2026, later)
+
+A reference image this time, and a twenty-point brief with it. The owner's
+verdict on Addendum 3's globe, in its own words: *"The current globe looks like
+a flat dotted world map wrapped onto a sphere"*, *"oversized and visually
+heavy"*, and the tick *"a giant checkmark sitting on top of the Earth"*.
+
+All three are right, and the first one is the one that matters.
+
+## The Earth is a shaded planet now, not a dark ball with dots on it
+
+The reference shows Africa, Arabia, India and Australia as **landmass** — a
+dark blue-grey fill against a near-black ocean, shaded by the light and
+darkened toward the limb — with the lights on top of that. Addendum 3 drew a
+radial-gradient sphere and let the dots imply the continents. However dense the
+dots, that reads as a stencil.
+
+So the core shader samples the land mask as a **texture**. `buildLandTexture`
+renders the same 0.5-degree bitmask the point field walks into a canvas — one
+pixel per cell, row 0 at +90, column 0 at −180 — upscaled 2× with bilinear
+smoothing and a canvas blur so a coastline is an edge rather than a staircase.
+Three's `SphereGeometry` lays its UVs out exactly that way (u is
+(lon + 180) / 360, and because it pushes `1 − v`, the image's top row is the
+north pole), so the fill and the lights cannot disagree about where a coastline
+is. Four terms in the fragment, in order: the land/ocean mix; the terminator;
+limb darkening; and a fresnel rim *added* on top, brighter on the lit side —
+the planet's own blue edge before the atmosphere shell adds the glow outside it.
+
+With the fill carrying the shape, the dots stop having to. **200,000 candidates
+→ 160,000**, and each surviving point now has its own brightness (0.55–1.0),
+its own size (0.55–1.45×) and a ~3% chance of being a **beacon** — larger,
+near-white, the thing the eye reads as a city rather than as texture. The
+brief: *"avoid making every dot identical."*
+
+## The network is the nervous system, so it has more than fifty neurons
+
+Addendum 3's surface mesh was ~50 nodes and ~80 links, and it was invisible
+under the lights. The reference's mesh is one of its strongest elements. Now
+5.2° apart with three links each — roughly a hundred nodes, two hundred links,
+still one `LineSegments` draw call.
+
+## Smaller, and the size is arithmetic
+
+`CAMERA_Z` 4.3 → **5.3**: 0.657 → 0.528 of the canvas height, which on the
+hero's stage is **643 → 517 CSS pixels**. That is 72% of the right half's width
+and 57% of the viewport height at 1440×900 — inside the brief's *"55–65% of
+the right-side visual area"* — with room around it for the system it is
+supposed to be the centre of. `GLOBE_RX`/`GLOBE_RY` re-derived (33 / 35.9).
+
+## Three kinds of orbit and a fourth depth layer
+
+The reference draws several of its paths as **chains of dots**, one of them
+warm. `OrbitDef` gained `kind: "solid" | "dotted"`; a dotted orbit is a `Points`
+object sampled along the same ellipse, each point with its own size and
+brightness, the far half dimmed by depth the same way the tubes are. Seven
+orbits: four solid, three dotted, one of those gold.
+
+And `FAR_ORBITS` — the brief's *"Layer 2 — far network: small orbital paths and
+distant data points, low brightness"*, which Addendum 3 did not have. Three
+large dim orbits whose **centres sit behind the planet** (oz −1.15 to −1.6), so
+the disc hides the middle of each and only the outer sweep shows, plus 110 dim
+points in the space behind. They are what makes the layer read as *far* rather
+than merely faint.
+
+## The tick is a core, not a mechanism
+
+Addendum 3's housing was 124px with a 36-graduation ring, two bright arcs and
+four registration ticks — at the middle of the frame, the first thing the eye
+landed on. The brief: *"The viewer's first impression should be 'What is this
+incredible digital system?' not 'There is a checkmark in the middle.'"*
+
+Now: a 40px badge, one hairline ring at 9% and one dashed ring at 17%, both far
+below the brightness of anything on the planet. It is there when looked for.
+The mark itself is unchanged.
+
+## Cards and fragments
+
+Cards moved to an organic set — AI assistant to bottom-centre overlapping the
+planet's lower limb, Compliance and Clients overlapping its left edge — and the
+glass gained what the reference's has: a bright hairline along the **top edge**
+(`inset 0 1px 0`) and a soft blue glow standing off the card, both scaling with
+depth. Accounting's line is the brief's own: *"A ledger that looks ahead."*
+
+Fragments: four → seven, all at 40%, several **over the planet's face** as the
+reference's are. **The gauge is gone** — a ring inside a ring with a dot in the
+middle is the exact thing the brief names as clutter (*"decorative circles
+inside circles"*); a three-line data block took its place. A `Sheet` helper
+draws the document shape at any size so the markup is not repeated.
+
+## Measured
+
+The overlap harness found four near-misses on the new layout, each 1–5px short
+of the 26px bob clearance (Accounting × sheet, Banking × bars, Clients × doc,
+and AI assistant × the tagline at 1280×800). Sheet to the very top, doc up 1%,
+Banking down 2%, AI assistant up 2%. All six widths clear.
+
+## Not done, and said so
+
+**React Three Fiber + Drei.** The brief prefers them *"if compatible with the
+existing project."* The project vendors `three.min.js` r128 and has no R3F; the
+scene is already a single static frame with explicit `renderOrder` and shader
+materials, which is the part R3F would abstract. Adding a dependency and a
+component model for the same pixels is a refactor with no visual outcome, so it
+is left for the interactive stage, if it earns its place there.

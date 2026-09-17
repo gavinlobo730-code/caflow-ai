@@ -33,6 +33,75 @@ def _rel(path: Path) -> str:
     return path.relative_to(MARKETING).as_posix()
 
 
+def _live_lines(src: str):
+    """(line number, code with comment spans blanked) for every line.
+
+    WHY THIS IS NOT `line.startswith("//")`. Every scan below is meant to skip
+    comments — this module's own docstring promises that documentation may quote
+    what it removed — and the first version tested whether a LINE STARTED with a
+    comment marker. A multi-line JSX comment,
+
+        {/* the reference reads "500+ CA Firms · 99.9% Uptime"
+            and not one of those is true */}
+
+    has continuation lines that begin with ordinary words, so the scan read them
+    as shipped copy. It fired on the very comment explaining why those strings
+    are banned.
+
+    Comment characters are replaced with spaces rather than deleted, so line
+    numbers in a failure message still point at the real line.
+
+    `://` is excluded, or the `//` in every https URL would blank the rest of
+    its line — and one of the scans below looks for a path inside a URL.
+    """
+    out = list(src)
+    i, n = 0, len(src)
+    in_block = in_line = False
+    while i < n:
+        if in_block:
+            if src.startswith("*/", i):
+                out[i] = out[i + 1] = " "
+                i += 2
+                in_block = False
+                continue
+            if src[i] != "\n":
+                out[i] = " "
+            i += 1
+            continue
+        if in_line:
+            if src[i] == "\n":
+                in_line = False
+            else:
+                out[i] = " "
+            i += 1
+            continue
+        if src.startswith("//", i) and not (i and src[i - 1] == ":"):
+            in_line = True
+            out[i] = out[i + 1] = " "
+            i += 2
+            continue
+        if src.startswith("/*", i):
+            in_block = True
+            out[i] = out[i + 1] = " "
+            i += 2
+            continue
+        i += 1
+    return list(enumerate("".join(out).splitlines(), 1))
+
+
+def test_the_comment_stripper_understands_a_block():
+    """The helper above is load-bearing for every scan in this file, so it is
+    checked directly. A block comment's CONTINUATION lines are the case that
+    broke the old one."""
+    src = 'const a = 1;\n{/* banned words\n    more banned words */}\nconst b = "kept";\n'
+    live = dict(_live_lines(src))
+    assert "banned" not in live[2] and "banned" not in live[3], live
+    assert "kept" in live[4]
+    assert "const a" in live[1]
+    # A URL's // must not blank the rest of its line.
+    assert "homepage" in dict(_live_lines('const u = "https://x/practicesync-homepage";'))[1]
+
+
 # ── 1. Manrope renders "(c)" as "©" ──────────────────────────────────────────
 
 def test_clause_letters_do_not_become_a_copyright_symbol():
@@ -86,15 +155,12 @@ def test_nothing_still_points_at_the_retired_homepage():
     """A rewrite or a link to a file that no longer exists is a 404 at `/`."""
     offenders = []
     for path, src in _sources():
-        for n, line in enumerate(src.splitlines(), 1):
-            stripped = line.strip()
-            # Comments SHOULD name it — several files explain what they were
-            # ported from, which is the record of why they look as they do. The
-            # defect is a live reference: an href, an import, a fetch.
-            if stripped.startswith(("//", "*", "/*")):
-                continue
+        # Comments SHOULD name it — several files explain what they were ported
+        # from, which is the record of why they look as they do. The defect is a
+        # live reference: an href, an import, a fetch.
+        for n, line in _live_lines(src):
             if "practicesync-homepage" in line:
-                offenders.append(f"{_rel(path)}:{n}  {stripped[:110]}")
+                offenders.append(f"{_rel(path)}:{n}  {line.strip()[:110]}")
     redirects = (MARKETING / "public" / "_redirects").read_text(encoding="utf-8")
     # The _redirects file MAY name it — as a 301 away from the old path — but
     # must not still rewrite `/` onto it with a 200.
@@ -131,6 +197,25 @@ FORBIDDEN = {
         "(docs/compliance/07-getting-permission-to-file.md).",
     r"click to submit":
         "same — puts the software in the sentence as the thing that submits.",
+    # THE STATS BAR FROM THE SECOND REFERENCE IMAGE (17-09-2026). It reads
+    # "500+ CA Firms · 10M+ Documents Processed · 99.9% Uptime · 4.8/5 Customer
+    # Rating" and not one of those is true: there are no customers, nothing has
+    # measured uptime, and there are no ratings. The hero carries that row now,
+    # with figures that are facts about the SOFTWARE — see HERO_FACTS.
+    #
+    # Written as the CLAIM, not the four literals, because the previous
+    # onboarding-speed entry taught that a literal only bans its own spelling:
+    # any count of firms, any uptime percentage, any star rating.
+    r"\b\d[\d,]*\s*[MKB]?\+?\s*(CA firms|customers|practices served|firms trust)\b":
+        "a customer count, and there are no customers yet. §16 rules out "
+        "unverified claims; the hero's own figures are properties of the "
+        "software instead.",
+    r"\b\d+(\.\d+)?\s*%\s*uptime\b":
+        "nothing measures uptime. There is no status page and no SLA.",
+    r"\b\d(\.\d)?\s*/\s*5\b|\bcustomer rating\b":
+        "a star rating with no ratings behind it.",
+    r"\b\d[\d,]*\s*[MKB]\+?\s*documents\s+processed\b":
+        "a volume claim nobody has counted.",
     r"\bITR FILING\b":
         "the product prepares an ITR; a human files it.",
     r"\bMCA FILINGS\b":
@@ -143,14 +228,11 @@ def test_a_claim_the_product_cannot_support_is_not_on_the_site(pattern, reason):
     rx = re.compile(pattern, re.I)
     offenders = []
     for path, src in _sources():
-        for n, line in enumerate(src.splitlines(), 1):
-            # The guard's own reasons, and comments explaining what was removed,
-            # are allowed to quote the string they are about.
-            stripped = line.strip()
-            if stripped.startswith(("//", "*", "/*")):
-                continue
+        # The guard's own reasons, and comments explaining what was removed, are
+        # allowed to quote the string they are about.
+        for n, line in _live_lines(src):
             if rx.search(line):
-                offenders.append(f"{_rel(path)}:{n}  {stripped[:110]}")
+                offenders.append(f"{_rel(path)}:{n}  {line.strip()[:110]}")
     assert not offenders, f"{reason}\n  " + "\n  ".join(offenders)
 
 
@@ -310,12 +392,9 @@ def test_the_diagonal_seams_are_gone():
     call site cannot quietly keep passing one — that is what this asserts."""
     offenders = []
     for path, src in _sources():
-        for n, line in enumerate(src.splitlines(), 1):
-            stripped = line.strip()
-            if stripped.startswith(("//", "*", "/*")):
-                continue
+        for n, line in _live_lines(src):
             if re.search(r"clip-?[Pp]ath.*polygon", line) or re.search(r"\bseam\s*=", line):
-                offenders.append(f"{_rel(path)}:{n}  {stripped[:110]}")
+                offenders.append(f"{_rel(path)}:{n}  {line.strip()[:110]}")
     assert not offenders, (
         "the diagonal panel seam is back:\n  " + "\n  ".join(offenders)
     )
@@ -330,17 +409,14 @@ def test_the_watermark_numerals_are_gone():
     both the prop and the type size are forbidden here."""
     offenders = []
     for path, src in _sources():
-        for n, line in enumerate(src.splitlines(), 1):
-            stripped = line.strip()
-            if stripped.startswith(("//", "*", "/*")):
-                continue
+        for n, line in _live_lines(src):
             if re.search(r"\bnumeral(Corner)?\s*=", line):
-                offenders.append(f"{_rel(path)}:{n}  numeral prop: {stripped[:90]}")
+                offenders.append(f"{_rel(path)}:{n}  numeral prop: {line.strip()[:90]}")
             # Any type size at or above 100px is a watermark, whatever it is
             # called — the rule rather than the one spelling that shipped.
             m = re.search(r"text-\[clamp\((\d{3,})px", line)
             if m and int(m.group(1)) >= 100:
-                offenders.append(f"{_rel(path)}:{n}  {m.group(1)}px minimum: {stripped[:90]}")
+                offenders.append(f"{_rel(path)}:{n}  {m.group(1)}px minimum: {line.strip()[:90]}")
     assert not offenders, (
         "a watermark numeral is back:\n  " + "\n  ".join(offenders)
     )
@@ -406,12 +482,9 @@ def test_our_story_is_a_page_and_the_nav_holds_no_fragment():
     # is one edit from naming neither.
     offenders = []
     for path, src in _sources():
-        for n, line in enumerate(src.splitlines(), 1):
-            stripped = line.strip()
-            if stripped.startswith(("//", "*", "/*", "{/*")):
-                continue
+        for n, line in _live_lines(src):
             if "Our Story" in line and "#story" in line:
-                offenders.append(f"{_rel(path)}:{n}  {stripped[:110]}")
+                offenders.append(f"{_rel(path)}:{n}  {line.strip()[:110]}")
     assert not offenders, (
         "an Our Story link still points at the homepage anchor rather than the "
         "page:\n  " + "\n  ".join(offenders)
@@ -436,14 +509,11 @@ CANONICAL_CTA = {
 def test_one_spelling_of_each_call_to_action(wrong, right):
     offenders = []
     for path, src in _sources():
-        for n, line in enumerate(src.splitlines(), 1):
-            stripped = line.strip()
-            # Comments may quote the spelling they removed, and the brief's own
-            # §3 is quoted verbatim in SiteHeader with its own capitalisation.
-            if stripped.startswith(("//", "*", "/*", "{/*")):
-                continue
+        # Comments may quote the spelling they removed, and the brief's own §3 is
+        # quoted verbatim in SiteHeader with its own capitalisation.
+        for n, line in _live_lines(src):
             if re.search(wrong, line):
-                offenders.append(f"{_rel(path)}:{n}  {stripped[:110]}")
+                offenders.append(f"{_rel(path)}:{n}  {line.strip()[:110]}")
     assert not offenders, (
         f'"{wrong}" is not the canonical label — it is "{right}". Prose that '
         f"needs the phrase grammatically should be reworded.\n  "
@@ -475,14 +545,9 @@ def test_the_canonical_calls_to_action_are_actually_on_the_site():
     A rule with nothing to catch reads as enforcement and is not. So the
     canonical spellings must appear in live markup, and the wrong ones must
     still be recognisable when they do appear."""
-    live = []
-    for _, src in _sources():
-        for line in src.splitlines():
-            stripped = line.strip()
-            if stripped.startswith(("//", "*", "/*", "{/*")):
-                continue
-            live.append(line)
-    blob = "\n".join(live)
+    blob = "\n".join(
+        line for _, src in _sources() for _n, line in _live_lines(src)
+    )
     for label in ("Book a demo", "Start free trial"):
         assert label in blob, f'no live markup says "{label}" — has the funnel moved?'
     for wrong in CANONICAL_CTA:
@@ -503,10 +568,7 @@ def test_the_product_is_described_the_same_way_everywhere():
     description is allowed to be phrased for its position."""
     variants = set()
     for _, src in _sources():
-        for line in src.splitlines():
-            stripped = line.strip()
-            if stripped.startswith(("//", "*", "/*", "{/*")):
-                continue
+        for _n, line in _live_lines(src):
             for m in re.finditer(
                 r"AI-first\s+([a-z]+(?:\s+[a-z]+)?)\s+(?:for|built for)\s+Indian\s+CA\s+([a-z]+)",
                 line,
@@ -659,3 +721,125 @@ def test_a_hero_card_does_not_position_itself_on_the_element_that_bobs():
         "no left-hand placement transform left in HeroVisual — this rule "
         "guards nothing"
     )
+
+
+def test_a_card_that_bobs_is_not_inside_something_with_an_opacity():
+    """A card's GLASS dies silently if any ancestor sets `opacity`.
+
+    An element with opacity below 1 is a BACKDROP ROOT. `backdrop-filter` on
+    anything inside it then samples that element's own contents instead of the
+    page behind it — so the card renders as a flat translucent rectangle with no
+    blur, and the composition loses the one property that makes it read as glass
+    rather than as a grey chip.
+
+    It is entirely silent. There is no console warning, no failed style, nothing
+    in a computed-style dump that says the filter did nothing, and the card is
+    still there. It shipped for exactly as long as it took to look at a
+    screenshot side by side.
+
+    THE OBVIOUS WAY TO PUSH A CARD BACK IS THE WAY THAT BREAKS IT, which is why
+    this is worth a test rather than a comment. The hero's capability cards
+    carry a `depth`, and the first thing anyone reaches for to express depth is
+    `opacity` on the positioning element. Depth is expressed in the card's own
+    colours instead — fill, border, blur radius, shadow and text — which is also
+    the truer cue: something further away is lower in CONTRAST, not
+    see-through.
+
+    The interface FRAGMENTS beside them do set opacity, and that is fine: they
+    are bare SVG with no backdrop-filter anywhere inside. So the rule is about
+    ancestry, not about the property, and this walks the tree to say so.
+    """
+    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+
+    # Only div and span nest in this file; every other element (the icons,
+    # <svg>, <line>, <circle>) is self-closing or a leaf, so tracking those two
+    # is enough to know what is inside what.
+    #
+    # THE FILTER AND THE OPACITY ARE BOTH ATTRIBUTES OF A TAG, not text between
+    # tags — `backdropFilter` lives inside a style={{...}} on the card's own
+    # <div>. The first draft of this scan looked for them as separate tokens and
+    # found none at all, because the tag pattern had already swallowed them.
+    tag_re = re.compile(r"</?(?:div|span)\b[^>]*>")
+    stack: list[bool] = []
+    seen = 0
+    broken = []
+    for m in tag_re.finditer(src):
+        tag = m.group(0)
+        if tag.startswith("</"):
+            if stack:
+                stack.pop()
+            continue
+        has_opacity = "opacity" in tag
+        has_backdrop = "backdrop-blur" in tag or "backdropFilter" in tag
+        if has_backdrop:
+            seen += 1
+            # An ancestor's opacity is the real failure; the element's OWN is
+            # counted too, because an element with opacity is a backdrop root
+            # for the subtree it heads and the browsers disagree about whether
+            # that includes its own filter. Nothing here needs to find out.
+            if any(stack) or has_opacity:
+                broken.append(f"HeroVisual.tsx:{src.count(chr(10), 0, m.start()) + 1}")
+        if not tag.endswith("/>"):
+            stack.append(has_opacity)
+
+    # VACUITY, BOTH WAYS. A scan that found no backdrop filter proves nothing,
+    # and one whose stack did not balance was not reading the tree at all — and
+    # that second case is the one that passes green for any input whatsoever,
+    # which is the failure this file has already shipped twice.
+    assert seen, (
+        "no backdrop filter left in HeroVisual — this rule guards nothing. The "
+        "hero cards are meant to be glass."
+    )
+    assert not stack, (
+        f"the div/span scan ended with {len(stack)} tags unclosed, so it was not "
+        f"reading the tree correctly and would pass for any input."
+    )
+    assert not broken, (
+        "a backdrop-filtered hero card sits inside an element that sets "
+        "`opacity`. That element is a BACKDROP ROOT, so the blur samples its "
+        "own contents rather than the page and the glass silently becomes a "
+        "flat rectangle. Express depth in the card's own colours instead:\n  "
+        + "\n  ".join(broken)
+    )
+
+
+def test_the_globe_canvas_is_larger_than_the_cell_it_is_given():
+    """The planet's size does not come from the grid, and must not be "tidied"
+    back into it.
+
+    Owner brief, 17-09-2026: the globe should "dominate the right half of the
+    hero" and may "extend beyond the normal boundaries of the hero composition
+    slightly" — while the hero's own layout and typography stay as they are. The
+    grid cell is 640px and every card anchor in HeroVisual, plus both of the
+    limits they are checked against, is a percentage of it. So the cell cannot
+    grow; the globe's CANVAS is hung outside it instead.
+
+    That is one `absolute` element with four lg: classes, and it reads exactly
+    like something a later tidy-up would replace with `inset-0`. Doing so costs
+    the planet about a third of its diameter, changes no anchor, breaks no
+    layout and produces no error — the hero simply goes back to the small flat
+    globe the brief was written about.
+    """
+    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+
+    w = re.search(r"lg:w-\[(\d+)%\]", src)
+    h = re.search(r"lg:h-\[(\d+)%\]", src)
+    assert w and h, (
+        "HeroVisual no longer sizes the globe's canvas past its own cell. The "
+        "planet's scale comes from that oversize, not from the grid."
+    )
+    assert int(w.group(1)) > 110 and int(h.group(1)) > 110, (
+        f"the globe canvas is {w.group(1)}% x {h.group(1)}% of the stage. Below "
+        f"about 110% there is nothing for the atmosphere and the outer orbits "
+        f"to spill into and the planet has to shrink to fit."
+    )
+    # Offset by half the overhang in each axis, or the planet stops being
+    # centred on the cell the cards are anchored to.
+    for axis, over in (("left", int(w.group(1))), ("top", int(h.group(1)))):
+        m = re.search(rf"lg:{axis}-\[-(\d+)%\]", src)
+        assert m, f"the canvas has no lg:{axis} offset, so it is not centred on the stage"
+        assert abs(int(m.group(1)) - (over - 100) / 2) <= 2, (
+            f"lg:{axis} is -{m.group(1)}% for a {over}% canvas; centring it needs "
+            f"-{(over - 100) / 2:.0f}%. Off-centre, the globe and the card ring "
+            f"no longer share a middle and the control node stops sitting on it."
+        )
