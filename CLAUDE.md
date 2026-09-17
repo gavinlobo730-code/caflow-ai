@@ -3446,6 +3446,57 @@ called.
   path had only ever been exercised with GSTINs the portal would reject. The
   fixtures were corrected, not the guard relaxed.
 
+- **THE FIRM'S OWN GSTIN LIVES IN TWO COLUMNS AND ONLY ONE IS READ.**
+  `public.firms` carries `gst_number` (migration 003) AND `gstin` (014, given
+  its CHECK by 112/316), nothing has ever synced them, and the two sides of the
+  product picked different ones: BOTH screens that edit the firm profile wrote
+  `gst_number` **straight over PostgREST** — Settings and the onboarding
+  wizard's UPDATE step — while every backend reader read `gstin`. So a CA who
+  typed their GSTIN into Settings got a fee invoice with **no supplier GSTIN**
+  on it (CGST Rule 46(a)) and, because `_state_code(None)` is None, the whole
+  tax on a LOCAL supply landed in **IGST** instead of splitting CGST+SGST.
+  `POST /api/onboarding/firm` has always written `gstin` correctly; it is only
+  the screens' own update path that did not, so which route a firm came in
+  through decided whether its own GSTIN was readable at all.
+  **Measured before acting, because the severity turns on it**: on 17-09-2026
+  production held 2 firms with BOTH columns NULL — latent, and live the moment
+  anybody typed one in. The `capital_wip` shape: built, reachable, structurally
+  nil.
+  `domain/firm/identity.py` is the authority: **`gstin` is the column,
+  `gst_number` is READ as a fallback and never written**, and `gstin_of` is the
+  only reader. One writer, `PATCH /api/firms/profile` (Partner-only), which is
+  also where the **CHECK DIGIT** is tested — `firms_gstin_format` is a shape
+  regex and accepts a transposition, and that GSTIN goes on every fee invoice
+  the practice raises with nothing downstream to re-check it. Writing BOTH
+  columns was rejected: it would make `gst_number` a cache with two writers,
+  the shape this file records going wrong on `clients.gstin` and on the retired
+  supplier table. **A narrow `select()` that names one column and not the other
+  makes the fallback a silent no-op** — `routers/practice.py` did exactly that
+  — so every read names BOTH, the same trap
+  `domain/accounting/opening_documents` records for `is_opening`.
+  **AND EACH OF THE THREE PROJECTIONS IS WRITTEN OUT AT ITS CALL SITE rather
+  than shared through `identity.COLUMNS`**, which reads like the thing to
+  factor out and is not: `tests/test_backend_columns_exist_pg.py` checks every
+  `.select()` in `apps/api` against the real schema AS A STRING, and a
+  projection reached through a name — a `", ".join(...)`, a module constant —
+  is invisible to it; so is the guard written for this very feature, which
+  passed having looked at NOTHING until the three became literals. That guard
+  reads the **AST** now, not a regex, because the literal these fifteen columns
+  produce spans three adjacent strings and a regex sees only the first — it was
+  vacuous twice, for two different reasons, and carries a floor saying how many
+  projections it must find.
+  **Migration 399 back-fills `gstin` from `gst_number`** where the first is
+  empty and comments both columns, so the fallback is inert for every existing
+  row. It deliberately does NOT drop `gst_number` (that moves both sides of the
+  production-fixture comparison at once and needs the refresh in
+  `docs/schema-drift.md` — migration 371's decision about
+  `public.tds_section_limits`), does not `SET NOT NULL`, and **leaves a row
+  whose `gstin` is malformed but not empty alone**: `firms_gstin_format` is NOT
+  VALID, so such a row can exist, and preferring the superseded column over a
+  value somebody recorded in the canonical one would be a guess about the
+  firm's own legal identity. ⚠️ The shape carries over; the CHECK DIGIT does
+  not, and the migration says so.
+
 - **A UAN and an IFSC are format-checked at every door; an ESIC number is
   not, and that is a decision.** Both patterns live once, in
   `domain/payroll/identity.py` — `UAN_RE` (12 digits, EPFO's own format) and

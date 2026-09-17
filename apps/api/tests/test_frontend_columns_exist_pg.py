@@ -338,13 +338,30 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     # one page, `app/accounting/suppliers/page.tsx: 1 -> 0`, and nothing else
     # changed. One page that legitimately stopped writing, not a broken parser.
     #
-    # A drop here is not by itself a broken parser. Diagnose it the way that
-    # one was — tally scan_writes() PER FILE against the previous commit and
+    # LOWERED 241 -> 222 on 2026-09-17, the biggest single drop so far and the
+    # same shape as both of the above. The firm's own GSTIN was written by two
+    # screens straight over PostgREST into `firms.gst_number`, while every
+    # backend reader read `firms.gstin` — so the practice's own fee invoice
+    # carried no supplier GSTIN and taxed a local supply as IGST. Both screens
+    # now PATCH /api/firms/profile, so `rbac()` runs and the check digit is
+    # tested at the door. Diagnosed exactly as this comment says to: the
+    # per-file tally against aae8fdd4 moved on precisely two pages and nothing
+    # else —
+    #
+    #   app/onboarding/page.tsx: 8 -> 0
+    #   app/settings/page.tsx:  11 -> 0
+    #
+    # 19 columns across two payloads, not a spread across the tree. The floor
+    # still protects what it was raised for in the first place: reverting
+    # blank_comments() drops ~26, which lands below 222.
+    #
+    # A drop here is not by itself a broken parser. Diagnose it the way those
+    # were — tally scan_writes() PER FILE against the previous commit and
     # see whether the delta is one page that legitimately stopped writing (fix
     # the floor, and say which page) or a spread across many (fix the parser):
     #
     #   collections.Counter(path for path, _, _ in scan_writes(WEB))
-    assert len(scan_writes(WEB)) >= 241, "write scan found too little — parser likely broke"
+    assert len(scan_writes(WEB)) >= 222, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG

@@ -8,6 +8,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useRouter } from "next/navigation";
 import { RoleGuard } from "@/components/RoleGuard";
+import { api, type FirmProfile } from "@/lib/api";
+import { objectOrNull } from "@/lib/api/shape";
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -261,18 +263,19 @@ export default function SettingsPage() {
 
       setFirmId(userData.firm_id);
 
-      // Fetch firm details
-      const { data: firmData, error: firmError } = await supabase
-        .from("firms")
-        .select("name, email, phone, address_line1, city, state, pincode, gst_number, icai_mrn, pan, website")
-        .eq("id", userData.firm_id)
-        .single();
-
-      if (firmError) throw firmError;
+      // Fetch firm details through the API, not PostgREST. `public.firms`
+      // carries TWO GSTIN columns and this screen used to read and write
+      // `gst_number`, the one no backend reader reads — so the firm's own fee
+      // invoice printed no supplier GSTIN and the CGST/SGST-versus-IGST
+      // fallback put the whole tax on a LOCAL supply into IGST.
+      // domain/firm/identity.py resolves it; the served `gstin` is the answer.
+      const firmRes = await api.firm.profile();
+      if (!firmRes.success) throw new Error(firmRes.error ?? "Failed to load firm data");
+      const firmData = objectOrNull<FirmProfile>(firmRes.data) ?? {};
 
       setForm({
         name: firmData.name ?? "",
-        gstin: firmData.gst_number ?? "",
+        gstin: firmData.gstin ?? "",
         pan: firmData.pan ?? "",
         icai_mrn: firmData.icai_mrn ?? "",
         phone: firmData.phone ?? "",
@@ -342,24 +345,24 @@ export default function SettingsPage() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("firms")
-        .update({
-          name: form.name.trim(),
-          email: form.email.trim(),
-          phone: form.phone.trim() || null,
-          address_line1: form.address_line1.trim() || null,
-          city: form.city.trim() || null,
-          state: form.state || null,
-          pincode: form.pincode.trim() || null,
-          gst_number: form.gstin.trim() || null,
-          pan: form.pan.trim() || null,
-          website: form.website.trim() || null,
-          icai_mrn: form.icai_mrn.trim() || null,
-        })
-        .eq("id", firmId);
-
-      if (error) throw error;
+      // PATCH /api/firms/profile, so rbac() runs (Partner-only — this is the
+      // practice's own legal identity) and the GSTIN's CHECK DIGIT is tested.
+      // The column's CHECK constraint is a shape regex and cannot do that, and
+      // a transposition here is wrong on every invoice the firm ever raises.
+      const res = await api.firm.saveProfile({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        address_line1: form.address_line1.trim(),
+        city: form.city.trim(),
+        state: form.state,
+        pincode: form.pincode.trim(),
+        gstin: form.gstin.trim(),
+        pan: form.pan.trim(),
+        website: form.website.trim(),
+        icai_mrn: form.icai_mrn.trim(),
+      });
+      if (!res.success) throw new Error(res.error ?? "Failed to save");
       setToast({ message: "Firm profile saved successfully", type: "success" });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to save";

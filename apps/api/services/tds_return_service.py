@@ -211,6 +211,18 @@ def _as_deduction_event(row: dict, *, kind: str) -> dict:
     A bill's base is its taxable value excluding GST (CBDT Circular 23/2017);
     an advance's is `tds_base_paise`, the unallocated part alone — the allocated
     part settled bills that were charged when they were credited.
+
+    `certificate_no` is the §197 lower-deduction certificate the deduction was
+    made under (migration 359, written by routers/purchase_bills.py on BOTH the
+    bill and the advance). It has to travel on the EVENT rather than be fetched
+    again at payload time, because the two kinds hold it in the same column but
+    are read by two different queries, and the statement needs it per ROW: §197
+    authorises a rate below the section's own, so a 26Q line certified under a
+    certificate and one that simply withheld too little are indistinguishable
+    on the figures alone. Without it the statement understates nothing and
+    EXPLAINS nothing — TRACES reads the row as a short deduction and raises a
+    §201(1)/§201(1A) demand against a deductor who did exactly what the
+    Assessing Officer's certificate told them to.
     """
     if kind == "bill":
         return {
@@ -227,6 +239,11 @@ def _as_deduction_event(row: dict, *, kind: str) -> dict:
             "nature": row.get("tds_nature_of_income"),
             "basis": row.get("tds_basis"),
             "form_15ca_ack_no": row.get("form_15ca_ack_no"),
+            # §197. `or None` rather than `or ""`: an empty string is a
+            # certificate number nobody holds, and `is_lower_deduction` is
+            # exactly "a number is present" — the same reading
+            # services/tds_register_service.py has taken since migration 359.
+            "certificate_no": row.get("tds_certificate_no") or None,
             "journal_entry_id": row.get("journal_entry_id"),
         }
     return {
@@ -243,6 +260,7 @@ def _as_deduction_event(row: dict, *, kind: str) -> dict:
         "nature": row.get("tds_nature_of_income"),
         "basis": row.get("tds_basis"),
         "form_15ca_ack_no": None,
+        "certificate_no": row.get("tds_certificate_no") or None,
         "journal_entry_id": row.get("journal_entry_id"),
     }
 
@@ -495,6 +513,10 @@ def tds_26q_from_books(
             challan_no=(matching_challan or {}).get("challan_no") or "",
             bsr_code=(matching_challan or {}).get("bsr_code") or "",
             challan_date=str((matching_challan or {}).get("payment_date") or ""),
+            # The two fields TDSDeducteeRecord has carried since migration 037
+            # and nothing ever set (PUR-07).
+            is_lower_deduction=bool(e.get("certificate_no")),
+            lower_deduction_cert=e.get("certificate_no"),
         ))
 
     payload = _computer.compute_26q(
@@ -540,6 +562,13 @@ def tds_26q_from_books(
                 "tds_rate_pct": d.tds_rate_pct, "tds_deducted_paise": d.tds_deducted_paise,
                 "tds_deposited_paise": d.tds_deposited_paise, "challan_no": d.challan_no,
                 "bsr_code": d.bsr_code, "challan_date": d.challan_date,
+                # §197. The certificate number travels with the row rather
+                # than only the lowered rate, because a rate below the
+                # section's has two lawful explanations and the figures cannot
+                # tell them apart — TRACES reads an unexplained one as a short
+                # deduction and raises a §201(1)/§201(1A) demand.
+                "is_lower_deduction": d.is_lower_deduction,
+                "lower_deduction_cert": d.lower_deduction_cert,
             }
             for d in payload.deductees
         ],
@@ -702,6 +731,11 @@ def tds_27q_from_books(
             surcharge_paise=e["surcharge_paise"],
             cess_paise=e["cess_paise"],
             non_deduction_reason=reason,
+            # NO §197 pair here, deliberately — TDS27QDeducteeRecord has no
+            # columns for one and says why. `vendor_tds.resolve_withholding`
+            # refuses to apply a certificate to a §195 payee and reports the
+            # refusal, so `e["certificate_no"]` is None on every non-resident
+            # bill by construction; reporting it would be a permanent False.
         ))
 
     payload = _computer.compute_27q(
@@ -846,6 +880,15 @@ def tds_24q_from_books(
             challan_no=(matching_challan or {}).get("challan_no") or "",
             bsr_code=(matching_challan or {}).get("bsr_code") or "",
             challan_date=str((matching_challan or {}).get("payment_date") or ""),
+            # DELIBERATELY NOT is_lower_deduction / lower_deduction_cert.
+            # A 24Q row is an EMPLOYEE, built from payroll slips, and this
+            # product holds no §197 certificate against §192 — the section is
+            # absent from domain/tds/lower_deduction.SECTIONS_197, so a
+            # certificate recorded against it would be refused rather than
+            # applied. Setting the pair here would emit a hard False on every
+            # salary row, which asserts "no certificate" where the truth is
+            # "nobody asked". The fields keep their dataclass defaults and the
+            # 24Q payload below does not carry them.
         ))
 
     payload = _computer.compute_24q(
