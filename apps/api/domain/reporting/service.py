@@ -825,6 +825,12 @@ def mock_ledger_source(allowed_client_ids: Optional[set] = None) -> InMemoryLedg
         entries.append(JournalEntry(
             id=e["id"], entry_date=e["entry_date"], client_id=e.get("client_id", ""),
             firm_id=e.get("firm_id", ""), entry_type=e.get("entry_type", ""), lines=lines,
+            reference_no=e.get("reference_no"), narration=e.get("narration"),
+            # The demo seed carries no documents, so most of these are None and
+            # the ledger's drill-through offers nothing — which is the honest
+            # answer, not a defect: there is no invoice to open.
+            source_type=e.get("source_type"),
+            source_id=(str(e["source_id"]) if e.get("source_id") is not None else None),
         ))
     return InMemoryLedgerSource(accounts=accounts, entries=entries,
                                 allowed_client_ids=allowed_client_ids)

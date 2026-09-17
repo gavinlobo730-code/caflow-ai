@@ -136,13 +136,15 @@ const REDRAFT_CHUNK = 100;
 
 type Progress = { label: string; done: number; total: number | null } | null;
 
-export function EntriesTab({ clientId, accounts, focusBankAccountId }: {
+export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: {
   clientId: string;
   accounts: Account[];
   /** BANK-23 — a bank account the Reconcile tab has sent the CA here to clear.
    *  Applied once when it arrives, never on every render: it is a handoff, not
    *  a lock, so the CA can change the picker straight afterwards. */
   focusBankAccountId?: string;
+  /** ACC-22 — the bank transaction a ledger drill-through arrived at. */
+  openDoc?: string | null;
 }) {
   const { toast } = useToast();
   const router = useRouter();
@@ -741,6 +743,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId }: {
         data={rows}
         columns={columns}
         getRowId={(t) => t.id}
+        highlightRowId={openDoc ?? null}
         loading={loading}
         error={loadError}
         onRetry={reload}

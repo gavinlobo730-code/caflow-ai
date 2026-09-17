@@ -9,6 +9,7 @@ import { RcmDocumentPanel } from "@/components/purchases/RcmDocumentPanel";
 import { LandedCostPanel } from "@/components/purchases/LandedCostPanel";
 import { BillsOfEntryTab } from "@/components/purchases/BillsOfEntryTab";
 import PurchaseCycleTab from "@/components/purchases/PurchaseCycleTab";
+import { openedAt } from "@/lib/accounting/sourceDocument";
 import { api } from "@/lib/api";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
@@ -236,6 +237,16 @@ export default function PurchasesPage() {
   // so switching year on one tab carries to the next instead of resetting.
   const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   const [tab, setTab] = useState<PurchaseTab>("bills");
+  // ACC-22 — a ledger row's drill-through arrives as ?tab=<id>&doc=<uuid>. The
+  // tab is validated against this screen's own TABS rather than trusted; the
+  // document id rings the row. Read in an effect because this page is part of
+  // a static export and may not touch `window` during render.
+  const [openDoc, setOpenDoc] = useState<string | null>(null);
+  useEffect(() => {
+    const { tab: t, doc } = openedAt(window.location.search);
+    if (t && TABS.some((x) => x.id === t)) setTab(t as PurchaseTab);
+    setOpenDoc(doc);
+  }, []);
 
   if (!clientId || clientId === "_placeholder") {
     return (
@@ -264,14 +275,14 @@ export default function PurchasesPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
-        {tab === "bills" && <PurchaseBills clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "bills" && <PurchaseBills clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />}
         {tab === "recurring" && <RecurringBills clientId={clientId} />}
         {tab === "vendors" && <Vendors clientId={clientId} />}
-        {tab === "payments" && <Payments clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
-        {tab === "debit-notes" && <DebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
-        {tab === "credit-notes" && <PurchaseCreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />}
+        {tab === "payments" && <Payments clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />}
+        {tab === "debit-notes" && <DebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />}
+        {tab === "credit-notes" && <PurchaseCreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />}
         {tab === "purchase-cycle" && <PurchaseCycleTab clientId={clientId} />}
-        {tab === "bills-of-entry" && <BillsOfEntryTab clientId={clientId} />}
+        {tab === "bills-of-entry" && <BillsOfEntryTab clientId={clientId} openDoc={openDoc} />}
       </div>
     </div>
   );
@@ -358,7 +369,7 @@ interface PurchaseBillRow {
   document_url: string | null;
 }
 
-function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
+function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; openDoc?: string | null }) {
   const [bills, setBills] = useState<PurchaseBillRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   // What GSTR-2B says about each bill, keyed by bill id. Empty until the CA
@@ -1037,6 +1048,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange }: { cli
         columns={billColumns}
         filters={billFilters}
         getRowId={(b) => b.id}
+        highlightRowId={openDoc ?? null}
         loading={loading}
         error={loadFailed ? "Couldn't load purchase bills — the request failed or timed out." : null}
         onRetry={load}
@@ -2262,7 +2274,7 @@ interface PaymentRow {
   tds_section?: string | null;
 }
 
-function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
+function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; openDoc?: string | null }) {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   // CGST Act s.31(3)(g). Offered on every payment and never gated here: the
   // section carries no "unregistered" limb, and whether it reaches this
@@ -2831,6 +2843,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
         columns={paymentColumns}
         filters={paymentFilters}
         getRowId={(p) => p.id}
+        highlightRowId={openDoc ?? null}
         loading={loading}
         error={loadFailed ? "Couldn't load payments — the request failed or timed out." : null}
         onRetry={load}
@@ -2895,7 +2908,7 @@ interface DebitNoteRow {
   status: string;
 }
 
-function DebitNotes({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
+function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; openDoc?: string | null }) {
   const router = useRouter();
   const [debitNotes, setDebitNotes] = useState<DebitNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -3301,6 +3314,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange }: { client
         columns={columns}
         filters={filters}
         getRowId={(d) => d.id}
+        highlightRowId={openDoc ?? null}
         loading={loading}
         error={loadFailed ? "Couldn't load debit notes — the request failed or timed out." : null}
         onRetry={load}
@@ -3374,7 +3388,7 @@ interface PurchaseCreditNoteRow {
   status: string;
 }
 
-function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void }) {
+function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, openDoc }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; openDoc?: string | null }) {
   const router = useRouter();
   const [creditNotes, setCreditNotes] = useState<PurchaseCreditNoteRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -3765,6 +3779,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange }:
         columns={columns}
         filters={filters}
         getRowId={(d) => d.id}
+        highlightRowId={openDoc ?? null}
         loading={loading}
         error={loadFailed ? "Couldn't load credit notes — the request failed or timed out." : null}
         onRetry={load}

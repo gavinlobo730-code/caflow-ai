@@ -72,8 +72,14 @@ ACCOUNTS = [
 ]
 AID = {a.id: str(uuid.uuid5(uuid.NAMESPACE_DNS, f"ledparity.{a.id}")) for a in ACCOUNTS}
 
+# Two source documents. Real uuids because journal_entries.source_id is a uuid
+# column; they point at no row, which is fine — the ledger reports the id, it
+# does not resolve it.
+_SRC_A = str(uuid.uuid5(uuid.NAMESPACE_DNS, "ledparity.doc.invoice"))
+_SRC_B = str(uuid.uuid5(uuid.NAMESPACE_DNS, "ledparity.doc.receipt"))
 
-def je(jid, lines, date="2026-06-01"):
+
+def je(jid, lines, date="2026-06-01", source_type=None, source_id=None):
     """`lines` entries are (account, debit, credit) or (account, debit, credit,
     currency, txn_debit, txn_credit, rate) for a foreign leg.
 
@@ -81,7 +87,12 @@ def je(jid, lines, date="2026-06-01"):
     the scenario's order is known, because created_at is the ledger's tiebreak
     for same-day entries and has to match what the seed writes byte for byte —
     otherwise the two sides sort differently and the comparison is between two
-    fixtures rather than two implementations."""
+    fixtures rather than two implementations.
+
+    source_type / source_id name the DOCUMENT behind the entry (ACC-22). Both
+    default to None, which is a real state — an entry posted before its path
+    stamped a source — and is seeded as SQL NULL so the two sides agree about
+    the absence as well as about the value."""
     built = []
     for l in lines:
         if len(l) == 3:
@@ -90,7 +101,8 @@ def je(jid, lines, date="2026-06-01"):
             built.append(JournalLine(l[0], l[1], l[2], txn_currency=l[3],
                                      txn_debit=l[4], txn_credit=l[5], exchange_rate=l[6]))
     return JournalEntry(id=jid, entry_date=date, client_id=CLIENT, firm_id=FIRM,
-                        entry_type="Journal", lines=tuple(built))
+                        entry_type="Journal", lines=tuple(built),
+                        source_type=source_type, source_id=source_id)
 
 
 def _entry_uuid(e) -> str:
@@ -199,6 +211,29 @@ SCENARIOS: list[tuple[str, list]] = [
     ("an INR leg carries none of them", [
         je("i1", [("ar", 10000, 0, "INR", 10000, 0, "1.00"), ("rev", 0, 10000)]),
     ]),
+    # ── The document behind the entry (ACC-22) ───────────────────────────────
+    # Without these three the new keys are None on the Python side and NULL on
+    # the SQL side for every scenario above, so the comparison passes over them
+    # — the exact vacuity this file's own header warns about.
+    ("an entry that names its document", [
+        je("src1", [("ar", 118000, 0), ("rev", 0, 118000)], "2026-06-01",
+           source_type="sales_invoice", source_id=_SRC_A),
+    ]),
+    ("the entry IS the record — a source with no source_id", [
+        # journal_source.ENTRY_IS_THE_RECORD: a manual journal, an opening
+        # balance and a trial-balance import name no row to open, so the type
+        # is present and the id is null. The two must not be collapsed.
+        je("src2", [("ar", 5000, 0), ("rev", 0, 5000)], "2026-06-01",
+           source_type="manual", source_id=None),
+    ]),
+    ("documents of different kinds in one account, in ledger order", [
+        je("src3", [("ar", 118000, 0), ("rev", 0, 118000)], "2026-05-01",
+           source_type="sales_invoice", source_id=_SRC_A),
+        je("src4", [("bank", 118000, 0), ("ar", 0, 118000)], "2026-06-01",
+           source_type="receipt", source_id=_SRC_B),
+        # No source at all — posted before its path stamped one. Both keys null.
+        je("src5", [("ar", 900, 0), ("rev", 0, 900)], "2026-07-01"),
+    ]),
     ("a long ledger — more rows than one page", [
         je(f"m{i}", [("ar", 1000 + i, 0), ("rev", 0, 1000 + i)],
            f"2026-{(i % 12) + 4:02d}-01" if (i % 12) + 4 <= 12 else "2026-12-01")
@@ -240,10 +275,13 @@ INSERT INTO clients (id, firm_id, client_name, entity_type)
         out.append(
             "INSERT INTO journal_entries "
             "(id, firm_id, client_id, entry_date, reference_no, narration, entry_type, "
-            " is_posted, status, created_at) VALUES ("
+            " is_posted, status, created_at, source_type, source_id) VALUES ("
             f"'{eid}', '{FIRM}', '{CLIENT}', '{e.entry_date}', 'REF-{i}', 'narr {i}', "
             f"'Journal', true, 'posted', "
-            f"TIMESTAMPTZ '{e.created_at or _created_at(i)}');"
+            f"TIMESTAMPTZ '{e.created_at or _created_at(i)}', "
+            # source_id is a uuid column, so NULL has to be a bare NULL rather
+            # than an empty string — _q gives exactly that.
+            f"{_q(e.source_type)}, {_q(e.source_id)}::uuid);"
         )
         for ln in e.lines:
             cur = getattr(ln, "txn_currency", None)
@@ -438,3 +476,55 @@ def test_an_account_with_no_activity_still_returns_a_document(db):
     py = _python_ledger(SCENARIOS[1][1], "cap")
     assert _comparable(sql) == _comparable(py)
     assert sql["lines"] == [] and sql["total_lines"] == 0
+
+
+# ── The document behind the row (ACC-22) ─────────────────────────────────────
+# Parity alone cannot prove these: two implementations that both emit nothing
+# agree perfectly. So the keys are asserted to be PRESENT and, where a document
+# exists, to carry it — the floor that stops the three scenarios above from
+# being a comparison of two silences.
+
+def _scenario(name: str) -> list:
+    for n, entries in SCENARIOS:
+        if n == name:
+            return entries
+    raise AssertionError(f"no scenario named {name!r}")
+
+
+def test_the_sql_side_carries_the_document(db):
+    assert _psql(db, _seed_sql(_scenario("an entry that names its document"))).returncode == 0
+    line = _sql_ledger(db)["lines"][0]
+    assert line["source_type"] == "sales_invoice", \
+        "the ledger row must name the document behind it, or there is nothing to open"
+    assert line["source_id"] == _SRC_A
+
+
+def test_both_keys_are_always_present_even_when_empty(db):
+    # An ABSENT key and a null key look the same to a caller reading
+    # `line.source_type ?? null`, but they are different bugs: null is "this
+    # entry has no document", absent is "this build forgot to send it". The
+    # screen renders the first and cannot detect the second.
+    assert _psql(db, _seed_sql(_scenario(
+        "documents of different kinds in one account, in ledger order"))).returncode == 0
+    sql = _sql_ledger(db)
+    py = _python_ledger(_scenario(
+        "documents of different kinds in one account, in ledger order"))
+    for doc in (sql, py):
+        for ln in doc["lines"]:
+            assert "source_type" in ln and "source_id" in ln, \
+                "both keys are emitted unconditionally, on both sides"
+    # The AR ledger sees the invoice, the receipt and the unstamped entry.
+    assert [ln["source_type"] for ln in sql["lines"]] == \
+           ["sales_invoice", "receipt", None]
+    assert [ln["source_id"] for ln in sql["lines"]] == [_SRC_A, _SRC_B, None]
+
+
+def test_a_source_with_no_source_id_keeps_the_type(db):
+    # journal_source.ENTRY_IS_THE_RECORD. Dropping the type along with the id
+    # would tell the screen "no document" for a manual journal, which HAS one —
+    # itself — and is the one kind the journal editor will actually open.
+    assert _psql(db, _seed_sql(_scenario(
+        "the entry IS the record — a source with no source_id"))).returncode == 0
+    line = _sql_ledger(db)["lines"][0]
+    assert line["source_type"] == "manual"
+    assert line["source_id"] is None

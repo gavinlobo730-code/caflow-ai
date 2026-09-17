@@ -83,8 +83,12 @@ test("the day book is read-only, because nothing on this screen may act on an au
 
 test("the day book names where each voucher came from, and derives the name", () => {
   const page = code(ACCOUNTING);
-  assert.match(page, /function sourceLabel/,
-    "the Source column must derive its label from the value");
+  // The derivation MOVED to lib/accounting/sourceDocument.ts when ACC-22 gave
+  // the ledger drill-through the same label, so this asserts the page reaches
+  // it by name rather than that the function is spelled out here — a move that
+  // does not break the rule must not break the guard.
+  assert.match(page, /sourceLabel[\s\S]{0,200}from "@\/lib\/accounting\/sourceDocument"/,
+    "the Source column must take its label from the one derivation");
   assert.doesNotMatch(page, /SOURCE_LABELS/,
     "a hardcoded label map is a second copy of ALL_SOURCES (apps/api/domain/"
     + "accounting/journal_source.py) and drifts the first time a source is added");

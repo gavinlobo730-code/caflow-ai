@@ -22,6 +22,8 @@ import {
 import PeriodPicker from "@/components/PeriodPicker";
 import { splitPeriodColumns, periodSplitNotice, resolvePeriodRange, type PeriodMode, type Granularity, type PeriodColumn } from "@/lib/dates/periods";
 import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
+import { documentTarget, noRouteReason, sourceLabel, journalEntryHref }
+  from "@/lib/accounting/sourceDocument";
 import { cfUnion, cfAmount, aggregateCashFlow, mapWithLimit, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
@@ -97,6 +99,11 @@ interface LedgerLine {
   credit_paise: number;
   running_balance_paise: number;
   is_debit: boolean;
+  /** ACC-22 — the DOCUMENT behind the entry. Both keys are always sent and are
+   *  null where the entry carries none, so "no document" and "this build did
+   *  not send it" are not the same state. */
+  source_type: string | null;
+  source_id: string | null;
 }
 interface LedgerView {
   account_name: string;
@@ -629,28 +636,11 @@ function ChartOfAccounts({ accounts, loading, error, onRefresh }: { accounts: Ac
 const ENTRY_TYPES = ["Journal", "Sales", "Purchase", "Payment", "Receipt", "Contra", "Opening"] as const;
 
 function journalEditorHref(clientId: string, entryId: string): string {
-  return `/clients/${clientId}/accounting/journal/${entryId}/edit`;
-}
-
-/** The posting path a journal entry came from, spelled for a reader.
- *
- *  DERIVED, NOT LISTED. `journal_entries.source_type` has a canonical
- *  vocabulary — apps/api/domain/accounting/journal_source.py's ALL_SOURCES,
- *  twenty values, pinned by a test that refuses a twenty-first spelling — and a
- *  label map here would be a second copy of it, out of step the first time one
- *  is added. This derives the label from the value instead, so a new source
- *  reads correctly the day it is stamped.
- *
- *  Two of the twenty are CamelCase rather than snake_case ("Opening",
- *  "TrialBalance"): journal_source.py explains why they keep their original
- *  spelling, so this handles both shapes.
- *  apps/api/tests/test_a_journal_source_reads_as_english.py holds the line from
- *  the side that owns the vocabulary. */
-function sourceLabel(value: string | null | undefined): string {
-  const v = (value ?? "").trim();
-  if (!v) return "—";
-  const spaced = v.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+  // One spelling of the route. lib/accounting/sourceDocument owns it because
+  // the ledger's drill-through has to build the same link for an entry that IS
+  // its own record (a manual journal, an opening balance, a trial-balance
+  // import), and two builders of one href is one rename from a dead link.
+  return journalEntryHref(clientId, entryId);
 }
 
 function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "manual" }: {
@@ -1031,6 +1021,7 @@ function LedgerDrillDown({
   initialAccountId: string;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [accountId, setAccountId] = useState(initialAccountId);
   const fyRange = fyDateRange(financialYear);
   const [startDate, setStartDate] = useState(fyRange.start);
@@ -1122,6 +1113,21 @@ function LedgerDrillDown({
     { key: "running_balance", header: "Balance", accessor: (l) => l.running_balance_paise, sortable: false, align: "right",
       exportValue: (l) => l.running_balance_paise / 100,
       render: (l) => <span className={`font-mono font-semibold ${l.is_debit ? "text-blue-700" : "text-orange-700"}`}>{bal(l.running_balance_paise, l.is_debit)}</span> },
+    // ACC-22. The document behind the row, and whether it opens. A row that
+    // does NOT open says why on hover rather than being silently inert — the
+    // three causes are different facts (no source recorded, no screen shows
+    // that document, the source names no row) and a CA acts on each
+    // differently.
+    { key: "source", header: "Source", accessor: (l) => sourceLabel(l.source_type), width: "10rem",
+      exportValue: (l) => sourceLabel(l.source_type),
+      render: (l) => {
+        const target = documentTarget(clientId, l);
+        if (target) {
+          return <span className="text-blue-600 group-hover:underline whitespace-nowrap">{target.label} ↗</span>;
+        }
+        const why = noRouteReason(l);
+        return <span className="text-[#94A3B8] whitespace-nowrap" title={why || undefined}>{sourceLabel(l.source_type)}</span>;
+      } },
   ];
 
   const ledgerFilters: FilterDef<LedgerLine>[] = [
@@ -1183,6 +1189,20 @@ function LedgerDrillDown({
                 columns={ledgerColumns}
                 filters={ledgerFilters}
                 getRowId={(l) => l.entry_id}
+                // ACC-22 — the drill-through. A row with a document opens it;
+                // a row without one does nothing, which is why the Source
+                // column carries the reason rather than the click.
+                onRowClick={(l) => {
+                  const target = documentTarget(clientId, l);
+                  if (target) router.push(target.href);
+                }}
+                // A row with no document is not clickable — no pointer, no
+                // click. A third of a real ledger's rows are like that (an
+                // entry posted before its path stamped a source), and a row
+                // that invites a click and does nothing is worse than an inert
+                // one that says why in its Source cell.
+                rowClickable={(l) => documentTarget(clientId, l) !== null}
+                rowClassName={(l) => (documentTarget(clientId, l) ? "group" : "")}
                 searchPlaceholder="Search narration or reference…"
                 initialSort={{ key: "entry_date", dir: "asc" }}
                 // ONE pager, and it moves the server. These rows are a slice —

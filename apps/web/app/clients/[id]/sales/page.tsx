@@ -24,6 +24,7 @@ import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import CsvImportModal, { type ImportRow, type ReferenceResolver } from "@/components/CsvImportModal";
 import AllocateReceiptModal from "@/components/sales/AllocateReceiptModal";
 import SalesCycleTab from "@/components/sales/SalesCycleTab";
+import { openedAt } from "@/lib/accounting/sourceDocument";
 import { unallocatedOf } from "@/lib/sales/receiptAllocation";
 import { buildSalesInvoices, SALES_INVOICE_IMPORT_COLUMNS } from "@/lib/invoices/importMapping";
 import {
@@ -236,6 +237,17 @@ export default function SalesPage() {
   // (there is none) or with another tab.
   const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   const [tab, setTab] = useState<SalesTab>("invoices");
+  // ACC-22 — a ledger row's drill-through arrives as ?tab=<id>&doc=<uuid>. The
+  // tab is validated against this screen's own TABS rather than trusted, and
+  // the document id is passed down so the list can ring the row. Read in an
+  // effect from window.location.search, the way ?cust= below already is: this
+  // page is a static export, so nothing may touch `window` during render.
+  const [openDoc, setOpenDoc] = useState<string | null>(null);
+  useEffect(() => {
+    const { tab: t, doc } = openedAt(window.location.search);
+    if (t && TABS.some((x) => x.id === t)) setTab(t as SalesTab);
+    setOpenDoc(doc);
+  }, []);
 
   // Cross-tab navigation (e.g. Customers → "View Invoices" / "View Ledger").
   // The target customer is stashed in the URL (?cust=) and the tab switches;
@@ -277,7 +289,7 @@ export default function SalesPage() {
           <SalesCycleTab clientId={clientId} />
         )}
         {tab === "invoices" && (
-          <SalesInvoices clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
+          <SalesInvoices clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />
         )}
         {tab === "recurring" && (
           <RecurringInvoices clientId={clientId} />
@@ -286,13 +298,13 @@ export default function SalesPage() {
           <Customers clientId={clientId} onNavigate={navigateTo} />
         )}
         {tab === "receipts" && (
-          <Receipts clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
+          <Receipts clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />
         )}
         {tab === "credit-notes" && (
-          <CreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
+          <CreditNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />
         )}
         {tab === "debit-notes" && (
-          <SalesDebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} />
+          <SalesDebitNotes clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />
         )}
         {tab === "statements" && (
           <Statements clientId={clientId} />
@@ -1292,10 +1304,14 @@ function SalesInvoices({
   clientId,
   financialYear,
   onFinancialYearChange,
+  openDoc,
 }: {
   clientId: string;
   financialYear: string;
   onFinancialYearChange: (fy: string) => void;
+  /** ACC-22 — the document a ledger drill-through arrived at, ringed in the
+   *  table below. Null when the screen was opened any other way. */
+  openDoc?: string | null;
 }) {
   const [invoices, setInvoices] = useState<SalesInvoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -2029,6 +2045,7 @@ function SalesInvoices({
         columns={columns}
         filters={filters}
         getRowId={(i) => i.id}
+        highlightRowId={openDoc ?? null}
         loading={loading}
         onRefresh={load}
         searchPlaceholder="Search invoice no. or customer…"
@@ -3177,10 +3194,14 @@ function Receipts({
   clientId,
   financialYear,
   onFinancialYearChange,
+  openDoc,
 }: {
   clientId: string;
   financialYear: string;
   onFinancialYearChange: (fy: string) => void;
+  /** ACC-22 — the document a ledger drill-through arrived at, ringed in the
+   *  table below. Null when the screen was opened any other way. */
+  openDoc?: string | null;
 }) {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -3375,6 +3396,7 @@ function Receipts({
         columns={columns}
         filters={filters}
         getRowId={(r) => r.id}
+        highlightRowId={openDoc ?? null}
         loading={loading}
         onRefresh={load}
         searchPlaceholder="Search receipt no., customer, or mode…"
@@ -3957,10 +3979,14 @@ function CreditNotes({
   clientId,
   financialYear,
   onFinancialYearChange,
+  openDoc,
 }: {
   clientId: string;
   financialYear: string;
   onFinancialYearChange: (fy: string) => void;
+  /** ACC-22 — the document a ledger drill-through arrived at, ringed in the
+   *  table below. Null when the screen was opened any other way. */
+  openDoc?: string | null;
 }) {
   const router = useRouter();
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
@@ -4317,6 +4343,7 @@ function CreditNotes({
         columns={columns}
         filters={filters}
         getRowId={(cn) => cn.id}
+        highlightRowId={openDoc ?? null}
         loading={loading}
         onRefresh={load}
         searchPlaceholder="Search CN no., customer, or reason…"
@@ -4396,10 +4423,14 @@ function SalesDebitNotes({
   clientId,
   financialYear,
   onFinancialYearChange,
+  openDoc,
 }: {
   clientId: string;
   financialYear: string;
   onFinancialYearChange: (fy: string) => void;
+  /** ACC-22 — the document a ledger drill-through arrived at, ringed in the
+   *  table below. Null when the screen was opened any other way. */
+  openDoc?: string | null;
 }) {
   const router = useRouter();
   const [debitNotes, setDebitNotes] = useState<SalesDebitNote[]>([]);
@@ -4742,6 +4773,7 @@ function SalesDebitNotes({
         columns={columns}
         filters={filters}
         getRowId={(dn) => dn.id}
+        highlightRowId={openDoc ?? null}
         loading={loading}
         onRefresh={load}
         searchPlaceholder="Search DN no., customer, or reason…"
