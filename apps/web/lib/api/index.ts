@@ -846,6 +846,23 @@ export type BankAccountTypeInfo = {
 /** GET /api/currencies/policy. `gates` is the half that matters: `active`
  *  alone could not say WHICH of three switches was down, which is why the
  *  feature was unusable (ACC-19). */
+/** One row of public.fx_rates. `rate` is a STRING: NUMERIC(18,8) is exact and
+ *  a JS number is not — read it, show it, never arithmetic on it here. */
+export type FxRate = {
+  id?: string;
+  base: string;
+  quote: string;
+  rate_date: string;
+  rate_type: string;
+  rate: string;
+  source: string;
+  created_at?: string;
+};
+
+export type FxRateList = {
+  base: string; quote: string; rate_type: string; rates: FxRate[];
+};
+
 export type CurrencyPolicy = {
   active: boolean;
   functional_currency: string;
@@ -2630,6 +2647,26 @@ export const api = {
     setEntitlement: (enabled: boolean) =>
       request<ApiResp<{ multi_currency_entitled: boolean }>>("/api/currencies/entitlement",
         { method: "PUT", body: JSON.stringify({ enabled }) }),
+    /** The four rate types the fx_rates CHECK admits, and what each is for.
+     *  Served rather than spelled here: a browser copy is a second vocabulary
+     *  one migration away from disagreeing with the database. */
+    rateTypes: () =>
+      request<ApiResp<{ rate_types: { code: string; meaning: string }[] }>>(
+        "/api/currencies/rate-types"),
+    /** The most recent rates for one (base, quote, rate_type), newest first. */
+    rates: (params: { base: string; quote: string; rate_type: string; limit?: string }) =>
+      request<ApiResp<FxRateList>>(
+        `/api/currencies/rates?${new URLSearchParams(params as Record<string, string>)}`),
+    /** Record one rate. Partner-only, and SHARED ACROSS THE PLATFORM — a rate
+     *  is a fact about the world, so the tenancy answer is on the write side.
+     *  The rate travels as a STRING: the column is NUMERIC(18,8) precisely so
+     *  it is exact, and a JSON number would put a float round trip in front of
+     *  that. `source` is not settable — it is the provider identifier
+     *  ManualRateProvider matches on and half the unique key. */
+    recordRate: (body: { base: string; quote: string; rate_date: string;
+                         rate: string; rate_type: string }) =>
+      request<ApiResp<FxRate & { replaced: boolean }>>("/api/currencies/rates",
+        { method: "PUT", body: JSON.stringify(body) }),
     setClientPolicy: (clientId: string, enabled: boolean) =>
       request<ApiResp<{ multi_currency_enabled: boolean }>>(
         `/api/currencies/policy?client_id=${encodeURIComponent(clientId)}`,

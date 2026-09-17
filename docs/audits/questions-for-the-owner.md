@@ -281,7 +281,33 @@ Building the surface rather than deleting the module, because the module is
 good and the alternative is writing "this is reference only" on 315 lines of
 working logic.
 
-## `fx_rates` stays global, Partner-only to write  *(was §13)*
+## `fx_rates` stays global, Partner-only to write  *(was §13)*  **— BUILT 17-09-2026**
+
+`GET /api/currencies/rates`, `GET /api/currencies/rate-types` and a
+Partner-only `PUT /api/currencies/rates`, with the panel on
+`/settings/multi-currency`.
+
+**The table was read by the booking path and written by NOTHING.**
+`ManualRateProvider` is what every foreign invoice, bill, receipt and payment
+resolves its rate through, and no endpoint, field, screen or seed ever put a
+row in `fx_rates` — so ACC-19's switchable gates let a Partner turn
+multi-currency on and then find the one thing it needs could not be recorded.
+The `capital_wip` and `fx_revaluations` shape a third time.
+
+**The rate is TEXT all the way down.** The column is `NUMERIC(18,8)` precisely
+so a rate is exact and `RateQuote` reads it back through `Decimal(str(...))`,
+so it is typed, sent, stored and rendered as text; a JSON number would put a
+float round trip in front of a column chosen to avoid one. **`source` is not
+settable** — it is the provider identifier the reader matches on AND half the
+unique key, so a settable one would write a rate nothing reads and turn a
+correction into a second rate for the same day. **An existing rate for that day
+is REPLACED** and the response says which happened; nothing reaches back into
+documents already booked at the old rate, because a posted journal is immutable.
+
+**The four rate types are served, not spelled on the screen**, and they are not
+interchangeable — `gst_notified` is CGST Rule 34's rate notified under s.14 of
+the Customs Act rather than the day's market rate, so one figure typed for all
+four declares a different taxable value from the one the Act fixes.
 
 **Decided: option (a).** USD→INR on a date is a fact about the world, not
 about a firm — RBI publishes one. A firm-scoped table would have every firm
