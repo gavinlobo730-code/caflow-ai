@@ -17,6 +17,11 @@
  *   * a `console.error` — a failure, with the message, because that is where
  *     React reports a render it could not finish;
  *   * an empty body — a failure: something rendered nothing at all;
+ *   * landing somewhere else — a failure naming the destination, because a
+ *     guard that redirects is how this walk spent four days photographing the
+ *     onboarding wizard and calling it green;
+ *   * a body that too many OTHER routes also render — a failure at the end of
+ *     the run, for the same reason one route cannot see;
  *   * a request that escaped the stub — reported, not failed, so a screen
  *     reaching a host nobody expected is visible.
  *
@@ -58,6 +63,7 @@
  * --shots          write a PNG per route to .smoke/ (the visual baseline —
  *                  NOT a regression gate; these are supposed to change)
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -158,6 +164,30 @@ const FAKE_USERS_ROW = {
   full_name: "Smoke Walker",
 };
 
+/**
+ * THE SECOND ROW, AND THE CHECK THAT FOUND IT.
+ *
+ * `app/DashboardContent.tsx` reads `firms.name` for the signed-in firm and
+ * does `if (!firmMeta?.name) router.replace("/onboarding")`. With that read
+ * answered null the product's FRONT DOOR bounced to the wizard — and so did
+ * /login and /login/forgot-password, which send a signed-in visitor to /
+ * and inherit its redirect.
+ *
+ * Nothing in the walk could see that until the landing check went in on
+ * 16 Sep: the onboarding wizard renders, has a non-empty body and throws
+ * nothing, so / passed every per-route check while never once photographing
+ * the dashboard. That is the same defect as the users row, one read further
+ * in, which is the argument for a check that asks WHERE you ended up rather
+ * than whether something appeared.
+ *
+ * `name` is the only column read. This is still not a seeded product — T2 is
+ * — it is the second row the guard chain needs to let a screen run.
+ */
+const FAKE_FIRM_ROW = {
+  id: FAKE_USERS_ROW.firm_id,
+  name: "Smoke & Co., Chartered Accountants",
+};
+
 function sendJson(res, body, status = 200) {
   const s = JSON.stringify(body);
   res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(s) });
@@ -194,6 +224,9 @@ function serve(root) {
           .includes("vnd.pgrst.object+json");
         if (url.startsWith("/__supabase/rest/v1/users")) {
           return sendJson(res, wantsObject ? FAKE_USERS_ROW : [FAKE_USERS_ROW]);
+        }
+        if (url.startsWith("/__supabase/rest/v1/firms")) {
+          return sendJson(res, wantsObject ? FAKE_FIRM_ROW : [FAKE_FIRM_ROW]);
         }
         // Everything else stays EMPTY, deliberately. The no-data state is the
         // one a developer with a seeded database never looks at and the one a
@@ -253,6 +286,71 @@ function sessionScript() {
   } catch {} })();`;
 }
 
+/**
+ * HOW MANY ROUTES MAY RENDER THE SAME THING BEFORE THAT IS THE FINDING.
+ *
+ * On 12 September this walk exited 0 with 148 of its 159 screenshots byte-
+ * identical. Every protected route had been redirected to the onboarding
+ * wizard by AuthGuard, and a wizard has a non-empty body and throws nothing,
+ * so every per-route check passed. Nothing in the run could see the shape of
+ * the SET, which is where that failure lived.
+ *
+ * Five is not a tolerance for sameness — it is the point past which sameness
+ * stops being a coincidence. Real duplicates exist and are legitimate: a
+ * handful of routes render the same "not found" body because the walk feeds
+ * every :id a placeholder that resolves to nothing. Those come in twos and
+ * threes. A guard that could not survive them would be turned off.
+ *
+ * The digest is of the body TEXT, not of the screenshot, although the plan
+ * item said md5-of-screenshot. Text is available on every run and the
+ * screenshot only under --shots, so a JPEG rule would have been off by
+ * default — which is exactly the shape of defect this is for. It is also the
+ * more honest comparison: two screens can differ by a chart and agree on
+ * every word, and it is the words that say which screen you are on.
+ *
+ * WHAT THE HEADROOM ACTUALLY IS TODAY: one group of five, and it sits exactly
+ * on the limit. /clients/_placeholder/{overview, sales, purchases, inventory,
+ * accounting/journal/_placeholder/edit} all render the workspace shell over
+ * "Loading…" and nothing else, because the walk feeds every :id the string
+ * "_placeholder" and the workspace never resolves a client. A seeded demo
+ * firm (T2) is what fixes that; until then a SIXTH such screen trips this
+ * check, and it should — six screens showing a CA nothing but navigation is
+ * the finding, not the false alarm.
+ */
+const MAX_ROUTES_PER_DIGEST = 5;
+
+/**
+ * THE ROUTES THAT LEGITIMATELY SEND YOU SOMEWHERE ELSE, AND WHERE TO.
+ *
+ * The landing check is only worth having if it cannot be satisfied by
+ * "something rendered". These six are the redirects this product actually
+ * means, each pinned to its DESTINATION — so the day one of them starts
+ * bouncing somewhere new, the run still fails and says where.
+ *
+ * Every one of them was MEASURED by turning the check on, not written from
+ * memory. The first run also caught three that were not legitimate at all —
+ * /, /login and /login/forgot-password all landed on /onboarding, because
+ * DashboardContent reads `firms.name` and the stub answered null. That is
+ * fixed at the stub (see FAKE_FIRM_ROW), not excused here.
+ */
+const EXPECTED_LANDINGS = {
+  // A signed-in visitor has no business on the sign-in pages.
+  "/login": "/",
+  "/login/forgot-password": "/",
+  // …nor in the wizard, once their user row carries a firm.
+  "/onboarding": "/",
+  // Self-gated above the firm: not on the platform_admins allowlist, so it
+  // sends you back to the product. See app/platform/page.tsx.
+  "/platform": "/",
+  // An index that has no page of its own.
+  "/portal": "/portal/dashboard",
+  // The walk feeds every :id the string "_placeholder", which resolves to no
+  // client, and the workspace index returns to the list rather than showing a
+  // shell for a client that is not there. A seeded demo firm (T2) is what
+  // removes this entry, not a change here.
+  "/clients/_placeholder": "/clients",
+};
+
 const args = process.argv.slice(2);
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1] : null;
 const shots = args.includes("--shots");
@@ -263,6 +361,13 @@ const routes = JSON.parse(fs.readFileSync(path.join(__dirname, "screens.snapshot
 
 const escaped = new Set();
 const captured = [];
+const rendered = [];
+const redirected = [];
+
+const trim = (p) => (p.endsWith("/") && p !== "/" ? p.slice(0, -1) : p);
+// Whitespace is collapsed so a reflow cannot read as a different screen.
+const digestOf = (text) => crypto.createHash("sha1")
+  .update(text.replace(/\s+/g, " ").trim()).digest("hex").slice(0, 12);
 
 if (!fs.existsSync(OUT)) {
   console.error("out/ does not exist — run `pnpm smoke:build` first.");
@@ -307,6 +412,26 @@ for (const route of routes) {
     await page.waitForTimeout(400);
     const text = (await page.evaluate(() => document.body.innerText || "")).trim();
     if (!text) errors.push("rendered an empty body");
+
+    // WHERE IT LANDED, not whether something rendered. AuthGuard, an
+    // onboarding gate or a module index that bounces elsewhere all leave a
+    // perfectly good page on screen — somebody else's.
+    const landed = trim(new URL(page.url()).pathname);
+    const expected = EXPECTED_LANDINGS[route];
+    if (landed !== trim(new URL(url).pathname)) {
+      if (expected === undefined) {
+        errors.push(`landed on ${landed}, not the route asked for`);
+      } else if (landed !== trim(expected)) {
+        errors.push(`redirects to ${landed}; it is pinned to ${expected}`);
+      } else {
+        redirected.push({ route, to: landed });
+      }
+    }
+    // A route that redirects renders the DESTINATION's body, so counting it
+    // among the duplicates would report the allowlist back to us as a herd.
+    if (landed === trim(new URL(url).pathname)) {
+      rendered.push({ route, digest: digestOf(text), sample: text.slice(0, 60) });
+    }
     if (shots) {
       // JPEG rather than PNG, and the reason is not disk: a full-page PNG of a
       // dense table is 1-2MB, and 159 of them cannot be carried anywhere as a
@@ -340,6 +465,40 @@ for (const b of broken) {
   console.log(`\n  ${b.route}`);
   for (const e of b.errors.slice(0, 4)) console.log(`      ${e}`);
 }
+
+// THE CHECK NO SINGLE ROUTE CAN MAKE. See MAX_ROUTES_PER_DIGEST above.
+const byDigest = new Map();
+for (const r of rendered) {
+  if (!byDigest.has(r.digest)) byDigest.set(r.digest, []);
+  byDigest.get(r.digest).push(r);
+}
+const herds = [...byDigest.values()]
+  .filter((g) => g.length > MAX_ROUTES_PER_DIGEST)
+  .sort((a, b) => b.length - a.length);
+if (redirected.length) {
+  console.log(`\n${redirected.length} routes redirected as pinned: ` +
+              redirected.map((r) => `${r.route} -> ${r.to}`).join(", "));
+}
+
+const groups = [...byDigest.values()].sort((a, b) => b.length - a.length);
+console.log(`${byDigest.size} distinct bodies across the ${rendered.length} routes that stayed put.`);
+// Every group of three or more is printed even when it passes, so the headroom
+// under MAX_ROUTES_PER_DIGEST is visible rather than something a reader has to
+// go and measure. A run that is one route away from the limit should say so.
+for (const g of groups.filter((g) => g.length >= 3 && g.length <= MAX_ROUTES_PER_DIGEST)) {
+  console.log(`  ${g.length} routes share a body (allowed ${MAX_ROUTES_PER_DIGEST}), ` +
+              `beginning ${JSON.stringify(g[0].sample)}:`);
+  console.log(`      ${g.map((r) => r.route).join(", ")}`);
+}
+for (const herd of herds) {
+  console.log(
+    `\n  ${herd.length} routes render the SAME body — more than ` +
+    `${MAX_ROUTES_PER_DIGEST}, so this is a redirect or a shared refusal, ` +
+    `not a coincidence:`);
+  console.log(`      it begins: ${JSON.stringify(herd[0].sample)}`);
+  for (const r of herd.slice(0, 8)) console.log(`      ${r.route}`);
+  if (herd.length > 8) console.log(`      ...and ${herd.length - 8} more`);
+}
 if (escaped.size) {
   console.log(
     `\nBLOCKED — a screen reached for a host that is not the smoke server: ` +
@@ -366,4 +525,4 @@ if (shots) {
     `Click a card for the full page.</p><div class="grid">${cards}</div>`);
   console.log(`\n${captured.length} screenshots and a contact sheet in ${SHOT_DIR}`);
 }
-process.exit(broken.length ? 1 : 0);
+process.exit(broken.length || herds.length ? 1 : 0);

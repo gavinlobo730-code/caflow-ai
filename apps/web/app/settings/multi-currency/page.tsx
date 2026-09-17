@@ -29,6 +29,7 @@ import Link from "next/link";
 import { ChevronLeft, Globe, AlertTriangle, Check } from "lucide-react";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type CurrencyPolicy } from "@/lib/api/index";
+import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 type ClientRow = { id: string; name?: string; client_name?: string };
@@ -55,14 +56,19 @@ export default function MultiCurrencyPage() {
       // are built by the same `_gates` on the server, so there is still one
       // implementation.
       const ent = await api.currencies.entitlement();
-      setFirmGates(ent.success ? (ent.data ?? null) : null);
+      // `?? null` is not enough and this screen proved it: the envelope's
+      // `data` is `[]` wherever the answer is absent, and `[] ?? null` is
+      // `[]` — truthy, so `firmGates?.platform.on` then read `.on` off
+      // undefined and the whole Settings module went to its error boundary.
+      // objectOrNull is the one place that knows an array is not an object.
+      setFirmGates(ent.success ? objectOrNull<FirmGates>(ent.data) : null);
 
       const cl = await api.clients.list() as { success: boolean; data?: ClientRow[] };
-      const clients = cl.success ? (cl.data ?? []) : [];
+      const clients = cl.success ? arrayOrEmpty<ClientRow>(cl.data) : [];
       const settled = await Promise.all(clients.map(async (c) => {
         try {
           const p = await api.currencies.policy({ client_id: c.id });
-          return { client: c, policy: p.success ? (p.data ?? null) : null };
+          return { client: c, policy: p.success ? objectOrNull<CurrencyPolicy>(p.data) : null };
         } catch {
           return { client: c, policy: null };
         }
@@ -78,8 +84,8 @@ export default function MultiCurrencyPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const platformOn = firmGates?.platform.on ?? false;
-  const firmOn = firmGates?.firm.on ?? false;
+  const platformOn = firmGates?.platform?.on ?? false;
+  const firmOn = firmGates?.firm?.on ?? false;
 
   async function setFirm(enabled: boolean) {
     setSaving("firm"); setError("");
@@ -177,7 +183,7 @@ export default function MultiCurrencyPage() {
                   </thead>
                   <tbody className="divide-y divide-[#F8FAFC]">
                     {rows.map(({ client, policy }) => {
-                      const on = policy?.gates.client.on ?? false;
+                      const on = policy?.gates?.client?.on ?? false;
                       const supported = policy?.gates.functional_currency_supported ?? true;
                       return (
                         <tr key={client.id} className="hover:bg-[#F8FAFC]">
