@@ -569,6 +569,30 @@ change. The code is the authority; keep this file in step with it.
   the state list now (as `ReceiptIn.place_of_supply` has been since GST-15),
   the edit path too, and a request whose two disagree is refused rather than
   silently resolved one way.
+- **WHAT KIND OF SUPPLY AN INVOICE IS HAS ONE AUTHORITY, AND THE E-INVOICE
+  RECORD MAY NOT CONTRADICT IT** (SALES-19). `domain/gst/treatment.
+  treatment_for_invoice` derives the treatment — regular, export or SEZ, with
+  or without payment, deemed export — from the invoice's own `supply_type` and
+  `invoice_type`, the pair GSTR-1 is actually built from, reading the EXPORT
+  ROUTE off the tax actually charged (IGST §16(3): (b) on payment of IGST,
+  refunded under §54, against (a) under an LUT or bond with nothing charged —
+  Table 6A's `exp_typ` turns on exactly that, and asking for the wrong one asks
+  for the wrong refund under the wrong rule). `einvoice_records.gst_treatment`
+  is a SECOND record of the same fact, captured when a CA prepares an IRN, and
+  `POST /api/einvoice/records` stored whatever was sent while the picker seeded
+  itself `"regular"` and was never told what the invoice said — so a record
+  could contradict its own invoice and the compliance panel rendered both
+  labels at once. `treatment_for_record` is the rule and the door **422s a
+  disagreement rather than resolving it**: taking the caller's value keeps the
+  wrong export route on the document a human keys the IRP from, and taking the
+  derived value silently discards what somebody just chose on a screen that
+  offered them the choice — `SalesInvoiceIn`'s shape where the two state fields
+  disagree. **A record naming no invoice this product holds is NOT refused**:
+  `sales_invoice_id` is optional (a record may be prepared for an invoice
+  raised elsewhere), so there is nothing to reconcile and refusing would make
+  the link mandatory by accident. The picker is READ-ONLY where the server
+  decided one, because a screen must never invite a CA to type something the
+  server will refuse — the `attachmentsReadOnly` discipline.
 - **THE SALES CYCLE BEGINS BEFORE THE TAX INVOICE, AND ONLY ONE OF THE FOUR
   DOCUMENTS IS THE ACT'S** (SALES-21, migration 392). A client quotes, takes an
   order, delivers against it and bills afterwards; the product started at the

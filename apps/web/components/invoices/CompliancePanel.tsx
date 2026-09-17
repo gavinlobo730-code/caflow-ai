@@ -207,6 +207,20 @@ export function CompliancePanel({
         ) : irn.state === "draft" ? (
           <div className="space-y-2">
             <p className="text-[11px] text-[#64748B]">Record prepared ({irn.record?.gst_treatment ? treatmentLabel(irn.record.gst_treatment) : "regular"}). Generate the IRN on the IRP portal, then record it.</p>
+            {/* A record stored BEFORE the write door started reconciling the two
+                can still contradict its own invoice (SALES-19), and the two
+                labels then sat on this screen side by side with nothing saying
+                which was which. New records cannot: the endpoint refuses a
+                disagreement. */}
+            {irn.record?.gst_treatment && invoice.gst_treatment
+              && irn.record.gst_treatment !== invoice.gst_treatment && (
+              <p className="text-[11px] text-amber-600 flex items-start gap-1">
+                <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
+                This record says {treatmentLabel(irn.record.gst_treatment)}; the invoice reads{" "}
+                {treatmentLabel(invoice.gst_treatment)}. The invoice is what the GSTR-1 is
+                built from — correct one of them before keying the IRP.
+              </p>
+            )}
             <PrimaryBtn onClick={() => setModal("recordIrn")}>Record IRN</PrimaryBtn>
           </div>
         ) : (
@@ -238,7 +252,21 @@ export function CompliancePanel({
         )}
       </ComplianceCard>
 
-      {modal === "prepIrn" && <PrepareIrnModal busy={busy} onClose={() => setModal(null)} onSubmit={prepareIrn} />}
+      {modal === "prepIrn" && (
+        <PrepareIrnModal
+          busy={busy}
+          /* The INVOICE's own treatment, not the picker's old "regular"
+             default (SALES-19). `invoice.gst_treatment` is derived server-side
+             from supply_type + invoice_type + the IGST charged, which is what
+             GSTR-1 is built from, and the create endpoint now REFUSES a record
+             that contradicts it — so a free choice here would be an invitation
+             to a 422. Null only in the window where this frontend has
+             redeployed ahead of the backend; the picker is editable then. */
+          derived={invoice.gst_treatment ?? null}
+          onClose={() => setModal(null)}
+          onSubmit={prepareIrn}
+        />
+      )}
       {modal === "recordIrn" && <RecordIrnModal busy={busy} onClose={() => setModal(null)} onSubmit={recordIrn} />}
       {modal === "cancelIrn" && <CancelModal title="Cancel IRN" busy={busy} onClose={() => setModal(null)} onSubmit={cancelIrn} note="Cancel the IRN on the IRP portal first, then record it here." />}
       {modal === "prepEway" && <PrepareEwayModal busy={busy} invoice={invoice} onClose={() => setModal(null)} onSubmit={prepareEway} />}
@@ -319,15 +347,25 @@ function L({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block space-y-1"><span className="block text-xs font-medium text-[#475569]">{label}</span>{children}</label>;
 }
 
-function PrepareIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: () => void; onSubmit: (t: GstTreatment, lut: string) => void }) {
-  const [t, setT] = useState<GstTreatment>("regular");
+function PrepareIrnModal({ busy, derived, onClose, onSubmit }: { busy: boolean; derived: GstTreatment | null; onClose: () => void; onSubmit: (t: GstTreatment, lut: string) => void }) {
+  const [t, setT] = useState<GstTreatment>(derived ?? "regular");
   const [lut, setLut] = useState("");
   return (
     <ModalShell title="Prepare IRN" note="This only creates the record. You generate the IRN on the IRP portal — nothing is auto-submitted." onClose={onClose}>
       <L label="GST treatment">
-        <select value={t} onChange={(e) => setT(e.target.value as GstTreatment)} className={inputCls}>
-          {TREATMENTS.map((x) => <option key={x} value={x}>{treatmentLabel(x)}</option>)}
-        </select>
+        {derived ? (
+          <>
+            <p className="px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg bg-[#F8FAFC] text-[#334155]">{treatmentLabel(derived)}</p>
+            <p className="text-[10px] text-[#94A3B8]">
+              Read from this invoice&apos;s own supply type and invoice type — the fields the
+              GSTR-1 is built from. To change it, correct the invoice.
+            </p>
+          </>
+        ) : (
+          <select value={t} onChange={(e) => setT(e.target.value as GstTreatment)} className={inputCls}>
+            {TREATMENTS.map((x) => <option key={x} value={x}>{treatmentLabel(x)}</option>)}
+          </select>
+        )}
       </L>
       {WITHOUT_PAYMENT.has(t) && (
         <L label="LUT / Bond number"><input value={lut} onChange={(e) => setLut(e.target.value)} placeholder="LUT/2026/001" className={inputCls} /></L>

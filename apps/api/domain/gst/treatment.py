@@ -84,3 +84,53 @@ def treatment_for_invoice(
     # routes, not rates. What they are instead is carried by supply_type, which
     # the return reads directly.
     return REGULAR
+
+
+def treatment_for_record(
+    *,
+    stated: Optional[str],
+    derived: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
+    """What an e-invoice record's own `gst_treatment` may be, and why not.
+
+    Returns `(value, refusal)`. `refusal` is a sentence where the request
+    cannot be honoured; `value` is what to store where it can.
+
+    ONE SUPPLY CANNOT BE DECLARED TWO WAYS (SALES-19). `einvoice_records`
+    carries its own `gst_treatment` and the create endpoint stored whatever the
+    caller typed, while the invoice the record NAMES already settles the
+    question through `treatment_for_invoice` — from `supply_type` and
+    `invoice_type`, which is what GSTR-1 is built from. So a CA who marked an
+    invoice SEZ-without-payment and then left the Prepare IRN picker on its
+    "Regular" default stored a record contradicting its own invoice, and the
+    compliance panel rendered both labels at once: "Record prepared (Regular)"
+    beside a treatment summary correctly reading SEZ.
+
+    A DISAGREEMENT IS REFUSED RATHER THAN RESOLVED, and the direction is not
+    arbitrary in either. Taking the CALLER's value would store the wrong export
+    route on the document a human keys the IRP from — IGST s.16(3)(a) under an
+    LUT against (b) on payment of tax are different refund routes under
+    different rules. Taking the DERIVED value silently would discard what a
+    person just chose on a screen that offered them the choice. The same shape
+    `SalesInvoiceIn` takes where `supply_state_code` and `place_of_supply`
+    disagree: say so, and let the human decide which document is wrong.
+
+    `derived is None` means the record names no invoice THIS PRODUCT HOLDS —
+    `sales_invoice_id` is optional, so a record may be prepared for an invoice
+    raised elsewhere. There is then nothing to reconcile against and the
+    caller's value is all there is; it is stored as given rather than refused,
+    because refusing would make the link mandatory by accident.
+    """
+    want = (stated or "").strip().lower() or None
+    have = (derived or "").strip().lower() or None
+
+    if have is None:
+        return want, None
+    if want is None or want == have:
+        return have, None
+    return None, (
+        f"The invoice reads '{have}' — from its own supply type and invoice "
+        f"type, which is what the GSTR-1 is built from — and the e-invoice "
+        f"record was asked for as '{want}'. One supply cannot be declared two "
+        "ways: correct the invoice, or prepare the record as the invoice reads."
+    )

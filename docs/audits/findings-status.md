@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **229** | re-read against the code. The defect is gone. |
-| partial | **35** | part of the finding is answered, part is not. Each says which. |
+| closed | **230** | re-read against the code. The defect is gone. |
+| partial | **34** | part of the finding is answered, part is not. Each says which. |
 | open | **9** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 44 items — 9 open and 35 partial — not 254.**
+**The work left is 43 items — 9 open and 34 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -77,7 +77,6 @@ is left as "unknown".
 | medium | **PAY-13** | The client workspace's own employee form collects neither PAN, joining date, UAN, ESIC number, b |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
 | medium | **SALES-15** | Credit notes, sales debit notes and receipts can be posted into a period whose GSTR-1 has alread |
-| medium | **SALES-19** | The export/SEZ treatment is captured twice in two different vocabularies that can disagree, and  |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |
 | low | **INV-09** | Stock quantity is NUMERIC(10,3) with no unit conversion, so high-count or fine-grained items bre |
@@ -284,6 +283,7 @@ is left as "unknown".
 | medium | **SALES-12** | Sales invoice numbering is entirely manual; the Invoice Settings numbering series a CA configure |
 | medium | **SALES-16** | Nothing checks that a reverse-charge or nil/exempt invoice actually carries zero tax, so the boo |
 | medium | **SALES-17** | The e-way bill threshold is tested against taxable value instead of consignment value including  |
+| medium | **SALES-19** | The export/SEZ treatment is captured twice in two different vocabularies that can disagree, and  |
 | medium | **SALES-20** | No GST compensation cess on a sales line |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **SALES-24** | Receipt and credit-note numbers take their financial year from today's date, not the document da |
