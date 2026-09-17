@@ -69,6 +69,13 @@ HELPERS = {
     "_schema_checked_db.py",
     "e2e_harness.py",
     "generate_gst_parity_vectors.py",
+    # PAY-21. Five guards read `inspect.getsource(routers.payroll.create_run)`
+    # BY NAME to assert something about the payroll run's computation. Moving
+    # the slip-building body into `_compute_and_store_slips` so the recompute
+    # door could call the same code broke all five — on a move that did not
+    # break their rule. This helper reconstructs the create path from the AST
+    # instead, so the next extraction cannot silently empty them.
+    "payroll_create_path.py",
     "production_types.py",
     "uat_fixtures.py",
 }
