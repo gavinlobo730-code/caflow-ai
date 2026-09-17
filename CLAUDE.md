@@ -1481,6 +1481,49 @@ change. The code is the authority; keep this file in step with it.
   are `[S]`, written from knowledge because every `.gov.in` is refused at this
   environment's proxy; the FIGURES are not affected, each being a total of
   figures this product computed and the CA filed.
+- **A RETURN PERIOD IS NOT ALWAYS A MONTH, AND THE QUARTER'S KEY WAS ALREADY
+  CHOSEN** (GST-11). Rule 61A with the proviso to §39(1) — Notifications 82,
+  84 and 85/2020-Central Tax — lets a registered person whose preceding-year
+  aggregate turnover was up to ₹5 crore furnish GSTR-1 and GSTR-3B QUARTERLY
+  while paying monthly (QRMP), which is a large share of a small practice's
+  book. The DUE DATES were fully QRMP-aware and the return could not be built
+  at all: `gst_return_service._period_bounds` raised on anything but MMYYYY
+  and returned one calendar month, so the CA was quoted the 13th and the
+  22nd/24th and then had to add three monthly GSTR-3Bs by hand.
+  `domain/gst/return_period.py` is the authority; the quarter is READ OFF
+  `core.ist_clock.fy_quarters` rather than restated, because "which months are
+  in this quarter" already exists twice.
+  **THE KEY IS THE QUARTER'S FIRST MONTH AND THAT IS NOT A NEW DECISION**:
+  `routers/compliance.py::mark_compliance_filed` already writes the `filings`
+  row for a quarterly obligation as `f"{start[5:7]}{start[0:4]}"` off the
+  calendar's own period_start, and `_unsubmitted_workspace_return` looks the
+  prepared return up under it — keying on the quarter END would have left both
+  reading a key nothing writes. It stays six digits, so migration 390's
+  `(client_id, period, gstin)` still constrains and nothing stored collides.
+  **ANY month of the quarter resolves to it** and the answer always reports the
+  canonical key, so the browser saves `result.period` and never the month it
+  asked for.
+  **EVERY PERIOD-KEYED READ IS ASKED FOR EVERY MONTH THE WINDOW COVERS**, which
+  is the half that is easy to get wrong: a GSTR-2B is generated MONTHLY for a
+  quarterly filer too, so Rule 36(4) reads three of them (`.in_` over the named
+  months, never a range — MMYYYY sorts wrong), the reversal register reads
+  three periods, and Table 11 takes the window's bounds. `have_2b` is now "all
+  three on file", and the months with none are NAMED rather than left to read
+  as a supplier's fault. **The §50(1) clock takes the registration's own due
+  date** — the 22nd or 24th after the QUARTER — because the monthly date would
+  demand interest from a taxpayer who is not late; an unknown state keeps
+  `gstr3b_due_date`'s earlier-of-the-two rule and SAYS it did.
+  **The FREQUENCY is a fact about the REGISTRATION**, carried on
+  `domain/gst/registrations.Registration` since GST-20 and thrown away by the
+  engine until now; a caller may state it, because `filing_frequency` is the
+  position TODAY and a return may be rebuilt for a year the client was on the
+  other regime. Two things are REPORTED, not resolved: the form's own `fp` for
+  a quarter carries the first month and whether the offline utility wants that
+  or the last could not be checked here (`[S]`), and **Rule 59(2)'s Invoice
+  Furnishing Facility is not built** — named on every quarterly GSTR-1, because
+  without it the RECIPIENT's credit waits for the quarter. Rule 43's own
+  working stays MONTHLY and says why: whether 43(1)(c)'s one-sixtieth tax
+  period is the quarter was not settled here.
 - **GSTR-3B Table 3.1(a) carries GSTR-1 TABLE 11, and the ledger cannot.**
   §13(2) puts the time of supply for SERVICES at the earlier of invoice or
   payment, so tax on an advance received for services falls due on receipt,

@@ -75,6 +75,10 @@ test("the panels are written once", () => {
     "Nil because this product cannot derive it",
     "From bank lines you marked as carrying GST",
     "interest at 18% on the cash payable",
+    // GST-11 — which period the figures above are for. A QRMP registration's
+    // return covers a quarter, and a screen that shows the figures without
+    // saying so is showing three months labelled as one.
+    "Quarterly return (QRMP)",
   ];
   for (const phrase of PHRASES) {
     const owners = sources().filter(({ body }) => body.includes(phrase)).map((f) => f.rel);

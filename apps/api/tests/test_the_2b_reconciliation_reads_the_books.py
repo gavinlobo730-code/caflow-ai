@@ -532,7 +532,7 @@ def test_a_document_2B_blocks_does_not_raise_the_ceiling():
 
     from services import gst_return_service
 
-    src = inspect.getsource(gst_return_service._gstr2a_for_period)
+    src = inspect.getsource(gst_return_service._gstr2a_for_periods)
     assert 'neq("itc_available", "N")' in src, (
         "the Rule 36(4) ceiling must be built from documents 2B says are "
         "available, not from every document in the file")

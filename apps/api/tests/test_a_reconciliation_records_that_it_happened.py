@@ -125,9 +125,17 @@ def test_have_2b_is_not_derived_from_the_row_count():
         "compute_gstr3b must ACCEPT have_2b — a caller that knows must be able to say"
     from services import gst_return_service
     caller = inspect.getsource(gst_return_service)
-    assert "was_reconciled(" in caller, (
+    # THE RULE, NOT A SPELLING OF IT. This named `was_reconciled(` exactly, and
+    # broke when a QRMP quarter needed the answer for THREE months at once
+    # (GST-11) — `reconciled_periods` reads the same `gstr2b_reconciliations`
+    # header table and answers the same question for each. What must never come
+    # back is deriving it from the DOCUMENT rows.
+    assert ("was_reconciled(" in caller
+            or "reconciled_periods(" in caller), (
         "gst_return_service must ask the reconciliation header whether a 2B is "
         "on file, not infer it from the document rows it just filtered")
+    assert "have_2b = bool(gstr2a" not in caller
+    assert "have_2b = len(" not in caller
 
 
 # ── 2. a credit note and a debit note may share a number ────────────────────
