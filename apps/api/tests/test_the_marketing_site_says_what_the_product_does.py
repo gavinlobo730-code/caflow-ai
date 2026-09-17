@@ -293,93 +293,6 @@ def test_the_demo_form_checks_success_and_not_merely_res_ok():
 # is the reasoning.
 
 
-def test_the_land_mask_is_a_real_coastline():
-    """The globe's continents.
-
-    The hero used to be a WIREFRAME — a graticule and a point cloud with no
-    relationship to any landmass — because components/home/geography.ts had
-    rejected a coastline: it "would have to be written from memory here, and a
-    world map with the wrong coastline on the homepage of a product sold to
-    Indian professionals is a worse error than no map at all."
-
-    That reasoning was right and its premise was false. The mask is now
-    generated from Natural Earth's own shoreline (world-atlas@2's land-110m,
-    vendored at apps/marketing/scripts/land-110m.json, public domain) by
-    scripts/build-landmask.mjs.
-
-    So this test is the objection, kept: it decodes the committed artefact and
-    puts eleven named coordinates on the right side of the coastline. A
-    regenerated mask that puts Mumbai in the sea fails here rather than shipping.
-    """
-    import base64
-
-    src = (MARKETING / "components" / "home" / "landmask.ts").read_text(encoding="utf-8")
-
-    w = int(re.search(r"export const MASK_W = (\d+);", src).group(1))
-    h = int(re.search(r"export const MASK_H = (\d+);", src).group(1))
-    packed = re.search(r'const PACKED =\s*\n?\s*"([A-Za-z0-9+/=]+)";', src)
-    assert packed, "landmask.ts has no PACKED payload — was it hand-edited?"
-    bits = base64.b64decode(packed.group(1))
-    assert len(bits) == -(-w * h // 8), "PACKED is the wrong length for MASK_W x MASK_H"
-
-    def is_land(lat: float, lon: float) -> bool:
-        wrapped = ((lon + 180) % 360 + 360) % 360 - 180
-        row = min(h - 1, max(0, int((90 - lat) / 180 * h)))
-        col = min(w - 1, max(0, int((wrapped + 180) / 360 * w)))
-        i = row * w + col
-        return bool(bits[i >> 3] & (1 << (i & 7)))
-
-    # Deliberately UNAMBIGUOUS points. An earlier draft of this list used
-    # Chennai (13.08N, 80.27E), which is a port: at 0.5-degree cells it lands in
-    # a cell centred offshore of Mahabalipuram and reported "sea" correctly. A
-    # coastal city is a test of the grid resolution, not of the coastline.
-    for name, lat, lon, want in [
-        ("New Delhi", 28.61, 77.21, True),
-        ("Bengaluru", 12.97, 77.59, True),
-        ("Nagpur", 21.15, 79.09, True),
-        ("the Sahara", 23.0, 10.0, True),
-        ("the Amazon basin", -5.0, -60.0, True),
-        ("Antarctica", -80.0, 0.0, True),
-        ("London", 51.5, -0.1, True),
-        ("the Arabian Sea", 15.0, 65.0, False),
-        ("the Bay of Bengal", 15.0, 88.0, False),
-        ("the mid Atlantic", 30.0, -40.0, False),
-        ("the mid Pacific", 0.0, -150.0, False),
-    ]:
-        assert is_land(lat, lon) is want, (
-            f"the land mask puts {name} ({lat}, {lon}) on the wrong side of the "
-            f"coastline — expected {'land' if want else 'sea'}. Regenerate with "
-            f"`node scripts/build-landmask.mjs`."
-        )
-
-    land = sum(bin(b).count("1") for b in bits)
-    share = 100 * land / (w * h)
-    assert 27.0 <= share <= 31.0, (
-        f"the mask is {share:.1f}% land; the real figure is about 29%. A mask "
-        f"far off that has been mis-rasterised — most likely the scanline "
-        f"crossing rule, which is half-open in y for exactly this reason."
-    )
-
-
-def test_the_globe_data_is_not_a_build_dependency():
-    """world-atlas is 8.0 MB installed and this script reads 55 KB of it, for an
-    output that is committed. Adding it to package.json would put a registry
-    fetch of 8 MB on every Cloudflare Pages build of a file that cannot change
-    without somebody deliberately regenerating it. Same discipline as
-    domain/income_tax/schemas/ — the artefact is committed, a person regenerates
-    it, the build just reads it."""
-    pkg = (MARKETING / "package.json").read_text(encoding="utf-8")
-    for dep in ("world-atlas", "topojson-client", "topojson"):
-        assert dep not in pkg, (
-            f"{dep} is in apps/marketing/package.json. The land mask is "
-            f"generated offline and committed — see scripts/build-landmask.mjs."
-        )
-    assert (MARKETING / "scripts" / "land-110m.json").exists()
-    assert (MARKETING / "scripts" / "land-110m.LICENSE").exists(), (
-        "the vendored coastline must keep its licence beside it."
-    )
-
-
 def test_the_diagonal_seams_are_gone():
     """Owner review: "in the whole website the diagonal cards dont look good".
 
@@ -585,261 +498,417 @@ def test_the_product_is_described_the_same_way_everywhere():
     )
 
 
-def test_no_hero_card_is_anchored_off_the_edge_of_the_screen():
-    """The hero's module cards, and the one bug the hero is built to hide.
+# ── 6. The hero's Earth is artwork, 17 September 2026 ────────────────────────
 
-    A `side: "right"` card is positioned by its LEFT edge at `x%` of the stage
-    and grows rightward, so its outer edge is `stageLeft + x% x 640 + 196`. With
-    anchors at 89 and 91 the Payroll and Documents cards ran past the right edge
-    of the VIEWPORT — measured at 71px over at 1280, 56px at 1366 and 19px at
-    1440, so on the three commonest laptop widths those cards were sliced in
-    half. It shipped.
 
-    IT SHIPPED BECAUSE THE HERO IS `overflow-hidden`. The cards were clipped
-    rather than pushed out, so the document never gained a horizontal
-    scrollbar — and the check that was supposed to catch this measured
-    `scrollWidth` against `clientWidth` and saw a clean page at every width.
-    Only measuring the CARDS finds it, which is why this reads their anchors.
+def test_the_hero_earth_is_artwork_and_is_not_drawn_in_code():
+    """Four passes tried to DRAW this globe and the owner rejected every one.
 
-    The limit lives beside them as MAX_RIGHT_ANCHOR with its derivation; this
-    asserts every right-hand entry respects it, and that the constant has not
-    been quietly raised past what 1024px allows.
-    """
-    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+    A dotted globe, a golden one, a shaded planet, then a WebGL night Earth
+    generated from a coastline mask and a table of world cities — each reviewed
+    on a deploy preview, each still not the thing they had in mind. On
+    17-09-2026 they supplied finished artwork and closed the question: "This is
+    a static image, not something to draw with code ... Do not attempt to
+    recreate the globe, city lights, starfield, or card artwork with SVG,
+    Canvas, or CSS shapes."
 
-    m = re.search(r"const MAX_RIGHT_ANCHOR = ([\d.]+);", src)
-    assert m, "HeroVisual no longer declares MAX_RIGHT_ANCHOR"
-    limit = float(m.group(1))
-    # 1024px is the narrowest width that still renders cards (the `lg:` gate and
-    # canRunGlobe() agree on it): content 902px, stage 640px starting at x=323,
-    # card 196px, so (1009 - 196 - 323) / 640 = 76.6%.
-    assert limit <= 76.6, (
-        f"MAX_RIGHT_ANCHOR is {limit}, past what 1024px allows (76.6). A card "
-        f"anchored there is clipped by the hero's overflow-hidden rather than "
-        f"pushing the page wide, so nothing else will report it."
+    THIS GUARD EXISTS BECAUSE THE DELETION IS THE EASY THING TO UNDO. 3,365
+    lines came out — ten scene modules, the vendored three.min.js, its loader,
+    the Natural Earth mask and its generator — and the tempting next move, for
+    anyone asked to make the hero move, is to start drawing again. The decision
+    is an owner's, not a technical one, so it is asserted rather than left in a
+    comment.
+
+    It replaces six guards that protected the code globe: two on the land mask
+    (gone with the mask) and four on the DOM capability cards and the oversized
+    canvas (gone with both — the cards are baked into the artwork now). Those
+    were good guards about a design that no longer exists; keeping them would
+    have been asserting the shape of deleted files."""
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+
+    # The artwork is present, is really a WebP, and is a sane weight for
+    # something above the fold on a marketing homepage.
+    art = MARKETING / "public" / "hero" / "earth-network.webp"
+    assert art.exists(), (
+        "apps/marketing/public/hero/earth-network.webp is missing. The hero has "
+        "no Earth at all without it — this is the artwork itself, not a cache."
+    )
+    head = art.read_bytes()[:12]
+    assert head[:4] == b"RIFF" and head[8:12] == b"WEBP", (
+        f"the hero artwork is not a WebP (header {head[:4]!r}). If the format "
+        f"changed, the reference in Hero.tsx has to change with it."
+    )
+    kb = art.stat().st_size / 1024
+    assert kb < 900, (
+        f"the hero artwork is {kb:.0f}KB. It is the Largest Contentful Paint on "
+        f"the homepage, so a heavy export is felt directly."
     )
 
-    entries = re.findall(r'key: "(\w+)".*?x: (\d+), y: (\d+), side: "(left|right)"', src)
-    assert len(entries) >= 6, f"only found {len(entries)} module anchors — has the shape changed?"
+    assert "/hero/earth-network.webp" in hero, (
+        "Hero.tsx no longer references the artwork. Nothing else does either — "
+        "it is the only consumer."
+    )
 
-    offenders = [
-        f"{key} at x={x}" for key, x, _y, side in entries
-        if side == "right" and float(x) > limit
-    ]
+    # NO SECOND GLOBE, DRAWN. The check is on the whole of apps/marketing
+    # rather than on Hero.tsx, because a reintroduced scene would arrive as its
+    # own module and be imported, exactly as the deleted one was.
+    banned = {
+        "three.min.js": "the vendored Three.js build was deleted with the scene",
+        "WebGLRenderer": "a WebGL scene is back in the marketing site",
+        "SphereGeometry": "something is building a globe out of geometry again",
+        "landmask": "the coastline mask was deleted; nothing should read it",
+        "canRunGlobe": "the WebGL capability gate was deleted with the loader",
+    }
+    offenders = []
+    for path, src in _sources():
+        for n, line in _live_lines(src):
+            for needle, why in banned.items():
+                if needle in line:
+                    offenders.append(f"{_rel(path)}:{n}  {needle} — {why}")
     assert not offenders, (
-        f"these right-hand hero cards are anchored past MAX_RIGHT_ANCHOR "
-        f"({limit}%) and will be clipped at 1024-1440px: {offenders}"
+        "the hero Earth is artwork by owner decision, and something is drawing "
+        "one again:\n  " + "\n  ".join(offenders)
     )
 
-    # Vacuity: the rule protects nothing if no card is a right-hand one, and it
-    # is toothless if they all sit far inside the limit anyway.
-    rights = [float(x) for _k, x, _y, side in entries if side == "right"]
-    assert rights, "no right-hand cards left — this rule has nothing to check"
-    assert max(rights) > limit - 15, (
-        "every right-hand card now sits well inside the limit, so this test "
-        "would pass however wrong the limit was. Either the layout changed "
-        "shape or the constant needs re-deriving."
-    )
-
-    # The LEFT side has its own limit and it is not the mirror of this one:
-    # past the stage's left edge is the hero's own headline and buttons, not
-    # background, so a left-hand card must stay inside the stage.
-    m = re.search(r"const MIN_LEFT_ANCHOR = ([\d.]+);", src)
-    assert m, "HeroVisual no longer declares MIN_LEFT_ANCHOR"
-    floor = float(m.group(1))
-    widest = re.search(r"const MAX_CARD_PX = (\d+);", src)
-    stage = re.search(r"const STAGE_MAX_PX = (\d+);", src)
-    assert widest and stage
-    needed = 100 * int(widest.group(1)) / int(stage.group(1))
-    assert floor >= needed, (
-        f"MIN_LEFT_ANCHOR is {floor} but the widest card ({widest.group(1)}px of "
-        f"a {stage.group(1)}px stage) needs {needed:.1f}. Below it the card hangs "
-        f"into the copy column and sits on the headline."
-    )
-    under = [
-        f"{key} at x={x}" for key, x, _y, side in entries
-        if side == "left" and float(x) < floor
-    ]
-    assert not under, (
-        f"these left-hand hero cards are anchored inside MIN_LEFT_ANCHOR "
-        f"({floor}%) and will overlap the hero copy: {under}"
+    # Vacuity: the scan above proves nothing if it looked at no files.
+    assert len(list(_sources())) > 20, (
+        "the source walk found almost nothing, so the ban list checked nothing."
     )
 
 
-def test_a_hero_card_does_not_position_itself_on_the_element_that_bobs():
-    """`side: "left"` did nothing at all, for a month, because of one CSS rule.
+def test_the_artwork_names_the_eight_modules_it_has_baked_in():
+    """The one real cost of artwork over code, and the only mitigation there is.
 
-    Each card carried BOTH its placement transform — `translate(-100%, -50%)`,
-    which is what hangs a left-hand card off its anchor — and the `.floaty`
-    class. `.floaty`'s keyframes set `transform` outright, and an animation's
-    value beats an inline one, so the placement was thrown away on every frame.
-    Every card grew rightward from its anchor, left and right alike, and the
-    vertical centring went with it.
+    The eight capability cards are PIXELS now — "Compliance", "Payroll", "AI
+    assistant" and five more. A screen reader cannot read them, they do not
+    reflow, and they cannot be translated. Everything else in the hero stayed
+    real HTML precisely so it would keep those properties; the cards could not,
+    because they arrived inside the image.
 
-    MEASURED: the Compliance card's LEFT edge sat exactly at its own `x%`, where
-    a left-hand card should have its RIGHT edge there. It reads as a styling
-    detail and it is not — it is why the left column had to be crowded onto the
-    globe to stay clear of the headline, and why two cards laid out 218px apart
-    measured 21px apart.
+    So the `alt` text has to carry them, and that is not decoration — it is the
+    only route by which a third of the hero's content reaches assistive
+    technology at all. An empty or generic alt would silently drop it."""
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
 
-    The fix is structural: an outer element positions, an inner one bobs. This
-    asserts they stay separate, because nothing about the rendered page says
-    otherwise — the bug is silent, and CSS has no error for it.
-    """
-    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
-
-    # Find every element that carries a bob class, and check none of them also
-    # carries a transform. Elements are matched loosely (the file is JSX, not
-    # something with a parser here) but the two attributes are distinctive.
-    blocks = re.findall(r"<div\b[^>]*>", src, re.S)
-
-    # THE COUNT IS ASSERTED BEFORE THE RULE, and not out of caution. The first
-    # version of this pattern was edited in through `sed`, which turned the `\b`
-    # into a literal BACKSPACE byte — `<div\x08[^>]*>` matches nothing, so the
-    # loop below ran zero times and this test passed green while the bug it
-    # describes was sitting in the file two lines away. That is exactly the
-    # failure #527 landed on main for ("the redesign's safety net was reporting
-    # green having observed nothing"), reproduced one directory over, within an
-    # hour of merging it. A loop over an empty list is not a passing test.
-    assert len(blocks) >= 4, (
-        f"only matched {len(blocks)} <div> openings in HeroVisual — the pattern "
-        f"is broken, and a loop over nothing passes for any input whatsoever."
-    )
-
-    for block in blocks:
-        bobs = "floaty" in block
-        places = "transform:" in block or "translate(" in block
-        assert not (bobs and places), (
-            "a hero card element carries BOTH a .floaty bob and a transform. "
-            "The animation's keyframes set `transform`, so they will not "
-            "coexist — the placement is silently discarded. Put the bob on a "
-            "child element.\n  " + block[:200]
+    for label in (
+        "Compliance", "Clients", "Practice analytics", "Banking",
+        "Accounting", "Payroll", "Documents", "AI assistant",
+    ):
+        assert label in hero, (
+            f"the artwork shows a {label!r} card and Hero.tsx never says so. "
+            f"It is baked into the image, so if it is not in the alt text it "
+            f"is not anywhere a screen reader can reach."
         )
 
-    assert "floaty" in src, "no bob left in HeroVisual — this rule guards nothing"
-    assert "translate(-100%, -50%)" in src, (
-        "no left-hand placement transform left in HeroVisual — this rule "
-        "guards nothing"
+    # And the alt must actually be wired to the image rather than the labels
+    # merely existing somewhere in the file.
+    assert "alt={" in hero and "ARTWORK_CARDS" in hero, (
+        "the module names are in Hero.tsx but are not reaching the image's alt "
+        "attribute, which is the only thing that makes them readable."
+    )
+    # AND THE EMPTY-ALT CHECK IS PER IMAGE, NOT PER FILE, because the hero has
+    # two of them and they need OPPOSITE alts. The artwork carries eight
+    # content labels and must never have `alt=""`; the star field behind it
+    # carries nothing and must always have one, since a decorative image with
+    # descriptive alt text makes a screen reader read out scenery. A file-level
+    # `'alt=""' not in hero` was the first version of this and it failed the
+    # moment the correct second image was added — a guard that forbids the
+    # right answer somewhere else in the file.
+    # Comment spans blanked first: the artwork's own note says "A plain <img>,
+    # deliberately", and a raw scan counts that prose as a third image.
+    live = "\n".join(line for _no, line in _live_lines(hero))
+    tags = [("<img" + chunk).split(">")[0] for chunk in live.split("<img")[1:]]
+    assert len(tags) == 2, (
+        f"expected the hero to have exactly two images — the artwork and the "
+        f"decorative star field — and found {len(tags)}. If a third arrived, "
+        f"decide which kind it is and extend this check."
+    )
+    for tag in tags:
+        if "ARTWORK" in tag and "STARS" not in tag:
+            assert 'alt=""' not in tag, (
+                "the hero artwork has an empty alt. It is not decorative — it "
+                "carries eight of the page's content labels, and the alt is "
+                "the only route by which they reach assistive technology."
+            )
+            assert "alt={" in tag, "the artwork's alt is not an expression naming the cards."
+        elif "STARS" in tag:
+            assert 'alt=""' in tag, (
+                "the decorative star field needs an empty alt. It carries no "
+                "content, so describing it makes a screen reader read out "
+                "scenery between the eyebrow and the headline."
+            )
+
+
+def test_no_two_pages_carry_the_same_headline():
+    """A READER HAS TO BE ABLE TO TELL WHICH PAGE THEY ARE ON.
+
+    `/story` exists because "Our Story" in the nav used to point at `/#story`,
+    an anchor onto a homepage panel. The page was made by COPYING that panel
+    and then growing around it, and the copy was never re-written — so for a
+    day both pages carried a section 02 headed "Where it starts / Every CA firm
+    runs like this. / Five tools. Five logins. / One deadline through the
+    cracks.", with the same eyebrow, the same three lines and the same index.
+
+    Owner review, 17-09-2026, having clicked the logo and then the nav item:
+    *"if i click the practicesync then our story page is different and if i
+    click our story then the page is different see that that is fully a bug"*.
+    It is the right word. A duplicated headline is not a cosmetic repeat — it
+    is two pages claiming to be the same one, and the reader's only way of
+    knowing where they are is what the section says.
+
+    So the rule is per PAGE and not per file: a heading may repeat within one
+    page (a recurring section is a design), and may not appear on two. The
+    check is on the (eyebrow, lines) PAIR, because that is what a reader sees
+    as the heading — and then on the lines alone, since the same headline under
+    a re-typed eyebrow is the same defect. `Security & trust` is the one
+    allowed overlap and it is allowed on evidence rather than by name: its two
+    instances differ in their second line and their subtitle, so it is a
+    recurring section written twice, not one panel pasted twice."""
+    import collections
+    import re
+
+    pages = sorted((MARKETING / "app").rglob("page.tsx"))
+    assert len(pages) >= 6, (
+        f"only found {len(pages)} pages to compare; this guard is vacuous "
+        f"below about six and the site has more than that."
+    )
+
+    headings: dict[tuple, set[str]] = collections.defaultdict(set)
+    lines_at: dict[str, set[str]] = collections.defaultdict(set)
+    for page in pages:
+        src = "\n".join(line for _no, line in _live_lines(page.read_text(encoding="utf-8")))
+        rel = _rel(page)
+        for m in re.finditer(r'eyebrow="([^"]+)"([\s\S]{0,700}?)(?:/>|subtitle=)', src):
+            lines = tuple(l.lower() for l in re.findall(r'\{\s*text:\s*"([^"]+)"', m.group(2)))
+            if not lines:
+                continue
+            headings[(m.group(1).lower(), lines)].add(rel)
+        for line in re.findall(r'\{\s*text:\s*"([^"]+)"', src):
+            lines_at[line.lower()].add(rel)
+
+    assert len(headings) >= 15, (
+        f"only parsed {len(headings)} headings out of {len(pages)} pages. "
+        f"SerifHeading's call shape has changed and this guard is now looking "
+        f"at almost nothing — fix the pattern rather than the count."
+    )
+
+    shared = {k: v for k, v in headings.items() if len(v) > 1}
+    assert not shared, "the same heading appears on more than one page:\n" + "\n".join(
+        f'  eyebrow {eyebrow!r} lines {list(lines)} on {sorted(where)}'
+        for (eyebrow, lines), where in shared.items()
+    )
+
+    # And the headline alone, which catches the same panel re-eyebrowed.
+    repeated = {
+        line: where
+        for line, where in lines_at.items()
+        if len(where) > 1 and line != "your clients' data —"
+    }
+    assert not repeated, (
+        "a headline line is used on more than one page:\n"
+        + "\n".join(f"  {line!r} on {sorted(where)}" for line, where in repeated.items())
+        + "\nIf this is a recurring SECTION rather than a pasted panel, its "
+        "other lines and its subtitle should differ — say so here with the "
+        "evidence, the way \"Your clients' data —\" is exempted."
     )
 
 
-def test_a_card_that_bobs_is_not_inside_something_with_an_opacity():
-    """A card's GLASS dies silently if any ancestor sets `opacity`.
+def _page_prose(src: str) -> set[str]:
+    """Sentences of body copy on a page, with the markup taken out.
 
-    An element with opacity below 1 is a BACKDROP ROOT. `backdrop-filter` on
-    anything inside it then samples that element's own contents instead of the
-    page behind it — so the card renders as a flat translucent rectangle with no
-    blur, and the composition loses the one property that makes it read as glass
-    rather than as a grey chip.
+    Class names are the trap. An earlier version of this collected every string
+    literal of sentence length and reported `mt-14 grid gap-x-12 gap-y-9
+    sm:grid-cols-2` as shared copy, which is true and means nothing — two pages
+    using the same Tailwind classes is the design working. So `className` is
+    removed first, along with imports, and what is left is filtered to things
+    that read like English: a run of words with no `-[`, no `:` and at least
+    one space."""
+    src = re.sub(r"/\*[\s\S]*?\*/", " ", src)
+    src = re.sub(r"^\s*//.*$", " ", src, flags=re.M)
+    src = re.sub(r'className=(?:"[^"]*"|\{`[^`]*`\}|\{[^}]*\})', " ", src)
+    src = re.sub(r"^\s*import[\s\S]*?;\s*$", " ", src, flags=re.M)
 
-    It is entirely silent. There is no console warning, no failed style, nothing
-    in a computed-style dump that says the filter did nothing, and the card is
-    still there. It shipped for exactly as long as it took to look at a
-    screenshot side by side.
+    out: set[str] = set()
+    # Quoted copy: subtitles, and the `body`/`title` of a mapped array.
+    for m in re.finditer(r'"([^"\\]{35,})"', src):
+        out.add(" ".join(m.group(1).split()))
+    # JSX text nodes: the paragraphs written inline in the markup. The run may
+    # START after a `}` as well as after a `>` — `<span>Bold bit.</span>{" "}
+    # then the sentence` is how every callout on this site is written, and
+    # anchoring only on `>` missed the whole paragraph of the one duplicate
+    # this guard was added for.
+    for m in re.finditer(r"[>}]([^<>{}]{35,})[<{]", src):
+        out.add(" ".join(m.group(1).split()))
+    # What survives has to READ like a sentence. Anchoring a run on `}` buys
+    # the callout paragraphs and also drags in code — `, ]; export default
+    # function PricingPage()` is a run between a `}` and a `{` — so the
+    # punctuation and keywords that only occur in code are rejected, while
+    # parentheses are KEPT, because this site's copy cites "Rule 3(1) of the
+    # Companies (Accounts) Rules".
+    banned_chars = set(";[]=`$<>{}")
+    banned_words = ("export ", "function ", "const ", "return ", "import ")
+    return {
+        s
+        for s in out
+        if " " in s
+        and len(s.split()) >= 5
+        and not (banned_chars & set(s))
+        and ":" not in s
+        and "/" not in s
+        and "-[" not in s
+        and not any(w in s for w in banned_words)
+    }
 
-    THE OBVIOUS WAY TO PUSH A CARD BACK IS THE WAY THAT BREAKS IT, which is why
-    this is worth a test rather than a comment. The hero's capability cards
-    carry a `depth`, and the first thing anyone reaches for to express depth is
-    `opacity` on the positioning element. Depth is expressed in the card's own
-    colours instead — fill, border, blur radius, shadow and text — which is also
-    the truer cue: something further away is lower in CONTRAST, not
-    see-through.
 
-    The interface FRAGMENTS beside them do set opacity, and that is fine: they
-    are bare SVG with no backdrop-filter anywhere inside. So the rule is about
-    ancestry, not about the property, and this walks the tree to say so.
-    """
-    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+# Duplicated copy this guard found on its first run, OUTSIDE the pair it was
+# written for, and which is deliberately still duplicated. Each entry is debt
+# with a reason, not an exemption: the pages they sit on were not in scope
+# ("DO NOT redesign the website ... DO NOT redesign the sections below the
+# hero"), and de-duplicating either means CHOOSING one of two wordings, which
+# is a copy decision for the owner rather than a refactor. Reported to them on
+# 17-09-2026 with the offer to fix.
+#
+# Matching is by substring, so these two pairs are silenced and nothing else
+# is: a NEW duplicate still fails.
+_KNOWN_DUPLICATED_COPY = (
+    # The gold Shield callout, identical on the homepage and /products (the
+    # homepage's adds "Not a batch, not a scheduler, not a retry."). It was on
+    # /story too until 17-09-2026, which is the half the owner found.
+    "Nothing leaves your hands on its own.",
+    # /pricing says "stays on", /products says "is stored on" — the same
+    # sentence twice, 90% similar, about data residency.
+    "data stays on infrastructure hosted in India",
+    "data is stored on infrastructure hosted in India",
+)
 
-    # Only div and span nest in this file; every other element (the icons,
-    # <svg>, <line>, <circle>) is self-closing or a leaf, so tracking those two
-    # is enough to know what is inside what.
+
+def test_no_two_pages_carry_the_same_body_copy():
+    """THE HEADLINE GUARD CAUGHT HALF OF THIS AND THE OWNER CAUGHT THE REST.
+
+    `/story` was made by splitting a panel out of the homepage, and the copy
+    was never re-written. Comparing SerifHeading headings found the section 02
+    duplicate; it could not find the SECOND one, because that was body copy — a
+    gold callout with the same Shield icon, the same classes and the same bold
+    lead sentence, "Nothing leaves your hands on its own.", with a body
+    differing from the homepage's only in its final clause. The owner found it
+    by reading the deploy preview: *"The our story bug is not fixed in this?"*
+
+    That is the lesson this file keeps re-learning and its own header states:
+    a guard that asserts one SPELLING of its rule passes on every other
+    spelling of the same defect. The rule is that two pages must not carry the
+    same copy. Headings are one place copy lives; paragraphs are another.
+
+    Pages only. Shared copy inside `components/` is a component being reused,
+    which is the point of a component."""
+    pages = sorted((MARKETING / "app").rglob("page.tsx"))
+    assert len(pages) >= 6, f"only found {len(pages)} pages; this guard needs more to compare."
+
+    prose = {_rel(p): _page_prose(p.read_text(encoding="utf-8")) for p in pages}
+    total = sum(len(v) for v in prose.values())
+    assert total >= 60, (
+        f"only extracted {total} sentences of copy from {len(pages)} pages, "
+        f"which is too few for this to be checking anything. The extractor has "
+        f"stopped matching how the copy is written — fix it, do not lower this."
+    )
+
+    # ⚠️ NOT AN EXACT MATCH, AND THAT IS THE WHOLE DIFFICULTY. The duplicate
+    # this guard exists for was not identical on the two pages: the homepage's
+    # version ends "...on the portal. Not a batch, not a scheduler, not a
+    # retry." and the story page's stopped at "...on the portal." A set
+    # intersection finds nothing, and the first version of this test passed its
+    # own negative control for exactly that reason. Copy-paste followed by a
+    # small trim is the NORMAL shape of duplicated copy, not an edge case.
     #
-    # THE FILTER AND THE OPACITY ARE BOTH ATTRIBUTES OF A TAG, not text between
-    # tags — `backdropFilter` lives inside a style={{...}} on the card's own
-    # <div>. The first draft of this scan looked for them as separate tokens and
-    # found none at all, because the tag pattern had already swallowed them.
-    tag_re = re.compile(r"</?(?:div|span)\b[^>]*>")
-    stack: list[bool] = []
-    seen = 0
-    broken = []
-    for m in tag_re.finditer(src):
-        tag = m.group(0)
-        if tag.startswith("</"):
-            if stack:
-                stack.pop()
-            continue
-        has_opacity = "opacity" in tag
-        has_backdrop = "backdrop-blur" in tag or "backdropFilter" in tag
-        if has_backdrop:
-            seen += 1
-            # An ancestor's opacity is the real failure; the element's OWN is
-            # counted too, because an element with opacity is a backdrop root
-            # for the subtree it heads and the browsers disagree about whether
-            # that includes its own filter. Nothing here needs to find out.
-            if any(stack) or has_opacity:
-                broken.append(f"HeroVisual.tsx:{src.count(chr(10), 0, m.start()) + 1}")
-        if not tag.endswith("/>"):
-            stack.append(has_opacity)
+    # So: identical, or one contains the other, or 85% similar. Containment is
+    # checked from 55 characters up, because a short phrase legitimately
+    # appears inside a longer sentence.
+    import difflib
 
-    # VACUITY, BOTH WAYS. A scan that found no backdrop filter proves nothing,
-    # and one whose stack did not balance was not reading the tree at all — and
-    # that second case is the one that passes green for any input whatsoever,
-    # which is the failure this file has already shipped twice.
-    assert seen, (
-        "no backdrop filter left in HeroVisual — this rule guards nothing. The "
-        "hero cards are meant to be glass."
-    )
-    assert not stack, (
-        f"the div/span scan ended with {len(stack)} tags unclosed, so it was not "
-        f"reading the tree correctly and would pass for any input."
-    )
-    assert not broken, (
-        "a backdrop-filtered hero card sits inside an element that sets "
-        "`opacity`. That element is a BACKDROP ROOT, so the blur samples its "
-        "own contents rather than the page and the glass silently becomes a "
-        "flat rectangle. Express depth in the card's own colours instead:\n  "
-        + "\n  ".join(broken)
+    def same_copy(a: str, b: str) -> str | None:
+        if a == b:
+            return "identical"
+        if len(a) >= 55 and len(b) >= 55 and (a in b or b in a):
+            return "one is contained in the other"
+        r = difflib.SequenceMatcher(None, a, b).ratio()
+        return f"{r:.0%} similar" if r >= 0.85 else None
+
+    shared: list[str] = []
+    names = sorted(prose)
+    for i, a in enumerate(names):
+        for b in names[i + 1 :]:
+            for sa in sorted(prose[a]):
+                for sb in sorted(prose[b]):
+                    how = same_copy(sa, sb)
+                    if how and not any(k in sa or k in sb for k in _KNOWN_DUPLICATED_COPY):
+                        shared.append(f"  [{how}] {a} / {b}\n      {sa[:100]!r}\n      {sb[:100]!r}")
+
+    assert not shared, (
+        "the same body copy appears on more than one page:\n"
+        + "\n".join(shared)
+        + "\nIf the same words genuinely belong on both, they belong in a "
+        "component that both pages render, not typed twice."
     )
 
 
-def test_the_globe_canvas_is_larger_than_the_cell_it_is_given():
-    """The planet's size does not come from the grid, and must not be "tidied"
-    back into it.
+def test_the_hero_copy_does_not_drift_away_from_an_edge_bleeding_artwork():
+    """THE HERO IS THE ONE SECTION THAT MAY NOT CENTRE ITS CONTENT COLUMN.
 
-    Owner brief, 17-09-2026: the globe should "dominate the right half of the
-    hero" and may "extend beyond the normal boundaries of the hero composition
-    slightly" — while the hero's own layout and typography stay as they are. The
-    grid cell is 640px and every card anchor in HeroVisual, plus both of the
-    limits they are checked against, is a percentage of it. So the cell cannot
-    grow; the globe's CANVAS is hung outside it instead.
+    Every other section sits in a capped, centred column, so its left gutter
+    grows by half of every pixel added to the window. That is right when both
+    sides of a section are measured from the same origin, and wrong here: the
+    hero's artwork is pinned to the VIEWPORT's right edge and grows at a
+    fraction of the viewport. A centred column and a viewport-anchored image
+    advance at different rates from different origins — they converge, and then
+    the text is on the picture.
 
-    That is one `absolute` element with four lg: classes, and it reads exactly
-    like something a later tidy-up would replace with `inset-0`. Doing so costs
-    the planet about a third of its diameter, changes no anchor, breaks no
-    layout and produces no error — the hero simply goes back to the small flat
-    globe the brief was written about.
-    """
-    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+    It was not theoretical. Measured on the page shipped 17-09-2026, the copy's
+    left gutter ran 72px at 1280, 125 at 1440, 205 at 1600 and 365 at 1920
+    against a right gutter of 0 at every one of them, and a render harness
+    (copy column hidden, so every bright pixel is the artwork's) found the
+    supporting paragraph over visible artwork at 1366, 1440, 1600 AND 1920 —
+    the four commonest desktop widths there are. At 1920 the rotating word, the
+    second headline line and a trust figure were over it too.
 
-    w = re.search(r"lg:w-\[(\d+)%\]", src)
-    h = re.search(r"lg:h-\[(\d+)%\]", src)
-    assert w and h, (
-        "HeroVisual no longer sizes the globe's canvas past its own cell. The "
-        "planet's scale comes from that oversize, not from the grid."
+    The rule this guard states is the DRIFT, not a spelling of the fix: if the
+    hero's content container caps or centres itself, it must neutralise both
+    from `lg` up, where the artwork exists. A browser is what proves the
+    clearance and this suite has none, so what is held here is the property
+    that made the clearance disappear."""
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+
+    # The container is the one element that holds both the copy column and the
+    # reserved artwork track, so it is the one carrying `grid-cols` at `lg`.
+    containers = [
+        line
+        for _no, line in _live_lines(hero)
+        if "className=" in line and "grid" in line and "lg:grid-cols-[" in line
+    ]
+    assert len(containers) == 1, (
+        f"expected exactly one hero grid container to check, found "
+        f"{len(containers)}. If the hero's layout moved, move this guard with "
+        f"it — do not delete it."
     )
-    assert int(w.group(1)) > 110 and int(h.group(1)) > 110, (
-        f"the globe canvas is {w.group(1)}% x {h.group(1)}% of the stage. Below "
-        f"about 110% there is nothing for the atmosphere and the outer orbits "
-        f"to spill into and the planet has to shrink to fit."
-    )
-    # Offset by half the overhang in each axis, or the planet stops being
-    # centred on the cell the cards are anchored to.
-    for axis, over in (("left", int(w.group(1))), ("top", int(h.group(1)))):
-        m = re.search(rf"lg:{axis}-\[-(\d+)%\]", src)
-        assert m, f"the canvas has no lg:{axis} offset, so it is not centred on the stage"
-        assert abs(int(m.group(1)) - (over - 100) / 2) <= 2, (
-            f"lg:{axis} is -{m.group(1)}% for a {over}% canvas; centring it needs "
-            f"-{(over - 100) / 2:.0f}%. Off-centre, the globe and the card ring "
-            f"no longer share a middle and the control node stops sitting on it."
+    container = containers[0]
+
+    if "mx-auto" in container:
+        assert "lg:mx-0" in container, (
+            "the hero's content container centres itself (`mx-auto`) and never "
+            "stops. The artwork is anchored to the viewport's right edge, so a "
+            "centred column drifts away from it as the window widens until the "
+            "copy is sitting on the planet. Neutralise it with `lg:mx-0`."
         )
+    if "max-w-[" in container:
+        assert "lg:max-w-none" in container, (
+            "the hero's content container is capped, so past the cap its left "
+            "gutter grows at half the viewport's rate while the artwork grows "
+            "at 62% of it. Release the cap from `lg` up with `lg:max-w-none`."
+        )
+
+    # And the copy itself must stay bounded, or releasing the cap hands the
+    # headline the whole viewport and runs it back under the artwork — the
+    # opposite failure, reached by the same fix applied carelessly.
+    assert "lg:grid-cols-[minmax(0,clamp(" in container, (
+        "the hero's copy column is not capped. With the container uncapped, a "
+        "plain `1fr` copy column takes the full viewport width and the "
+        "headline runs out under the artwork. Cap the first track."
+    )

@@ -778,3 +778,111 @@ scene is already a single static frame with explicit `renderOrder` and shader
 materials, which is the part R3F would abstract. Adding a dependency and a
 component model for the same pixels is a refactor with no visual outcome, so it
 is left for the interactive stage, if it earns its place there.
+
+---
+
+# Addendum 5 — the hero visual, deleted and rebuilt (17-09-2026)
+
+The owner's third brief on this element opens with an instruction the two
+before it did not: *"Completely remove/delete the CURRENT hero background/hero
+globe implementation from the code ... I do NOT want you to modify the current
+globe incrementally."* So this is not another pass over Addendum 4's globe.
+`HeroGlobe.tsx` (1,763 lines), `globe-shaders.ts` (497) and `HeroVisual.tsx`
+(594) were deleted outright — 2,854 lines — and the scene rebuilt from nothing
+in `components/home/hero/`, along the module boundaries §22 names.
+
+Two files were deliberately KEPT, and the distinction is between an
+implementation and an asset. `landmask.ts` is a MEASURED coastline generated
+offline from Natural Earth and pinned by eleven coordinate checks in the
+backend suite; `three-loader.ts` is the lazy loader and the capability gate.
+Neither is the visual. Deleting them would have thrown away the one piece of
+real-world data the scene is built on and re-introduced a bundle cost the
+loader exists to avoid.
+
+## What the reference asked for that the old globe could not do
+
+The old surface was a field of evenly-spaced dots over a land-mask fill. The
+owner's verdict on it, and the diagnosis, are worth separating:
+
+*"A flat dotted world map wrapped onto a sphere."* Two things cause that and
+only one is density. A uniform scatter carries no INFORMATION — the real night
+Earth is a few dozen blazing deltas with enormous darkness between them, and
+that contrast is the whole of what makes it recognisable. So the surface is
+now generated from population centres (`cities.ts`), through halo, grain and
+rural passes, and the Sahara comes out dark because nothing put lights there
+rather than because anything masked it off.
+
+## Five defects found by rendering it, not by reading it
+
+Each was invisible in the source and obvious in a screenshot.
+
+**India was on the limb.** `spin.rotation.y` was the intuitive
+`-(lon * PI) / 180`. Three's `SphereGeometry` puts longitude L at angle
+(L+180)°, so at rotation 0 it is lon −90 that faces the camera. For 79°E the
+intuitive form evaluates to −1.379 rad and puts the subcontinent at **z =
+0.000** — exactly edge-on. Every warm light was being drawn where nobody could
+see it. On screen this reads as a brightness problem and is a rotation
+problem; the correct form is `-PI/2 - lon*PI/180`.
+
+**A pale bar floating left of the planet, ending in a hard vertical cut.** The
+canvas is hung 134%×138% of a 640px cell — 858×994 starting at x=552 on a
+1440px screen — so it has edges a third of the way across the hero. Measured:
+six of the seven orbits reach past the canvas's left boundary at x=−1.221.
+What was cut was the widest orbit's turning point. Shrinking the orbits would
+fight §8's *"extend farther into the surrounding space"*, so the fix is a
+screen-space `edgeFade()` in the two continuous line shaders.
+
+**A bright blue wedge across the stats row.** The near horizon was placed
+bottom-LEFT, as the reference has it. But the canvas does not cover the
+viewport, so bottom-left of the CANVAS is underneath "11+ Modules", not out at
+the page margin. It is mirrored to bottom-right, and its rim cut from 1.5 to
+0.34 — at 1.5 it was the brightest object in the scene, inverting §19's
+hierarchy outright.
+
+**The background wash ended in a vertical line down the page.** A haze plane
+6.2 units tall at z=−3.2 covers a 5.97-unit frustum, so its gradient was still
+at half strength where the canvas stopped. Sized to the PLANET now, not to the
+frame.
+
+**India desaturated to white.** The lights composite additively — halo, halo,
+grain — so a channel that reaches 255 stops accumulating while the others keep
+climbing. Starting at [255, 206, 150] meant every overlap converged on pure
+white. That is precisely §6's *"pasted onto the globe"*: champagne is a hue,
+and the subcontinent had lost it while still being the brightest region.
+
+## Measured
+
+Globe 557px at 1440×900 — 38% of the viewport width, which is what the
+reference measures (640 of 1672px). Derived from `CAMERA_Z` through
+`sphereHeightFraction`, not chosen. Card clipping and copy-column collisions
+checked at 1024 / 1280 / 1366 / 1440 / 1600 / 1920: eight cards found at every
+width, no clipping, no collision, no horizontal scroll. Phone and
+reduced-motion both correctly refuse WebGL and get the SVG.
+
+## One backend guard was restated, and why that is not weakening it
+
+`test_a_hero_card_does_not_position_itself_on_the_element_that_bobs` ended by
+asserting `"floaty" in src` as its anti-vacuity check. §21 removes card
+floating for this stage, so that assertion now fails for a reason that is not
+a defect. Deleting the test would be wrong — the bug it describes is one CSS
+class away from returning the moment the animation stage starts, which is
+exactly when nobody re-reads it. The rule is kept in force for whenever a bob
+exists, and the vacuity check moved onto the STRUCTURE that makes a bob safe:
+placement on the outer element, the card's own transform on the inner one.
+Negative-controlled — collapsing the two onto one element fails it.
+
+## Not done, and said so
+
+**React Three Fiber + Drei**, again. §22 names them as preferred *"if
+compatible with the existing project"* and allows another appropriate
+approach. The project vendors `three.min.js` and loads it from the component's
+own effect, so a visitor who will never see the globe downloads none of it;
+R3F and drei are bundled and paid for by everyone. For a scene that renders a
+single frame and has no component tree to reconcile, that is a real cost for
+no gain. The modules are split along exactly the boundaries §22 asks for; only
+the reconciler is absent.
+
+**Animation.** §21 lists nine things not to build yet. Every value stage 2 will
+touch is already a uniform rather than a constant in GLSL, and the groups that
+will spin are already separate objects, so stage 2 is: start a loop, advance
+`spin.rotation.y` and the sweep uniforms, call `draw()`.

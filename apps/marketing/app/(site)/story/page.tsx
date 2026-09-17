@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Panel, SerifHeading, CineReveal, CineCTA } from "@/components/cinematic";
 import { Reveal } from "@/components/motion";
-import { Shield } from "@/components/icons";
 
 /**
  * Our Story.
@@ -15,6 +14,13 @@ import { Shield } from "@/components/icons";
  * The homepage keeps a short version of the problem statement (it still has to
  * say what this is, above the fold of the second screen) and links here. The
  * anchor keeps working, because it is in the wild.
+ *
+ * ⚠️ THE SPLIT WAS DONE BY COPYING, AND THE COPY WAS NEVER RE-WRITTEN. For a
+ * day this page's section 02 was the homepage's section 02 verbatim — same
+ * eyebrow, same three headline lines, same number — which the owner found by
+ * clicking the logo and then the nav item and landing on the same panel twice.
+ * It is re-headed now; see the comment on that panel, which records the rule
+ * they settled it with.
  *
  * WHAT IS ON IT. A CA evaluating a new platform is not asking for a founding
  * anecdote; they are asking whether the people who built it understand what
@@ -89,17 +95,38 @@ export default function StoryPage() {
         />
       </Panel>
 
-      {/* ── The problem ──────────────────────────────────────────────────── */}
+      {/* ── The problem ──────────────────────────────────────────────────────
+
+          ⚠️ THIS HEADING USED TO BE THE HOMEPAGE'S, WORD FOR WORD, AND THAT WAS
+          THE BUG. Both pages carried a section 02 headed "Where it starts —
+          Every CA firm runs like this. / Five tools. Five logins. / One
+          deadline through the cracks.", with the same eyebrow, the same three
+          lines and the same index. Owner review, 17-09-2026: *"if i click the
+          practicesync then our story page is different and if i click our
+          story then the page is different see that that is fully a bug"* — a
+          reader who follows the logo and a reader who follows the nav item
+          arrive at the same panel and cannot tell which page they are on.
+
+          The rule they gave for fixing it was *"there should be only one page
+          and the page with the hero that is the original page"*, so the
+          homepage keeps that heading untouched and this one is re-written. It
+          is re-written rather than DELETED because the panel carries two
+          paragraphs the homepage does not have — the cost of carrying a figure
+          by hand, and the question no one tool can answer — and the heading is
+          what introduces them. Deleting the panel to remove a duplicated
+          headline would have thrown away the only copy of its body.
+
+          A guard in the backend suite now fails any headline used on two pages,
+          so this cannot come back by a copy-paste. */}
       <Panel theme="light">
         <SerifHeading
           layout="split"
           theme="light"
           index="02"
-          eyebrow="Where it starts"
+          eyebrow="What the split costs"
           lines={[
-            { text: "Every CA firm runs like this." },
-            { text: "Five tools. Five logins.", italic: true },
-            { text: "One deadline through the cracks." },
+            { text: "Nothing is wrong until" },
+            { text: "a figure has to cross.", italic: true },
           ]}
           subtitle="Tally holds the books. ClearTax or the portal holds GST. Winman holds the returns. A spreadsheet holds the deadlines. WhatsApp holds everything the client actually said. None of them can see the others."
         />
@@ -184,19 +211,23 @@ export default function StoryPage() {
           ))}
         </div>
 
-        <CineReveal delay={120}>
-          <div className="mt-14 flex flex-col items-start gap-5 rounded-2xl border border-gold/30 bg-gold/[0.06] p-6 sm:flex-row sm:items-center md:p-8">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gold/15 text-gold ring-1 ring-gold/25">
-              <Shield size={22} />
-            </span>
-            <p className="text-[15px] leading-relaxed text-brand-dark md:text-[16px]">
-              <span className="font-semibold">Nothing leaves your hands on its own.</span>{" "}
-              Every GST return, income-tax return, TDS statement and MCA form waits for an
-              explicit confirmation from a Chartered Accountant — and even then, it is that
-              CA who files it on the portal.
-            </p>
-          </div>
-        </CineReveal>
+        {/* ⚠️ THE GOLD "NOTHING LEAVES YOUR HANDS ON ITS OWN" CALLOUT USED TO
+            SIT HERE, AND IT WAS THE HOMEPAGE'S. Same Shield, same classes, same
+            bold lead sentence, and a body differing from the homepage's only by
+            its last clause — the second half of the same copy-paste that left
+            two of section 02, and the half the first fix missed because that
+            guard compared HEADINGS and this is body copy.
+
+            It is deleted rather than re-written, which is the opposite call
+            from the one taken on section 02 and for a stated reason: that panel
+            carried two paragraphs nothing else had, so its heading was the only
+            thing to change. This callout carries nothing of its own. It
+            restates the four refusals immediately above it — the first of which
+            is "We do not file anything" — so on THIS page it was redundant
+            twice over: against the homepage, and against the section it was in.
+
+            The guard now compares body prose across pages as well as headings,
+            so neither half can come back. */}
       </Panel>
 
       {/* ── Where it is now ──────────────────────────────────────────────── */}
