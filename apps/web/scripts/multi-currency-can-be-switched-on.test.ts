@@ -55,15 +55,22 @@ test("the screen shows WHICH gate is down, not just the answer", () => {
   // `active: false` alone is what made this unusable — a Partner ticked
   // something and could not tell which of three switches was still down.
   const src = code(SCREEN);
-  for (const gate of ["firmGates?.platform", "firmGates?.firm", "gates.client",
-                      "gates.functional_currency_supported"]) {
-    assert.ok(src.includes(gate), `the screen must render ${gate}`);
+  // `\??` on every hop after the first. The rule is that all four gates are
+  // RENDERED, not how many optional-chain operators it took to reach them —
+  // and completing a chain is a fix, not a regression. This screen proved it
+  // on 16-09-2026: the envelope's `data` came back `[]`, `[] ?? null` is `[]`,
+  // and `firmGates?.platform.on` then read `.on` off undefined and sent the
+  // whole Settings module to its error boundary.
+  for (const gate of [/firmGates\?\.platform\b/, /firmGates\?\.firm\b/,
+                      /gates\??\.client\b/,
+                      /gates\??\.functional_currency_supported\b/]) {
+    assert.match(src, gate, `the screen must render ${gate}`);
   }
 });
 
 test("the platform kill switch is shown and never offered", () => {
   const src = code(SCREEN);
-  assert.match(src, /firmGates\?\.platform\.why/,
+  assert.match(src, /firmGates\?\.platform\??\.why/,
     "the server says WHY the platform gate is down — MULTI_CURRENCY_ENABLED is "
     + "an environment variable, so the sentence is the only actionable part");
   assert.match(src, /Multi-currency is off for this deployment/,

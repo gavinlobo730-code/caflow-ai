@@ -25,7 +25,7 @@ MOCK_CLIENTS = [
         "client_name": "Sharma Enterprises",
         "entity_type": "Proprietorship",
         "pan": "AABCS1429B",
-        "gstin": "27AABCS1429B1ZB",
+        "gstin": "27AABCS1429B1ZU",
         "mobile": "+91 98765 43210",
         "email": "sharma@sharmaenterprises.in",
         "address_line1": "12, MG Road",

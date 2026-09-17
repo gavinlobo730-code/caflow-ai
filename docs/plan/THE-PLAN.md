@@ -45,15 +45,15 @@ _Last updated: 2026-09-16_
 
 | track | what | owner | size | status |
 |---|---|---|---|---|
-| **T1** | Repair the safety net | 🔧 C | 4–6d | `TODO` |
-| **T2** | A demo firm that exists | 🔧 C | 2–3d | `TODO` |
-| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `BLOCKED` on T1 |
+| **T1** | Repair the safety net | 🔧 C | 4–6d | `DONE` — 7 of 7 |
+| **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
+| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `TODO` — unblocked 16 Sep |
 | **T4** | Token adoption | 🔧 C | 5–8d | `BLOCKED` on T3 |
-| **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `BLOCKED` on T1 |
+| **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `TODO` — unblocked 16 Sep |
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
 | **T7** | Analytics & AI | 🔧 C | 3 layers | `BLOCKED` on T3 |
 | **T8** | The portals | 🔧 C | 8–12d | `BLOCKED` on T4 |
-| **T9** | Backend backlog (8 items) | 🔧 C | 14–17d | `TODO` — parallel, starts now |
+| **T9** | Backend backlog (8 → 14 items) | 🔧 C | 14–17d | `TODO` — parallel, starts now |
 | **D** | Owner decisions | 👤 O | — | 8 of 8 `DONE` |
 | **F** | Documents to fetch | 👤 O | — | `TODO` |
 | **V** | Pre-demo verification | 🤝 B | 1 session | `BLOCKED` on T8 |
@@ -96,7 +96,7 @@ auto-submit to a government portal.
 
 # T1 — Repair the safety net
 
-**Owner 🔧 C · 4–6 days · BLOCKS T3, T5, T6 · status `TODO`**
+**Owner 🔧 C · 4–6 days · BLOCKED T3, T5, T6 · status `DONE` (16 Sep)**
 
 **Why first.** Track 1 of the old plan was built on 13 September and the
 13 September note told you it was "finished and green". It is not. Two of its
@@ -105,27 +105,40 @@ required CI checks green and nothing having verified it. Measured:
 
 - **148 of 159 smoke-walk screenshots are byte-identical** — the onboarding
   wizard. Zero product modules have ever rendered under the harness.
-- **134 of 160 screens (83%) can be deleted entirely** with the reachability
-  guard reporting zero losses.
+- **133 of 159 route pages (84%) can be deleted entirely** with the reachability
+  guard reporting zero losses. ✅ **T1-b, 16 Sep: now 77.** The rest share every
+  endpoint they call with a second screen, so deleting one orphans nothing —
+  that residual is the smoke walk's job, not this guard's.
 - **The required backend check reports green without running** on any
   `apps/web`-only PR — which is exactly what a module conversion is.
 - **Zero `error.tsx` across 160 routes**, so "if something breaks it is one
   module" is false at runtime.
 
-| ID | item | size | DONE WHEN |
-|---|---|---|---|
-| T1-a | Widen `backend-ci.yml` scope to `apps/web/`, or add a third job scoped to the two reachability tests. Make `frontend-ci` a required check. | 2h | A frontend-only PR shows the backend job **ran**, not "reported green without running" |
-| T1-b | Attribute reachability to a calling file under `app/` or `components/`, not the `lib/` blob | 1d | The 469 figure in §T1 is **0** — every protected endpoint is named by a real screen |
-| T1-c | Seed the smoke walk's `users` read so `hasFirm` resolves true and screens actually render | 1h | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 (is **11**) |
-| T1-d | Triage every failure T1-c exposes | 2–3d | `pnpm smoke` exits 0 with all 159 routes rendering their own screen |
-| T1-e | Per-route content assertion + fail the run if > 5 screenshots share an md5 | 1d | The guard that would have caught this on 12 September exists and passes |
-| T1-f | Add `error.tsx` to every module route | 0.5d | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 (is **0**) |
-| T1-g | Refresh both snapshots at HEAD in a reviewed commit | 0.5h | 128 unprotected endpoints → 0; screen snapshot 159 → 160 |
+| ID | item | size | status | DONE WHEN |
+|---|---|---|---|---|
+| T1-a | Widen `backend-ci.yml` scope to `apps/web/`, or add a third job scoped to the two reachability tests. Make `frontend-ci` a required check. | 2h | `DONE` | A frontend-only PR shows the backend job **ran**, not "reported green without running" |
+| T1-b | Attribute reachability to a calling file under `app/` or `components/`, not the `lib/` blob | 1d | `DONE` | `_sources()` counts a URL literal only where a screen can reach it. Endpoints reached falls 907 → **797**; the 110 between were named by nothing but an api-client method with no caller |
+| T1-c | Seed the smoke walk's `users` read so `hasFirm` resolves true and screens actually render | 1h | `DONE` | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 (was **11**, now 154) |
+| T1-d | Triage every failure T1-c exposes | 2–3d | `DONE` | `pnpm smoke` exits 0 with all 159 routes rendering their own screen |
+| T1-e | Per-route content assertion + fail the run if > 5 screenshots share an md5 | 1d | `DONE` | `pnpm smoke` exits 0 today; with the seeded rows removed — the harness exactly as it stood on 12 September — it exits 1 with **147 of 159** routes reporting, 143 of them "landed on /onboarding". That run exited **0**. |
+| T1-f | Add `error.tsx` to every module route | 0.5d | `DONE` | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 (was **0**, now 65) |
+| T1-g | Refresh both snapshots at HEAD in a reviewed commit | 0.5h | `DONE` | Unprotected endpoints **0** (was 128); screen snapshot **159 → 160**. The 160th was `/settings/multi-currency`, and it crashed the first time anything visited it — see below. |
 
-**Risk to expect:** T1-c turns a green walk red across many routes at once.
-That is the correct outcome and will look like a regression caused by the fix.
-T1-d is the unpredictable part — nobody has ever seen these screens render
-under this harness.
+**Risk that materialised, twice.** Each fix in this track exposed the next
+defect, which is what a safety net is for:
+
+- T1-c seeded the `users` row; **13 screens crashed** the first time anything
+  could see them.
+- T1-e's landing check found the product's **front door** bouncing to the
+  onboarding wizard — `DashboardContent` reads `firms.name` and the stub
+  answered null — so the dashboard had never rendered under the harness either.
+- T1-g refreshed the screen snapshot from 159 to 160, and the screen nobody had
+  ever walked, `/settings/multi-currency`, **threw on mount**: `data` came back
+  `[]`, `[] ?? null` is `[]`, and `firmGates?.platform.on` read `.on` off
+  undefined. Its error boundary (T1-f) contained it, which is the first time
+  that has been observed working.
+
+All three are fixed. `pnpm smoke` walks 160 routes and exits 0.
 
 ---
 
@@ -134,9 +147,17 @@ under this harness.
 **Owner 🔧 C · 2–3 days · parallel with T1 · status `TODO`**
 
 `apps/api/seed/seed_data.py` — 164 lines, a full demo firm, five users, twenty
-named clients with valid PANs and GSTINs — has **zero importers**. No demo
-mode, no reset path. The only way into the product is a 940-line three-step
-OTP-gated onboarding wizard.
+named clients — has **zero importers**. No demo mode, no reset path. The only
+way into the product is a 940-line three-step OTP-gated onboarding wizard.
+
+**"valid PANs and GSTINs" was wrong, and it is measured now.** Checked against
+`domain/gst/gstin.checksum_char` on 16 Sep: **17 of the 20 client GSTINs carry
+the wrong check digit, and so does the firm's own.** That is not cosmetic —
+GST-29 made the check enforced at every door a human types one, `POST
+/api/onboarding/firm` refuses a firm GSTIN that fails it, and the GSTR-1 build
+refuses the client's own. Seeded as they stand, the demo could not file. The
+first 14 characters are fine; only the last needs recomputing, and it must be
+COMPUTED rather than typed.
 
 This is why T1-c is needed at all (nothing to seed → stub everything empty →
 land on the wizard) **and** it is on the critical path for the CA demo.
@@ -147,11 +168,39 @@ wipe and re-seed freely.
 | ID | item | size | DONE WHEN |
 |---|---|---|---|
 | T2-a | Make `seed_data.py` runnable — one command, idempotent, with a reset | 1d | One command creates the firm; running it twice is a no-op |
+| T2-0 | Correct the 18 GSTINs, computing each check digit | 1h | `DONE` 16 Sep — `tests/test_the_demo_firm_can_be_created_at_all.py`, 64 tests; 18 fail against the uncorrected data. Three further copies of one of them were found in `mock_data.py` and the document-intelligence specimens, and corrected too. |
 | T2-b | Extend to a **full financial year** of transactions across every module — sales, purchases, bank, payroll, GST returns, TDS, fixed assets, inventory | 1–2d | Every one of the 15 tiles has real figures on it; no screen shows an empty state |
 
 **Deliberately included:** at least one client with a locked period, one with a
 filed return, one with a statutory gap. A demo where nothing is ever refused
 teaches a CA the wrong thing about the product.
+
+**Two facts settled on 16 Sep that decide HOW T2-a is built, recorded so the
+build does not re-derive them:**
+
+1. **Creating a firm is four steps, not one insert.** `routers/onboarding.py`
+   does `firms` → `users` → `coa_seed_service.seed_firm_coa(firm_id)` →
+   `internal_client_service.provision(...)`. The chart of accounts is
+   FIRM-level (migration 057: one master chart, `client_id IS NULL`), and
+   `STANDARD_COA` is its one authority. A seeder that writes accounts of its
+   own would be a second one — so the seeder must either call that service or
+   GENERATE its rows from `STANDARD_COA`, never restate them.
+
+2. **Mock mode cannot verify a seeder, and that is by design.**
+   `seed_firm_coa` short-circuits to `{"skipped": True, "mock": True}` when
+   `SUPABASE_URL` is unset, because mock mode is an in-memory double for the
+   test suite rather than a database. So "running it twice is a no-op" is
+   checkable only against real Postgres. The practical shape is therefore a
+   Python generator that emits SQL from the existing Python authorities and
+   applies it with `psql --dsn`, the way `scripts/db/apply_migrations.py`
+   already does — verifiable against a local cluster, and runnable against the
+   Supabase DSN when the owner chooses.
+
+**⚠️ A seeded user cannot sign in.** `users.auth_user_id` references a Supabase
+auth identity, and the seeder must not mint one — that is credential creation.
+So either the owner passes the auth id of an account they have already signed
+up with, or the rows exist and nobody can log in. Whichever is chosen, the
+seeder must SAY which, not leave it to be discovered.
 
 ---
 
@@ -437,7 +486,7 @@ from memory puts a wrong number in somebody's pay or return.
 |---|---|---|
 | V-1 | Smoke walk renders the product | `md5sum apps/web/.smoke/*.jpg \| awk '{print $1}' \| sort -u \| wc -l` ≥ 150 |
 | V-2 | Required checks actually run on a web-only PR | Open one and read the job log |
-| V-3 | Reachability attributed to screens | The 469 figure is 0 |
+| V-3 | Reachability attributed to screens | `pytest tests/test_reachability_is_attributed_to_a_screen.py` passes |
 | V-4 | A demo firm exists | One command builds it |
 | V-5 | Error boundaries | `find apps/web/app -name error.tsx \| wc -l` ≥ 14 |
 
@@ -496,6 +545,11 @@ cd /path/to/caflow-ai
 # T1-c/V-1  distinct smoke screenshots            now 11      target >=150
 md5sum apps/web/.smoke/*.jpg | awk '{print $1}' | sort -u | wc -l
 
+# T1-b/V-3  endpoints a screen can actually reach    now 797    was 907
+cd apps/api && python3 -c "from tests.test_every_mounted_endpoint_has_a_way_in \
+  import _sources, _pattern, _routes; b = _sources(); \
+  print(sum(1 for m, p in _routes() if _pattern(p).search(b)))"
+
 # T1-f/V-5  error boundaries                      now 0       target >=14
 find apps/web/app -name error.tsx | wc -l
 
@@ -508,23 +562,25 @@ grep -rEoh '#[0-9a-fA-F]{6}' apps/web/app apps/web/components | wc -l
 # T5b       browser-side Excel writers            now 7       target 0
 grep -rl 'XLSX.write' apps/web/app apps/web/components | wc -l
 
-# T9        backlog: open + partial               now 35      target <=10 (rest blocked)
+# T9        backlog: open + partial               now 49      target <=10 (rest blocked)
 python3 -c "import json,collections; d=json.load(open('docs/audits/findings-status.json')); \
 c=collections.Counter(v['status'] for v in d['findings'].values()); print(c['open']+c['partial'])"
 ```
 
 | check | 16 Sep 2026 | target | track |
 |---|---|---|---|
-| distinct smoke screenshots | **11** of 159 | ≥ 150 | T1-c |
-| error boundaries | **0** | ≥ 14 | T1-f |
-| endpoints reached only via `lib/` | **469** of 777 | 0 | T1-b |
-| screens deletable in silence | **134** of 160 | 0 | T1-b |
+| distinct smoke screenshots | ~~11~~ **154** of 160 | ≥ 150 | ✅ T1-c |
+| distinct rendered bodies | ~~11~~ **150** of 154 that stay put | largest group ≤ 5 | ✅ T1-e |
+| routes landing on someone else's screen | ~~143~~ **0** unpinned | 0 | ✅ T1-e |
+| error boundaries | ~~0~~ **65** | ≥ 14 | ✅ T1-f |
+| endpoints reached by an uncalled api-client method | ~~110~~ **0** of 797 | 0 | ✅ T1-b |
+| screens deletable in silence | ~~133~~ **77** of 159 | see note | T1-b done, rest → T1-e |
 | redirect rules used | **98** of 100 | ≤ 90 | T6-a |
 | hardcoded hex colours | **10,850** | 0 | T4-a |
 | money formatters | **53** | 1 | T3-c |
 | browser Excel writers | **7** | 0 | T5b |
 | analytical endpoints with no screen | **~40** | 0 | T7-L1 |
-| backlog open + partial | **35** | ≤ 10 | T9 |
+| backlog open + partial | ~~35~~ **49** | ≤ 10 | T9 |
 
 ---
 

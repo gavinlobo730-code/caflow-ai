@@ -22,7 +22,7 @@ MOCK_DOCUMENT_EXTRACTIONS: list[dict] = [
         "extracted_data": {
             "invoice_no": "HGS/2024-25/001234",
             "gstin_supplier": "27AABCH1234B1ZA",
-            "gstin_recipient": "27AABCS1429B1ZB",
+            "gstin_recipient": "27AABCS1429B1ZU",
             "taxable_value_paise": 10000000,
             "cgst_paise": 900000,
             "sgst_paise": 900000,
@@ -352,7 +352,7 @@ _MOCK_EXTRACTED: dict[str, dict] = {
     },
     "GST_INVOICE": {
         "invoice_no": "INV/2025/0001",
-        "gstin_supplier": "27AABCS1429B1ZB",
+        "gstin_supplier": "27AABCS1429B1ZU",
         "gstin_recipient": "27AAPCS4229B1ZC",
         "taxable_value_paise": 5000000,
         "cgst_paise": 450000,
