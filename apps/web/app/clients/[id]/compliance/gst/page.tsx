@@ -11,6 +11,8 @@ import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
 import RegistrationsTab from "@/components/gst/RegistrationsTab";
 import { todayLocalISO } from "@/lib/dateMath";
 import GSTR9Working from "@/components/gst/GSTR9Working";
+import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
+import type { ValidationError, PayloadGap } from "@/lib/data/gst";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -690,6 +692,21 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   <div><p className="text-xs text-[#64748B]">Taxable Total</p><p className="font-medium">{rupees(computeResult.taxable_total_paise as number)}</p></div>
                   <div><p className="text-xs text-[#64748B]">Tax Total</p><p className="font-medium">{rupees(computeResult.tax_total_paise as number)}</p></div>
                 </div>
+                {/* WHAT THE VALIDATOR SAID (GST-16). `gstr1_from_books` has run
+                    it and returned `validation_errors`, `validation_warnings`
+                    and `payload_gaps` since Phase 5, and this panel rendered
+                    the reconciliation banner and three totals and none of the
+                    three — so a duplicate invoice number, IGST on an
+                    intra-state supply, or a document the payload leaves out
+                    entirely showed here as a green tick. The same component the
+                    firm-level /gst/gstr1 page uses, so the two cannot describe
+                    one return differently. */}
+                <Gstr1Findings
+                  errors={(computeResult.validation_errors ?? []) as ValidationError[]}
+                  warnings={(computeResult.validation_warnings ?? []) as ValidationError[]}
+                  gaps={(computeResult.payload_gaps ?? []) as PayloadGap[]}
+                  compact
+                />
                 <button onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-green-600 text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}

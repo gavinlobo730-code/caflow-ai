@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **227** | re-read against the code. The defect is gone. |
-| partial | **37** | part of the finding is answered, part is not. Each says which. |
+| closed | **228** | re-read against the code. The defect is gone. |
+| partial | **36** | part of the finding is answered, part is not. Each says which. |
 | open | **9** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 46 items — 9 open and 37 partial — not 254.**
+**The work left is 45 items — 9 open and 36 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -53,7 +53,6 @@ is left as "unknown".
 | high | **FA-06** | IT Act §32 block-of-assets depreciation does not exist, and the book-to-tax bridge that needs it |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-13** | The module's most differentiating backend work — amendments, exception report, ITC register, adv |
-| high | **GST-16** | The GSTR-1 validator never runs on the path a CA actually uses |
 | high | **IT-09** | IT Act §32 depreciation (block of assets, WDV, the 180-day half-rate rule, additional depreciati |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
@@ -153,6 +152,7 @@ is left as "unknown".
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **GST-12** | The "Add GST Filing" modal on /gst throws on every save — the period is "MMM YYYY" and is parsed |
 | high | **GST-14** | Two contradictory "filed" states: /gst marks filings in compliance_calendar over PostgREST and n |
+| high | **GST-16** | The GSTR-1 validator never runs on the path a CA actually uses |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **INV-01** | There is no closing-stock-as-at-a-date figure, and the date-filtered stock ledger's running bala |
 | high | **INV-06** | A §17(5)(h) ITC reversal on a stock write-off is posted to the GL but can never reach GSTR-3B Ta |
