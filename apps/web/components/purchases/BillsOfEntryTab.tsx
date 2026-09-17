@@ -50,7 +50,10 @@ const BLANK = {
   notes: "",
 };
 
-export function BillsOfEntryTab({ clientId }: { clientId: string }) {
+export function BillsOfEntryTab({ clientId, openDoc }:
+    { clientId: string;
+      /** ACC-22 — the bill of entry a ledger drill-through arrived at. */
+      openDoc?: string | null }) {
   const [rows, setRows] = useState<BillOfEntry[]>([]);
   const [accounts, setAccounts] = useState<AccountLike[]>([]);
   const [authorities, setAuthorities] = useState<BillOfEntryAuthorities | null>(null);
@@ -302,7 +305,12 @@ export function BillsOfEntryTab({ clientId }: { clientId: string }) {
             </thead>
             <tbody className="divide-y divide-[#F8FAFC]">
               {rows.map((r) => (
-                <tr key={r.id} className="align-top">
+                // ACC-22 — a ledger drill-through rings the document it arrived
+                // at. A hand-rolled table rather than DataTable here, so the
+                // ring is spelled out; the rule is the same one
+                // `highlightRowId` states there.
+                <tr key={r.id} className={"align-top" +
+                     (openDoc && r.id === openDoc ? " bg-amber-50 ring-2 ring-inset ring-amber-300" : "")}>
                   <td className="py-2 font-mono text-[#1E293B]">
                     {r.be_number}
                     <span className="ml-1.5 text-[10px] text-[#94A3B8] uppercase">{r.gstr2b_section}</span>

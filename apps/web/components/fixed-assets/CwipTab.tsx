@@ -100,7 +100,12 @@ function Shell({ title, children, onClose, onSave, saving, error, cta }: {
   );
 }
 
-export function CwipTab({ clientId, asOf }: { clientId: string; asOf: string }) {
+export function CwipTab({ clientId, asOf, openDoc }:
+    { clientId: string; asOf: string;
+      /** ACC-22 — the CWIP project a ledger drill-through arrived at. A cost
+       *  tranche and a capitalisation both stamp the PROJECT, because that is
+       *  the row a CA opens. */
+      openDoc?: string | null }) {
   const [register, setRegister] = useState<Register | null>(null);
   const [schedules, setSchedules] = useState<Schedules | null>(null);
   const [loading, setLoading] = useState(true);
@@ -191,7 +196,8 @@ export function CwipTab({ clientId, asOf }: { clientId: string; asOf: string }) 
               </thead>
               <tbody className="divide-y divide-[#F8FAFC]">
                 {register?.projects?.map((p) => (
-                  <tr key={p.id}>
+                  <tr key={p.id} className={openDoc && p.id === openDoc
+                      ? "bg-amber-50 ring-2 ring-inset ring-amber-300" : undefined}>
                     <td className="px-5 py-2 text-[#1E293B]">
                       {p.project_name}
                       {p.project_code && (

@@ -84,14 +84,30 @@ def test_the_worked_examples(src, expected):
 
 def test_the_screen_derives_rather_than_listing():
     """The whole point. A label map in the browser is the failure this avoids,
-    so its absence is what the test holds."""
+    so its absence is what the test holds.
+
+    RESOLVED, NOT NAMED. This used to assert `function sourceLabel` in
+    `app/clients/[id]/accounting/page.tsx`, and broke when ACC-22 moved the
+    function into `lib/accounting/sourceDocument.ts` so the ledger's
+    drill-through could share it — a move that did not break the rule. The
+    definition is found by searching `apps/web` for it, and the rule (derive,
+    never list) is asserted against wherever it lives.
+    """
     from pathlib import Path
-    page = (Path(__file__).resolve().parents[3] / "apps" / "web" / "app"
-            / "clients" / "[id]" / "accounting" / "page.tsx")
-    if not page.exists():                       # backend-only checkout
+    web = Path(__file__).resolve().parents[3] / "apps" / "web"
+    if not web.exists():                        # backend-only checkout
         pytest.skip("apps/web not present")
-    code = page.read_text()
-    assert "function sourceLabel" in code, "the day book no longer derives its source label"
+    homes = [p for p in web.rglob("*.ts*")
+             if "node_modules" not in p.parts and ".next" not in p.parts
+             and "function sourceLabel" in p.read_text(encoding="utf-8", errors="replace")]
+    assert len(homes) == 1, (
+        "the browser must derive its source label in exactly one place — "
+        f"found {len(homes)}: {[str(h.relative_to(web)) for h in homes]}")
+    code = homes[0].read_text(encoding="utf-8")
     assert "SOURCE_LABELS" not in code, (
         "a hardcoded source-label map is back. It is a second copy of "
         "ALL_SOURCES and will be out of step the first time a source is added.")
+    # The derivation itself, rather than only the absence of a map: a body that
+    # stopped transforming the value would pass both checks above.
+    assert "replace(/_/g" in code and "toUpperCase()" in code, (
+        "sourceLabel no longer derives the label from the value")

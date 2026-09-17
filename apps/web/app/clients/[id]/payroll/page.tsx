@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { openedAt } from "@/lib/accounting/sourceDocument";
 import CsvImportModal, { type ImportRow } from "@/components/CsvImportModal";
 import { EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
@@ -571,7 +572,10 @@ function EmployeesTab({ clientId, firmId }: { clientId: string; firmId: string }
 
 // ─── Payroll Runs Tab ─────────────────────────────────────────────────────────
 
-function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
+function RunsTab({ clientId, firmId, openDoc }:
+    { clientId: string; firmId: string;
+      /** ACC-22 — the payroll run a ledger drill-through arrived at. */
+      openDoc?: string | null }) {
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -904,7 +908,9 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
           <div className="bg-white rounded-xl border border-[#E2E8F0] p-8 text-center text-[#94A3B8] text-sm">No payroll runs yet</div>
         )}
         {runs.map(r => (
-          <div key={r.id} className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden">
+          <div key={r.id} className={"bg-white rounded-xl border overflow-hidden " +
+              (openDoc && r.id === openDoc
+                ? "border-amber-300 ring-2 ring-amber-300" : "border-[#E2E8F0]")}>
             <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-3">
                 <StatusBadge status={r.status} />
@@ -1916,6 +1922,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }: { label: 
 export default function PayrollPage() {
   const { clientId } = useClientNav();
   const [tab, setTab] = useState<Tab>("inputs");
+  const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [firmId, setFirmId] = useState<string>("");
 
   useEffect(() => { getFirmId().then(setFirmId).catch(() => {}); }, []);
@@ -1935,6 +1942,20 @@ export default function PayrollPage() {
     { id: "bonus",    label: "Bonus",    icon: Scale },
     { id: "setup",    label: "Setup",    icon: Settings },
   ];
+
+  // ACC-22 — a ledger row's drill-through arrives as ?tab=<id>&doc=<uuid>. Both
+  // payroll sources (the accrual and the disbursement) stamp the RUN, so the
+  // Register tab is where they land. Declared AFTER TABS so the validation
+  // reads the screen's own list rather than a second copy of it; read in an
+  // effect because this page is part of a static export.
+  useEffect(() => {
+    const { tab: t, doc } = openedAt(window.location.search);
+    if (t && TABS.some((x) => x.id === t)) setTab(t as Tab);
+    setOpenDoc(doc);
+    // TABS is rebuilt every render and its CONTENT never changes; depending on
+    // it would re-run this on every render and undo the reader's own tab click.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-col h-full bg-[#F8FAFC]">
@@ -1973,7 +1994,7 @@ export default function PayrollPage() {
           </div>
         )}
         {/* REGISTER — compute the month and read it employee by employee. */}
-        {tab === "register" && <RunsTab clientId={clientId} firmId={firmId} />}
+        {tab === "register" && <RunsTab clientId={clientId} firmId={firmId} openDoc={openDoc} />}
         {/* RELEASE — lock, pay, and (rarely) reverse. One lifecycle, one place. */}
         {tab === "release"  && <ReleaseTab clientId={clientId} />}
         {/* OUTPUTS — this client-month's shelf, every file server-built. */}

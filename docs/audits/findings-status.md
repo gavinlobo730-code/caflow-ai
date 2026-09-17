@@ -7,25 +7,24 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **234** | re-read against the code. The defect is gone. |
+| closed | **235** | re-read against the code. The defect is gone. |
 | partial | **31** | part of the finding is answered, part is not. Each says which. |
-| open | **8** | re-read and still true. |
+| open | **7** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 39 items — 8 open and 31 partial — not 254.**
+**The work left is 38 items — 7 open and 31 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**Of the 8 open, 4 are blocked on something outside the code** — a statutory schema, a file layout, a registration — and each blocker is named below. The other 4 are ordinary code work with nothing in front of them.
+**Of the 7 open, 4 are blocked on something outside the code** — a statutory schema, a file layout, a registration — and each blocker is named below. The other 3 are ordinary code work with nothing in front of them.
 
 ## Open
 
 | severity | finding | what it is |
 |---|---|---|
-| medium | **ACC-22** | No drill-through from a ledger line to the voucher behind it |
 | medium | **GST-17** | The HSN digit requirement is computed and then never applied or warned about, and the thresholds |
 | medium | **GST-18** | GSTR-1 Table 13 (documents issued) is missing the serial-number range the form requires |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
@@ -207,6 +206,7 @@ is left as "unknown".
 | medium | **ACC-18** | The Lock Financial Year screen offers a hardcoded list of years ending at 2025-26 — the current  |
 | medium | **ACC-19** | Multi-currency is fully built across five phases but cannot be switched on for any firm or clien |
 | medium | **ACC-21** | post_journal_atomic validates the entry's firm and client but never checks that the LINE account |
+| medium | **ACC-22** | No drill-through from a ledger line to the voucher behind it |
 | medium | **ACC-24** | The Account Groups screen renders nothing useful for a normally-onboarded firm |
 | medium | **ACC-27** | entry_date is an unvalidated string on the journal models, so a malformed date reaches the datab |
 | medium | **BANK-03** | A foreign-currency bank account can be created, and its statement imports and posts to the ledge |

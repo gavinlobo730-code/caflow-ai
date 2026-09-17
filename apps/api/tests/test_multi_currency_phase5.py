@@ -76,9 +76,15 @@ def test_inr_ledger_is_byte_for_byte_unchanged():
     rep = _svc(entries).ledger(FIRM, CLIENT, "bank", FY_START, FY_END)
     assert "has_foreign_lines" not in rep
     row = rep["lines"][0]
+    # The FX memo is what this file is about, and it must be ABSENT. The
+    # document keys (ACC-22's source_type / source_id) are unconditional on
+    # every row by design — "no document" and "this build did not send it" have
+    # to look different to the screen — so they are listed here rather than
+    # loosening the set: an INR ledger is still exactly these keys and no more.
     assert set(row.keys()) == {
         "entry_id", "entry_date", "reference_no", "narration",
         "debit_paise", "credit_paise", "running_balance_paise", "is_debit",
+        "source_type", "source_id",
     }
 
 
