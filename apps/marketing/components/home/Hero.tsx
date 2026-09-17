@@ -41,6 +41,20 @@ import { Parallax } from "../motion";
 const ARTWORK = "/hero/earth-network.webp";
 
 /**
+ * The deep-space field that carries the artwork across the rest of the hero.
+ *
+ * DERIVED FROM `ARTWORK`, not drawn: `scripts/build-space-field.py` cuts the
+ * artwork's own stars out of its cleanest deep-space tiles and re-scatters
+ * them, so the left of the hero is the same picture's sky rather than a
+ * starfield somebody generated. Purely decorative — it carries no content, so
+ * unlike the artwork it takes an empty `alt`.
+ *
+ * Re-run that script if the artwork is ever re-exported; the stars come from
+ * it.
+ */
+const STARS = "/hero/space-field.webp";
+
+/**
  * The eight modules the artwork has baked into it, in reading order.
  *
  * Kept as a list rather than written into one long string so that it is
@@ -121,11 +135,86 @@ export function Hero() {
         brief forbids. So the colour lives here, on the one section that needs
         to disappear behind a specific asset.
       */
+      /*
+        AND THE TWO GRADIENTS ARE THE COLOUR OF SPACE ON THE HALF THE ARTWORK
+        DOES NOT REACH.
+
+        Owner review, 17-09-2026: *"can we you know create the background image
+        a bit more universy like see the image is already right but only the
+        right side it is but the left is blank so i was thinking that the whole
+        screen gets that look"*, then, on scope: *"there should be only one
+        page and the page with the hero that is the original page"* — this
+        section, not the site.
+
+        BOTH COLOURS ARE MEASURED OFF THE ARTWORK rather than picked: #0c254b
+        is the mean of its own pixels in the 26-46 luminance band, its haze,
+        and #010817 the mean below 14, its deep space, which is the #010918
+        this section already carried. So the left half is lit in the picture's
+        own palette and reads as the same photograph continuing, not as a
+        tinted panel beside it.
+
+        WHY A GRADIENT AND NOT MORE IMAGE. Two attempts put this wash in the
+        asset, derived from the artwork as a tiny flipped thumbnail — see
+        `scripts/build-space-field.py`, which records both. The first kept
+        enough of the artwork's bright limb to read as a galaxy arm, which §12
+        prohibits outright; the second was structureless and then BANDED into
+        concentric rings, because a smooth gradient at that strength spans
+        about twenty of the 256 levels 8-bit gives you. Dithering fixed the
+        rings and multiplied the file by ten. The browser renders a gradient at
+        higher precision than the file format can hold, so it simply does not
+        band, and it weighs nothing. It is also not one of the four things the
+        brief says not to recreate — the globe, the city lights, the starfield
+        and the cards are all still the owner's own pixels.
+
+        Sized in PERCENTAGES, so the wash is a proportion of the hero at every
+        width; a px-sized ellipse is most of a phone and a corner of a 27-inch
+        monitor. Off-centre and of two different sizes because one centred
+        ellipse reads as a vignette.
+      */
       style={{
         backgroundColor: "#010918",
+        backgroundImage: [
+          "radial-gradient(115% 95% at 20% 36%, rgba(12,37,75,0.50), rgba(12,37,75,0) 68%)",
+          "radial-gradient(85% 70% at 46% 88%, rgba(12,37,75,0.30), rgba(12,37,75,0) 72%)",
+        ].join(","),
         boxShadow: "inset 0 0 180px rgba(0,0,0,0.4)",
       }}
     >
+      {/*
+        ── The stars ──────────────────────────────────────────────────────────
+
+        EVERY STAR HERE IS ONE OF THE ARTWORK'S OWN, MOVED.
+        `scripts/build-space-field.py` cuts them out of the artwork's cleanest
+        deep-space tiles and scatters them at new positions under a fixed seed,
+        which is the one way to extend the picture leftwards without either
+        drawing a starfield in code (§23 of the brief forbids it by name) or
+        mirroring a patch, which the eye catches immediately because repeated
+        constellations are the easiest pattern there is to see.
+
+        BEFORE the artwork in the DOM and at the same z-index, so it paints
+        underneath: the artwork is the subject and this is the room it is in.
+
+        `object-cover` with `object-left`. On a box wider than 16:9 cover
+        scales by width and the horizontal anchor does not matter; on a
+        narrower one it scales by height and crops WIDTH, and anchoring left
+        keeps the populated side and throws away the faded side rather than the
+        other way round. The asset's own alpha already fades it out before the
+        artwork's opaque half begins, so the two star populations never overlap
+        and there is no density step down the middle of the hero.
+      */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={STARS}
+          alt=""
+          width={1920}
+          height={1080}
+          loading="eager"
+          decoding="async"
+          className="h-full w-full object-cover object-left"
+        />
+      </div>
+
       {/* The 460px watermark "01" that used to sit here is gone, with the rest
           of the panel numerals — owner review, 16-09-2026: "the 01 and the
           numbering in the big light on all pages they also dont look asthetic".
@@ -161,44 +250,36 @@ export function Hero() {
         TRADE-OFF RATHER THAN A ROUNDING.
 
         The artwork's own Clients and Practice analytics cards sit at its far
-        left, INSIDE its fade — measured, the first near-opaque card body is
-        at x=157 of 1117 (14.1% of the width) and the first legible card TEXT
-        at x=181 (16.2%). Those cards are pixels: they cannot be nudged.
+        left, INSIDE its fade, and they are pixels: they cannot be nudged.
+        Where exactly they start is measured on the RENDER rather than on the
+        asset, and the difference mattered — see the copy column's note below,
+        which records the collisions that reached production because this
+        figure was first derived from the asset's alpha instead.
 
-        With the image right-flush at a fraction f of the viewport, its content
-        begins at `V x (1 - 0.859f)`. Setting that against the copy's measured
-        right edge at six widths (415px at 1024 through 874px at 1920, the
-        widest case being the eyebrow line and the rotating word "Automation.")
-        gives a ceiling of 63.8% before card text lands on copy, and 62.2%
-        before card bodies do. At the brief's 68% the Practice analytics card
-        sat directly on the second line of the paragraph.
-
-        So the constraint is not the image, it is that the hero's EXISTING type
-        is larger relative to the viewport than the type in the reference
-        composition — where the eyebrow occupies 26% of the width against 35%
-        here. The brief also says not to redesign the hero typography, and of
-        the two instructions the one that cannot be broken silently is the
-        collision: overlapping text is a defect at any size, three percentage
-        points is not. Taking 62% keeps the card BODIES clear, not merely
-        their text.
+        Re-tested at 66% and 68% once the copy stopped drifting: both collide,
+        at five and six widths respectively, and in both cases the failures are
+        at the LAPTOP end (1039-1600) rather than on a wide screen. The
+        constraint is not the wide monitor and it is not the image — it is that
+        the hero's EXISTING type is larger relative to the viewport than the
+        type in the reference composition, where the eyebrow occupies 26% of
+        the width against 35% here. The brief says not to redesign the hero
+        typography, and of the two instructions the one that cannot be broken
+        silently is the collision: overlapping text is a defect at any size,
+        three percentage points is not.
 
         If the artwork should be bigger, the copy has to be smaller — that is
         one max-width change away and is an owner call, not something to
         decide here.
 
-        AND IT STOPS GROWING AT 1400px, because the copy does. The content
-        container is capped at max-w-[1320px] and then centres, so past about
-        1460px the copy's right edge advances at half the rate the viewport
-        does while a percentage-width artwork advances at 62% of it. The two
-        therefore converge and cross: measured, the clearance falls from +44px
-        at 1440 to +16 at 1920, +7 at 2200 and -5 at 2560 — a collision on an
-        ordinary 27-inch monitor. At 3440 the artwork was also 1622px tall in
-        a 1440px viewport, cropping its own top and bottom.
-
-        1400px holds the clearance positive at every width tested up to 3440
-        and keeps the height under 1070px, so it fits a 1080p screen whole.
-        Beyond that the hero reads as a capped composition on a dark field,
-        which is what the rest of the page already does.
+        AND IT STOPS GROWING AT 1400px, WHICH IS NOW ABOUT HEIGHT RATHER THAN
+        WIDTH. The cap was added when the copy still centred and the two edges
+        converged; the copy is anchored now, so on the horizontal axis the
+        clearance only ever grows. What the cap still earns is the vertical: at
+        3440 an uncapped artwork is 1622px tall inside a 1440px viewport and
+        crops its own top and bottom. 1400px keeps the height under 1070px, so
+        it fits a 1080p screen whole, and beyond that the hero reads as a
+        capped composition on a dark field — which is what the rest of the page
+        already does.
 
         On mobile it sits across the bottom instead, under the stacked copy,
         which is where the visual has always been below `lg`.
@@ -264,7 +345,67 @@ export function Hero() {
         />
       </div>
 
-      <div className="relative z-[1] mx-auto grid w-full max-w-[1320px] items-center gap-12 px-[clamp(20px,6vw,72px)] pb-14 pt-[clamp(88px,11vh,132px)] lg:grid-cols-[minmax(0,1fr)_minmax(0,640px)] lg:gap-10">
+      {/*
+        ── The copy, ANCHORED LEFT RATHER THAN CENTRED ────────────────────────
+
+        THE HERO IS THE ONE SECTION THAT MUST NOT USE A CENTRED CONTAINER, and
+        the reason is the artwork beside it. Every other section on this site
+        sits in a column that is capped and then centred, so its left gutter
+        grows by half of every pixel added to the window. The artwork is pinned
+        to the VIEWPORT's right edge and grows at 62% of it. Two things
+        measured from different origins, advancing at different rates: they
+        converge, and then they overlap.
+
+        Owner review, 17-09-2026: *"will you be able to see the headlines and
+        all move to the left as it looks odd right as the globe is on extreme
+        right it doesnt look aligned"*. Measured on the shipped page, the copy's
+        left gutter was 72px at 1280, 125 at 1440, 205 at 1600 and 365 at 1920
+        while the artwork's right gutter stayed 0 at every one of them.
+
+        ⚠️ IT WAS NOT ONLY A COMPOSITION PROBLEM — TEXT WAS ON THE ARTWORK.
+        `tests/…/collide` harness (scratch): with the copy column hidden so
+        every bright pixel belongs to the image, the supporting paragraph
+        overlapped visible artwork at 1366, 1440, 1600 and 1920, and at 1920 so
+        did the rotating word, the second headline line and a trust figure.
+        Those are the four commonest desktop widths there are. The 62% ceiling
+        derived when the artwork landed was computed from the asset's first
+        NEAR-OPAQUE card body at x=157 of 1117 (14.1%) — which is a real
+        measurement of the wrong thing, because the cards' outer glow and the
+        Practice analytics card's leading edge are visible well before they are
+        opaque, from about 9% of the width. Arithmetic on the asset cannot see
+        that; a render can.
+
+        So: no `mx-auto`, no cap, and a fixed 72px gutter from `lg` up, which
+        is the same clamp the padding already used — the copy simply stops
+        drifting. Clearance to the artwork goes from +45/+40/+29px at
+        1440/1600/1920 to +104/+129/+278, and the harness reports no text over
+        artwork at 1039, 1100, 1280, 1366, 1440, 1600, 1920, 2560 or 3440.
+
+        THE COPY COLUMN IS CAPPED SO THE FIX CANNOT UNDO ITSELF. With the
+        container uncapped, `1fr` would hand the copy the whole viewport and the
+        headline would run back under the planet, so the column takes
+        `clamp(330px,34vw,540px)`: 484px at 1440 against the 496px it had
+        before, so nothing re-wraps, and it stops growing at 1585px where the
+        artwork is still advancing. The 34vw middle term is what keeps the
+        laptop widths clear — a flat 540px collides at 1039.
+
+        AND IT IS 62%, STILL. Raising the artwork to the brief's 65-70% was
+        re-tested now that the copy has moved, since more clearance was the
+        whole point: 66% collides at five widths and 68% at six, both from
+        1039 up to 1440-1600. The ceiling is the laptop, not the wide screen.
+
+        ⚠️ THE HEADLINE NO LONGER LINES UP WITH THE NAV LOGO, and that is a
+        deliberate trade rather than an oversight. `container-ps` caps the
+        header at 1200px and centres it, so the logo also drifts — 137px at
+        1440, 377 at 1920 — and by coincidence of those two numbers it used to
+        track the hero copy within 12px. It cannot track it and stop drifting
+        at the same time. Aligning them would mean either re-centring the hero
+        (which is the defect) or moving the header's own container, which is
+        shared by every page and would then sit 164px left of all six pages'
+        content. The nav is a bar with its own bounding box and the brief says
+        not to redesign it, so the hero goes full-bleed and the header stays.
+      */}
+      <div className="relative z-[1] mx-auto grid w-full max-w-[1320px] items-center gap-12 px-[clamp(20px,6vw,72px)] pb-14 pt-[clamp(88px,11vh,132px)] lg:mx-0 lg:max-w-none lg:grid-cols-[minmax(0,clamp(330px,34vw,540px))_minmax(0,1fr)] lg:gap-10">
         {/* ── Copy ──────────────────────────────────────────────────────── */}
         <div>
           <Parallax speed={0.05}>
@@ -353,15 +494,17 @@ export function Hero() {
 
         {/* ── The space the artwork occupies ─────────────────────────────
 
-            AN EMPTY CELL, ON PURPOSE. The artwork is a section-level layer
-            above, so nothing is rendered here — but the column still has to
-            be RESERVED, because it is what keeps the copy in the left half
-            where the brief's composition puts it. Deleting the cell would
-            widen the copy column to the full 1320px and run the headline and
-            the paragraph out under the planet.
+            AN EMPTY CELL, ON PURPOSE, AND ITS JOB IS NOW MOBILE-ONLY. The
+            artwork is a section-level layer above, so nothing is rendered
+            here. On `lg` the track is the `1fr` that soaks up everything the
+            capped copy column does not take — it no longer has to hold the
+            copy back, because the copy column caps itself; keeping the cell
+            costs nothing and removing it would make the grid single-column,
+            which changes the mobile stack.
 
-            On mobile it becomes the clearance the artwork needs at the bottom
-            of the hero, which is the height the stacked visual always had. */}
+            Below `lg` it IS load-bearing: it is the clearance the artwork
+            needs at the bottom of the hero, the height the stacked visual has
+            always had. */}
         <div aria-hidden="true" className="h-[300px] lg:h-auto" />
       </div>
 

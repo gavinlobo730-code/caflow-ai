@@ -606,7 +606,309 @@ def test_the_artwork_names_the_eight_modules_it_has_baked_in():
         "the module names are in Hero.tsx but are not reaching the image's alt "
         "attribute, which is the only thing that makes them readable."
     )
-    assert 'alt=""' not in hero, (
-        "the hero artwork has an empty alt. It is not decorative — it carries "
-        "eight of the page's content labels."
+    # AND THE EMPTY-ALT CHECK IS PER IMAGE, NOT PER FILE, because the hero has
+    # two of them and they need OPPOSITE alts. The artwork carries eight
+    # content labels and must never have `alt=""`; the star field behind it
+    # carries nothing and must always have one, since a decorative image with
+    # descriptive alt text makes a screen reader read out scenery. A file-level
+    # `'alt=""' not in hero` was the first version of this and it failed the
+    # moment the correct second image was added — a guard that forbids the
+    # right answer somewhere else in the file.
+    # Comment spans blanked first: the artwork's own note says "A plain <img>,
+    # deliberately", and a raw scan counts that prose as a third image.
+    live = "\n".join(line for _no, line in _live_lines(hero))
+    tags = [("<img" + chunk).split(">")[0] for chunk in live.split("<img")[1:]]
+    assert len(tags) == 2, (
+        f"expected the hero to have exactly two images — the artwork and the "
+        f"decorative star field — and found {len(tags)}. If a third arrived, "
+        f"decide which kind it is and extend this check."
+    )
+    for tag in tags:
+        if "ARTWORK" in tag and "STARS" not in tag:
+            assert 'alt=""' not in tag, (
+                "the hero artwork has an empty alt. It is not decorative — it "
+                "carries eight of the page's content labels, and the alt is "
+                "the only route by which they reach assistive technology."
+            )
+            assert "alt={" in tag, "the artwork's alt is not an expression naming the cards."
+        elif "STARS" in tag:
+            assert 'alt=""' in tag, (
+                "the decorative star field needs an empty alt. It carries no "
+                "content, so describing it makes a screen reader read out "
+                "scenery between the eyebrow and the headline."
+            )
+
+
+def test_no_two_pages_carry_the_same_headline():
+    """A READER HAS TO BE ABLE TO TELL WHICH PAGE THEY ARE ON.
+
+    `/story` exists because "Our Story" in the nav used to point at `/#story`,
+    an anchor onto a homepage panel. The page was made by COPYING that panel
+    and then growing around it, and the copy was never re-written — so for a
+    day both pages carried a section 02 headed "Where it starts / Every CA firm
+    runs like this. / Five tools. Five logins. / One deadline through the
+    cracks.", with the same eyebrow, the same three lines and the same index.
+
+    Owner review, 17-09-2026, having clicked the logo and then the nav item:
+    *"if i click the practicesync then our story page is different and if i
+    click our story then the page is different see that that is fully a bug"*.
+    It is the right word. A duplicated headline is not a cosmetic repeat — it
+    is two pages claiming to be the same one, and the reader's only way of
+    knowing where they are is what the section says.
+
+    So the rule is per PAGE and not per file: a heading may repeat within one
+    page (a recurring section is a design), and may not appear on two. The
+    check is on the (eyebrow, lines) PAIR, because that is what a reader sees
+    as the heading — and then on the lines alone, since the same headline under
+    a re-typed eyebrow is the same defect. `Security & trust` is the one
+    allowed overlap and it is allowed on evidence rather than by name: its two
+    instances differ in their second line and their subtitle, so it is a
+    recurring section written twice, not one panel pasted twice."""
+    import collections
+    import re
+
+    pages = sorted((MARKETING / "app").rglob("page.tsx"))
+    assert len(pages) >= 6, (
+        f"only found {len(pages)} pages to compare; this guard is vacuous "
+        f"below about six and the site has more than that."
+    )
+
+    headings: dict[tuple, set[str]] = collections.defaultdict(set)
+    lines_at: dict[str, set[str]] = collections.defaultdict(set)
+    for page in pages:
+        src = "\n".join(line for _no, line in _live_lines(page.read_text(encoding="utf-8")))
+        rel = _rel(page)
+        for m in re.finditer(r'eyebrow="([^"]+)"([\s\S]{0,700}?)(?:/>|subtitle=)', src):
+            lines = tuple(l.lower() for l in re.findall(r'\{\s*text:\s*"([^"]+)"', m.group(2)))
+            if not lines:
+                continue
+            headings[(m.group(1).lower(), lines)].add(rel)
+        for line in re.findall(r'\{\s*text:\s*"([^"]+)"', src):
+            lines_at[line.lower()].add(rel)
+
+    assert len(headings) >= 15, (
+        f"only parsed {len(headings)} headings out of {len(pages)} pages. "
+        f"SerifHeading's call shape has changed and this guard is now looking "
+        f"at almost nothing — fix the pattern rather than the count."
+    )
+
+    shared = {k: v for k, v in headings.items() if len(v) > 1}
+    assert not shared, "the same heading appears on more than one page:\n" + "\n".join(
+        f'  eyebrow {eyebrow!r} lines {list(lines)} on {sorted(where)}'
+        for (eyebrow, lines), where in shared.items()
+    )
+
+    # And the headline alone, which catches the same panel re-eyebrowed.
+    repeated = {
+        line: where
+        for line, where in lines_at.items()
+        if len(where) > 1 and line != "your clients' data —"
+    }
+    assert not repeated, (
+        "a headline line is used on more than one page:\n"
+        + "\n".join(f"  {line!r} on {sorted(where)}" for line, where in repeated.items())
+        + "\nIf this is a recurring SECTION rather than a pasted panel, its "
+        "other lines and its subtitle should differ — say so here with the "
+        "evidence, the way \"Your clients' data —\" is exempted."
+    )
+
+
+def _page_prose(src: str) -> set[str]:
+    """Sentences of body copy on a page, with the markup taken out.
+
+    Class names are the trap. An earlier version of this collected every string
+    literal of sentence length and reported `mt-14 grid gap-x-12 gap-y-9
+    sm:grid-cols-2` as shared copy, which is true and means nothing — two pages
+    using the same Tailwind classes is the design working. So `className` is
+    removed first, along with imports, and what is left is filtered to things
+    that read like English: a run of words with no `-[`, no `:` and at least
+    one space."""
+    src = re.sub(r"/\*[\s\S]*?\*/", " ", src)
+    src = re.sub(r"^\s*//.*$", " ", src, flags=re.M)
+    src = re.sub(r'className=(?:"[^"]*"|\{`[^`]*`\}|\{[^}]*\})', " ", src)
+    src = re.sub(r"^\s*import[\s\S]*?;\s*$", " ", src, flags=re.M)
+
+    out: set[str] = set()
+    # Quoted copy: subtitles, and the `body`/`title` of a mapped array.
+    for m in re.finditer(r'"([^"\\]{35,})"', src):
+        out.add(" ".join(m.group(1).split()))
+    # JSX text nodes: the paragraphs written inline in the markup. The run may
+    # START after a `}` as well as after a `>` — `<span>Bold bit.</span>{" "}
+    # then the sentence` is how every callout on this site is written, and
+    # anchoring only on `>` missed the whole paragraph of the one duplicate
+    # this guard was added for.
+    for m in re.finditer(r"[>}]([^<>{}]{35,})[<{]", src):
+        out.add(" ".join(m.group(1).split()))
+    # What survives has to READ like a sentence. Anchoring a run on `}` buys
+    # the callout paragraphs and also drags in code — `, ]; export default
+    # function PricingPage()` is a run between a `}` and a `{` — so the
+    # punctuation and keywords that only occur in code are rejected, while
+    # parentheses are KEPT, because this site's copy cites "Rule 3(1) of the
+    # Companies (Accounts) Rules".
+    banned_chars = set(";[]=`$<>{}")
+    banned_words = ("export ", "function ", "const ", "return ", "import ")
+    return {
+        s
+        for s in out
+        if " " in s
+        and len(s.split()) >= 5
+        and not (banned_chars & set(s))
+        and ":" not in s
+        and "/" not in s
+        and "-[" not in s
+        and not any(w in s for w in banned_words)
+    }
+
+
+# Duplicated copy this guard found on its first run, OUTSIDE the pair it was
+# written for, and which is deliberately still duplicated. Each entry is debt
+# with a reason, not an exemption: the pages they sit on were not in scope
+# ("DO NOT redesign the website ... DO NOT redesign the sections below the
+# hero"), and de-duplicating either means CHOOSING one of two wordings, which
+# is a copy decision for the owner rather than a refactor. Reported to them on
+# 17-09-2026 with the offer to fix.
+#
+# Matching is by substring, so these two pairs are silenced and nothing else
+# is: a NEW duplicate still fails.
+_KNOWN_DUPLICATED_COPY = (
+    # The gold Shield callout, identical on the homepage and /products (the
+    # homepage's adds "Not a batch, not a scheduler, not a retry."). It was on
+    # /story too until 17-09-2026, which is the half the owner found.
+    "Nothing leaves your hands on its own.",
+    # /pricing says "stays on", /products says "is stored on" — the same
+    # sentence twice, 90% similar, about data residency.
+    "data stays on infrastructure hosted in India",
+    "data is stored on infrastructure hosted in India",
+)
+
+
+def test_no_two_pages_carry_the_same_body_copy():
+    """THE HEADLINE GUARD CAUGHT HALF OF THIS AND THE OWNER CAUGHT THE REST.
+
+    `/story` was made by splitting a panel out of the homepage, and the copy
+    was never re-written. Comparing SerifHeading headings found the section 02
+    duplicate; it could not find the SECOND one, because that was body copy — a
+    gold callout with the same Shield icon, the same classes and the same bold
+    lead sentence, "Nothing leaves your hands on its own.", with a body
+    differing from the homepage's only in its final clause. The owner found it
+    by reading the deploy preview: *"The our story bug is not fixed in this?"*
+
+    That is the lesson this file keeps re-learning and its own header states:
+    a guard that asserts one SPELLING of its rule passes on every other
+    spelling of the same defect. The rule is that two pages must not carry the
+    same copy. Headings are one place copy lives; paragraphs are another.
+
+    Pages only. Shared copy inside `components/` is a component being reused,
+    which is the point of a component."""
+    pages = sorted((MARKETING / "app").rglob("page.tsx"))
+    assert len(pages) >= 6, f"only found {len(pages)} pages; this guard needs more to compare."
+
+    prose = {_rel(p): _page_prose(p.read_text(encoding="utf-8")) for p in pages}
+    total = sum(len(v) for v in prose.values())
+    assert total >= 60, (
+        f"only extracted {total} sentences of copy from {len(pages)} pages, "
+        f"which is too few for this to be checking anything. The extractor has "
+        f"stopped matching how the copy is written — fix it, do not lower this."
+    )
+
+    # ⚠️ NOT AN EXACT MATCH, AND THAT IS THE WHOLE DIFFICULTY. The duplicate
+    # this guard exists for was not identical on the two pages: the homepage's
+    # version ends "...on the portal. Not a batch, not a scheduler, not a
+    # retry." and the story page's stopped at "...on the portal." A set
+    # intersection finds nothing, and the first version of this test passed its
+    # own negative control for exactly that reason. Copy-paste followed by a
+    # small trim is the NORMAL shape of duplicated copy, not an edge case.
+    #
+    # So: identical, or one contains the other, or 85% similar. Containment is
+    # checked from 55 characters up, because a short phrase legitimately
+    # appears inside a longer sentence.
+    import difflib
+
+    def same_copy(a: str, b: str) -> str | None:
+        if a == b:
+            return "identical"
+        if len(a) >= 55 and len(b) >= 55 and (a in b or b in a):
+            return "one is contained in the other"
+        r = difflib.SequenceMatcher(None, a, b).ratio()
+        return f"{r:.0%} similar" if r >= 0.85 else None
+
+    shared: list[str] = []
+    names = sorted(prose)
+    for i, a in enumerate(names):
+        for b in names[i + 1 :]:
+            for sa in sorted(prose[a]):
+                for sb in sorted(prose[b]):
+                    how = same_copy(sa, sb)
+                    if how and not any(k in sa or k in sb for k in _KNOWN_DUPLICATED_COPY):
+                        shared.append(f"  [{how}] {a} / {b}\n      {sa[:100]!r}\n      {sb[:100]!r}")
+
+    assert not shared, (
+        "the same body copy appears on more than one page:\n"
+        + "\n".join(shared)
+        + "\nIf the same words genuinely belong on both, they belong in a "
+        "component that both pages render, not typed twice."
+    )
+
+
+def test_the_hero_copy_does_not_drift_away_from_an_edge_bleeding_artwork():
+    """THE HERO IS THE ONE SECTION THAT MAY NOT CENTRE ITS CONTENT COLUMN.
+
+    Every other section sits in a capped, centred column, so its left gutter
+    grows by half of every pixel added to the window. That is right when both
+    sides of a section are measured from the same origin, and wrong here: the
+    hero's artwork is pinned to the VIEWPORT's right edge and grows at a
+    fraction of the viewport. A centred column and a viewport-anchored image
+    advance at different rates from different origins — they converge, and then
+    the text is on the picture.
+
+    It was not theoretical. Measured on the page shipped 17-09-2026, the copy's
+    left gutter ran 72px at 1280, 125 at 1440, 205 at 1600 and 365 at 1920
+    against a right gutter of 0 at every one of them, and a render harness
+    (copy column hidden, so every bright pixel is the artwork's) found the
+    supporting paragraph over visible artwork at 1366, 1440, 1600 AND 1920 —
+    the four commonest desktop widths there are. At 1920 the rotating word, the
+    second headline line and a trust figure were over it too.
+
+    The rule this guard states is the DRIFT, not a spelling of the fix: if the
+    hero's content container caps or centres itself, it must neutralise both
+    from `lg` up, where the artwork exists. A browser is what proves the
+    clearance and this suite has none, so what is held here is the property
+    that made the clearance disappear."""
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+
+    # The container is the one element that holds both the copy column and the
+    # reserved artwork track, so it is the one carrying `grid-cols` at `lg`.
+    containers = [
+        line
+        for _no, line in _live_lines(hero)
+        if "className=" in line and "grid" in line and "lg:grid-cols-[" in line
+    ]
+    assert len(containers) == 1, (
+        f"expected exactly one hero grid container to check, found "
+        f"{len(containers)}. If the hero's layout moved, move this guard with "
+        f"it — do not delete it."
+    )
+    container = containers[0]
+
+    if "mx-auto" in container:
+        assert "lg:mx-0" in container, (
+            "the hero's content container centres itself (`mx-auto`) and never "
+            "stops. The artwork is anchored to the viewport's right edge, so a "
+            "centred column drifts away from it as the window widens until the "
+            "copy is sitting on the planet. Neutralise it with `lg:mx-0`."
+        )
+    if "max-w-[" in container:
+        assert "lg:max-w-none" in container, (
+            "the hero's content container is capped, so past the cap its left "
+            "gutter grows at half the viewport's rate while the artwork grows "
+            "at 62% of it. Release the cap from `lg` up with `lg:max-w-none`."
+        )
+
+    # And the copy itself must stay bounded, or releasing the cap hands the
+    # headline the whole viewport and runs it back under the artwork — the
+    # opposite failure, reached by the same fix applied carelessly.
+    assert "lg:grid-cols-[minmax(0,clamp(" in container, (
+        "the hero's copy column is not capped. With the container uncapped, a "
+        "plain `1fr` copy column takes the full viewport width and the "
+        "headline runs out under the artwork. Cap the first track."
     )
