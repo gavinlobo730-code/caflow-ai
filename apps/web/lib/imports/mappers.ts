@@ -217,14 +217,6 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
         errors.push(`Row ${rowNo}: tds_section is required when TDS applies`); return;
       }
     }
-    // NO RATE IS READ. vendors.tds_rate_bps is the dead field PUR-06 removed
-    // from the vendor form: the engine resolves the rate from the section, the
-    // payee's PAN, the year's aggregate and s.206AA, and never reads this
-    // column. Requiring it here made a CSV import demand a number that is
-    // ignored — and every rate a CA typed into that column was, in production,
-    // the s.194C COMPANY rate applied to individual contractors.
-    const tdsRateBps = 0;
-
     // A blank/absent opening_balance must map to 0, not NaN — toPaise("") is
     // NaN, which JSON.stringify turns into `null` on the wire, and the
     // backend's opening_balance_paise: int = 0 (non-Optional) rejects a
@@ -247,7 +239,16 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
       phone: str(r.phone) || undefined,
       tds_applicable: tdsApplicable,
       tds_section: tdsSection,
-      tds_rate_bps: tdsRateBps,
+      // NO RATE IS READ, so a LITERAL zero — the one value
+      // scripts/a-screen-does-not-set-a-vendors-tds-rate.test.ts allows, and
+      // written here rather than through a local so that guard can see it.
+      // vendors.tds_rate_bps is the dead field PUR-06 removed from the vendor
+      // form: the engine resolves the rate from the section, the payee's PAN,
+      // the year's aggregate and s.206AA, and never reads this column.
+      // Requiring it here made a CSV import demand a number that is ignored —
+      // and every rate a CA typed into that column was, in production, the
+      // s.194C COMPANY rate applied to individual contractors.
+      tds_rate_bps: 0,
       opening_balance_paise: openingBalancePaise,
     });
   });

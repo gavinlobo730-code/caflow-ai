@@ -21,18 +21,29 @@
  * one column it lacked (`credit_limit_paise`) and marked `public.suppliers`
  * retired in the database.
  *
- * THREE FIELDS ARE NAMED DIFFERENTLY on the master this now writes, and one is
- * a different UNIT:
+ * TWO FIELDS ARE NAMED DIFFERENTLY on the master this now writes:
  *     supplier_name       -> name
  *     payment_terms_days  -> credit_days
- *     tds_rate_percent    -> tds_rate_bps   (BASIS POINTS: 1000 = 10.00%)
+ *
+ * THE THIRD, `tds_rate_percent` -> `tds_rate_bps`, IS NOT WRITTEN AT ALL
+ * (PUR-06 = TDS-13). Nothing in the withholding engine reads
+ * `vendors.tds_rate_bps`: `services/vendor_tds.resolve_resident_tds` takes the
+ * rate from the FY-versioned registry for the vendor's section, and a rate
+ * BELOW it is a s.197 certificate, which s.197(1) requires the Assessing
+ * Officer to issue for a specified amount and a specified period — four facts
+ * a bare percentage on the vendor master expresses none of (the reasoning is
+ * in `domain/tds/lower_deduction.py`, which names this screen). So the box
+ * showed a CA a rate, stored it, and withheld at a different one. The client
+ * Vendors form dropped it first; this was the second copy, and
+ * `scripts/a-screen-does-not-set-a-vendors-tds-rate.test.ts` is there so there
+ * is no third.
  *
  * IT Act sections 194C (Contractor), 194I (Rent), 194J (Professional), 194H
  * (Commission), 194A (Interest), 194B (Lottery) — deduct at source before
  * payment to the supplier. All monetary amounts are integer paise.
  */
 
-import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, Plus, X, Users, IndianRupee } from "lucide-react";
@@ -79,7 +90,17 @@ const SECTION_LABELS: Record<string, string> = {
   "194J(B)": "Professional fees or royalty",
 };
 const NONE_OPTION = { value: "", label: "None (No TDS)" };
-const OTHER_OPTION = { value: "other", label: "Other (manual rate)" };
+// NO "Other (manual rate)" OPTION, and removing the rate box is what made that
+// visible rather than what caused it. Picking it sent `tds_applicable: true`
+// with `tds_section: null`, and `resolve_resident_tds` opens with
+//
+//     if not tds_section: raise HTTPException(422, "Vendor is marked
+//         TDS-applicable but has no TDS section set.")
+//
+// so EVERY bill from that vendor was refused — while the calculator beside the
+// picker cheerfully showed the manual rate's arithmetic, which is what taught
+// the CA the option worked. Every deduction is under a section; a rate that is
+// not one is a s.197 certificate, recorded on the TDS compliance screen.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,21 +113,11 @@ function rsToP(rs: string): number | null {
   return paiseFromRupeeInput(rs || "0");
 }
 
-/** Basis points → the percentage to show in the form's box. */
-function bpsToPercentText(bps: number | null): string {
-  if (bps === null || bps === undefined) return "";
-  return String(bps / 100);
-}
-
 const BLANK_FORM = {
   name: "",
   gstin: "",
   pan: "",
   tds_section: "",
-  // The box holds a PERCENTAGE; the column is tds_rate_bps. Named for what
-  // it is rather than after the retired table's tds_rate_percent, so the two
-  // cannot be confused into sending one where the other is meant.
-  rate_percent_typed: "",
   credit_limit_rs: "",
   credit_days: "30",
   // "" is UNRECORDED, which is a real third state rather than a missing
@@ -197,7 +208,7 @@ export default function SuppliersPage() {
   // bill amount, section, or supplier PAN changes — never re-derive rates
   // or the individual/company/§206AA rules locally.
   useEffect(() => {
-    if (!(billPaise > 0) || !form.tds_section || form.tds_section === "other") {
+    if (!(billPaise > 0) || !form.tds_section) {
       setTdsCalc(null);
       setTdsCalcError(null);
       return;
@@ -224,7 +235,6 @@ export default function SuppliersPage() {
       gstin: v.gstin ?? "",
       pan: v.pan ?? "",
       tds_section: v.tds_section ?? "",
-      rate_percent_typed: bpsToPercentText(v.tds_rate_bps),
       credit_limit_rs: v.credit_limit_paise ? String(v.credit_limit_paise / 100) : "",
       credit_days: v.credit_days !== null && v.credit_days !== undefined ? String(v.credit_days) : "",
       gst_registration_status: v.gst_registration_status ?? "",
@@ -236,8 +246,7 @@ export default function SuppliersPage() {
   }
 
   function onSectionChange(val: string) {
-    const sec = tdsSections.find(s => s.section === val);
-    setForm(f => ({ ...f, tds_section: val, rate_percent_typed: sec ? String(sec.rate_individual_pct) : "" }));
+    setForm(f => ({ ...f, tds_section: val }));
   }
 
   // ONLY THE SECTIONS A VENDOR MAY ACTUALLY CARRY.
@@ -261,7 +270,6 @@ export default function SuppliersPage() {
         value: s.section,
         label: SECTION_LABELS[s.section] ? `${s.section} — ${SECTION_LABELS[s.section]}` : s.section,
       })),
-    OTHER_OPTION,
   ];
 
   async function handleSave() {
@@ -273,16 +281,6 @@ export default function SuppliersPage() {
       setError("Credit limit must be an amount in rupees, e.g. 500000 or 500000.50 "
                + "— without commas.");
       return;
-    }
-
-    // A percentage through the one parser, then to BASIS POINTS, which is the
-    // column's unit. `parseFloat(x) * 100` is the shape CLAUDE.md's money rule
-    // bans: parseFloat("1,5") is 1 and parseFloat("1e1") is 10.
-    let rateBps: number | undefined;
-    if (form.tds_section && form.rate_percent_typed.trim()) {
-      const bps = bpsFromPercentInput(form.rate_percent_typed);
-      if (bps === null) { setError("TDS rate must be a percentage, e.g. 10 or 7.5."); return; }
-      rateBps = bps;
     }
 
     // Blank is a real answer — "no payment terms confirmed" is a different fact
@@ -302,12 +300,11 @@ export default function SuppliersPage() {
       name: form.name.trim(),
       gstin: form.gstin.trim() || null,
       pan: form.pan.trim() || null,
-      // A section of "other" records a manual rate against no statutory
-      // section, which is what the option means; the section itself stays null
-      // so nothing downstream routes a 26Q row under a code that is not one.
+      // Section and applicability only. THE RATE IS THE ENGINE'S: it comes
+      // from the FY-versioned registry for this section, so the two move
+      // together when a Finance Act moves one — see this file's header.
       tds_applicable: !!form.tds_section,
-      tds_section: form.tds_section && form.tds_section !== "other" ? form.tds_section : null,
-      tds_rate_bps: rateBps,
+      tds_section: form.tds_section || null,
       credit_limit_paise: creditLimit,
       credit_days: creditDays,
       // Omitted rather than sent as null when unrecorded: the server drops
@@ -407,7 +404,6 @@ export default function SuppliersPage() {
                   <th className="px-4 py-3 text-left">GSTIN</th>
                   <th className="px-4 py-3 text-left">PAN</th>
                   <th className="px-4 py-3 text-left">TDS Section</th>
-                  <th className="px-4 py-3 text-right">TDS Rate</th>
                   <th className="px-4 py-3 text-right">Credit Limit</th>
                   <th className="px-4 py-3 text-right">Payment Terms</th>
                   <th className="px-4 py-3 text-center">Status</th>
@@ -427,7 +423,6 @@ export default function SuppliersPage() {
                         <span className="text-[#94A3B8] text-xs">No TDS</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-[#334155]">{v.tds_rate_bps ? `${v.tds_rate_bps / 100}%` : "—"}</td>
                     <td className="px-4 py-3 text-right text-[#334155]">{v.credit_limit_paise ? fmtRs(v.credit_limit_paise) : "—"}</td>
                     <td className="px-4 py-3 text-right text-[#334155]">
                       {v.credit_days !== null && v.credit_days !== undefined ? `${v.credit_days} days` : "—"}
@@ -450,7 +445,7 @@ export default function SuppliersPage() {
                   </tr>
                 ))}
                 {vendors.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No suppliers yet. Add your first supplier.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-[#94A3B8] text-sm">No suppliers yet. Add your first supplier.</td></tr>
                 )}
               </tbody>
             </table>
@@ -530,10 +525,11 @@ export default function SuppliersPage() {
               </div>
 
               {form.tds_section && (
-                <div>
-                  <label className="text-xs font-medium text-[#334155] block mb-1">TDS Rate %</label>
-                  <input type="number" min="0" max="100" step="0.01" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.rate_percent_typed} onChange={e => setForm(f => ({ ...f, rate_percent_typed: e.target.value }))} placeholder="e.g. 10" />
-                </div>
+                <p className="text-[11px] text-[#94A3B8] leading-tight">
+                  The rate is the section&rsquo;s own, for the bill&rsquo;s financial year — it is not
+                  recorded here. A lower rate under an Assessing Officer&rsquo;s s.197 certificate is
+                  recorded against the certificate, on the client&rsquo;s TDS compliance screen.
+                </p>
               )}
 
               <div className="grid grid-cols-2 gap-3">
@@ -566,38 +562,15 @@ export default function SuppliersPage() {
                     <label className="text-xs font-medium text-[#334155] block mb-1">Bill Amount (₹)</label>
                     <input type="number" min="0" className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
                   </div>
-                  {billPaise > 0 && form.tds_section === "other" && (() => {
-                    const manualBps = bpsFromPercentInput(form.rate_percent_typed);
-                    if (manualBps === null || manualBps <= 0) return null;
-                    // Integer paise throughout — the rate is basis points, so
-                    // the divisor is 10,000, not 100.
-                    const manualTds = Math.round(billPaise * manualBps / 10000);
-                    return (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs text-[#475569]">
-                          <span>Bill Amount</span>
-                          <span className="font-medium">{fmtRs(billPaise)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs text-[#475569]">
-                          <span>TDS @ {manualBps / 100}% (manual rate)</span>
-                          <span className="font-medium text-red-600">- {fmtRs(manualTds)}</span>
-                        </div>
-                        <div className="flex justify-between text-xs font-semibold text-[#0F172A] border-t border-amber-200 pt-1">
-                          <span>Net Payment to Supplier</span>
-                          <span className="text-green-700">{fmtRs(billPaise - manualTds)}</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  {billPaise > 0 && form.tds_section !== "other" && tdsCalcError && (
+                  {billPaise > 0 && tdsCalcError && (
                     <p className="text-xs text-red-600">{tdsCalcError}</p>
                   )}
-                  {billPaise > 0 && form.tds_section !== "other" && tdsCalc && !tdsCalc.tds_applicable && (
+                  {billPaise > 0 && tdsCalc && !tdsCalc.tds_applicable && (
                     <p className="text-xs text-[#475569]">
                       Below the ₹{(tdsCalc.threshold_paise / 100).toLocaleString("en-IN")} threshold for Section {tdsCalc.section} — no TDS applicable.
                     </p>
                   )}
-                  {billPaise > 0 && form.tds_section !== "other" && tdsCalc && tdsCalc.tds_applicable && (
+                  {billPaise > 0 && tdsCalc && tdsCalc.tds_applicable && (
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs text-[#475569]">
                         <span>Bill Amount</span>

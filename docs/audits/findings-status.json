@@ -1858,15 +1858,14 @@
       "reread_on": "2026-09-16"
     },
     "PUR-06": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. — RE-READ 16-09-2026 against main 171ef0e3: apps/web/app/accounting/suppliers/page.tsx:309",
+      "status": "closed",
+      "verified_on": "2026-09-17",
+      "why": "CLOSED 17-09-2026. `/accounting/suppliers` no longer has the TDS Rate input, the 'TDS Rate' list column, or the `tds_rate_bps` write, and `VendorWrite` in lib/api/index.ts no longer declares the field — so the compiler refuses the next screen and scripts/a-screen-does-not-set-a-vendors-tds-rate.test.ts covers the PostgREST path, which has no type to refuse it. The guard states the RULE AS THE VALUE rather than as a list of files: a LITERAL 0 passes (the two create paths that legitimately send one — the client Vendors form and the CSV importer — pin it explicitly so a rate cannot survive an earlier edit) and anything else fails, with a vacuity floor naming those two. FOUND ON THE WAY, not in either finding: the picker's 'Other (manual rate)' option sent `tds_applicable: true` with `tds_section: null`, and `resolve_resident_tds` opens by raising 422 on exactly that — so EVERY bill from such a vendor was refused while the calculator beside the picker showed the manual rate's arithmetic. Removed, and pinned. No migration: `vendors.tds_rate_bps` stays readable and is simply not written from a screen.",
       "commits": [
         "e3bcbafd Phase 11c (PUR-07 ≡ TDS-13): a §197 certificate is a rate, a number, a",
         "1dc3d961 Phase 3: one TDS engine, and the browser copy deleted (#467)"
       ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "Remove the TDS Rate input and the 'TDS Rate' column from apps/web/app/accounting/suppliers/page.tsx (stop sending tds_rate_bps), the way apps/web/app/clients/[id]/purchases/page.tsx:2174-2192 already did, or add a note saying the figure is recorded and not applied. A guard forbidding any screen from writing vendors.tds_rate_bps would stop the third recurrence.",
+      "reread_on": "2026-09-17",
       "user_visible_impact": "On Accounting → Supplier Master (linked from apps/web/app/accounting/page.tsx:19) the modal still renders a 'TDS Rate %' input (suppliers/page.tsx:533-534), persists it as vendors.tds_rate_bps (:309) and prints it back in a 'TDS Rate' column (:429) — while no backend path reads that column: services/vendor_tds.resolve_withholding (:554-640) takes the rate solely from the FY registry. Worse, onSectionChange pre-fills the box with rate_individual_pct (:239), so a company vendor under §194C is displayed as 1% while every bill withholds 2%. A CA who types a corrected or §197 rate there, sees it saved and sees it listed, gets a different deduction on every bill — the exact defect PUR-06 describes, on a different screen."
     },
     "PUR-07": {
@@ -2270,16 +2269,15 @@
       "reread_on": "2026-09-16"
     },
     "TDS-13": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. — RE-READ 16-09-2026 against main 171ef0e3: §197 half IS built and reachable: apps/api/migrations/359_a_certificate_is_not_a_rate.sql, apps/api/domain/tds/lower_deduction.py (position_for/certified_base, three named refusals), apps/api/services/vendor_tds.py:320 and :362 honour it and :466 sets is_lower_deduction, apps/api/services/tds_register_service.py:379-380 writes lower_deduction_cert/is_lower_deduction, and apps/web/app/clients/[id]/compliance/tds/page.tsx:1135/:1192 is the screen that records one. The SECOND half is still reachable: apps/web/app/accounting/suppliers/page.tsx:533-535 renders a \"TDS Rate %\" input (pre-filled from the registry at :239), :309 sends `tds_rate_bps: rateBps` to PUT/POST /api/vendors, and :429 displays it as a \"TDS Rate\" column — while no withholding path reads the column: apps/api/routers/purchase_bills.py:609 takes `tds_rate_bps = _w.rate_bps` from the engine, and `tds_rate_bps` is absent from vendor_tds.py's _VENDOR_FIELDS (apps/api/services/vendor_tds.py:651)",
+      "status": "closed",
+      "verified_on": "2026-09-17",
+      "why": "CLOSED 17-09-2026. `/accounting/suppliers` no longer has the TDS Rate input, the 'TDS Rate' list column, or the `tds_rate_bps` write, and `VendorWrite` in lib/api/index.ts no longer declares the field — so the compiler refuses the next screen and scripts/a-screen-does-not-set-a-vendors-tds-rate.test.ts covers the PostgREST path, which has no type to refuse it. The guard states the RULE AS THE VALUE rather than as a list of files: a LITERAL 0 passes (the two create paths that legitimately send one — the client Vendors form and the CSV importer — pin it explicitly so a rate cannot survive an earlier edit) and anything else fails, with a vacuity floor naming those two. FOUND ON THE WAY, not in either finding: the picker's 'Other (manual rate)' option sent `tds_applicable: true` with `tds_section: null`, and `resolve_resident_tds` opens by raising 422 on exactly that — so EVERY bill from such a vendor was refused while the calculator beside the picker showed the manual rate's arithmetic. Removed, and pinned. No migration: `vendors.tds_rate_bps` stays readable and is simply not written from a screen.",
       "commits": [
         "e3bcbafd Phase 11c (PUR-07 ≡ TDS-13): a §197 certificate is a rate, a number, a",
         "e3bcbafd Phase 11c (PUR-07 ≡ TDS-13): a §197 certificate is a rate, a number, a",
         "e3bcbafd Phase 11c (PUR-07 ≡ TDS-13): a §197 certificate is a rate, a number, a"
       ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "Remove the \"TDS Rate %\" input and the \"TDS Rate\" column from /accounting/suppliers (or route them at the §197 certificate table), the same way PUR-06 removed them from the client Vendors form. The §197 certificate work itself is done.",
+      "reread_on": "2026-09-17",
       "user_visible_impact": "On the firm-level Supplier Master a CA can type a TDS rate (e.g. 1% for a §197 certificate holder, or correct a stale 5% §194H), see it saved and listed against the supplier, and every purchase bill will still withhold the full section rate. The client-level vendor form deliberately writes 0 and carries a comment explaining why — the firm-level screen does neither, so the same product shows a rate box that does nothing on one screen and refuses to on the other."
     },
     "TDS-14": {

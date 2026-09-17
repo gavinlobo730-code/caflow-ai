@@ -1098,6 +1098,14 @@ export type RecurringJournalRun = {
 // `public.suppliers`, whose column names differed on three of them:
 // supplier_name -> name, payment_terms_days -> credit_days, and
 // tds_rate_percent -> tds_rate_bps, which is BASIS POINTS (1000 = 10.00%).
+//
+// `tds_rate_bps` IS READABLE AND NOT WRITABLE FROM A SCREEN (PUR-06 = TDS-13),
+// which is why `Vendor` carries it and `VendorWrite` does not. Nothing in the
+// withholding engine reads the vendor's own rate — it takes the section's rate
+// for the bill's financial year out of the FY-versioned registry — so a rate
+// recorded here was shown to a CA, stored, and then not used. A rate BELOW the
+// section's is a s.197 certificate, which is four facts (section, rate, amount,
+// period) recorded against the certificate, not one number on a master.
 
 // ── Bills of Entry ───────────────────────────────────────────────────────────
 // The customs assessment on an import of goods (PUR-18, migration 389).
@@ -1357,7 +1365,6 @@ export type VendorWrite = {
   state_code?: string;
   tds_applicable?: boolean;
   tds_section?: string | null;
-  tds_rate_bps?: number;
   credit_days?: number | null;
   credit_limit_paise?: number | null;
   /** 'registered' | 'unregistered'. Omit to leave it as it is — a PATCH drops

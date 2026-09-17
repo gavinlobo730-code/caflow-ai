@@ -304,11 +304,35 @@ def test_the_screen_goes_through_the_api_not_postgrest():
 
 
 @pytest.mark.skipif(not _SCREEN.exists(), reason="apps/web not present")
-def test_the_rate_reaches_the_column_in_basis_points():
-    """A percentage typed in the box is basis points in the column. The
-    conversion must go through lib/money's parser rather than
-    `parseFloat(x) * 100`, which CLAUDE.md bans by rule: parseFloat("1,5") is 1
-    and parseFloat("1e1") is 10, and either silently under-withholds."""
+def test_the_screen_records_a_section_and_not_a_rate():
+    """INVERTED on 17-09-2026, and the inversion is the finding (PUR-06 = TDS-13).
+
+    This used to assert the TDS Rate box converted its percentage to basis
+    points through lib/money's parser — right about the CONVERSION and wrong
+    about the box, which should not have existed. Nothing in this package reads
+    `vendors.tds_rate_bps`: `services/vendor_tds.resolve_resident_tds` resolves
+    the rate from `domain/tds/section_rates.py` for the bill's own financial
+    year, with the individual/company split and s.206AA's floor. So the box
+    showed a CA a rate, stored it, and withheld at a different one — and the
+    list column showed the stale figure without anything being opened.
+
+    A rate BELOW the section's is a s.197 certificate, which s.197(1) has the
+    Assessing Officer issue for a specified amount and a specified period. Four
+    facts; `domain/tds/lower_deduction.py` holds them and names this screen in
+    its own docstring.
+
+    `apps/web/scripts/a-screen-does-not-set-a-vendors-tds-rate.test.ts` states
+    the rule for every screen at once and is where a third copy fails. This
+    test stays because it is about THIS screen, which is where the second copy
+    lived after the first was removed.
+    """
     body = _strip_comments(_SCREEN.read_text(), ".tsx")
-    assert "bpsFromPercentInput" in body
+    assert "tds_rate_bps" not in body, (
+        "the supplier master mentions the vendor's TDS rate again. It is not "
+        "read by any withholding path — see domain/tds/lower_deduction.py.")
+    assert "bpsFromPercentInput" not in body, (
+        "a percentage-to-basis-points conversion is back on this screen; the "
+        "only basis-points column it wrote was the dead one.")
+    # The money rule survives the inversion: the screen still takes a credit
+    # limit in rupees, and `parseFloat(x) * 100` is banned there too.
     assert "parseFloat" not in body

@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **225** | re-read against the code. The defect is gone. |
-| partial | **39** | part of the finding is answered, part is not. Each says which. |
+| closed | **227** | re-read against the code. The defect is gone. |
+| partial | **37** | part of the finding is answered, part is not. Each says which. |
 | open | **9** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 48 items — 9 open and 39 partial — not 254.**
+**The work left is 46 items — 9 open and 37 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -59,10 +59,8 @@ is left as "unknown".
 | high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
 | high | **IT-17** | itr_field_placements() — 'this figure goes in this field' against the Department's own committed |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
-| high | **PUR-06** | The vendor's TDS rate is collected on a form, shown in a list column, and never used by the comp |
 | high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
-| high | **TDS-13** | No §197 lower-deduction certificate anywhere, and vendors.tds_rate_bps is captured, displayed an |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
 | medium | **BANK-10** | Auto-match never suggests a part payment against a partially-paid invoice, because the amount ba |
@@ -177,6 +175,7 @@ is left as "unknown".
 | high | **PAY-29** | The payslip omits UAN, PF/ESIC numbers, bank account, employer contributions and YTD figures |
 | high | **PUR-03** | Surcharge and 4% cess are added on top of a DTAA treaty rate, over-deducting on every foreign pa |
 | high | **PUR-05** | §17(5) blocked credit cannot be set from any screen — the API field, the DB column and the retur |
+| high | **PUR-06** | The vendor's TDS rate is collected on a form, shown in a list column, and never used by the comp |
 | high | **PUR-07** | No §197 lower-deduction or nil-deduction certificate anywhere — no certificate number, rate, thr |
 | high | **PUR-08** | A purchase bill can be created and received into a period whose GSTR-3B has already been filed — |
 | high | **PUR-09** | The Rule 37 report ignores debit notes and purchase credit notes, over-reversing ITC on any bill |
@@ -200,6 +199,7 @@ is left as "unknown".
 | high | **TDS-07** | §194IA is offered in the vendor TDS-section dropdown but is unknown to the engine — every bill f |
 | high | **TDS-09** | There is no 27Q return builder — non-resident deductions are computed, registered and then delib |
 | high | **TDS-11** | tds_deductions and tds_returns are written directly from the browser with no role check, and the |
+| high | **TDS-13** | No §197 lower-deduction certificate anywhere, and vendors.tds_rate_bps is captured, displayed an |
 | high | **TDS-14** | The purchase-bill editor previews a TDS figure the backend will not compute — no threshold, no § |
 | high | **TDS-15** | The /tds screen's Challans tab never saves anything, and its Returns and Certificates tabs read  |
 | high | **TDS-26** | §195 surcharge picks the wrong ladder and the wrong 'other sums' rate for a non-resident firm, L |
