@@ -405,7 +405,15 @@ def canonical_role(role: str | None) -> str | None:
 
 
 def can(role: str, resource: str, action: str) -> bool:
-    """Return True if role is allowed to perform action on resource."""
+    """Return True if the ROLE DEFAULT allows this action on this resource.
+
+    This is the TEMPLATE, not the last word. Since migration 403 a firm may
+    record a per-person answer that overrides it, and `can_user` below is what
+    every request actually goes through. `can` stays because two things still
+    need the role's own answer with nobody in particular in mind: pre-filling a
+    new member's grid, and `/api/identity/role-matrix`, which shows a Partner
+    what each role grants before they start overriding it.
+    """
     try:
         r = _to_role(role)
     except ValueError:
@@ -413,6 +421,151 @@ def can(role: str, resource: str, action: str) -> bool:
     resource_perms = PERMISSIONS.get(resource, {})
     allowed_roles = resource_perms.get(action, set())
     return r in allowed_roles
+
+
+# ── Per-person access (migration 403) ────────────────────────────────────────
+#
+# A role is five buckets and a practice is not staffed in five buckets: one
+# Executive runs GST and TDS and never touches payroll, another runs payroll and
+# nothing else. Without a per-person answer the firm either promotes somebody to
+# reach one screen — handing them every other screen that tier opens — or does
+# the work outside the product.
+#
+# THE ROLE IS NOT REPLACED. It keeps answering `public.get_my_role()` in 61 RLS
+# policies across 32 migrations (the control protecting the ~83 tables the
+# browser reads directly over PostgREST, where rbac() never runs) and
+# `core.authz._FIRMWIDE_ROLES` — which is a DIFFERENT question this grid
+# deliberately does not answer: whether a person sees every client in the firm
+# or only their assigned book is about SCOPE, not about which screens open, and
+# folding it into the same checkbox would let a firm widen someone's client
+# access while believing they had only granted them a module.
+#
+# THREE STATES, AND THE THIRD IS THE ABSENCE OF A ROW. No override means the
+# role decides, which is exactly the behaviour every existing member has today —
+# so this is inert until somebody ticks something.
+
+#: Pairs a deny row may never take away from a Partner.
+#:
+#: Without this the grid is unrepairable: the one person who could restore
+#: access is the person whose access was removed, and there is no second door —
+#: no CLI, no break-glass endpoint, and `team:write` is the only thing that can
+#: write this table. A Partner who unticks their own "Team · write" to see what
+#: it does would lock the firm out of its own access control permanently.
+#:
+#: Deliberately applies to EVERY Partner rather than only the last one: letting
+#: one Partner strip another Partner's team access is a governance dispute the
+#: software should not referee silently, and "is this the last Partner" is a
+#: question that needs a database read inside a function that must not make one.
+UNREVOKABLE_FOR_PARTNER: frozenset[tuple[str, str]] = frozenset({
+    ("team", "read"),
+    ("team", "write"),
+    ("firm", "read"),
+    ("firm", "admin"),
+})
+
+#: Pairs whose GRANT lets the holder change what other people may do.
+#:
+#: Not refused — a Partner appointing a senior Manager to run the firm's access
+#: is a real decision, and every practice tool allows an admin to appoint
+#: another admin. Named so the Team screen can say plainly what the tick means,
+#: because it otherwise looks exactly like the other thirty. `team:write` in
+#: particular IS "may become a Partner": its holder can grant themselves
+#: `firm:admin` and everything else.
+PRIVILEGE_CHANGING: frozenset[tuple[str, str]] = frozenset({
+    ("team", "write"),
+    ("firm", "admin"),
+    ("firm", "write"),
+    ("settings", "write"),
+    ("automation", "write"),
+})
+
+
+def is_known_permission(resource: str, action: str) -> bool:
+    """True if (resource, action) is a pair PERMISSIONS actually defines.
+
+    `user_permissions` stores the pair as free TEXT with no CHECK, because the
+    vocabulary is this dict and a CHECK constraint cannot read a Python dict —
+    a hand-copied list in SQL would be the second authority this codebase keeps
+    having to delete. So the API door validates through here instead, and the
+    resolver below ignores an unrecognised pair, which makes a stale row inert
+    rather than dangerous.
+    """
+    return action in PERMISSIONS.get(resource, {})
+
+
+def resolve_permission(
+    role: str,
+    overrides: dict | None,
+    resource: str,
+    action: str,
+) -> bool:
+    """The one rule: a per-person row wins, the role decides where there is none.
+
+    `overrides` is keyed EITHER by the tuple ``(resource, action)`` or by the
+    string ``"resource:action"`` — the second because the same map crosses the
+    wire as JSON, where a tuple key cannot survive, and having the caller
+    remember to convert is how one call site ends up silently reading nothing.
+
+    An unknown pair falls through to the role, which fails closed for a resource
+    PERMISSIONS does not define.
+    """
+    role_says = can(role, resource, action)
+    if not is_known_permission(resource, action):
+        # A pair PERMISSIONS does not define is INERT, override or not. The
+        # column is free TEXT with no CHECK — the vocabulary is this dict and
+        # SQL cannot read one — so a row written under an older vocabulary can
+        # outlive it, and honouring one would pre-grant a `rbac("tarot","read")`
+        # somebody adds to a router next year, silently, to whoever happened to
+        # have the stale row. `can` already fails closed here, which is the
+        # answer this returns.
+        return role_says
+    over = _override_for(overrides, resource, action)
+    if over is None:
+        return role_says
+    if over is False and (resource, action) in UNREVOKABLE_FOR_PARTNER:
+        # A Partner keeps the four pairs above whatever the grid says. Applied
+        # here rather than refused at the write door as well as here: the write
+        # door DOES refuse it (so the screen can explain), and this is the
+        # backstop for a row that reached the table another way — a restored
+        # backup, a hand-run UPDATE, a future importer.
+        if canonical_role(role) == Role.PARTNER.value:
+            return True
+    return over
+
+
+def _override_for(overrides: dict | None, resource: str, action: str):
+    """The stored answer for one pair, or None where there is none."""
+    if not overrides:
+        return None
+    for key in ((resource, action), f"{resource}:{action}"):
+        if key in overrides:
+            value = overrides[key]
+            # A row's `granted` is NOT NULL, so anything else here is a caller
+            # sending a shape this function does not define. Treat it as no
+            # opinion rather than as a deny: inventing a refusal out of a
+            # malformed value is how a permission disappears with no record of
+            # anybody having removed it.
+            return value if isinstance(value, bool) else None
+    return None
+
+
+def can_user(user: dict, resource: str, action: str) -> bool:
+    """Return True if THIS PERSON may perform action on resource.
+
+    The authority. `rbac()` goes through here, so all 1037 of its call sites
+    got per-person access without changing — which is the whole reason the
+    override is resolved at this seam rather than beside each guard.
+
+    The overrides ride on `current_user` (loaded once per user per 30s by
+    `core.auth._get_user_and_firm`), so this makes no database call and adds no
+    Singapore-to-Mumbai round trip to any request.
+    """
+    return resolve_permission(
+        str(user.get("role") or ""),
+        user.get("permission_overrides"),
+        resource,
+        action,
+    )
 
 
 def require_permission(role: str, resource: str, action: str) -> None:
@@ -429,11 +582,26 @@ def is_at_least(role: str, minimum: str) -> bool:
         return False
 
 
-def get_accessible_resources(role: str) -> dict[str, list[str]]:
-    """Return all resource:action pairs accessible to a role."""
+def get_accessible_resources(role: str, overrides: dict | None = None) -> dict[str, list[str]]:
+    """Return all resource:action pairs accessible to a role, or to a PERSON.
+
+    With no `overrides` this is the role's own template, which is what
+    `/api/identity/role-matrix` shows a Partner and what a new member's grid is
+    pre-filled from. With them it is what that person may actually reach, which
+    is what `/api/identity/permissions` must answer — a screen deciding whether
+    to render a control from the role alone would offer an Executive granted
+    payroll a screen with no button on it, and hide nothing from an Executive
+    whose payroll was taken away.
+
+    Resolved through `resolve_permission` rather than restating it, so the
+    Partner floor and the tuple/string key handling cannot drift from `rbac()`.
+    """
     result: dict[str, list[str]] = {}
     for resource, actions in PERMISSIONS.items():
-        accessible = [action for action, roles in actions.items() if can(role, resource, action)]
+        accessible = [
+            action for action in actions
+            if resolve_permission(role, overrides, resource, action)
+        ]
         if accessible:
             result[resource] = accessible
     return result
@@ -455,11 +623,20 @@ def rbac(resource: str, action: str) -> Callable:
     from core.auth import get_current_user  # avoid circular import at module level
 
     def _dependency(current_user: dict = Depends(get_current_user)) -> dict:
-        role = current_user.get("role", "")
-        if not can(role, resource, action):
+        # can_user, NOT can: since migration 403 a firm may record a per-person
+        # answer, and this is the seam that gives all 1037 call sites of this
+        # factory per-person access without one of them changing. A guard here
+        # that read the role directly would be an endpoint the grid silently
+        # does not govern, which is worse than no grid.
+        if not can_user(current_user, resource, action):
+            role = current_user.get("role", "")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Role '{role}' cannot perform '{action}' on '{resource}'",
+                # Says "You" rather than naming the role, because the refusal may
+                # now be a per-person one and blaming the role would send the
+                # reader to change something that is not what refused them.
+                detail=f"You cannot perform '{action}' on '{resource}'"
+                       + (f" (role: {role})" if role else ""),
             )
         return current_user
 

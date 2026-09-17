@@ -1388,9 +1388,20 @@ EXEMPT: dict[str, str] = {
         "there is no user_id parameter, let alone a client_id. `users` has a "
         "firm_id and no client_id column (migration 003).",
     "/api/identity/permissions":
-        "returns the caller's own role and its resource:action map from the "
+        "returns the caller's own role and its resource:action map, resolved "
+        "against the caller's own overrides already on the verified principal. "
+        "Reads no table at all, so there is no client row to scope.",
+    "/api/identity/permission-vocabulary":
+        "the list of (resource, action) pairs that EXIST, derived from the "
         "static PERMISSIONS matrix in core/permissions.py. Reads no table at "
-        "all, so there is no client row to scope.",
+        "all and is the same answer for every firm, let alone every client.",
+    "/api/identity/users/{user_id}/permissions":
+        "one staff member's access grid (migration 403). `user_permissions` "
+        "has firm_id and user_id and NO client_id column — access is per "
+        "person per module, and which CLIENTS that person may touch is a "
+        "different question answered by user_client_assignments. Both GET and "
+        "PUT share this path; the member is resolved through _get_member, "
+        "which refuses a user_id belonging to another firm.",
     # accounting.py — the two firm-level path groups.
     "/api/accounting/year-lock":
         "firms.locked_financial_years (migration 136) is a firm-level "

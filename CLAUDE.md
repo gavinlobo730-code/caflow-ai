@@ -2390,6 +2390,56 @@ PostgREST. That is why:
   RLS is genuinely enforced on the API path too.
 - RBAC: `Partner > Manager > Executive > Reviewer > Client`
   (`core/permissions.py`, applied as `rbac(resource, action)`).
+- **ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO**
+  (migration 403). `rbac()` used to decide every one of its 1037 call sites from
+  the caller's ROLE alone, and a role is five buckets: a practice is not staffed
+  in five buckets, so a firm either promoted somebody to reach one screen —
+  handing them every other screen that tier opens — or did the work outside the
+  product. `user_permissions` holds one row per (person, resource, action) and
+  `core/permissions.can_user` is the authority. **`rbac()` is the seam, which is
+  why all 1037 call sites are unchanged**: the override is resolved there rather
+  than beside each guard, and the overrides ride on `current_user`, loaded once
+  per user per 30s inside `core.auth._get_user_and_firm`, so no request pays a
+  Singapore-to-Mumbai round trip for it.
+  **THREE STATES, AND THE THIRD IS THE ABSENCE OF THE ROW.** `granted` is NOT
+  NULL and the ROW is what is optional: no row means the role decides, true
+  means allowed however junior, false means refused however senior. There is
+  **no backfill**, so an empty table reproduces today's behaviour for every
+  existing member exactly and nobody's access moved on the day it landed. A
+  two-state control could never hand a permission BACK to the role and would
+  freeze today's role map into the person's row — the `account_group_mappings`
+  mistake, where a cached derivation outranked the derivation.
+  **THE ROLE IS NOT REPLACED, and the measurement is why.** `public.get_my_role()`
+  is asked at **61 sites across 32 migrations**, and those policies protect the
+  ~83 tables the browser reads directly over PostgREST where `rbac()` never runs;
+  rewriting them per-person is a migration touching ~50 tables whose failure mode
+  is a silent cross-client read. So the role keeps answering the SQL policies and
+  `core.authz._FIRMWIDE_ROLES` — **a different question this grid deliberately
+  does not answer**: whether somebody sees every client or only their assigned
+  book is about SCOPE, and folding it into the same checkbox would let a firm
+  widen client access while believing they had granted a module. It also stays
+  the template a new hire's grid is pre-filled from, so onboarding is one choice
+  rather than thirty silent toggles.
+  **A PARTNER CANNOT BE DENIED THE FOUR PAIRS THAT REACH THIS SCREEN**
+  (`UNREVOKABLE_FOR_PARTNER`: `team:read/write`, `firm:read/admin`). Without it
+  the grid is unrepairable — the only person who could restore access is the one
+  whose access was removed, and `team:write` is the only thing that can write the
+  table. Refused at the write door AND ignored by the resolver: the door so the
+  screen can explain, the resolver as the backstop for a row that arrived another
+  way. **`PRIVILEGE_CHANGING` is named, not refused** — a Partner appointing
+  somebody to run the firm's access is a real decision, and `team:write` IS "may
+  become a Partner", so the screen says so rather than letting it look like the
+  other thirty ticks.
+  **The pair is free TEXT with no CHECK**: the vocabulary is a Python dict and
+  SQL cannot read one, so `GET /api/identity/permission-vocabulary` serves it,
+  the write door validates against it, and the resolver treats an unrecognised
+  pair as INERT — override or not — so a row written under an older vocabulary
+  cannot pre-grant an `rbac()` somebody adds next year.
+  **`get_accessible_resources` takes the overrides too**, because
+  `/api/identity/permissions` decides what a screen renders and `rbac()` decides
+  what it does; two derivations of one answer is how the Schedule III caption
+  list came to offer five captions the engine had never heard of. A test asserts
+  they agree over every pair.
 - **THERE ARE THREE PRINCIPALS AND ONLY ONE OF THEM IS STAFF.** `rbac()` decides
   a staff request; `core/portal_auth.get_current_portal_client` is the CLIENT
   principal (a real Supabase JWT, no staff `users` row, no RBAC role); and
@@ -2422,20 +2472,28 @@ PostgREST. That is why:
   PAY-10 deleted. **There is deliberately no `/me`**: the portal already reads
   its own `payroll_employees` row over PostgREST, and the reachability ratchet
   named the duplicate on the first run.
-- **ACCESS IS BY ROLE, AND THERE IS NO PER-MEMBER OVERRIDE.** `rbac()` decides
-  every request from the role alone. The Team screen used to render a "Module
-  Access Matrix" of per-member toggles headed *"Changes are saved instantly.
-  Overrides the role default for that individual"* — and every clause was
-  false: the toggles wrote into `localStorage`, reaching no other user, device
-  or server, and nothing in `core/permissions.py` could have honoured them
-  anyway. A Partner who unticked Payroll for an Executive believed they had
-  removed access and had not. The grid is READ-ONLY now, and a browser
-  carrying old overrides has them purged, because "custom" asserted a
-  restriction that never existed.
+- **THE TEAM GRID IS REAL, AND WHAT IT REPLACED IS WORTH KNOWING.** It used to
+  render per-member toggles headed *"Changes are saved instantly. Overrides the
+  role default for that individual"* — and every clause was false: the toggles
+  wrote into `localStorage`, reaching no other user, device or server, and
+  nothing in `core/permissions.py` could have honoured them anyway. A Partner
+  who unticked Payroll for an Executive believed they had removed access and
+  had not. It was left READ-ONLY rather than deleted because the need was real;
+  migration 403 built the need (see the per-person bullet above). **The
+  browser-local map is still PURGED on load and deliberately NOT migrated into
+  `user_permissions`**: nobody can tell at this distance which of those ticks
+  was an intention and which was somebody finding out what the control did, so
+  carrying them into a screen that now MEANS something would silently reassert
+  decisions against a control that did nothing.
 - **A screen showing what a role can reach ASKS.** `GET /api/identity/permissions`
-  answers for the caller (what to render); `GET /api/identity/role-matrix`
-  answers for all five roles (what the Team screen shows a Partner). Both are
-  `get_accessible_resources` and neither is a security boundary. The Team
+  answers for the CALLER — resolved against their own overrides, so it agrees
+  with what `rbac()` will do — and carries `role_defaults` beside it so a screen
+  can show what the person has that their role does not give them;
+  `GET /api/identity/role-matrix` answers for all five roles (the template);
+  `GET /api/identity/users/{id}/permissions` answers for one member, with all
+  three maps, because showing only the effect makes an inherited permission and
+  a deliberate one look identical. All three are
+  `get_accessible_resources` and none is a security boundary — `rbac()` is. The Team
   screen's own `ROLE_DEFAULTS` copy had drifted in the expensive direction —
   it showed an Executive reaching Clients and Tasks only, when PERMISSIONS
   gives them accounting, gst, income_tax, mca, report and tds besides, and it

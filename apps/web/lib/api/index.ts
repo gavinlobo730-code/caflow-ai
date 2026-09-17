@@ -4707,6 +4707,36 @@ export const api = {
     roleMatrix: () =>
       request<ApiResp<{ roles: string[]; matrix: Record<string, Record<string, string[]>> }>>(
         "/api/identity/role-matrix"),
+
+    /** Every (resource, action) pair that exists, with the two flags a grid needs.
+     *
+     *  Served rather than spelled here for the reason roleMatrix is: the last
+     *  hardcoded copy of a backend vocabulary in this app drifted in BOTH
+     *  directions at once and nine of fifty mapped accounts were silently
+     *  discarded as a result. */
+    permissionVocabulary: () =>
+      request<ApiResp<{ permissions: Array<{
+        resource: string; action: string;
+        privilege_changing: boolean; unrevokable_for_partner: boolean;
+      }> }>>("/api/identity/permission-vocabulary"),
+
+    /** One member's access: the role template, the stored overrides, the effective answer.
+     *
+     *  All three, because showing only the last makes an inherited permission
+     *  and a deliberately granted one look identical — so a Partner could not
+     *  tell which of their firm's access was a decision. */
+    memberPermissions: (userId: string) =>
+      request<ApiResp<MemberAccessGrid>>(`/api/identity/users/${userId}/permissions`),
+
+    /** Change one member's access. Partner-only, audited, validated before any write.
+     *
+     *  `changes` is {"resource:action": true | false | null}. **null DELETES the
+     *  override**, which is not the same as false: absence means "whatever the
+     *  role says" and false means "refused however senior". A caller that could
+     *  only send the second could never hand a permission back to the role. */
+    setMemberPermissions: (userId: string, changes: Record<string, boolean | null>) =>
+      request<ApiResp<MemberAccessGrid>>(`/api/identity/users/${userId}/permissions`,
+        { method: "PUT", body: JSON.stringify({ changes }) }),
   },
   /** The Annual Information Statement — IT Act §285BB.
    *
@@ -4919,6 +4949,24 @@ export type ReconciliationRunResult = {
 export type LoginEvent = {
   id: string; user_id?: string; email?: string; event: string;
   ip?: string; user_agent?: string; created_at?: string;
+};
+
+/** One staff member's access, as the server resolves it (migration 403).
+ *
+ *  THREE maps, and they answer three different questions. `role_defaults` is
+ *  what the person's ROLE gives them — the template. `overrides` is what the
+ *  firm decided about this person specifically, keyed "resource:action".
+ *  `effective` is what rbac() will actually do, which is the first with the
+ *  second applied. A screen that rendered only `effective` could not show
+ *  which of the firm's access was a decision and which was inherited. */
+export type MemberAccessGrid = {
+  user_id: string;
+  full_name?: string | null;
+  email?: string | null;
+  role: string | null;
+  role_defaults: Record<string, string[]>;
+  overrides: Record<string, boolean>;
+  effective: Record<string, string[]>;
 };
 
 export type ApprovalRequest = {

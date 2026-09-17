@@ -152,6 +152,18 @@ test("the team page stores no permissions of its own", () => {
   // that matters: an Executive was shown as reaching Clients and Tasks only,
   // when the backend grants them Accounting, GST, Income Tax, MCA, Reports and
   // TDS besides.
+  //
+  // WHAT CHANGED, AND WHY THIS GUARD DID NOT SIMPLY GO AWAY. Migration 403
+  // built the per-person override for real: `user_permissions` stores it and
+  // `core/permissions.can_user` is what all 1037 rbac() call sites go through.
+  // So one assertion here — that the screen says "There is no per-person
+  // override" — was a SPELLING of the rule, and the spelling stopped being
+  // true while the rule did not. The rule is: this screen may not decide
+  // access in the browser. It held when the answer was "nobody can override"
+  // and it holds now that the answer is "the server does". The spelling is
+  // replaced below with assertions on the server round trip; the localStorage
+  // half is untouched, because a real grid backed by a browser-local store
+  // would be the same lie with a working cousin standing next to it.
   const src = code(read("app/team/page.tsx"));
   assert.doesNotMatch(src, /localStorage\.setItem/,
     "the team page must write no permissions to this browser");
@@ -177,10 +189,24 @@ test("the team page stores no permissions of its own", () => {
   assert.equal((src.match(/api\.identity\.roleMatrix\(\)/g) ?? []).length, 2,
     "BOTH the access grid and the role-permissions card must ask the server; " +
     "one of them falling back to a literal is how the copy came back last time");
-  // And the grid must not invite a click it cannot honour.
-  assert.doesNotMatch(src, /onChange=\{\(\) => togglePermission/);
-  assert.match(src, /There is no per-person override/,
-    "the screen must say access is decided by role");
+  // And the grid must not invite a click it cannot honour: every change goes
+  // to the server and the screen re-reads the SERVER's answer.
+  assert.doesNotMatch(src, /onChange=\{\(\) => togglePermission/,
+    "a toggle that mutates local state is how this screen lied the first time");
+  const drawer = code(read("components/team/MemberAccessDrawer.tsx"));
+  assert.match(drawer, /api\.identity\.setMemberPermissions\(/,
+    "a permission change must reach the server");
+  assert.match(drawer, /api\.identity\.permissionVocabulary\(/,
+    "the list of permissions must be served, not spelled in the browser — a " +
+    "hardcoded copy of a backend vocabulary has drifted in this app before");
+  assert.doesNotMatch(drawer, /localStorage/,
+    "the access drawer must store nothing in this browser");
+  // The drawer must render what the server RESOLVED, not what was sent: the
+  // resolver applies a Partner floor, so a request and its effect are not
+  // always the same, and a screen showing the request would be showing a
+  // change that did not happen.
+  assert.match(drawer, /setGrid\(res\.data\)/,
+    "after saving, the drawer must adopt the server's answer");
 });
 
 test("no hub card claims to be browser-only any more", () => {
