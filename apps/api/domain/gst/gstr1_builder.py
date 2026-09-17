@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
-from . import uqc
+from . import document_series, hsn_digits, uqc
 from .classifier import B2B_SECTION_CATEGORIES, GSTInvoiceCategory
 
 
@@ -83,9 +83,43 @@ class InvoiceForGSTR1:
     port_code: str | None = None
 
 
+@dataclass(frozen=True)
+class CancelledDocument:
+    """A document whose number was ISSUED and then cancelled (GST-18).
+
+    Table 13 declares it: the number was consumed under CGST Rule 46(b)'s
+    consecutive series and no supply was made under it, so a return that
+    reports only the live documents leaves a hole in the series it declares.
+
+    Its own type, not an `InvoiceForGSTR1` with a flag: a cancelled document
+    has no taxable value, no tax and no place in any other table, and a flag
+    on the invoice would invite the next reader to let one through to Table 4.
+    """
+
+    reference_no: str
+    transaction_type: str   # sales_invoice | credit_note | debit_note
+
+
 # GSTR-1 permits paise, so its GSTN JSON uses 2-decimal rupees. Canonical
 # conversion lives in the shared GST money module (GSTR-3B uses whole rupees).
 from domain.gst.money import paise_to_rupees_2dp as _paise_to_rupees
+
+
+def _period_start(period: str) -> str:
+    """The first day of an MMYYYY tax period, as ISO YYYY-MM-DD.
+
+    `hsn_digits` forks on 01-04-2021 and takes an ISO date, so the period has
+    to be turned into one somewhere. Here rather than there: MMYYYY is this
+    module's own wire format and the domain rule should not have to know it.
+    A malformed period answers with the post-2021 date — the CURRENT rule and
+    the stricter of the two, which is the direction that cannot under-report.
+    """
+    p = (period or "").strip()
+    if len(p) == 6 and p.isdigit():
+        mm, yyyy = p[:2], p[2:]
+        if "01" <= mm <= "12":
+            return f"{yyyy}-{mm}-01"
+    return hsn_digits.COMMENCEMENT
 
 
 def _format_date_gstn(iso_date: str) -> str:
@@ -128,7 +162,8 @@ def build_gstr1(
     invoices: Sequence[InvoiceForGSTR1],
     gstin: str,
     period: str,
-    aggregate_turnover_paise: int = 0,
+    aggregate_turnover_paise: Optional[int] = None,
+    cancelled_documents: Optional[Sequence[CancelledDocument]] = None,
 ) -> GSTR1Payload:
     """Build the complete GSTR-1 payload from classified invoices.
 
@@ -137,7 +172,20 @@ def build_gstr1(
         invoices: All classified, posted transactions for the period.
         gstin: Taxpayer GSTIN (2-digit state + PAN + entity + Z + checksum).
         period: MMYYYY filing period string.
-        aggregate_turnover_paise: Annual aggregate turnover used for HSN digit requirement.
+        aggregate_turnover_paise: the client's CGST §2(6) aggregate turnover
+            for the PRECEDING financial year, which is what Notification
+            78/2020-Central Tax reads on for the Table 12 HSN digit
+            requirement. **None means nobody recorded it** — the strictest
+            requirement is reported and the return SAYS the figure is missing.
+            The default used to be `0`, which is a real turnover meaning
+            "below every threshold", so an unrecorded client was silently told
+            HSN was optional (GST-17). Zero still means zero.
+
+        cancelled_documents: documents whose numbers were ISSUED and then
+            cancelled, for Table 13. **None means nobody looked** — the table's
+            `cancel` is then 0 and the return SAYS the count was not read,
+            rather than declaring that none were cancelled. An empty sequence
+            means somebody looked and found none.
 
     Returns:
         GSTR1Payload with GSTN-compatible JSON and human-readable summary.
@@ -158,7 +206,11 @@ def build_gstr1(
     payload: dict = {
         "gstin": gstin,
         "fp": period,
-        "gt": _paise_to_rupees(aggregate_turnover_paise),
+        # GSTN's own `gt` is the preceding year's aggregate turnover. An
+        # unrecorded one is filed as 0.00 exactly as before — the portal wants
+        # a number here and inventing one would be worse — and the ABSENCE is
+        # reported in `payload_gaps` rather than hidden behind the zero.
+        "gt": _paise_to_rupees(aggregate_turnover_paise or 0),
         "cur_gt": _paise_to_rupees(
             sum(i.taxable_amount_paise for i in invoices
                 if i.transaction_type == "sales_invoice")
@@ -199,11 +251,15 @@ def build_gstr1(
     if exp:
         payload["exp"] = exp
 
-    hsn, hsn_uqc_gaps = _hsn_summary_and_gaps(invoices, aggregate_turnover_paise)
+    # The digit requirement forked on 01-04-2021, so Table 12 needs the
+    # PERIOD as well as the turnover — a belated GSTR-1 for an earlier period
+    # is filed under the rule in force for that period.
+    hsn, hsn_uqc_gaps = _hsn_summary_and_gaps(
+        invoices, aggregate_turnover_paise, _period_start(period))
     if hsn:
         payload["hsn"] = {"data": hsn}
 
-    doc_issue = _build_doc_summary(invoices)
+    doc_issue = _build_doc_summary(invoices, cancelled_documents or ())
     if doc_issue:
         payload["doc_issue"] = {"doc_det": doc_issue}
 
@@ -214,6 +270,16 @@ def build_gstr1(
     # is invisible in the figure: "15" reads as a quantity whether or not it
     # added boxes to pieces.
     gaps.extend(hsn_uqc_gaps)
+    # TABLE 13's CANCELLED COUNT, when nobody supplied one (GST-18). A nil that
+    # means "we did not look" is not a nil that means "none were cancelled",
+    # and the table declares exactly that difference: a cancelled number was
+    # consumed under Rule 46(b) and no supply was made under it.
+    if cancelled_documents is None and doc_issue:
+        gaps.append({
+            "kind": GAP_CANCELLED_NOT_READ,
+            "reference_no": "",
+            "reason": document_series.CANCELLED_NOT_SUPPLIED,
+        })
     for inv in b2b_invoices:
         if inv.gst_invoice_category is GSTInvoiceCategory.B2B or inv.party_gstin:
             continue
@@ -711,40 +777,104 @@ def _build_exp(invoices: list[InvoiceForGSTR1]) -> list[dict]:
 
 # ── Table 12: HSN Summary ─────────────────────────────────────────────────────
 
-# CGST Rule 46(h): turnover thresholds for HSN digit requirement
-_HSN_DIGITS_5CR_PAISE = 5_00_00_000_00   # ₹5 Cr in paise → 6-digit HSN
-_HSN_DIGITS_1_5CR_PAISE = 1_50_00_000_00  # ₹1.5 Cr → 4-digit HSN (below this: optional)
+# HOW MANY DIGITS IS `domain/gst/hsn_digits`, AND IT IS NOT A THRESHOLD TABLE
+# THAT LIVES HERE (GST-17).
+#
+# What used to live here returned 6 above ₹5 crore, 4 above ₹1.5 crore and 0
+# below — a hybrid of two notifications: the ₹1.5 crore rung is the pre-2021
+# table's and the digit counts beside it are the post-2021 table's. So a client
+# with ₹1 crore of turnover was told HSN was optional, where Notification
+# 78/2020-Central Tax requires four digits on every B2B supply however small
+# the turnover.
+#
+# And nothing enforced it. Its one consumer sliced the code to
+# `max(required, len(code))`, whose length is the larger of the two — a slice
+# that can never shorten anything. The requirement is REPORTED now, in
+# `payload_gaps`, beside Table 12's unit gaps and for the same reasons.
+
+#: Table 13's cancelled count was not read — see `build_gstr1`.
+GAP_CANCELLED_NOT_READ = "cancelled_documents_not_read"
+
+#: A line whose HSN is shorter than the notification requires, or absent.
+GAP_HSN_DIGITS = "hsn_digits_below_requirement"
+#: The requirement rests on an aggregate turnover nobody has recorded.
+GAP_HSN_TURNOVER_NOT_RECORDED = "hsn_aggregate_turnover_not_recorded"
+
+#: THE TWO KINDS OF GAP, AND WHY A READER HAS TO TELL THEM APART.
+#:
+#: Most gaps name a document that could NOT be filed and is held out of the
+#: payload — an SEZ supply with no recipient GSTIN, an export with no shipping
+#: bill. Acting on one of those changes what the return contains.
+#:
+#: These report something about a row that IS in the payload: Table 12's units
+#: and HSN digits are filed exactly as recorded and reported beside, and Table
+#: 13's cancelled count says nobody read it. Acting on one changes a figure,
+#: not the population.
+#:
+#: Named here rather than left to each reader's own prefix test, because three
+#: test modules had started keeping private copies of "which kinds are not
+#: about my question" — and a list like that is wrong the first time a kind is
+#: added, silently, by passing.
+REPORTED_NOT_WITHHELD = frozenset({
+    GAP_HSN_DIGITS,
+    GAP_HSN_TURNOVER_NOT_RECORDED,
+    GAP_CANCELLED_NOT_READ,
+    uqc.GAP_UQC_NOT_RECORDED,
+    uqc.GAP_UQC_NOT_A_CODE,
+    uqc.GAP_UQC_MIXED_FOR_ONE_HSN,
+})
 
 
-def _required_hsn_digits(turnover_paise: int) -> int:
-    if turnover_paise >= _HSN_DIGITS_5CR_PAISE:
-        return 6
-    if turnover_paise >= _HSN_DIGITS_1_5CR_PAISE:
-        return 4
-    return 0  # optional below ₹1.5 Cr
+def withheld_gaps(gaps: Sequence[dict]) -> list[dict]:
+    """The gaps naming a document held OUT of the payload.
+
+    The complement of `REPORTED_NOT_WITHHELD`, so a kind added there leaves
+    this answer correct with nothing to update.
+    """
+    return [g for g in gaps if g.get("kind") not in REPORTED_NOT_WITHHELD]
 
 
-def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1], turnover_paise: int) -> list[dict]:
+#: Which categories count as B2B for the digit requirement. Derived from the
+#: classifier's own `B2B_SECTION_CATEGORIES` rather than listed, so a category
+#: added there cannot quietly become B2C here — and B2C is the side where the
+#: requirement falls away, so a miss would UNDER-report.
+_B2B_FOR_HSN_DIGITS = frozenset(B2B_SECTION_CATEGORIES)
+
+
+def _build_hsn_summary(invoices: Sequence[InvoiceForGSTR1],
+                       turnover_paise: Optional[int],
+                       period_start: str = "2021-04-01") -> list[dict]:
     """Aggregate line items by HSN/SAC code for Table 12.
 
     The rows only. `_hsn_summary_and_gaps` is the one walk; this wrapper is
     kept because three test modules call it and because a caller that wants
     only the rows should not have to unpack a tuple.
     """
-    return _hsn_summary_and_gaps(invoices, turnover_paise)[0]
+    return _hsn_summary_and_gaps(invoices, turnover_paise, period_start)[0]
 
 
 def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
-                          turnover_paise: int) -> tuple[list[dict], list[dict]]:
-    """Table 12's rows AND what is wrong with the units they are built from.
+                          turnover_paise: Optional[int],
+                          period_start: str = "2021-04-01",
+                          ) -> tuple[list[dict], list[dict]]:
+    """Table 12's rows AND what is wrong with the codes and units behind them.
 
     ONE WALK, deliberately. The gaps must be about exactly the lines that FEED
     a row: a line with no HSN code is skipped below and is not declared here at
     all, so reporting its unit would send a CA to fix a line this table does
     not carry. A second pass over the same invoices is a second definition of
     "in scope" and the two would drift.
+
+    The HSN DIGIT requirement is the one exception to "exactly the lines that
+    feed a row", and it has to be: a line with NO code is precisely the line
+    the requirement is about, and it is the one this walk skips. So it is
+    checked before the skip.
+
+    `turnover_paise` is the client's CGST §2(6) aggregate turnover for the
+    PRECEDING financial year, and `None` means nobody recorded it —
+    `hsn_digits` answers with the strictest reading and says so, rather than
+    reading an absence as zero and calling HSN optional.
     """
-    required_digits = _required_hsn_digits(turnover_paise)
 
     by_hsn: dict[str, dict] = {}
     # Per HSN: every unit seen, and the invoice each was seen on. Table 12
@@ -752,6 +882,11 @@ def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
     # declared without losing a unit — see `uqc.one_unit_for`.
     units_seen: dict[str, list[tuple[str, Optional[str]]]] = {}
     uqc_gaps: list[dict] = []
+    # One entry per line whose HSN is shorter than the notification requires,
+    # and one flag for the whole return when the turnover behind that
+    # requirement was never recorded.
+    digit_gaps: list[dict] = []
+    turnover_unknown = False
     for inv in invoices:
         # Notes NET against the summary rather than being skipped (task #166).
         #
@@ -766,9 +901,39 @@ def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
         # quantity supplied, and an unsigned qty would overstate it while the
         # value beside it netted correctly.
         sign = -1 if inv.transaction_type == "credit_note" else 1
+        # The requirement is per SUPPLY, not per return: below ₹5 crore
+        # Notification 78/2020 requires four digits on B2B and leaves B2C
+        # optional, so it is resolved inside the loop off this invoice's own
+        # category rather than once for the period.
+        requirement = hsn_digits.required_digits(
+            turnover_paise,
+            is_b2b=inv.gst_invoice_category in _B2B_FOR_HSN_DIGITS,
+            period_start=period_start,
+        )
+        turnover_unknown = turnover_unknown or requirement.turnover_unknown
         if inv.lines:
             for line in inv.lines:
-                code = (line.hsn_sac_code or "")[:max(required_digits, len(line.hsn_sac_code or ""))]
+                # CHECKED BEFORE THE SKIP. A line with no HSN at all is exactly
+                # what the requirement is about, and it is the line the walk
+                # below drops — so testing after the `continue` would report
+                # every shortfall except the complete absence.
+                problem = hsn_digits.problem_with(line.hsn_sac_code, requirement)
+                if problem is not None:
+                    digit_gaps.append({
+                        "kind": GAP_HSN_DIGITS,
+                        "reference_no": inv.reference_no,
+                        "hsn_sc": (line.hsn_sac_code or "").strip(),
+                        "reason": (
+                            f"{problem}. Table 12 files the code exactly as "
+                            f"recorded — correct it on the invoice line or on "
+                            f"the product in the catalogue."),
+                    })
+                # FILED EXACTLY AS RECORDED. What used to stand here sliced the
+                # code to `max(required, len(code))`, which can never shorten;
+                # and truncating for real would file a code the client did not
+                # issue. The notification sets a FLOOR, so a longer code is
+                # already compliant and there is nothing to cut.
+                code = (line.hsn_sac_code or "").strip()
                 if not code:
                     continue
                 if code not in by_hsn:
@@ -791,7 +956,20 @@ def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
                 by_hsn[code]["samt"] += sign * line.sgst_paise
                 by_hsn[code]["csamt"] += sign * line.cess_paise
         else:
-            # No line items — aggregate at invoice level (no HSN breakdown possible)
+            # No line items — aggregate at invoice level (no HSN breakdown
+            # possible). "OTH" is not an HSN code, so the requirement is
+            # reported against this invoice rather than silently satisfied by
+            # the placeholder.
+            problem = hsn_digits.problem_with(None, requirement)
+            if problem is not None:
+                digit_gaps.append({
+                    "kind": GAP_HSN_DIGITS,
+                    "reference_no": inv.reference_no,
+                    "hsn_sc": "",
+                    "reason": (
+                        f"{problem}. This document carries no line detail, so "
+                        f"Table 12 reports it under the placeholder 'OTH'."),
+                })
             code = "OTH"
             if code not in by_hsn:
                 by_hsn[code] = {"desc": "Other", "uqc": "OTH", "qty": 0.0,
@@ -874,7 +1052,18 @@ def _hsn_summary_and_gaps(invoices: Sequence[InvoiceForGSTR1],
         }
         for idx, (code, data) in enumerate(by_hsn.items(), start=1)
     ]
-    return rows, uqc_gaps
+    if turnover_unknown and digit_gaps:
+        # ONE flag for the return, and only where a shortfall was actually
+        # reported: without it the sentence would appear for every client who
+        # has not recorded a turnover, including the ones whose codes are all
+        # six digits and who owe nothing.
+        digit_gaps.append({
+            "kind": GAP_HSN_TURNOVER_NOT_RECORDED,
+            "reference_no": "",
+            "hsn_sc": "",
+            "reason": hsn_digits.TURNOVER_NOT_RECORDED,
+        })
+    return rows, uqc_gaps + digit_gaps
 
 
 # ── Table 13: Documents Issued Summary ───────────────────────────────────────
@@ -900,36 +1089,65 @@ _DOC_NATURES = (
 )
 
 
-def _build_doc_summary(invoices: Sequence[InvoiceForGSTR1]) -> list[dict]:
-    """Count documents issued by type for Table 13.
+#: Which nature each transaction type is declared under. A map rather than an
+#: if/elif chain so a type added without a home here is skipped visibly rather
+#: than falling into "Invoices for outward supply".
+_NATURE_OF = {
+    "sales_invoice": "Invoices for outward supply",
+    "credit_note": "Credit Note",
+    "debit_note": "Debit Note",
+}
+
+
+def _build_doc_summary(
+    invoices: Sequence[InvoiceForGSTR1],
+    cancelled: Sequence["CancelledDocument"] = (),
+) -> list[dict]:
+    """Table 13 — the SERIAL RANGES of documents issued, by nature.
 
     doc_num used to be enumerate(..., start=1) over the natures that had a
     non-zero count. That is a different number from the one the form asks for
     and it moves with the data: a period with only credit notes filed them as
     doc_num 1, "Invoices for outward supply". Even a full period had Credit
     Note as 2 and Debit Note as 3, where the form fixes them at 5 and 4.
+
+    AND THE ROW ITSELF WAS THREE-QUARTERS WRONG (GST-18). It emitted
+    `{"num": count, "cancel": 0, "net_issue": count}`: `num` is the ROW's
+    index within the nature and not a count, `from`/`to` — the ranges this
+    table exists to declare — were absent entirely, `totnum` appeared nowhere
+    in the codebase, and `cancel` was a literal 0 for every client and every
+    period. `domain/gst/document_series` is the rule; the ranges are contiguous
+    runs inside each series head, so `totnum == to - from + 1` is an invariant
+    rather than a hope.
+
+    `cancelled` is an INPUT. A cancelled document is exactly what this table
+    declares — its number was consumed under Rule 46(b) and no supply was made
+    under it — and it cannot be derived from the posted-and-issued documents
+    the builder is given, which is why the old code hard-coded the zero.
     """
-    counts: dict[str, int] = {
-        "Invoices for outward supply": 0,
-        "Credit Note": 0,
-        "Debit Note": 0,
-    }
+    by_nature: dict[str, list[document_series.IssuedDocument]] = {}
     for inv in invoices:
-        if inv.transaction_type == "sales_invoice":
-            counts["Invoices for outward supply"] += 1
-        elif inv.transaction_type == "credit_note":
-            counts["Credit Note"] += 1
-        elif inv.transaction_type == "debit_note":
-            counts["Debit Note"] += 1
+        nature = _NATURE_OF.get(inv.transaction_type)
+        if nature is None:
+            continue
+        by_nature.setdefault(nature, []).append(
+            document_series.IssuedDocument(number=inv.reference_no))
+    for c in cancelled:
+        nature = _NATURE_OF.get(c.transaction_type)
+        if nature is None:
+            continue
+        by_nature.setdefault(nature, []).append(
+            document_series.IssuedDocument(number=c.reference_no, is_cancelled=True))
 
     result = []
-    for doc_type, count in counts.items():
-        if count == 0:
+    for nature, docs in by_nature.items():
+        rows = document_series.ranges_for(docs)
+        if not rows:
             continue
         result.append({
-            "doc_num": _DOC_NATURES.index(doc_type) + 1,
-            "doc_typ": doc_type,
-            "docs": [{"num": count, "cancel": 0, "net_issue": count}],
+            "doc_num": _DOC_NATURES.index(nature) + 1,
+            "doc_typ": nature,
+            "docs": rows,
         })
     # Ascending by nature, the order the form lists them in.
     return sorted(result, key=lambda d: d["doc_num"])

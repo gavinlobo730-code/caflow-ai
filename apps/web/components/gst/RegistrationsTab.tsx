@@ -23,8 +23,11 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { Plus, AlertTriangle, X, Info } from "lucide-react";
-import { api, type ClientGstRegistration, type GstRegistrationKinds } from "@/lib/api";
+import { api, type ClientGstRegistration, type GstRegistrationKinds,
+         type ClientGstTurnover } from "@/lib/api";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { financialYearChoicesAround } from "@/lib/dates/periods";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -58,8 +61,16 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
    *  and a typed "31/03/2027" reaches the server as a 400 the CA cannot act on. */
   const [closing, setClosing] = useState<{ id: string; on: string } | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
+  // GST-17 — the aggregate turnover Table 12's HSN digit requirement reads on.
+  const [turnover, setTurnover] = useState<ClientGstTurnover | null>(null);
+  const [tvForm, setTvForm] = useState({ fy: "", amount: "", note: "" });
+  const [tvSaving, setTvSaving] = useState(false);
 
-  const busy = saving || busyId !== null;
+  // ONE flag, derived from every action on this tab. Two independent ones let
+  // the Record button start while Add is still running, and the two requests
+  // fight over the same screen — `scripts/concurrent-actions.test.ts` states
+  // the rule and caught exactly that when the turnover panel was added.
+  const busy = saving || tvSaving || busyId !== null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,7 +89,46 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
     }
   }, [clientId]);
 
+  const loadTurnover = useCallback(async () => {
+    try {
+      const res = await api.clientGstRegistrations.turnover(clientId);
+      if (res.success && res.data) {
+        setTurnover(res.data);
+        // Open on the year that GOVERNS, which is the one a CA is here to
+        // record — not on "this year", whose figure is not known until it ends.
+        setTvForm((f) => f.fy ? f : { ...f, fy: res.data!.governing_financial_year });
+      }
+    } catch { /* the panel says it could not read rather than showing nothing */ }
+  }, [clientId]);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadTurnover(); }, [loadTurnover]);
+
+  async function saveTurnover() {
+    const paise = paiseFromRupeeInput(tvForm.amount);
+    if (paise === null) {
+      setMsg({ type: "err", text: "Enter the aggregate turnover in rupees." });
+      return;
+    }
+    setTvSaving(true);
+    setMsg(null);
+    try {
+      const res = await api.clientGstRegistrations.recordTurnover({
+        client_id: clientId,
+        financial_year: tvForm.fy,
+        aggregate_turnover_paise: paise,
+        source_note: tvForm.note.trim() || null,
+      });
+      if (!res.success) throw new Error(res.error ?? "Couldn't record the turnover.");
+      setTvForm((f) => ({ ...f, amount: "", note: "" }));
+      setMsg({ type: "ok", text: `Aggregate turnover recorded for FY ${tvForm.fy}.` });
+      await loadTurnover();
+    } catch (e) {
+      setMsg({ type: "err", text: e instanceof Error ? e.message : "Couldn't record the turnover." });
+    } finally {
+      setTvSaving(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -177,6 +227,100 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
           {msg.text}
         </div>
       )}
+
+      {/* AGGREGATE TURNOVER (GST-17).
+          Beside the registrations because it is the same kind of fact: a
+          thing about the client's own registration status that no book of
+          theirs can answer. CGST s.2(6) is computed on the PAN, all-India,
+          and includes exempt supplies and exports, so a second registration's
+          supplies count toward it — which is exactly why it is typed here and
+          not summed from this client's ledger. */}
+      <div className="rounded-lg border border-[#E2E8F0] bg-white p-4 space-y-3">
+        <div>
+          <h3 className="text-xs font-semibold text-[#0F172A]">Aggregate turnover</h3>
+          <p className="text-[11px] text-[#64748B] mt-1 max-w-2xl">
+            CGST Act s.2(6) aggregate turnover, per financial year. GSTR-1 Table
+            12&apos;s minimum HSN digits come off the <strong>preceding</strong>{" "}
+            year&apos;s figure (Notification 78/2020-Central Tax): six digits above
+            ₹5 crore, four on B2B at or below it. It is computed on the PAN,
+            all-India, and includes exempt supplies, exports and inter-State
+            supplies between distinct persons — so it cannot be read off this
+            client&apos;s books.
+          </p>
+        </div>
+
+        {turnover && (
+          <div className={`rounded-lg px-3 py-2 text-[11px] flex items-start gap-1.5 ${
+            turnover.governing_turnover_paise === null
+              ? "bg-amber-50 border border-amber-200 text-amber-900"
+              : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569]"}`}>
+            <Info size={12} className="shrink-0 mt-0.5" />
+            <span>
+              A return prepared today is governed by{" "}
+              <strong>FY {turnover.governing_financial_year}</strong>.{" "}
+              {/* The server's own sentence. Re-wording it here would give one
+                  gap two descriptions. */}
+              {turnover.note ?? "Recorded."}
+            </span>
+          </div>
+        )}
+
+        {turnover && turnover.years.length > 0 && (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[#94A3B8] border-b border-[#F1F5F9]">
+                <th className="py-1.5 font-semibold">Financial year</th>
+                <th className="py-1.5 font-semibold text-right">Aggregate turnover</th>
+                <th className="py-1.5 font-semibold">Source</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F8FAFC]">
+              {turnover.years.map((y) => (
+                <tr key={y.id}>
+                  <td className="py-1.5 font-mono text-[#334155]">{y.financial_year}</td>
+                  <td className="py-1.5 text-right font-mono tabular-nums text-[#334155]">
+                    ₹{Math.floor(y.aggregate_turnover_paise / 100).toLocaleString("en-IN")}
+                  </td>
+                  <td className="py-1.5 text-[#64748B]">{y.source_note || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div className="flex items-end gap-2 flex-wrap">
+          <label className="text-xs">
+            <span className="block text-[#334155] font-medium mb-1">Financial year</span>
+            <select value={tvForm.fy} onChange={(e) => setTvForm(f => ({ ...f, fy: e.target.value }))}
+              aria-label="Financial year of the turnover"
+              className="px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg">
+              {financialYearChoicesAround(null, 8).map((fy) => (
+                <option key={fy} value={fy}>{fy}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs">
+            <span className="block text-[#334155] font-medium mb-1">Aggregate turnover (₹)</span>
+            <input value={tvForm.amount} inputMode="decimal"
+              onChange={(e) => setTvForm(f => ({ ...f, amount: e.target.value }))}
+              aria-label="Aggregate turnover in rupees"
+              placeholder="e.g. 6,50,00,000"
+              className="px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg w-44" />
+          </label>
+          <label className="text-xs flex-1 min-w-[12rem]">
+            <span className="block text-[#334155] font-medium mb-1">Where it came from</span>
+            <input value={tvForm.note}
+              onChange={(e) => setTvForm(f => ({ ...f, note: e.target.value }))}
+              aria-label="Source of the turnover figure"
+              placeholder="GSTR-9 Table 5N, audited accounts, …"
+              className="w-full px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg" />
+          </label>
+          <button onClick={saveTurnover} disabled={busy || !tvForm.fy || !tvForm.amount.trim()}
+            className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {tvSaving ? "Saving…" : "Record"}
+          </button>
+        </div>
+      </div>
 
       {loadFailed && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-900 flex gap-2">
@@ -365,7 +509,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                 className="px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">
                 Cancel
               </button>
-              <button onClick={handleSave} disabled={saving || !form.gstin.trim()}
+              <button onClick={handleSave} disabled={busy || !form.gstin.trim()}
                 className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {saving ? "Adding…" : "Add"}
               </button>

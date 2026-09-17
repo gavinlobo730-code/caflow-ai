@@ -37,7 +37,7 @@ from fastapi import HTTPException
 
 import routers.sales_invoices as si
 from domain.gst.classifier import GSTInvoiceCategory
-from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
+from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1, withheld_gaps
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from tests.e2e_harness import FakeDB, wire_e2e
 
@@ -64,6 +64,22 @@ def _export(ref: str, category: GSTInvoiceCategory, **over) -> InvoiceForGSTR1:
 
 def _built(invoices):
     return build_gstr1(invoices, GSTIN, PERIOD)
+
+
+def _shipping_gaps(out) -> list[dict]:
+    """The gaps THIS file is about — a document held OUT of the payload.
+
+    These fixtures carry no line detail, so Table 12 files them under the
+    placeholder 'OTH' and both the HSN digit requirement (GST-17) and Table
+    13's cancelled count (GST-18) report them — correctly, and about different
+    questions. `out.gaps == []` asserted the whole list and made this module
+    fail twice on changes that never touched the shipping bill.
+
+    `withheld_gaps` is the builder's own distinction, so a kind added there
+    leaves this correct with nothing to update — a private list here would be
+    wrong the first time one was, silently, by passing.
+    """
+    return withheld_gaps(out.gaps)
 
 
 def _first_export(payload) -> dict:
@@ -105,10 +121,10 @@ def test_nothing_recorded_is_an_empty_field_not_an_invented_one():
 
 def test_an_export_with_payment_and_no_shipping_bill_is_reported():
     out = _built([_export("EXP-1", GSTInvoiceCategory.EXP_WP)])
-    assert [g["reference_no"] for g in out.gaps] == ["EXP-1"]
-    assert out.gaps[0]["kind"] == "EXP_WP"
-    assert "Rule 96" in out.gaps[0]["reason"]
-    assert "ICEGATE" in out.gaps[0]["reason"], (
+    assert [g["reference_no"] for g in _shipping_gaps(out)] == ["EXP-1"]
+    assert _shipping_gaps(out)[0]["kind"] == "EXP_WP"
+    assert "Rule 96" in _shipping_gaps(out)[0]["reason"]
+    assert "ICEGATE" in _shipping_gaps(out)[0]["reason"], (
         "the CA needs to know WHAT the missing number is matched against")
 
 
@@ -117,14 +133,14 @@ def test_a_complete_with_payment_export_reports_nothing():
                           shipping_bill_no="7654321",
                           shipping_bill_date="2025-05-14",
                           port_code="INMAA1")])
-    assert out.gaps == []
+    assert _shipping_gaps(out) == []
 
 
 def test_a_number_with_no_date_is_still_incomplete():
     """Rule 96 matches on both. Half a reference matches nothing."""
     out = _built([_export("EXP-1", GSTInvoiceCategory.EXP_WP,
                           shipping_bill_no="7654321")])
-    assert [g["reference_no"] for g in out.gaps] == ["EXP-1"]
+    assert [g["reference_no"] for g in _shipping_gaps(out)] == ["EXP-1"]
 
 
 def test_an_export_under_an_lut_is_not_reported():
@@ -132,12 +148,12 @@ def test_an_export_under_an_lut_is_not_reported():
     break. Reporting it anyway would be noise on the commoner case, and noise
     is how a real warning stops being read."""
     out = _built([_export("EXP-1", GSTInvoiceCategory.EXP_WOP)])
-    assert out.gaps == []
+    assert _shipping_gaps(out) == []
 
 
 def test_the_port_code_alone_does_not_satisfy_it():
     out = _built([_export("EXP-1", GSTInvoiceCategory.EXP_WP, port_code="INMAA1")])
-    assert [g["reference_no"] for g in out.gaps] == ["EXP-1"]
+    assert [g["reference_no"] for g in _shipping_gaps(out)] == ["EXP-1"]
 
 
 # ── The port code a human types ─────────────────────────────────────────────
