@@ -180,48 +180,48 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
         role="dialog"
         aria-label="Member access"
       >
-        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-start justify-between gap-4">
+        <div className="px-5 py-4 border-b border-ps-muted flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[#0F172A] truncate">
+            <h2 className="text-sm font-semibold text-ps-ink truncate">
               {grid?.full_name || "Member access"}
             </h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">
+            <p className="text-xs text-ps-hint mt-0.5">
               {grid?.email}
               {grid?.role ? ` · ${grid.role}` : ""}
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-[#94A3B8] hover:text-[#0F172A]">
+          <button onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-ink">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="px-5 py-3 border-b border-[#F1F5F9] bg-[#F8FAFC]/60">
-          <p className="text-xs text-[#475569]">
-            <strong className="font-medium text-[#0F172A]">Role</strong> means no override — this
+        <div className="px-5 py-3 border-b border-ps-muted bg-ps-bg/60">
+          <p className="text-xs text-ps-label">
+            <strong className="font-medium text-ps-ink">Role</strong> means no override — this
             person gets whatever their role gives them, and follows it if the role changes.{" "}
-            <strong className="font-medium text-[#0F172A]">Allow</strong> and{" "}
-            <strong className="font-medium text-[#0F172A]">Block</strong> override it for this
+            <strong className="font-medium text-ps-ink">Allow</strong> and{" "}
+            <strong className="font-medium text-ps-ink">Block</strong> override it for this
             person only.
           </p>
-          <p className="text-xs text-[#94A3B8] mt-1">
+          <p className="text-xs text-ps-hint mt-1">
             Which <em>clients</em> this person can open is set separately, under Client
             Assignments — this screen decides which parts of the product they can use.
           </p>
         </div>
 
         {error && (
-          <div className="px-5 py-3 border-b border-[#F1F5F9]">
-            <p className="text-xs text-red-600">{error}</p>
+          <div className="px-5 py-3 border-b border-ps-muted">
+            <p className="text-xs text-state-problem">{error}</p>
           </div>
         )}
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {!vocabulary || !grid ? (
-            <p className="text-sm text-[#94A3B8]">Loading…</p>
+            <p className="text-sm text-ps-hint">Loading…</p>
           ) : (
             byResource.map(([resource, pairs]) => (
               <div key={resource}>
-                <h3 className="text-xs font-semibold text-[#0F172A] mb-2">{humanise(resource)}</h3>
+                <h3 className="text-xs font-semibold text-ps-ink mb-2">{humanise(resource)}</h3>
                 <div className="space-y-1">
                   {pairs.map((p: Pair) => {
                     const key = `${p.resource}:${p.action}`;
@@ -231,17 +231,17 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
                     return (
                       <div
                         key={key}
-                        className="flex items-center justify-between gap-3 py-1.5 px-2 rounded hover:bg-[#F8FAFC]"
+                        className="flex items-center justify-between gap-3 py-1.5 px-2 rounded hover:bg-ps-bg"
                       >
                         <div className="min-w-0 flex items-center gap-2">
-                          <span className="text-xs text-[#334155]">{humanise(p.action)}</span>
-                          <span className="text-[10px] text-[#94A3B8]">
+                          <span className="text-xs text-ps-body">{humanise(p.action)}</span>
+                          <span className="text-[10px] text-ps-hint">
                             {roleGives ? "role allows" : "role does not allow"}
                           </span>
                           {p.privilege_changing && (
                             <span
                               title="Granting this lets them change what other people can do."
-                              className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 px-1.5 py-px rounded"
+                              className="inline-flex items-center gap-1 text-[10px] text-state-attention bg-state-attention-surface px-1.5 py-px rounded"
                             >
                               <ShieldAlert className="w-3 h-3" />
                               changes others&apos; access
@@ -250,14 +250,14 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
                           {partnerFloor && (
                             <span
                               title="A Partner cannot be blocked from this — it is what reaches this screen, so removing it would leave nobody able to put it back."
-                              className="inline-flex items-center gap-1 text-[10px] text-[#64748B] bg-[#F1F5F9] px-1.5 py-px rounded"
+                              className="inline-flex items-center gap-1 text-[10px] text-ps-label bg-ps-muted px-1.5 py-px rounded"
                             >
                               <Lock className="w-3 h-3" />
                               always on for a Partner
                             </span>
                           )}
                         </div>
-                        <div className="flex shrink-0 rounded-md border border-[#E2E8F0] overflow-hidden">
+                        <div className="flex shrink-0 rounded-md border border-ps-border overflow-hidden">
                           {CHOICES.map((c) => {
                             const disabled = partnerFloor && c.key === "block";
                             const active = current === c.key;
@@ -271,16 +271,16 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
                                 disabled={disabled}
                                 onClick={() => setDraft((d) => ({ ...d, [key]: c.key }))}
                                 className={[
-                                  "px-2 py-1 text-[11px] border-r last:border-r-0 border-[#E2E8F0]",
+                                  "px-2 py-1 text-[11px] border-r last:border-r-0 border-ps-border",
                                   disabled
-                                    ? "text-[#CBD5E1] cursor-not-allowed"
+                                    ? "text-ps-disabled cursor-not-allowed"
                                     : active
                                       ? c.key === "block"
                                         ? "bg-red-600 text-white"
                                         : c.key === "allow"
-                                          ? "bg-emerald-600 text-white"
-                                          : "bg-[#F1F5F9] text-[#0F172A]"
-                                      : "text-[#64748B] hover:bg-[#F8FAFC]",
+                                          ? "bg-state-ready-solid text-white"
+                                          : "bg-ps-muted text-ps-ink"
+                                      : "text-ps-label hover:bg-ps-bg",
                                 ].join(" ")}
                               >
                                 {c.label}
@@ -297,24 +297,24 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-[#F1F5F9] flex items-center justify-between gap-3">
+        <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={resetAll}
-            className="inline-flex items-center gap-1.5 text-xs text-[#64748B] hover:text-[#0F172A]"
+            className="inline-flex items-center gap-1.5 text-xs text-ps-label hover:text-ps-ink"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Back to role defaults
           </button>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-[#94A3B8]">
+            <span className="text-xs text-ps-hint">
               {dirty ? `${Object.keys(changes).length} change${Object.keys(changes).length === 1 ? "" : "s"}` : "No changes"}
             </span>
             <button
               type="button"
               onClick={save}
               disabled={!dirty || saving}
-              className="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-700 text-white disabled:bg-[#CBD5E1]"
+              className="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-700 text-white disabled:bg-ps-disabled"
             >
               {saving ? "Saving…" : "Save"}
             </button>

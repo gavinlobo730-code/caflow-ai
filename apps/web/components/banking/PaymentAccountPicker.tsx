@@ -79,11 +79,11 @@ export function PaymentAccountPicker({
 
   return (
     <div className={className}>
-      <label className="block text-xs font-medium text-[#475569] mb-1">{label}</label>
+      <label className="block text-xs font-medium text-ps-label mb-1">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
       >
         <option value="">Not specified — posts to the general Bank ledger</option>
         {rows.map((b) => (

@@ -167,7 +167,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
       {msg && (
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${msg.type === "ok" ? "bg-state-ready-surface text-money-in" : "bg-state-problem-surface text-state-problem"}`}>
           {msg.type === "ok" ? <CheckCircle size={14} /> : <X size={14} />}
           {msg.text}
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
@@ -175,9 +175,9 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       )}
 
       {/* ── Bank accounts ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
-        <div className="px-4 py-3 border-b border-[#F1F5F9] flex items-center justify-between">
-          <p className="text-xs font-semibold text-[#334155] flex items-center gap-1.5"><Landmark size={13} /> Bank Accounts</p>
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
+        <div className="px-4 py-3 border-b border-ps-muted flex items-center justify-between">
+          <p className="text-xs font-semibold text-ps-body flex items-center gap-1.5"><Landmark size={13} /> Bank Accounts</p>
           <button onClick={() => setAccountModal("new")} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
             <Plus size={12} /> Add Account
           </button>
@@ -186,53 +186,53 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
           <TableSkeleton cols={6} rows={2} />
         ) : accounts.length === 0 ? (
           <div className="text-center py-8 px-4 space-y-1">
-            <p className="text-sm text-[#64748B]">No bank accounts yet.</p>
-            <p className="text-xs text-[#94A3B8]">Add a bank account to import its statements and run reconciliations.</p>
+            <p className="text-sm text-ps-label">No bank accounts yet.</p>
+            <p className="text-xs text-ps-hint">Add a bank account to import its statements and run reconciliations.</p>
           </div>
         ) : (
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-2.5 text-left font-semibold">Bank</th><th className="px-3 py-2.5 text-left font-semibold">Account No.</th><th className="px-3 py-2.5 text-left font-semibold">Type</th><th className="px-3 py-2.5 text-left font-semibold">Ledger Account</th><th className="px-3 py-2.5 text-right font-semibold">Opening Bal.</th><th className="px-4 py-2.5 text-right font-semibold">Actions</th></tr></thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <thead><tr className="border-b border-ps-muted text-ps-hint"><th className="px-4 py-2.5 text-left font-semibold">Bank</th><th className="px-3 py-2.5 text-left font-semibold">Account No.</th><th className="px-3 py-2.5 text-left font-semibold">Type</th><th className="px-3 py-2.5 text-left font-semibold">Ledger Account</th><th className="px-3 py-2.5 text-right font-semibold">Opening Bal.</th><th className="px-4 py-2.5 text-right font-semibold">Actions</th></tr></thead>
+            <tbody className="divide-y divide-ps-bg">
               {accounts.map((a) => (
-                <tr key={a.id} className={`hover:bg-[#F8FAFC] ${a.is_active ? "" : "opacity-50"}`}>
-                  <td className="px-4 py-2.5 font-medium text-[#1E293B]">
+                <tr key={a.id} className={`hover:bg-ps-bg ${a.is_active ? "" : "opacity-50"}`}>
+                  <td className="px-4 py-2.5 font-medium text-ps-ink">
                     {a.bank_name}
-                    {!a.is_active && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#94A3B8]">inactive</span>}
-                    {a.ifsc && <div className="text-[10px] text-[#94A3B8] font-mono">{a.ifsc}</div>}
+                    {!a.is_active && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-hint">inactive</span>}
+                    {a.ifsc && <div className="text-[10px] text-ps-hint font-mono">{a.ifsc}</div>}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-[#64748B] text-[10px]">{a.account_no}</td>
-                  <td className="px-3 py-2.5 text-[#64748B]">{a.account_type}</td>
-                  <td className="px-3 py-2.5 text-[#64748B]">
+                  <td className="px-3 py-2.5 font-mono text-ps-label text-[10px]">{a.account_no}</td>
+                  <td className="px-3 py-2.5 text-ps-label">{a.account_type}</td>
+                  <td className="px-3 py-2.5 text-ps-label">
                     {a.coa_account_id
                       ? (a.ledger_account_code
                           ? <span className="font-mono text-[11px]">{a.ledger_account_code} · {a.ledger_account_name}</span>
                           : "Linked")
                       : <span className="text-amber-600">Not linked</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-[#334155]">
+                  <td className="px-3 py-2.5 text-right font-mono text-ps-body">
                     {fmt(a.opening_balance_paise)}
                     {/* The backend's sentence, not a guess from the columns —
                         an opening balance with no as-at date makes every
                         balance on this account wrong by the total of whatever
                         predates it. */}
                     {a.opening_balance_gap && (
-                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-sans"
+                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-state-attention-surface text-state-attention font-sans"
                             title={a.opening_balance_gap}>no date</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                    <button onClick={() => setAccountModal(a)} className="text-[#4338CA] hover:text-[#3730A3] inline-flex items-center gap-1"><Pencil size={11} /> Edit</button>
+                    <button onClick={() => setAccountModal(a)} className="text-brand hover:text-brand-dark inline-flex items-center gap-1"><Pencil size={11} /> Edit</button>
                     {a.is_active
-                      ? <button disabled={rowBusy} onClick={() => deactivateAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Deactivate</button>
-                      : <button disabled={rowBusy} onClick={() => reactivateAccount(a)} className="ml-3 text-[#059669] hover:text-[#047857]">Reactivate</button>}
+                      ? <button disabled={rowBusy} onClick={() => deactivateAccount(a)} className="ml-3 text-state-problem hover:text-red-800">Deactivate</button>
+                      : <button disabled={rowBusy} onClick={() => reactivateAccount(a)} className="ml-3 text-state-ready-solid hover:text-state-ready">Reactivate</button>}
                     {/* Delete is offered only for an account with no footprint.
                         When it is blocked the button stays, disabled, carrying the
                         reason — "why can't I delete this?" is the question a
                         missing button leaves unanswered. */}
                     {deletability[a.id]?.deletable ? (
-                      <button disabled={rowBusy} onClick={() => deleteAccount(a)} className="ml-3 text-red-600 hover:text-red-800">Delete</button>
+                      <button disabled={rowBusy} onClick={() => deleteAccount(a)} className="ml-3 text-state-problem hover:text-red-800">Delete</button>
                     ) : deletability[a.id] ? (
-                      <span className="ml-3 text-[#CBD5E1] cursor-not-allowed"
+                      <span className="ml-3 text-ps-disabled cursor-not-allowed"
                             title={deletability[a.id].reason
                               || `Cannot be deleted because ${deletability[a.id].blocked_by.join("; ")}. Deactivate it instead — that keeps its history.`}>Delete</span>
                     ) : null}
@@ -245,9 +245,9 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-[#334155]">{statements.length} bank statement{statements.length !== 1 ? "s" : ""} imported</p>
+        <p className="text-xs font-semibold text-ps-body">{statements.length} bank statement{statements.length !== 1 ? "s" : ""} imported</p>
         <div className="flex gap-2">
-          <button onClick={loadStatements} className="p-1.5 rounded border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B]"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
+          <button onClick={loadStatements} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
             onClick={() => activeAccounts.length === 0 ? setAccountModal("new") : setShowImport(true)}
             className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
@@ -276,23 +276,23 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
          per-statement counts. The Entries tab already answers the same question
          for the client as a whole. */
       ) : statements.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] text-center py-16 space-y-3">
+        <div className="bg-white rounded-xl border border-ps-muted text-center py-16 space-y-3">
           <FileText size={32} className="text-gray-200 mx-auto" />
-          <p className="text-sm text-[#64748B]">No bank statements imported yet</p>
+          <p className="text-sm text-ps-label">No bank statements imported yet</p>
           <button onClick={() => setShowImport(true)} className="text-xs text-blue-600 hover:underline">Import your first statement</button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <table className="w-full text-xs">
-            <thead><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-3 text-left font-semibold">Bank</th><th className="px-3 py-3 text-left font-semibold">Account No.</th><th className="px-3 py-3 text-left font-semibold">Period</th><th className="px-3 py-3 text-right font-semibold">Credits</th><th className="px-3 py-3 text-right font-semibold">Debits</th><th className="px-4 py-3 text-left font-semibold">Action</th></tr></thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <thead><tr className="border-b border-ps-muted text-ps-hint"><th className="px-4 py-3 text-left font-semibold">Bank</th><th className="px-3 py-3 text-left font-semibold">Account No.</th><th className="px-3 py-3 text-left font-semibold">Period</th><th className="px-3 py-3 text-right font-semibold">Credits</th><th className="px-3 py-3 text-right font-semibold">Debits</th><th className="px-4 py-3 text-left font-semibold">Action</th></tr></thead>
+            <tbody className="divide-y divide-ps-bg">
               {statements.map((s) => (
-                <tr key={s.id} className="hover:bg-[#F8FAFC]">
-                  <td className="px-4 py-2.5 font-medium text-[#1E293B]">{s.bank_name}</td>
-                  <td className="px-3 py-2.5 font-mono text-[#64748B] text-[10px]">{s.account_number ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-[#64748B]">{s.statement_from} → {s.statement_to}</td>
-                  <td className="px-3 py-2.5 text-right font-mono text-green-700">{fmt(s.total_credits_paise)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono text-red-700">{fmt(s.total_debits_paise)}</td>
+                <tr key={s.id} className="hover:bg-ps-bg">
+                  <td className="px-4 py-2.5 font-medium text-ps-ink">{s.bank_name}</td>
+                  <td className="px-3 py-2.5 font-mono text-ps-label text-[10px]">{s.account_number ?? "—"}</td>
+                  <td className="px-3 py-2.5 text-ps-label">{s.statement_from} → {s.statement_to}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-money-in">{fmt(s.total_credits_paise)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-money-out">{fmt(s.total_debits_paise)}</td>
                   <td className="px-4 py-2.5">
                     <button onClick={() => selectedStmt === s.id ? setSelectedStmt(null) : openStatement(s.id)} className="text-xs text-blue-600 hover:underline">
                       {selectedStmt === s.id ? "Hide" : "View"} ({s.row_count} txns)
@@ -301,7 +301,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                       onClick={() => deleteStatement(s)}
                       disabled={rowBusy}
                       title="Remove a statement imported by mistake"
-                      className="text-xs text-red-600 hover:underline ml-3 disabled:opacity-50"
+                      className="text-xs text-state-problem hover:underline ml-3 disabled:opacity-50"
                     >
                       Remove
                     </button>
@@ -315,24 +315,24 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
 
       {/* Statement transactions inline view */}
       {selectedStmt && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-            <p className="text-xs font-semibold text-[#334155]">Transactions</p>
-            {txnsLoading && <RefreshCw size={13} className="animate-spin text-[#94A3B8]" />}
+            <p className="text-xs font-semibold text-ps-body">Transactions</p>
+            {txnsLoading && <RefreshCw size={13} className="animate-spin text-ps-hint" />}
           </div>
           {!txnsLoading && stmtTxns.length > 0 && (
             <div className="overflow-x-auto max-h-72 overflow-y-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-white"><tr className="border-b border-[#F1F5F9] text-[#94A3B8]"><th className="px-4 py-2 text-left font-semibold">Date</th><th className="px-3 py-2 text-left font-semibold">Description</th><th className="px-3 py-2 text-right font-semibold">Debit</th><th className="px-3 py-2 text-right font-semibold">Credit</th><th className="px-3 py-2 text-left font-semibold">Status</th></tr></thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <thead className="sticky top-0 bg-white"><tr className="border-b border-ps-muted text-ps-hint"><th className="px-4 py-2 text-left font-semibold">Date</th><th className="px-3 py-2 text-left font-semibold">Description</th><th className="px-3 py-2 text-right font-semibold">Debit</th><th className="px-3 py-2 text-right font-semibold">Credit</th><th className="px-3 py-2 text-left font-semibold">Status</th></tr></thead>
+                <tbody className="divide-y divide-ps-bg">
                   {stmtTxns.map((t) => (
-                    <tr key={t.id} className="hover:bg-[#F8FAFC]">
-                      <td className="px-4 py-2 text-[#64748B] whitespace-nowrap">{t.transaction_date}</td>
-                      <td className="px-3 py-2 text-[#334155] max-w-xs truncate">{t.description}</td>
-                      <td className="px-3 py-2 text-right font-mono text-red-700">{t.debit_paise > 0 ? fmt(t.debit_paise) : "—"}</td>
-                      <td className="px-3 py-2 text-right font-mono text-green-700">{t.credit_paise > 0 ? fmt(t.credit_paise) : "—"}</td>
+                    <tr key={t.id} className="hover:bg-ps-bg">
+                      <td className="px-4 py-2 text-ps-label whitespace-nowrap">{t.transaction_date}</td>
+                      <td className="px-3 py-2 text-ps-body max-w-xs truncate">{t.description}</td>
+                      <td className="px-3 py-2 text-right font-mono text-money-out">{t.debit_paise > 0 ? fmt(t.debit_paise) : "—"}</td>
+                      <td className="px-3 py-2 text-right font-mono text-money-in">{t.credit_paise > 0 ? fmt(t.credit_paise) : "—"}</td>
                       <td className="px-3 py-2">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${t.match_status === "posted" ? "bg-green-100 text-green-700" : t.match_status === "matched" ? "bg-blue-100 text-blue-700" : t.match_status === "ignored" ? "bg-[#F1F5F9] text-[#94A3B8]" : "bg-amber-100 text-amber-700"}`}>{t.match_status}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${t.match_status === "posted" ? "bg-green-100 text-money-in" : t.match_status === "matched" ? "bg-blue-100 text-blue-700" : t.match_status === "ignored" ? "bg-ps-muted text-ps-hint" : "bg-state-attention-border text-state-attention"}`}>{t.match_status}</span>
                       </td>
                     </tr>
                   ))}
@@ -340,7 +340,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
               </table>
             </div>
           )}
-          {!txnsLoading && stmtTxns.length === 0 && <div className="text-center py-8 text-[#94A3B8] text-sm">No transactions found.</div>}
+          {!txnsLoading && stmtTxns.length === 0 && <div className="text-center py-8 text-ps-hint text-sm">No transactions found.</div>}
         </div>
       )}
 
@@ -476,15 +476,15 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
     }
   }
 
-  const inputCls = "w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
-  const labelCls = "block text-xs font-medium text-[#475569] mb-1";
+  const inputCls = "w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
+  const labelCls = "block text-xs font-medium text-ps-label mb-1";
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">{editing ? "Edit Bank Account" : "Add Bank Account"}</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X size={16} /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">{editing ? "Edit Bank Account" : "Add Bank Account"}</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="space-y-3">
           <div>
@@ -498,7 +498,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Account Number *</label>
-              <input value={accountNo} onChange={(e) => setAccountNo(e.target.value)} disabled={editing} className={`${inputCls} font-mono ${editing ? "bg-[#F8FAFC] text-[#94A3B8]" : ""}`} placeholder="50100XXXXXXX" />
+              <input value={accountNo} onChange={(e) => setAccountNo(e.target.value)} disabled={editing} className={`${inputCls} font-mono ${editing ? "bg-ps-bg text-ps-hint" : ""}`} placeholder="50100XXXXXXX" />
             </div>
             <div>
               <label className={labelCls}>IFSC</label>
@@ -525,7 +525,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
               </label>
               <input type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} className={inputCls} />
               {openingBal && openingBal !== "0" && !openingDate && (
-                <p className="mt-1 text-[11px] text-amber-700">
+                <p className="mt-1 text-[11px] text-state-attention">
                   The date this balance is as at — usually the day the books begin.
                   Without it the Bank Book adds transactions the figure already includes.
                 </p>
@@ -533,8 +533,8 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
             </div>
             {editing && (
               <div className="flex items-end pb-1">
-                <label className="flex items-center gap-2 text-xs text-[#475569]">
-                  <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="accent-[#4338CA]" /> Active
+                <label className="flex items-center gap-2 text-xs text-ps-label">
+                  <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="accent-brand" /> Active
                 </label>
               </div>
             )}
@@ -545,12 +545,12 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
               <option value="">— Not linked —</option>
               {coaAccounts.map((c) => <option key={c.id} value={c.id}>{c.account_code} · {c.account_name}</option>)}
             </select>
-            <p className="text-[10px] text-[#94A3B8] mt-1">Links this bank account to a chart-of-accounts asset account so postings and the opening balance hit the right GL account.</p>
+            <p className="text-[10px] text-ps-hint mt-1">Links this bank account to a chart-of-accounts asset account so postings and the opening balance hit the right GL account.</p>
           </div>
         </div>
-        {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+        {error && <p className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
             {saving ? "Saving…" : editing ? "Save Changes" : "Add Account"}
           </button>
@@ -847,17 +847,17 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
     }
   }
 
-  const inputCls = "w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+  const inputCls = "w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className={`bg-white rounded-xl shadow-xl w-full p-6 space-y-4 ${inspected ? "max-w-3xl max-h-[90vh] overflow-y-auto" : "max-w-md"}`}>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">
+          <h3 className="text-sm font-semibold text-ps-ink">
             {inspected ? "Map the statement columns" : "Import Bank Statement"}
           </h3>
           <button onClick={onClose} disabled={importing} aria-label="Close"
-                  className="text-[#94A3B8] hover:text-[#475569] disabled:opacity-40"><X size={16} /></button>
+                  className="text-ps-hint hover:text-ps-label disabled:opacity-40"><X size={16} /></button>
         </div>
 
         {result ? (
@@ -870,18 +870,18 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 when the question in the CA's head is "is this statement in?".
                 Nothing was rejected here, so nothing is coloured as a problem;
                 what changes is which sentence is the big one. */}
-            <div className="bg-green-50 border border-green-100 rounded-lg px-4 py-3 text-center space-y-1">
+            <div className="bg-state-ready-surface border border-green-100 rounded-lg px-4 py-3 text-center space-y-1">
               <CheckCircle size={20} className="text-green-600 mx-auto" />
               {result.imported === 0 && result.duplicates_skipped > 0 ? (
                 <>
-                  <p className="text-sm font-medium text-green-700">Already imported — nothing new to add</p>
+                  <p className="text-sm font-medium text-money-in">Already imported — nothing new to add</p>
                   <p className="text-xs text-green-600">
                     All {result.duplicates_skipped} line{result.duplicates_skipped === 1 ? " was" : "s were"} already in this client&apos;s books.
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="text-sm font-medium text-green-700">{result.imported} transaction{result.imported === 1 ? "" : "s"} imported</p>
+                  <p className="text-sm font-medium text-money-in">{result.imported} transaction{result.imported === 1 ? "" : "s"} imported</p>
                   {result.duplicates_skipped > 0 && (
                     <p className="text-xs text-green-600">{result.duplicates_skipped} line{result.duplicates_skipped === 1 ? " was" : "s were"} already in and {result.duplicates_skipped === 1 ? "was" : "were"} skipped</p>
                   )}
@@ -892,7 +892,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 looked identical before, which is how a half-read statement
                 becomes a client's cash position. */}
             {result.verified ? (
-              <p className="text-xs text-green-700 text-center">
+              <p className="text-xs text-money-in text-center">
                 {result.totals_check?.agrees
                   ? <>Checked against the statement&apos;s own &ldquo;{result.totals_check.label}&rdquo; row — every line was read.</>
                   : <>Checked against the opening and closing balances — every line was read.</>}
@@ -902,12 +902,12 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               // checked it". Something DID check it and disagreed, and somebody
               // decided to import anyway — that is a stronger statement than a
               // gap and it is now on the statement row and the client timeline.
-              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
                 Imported over the statement&apos;s own totals, on the reason you gave.
                 It is recorded against this statement. {result.verification_gap}
               </p>
             ) : (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              <p className="text-xs text-state-attention bg-state-attention-surface border border-amber-100 rounded-lg px-3 py-2">
                 {result.verification_gap
                   ?? "Nothing confirmed that every line was read."}{" "}
                 Compare the totals against the statement before you rely on these figures.
@@ -921,9 +921,9 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
           <>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Bank Account *</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Bank Account *</label>
                 {accounts.length === 0 ? (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                  <div className="text-xs text-state-attention bg-state-attention-surface border border-amber-100 rounded-lg px-3 py-2">
                     No active bank accounts. <button onClick={onManageAccounts} className="underline font-medium">Add one first</button>.
                   </div>
                 ) : (
@@ -933,21 +933,21 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Statement File * <span className="font-normal text-[#94A3B8]">(.csv, .xlsx or .pdf)</span></label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Statement File * <span className="font-normal text-ps-hint">(.csv, .xlsx or .pdf)</span></label>
                 <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.pdf,.jpg,.jpeg,.png,.webp" onChange={handleFile} className="hidden" />
-                <button onClick={() => fileRef.current?.click()} disabled={busy} className="disabled:opacity-40 w-full border-2 border-dashed border-[#E2E8F0] rounded-lg py-4 text-sm text-[#64748B] hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
+                <button onClick={() => fileRef.current?.click()} disabled={busy} className="disabled:opacity-40 w-full border-2 border-dashed border-ps-border rounded-lg py-4 text-sm text-ps-label hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
                   <Upload size={16} /> {file ? file.name : "Click to select a statement file"}
                 </button>
-                <p className="text-[10px] text-[#94A3B8] mt-1">The file is parsed on the server — HDFC / SBI / ICICI / Axis are auto-detected. Any other bank: use <span className="font-medium">Map columns</span> once and we&apos;ll remember it. Amounts stay exact.</p>
+                <p className="text-[10px] text-ps-hint mt-1">The file is parsed on the server — HDFC / SBI / ICICI / Axis are auto-detected. Any other bank: use <span className="font-medium">Map columns</span> once and we&apos;ll remember it. Amounts stay exact.</p>
               </div>
 
               {/* The two figures printed on the statement. The server checks
                   opening + credits - debits == closing before importing
                   anything — the only thing that proves every line was read. */}
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">
+                <label className="block text-xs font-medium text-ps-label mb-1">
                   Statement balances
-                  <span className="font-normal text-[#94A3B8]">
+                  <span className="font-normal text-ps-hint">
                     {allowVision
                       ? " — needed for a scan only if it prints no totals"
                       : " — optional; they say this file is the whole period"}
@@ -959,7 +959,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   <input value={closingRs} onChange={(e) => setClosingRs(e.target.value)}
                          placeholder="Closing e.g. 1,30,000.00" className={inputCls} inputMode="decimal" />
                 </div>
-                <p className="text-[10px] text-[#94A3B8] mt-1">
+                <p className="text-[10px] text-ps-hint mt-1">
                   {balancesBad
                     ? "Enter plain amounts — 1,30,000.00"
                     : "If the statement prints its own totals we check against those automatically. Give both balances as well and nothing imports unless the lines also add up from one to the other."}
@@ -971,12 +971,12 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   tries the real parsers first and never sends a readable file
                   to a model. */}
               {couldBeAScan && (
-                <label className="flex items-start gap-2 text-xs text-[#475569] cursor-pointer">
+                <label className="flex items-start gap-2 text-xs text-ps-label cursor-pointer">
                   <input type="checkbox" checked={allowVision} className="mt-0.5"
                          onChange={(e) => setAllowVision(e.target.checked)} />
                   <span>
                     Read this with AI if it is a scan or a photo
-                    <span className="block text-[10px] text-[#94A3B8]">
+                    <span className="block text-[10px] text-ps-hint">
                       {isImage
                         ? "A photograph has to be read this way."
                         : "Only used if the PDF has no readable text — a normal PDF is parsed exactly, without AI."}
@@ -988,16 +988,16 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
             </div>
 
             {inspected && mapping && (
-              <div className="space-y-3 border-t border-[#E2E8F0] pt-3">
+              <div className="space-y-3 border-t border-ps-border pt-3">
                 {inspected.saved_mapping_scope === "firm" ? (
-                  <p className="text-xs text-[#475569]">
+                  <p className="text-xs text-ps-label">
                     We&apos;ve seen this exact layout before, on another account in this
                     practice, and have filled in what was recorded then. Check it against
                     the columns below before importing — saving it here records it for{" "}
                     {account ? <span className="font-medium">{account.bank_name}</span> : "this account"} too.
                   </p>
                 ) : (
-                  <p className="text-xs text-[#475569]">
+                  <p className="text-xs text-ps-label">
                     This bank&apos;s layout isn&apos;t one we recognise. Tell us which column holds
                     what — once. {account ? <>We&apos;ll remember it for <span className="font-medium">{account.bank_name}</span> and use it next time.</> : null}
                   </p>
@@ -1006,9 +1006,9 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   {MAPPING_FIELDS.map((f) => (
                     <div key={f.key}>
-                      <label className="block text-[11px] font-medium text-[#475569]">
+                      <label className="block text-[11px] font-medium text-ps-label">
                         {f.label}{f.required && <span className="text-red-500"> *</span>}
-                        <span className="font-normal text-[#94A3B8]"> — {f.hint}</span>
+                        <span className="font-normal text-ps-hint"> — {f.hint}</span>
                       </label>
                       <select
                         value={mapping[f.key] ?? ""}
@@ -1018,7 +1018,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                           setPreview(null);          // the mapping changed; the old check no longer describes it
                           setOverrideBalance(false);
                         }}
-                        className="w-full px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-2 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       >
                         <option value="">— not in this file —</option>
                         {inspected.headers.map((h, i) => (
@@ -1029,7 +1029,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   ))}
                 </div>
 
-                <p className="text-[10px] text-[#94A3B8]">
+                <p className="text-[10px] text-ps-hint">
                   Use either <span className="font-medium">Debit + Credit</span>, or a single{" "}
                   <span className="font-medium">Amount</span> with a <span className="font-medium">Dr/Cr</span> column — not both.
                 </p>
@@ -1039,7 +1039,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                           className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-40">
                     {checking ? "Checking…" : "Check this mapping"}
                   </button>
-                  <label className="flex items-center gap-1.5 text-[11px] text-[#475569]">
+                  <label className="flex items-center gap-1.5 text-[11px] text-ps-label">
                     <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
                     Remember this layout for this account
                   </label>
@@ -1051,14 +1051,14 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         A swapped Debit/Credit parses perfectly and inverts the
                         client's cash — no column-label check could catch it. */}
                     {preview.balance_check.checked && preview.balance_check.agrees && (
-                      <p className="text-xs text-green-700 bg-green-50 border border-green-100 rounded px-3 py-2">
+                      <p className="text-xs text-money-in bg-state-ready-surface border border-green-100 rounded px-3 py-2">
                         ✓ Checked against the bank&apos;s own balance column across{" "}
                         {preview.balance_check.rows_checked} row{preview.balance_check.rows_checked === 1 ? "" : "s"} — every
                         movement agrees.{preview.balance_check.note ? ` ${preview.balance_check.note}` : ""}
                       </p>
                     )}
                     {preview.balance_check.checked && preview.balance_check.agrees === false && (
-                      <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 space-y-1.5">
+                      <div className="text-xs text-money-out bg-state-problem-surface border border-state-problem-border rounded px-3 py-2 space-y-1.5">
                         <p className="font-medium">This mapping disagrees with the bank&apos;s own balances.</p>
                         <p>{preview.balance_check.reason}</p>
                         <label className="flex items-center gap-1.5">
@@ -1068,7 +1068,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                       </div>
                     )}
                     {!preview.balance_check.checked && (
-                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+                      <p className="text-xs text-state-attention bg-state-attention-surface border border-amber-100 rounded px-3 py-2">
                         This statement has no balance column, so the mapping could not be
                         checked arithmetically. Read the rows below before importing.
                       </p>
@@ -1077,12 +1077,12 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         The balance column says the rows agree with each other;
                         this says they agree with what the bank printed. */}
                     {preview.totals_check?.checked && preview.totals_check.agrees && (
-                      <p className="text-xs text-green-700 bg-green-50 border border-green-100 rounded px-3 py-2">
+                      <p className="text-xs text-money-in bg-state-ready-surface border border-green-100 rounded px-3 py-2">
                         ✓ Adds up to the statement&apos;s own &ldquo;{preview.totals_check.label}&rdquo; row.
                       </p>
                     )}
                     {preview.totals_check?.checked && preview.totals_check.agrees === false && (
-                      <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+                      <p className="text-xs text-money-out bg-state-problem-surface border border-state-problem-border rounded px-3 py-2">
                         {preview.totals_check.reason}
                       </p>
                     )}
@@ -1091,18 +1091,18 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         front of a statement that visibly has them sends the CA
                         looking for a parsing bug. */}
                     {preview.totals_check?.ambiguous && (
-                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+                      <p className="text-xs text-state-attention bg-state-attention-surface border border-amber-100 rounded px-3 py-2">
                         {preview.totals_check.gap}
                       </p>
                     )}
 
-                    <p className="text-[11px] text-[#475569]">
+                    <p className="text-[11px] text-ps-label">
                       {preview.parsed_count} of {preview.total_rows} rows read
-                      {preview.skipped_count > 0 && <span className="text-amber-700"> · {preview.skipped_count} skipped</span>}
+                      {preview.skipped_count > 0 && <span className="text-state-attention"> · {preview.skipped_count} skipped</span>}
                     </p>
-                    <div className="overflow-x-auto border border-[#E2E8F0] rounded-lg">
+                    <div className="overflow-x-auto border border-ps-border rounded-lg">
                       <table className="w-full text-[11px]">
-                        <thead className="bg-[#F8FAFC] text-[#64748B]">
+                        <thead className="bg-ps-bg text-ps-label">
                           <tr>
                             <th className="text-left px-2 py-1.5">Date</th>
                             <th className="text-left px-2 py-1.5">Description</th>
@@ -1113,12 +1113,12 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         </thead>
                         <tbody>
                           {preview.rows.map((r, i) => (
-                            <tr key={i} className="border-t border-[#F1F5F9]">
+                            <tr key={i} className="border-t border-ps-muted">
                               <td className="px-2 py-1.5 whitespace-nowrap">{r.transaction_date}</td>
                               <td className="px-2 py-1.5 max-w-[18rem] truncate" title={r.description}>{r.description}</td>
                               <td className="px-2 py-1.5 text-right">{r.debit_paise ? formatPaise(r.debit_paise) : ""}</td>
                               <td className="px-2 py-1.5 text-right">{r.credit_paise ? formatPaise(r.credit_paise) : ""}</td>
-                              <td className="px-2 py-1.5 text-right text-[#64748B]">{r.balance_paise ? formatPaise(r.balance_paise) : ""}</td>
+                              <td className="px-2 py-1.5 text-right text-ps-label">{r.balance_paise ? formatPaise(r.balance_paise) : ""}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1129,14 +1129,14 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               </div>
             )}
 
-            {error && !totalsRefusal && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
+            {error && !totalsRefusal && <p className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
 
             {/* The one refusal in this import with a way past it (BANK-01). It
                 is shown only after the server has refused, so the reason is
                 written about a mismatch the CA can see, with both figures in
                 front of them. */}
             {totalsRefusal && (
-              <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 space-y-2">
+              <div className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2.5 space-y-2">
                 <p>{totalsRefusal}</p>
                 <label className="block font-medium">
                   Why is this file right?
@@ -1145,10 +1145,10 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                     onChange={(e) => setAckReason(e.target.value)}
                     rows={2}
                     placeholder="e.g. the export is filtered to one page; the printed total covers the whole month"
-                    className="mt-1 w-full px-2 py-1.5 font-normal border border-amber-200 rounded focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="mt-1 w-full px-2 py-1.5 font-normal border border-state-attention-border rounded focus:outline-none focus:ring-2 focus:ring-amber-400"
                   />
                 </label>
-                <p className="text-[11px] text-amber-700">
+                <p className="text-[11px] text-state-attention">
                   {ackReady
                     ? "This is stored against the statement, beside the difference it explains, and the import will not be reported as checked."
                     : "At least 10 characters — this goes on the record."}
@@ -1162,10 +1162,10 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   to make them wait for the answer. A read is abandonable —
                   nothing has been written — so Cancel stays live for that. */}
               <button onClick={onClose} disabled={importing}
-                      className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40">Cancel</button>
+                      className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">Cancel</button>
               {!inspected && file && (
                 <button onClick={startMapping} disabled={busy || !account}
-                        className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-40">
+                        className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
                   {checking ? "Reading…" : "Map columns"}
                 </button>
               )}

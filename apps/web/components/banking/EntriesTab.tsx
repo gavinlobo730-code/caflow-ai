@@ -118,9 +118,9 @@ const WORKING: { id: EntryState; key: keyof Counts; word: (n: number) => string 
 const KIND_LABEL = { receipt: "Receipt", payment: "Payment", contra: "Contra" } as const;
 
 const STATE_STYLE: Record<EntryState, string> = {
-  needs_you: "bg-amber-50 text-amber-800 border-amber-200",
+  needs_you: "bg-state-attention-surface text-state-attention border-state-attention-border",
   proposed:  "bg-sky-50 text-sky-800 border-sky-200",
-  ready:     "bg-emerald-50 text-emerald-800 border-emerald-200",
+  ready:     "bg-state-ready-surface text-state-ready border-state-ready-border",
   covered:   "bg-slate-50 text-slate-600 border-slate-200",
   passed:    "bg-slate-100 text-slate-700 border-slate-200",
   set_aside: "bg-slate-50 text-slate-500 border-slate-200",
@@ -461,21 +461,21 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
     {
       key: "transaction_date", header: "Date", width: "6.5rem", sortable: true, hideable: false,
       accessor: (t) => t.transaction_date,
-      render: (t) => <span className="text-[#64748B] whitespace-nowrap tabular-nums">{t.transaction_date}</span>,
+      render: (t) => <span className="text-ps-label whitespace-nowrap tabular-nums">{t.transaction_date}</span>,
     },
     {
       key: "description", header: "Bank narration", sortable: true, searchable: true, hideable: false,
       accessor: (t) => t.parsed?.counterparty || t.description,
       render: (t) => (
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="truncate text-[#1E293B]" title={[t.description, t.parsed?.utr ? `UTR ${t.parsed.utr}` : null, t.parsed?.cheque_no ? `Cheque ${t.parsed.cheque_no}` : null].filter(Boolean).join("\n")}>
+          <span className="truncate text-ps-ink" title={[t.description, t.parsed?.utr ? `UTR ${t.parsed.utr}` : null, t.parsed?.cheque_no ? `Cheque ${t.parsed.cheque_no}` : null].filter(Boolean).join("\n")}>
             {t.parsed?.counterparty || t.description}
           </span>
           {t.parsed?.channel && (
-            <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B]">{t.parsed.channel}</span>
+            <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-ps-muted text-ps-label">{t.parsed.channel}</span>
           )}
           {(t.attachments?.length ?? 0) > 0 && (
-            <Paperclip size={11} className="shrink-0 text-[#94A3B8]"
+            <Paperclip size={11} className="shrink-0 text-ps-hint"
               aria-label={`${t.attachments!.length} supporting document${t.attachments!.length === 1 ? "" : "s"}`} />
           )}
         </div>
@@ -489,14 +489,14 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       accessor: (t) => entryText(t).main,
       render: (t) => {
         const e = entryText(t);
-        const cls = e.tone === "solid" ? "text-[#0F172A] font-medium"
-          : e.tone === "draft" ? "text-[#334155]"
-          : e.tone === "ask" ? "text-amber-800"
-          : "text-red-700";
+        const cls = e.tone === "solid" ? "text-ps-ink font-medium"
+          : e.tone === "draft" ? "text-ps-body"
+          : e.tone === "ask" ? "text-state-attention"
+          : "text-money-out";
         return (
           <div className="min-w-0">
             <p className={`truncate text-xs ${cls}`} title={e.main}>{e.main}</p>
-            {e.sub && <p className="truncate text-[10px] text-[#94A3B8]" title={e.sub}>{e.sub}</p>}
+            {e.sub && <p className="truncate text-[10px] text-ps-hint" title={e.sub}>{e.sub}</p>}
           </div>
         );
       },
@@ -504,12 +504,12 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
     {
       key: "spent", header: "Spent", width: "7.5rem", align: "right", sortable: true,
       accessor: (t) => t.debit_paise, exportValue: (t) => t.debit_paise / 100,
-      render: (t) => <span className="font-mono text-red-700">{t.debit_paise > 0 ? fmt(t.debit_paise) : ""}</span>,
+      render: (t) => <span className="font-mono text-money-out">{t.debit_paise > 0 ? fmt(t.debit_paise) : ""}</span>,
     },
     {
       key: "received", header: "Received", width: "7.5rem", align: "right", sortable: true,
       accessor: (t) => t.credit_paise, exportValue: (t) => t.credit_paise / 100,
-      render: (t) => <span className="font-mono text-green-700">{t.credit_paise > 0 ? fmt(t.credit_paise) : ""}</span>,
+      render: (t) => <span className="font-mono text-money-in">{t.credit_paise > 0 ? fmt(t.credit_paise) : ""}</span>,
     },
     {
       key: "state", header: "Status", width: "6.5rem", sortable: true,
@@ -529,20 +529,20 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
   const actionCell = (t: Entry) => {
     const stop = (e: React.MouseEvent) => e.stopPropagation();
     if (t.entry_state === "passed") {
-      return <button onClick={(e) => { stop(e); undoOne(t); }} className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] rounded-md text-[#475569] hover:bg-[#F8FAFC] inline-flex items-center gap-1"><Undo2 size={11} /> Undo</button>;
+      return <button onClick={(e) => { stop(e); undoOne(t); }} className="text-[11px] px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><Undo2 size={11} /> Undo</button>;
     }
     if (t.entry_state === "set_aside") {
-      return <button onClick={(e) => { stop(e); restoreOne(t); }} className="text-[11px] px-2.5 py-1 border border-[#E2E8F0] rounded-md text-[#475569] hover:bg-[#F8FAFC] inline-flex items-center gap-1"><RotateCcw size={11} /> Restore</button>;
+      return <button onClick={(e) => { stop(e); restoreOne(t); }} className="text-[11px] px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><RotateCcw size={11} /> Restore</button>;
     }
-    if (t.entry_state === "covered") return <span className="text-[10px] text-[#94A3B8]">—</span>;
+    if (t.entry_state === "covered") return <span className="text-[10px] text-ps-hint">—</span>;
     const canPass = t.entry_state === "ready" || (t.entry_state === "proposed" && t.draft_source !== "document");
     if (canPass) {
       return <button onClick={(e) => { stop(e); passOne(t); }}
         title={t.entry_state === "proposed" ? "Accept the proposal and pass it" : "Pass this entry into the books"}
-        className={`text-[11px] px-2.5 py-1 rounded-md font-medium text-white ${t.entry_state === "ready" ? "bg-[#059669] hover:bg-[#047857]" : "bg-[#0284C7] hover:bg-[#0369A1]"}`}>Pass</button>;
+        className={`text-[11px] px-2.5 py-1 rounded-md font-medium text-white ${t.entry_state === "ready" ? "bg-state-ready-solid hover:bg-state-ready" : "bg-brand hover:bg-brand-dark"}`}>Pass</button>;
     }
     return <button onClick={(e) => { stop(e); setDetailId(t.id); }}
-      className="text-[11px] px-2.5 py-1 rounded-md font-medium text-[#B45309] bg-amber-50 border border-amber-200 hover:bg-amber-100">Answer</button>;
+      className="text-[11px] px-2.5 py-1 rounded-md font-medium text-state-attention bg-state-attention-surface border border-state-attention-border hover:bg-state-attention-border">Answer</button>;
   };
 
   // ── bulk ─────────────────────────────────────────────────────────────────
@@ -646,45 +646,45 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
     <div className="space-y-3">
       {/* The three filters, setup on the right, and the one primary action. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1 bg-[#F8FAFC] rounded-lg p-1" role="tablist" aria-label="Entry state">
+        <div className="flex flex-wrap gap-1 bg-ps-bg rounded-lg p-1" role="tablist" aria-label="Entry state">
           {CHIPS.map((c) => (
             <button key={c.id} role="tab" aria-selected={filter === c.id}
               onClick={() => { setState(c.id); setPage(0); }}
-              className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap ${filter === c.id ? "bg-white text-[#0F172A] shadow-sm font-medium" : "text-[#64748B] hover:text-[#334155]"}`}>
-              {c.label} <span className={`ml-1 tabular-nums ${filter === c.id ? "text-[#334155]" : "text-[#94A3B8]"}`}>{c.count(counts)}</span>
+              className={`px-2.5 py-1 text-xs rounded-md whitespace-nowrap ${filter === c.id ? "bg-white text-ps-ink shadow-sm font-medium" : "text-ps-label hover:text-ps-body"}`}>
+              {c.label} <span className={`ml-1 tabular-nums ${filter === c.id ? "text-ps-body" : "text-ps-hint"}`}>{c.count(counts)}</span>
             </button>
           ))}
         </div>
         {bankAccounts.length > 1 && (
           <select value={bankAccountId} onChange={(e) => { setBankAccountId(e.target.value); setPage(0); }}
-            aria-label="Bank account" className="text-xs px-2 py-1.5 border border-[#E2E8F0] rounded-lg bg-white">
+            aria-label="Bank account" className="text-xs px-2 py-1.5 border border-ps-border rounded-lg bg-white">
             <option value="">All accounts</option>
             {bankAccounts.map((b) => <option key={b.id} value={b.id}>{b.bank_name} · {b.account_no.slice(-4)}</option>)}
           </select>
         )}
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => setShowAccounts(true)} title="Bank accounts and imported statements"
-            className="text-xs px-2 py-1.5 text-[#64748B] hover:text-[#334155] inline-flex items-center gap-1.5">
+            className="text-xs px-2 py-1.5 text-ps-label hover:text-ps-body inline-flex items-center gap-1.5">
             <Landmark size={12} /> Accounts
           </button>
           <button onClick={() => router.push(`/clients/${clientId}/reports/bank-book`)}
             title="The bank ledger with a running balance — under Reports"
-            className="text-xs px-2 py-1.5 text-[#64748B] hover:text-[#334155] inline-flex items-center gap-1.5">
+            className="text-xs px-2 py-1.5 text-ps-label hover:text-ps-body inline-flex items-center gap-1.5">
             <BookOpen size={12} /> Bank Book
           </button>
           <button onClick={() => (bankAccounts.length === 0 ? setShowAccounts(true) : setShowImport(true))}
             disabled={!!progress}
             title={bankAccounts.length === 0 ? "Add a bank account first" : "Import a statement (.csv, .xlsx or .pdf) for one of the bank accounts"}
-            className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-40 inline-flex items-center gap-1.5">
+            className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg disabled:opacity-40 inline-flex items-center gap-1.5">
             <Upload size={12} /> Import statement
           </button>
           <button onClick={settle} disabled={!!progress} title="Propose again for every line nobody has proposed for yet"
-            className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-40 inline-flex items-center gap-1.5">
+            className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg disabled:opacity-40 inline-flex items-center gap-1.5">
             <Sparkles size={12} /> Propose
           </button>
           <button onClick={passAllReady} disabled={!!progress || counts.ready === 0}
             title={counts.ready ? "Pass every Ready entry into the books" : "Nothing is ready to pass"}
-            className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#059669] hover:bg-[#047857] disabled:opacity-40 inline-flex items-center gap-1.5">
+            className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-state-ready-solid hover:bg-state-ready disabled:opacity-40 inline-flex items-center gap-1.5">
             <CheckCircle size={13} /> Pass {counts.ready} ready
           </button>
         </div>
@@ -693,48 +693,48 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       {/* Under To do, the working states as one line — each part narrows the
           list to that state; the lit one is bold, and clicking it again widens. */}
       {filter === "to_do" && counts.to_do > 0 && (
-        <p className="text-xs text-[#475569]" role="group" aria-label="Working states">
-          <span className="font-medium text-[#0F172A] tabular-nums">{counts.to_do} to do</span>
-          <span className="text-[#94A3B8]"> — </span>
+        <p className="text-xs text-ps-label" role="group" aria-label="Working states">
+          <span className="font-medium text-ps-ink tabular-nums">{counts.to_do} to do</span>
+          <span className="text-ps-hint"> — </span>
           {WORKING.filter((w) => counts[w.key] > 0).map((w, i) => (
             <span key={w.id}>
-              {i > 0 && <span className="text-[#94A3B8]"> · </span>}
+              {i > 0 && <span className="text-ps-hint"> · </span>}
               <button onClick={() => { setState(state === w.id ? "to_do" : w.id); setPage(0); }}
                 aria-pressed={state === w.id}
-                className={`tabular-nums underline decoration-dotted underline-offset-2 hover:text-[#0F172A] ${state === w.id ? "font-semibold text-[#0F172A]" : ""}`}>
+                className={`tabular-nums underline decoration-dotted underline-offset-2 hover:text-ps-ink ${state === w.id ? "font-semibold text-ps-ink" : ""}`}>
                 {w.word(counts[w.key])}
               </button>
             </span>
           ))}
-          {state !== "to_do" && <span className="text-[#94A3B8]"> · showing only these</span>}
+          {state !== "to_do" && <span className="text-ps-hint"> · showing only these</span>}
         </p>
       )}
 
       {progress && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl px-4 py-2.5 flex items-center gap-3" role="status">
-          <Loader2 size={14} className="animate-spin text-[#4338CA]" />
-          <p className="text-xs text-[#334155]">
+        <div className="bg-white border border-ps-border rounded-xl px-4 py-2.5 flex items-center gap-3" role="status">
+          <Loader2 size={14} className="animate-spin text-brand" />
+          <p className="text-xs text-ps-body">
             {progress.label}… <span className="tabular-nums">{progress.done}{progress.total != null ? ` of ${progress.total}` : ""}</span>
           </p>
           {progress.total ? (
-            <div className="flex-1 h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
-              <div className="h-full bg-[#4338CA] transition-all" style={{ width: `${Math.min(100, Math.round((progress.done / progress.total) * 100))}%` }} />
+            <div className="flex-1 h-1.5 bg-ps-muted rounded-full overflow-hidden">
+              <div className="h-full bg-brand transition-all" style={{ width: `${Math.min(100, Math.round((progress.done / progress.total) * 100))}%` }} />
             </div>
           ) : null}
         </div>
       )}
 
       {rulePrompt && (
-        <div className="bg-[#EEF2FF] border border-[#C7D2FE] rounded-xl px-4 py-3 space-y-2">
-          <p className="text-xs text-[#312E81]">
+        <div className="bg-ps-hover border border-brand-light rounded-xl px-4 py-3 space-y-2">
+          <p className="text-xs text-brand-dark">
             Those lines all contain <span className="font-mono">{rulePrompt.pattern}</span>. Keep this as a rule, so the next ones arrive proposed?
           </p>
           <div className="flex items-center gap-2">
             <input value={rulePrompt.pattern} disabled={ruleSaving}
               onChange={(e) => setRulePrompt((r) => (r ? { ...r, pattern: e.target.value } : r))}
-              className="px-2 py-1 text-xs font-mono border border-[#C7D2FE] rounded bg-white min-w-[16rem] flex-1" />
-            <button onClick={createRuleFromPrompt} disabled={actionInFlight} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40">{ruleSaving ? "Saving…" : "Create rule"}</button>
-            <button onClick={() => setRulePrompt(null)} disabled={ruleSaving} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-white">Not now</button>
+              className="px-2 py-1 text-xs font-mono border border-brand-light rounded bg-white min-w-[16rem] flex-1" />
+            <button onClick={createRuleFromPrompt} disabled={actionInFlight} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{ruleSaving ? "Saving…" : "Create rule"}</button>
+            <button onClick={() => setRulePrompt(null)} disabled={ruleSaving} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-white">Not now</button>
           </div>
         </div>
       )}
@@ -756,7 +756,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             : state === "to_do"
               ? "Every line on this account is passed or set aside. Import a statement to continue."
               : "No entries in this state."}
-        rowClassName={(t) => t.entry_state === "ready" ? "bg-[#F0FDF4] hover:bg-[#DCFCE7]" : t.entry_state === "needs_you" && t.draft_error ? "bg-red-50/40" : ""}
+        rowClassName={(t) => t.entry_state === "ready" ? "bg-state-ready-surface hover:bg-state-ready-hover" : t.entry_state === "needs_you" && t.draft_error ? "bg-state-problem-surface/40" : ""}
         onRowClick={(t) => setDetailId(t.id)}
         rowActions={actionCell}
         bulkActions={bulkActions}
@@ -766,19 +766,19 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
           onChange: ({ offset, pageSize: size }) => { setPageSize(size); setPage(Math.floor(offset / size)); },
         }}
       />
-      <p className="text-[10px] text-[#94A3B8] text-center">
+      <p className="text-[10px] text-ps-hint text-center">
         A line is a Receipt, a Payment or a Contra — the bank decides which. Click a line to answer it; Pass puts it in the books; Undo takes it back out.
       </p>
 
       {bookUnder && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4" onClick={() => !bookBusy && setBookUnder(null)}>
+        <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4" onClick={() => !bookBusy && setBookUnder(null)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Book under a ledger">
-            <h3 className="text-sm font-semibold text-[#0F172A]">Book {bookUnder.length} line{bookUnder.length === 1 ? "" : "s"} under…</h3>
+            <h3 className="text-sm font-semibold text-ps-ink">Book {bookUnder.length} line{bookUnder.length === 1 ? "" : "s"} under…</h3>
             <AccountLookup accounts={orderedAccounts} value={bookAccountId} onChange={setBookAccountId} ariaLabel="Ledger" placeholder="Choose a ledger…" />
-            <p className="text-[10px] text-[#94A3B8]">The lines become Ready with this ledger; nothing is passed until you pass it.</p>
+            <p className="text-[10px] text-ps-hint">The lines become Ready with this ledger; nothing is passed until you pass it.</p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setBookUnder(null)} disabled={bookBusy} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC]">Cancel</button>
-              <button onClick={applyBookUnder} disabled={actionInFlight || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</button>
+              <button onClick={() => setBookUnder(null)} disabled={bookBusy} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+              <button onClick={applyBookUnder} disabled={actionInFlight || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</button>
             </div>
           </div>
         </div>
@@ -797,14 +797,14 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       {/* The Accounts panel: setup, not a step. z-40 so the panel's own
           modals (add account, import) float above it at z-50. */}
       {showAccounts && (
-        <div className="fixed inset-0 bg-[#0F172A]/60 z-40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setShowAccounts(false)}>
+        <div className="fixed inset-0 bg-ps-ink/60 z-40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setShowAccounts(false)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl my-6 p-5 space-y-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Bank accounts and statements">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-sm font-semibold text-[#0F172A]">Bank accounts and statements</h3>
-                <p className="text-[11px] text-[#94A3B8] mt-0.5">Add an account once; import a statement when the bank sends one. New lines are proposed for the moment an import finishes.</p>
+                <h3 className="text-sm font-semibold text-ps-ink">Bank accounts and statements</h3>
+                <p className="text-[11px] text-ps-hint mt-0.5">Add an account once; import a statement when the bank sends one. New lines are proposed for the moment an import finishes.</p>
               </div>
-              <button onClick={() => setShowAccounts(false)} className="text-[#94A3B8] hover:text-[#475569]" aria-label="Close"><X size={16} /></button>
+              <button onClick={() => setShowAccounts(false)} className="text-ps-hint hover:text-ps-label" aria-label="Close"><X size={16} /></button>
             </div>
             <BankAccounts clientId={clientId} onChanged={afterSetupChange} />
           </div>

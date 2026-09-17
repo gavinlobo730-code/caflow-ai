@@ -107,21 +107,21 @@ export function CashRegister({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-5">
       <div className="min-w-0">
-        <h3 className="text-xs font-semibold text-[#1E293B]">Cash Book</h3>
-        <p className="text-[11px] text-[#94A3B8] mt-0.5">
+        <h3 className="text-xs font-semibold text-ps-ink">Cash Book</h3>
+        <p className="text-[11px] text-ps-hint mt-0.5">
           Every Cash ledger in date order with a running balance. To record cash,
           use a receipt or a vendor payment with the mode set to Cash — it posts
           to Cash in Hand.
         </p>
       </div>
 
-      {loading && <p className="text-[11px] text-[#94A3B8]">Loading…</p>}
+      {loading && <p className="text-[11px] text-ps-hint">Loading…</p>}
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+        <div className="rounded-lg border border-state-problem-border bg-state-problem-surface p-3">
           <p className="text-[11px] text-red-800">{error}</p>
           <button onClick={() => void load()}
-                  className="mt-2 text-[11px] text-red-700 underline disabled:opacity-40"
+                  className="mt-2 text-[11px] text-money-out underline disabled:opacity-40"
                   disabled={loading}>
             Try again
           </button>
@@ -129,9 +129,9 @@ export function CashRegister({ clientId }: { clientId: string }) {
       )}
 
       {book && (book.negative_days?.length ?? 0) > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+        <div className="rounded-lg border border-amber-300 bg-state-attention-surface p-3 space-y-2">
           <div className="flex items-center gap-1.5">
-            <AlertTriangle size={13} className="text-amber-700" />
+            <AlertTriangle size={13} className="text-state-attention" />
             <p className="text-[11px] font-semibold text-amber-900">
               Cash goes negative, which cannot happen in fact
             </p>
@@ -145,34 +145,34 @@ export function CashRegister({ clientId }: { clientId: string }) {
       )}
 
       {book && book.cash_accounts_checked === 0 && (
-        <p className="text-[11px] text-[#94A3B8]">
+        <p className="text-[11px] text-ps-hint">
           This client has no Cash ledger. &quot;Cash in Hand&quot; is seeded with every
           chart of accounts, so this usually means the chart was replaced.
         </p>
       )}
 
       {book?.accounts?.map((a) => (
-        <div key={a.account_id} className="rounded-xl border border-[#F1F5F9] bg-white">
-          <div className="flex items-baseline justify-between px-4 py-2.5 border-b border-[#F1F5F9]">
-            <h3 className="text-xs font-semibold text-[#1E293B]">
+        <div key={a.account_id} className="rounded-xl border border-ps-muted bg-white">
+          <div className="flex items-baseline justify-between px-4 py-2.5 border-b border-ps-muted">
+            <h3 className="text-xs font-semibold text-ps-ink">
               {a.account_code} {a.account_name}
             </h3>
-            <p className="text-[11px] text-[#64748B] font-mono">
+            <p className="text-[11px] text-ps-label font-mono">
               Opening {rupees(a.opening_balance_paise)} · Closing{" "}
-              <span className={a.closing_balance_paise < 0 ? "text-red-600 font-semibold" : ""}>
+              <span className={a.closing_balance_paise < 0 ? "text-state-problem font-semibold" : ""}>
                 {rupees(a.closing_balance_paise)}
               </span>
             </p>
           </div>
           {(a.lines?.length ?? 0) === 0 ? (
-            <p className="px-4 py-3 text-[11px] text-[#94A3B8]">
+            <p className="px-4 py-3 text-[11px] text-ps-hint">
               No cash movements in this period.
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-[11px]">
                 <thead>
-                  <tr className="text-[#64748B] border-b border-[#F1F5F9]">
+                  <tr className="text-ps-label border-b border-ps-muted">
                     <th className="text-left font-medium px-4 py-1.5">Date</th>
                     <th className="text-left font-medium px-4 py-1.5">Particulars</th>
                     <th className="text-right font-medium px-4 py-1.5">Receipts</th>
@@ -182,7 +182,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
                 </thead>
                 <tbody>
                   {a.lines.map((l, i) => (
-                    <tr key={`${a.account_id}-${i}`} className="border-b border-[#F8FAFC]">
+                    <tr key={`${a.account_id}-${i}`} className="border-b border-ps-bg">
                       <td className="px-4 py-1.5 whitespace-nowrap">{l.entry_date}</td>
                       <td className="px-4 py-1.5">{l.narration ?? l.reference_no ?? ""}</td>
                       <td className="px-4 py-1.5 text-right font-mono">
@@ -192,7 +192,7 @@ export function CashRegister({ clientId }: { clientId: string }) {
                         {l.credit_paise ? rupees(l.credit_paise) : ""}
                       </td>
                       <td className={`px-4 py-1.5 text-right font-mono ${
-                        (l.balance_paise ?? 0) < 0 ? "text-red-600 font-semibold" : ""}`}>
+                        (l.balance_paise ?? 0) < 0 ? "text-state-problem font-semibold" : ""}`}>
                         {rupees(l.balance_paise)}
                       </td>
                     </tr>

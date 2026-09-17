@@ -86,12 +86,12 @@ export default function BankPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0">
-        <div className="flex gap-0.5 bg-[#F8FAFC] rounded-lg p-1 w-fit" role="tablist" aria-label="Bank">
+        <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit" role="tablist" aria-label="Bank">
           {TABS.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} title={t.title}
               onClick={() => setTab(t.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
-                tab === t.id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#64748B] hover:text-[#334155]"}`}>
+                tab === t.id ? "bg-white text-ps-ink shadow-sm" : "text-ps-label hover:text-ps-body"}`}>
               {t.label}
             </button>
           ))}

@@ -90,8 +90,8 @@ const ROLES: Role[] = ["Partner", "Manager", "Executive", "Reviewer"];
 const ROLE_COLORS: Record<Role, string> = {
   Partner: "bg-purple-100 text-purple-700",
   Manager: "bg-blue-100 text-blue-700",
-  Executive: "bg-amber-100 text-amber-700",
-  Reviewer: "bg-[#F1F5F9] text-[#475569]",
+  Executive: "bg-state-attention-border text-state-attention",
+  Reviewer: "bg-ps-muted text-ps-label",
 };
 
 // ---- Invite Modal ----
@@ -125,13 +125,13 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
 
   if (success) {
     return (
-      <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
           <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto">
             <Mail className="w-6 h-6 text-green-600" />
           </div>
-          <h3 className="text-sm font-semibold text-[#0F172A]">Invitation Sent</h3>
-          <p className="text-xs text-[#64748B]">
+          <h3 className="text-sm font-semibold text-ps-ink">Invitation Sent</h3>
+          <p className="text-xs text-ps-label">
             Invite sent! {name} will receive a magic link at {email}. They&apos;ll be added as {role}.
           </p>
           <button onClick={onClose} className="w-full bg-blue-600 text-white text-sm py-2 rounded-lg hover:bg-blue-700">
@@ -143,15 +143,15 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Invite Team Member</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X className="w-4 h-4" /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Invite Team Member</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-red-700">
+          <div className="bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-money-out">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
@@ -159,9 +159,9 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Full Name</label>
+            <label className="text-xs font-medium text-ps-body block mb-1">Full Name</label>
             <input
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               placeholder="e.g. Priya Sharma"
               value={name}
               onChange={e => setName(e.target.value)}
@@ -169,10 +169,10 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Email Address</label>
+            <label className="text-xs font-medium text-ps-body block mb-1">Email Address</label>
             <input
               type="email"
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               placeholder="priya@firm.com"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -180,9 +180,9 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-[#334155] block mb-1">Role</label>
+            <label className="text-xs font-medium text-ps-body block mb-1">Role</label>
             <select
-              className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               value={role}
               onChange={e => setRole(e.target.value as Role)}
             >
@@ -190,7 +190,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
             </select>
           </div>
           <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]">
+            <button type="button" onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
               Cancel
             </button>
             <button
@@ -235,25 +235,25 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#0F172A]">Edit Role</h3>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#475569]"><X className="w-4 h-4" /></button>
+          <h3 className="text-sm font-semibold text-ps-ink">Edit Role</h3>
+          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
         </div>
-        <p className="text-xs text-[#64748B]">{member.full_name} · {member.email}</p>
+        <p className="text-xs text-ps-label">{member.full_name} · {member.email}</p>
 
         {error && (
-          <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-red-700">
+          <div className="bg-state-problem-surface border border-red-100 rounded-lg px-3 py-2 flex gap-2 text-xs text-money-out">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
 
         <div>
-          <label className="text-xs font-medium text-[#334155] block mb-1">Role</label>
+          <label className="text-xs font-medium text-ps-body block mb-1">Role</label>
           <select
-            className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
             value={role}
             onChange={e => setRole(e.target.value as Role)}
           >
@@ -261,7 +261,7 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
           </select>
         </div>
         <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className="flex-1 border border-[#E2E8F0] text-[#475569] text-sm py-2 rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
           <button
             disabled={saving || role === member.role}
             onClick={handleSave}
@@ -290,25 +290,25 @@ function ActionsMenu({ member, onEdit, onDeactivate }: ActionsMenuProps) {
     <div className="relative">
       <button
         onClick={() => setOpen(o => !o)}
-        className="p-1 rounded hover:bg-[#F1F5F9] text-[#94A3B8] hover:text-[#475569]"
+        className="p-1 rounded hover:bg-ps-muted text-ps-hint hover:text-ps-label"
       >
         <MoreVertical className="w-4 h-4" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-40 bg-white border border-[#F1F5F9] rounded-lg shadow-lg z-20 py-1">
+          <div className="absolute right-0 mt-1 w-40 bg-white border border-ps-muted rounded-lg shadow-lg z-20 py-1">
             <button
               onClick={() => { setOpen(false); onEdit(); }}
-              className="w-full text-left px-3 py-2 text-xs text-[#334155] hover:bg-[#F8FAFC] flex items-center gap-2"
+              className="w-full text-left px-3 py-2 text-xs text-ps-body hover:bg-ps-bg flex items-center gap-2"
             >
               <Shield className="w-3.5 h-3.5" />
               Edit Role
             </button>
             <button
               onClick={() => { setOpen(false); onDeactivate(); }}
-              className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-[#F8FAFC] ${
-                isActive ? "text-red-600" : "text-green-600"
+              className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-ps-bg ${
+                isActive ? "text-state-problem" : "text-green-600"
               }`}
             >
               <Users className="w-3.5 h-3.5" />
@@ -346,21 +346,21 @@ function RolePermissionsCard() {
   }, []);
 
   return (
-    <div className="bg-white rounded-xl border border-[#F1F5F9] p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-ps-muted p-5 space-y-4">
       <div className="flex items-center gap-2">
         <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
           <Lock className="w-3.5 h-3.5 text-violet-600" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-[#0F172A]">Role Permissions</h3>
-          <p className="text-xs text-[#94A3B8]">
+          <h3 className="text-sm font-semibold text-ps-ink">Role Permissions</h3>
+          <p className="text-xs text-ps-hint">
             Read from the server. Access is decided by role — there is no per-person override.
           </p>
         </div>
       </div>
 
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      {!matrix && !error && <p className="text-xs text-[#94A3B8]">Loading…</p>}
+      {error && <p className="text-xs text-state-problem">{error}</p>}
+      {!matrix && !error && <p className="text-xs text-ps-hint">Loading…</p>}
 
       {matrix && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -368,19 +368,19 @@ function RolePermissionsCard() {
             const allowed = MODULES.filter(m => roleReaches(matrix, role, m.resource));
             const denied = MODULES.filter(m => !roleReaches(matrix, role, m.resource));
             return (
-              <div key={role} className="border border-[#F1F5F9] rounded-lg p-3 space-y-2">
+              <div key={role} className="border border-ps-muted rounded-lg p-3 space-y-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[role]}`}>
                   {role}
                 </span>
                 <div className="space-y-1">
                   {allowed.map(m => (
-                    <div key={m.resource} className="flex items-center gap-1.5 text-xs text-green-700">
+                    <div key={m.resource} className="flex items-center gap-1.5 text-xs text-money-in">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
                       {m.label}
                     </div>
                   ))}
                   {denied.map(m => (
-                    <div key={m.resource} className="flex items-center gap-1.5 text-xs text-[#94A3B8]">
+                    <div key={m.resource} className="flex items-center gap-1.5 text-xs text-ps-hint">
                       <span className="w-1.5 h-1.5 rounded-full bg-gray-200 shrink-0" />
                       {m.label}
                     </div>
@@ -481,24 +481,24 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
 
   if (activeMembers.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center">
+      <div className="bg-white rounded-xl border border-ps-muted p-10 text-center">
         <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-        <p className="text-sm text-[#94A3B8]">No active team members to configure</p>
+        <p className="text-sm text-ps-hint">No active team members to configure</p>
       </div>
     );
   }
 
   if (matrixError) {
     return (
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-6 text-center">
-        <p className="text-sm text-red-600">{matrixError}</p>
+      <div className="bg-white rounded-xl border border-ps-muted p-6 text-center">
+        <p className="text-sm text-state-problem">{matrixError}</p>
       </div>
     );
   }
   if (!matrix) {
     return (
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-6 text-center">
-        <p className="text-sm text-[#94A3B8]">Loading access matrix…</p>
+      <div className="bg-white rounded-xl border border-ps-muted p-6 text-center">
+        <p className="text-sm text-ps-hint">Loading access matrix…</p>
       </div>
     );
   }
@@ -506,10 +506,10 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
   return (
     <div className="space-y-4">
       {/* Matrix table */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-[#0F172A]">Module Access</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">
+          <h2 className="text-sm font-semibold text-ps-ink">Module Access</h2>
+          <p className="text-xs text-ps-hint mt-0.5">
             What each member can actually reach, read from the server. A role sets
             the starting point; select a member to allow or block anything for
             that person alone. An <span className="text-orange-600 font-medium">amber</span> cell
@@ -520,24 +520,24 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-50 bg-[#F8FAFC]/50">
-                <th className="text-left text-xs font-medium text-[#64748B] px-4 py-3 min-w-[180px] sticky left-0 bg-[#F8FAFC]/80 backdrop-blur-sm z-10">
+              <tr className="border-b border-gray-50 bg-ps-bg/50">
+                <th className="text-left text-xs font-medium text-ps-label px-4 py-3 min-w-[180px] sticky left-0 bg-ps-bg/80 backdrop-blur-sm z-10">
                   Member
                 </th>
                 {MODULES.map(mod => (
                   <th
                     key={mod.resource}
-                    className="text-center text-xs font-medium text-[#64748B] px-2 py-3 min-w-[70px]"
+                    className="text-center text-xs font-medium text-ps-label px-2 py-3 min-w-[70px]"
                   >
                     <span className="block">{mod.label.split(" ")[0]}</span>
                     {mod.label.includes(" ") && (
-                      <span className="block text-[#94A3B8]">{mod.label.split(" ").slice(1).join(" ")}</span>
+                      <span className="block text-ps-hint">{mod.label.split(" ").slice(1).join(" ")}</span>
                     )}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+            <tbody className="divide-y divide-ps-bg">
               {activeMembers.map(member => {
                 const initials = member.full_name
                   .split(" ")
@@ -548,15 +548,15 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
                   .toUpperCase();
 
                 return (
-                  <tr key={member.id} className="hover:bg-[#F8FAFC]/40">
+                  <tr key={member.id} className="hover:bg-ps-bg/40">
                     {/* Sticky member name column */}
-                    <td className="px-4 py-3 sticky left-0 bg-white hover:bg-[#F8FAFC]/40 z-10">
+                    <td className="px-4 py-3 sticky left-0 bg-white hover:bg-ps-bg/40 z-10">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-blue-700 text-white flex items-center justify-center text-xs font-semibold shrink-0">
                           {initials}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-[#0F172A] truncate max-w-[110px]">
+                          <p className="text-xs font-medium text-ps-ink truncate max-w-[110px]">
                             {member.full_name}
                           </p>
                           <div className="flex items-center gap-1 mt-0.5">
@@ -605,7 +605,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
                                   : "bg-blue-600 border-blue-600"
                                 : overridden
                                   ? "border-orange-400 border-dashed bg-white"
-                                  : "border-[#E2E8F0] bg-white",
+                                  : "border-ps-border bg-white",
                             ].join(" ")}
                           >
                             {enabled && (
@@ -625,21 +625,21 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
         </div>
 
         {/* Legend */}
-        <div className="px-5 py-3 border-t border-gray-50 bg-[#F8FAFC]/30 flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
+        <div className="px-5 py-3 border-t border-gray-50 bg-ps-bg/30 flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs text-ps-label">
             <span className="w-4 h-4 rounded bg-blue-600 inline-block" />
             Access granted (role default)
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
+          <div className="flex items-center gap-1.5 text-xs text-ps-label">
             <span className="w-4 h-4 rounded bg-orange-500 inline-block" />
             Allowed for this person
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
+          <div className="flex items-center gap-1.5 text-xs text-ps-label">
             <span className="w-4 h-4 rounded border border-dashed border-orange-400 bg-white inline-block" />
             Blocked for this person
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
-            <span className="w-4 h-4 rounded border border-[#E2E8F0] bg-white inline-block" />
+          <div className="flex items-center gap-1.5 text-xs text-ps-label">
+            <span className="w-4 h-4 rounded border border-ps-border bg-white inline-block" />
             No access
           </div>
         </div>
@@ -824,8 +824,8 @@ export default function TeamPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#0F172A]">Team</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Manage your firm&apos;s team members and their roles</p>
+          <h1 className="text-xl font-semibold text-ps-ink">Team</h1>
+          <p className="text-sm text-ps-label mt-0.5">Manage your firm&apos;s team members and their roles</p>
         </div>
         <button
           onClick={() => setShowInvite(true)}
@@ -837,7 +837,7 @@ export default function TeamPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-red-700">
+        <div className="bg-state-problem-surface border border-red-100 rounded-lg px-4 py-3 flex gap-2 text-sm text-money-out">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
@@ -846,27 +846,27 @@ export default function TeamPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {SUMMARY_CARDS.map(card => (
-          <div key={card.label} className="bg-white rounded-xl border border-[#F1F5F9] p-4">
+          <div key={card.label} className="bg-white rounded-xl border border-ps-muted p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className={`w-8 h-8 rounded-xl ${card.gradient} flex items-center justify-center shadow-sm`}>
                 <card.icon className="w-4 h-4 text-white" />
               </div>
-              <span className="text-xs text-[#64748B]">{card.label}</span>
+              <span className="text-xs text-ps-label">{card.label}</span>
             </div>
-            <p className="text-lg font-semibold text-[#0F172A]">{loading ? "—" : card.value}</p>
-            <p className="text-xs text-[#94A3B8] mt-0.5">{card.sub}</p>
+            <p className="text-lg font-semibold text-ps-ink">{loading ? "—" : card.value}</p>
+            <p className="text-xs text-ps-hint mt-0.5">{card.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-[#F1F5F9]">
+      <div className="flex gap-1 border-b border-ps-muted">
         <button
           onClick={() => setActiveTab("members")}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
             activeTab === "members"
               ? "border-blue-600 text-blue-600"
-              : "border-transparent text-[#64748B] hover:text-[#334155]"
+              : "border-transparent text-ps-label hover:text-ps-body"
           }`}
         >
           Team Members
@@ -876,7 +876,7 @@ export default function TeamPage() {
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
             activeTab === "permissions"
               ? "border-blue-600 text-blue-600"
-              : "border-transparent text-[#64748B] hover:text-[#334155]"
+              : "border-transparent text-ps-label hover:text-ps-body"
           }`}
         >
           <Lock className="w-3.5 h-3.5" />
@@ -886,34 +886,34 @@ export default function TeamPage() {
 
       {/* Tab: Team Members */}
       {activeTab === "members" && (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-[#0F172A]">Team Members</h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5">All staff registered under your firm</p>
+            <h2 className="text-sm font-semibold text-ps-ink">Team Members</h2>
+            <p className="text-xs text-ps-hint mt-0.5">All staff registered under your firm</p>
           </div>
 
           {loading ? (
-            <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">Loading…</div>
+            <div className="px-5 py-10 text-center text-sm text-ps-hint">Loading…</div>
           ) : members.length === 0 ? (
             <div className="px-5 py-10 text-center">
               <Users className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-[#94A3B8]">No team members yet</p>
-              <p className="text-xs text-[#CBD5E1] mt-1">Invite someone to get started</p>
+              <p className="text-sm text-ps-hint">No team members yet</p>
+              <p className="text-xs text-ps-disabled mt-1">Invite someone to get started</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-50">
-                    <th className="text-left text-xs font-medium text-[#94A3B8] px-5 py-3">Name</th>
-                    <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Email</th>
-                    <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Role</th>
-                    <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Status</th>
-                    <th className="text-left text-xs font-medium text-[#94A3B8] px-3 py-3">Joined</th>
+                    <th className="text-left text-xs font-medium text-ps-hint px-5 py-3">Name</th>
+                    <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Email</th>
+                    <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Role</th>
+                    <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Status</th>
+                    <th className="text-left text-xs font-medium text-ps-hint px-3 py-3">Joined</th>
                     <th className="px-5 py-3 w-10"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
+                <tbody className="divide-y divide-ps-bg">
                   {members.map(member => {
                     const isCurrentUser = member.auth_user_id === currentUserId;
                     const isActive = member.is_active !== false;
@@ -929,14 +929,14 @@ export default function TeamPage() {
                       : "—";
 
                     return (
-                      <tr key={member.id} className={`hover:bg-[#F8FAFC]/50 ${!isActive ? "opacity-60" : ""}`}>
+                      <tr key={member.id} className={`hover:bg-ps-bg/50 ${!isActive ? "opacity-60" : ""}`}>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2.5">
                             <div className="w-8 h-8 rounded-full bg-blue-700 text-white flex items-center justify-center text-xs font-semibold shrink-0">
                               {initials}
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-[#0F172A]">
+                              <p className="text-sm font-medium text-ps-ink">
                                 {member.full_name}
                                 {isCurrentUser && (
                                   <span className="ml-1.5 text-xs text-blue-500 font-normal">(You)</span>
@@ -946,22 +946,22 @@ export default function TeamPage() {
                           </div>
                         </td>
                         <td className="px-3 py-3">
-                          <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
-                            <Mail className="w-3 h-3 shrink-0 text-[#CBD5E1]" />
+                          <div className="flex items-center gap-1.5 text-xs text-ps-label">
+                            <Mail className="w-3 h-3 shrink-0 text-ps-disabled" />
                             {member.email}
                           </div>
                         </td>
                         <td className="px-3 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[member.role] ?? "bg-[#F1F5F9] text-[#475569]"}`}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[member.role] ?? "bg-ps-muted text-ps-label"}`}>
                             {member.role}
                           </span>
                         </td>
                         <td className="px-3 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-green-100 text-green-700" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-green-100 text-money-in" : "bg-ps-muted text-ps-label"}`}>
                             {isActive ? "Active" : "Inactive"}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-xs text-[#64748B]">{joinedDate}</td>
+                        <td className="px-3 py-3 text-xs text-ps-label">{joinedDate}</td>
                         <td className="px-5 py-3">
                           {!isCurrentUser && (
                             <ActionsMenu
@@ -984,7 +984,7 @@ export default function TeamPage() {
       {/* Tab: Permissions */}
       {activeTab === "permissions" && (
         loading ? (
-          <div className="bg-white rounded-xl border border-[#F1F5F9] px-5 py-10 text-center text-sm text-[#94A3B8]">
+          <div className="bg-white rounded-xl border border-ps-muted px-5 py-10 text-center text-sm text-ps-hint">
             Loading…
           </div>
         ) : (
