@@ -293,93 +293,6 @@ def test_the_demo_form_checks_success_and_not_merely_res_ok():
 # is the reasoning.
 
 
-def test_the_land_mask_is_a_real_coastline():
-    """The globe's continents.
-
-    The hero used to be a WIREFRAME — a graticule and a point cloud with no
-    relationship to any landmass — because components/home/geography.ts had
-    rejected a coastline: it "would have to be written from memory here, and a
-    world map with the wrong coastline on the homepage of a product sold to
-    Indian professionals is a worse error than no map at all."
-
-    That reasoning was right and its premise was false. The mask is now
-    generated from Natural Earth's own shoreline (world-atlas@2's land-110m,
-    vendored at apps/marketing/scripts/land-110m.json, public domain) by
-    scripts/build-landmask.mjs.
-
-    So this test is the objection, kept: it decodes the committed artefact and
-    puts eleven named coordinates on the right side of the coastline. A
-    regenerated mask that puts Mumbai in the sea fails here rather than shipping.
-    """
-    import base64
-
-    src = (MARKETING / "components" / "home" / "landmask.ts").read_text(encoding="utf-8")
-
-    w = int(re.search(r"export const MASK_W = (\d+);", src).group(1))
-    h = int(re.search(r"export const MASK_H = (\d+);", src).group(1))
-    packed = re.search(r'const PACKED =\s*\n?\s*"([A-Za-z0-9+/=]+)";', src)
-    assert packed, "landmask.ts has no PACKED payload — was it hand-edited?"
-    bits = base64.b64decode(packed.group(1))
-    assert len(bits) == -(-w * h // 8), "PACKED is the wrong length for MASK_W x MASK_H"
-
-    def is_land(lat: float, lon: float) -> bool:
-        wrapped = ((lon + 180) % 360 + 360) % 360 - 180
-        row = min(h - 1, max(0, int((90 - lat) / 180 * h)))
-        col = min(w - 1, max(0, int((wrapped + 180) / 360 * w)))
-        i = row * w + col
-        return bool(bits[i >> 3] & (1 << (i & 7)))
-
-    # Deliberately UNAMBIGUOUS points. An earlier draft of this list used
-    # Chennai (13.08N, 80.27E), which is a port: at 0.5-degree cells it lands in
-    # a cell centred offshore of Mahabalipuram and reported "sea" correctly. A
-    # coastal city is a test of the grid resolution, not of the coastline.
-    for name, lat, lon, want in [
-        ("New Delhi", 28.61, 77.21, True),
-        ("Bengaluru", 12.97, 77.59, True),
-        ("Nagpur", 21.15, 79.09, True),
-        ("the Sahara", 23.0, 10.0, True),
-        ("the Amazon basin", -5.0, -60.0, True),
-        ("Antarctica", -80.0, 0.0, True),
-        ("London", 51.5, -0.1, True),
-        ("the Arabian Sea", 15.0, 65.0, False),
-        ("the Bay of Bengal", 15.0, 88.0, False),
-        ("the mid Atlantic", 30.0, -40.0, False),
-        ("the mid Pacific", 0.0, -150.0, False),
-    ]:
-        assert is_land(lat, lon) is want, (
-            f"the land mask puts {name} ({lat}, {lon}) on the wrong side of the "
-            f"coastline — expected {'land' if want else 'sea'}. Regenerate with "
-            f"`node scripts/build-landmask.mjs`."
-        )
-
-    land = sum(bin(b).count("1") for b in bits)
-    share = 100 * land / (w * h)
-    assert 27.0 <= share <= 31.0, (
-        f"the mask is {share:.1f}% land; the real figure is about 29%. A mask "
-        f"far off that has been mis-rasterised — most likely the scanline "
-        f"crossing rule, which is half-open in y for exactly this reason."
-    )
-
-
-def test_the_globe_data_is_not_a_build_dependency():
-    """world-atlas is 8.0 MB installed and this script reads 55 KB of it, for an
-    output that is committed. Adding it to package.json would put a registry
-    fetch of 8 MB on every Cloudflare Pages build of a file that cannot change
-    without somebody deliberately regenerating it. Same discipline as
-    domain/income_tax/schemas/ — the artefact is committed, a person regenerates
-    it, the build just reads it."""
-    pkg = (MARKETING / "package.json").read_text(encoding="utf-8")
-    for dep in ("world-atlas", "topojson-client", "topojson"):
-        assert dep not in pkg, (
-            f"{dep} is in apps/marketing/package.json. The land mask is "
-            f"generated offline and committed — see scripts/build-landmask.mjs."
-        )
-    assert (MARKETING / "scripts" / "land-110m.json").exists()
-    assert (MARKETING / "scripts" / "land-110m.LICENSE").exists(), (
-        "the vendored coastline must keep its licence beside it."
-    )
-
-
 def test_the_diagonal_seams_are_gone():
     """Owner review: "in the whole website the diagonal cards dont look good".
 
@@ -585,290 +498,115 @@ def test_the_product_is_described_the_same_way_everywhere():
     )
 
 
-def test_no_hero_card_is_anchored_off_the_edge_of_the_screen():
-    """The hero's module cards, and the one bug the hero is built to hide.
+# ── 6. The hero's Earth is artwork, 17 September 2026 ────────────────────────
 
-    A `side: "right"` card is positioned by its LEFT edge at `x%` of the stage
-    and grows rightward, so its outer edge is `stageLeft + x% x 640 + 196`. With
-    anchors at 89 and 91 the Payroll and Documents cards ran past the right edge
-    of the VIEWPORT — measured at 71px over at 1280, 56px at 1366 and 19px at
-    1440, so on the three commonest laptop widths those cards were sliced in
-    half. It shipped.
 
-    IT SHIPPED BECAUSE THE HERO IS `overflow-hidden`. The cards were clipped
-    rather than pushed out, so the document never gained a horizontal
-    scrollbar — and the check that was supposed to catch this measured
-    `scrollWidth` against `clientWidth` and saw a clean page at every width.
-    Only measuring the CARDS finds it, which is why this reads their anchors.
+def test_the_hero_earth_is_artwork_and_is_not_drawn_in_code():
+    """Four passes tried to DRAW this globe and the owner rejected every one.
 
-    The limit lives beside them as MAX_RIGHT_ANCHOR with its derivation; this
-    asserts every right-hand entry respects it, and that the constant has not
-    been quietly raised past what 1024px allows.
-    """
-    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+    A dotted globe, a golden one, a shaded planet, then a WebGL night Earth
+    generated from a coastline mask and a table of world cities — each reviewed
+    on a deploy preview, each still not the thing they had in mind. On
+    17-09-2026 they supplied finished artwork and closed the question: "This is
+    a static image, not something to draw with code ... Do not attempt to
+    recreate the globe, city lights, starfield, or card artwork with SVG,
+    Canvas, or CSS shapes."
 
-    m = re.search(r"const MAX_RIGHT_ANCHOR = ([\d.]+);", src)
-    assert m, "HeroVisual no longer declares MAX_RIGHT_ANCHOR"
-    limit = float(m.group(1))
-    # 1024px is the narrowest width that still renders cards (the `lg:` gate and
-    # canRunGlobe() agree on it): content 902px, stage 640px starting at x=323,
-    # card 196px, so (1009 - 196 - 323) / 640 = 76.6%.
-    assert limit <= 76.6, (
-        f"MAX_RIGHT_ANCHOR is {limit}, past what 1024px allows (76.6). A card "
-        f"anchored there is clipped by the hero's overflow-hidden rather than "
-        f"pushing the page wide, so nothing else will report it."
+    THIS GUARD EXISTS BECAUSE THE DELETION IS THE EASY THING TO UNDO. 3,365
+    lines came out — ten scene modules, the vendored three.min.js, its loader,
+    the Natural Earth mask and its generator — and the tempting next move, for
+    anyone asked to make the hero move, is to start drawing again. The decision
+    is an owner's, not a technical one, so it is asserted rather than left in a
+    comment.
+
+    It replaces six guards that protected the code globe: two on the land mask
+    (gone with the mask) and four on the DOM capability cards and the oversized
+    canvas (gone with both — the cards are baked into the artwork now). Those
+    were good guards about a design that no longer exists; keeping them would
+    have been asserting the shape of deleted files."""
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
+
+    # The artwork is present, is really a WebP, and is a sane weight for
+    # something above the fold on a marketing homepage.
+    art = MARKETING / "public" / "hero" / "earth-network.webp"
+    assert art.exists(), (
+        "apps/marketing/public/hero/earth-network.webp is missing. The hero has "
+        "no Earth at all without it — this is the artwork itself, not a cache."
+    )
+    head = art.read_bytes()[:12]
+    assert head[:4] == b"RIFF" and head[8:12] == b"WEBP", (
+        f"the hero artwork is not a WebP (header {head[:4]!r}). If the format "
+        f"changed, the reference in Hero.tsx has to change with it."
+    )
+    kb = art.stat().st_size / 1024
+    assert kb < 900, (
+        f"the hero artwork is {kb:.0f}KB. It is the Largest Contentful Paint on "
+        f"the homepage, so a heavy export is felt directly."
     )
 
-    entries = re.findall(r'key: "(\w+)".*?x: (\d+), y: (\d+), side: "(left|right)"', src)
-    assert len(entries) >= 6, f"only found {len(entries)} module anchors — has the shape changed?"
+    assert "/hero/earth-network.webp" in hero, (
+        "Hero.tsx no longer references the artwork. Nothing else does either — "
+        "it is the only consumer."
+    )
 
-    offenders = [
-        f"{key} at x={x}" for key, x, _y, side in entries
-        if side == "right" and float(x) > limit
-    ]
+    # NO SECOND GLOBE, DRAWN. The check is on the whole of apps/marketing
+    # rather than on Hero.tsx, because a reintroduced scene would arrive as its
+    # own module and be imported, exactly as the deleted one was.
+    banned = {
+        "three.min.js": "the vendored Three.js build was deleted with the scene",
+        "WebGLRenderer": "a WebGL scene is back in the marketing site",
+        "SphereGeometry": "something is building a globe out of geometry again",
+        "landmask": "the coastline mask was deleted; nothing should read it",
+        "canRunGlobe": "the WebGL capability gate was deleted with the loader",
+    }
+    offenders = []
+    for path, src in _sources():
+        for n, line in _live_lines(src):
+            for needle, why in banned.items():
+                if needle in line:
+                    offenders.append(f"{_rel(path)}:{n}  {needle} — {why}")
     assert not offenders, (
-        f"these right-hand hero cards are anchored past MAX_RIGHT_ANCHOR "
-        f"({limit}%) and will be clipped at 1024-1440px: {offenders}"
+        "the hero Earth is artwork by owner decision, and something is drawing "
+        "one again:\n  " + "\n  ".join(offenders)
     )
 
-    # Vacuity: the rule protects nothing if no card is a right-hand one, and it
-    # is toothless if they all sit far inside the limit anyway.
-    rights = [float(x) for _k, x, _y, side in entries if side == "right"]
-    assert rights, "no right-hand cards left — this rule has nothing to check"
-    assert max(rights) > limit - 15, (
-        "every right-hand card now sits well inside the limit, so this test "
-        "would pass however wrong the limit was. Either the layout changed "
-        "shape or the constant needs re-deriving."
-    )
-
-    # The LEFT side has its own limit and it is not the mirror of this one:
-    # past the stage's left edge is the hero's own headline and buttons, not
-    # background, so a left-hand card must stay inside the stage.
-    m = re.search(r"const MIN_LEFT_ANCHOR = ([\d.]+);", src)
-    assert m, "HeroVisual no longer declares MIN_LEFT_ANCHOR"
-    floor = float(m.group(1))
-    widest = re.search(r"const MAX_CARD_PX = (\d+);", src)
-    stage = re.search(r"const STAGE_MAX_PX = (\d+);", src)
-    assert widest and stage
-    needed = 100 * int(widest.group(1)) / int(stage.group(1))
-    assert floor >= needed, (
-        f"MIN_LEFT_ANCHOR is {floor} but the widest card ({widest.group(1)}px of "
-        f"a {stage.group(1)}px stage) needs {needed:.1f}. Below it the card hangs "
-        f"into the copy column and sits on the headline."
-    )
-    under = [
-        f"{key} at x={x}" for key, x, _y, side in entries
-        if side == "left" and float(x) < floor
-    ]
-    assert not under, (
-        f"these left-hand hero cards are anchored inside MIN_LEFT_ANCHOR "
-        f"({floor}%) and will overlap the hero copy: {under}"
+    # Vacuity: the scan above proves nothing if it looked at no files.
+    assert len(list(_sources())) > 20, (
+        "the source walk found almost nothing, so the ban list checked nothing."
     )
 
 
-def test_a_hero_card_does_not_position_itself_on_the_element_that_bobs():
-    """`side: "left"` did nothing at all, for a month, because of one CSS rule.
+def test_the_artwork_names_the_eight_modules_it_has_baked_in():
+    """The one real cost of artwork over code, and the only mitigation there is.
 
-    Each card carried BOTH its placement transform — `translate(-100%, -50%)`,
-    which is what hangs a left-hand card off its anchor — and the `.floaty`
-    class. `.floaty`'s keyframes set `transform` outright, and an animation's
-    value beats an inline one, so the placement was thrown away on every frame.
-    Every card grew rightward from its anchor, left and right alike, and the
-    vertical centring went with it.
+    The eight capability cards are PIXELS now — "Compliance", "Payroll", "AI
+    assistant" and five more. A screen reader cannot read them, they do not
+    reflow, and they cannot be translated. Everything else in the hero stayed
+    real HTML precisely so it would keep those properties; the cards could not,
+    because they arrived inside the image.
 
-    MEASURED: the Compliance card's LEFT edge sat exactly at its own `x%`, where
-    a left-hand card should have its RIGHT edge there. It reads as a styling
-    detail and it is not — it is why the left column had to be crowded onto the
-    globe to stay clear of the headline, and why two cards laid out 218px apart
-    measured 21px apart.
+    So the `alt` text has to carry them, and that is not decoration — it is the
+    only route by which a third of the hero's content reaches assistive
+    technology at all. An empty or generic alt would silently drop it."""
+    hero = (MARKETING / "components" / "home" / "Hero.tsx").read_text(encoding="utf-8")
 
-    The fix is structural: an outer element positions, an inner one is styled.
-    This asserts they stay separate, because nothing about the rendered page
-    says otherwise — the bug is silent, and CSS has no error for it.
-
-    ⚠️ THE BOB ITSELF IS CURRENTLY OFF, AND THIS RULE OUTLIVES IT. The hero
-    rebuild of 17-09-2026 is static by instruction — "no card floating", among
-    a list of movement to evaluate the design without — so `.floaty` appears on
-    no card today. An earlier version of this test ended by asserting `"floaty"
-    in src` as its anti-vacuity check, which would now fail for a reason that
-    is not a defect.
-
-    Deleting the test would be wrong: the bug is one CSS class away from coming
-    back the moment the animation stage starts, and that is precisely when
-    nobody will be re-reading this file. So the rule is kept in force for
-    whenever a bob exists, and the vacuity check is moved onto the STRUCTURE
-    that makes a bob safe — placement on the outer element, the card's own
-    transform on the inner one. That property is true right now, is what the
-    fix actually was, and fails loudly if the two elements are ever collapsed
-    back into one.
-    """
-    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
-
-    # Find every element that carries a bob class, and check none of them also
-    # carries a transform. Elements are matched loosely (the file is JSX, not
-    # something with a parser here) but the two attributes are distinctive.
-    blocks = re.findall(r"<div\b[^>]*>", src, re.S)
-
-    # THE COUNT IS ASSERTED BEFORE THE RULE, and not out of caution. The first
-    # version of this pattern was edited in through `sed`, which turned the `\b`
-    # into a literal BACKSPACE byte — `<div\x08[^>]*>` matches nothing, so the
-    # loop below ran zero times and this test passed green while the bug it
-    # describes was sitting in the file two lines away. That is exactly the
-    # failure #527 landed on main for ("the redesign's safety net was reporting
-    # green having observed nothing"), reproduced one directory over, within an
-    # hour of merging it. A loop over an empty list is not a passing test.
-    assert len(blocks) >= 4, (
-        f"only matched {len(blocks)} <div> openings in HeroVisual — the pattern "
-        f"is broken, and a loop over nothing passes for any input whatsoever."
-    )
-
-    for block in blocks:
-        bobs = "floaty" in block
-        places = "transform:" in block or "translate(" in block
-        assert not (bobs and places), (
-            "a hero card element carries BOTH a .floaty bob and a transform. "
-            "The animation's keyframes set `transform`, so they will not "
-            "coexist — the placement is silently discarded. Put the bob on a "
-            "child element.\n  " + block[:200]
+    for label in (
+        "Compliance", "Clients", "Practice analytics", "Banking",
+        "Accounting", "Payroll", "Documents", "AI assistant",
+    ):
+        assert label in hero, (
+            f"the artwork shows a {label!r} card and Hero.tsx never says so. "
+            f"It is baked into the image, so if it is not in the alt text it "
+            f"is not anywhere a screen reader can reach."
         )
 
-    # VACUITY, ON THE STRUCTURE RATHER THAN ON THE ANIMATION. See the ⚠️ in the
-    # docstring: the bob is off, so "a bob exists" can no longer be the check.
-    # What must stay true is the two-element split it was fixed with.
-    assert "translate(-100%, -50%)" in src, (
-        "no left-hand placement transform left in HeroVisual — this rule "
-        "guards nothing"
+    # And the alt must actually be wired to the image rather than the labels
+    # merely existing somewhere in the file.
+    assert "alt={" in hero and "ARTWORK_CARDS" in hero, (
+        "the module names are in Hero.tsx but are not reaching the image's alt "
+        "attribute, which is the only thing that makes them readable."
     )
-
-    placing = [b for b in blocks if "translate(-100%, -50%)" in b]
-    assert placing, "the placement transform is no longer on a <div> this pattern sees"
-    for block in placing:
-        assert "scale(" not in block, (
-            "the element that POSITIONS a hero card also carries its scale. "
-            "Two transforms on one element means one wins, which is the same "
-            "shape as the bug this test is named for — and it leaves nowhere "
-            "for the idle animation to go when it is switched back on.\n  "
-            + block[:200]
-        )
-
-
-def test_a_card_that_bobs_is_not_inside_something_with_an_opacity():
-    """A card's GLASS dies silently if any ancestor sets `opacity`.
-
-    An element with opacity below 1 is a BACKDROP ROOT. `backdrop-filter` on
-    anything inside it then samples that element's own contents instead of the
-    page behind it — so the card renders as a flat translucent rectangle with no
-    blur, and the composition loses the one property that makes it read as glass
-    rather than as a grey chip.
-
-    It is entirely silent. There is no console warning, no failed style, nothing
-    in a computed-style dump that says the filter did nothing, and the card is
-    still there. It shipped for exactly as long as it took to look at a
-    screenshot side by side.
-
-    THE OBVIOUS WAY TO PUSH A CARD BACK IS THE WAY THAT BREAKS IT, which is why
-    this is worth a test rather than a comment. The hero's capability cards
-    carry a `depth`, and the first thing anyone reaches for to express depth is
-    `opacity` on the positioning element. Depth is expressed in the card's own
-    colours instead — fill, border, blur radius, shadow and text — which is also
-    the truer cue: something further away is lower in CONTRAST, not
-    see-through.
-
-    The interface FRAGMENTS beside them do set opacity, and that is fine: they
-    are bare SVG with no backdrop-filter anywhere inside. So the rule is about
-    ancestry, not about the property, and this walks the tree to say so.
-    """
-    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
-
-    # Only div and span nest in this file; every other element (the icons,
-    # <svg>, <line>, <circle>) is self-closing or a leaf, so tracking those two
-    # is enough to know what is inside what.
-    #
-    # THE FILTER AND THE OPACITY ARE BOTH ATTRIBUTES OF A TAG, not text between
-    # tags — `backdropFilter` lives inside a style={{...}} on the card's own
-    # <div>. The first draft of this scan looked for them as separate tokens and
-    # found none at all, because the tag pattern had already swallowed them.
-    tag_re = re.compile(r"</?(?:div|span)\b[^>]*>")
-    stack: list[bool] = []
-    seen = 0
-    broken = []
-    for m in tag_re.finditer(src):
-        tag = m.group(0)
-        if tag.startswith("</"):
-            if stack:
-                stack.pop()
-            continue
-        has_opacity = "opacity" in tag
-        has_backdrop = "backdrop-blur" in tag or "backdropFilter" in tag
-        if has_backdrop:
-            seen += 1
-            # An ancestor's opacity is the real failure; the element's OWN is
-            # counted too, because an element with opacity is a backdrop root
-            # for the subtree it heads and the browsers disagree about whether
-            # that includes its own filter. Nothing here needs to find out.
-            if any(stack) or has_opacity:
-                broken.append(f"HeroVisual.tsx:{src.count(chr(10), 0, m.start()) + 1}")
-        if not tag.endswith("/>"):
-            stack.append(has_opacity)
-
-    # VACUITY, BOTH WAYS. A scan that found no backdrop filter proves nothing,
-    # and one whose stack did not balance was not reading the tree at all — and
-    # that second case is the one that passes green for any input whatsoever,
-    # which is the failure this file has already shipped twice.
-    assert seen, (
-        "no backdrop filter left in HeroVisual — this rule guards nothing. The "
-        "hero cards are meant to be glass."
+    assert 'alt=""' not in hero, (
+        "the hero artwork has an empty alt. It is not decorative — it carries "
+        "eight of the page's content labels."
     )
-    assert not stack, (
-        f"the div/span scan ended with {len(stack)} tags unclosed, so it was not "
-        f"reading the tree correctly and would pass for any input."
-    )
-    assert not broken, (
-        "a backdrop-filtered hero card sits inside an element that sets "
-        "`opacity`. That element is a BACKDROP ROOT, so the blur samples its "
-        "own contents rather than the page and the glass silently becomes a "
-        "flat rectangle. Express depth in the card's own colours instead:\n  "
-        + "\n  ".join(broken)
-    )
-
-
-def test_the_globe_canvas_is_larger_than_the_cell_it_is_given():
-    """The planet's size does not come from the grid, and must not be "tidied"
-    back into it.
-
-    Owner brief, 17-09-2026: the globe should "dominate the right half of the
-    hero" and may "extend beyond the normal boundaries of the hero composition
-    slightly" — while the hero's own layout and typography stay as they are. The
-    grid cell is 640px and every card anchor in HeroVisual, plus both of the
-    limits they are checked against, is a percentage of it. So the cell cannot
-    grow; the globe's CANVAS is hung outside it instead.
-
-    That is one `absolute` element with four lg: classes, and it reads exactly
-    like something a later tidy-up would replace with `inset-0`. Doing so costs
-    the planet about a third of its diameter, changes no anchor, breaks no
-    layout and produces no error — the hero simply goes back to the small flat
-    globe the brief was written about.
-    """
-    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
-
-    w = re.search(r"lg:w-\[(\d+)%\]", src)
-    h = re.search(r"lg:h-\[(\d+)%\]", src)
-    assert w and h, (
-        "HeroVisual no longer sizes the globe's canvas past its own cell. The "
-        "planet's scale comes from that oversize, not from the grid."
-    )
-    assert int(w.group(1)) > 110 and int(h.group(1)) > 110, (
-        f"the globe canvas is {w.group(1)}% x {h.group(1)}% of the stage. Below "
-        f"about 110% there is nothing for the atmosphere and the outer orbits "
-        f"to spill into and the planet has to shrink to fit."
-    )
-    # Offset by half the overhang in each axis, or the planet stops being
-    # centred on the cell the cards are anchored to.
-    for axis, over in (("left", int(w.group(1))), ("top", int(h.group(1)))):
-        m = re.search(rf"lg:{axis}-\[-(\d+)%\]", src)
-        assert m, f"the canvas has no lg:{axis} offset, so it is not centred on the stage"
-        assert abs(int(m.group(1)) - (over - 100) / 2) <= 2, (
-            f"lg:{axis} is -{m.group(1)}% for a {over}% canvas; centring it needs "
-            f"-{(over - 100) / 2:.0f}%. Off-centre, the globe and the card ring "
-            f"no longer share a middle and the control node stops sitting on it."
-        )
