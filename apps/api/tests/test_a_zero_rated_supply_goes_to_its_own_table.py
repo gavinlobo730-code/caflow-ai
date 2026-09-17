@@ -47,7 +47,8 @@ import pytest
 
 from domain.gst.classifier import (GSTInvoiceCategory, TransactionForClassification,
                                    classify_transaction)
-from domain.gst.gstr1_builder import (InvoiceForGSTR1, InvoiceLine, build_gstr1)
+from domain.gst.gstr1_builder import (InvoiceForGSTR1, InvoiceLine, build_gstr1,
+                                      withheld_gaps)
 
 GSTIN = "27AAAAA0000A1Z2"
 BUYER = "27BBBBB1111B1ZN"
@@ -198,6 +199,19 @@ def test_the_summary_counts_6b_and_6c_separately_from_4a():
     assert s["deemed_exports"] == 1
 
 
+def _own_gaps(out) -> list[dict]:
+    """The gaps a test in THIS file is about — the ones naming a document that
+    could not be filed.
+
+    Table 12's unit and HSN-digit gaps and Table 13's cancelled-count note are
+    about different questions and ride the same list, so `out.gaps == []` made
+    this module fail on changes that never touched zero-rated supplies.
+    `withheld_gaps` is the builder's own distinction rather than a private
+    prefix list, which would be wrong the first time a kind was added.
+    """
+    return withheld_gaps(out.gaps)
+
+
 # ── What cannot be filed is NAMED, not dropped ──────────────────────────────
 
 def test_an_sez_supply_with_no_recipient_gstin_is_reported_not_filed():
@@ -206,28 +220,28 @@ def test_an_sez_supply_with_no_recipient_gstin_is_reported_not_filed():
     return with it — so it is held out and named."""
     out = _payload([_invoice("INV-NOGST", GSTInvoiceCategory.SEZ_WOP, gstin=None)])
     assert "b2b" not in out.payload
-    assert [g["reference_no"] for g in out.gaps] == ["INV-NOGST"]
-    assert out.gaps[0]["kind"] == "SEZ_WOP"
-    assert "GSTIN" in out.gaps[0]["reason"]
+    assert [g["reference_no"] for g in _own_gaps(out)] == ["INV-NOGST"]
+    assert _own_gaps(out)[0]["kind"] == "SEZ_WOP"
+    assert "GSTIN" in _own_gaps(out)[0]["reason"]
 
 
 def test_one_unfilable_document_does_not_cost_the_others():
     out = _payload([_invoice("INV-OK", GSTInvoiceCategory.SEZ_WOP),
                     _invoice("INV-NOGST", GSTInvoiceCategory.SEZ_WOP, gstin=None)])
     assert set(_inv_typs(out.payload)) == {"INV-OK"}
-    assert [g["reference_no"] for g in out.gaps] == ["INV-NOGST"]
+    assert [g["reference_no"] for g in _own_gaps(out)] == ["INV-NOGST"]
 
 
 def test_a_complete_return_reports_no_gaps():
     out = _payload([_invoice("INV-1", GSTInvoiceCategory.B2B)])
-    assert out.gaps == []
+    assert _own_gaps(out) == []
 
 
 def test_a_b2b_invoice_with_no_gstin_is_not_reported_here():
     """It cannot happen — no GSTIN is what makes a supply B2C — and reporting
     it would be noise on a case the classifier has already handled."""
     out = _payload([_invoice("INV-1", GSTInvoiceCategory.B2B, gstin=None)])
-    assert out.gaps == []
+    assert _own_gaps(out) == []
 
 
 # ── The other silence the same mechanism closed ─────────────────────────────
@@ -254,7 +268,7 @@ def test_a_note_table_9b_has_no_row_for_is_reported_too():
     # This fixture carries no line detail, so Table 12 files it under 'OTH' and
     # the HSN digit requirement reports it too (GST-17) — correctly, and about
     # a different question. Filtered so this test keeps asserting its own rule.
-    own = [g for g in out.gaps if not str(g["kind"]).startswith("hsn_")]
+    own = _own_gaps(out)
     assert [g["kind"] for g in own] == ["CDNUR"]
     assert own[0]["reference_no"] == "CN-1"
     assert "Table 7" in own[0]["reason"], (
@@ -275,4 +289,4 @@ def test_an_inter_state_note_to_an_unregistered_person_is_filable():
 
     out = _payload([note])
     assert out.payload["cdnur"]
-    assert [g for g in out.gaps if not str(g["kind"]).startswith("hsn_")] == []
+    assert _own_gaps(out) == []

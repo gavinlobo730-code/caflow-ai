@@ -1696,6 +1696,47 @@ change. The code is the authority; keep this file in step with it.
   refused here) and every threshold and digit count is pinned exactly by
   `tests/test_how_many_hsn_digits_a_return_must_carry.py`.
 
+- **TABLE 13 DECLARES SERIAL RANGES, AND THE BUILDER EMITTED A COUNT WITH NO
+  RANGE AT ALL** (GST-18). `_build_doc_summary` put `{"num": count, "cancel":
+  0, "net_issue": count}` on every nature, and three of those four were wrong:
+  **`num` is the ROW'S INDEX** within the nature (Table 13 allows several
+  ranges per nature and numbers them 1, 2, 3), the COUNT is `totnum` and
+  `grep totnum apps/api` was EMPTY, **`from` and `to` were absent entirely** —
+  they are the point of the table, which is how CGST Rule 46(b)'s "consecutive
+  serial number ... unique for a financial year" is checked against the
+  invoices actually filed — and **`cancel` was a literal 0** for every client
+  and every period, so a cancelled invoice, exactly what this table exists to
+  declare, never appeared. `domain/gst/document_series.py` is the authority.
+  **ONE ROW PER CONTIGUOUS RUN, WHICH IS WHAT MAKES THE FIGURES AGREE.** Rule
+  46(b) expressly allows "one or multiple series", so a client running
+  INV/2026-27/nnn beside EXP/2026-27/nnn in one month has two ranges and a
+  single row spanning lowest to highest would contain documents from neither
+  and a `totnum` that does not match its own span. Documents are grouped by
+  SERIES HEAD (`invoice_series.split_number`, the same split the numbering
+  suggestion and the sequence-break warning use) and then by contiguous run, so
+  **`totnum == to - from + 1` is an INVARIANT rather than a hope** and a gap
+  becomes two rows — honest about a number nobody issued, and the several-rows
+  shape is what Table 13 is for. The number travels **AS WRITTEN**: a series
+  padded to four digits writes `0007`, and rejoining head + `str(seq)` would
+  declare a number appearing on no document. A number `split_number` cannot
+  read is its own range of one, `from == to`, rather than being given a
+  position in somebody's series.
+  **CANCELLED DOCUMENTS ARE AN INPUT, NOT A DERIVATION**, which is why `cancel`
+  was hard-coded in the first place: `gst_return_service._posted_sales` feeds
+  the builder posted invoices and issued notes, and a cancelled one is by
+  construction neither. `_cancelled_sales` reads them (`status = 'cancelled'`,
+  through `_opening.without_carried_over` like every other return reader), and
+  a caller supplying NONE gets `cancel = 0` with the return NAMING that nobody
+  looked — `GAP_CANCELLED_NOT_READ`. A nil meaning "we did not look" is not a
+  nil meaning "there were none", the `table_4a_gaps` discipline.
+  **`REPORTED_NOT_WITHHELD` / `withheld_gaps` is the builder's own
+  distinction**, and it exists because three test modules were each about to
+  keep a private list of "gap kinds that are not my question". A gap naming a
+  document held OUT of the payload is a different thing from one REPORTING a
+  particular the payload still carries (the HSN digits, the UQC, this
+  cancelled count), and the module that owns the vocabulary is the only place
+  that can stay right when a kind is added.
+
 - **A UNIT QUANTITY CODE IS A CODE, NOT A WORD, and the one module that knew
   which codes exist had ZERO IMPORTERS.** `models/uqc.py` held CBIC's fixed
   44-code list and named, in its own docstring, every place it was meant to be

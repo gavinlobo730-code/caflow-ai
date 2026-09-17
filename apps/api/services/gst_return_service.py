@@ -36,7 +36,7 @@ from domain.gst.gstr3b_computer import (
 from core.observability import capture_soft_failure
 import domain.gst.bank_charge_gst as bank_charge_gst
 import domain.gst.section_18_6 as section_18_6
-from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
+from domain.gst.gstr1_builder import CancelledDocument, InvoiceForGSTR1, build_gstr1
 from domain.gst.classifier import classify_transaction, TransactionForClassification
 from domain.gst.validator import GSTValidator, InvoiceToValidate
 
@@ -195,6 +195,34 @@ def _posted_sales(db, firm_id, client_id, start, end) -> list[dict]:
         lambda: db.table("client_sales_invoices").select("*")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .in_("status", list(_SALES_POSTED))
+            .gte("invoice_date", start).lte("invoice_date", end)))
+
+
+#: Which of Table 13's three natures this schema can report a CANCELLED
+#: document for. `client_sales_invoices.status` admits 'cancelled' (migration
+#: 050); `credit_notes.status` is CHECKed to draft/issued/applied and
+#: `sales_debit_notes.status` to draft/issued, so neither note can BE
+#: cancelled here. That is a fact about the schema, not a gap to paper over —
+#: a note recorded in error is discarded while still a draft, and a draft was
+#: never issued, so no number was consumed under Rule 46(b).
+_CANCELLABLE_NATURES = ("sales_invoice",)
+
+
+def _cancelled_sales(db, firm_id, client_id, start, end) -> list[dict]:
+    """Invoices ISSUED and then cancelled in the period — Table 13's `cancel`.
+
+    The number was consumed under CGST Rule 46(b)'s consecutive series and no
+    supply was made under it, which is exactly what Table 13 declares. These
+    are deliberately NOT fed to any other table: a cancelled invoice has no
+    taxable value and no place in Table 4.
+
+    Carried-over opening documents are excluded for `_posted_sales`' reason —
+    their numbers belong to the series of the system the client migrated from.
+    """
+    return _opening.without_carried_over(_paginate_all(
+        lambda: db.table("client_sales_invoices").select("*")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("status", "cancelled")
             .gte("invoice_date", start).lte("invoice_date", end)))
 
 
@@ -1975,7 +2003,23 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             # which is exactly the state this resolves.
             aggregate_turnover_paise = None
 
-    payload = build_gstr1(invoices, gstin, period, aggregate_turnover_paise)
+    # TABLE 13's CANCELLED DOCUMENTS (GST-18). Fetched here rather than derived
+    # in the builder, which is given the posted-and-issued documents only —
+    # which is why `cancel` was a hard-coded 0 for every client and period.
+    # A read that fails hands the builder None rather than an empty list, so
+    # the return says the count was not read instead of declaring that none
+    # were cancelled.
+    try:
+        cancelled_docs = [
+            CancelledDocument(reference_no=str(r.get("invoice_no") or r.get("id") or ""),
+                              transaction_type="sales_invoice")
+            for r in _cancelled_sales(db, firm_id, client_id, start, end)
+        ]
+    except Exception:  # noqa: BLE001 — see above; a named gap, not a nil
+        cancelled_docs = None
+
+    payload = build_gstr1(invoices, gstin, period, aggregate_turnover_paise,
+                          cancelled_documents=cancelled_docs)
 
     # Tables 11A and 11B — advances. Merged here rather than inside
     # build_gstr1() because they come from RECEIPTS, not from the invoices the

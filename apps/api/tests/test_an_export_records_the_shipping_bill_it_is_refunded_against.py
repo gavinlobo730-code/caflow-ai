@@ -37,7 +37,7 @@ from fastapi import HTTPException
 
 import routers.sales_invoices as si
 from domain.gst.classifier import GSTInvoiceCategory
-from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1
+from domain.gst.gstr1_builder import InvoiceForGSTR1, build_gstr1, withheld_gaps
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from tests.e2e_harness import FakeDB, wire_e2e
 
@@ -67,15 +67,19 @@ def _built(invoices):
 
 
 def _shipping_gaps(out) -> list[dict]:
-    """The gaps THIS file is about.
+    """The gaps THIS file is about — a document held OUT of the payload.
 
     These fixtures carry no line detail, so Table 12 files them under the
-    placeholder 'OTH' and the HSN digit requirement reports them (GST-17) —
-    correctly, and about a different question. Filtering keeps each test
-    asserting its own rule; `out.gaps == []` asserted the whole list and made
-    this module fail on a change that did not touch the shipping bill.
+    placeholder 'OTH' and both the HSN digit requirement (GST-17) and Table
+    13's cancelled count (GST-18) report them — correctly, and about different
+    questions. `out.gaps == []` asserted the whole list and made this module
+    fail twice on changes that never touched the shipping bill.
+
+    `withheld_gaps` is the builder's own distinction, so a kind added there
+    leaves this correct with nothing to update — a private list here would be
+    wrong the first time one was, silently, by passing.
     """
-    return [g for g in out.gaps if not str(g["kind"]).startswith("hsn_")]
+    return withheld_gaps(out.gaps)
 
 
 def _first_export(payload) -> dict:

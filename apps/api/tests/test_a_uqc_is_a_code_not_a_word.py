@@ -161,8 +161,17 @@ def _invoice(ref, lines, transaction_type="sales_invoice"):
 
 
 def _build(invoices):
+    """Answer the two questions this module is NOT about.
+
+    The turnover is stated so GST-17's HSN digit requirement is satisfied
+    rather than reported, and `cancelled_documents=[]` says Table 13's
+    cancelled numbers WERE read and there were none — which is true of every
+    fixture here. Both leave `out.gaps == []` meaning what it says: a clean
+    return reports nothing at all, rather than nothing about units.
+    """
     return build_gstr1(invoices, gstin="27AAACI1195H1ZT", period="062026",
-                       aggregate_turnover_paise=100_00_00_000)
+                       aggregate_turnover_paise=100_00_00_000,
+                       cancelled_documents=[])
 
 
 def _kinds(payload):

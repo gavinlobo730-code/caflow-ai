@@ -27,25 +27,42 @@ from typing import Optional
 from core.ist_clock import normalise_fy_label
 from domain.gst import hsn_digits
 
+#: The table, for a caller that wants to name it. Every query below writes the
+#: name out as a LITERAL instead of reaching through this: a dynamic table name
+#: makes every filter and every projection on that chain invisible to
+#: `tests/test_backend_columns_exist_pg.py`, which checks them against the real
+#: schema as strings — and on a brand-new table a typo has nothing else to
+#: catch it. Same reason `routers/firms.py` stopped joining `COLUMNS`.
 TABLE = "client_gst_turnover"
 
 
-def _rows(db, firm_id: str, client_id: str, financial_year: Optional[str] = None):
-    q = (db.table(TABLE)
-         .select("id, firm_id, client_id, financial_year, "
-                 "aggregate_turnover_paise, source_note, recorded_by, updated_at")
-         # firm_id explicitly, not RLS alone — the service-role key bypasses
-         # RLS and the app-layer filter is the primary isolation control.
-         .eq("firm_id", firm_id)
-         .eq("client_id", client_id))
-    if financial_year:
-        q = q.eq("financial_year", financial_year)
-    return q.order("financial_year", desc=True).execute().data or []
-
-
+# The two reads below are TWO COMPLETE CHAINS rather than one built up through
+# a local `q` with an `if`, and the repetition is the point: a filter applied to
+# a variable is attributed to no table, so the whole chain goes unread by the
+# schema check above. Two literals cost one duplicated projection and keep both
+# reads verified — `routers/firms.py` made the same trade.
 def list_for_client(db, firm_id: str, client_id: str) -> list[dict]:
     """Every year recorded for this client, newest first."""
-    return _rows(db, firm_id, client_id)
+    return (db.table("client_gst_turnover")
+            .select("id, firm_id, client_id, financial_year, "
+                    "aggregate_turnover_paise, source_note, recorded_by, updated_at")
+            # firm_id explicitly, not RLS alone — the service-role key bypasses
+            # RLS and the app-layer filter is the primary isolation control.
+            .eq("firm_id", firm_id)
+            .eq("client_id", client_id)
+            .order("financial_year", desc=True)
+            .execute().data or [])
+
+
+def _rows_for_fy(db, firm_id: str, client_id: str, financial_year: str) -> list[dict]:
+    return (db.table("client_gst_turnover")
+            .select("id, firm_id, client_id, financial_year, "
+                    "aggregate_turnover_paise, source_note, recorded_by, updated_at")
+            .eq("firm_id", firm_id)
+            .eq("client_id", client_id)
+            .eq("financial_year", financial_year)
+            .order("financial_year", desc=True)
+            .execute().data or [])
 
 
 def turnover_for_fy(db, firm_id: str, client_id: str,
@@ -56,7 +73,7 @@ def turnover_for_fy(db, firm_id: str, client_id: str,
     client who genuinely turned over nothing is a different answer and the
     caller has to be able to tell them apart.
     """
-    rows = _rows(db, firm_id, client_id, normalise_fy_label(financial_year))
+    rows = _rows_for_fy(db, firm_id, client_id, normalise_fy_label(financial_year))
     if not rows:
         return None
     return int(rows[0].get("aggregate_turnover_paise") or 0)
@@ -86,20 +103,32 @@ def record(db, firm_id: str, client_id: str, financial_year: str,
     fy = normalise_fy_label(financial_year)
     if aggregate_turnover_paise < 0:
         raise ValueError("aggregate turnover cannot be negative")
-    existing = _rows(db, firm_id, client_id, fy)
-    payload = {
-        "firm_id": firm_id,
-        "client_id": client_id,
-        "financial_year": fy,
-        "aggregate_turnover_paise": int(aggregate_turnover_paise),
-        "source_note": source_note,
-        "recorded_by": recorded_by,
-    }
+    existing = _rows_for_fy(db, firm_id, client_id, fy)
+    # Both payloads are written INLINE rather than built above and passed by
+    # name. A dict reached through a variable names no columns the schema check
+    # can read, and on a table this new a typo has nothing else to catch it —
+    # the same trade `services/purchase_cycle_service` and `routers/firms.py`
+    # made. The update omits the three the row is KEYED on: it was found by
+    # them, so re-sending them could only ever move a row to another year.
     if existing:
-        res = (db.table(TABLE).update(
-            {k: v for k, v in payload.items()
-             if k not in ("firm_id", "client_id", "financial_year")})
-            .eq("id", existing[0]["id"]).eq("firm_id", firm_id).execute())
-        return (res.data or [payload])[0]
-    res = db.table(TABLE).insert(payload).execute()
-    return (res.data or [payload])[0]
+        res = (db.table("client_gst_turnover").update({
+            "aggregate_turnover_paise": int(aggregate_turnover_paise),
+            "source_note": source_note,
+            "recorded_by": recorded_by,
+        }).eq("id", existing[0]["id"]).eq("firm_id", firm_id).execute())
+    else:
+        res = db.table("client_gst_turnover").insert({
+            "firm_id": firm_id,
+            "client_id": client_id,
+            "financial_year": fy,
+            "aggregate_turnover_paise": int(aggregate_turnover_paise),
+            "source_note": source_note,
+            "recorded_by": recorded_by,
+        }).execute()
+    if res.data:
+        return res.data[0]
+    # A driver that returns no representation: re-read rather than echo a dict
+    # assembled here, which would be a third copy of the column list and the
+    # one nobody checks.
+    rows = _rows_for_fy(db, firm_id, client_id, fy)
+    return rows[0] if rows else {}

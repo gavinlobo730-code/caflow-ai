@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
-from . import hsn_digits, uqc
+from . import document_series, hsn_digits, uqc
 from .classifier import B2B_SECTION_CATEGORIES, GSTInvoiceCategory
 
 
@@ -81,6 +81,23 @@ class InvoiceForGSTR1:
     shipping_bill_no: str | None = None
     shipping_bill_date: str | None = None    # YYYY-MM-DD; DD-MM-YYYY at the boundary
     port_code: str | None = None
+
+
+@dataclass(frozen=True)
+class CancelledDocument:
+    """A document whose number was ISSUED and then cancelled (GST-18).
+
+    Table 13 declares it: the number was consumed under CGST Rule 46(b)'s
+    consecutive series and no supply was made under it, so a return that
+    reports only the live documents leaves a hole in the series it declares.
+
+    Its own type, not an `InvoiceForGSTR1` with a flag: a cancelled document
+    has no taxable value, no tax and no place in any other table, and a flag
+    on the invoice would invite the next reader to let one through to Table 4.
+    """
+
+    reference_no: str
+    transaction_type: str   # sales_invoice | credit_note | debit_note
 
 
 # GSTR-1 permits paise, so its GSTN JSON uses 2-decimal rupees. Canonical
@@ -146,6 +163,7 @@ def build_gstr1(
     gstin: str,
     period: str,
     aggregate_turnover_paise: Optional[int] = None,
+    cancelled_documents: Optional[Sequence[CancelledDocument]] = None,
 ) -> GSTR1Payload:
     """Build the complete GSTR-1 payload from classified invoices.
 
@@ -162,6 +180,12 @@ def build_gstr1(
             The default used to be `0`, which is a real turnover meaning
             "below every threshold", so an unrecorded client was silently told
             HSN was optional (GST-17). Zero still means zero.
+
+        cancelled_documents: documents whose numbers were ISSUED and then
+            cancelled, for Table 13. **None means nobody looked** — the table's
+            `cancel` is then 0 and the return SAYS the count was not read,
+            rather than declaring that none were cancelled. An empty sequence
+            means somebody looked and found none.
 
     Returns:
         GSTR1Payload with GSTN-compatible JSON and human-readable summary.
@@ -235,7 +259,7 @@ def build_gstr1(
     if hsn:
         payload["hsn"] = {"data": hsn}
 
-    doc_issue = _build_doc_summary(invoices)
+    doc_issue = _build_doc_summary(invoices, cancelled_documents or ())
     if doc_issue:
         payload["doc_issue"] = {"doc_det": doc_issue}
 
@@ -246,6 +270,16 @@ def build_gstr1(
     # is invisible in the figure: "15" reads as a quantity whether or not it
     # added boxes to pieces.
     gaps.extend(hsn_uqc_gaps)
+    # TABLE 13's CANCELLED COUNT, when nobody supplied one (GST-18). A nil that
+    # means "we did not look" is not a nil that means "none were cancelled",
+    # and the table declares exactly that difference: a cancelled number was
+    # consumed under Rule 46(b) and no supply was made under it.
+    if cancelled_documents is None and doc_issue:
+        gaps.append({
+            "kind": GAP_CANCELLED_NOT_READ,
+            "reference_no": "",
+            "reason": document_series.CANCELLED_NOT_SUPPLIED,
+        })
     for inv in b2b_invoices:
         if inv.gst_invoice_category is GSTInvoiceCategory.B2B or inv.party_gstin:
             continue
@@ -758,10 +792,47 @@ def _build_exp(invoices: list[InvoiceForGSTR1]) -> list[dict]:
 # that can never shorten anything. The requirement is REPORTED now, in
 # `payload_gaps`, beside Table 12's unit gaps and for the same reasons.
 
+#: Table 13's cancelled count was not read — see `build_gstr1`.
+GAP_CANCELLED_NOT_READ = "cancelled_documents_not_read"
+
 #: A line whose HSN is shorter than the notification requires, or absent.
 GAP_HSN_DIGITS = "hsn_digits_below_requirement"
 #: The requirement rests on an aggregate turnover nobody has recorded.
 GAP_HSN_TURNOVER_NOT_RECORDED = "hsn_aggregate_turnover_not_recorded"
+
+#: THE TWO KINDS OF GAP, AND WHY A READER HAS TO TELL THEM APART.
+#:
+#: Most gaps name a document that could NOT be filed and is held out of the
+#: payload — an SEZ supply with no recipient GSTIN, an export with no shipping
+#: bill. Acting on one of those changes what the return contains.
+#:
+#: These report something about a row that IS in the payload: Table 12's units
+#: and HSN digits are filed exactly as recorded and reported beside, and Table
+#: 13's cancelled count says nobody read it. Acting on one changes a figure,
+#: not the population.
+#:
+#: Named here rather than left to each reader's own prefix test, because three
+#: test modules had started keeping private copies of "which kinds are not
+#: about my question" — and a list like that is wrong the first time a kind is
+#: added, silently, by passing.
+REPORTED_NOT_WITHHELD = frozenset({
+    GAP_HSN_DIGITS,
+    GAP_HSN_TURNOVER_NOT_RECORDED,
+    GAP_CANCELLED_NOT_READ,
+    uqc.GAP_UQC_NOT_RECORDED,
+    uqc.GAP_UQC_NOT_A_CODE,
+    uqc.GAP_UQC_MIXED_FOR_ONE_HSN,
+})
+
+
+def withheld_gaps(gaps: Sequence[dict]) -> list[dict]:
+    """The gaps naming a document held OUT of the payload.
+
+    The complement of `REPORTED_NOT_WITHHELD`, so a kind added there leaves
+    this answer correct with nothing to update.
+    """
+    return [g for g in gaps if g.get("kind") not in REPORTED_NOT_WITHHELD]
+
 
 #: Which categories count as B2B for the digit requirement. Derived from the
 #: classifier's own `B2B_SECTION_CATEGORIES` rather than listed, so a category
@@ -1018,36 +1089,65 @@ _DOC_NATURES = (
 )
 
 
-def _build_doc_summary(invoices: Sequence[InvoiceForGSTR1]) -> list[dict]:
-    """Count documents issued by type for Table 13.
+#: Which nature each transaction type is declared under. A map rather than an
+#: if/elif chain so a type added without a home here is skipped visibly rather
+#: than falling into "Invoices for outward supply".
+_NATURE_OF = {
+    "sales_invoice": "Invoices for outward supply",
+    "credit_note": "Credit Note",
+    "debit_note": "Debit Note",
+}
+
+
+def _build_doc_summary(
+    invoices: Sequence[InvoiceForGSTR1],
+    cancelled: Sequence["CancelledDocument"] = (),
+) -> list[dict]:
+    """Table 13 — the SERIAL RANGES of documents issued, by nature.
 
     doc_num used to be enumerate(..., start=1) over the natures that had a
     non-zero count. That is a different number from the one the form asks for
     and it moves with the data: a period with only credit notes filed them as
     doc_num 1, "Invoices for outward supply". Even a full period had Credit
     Note as 2 and Debit Note as 3, where the form fixes them at 5 and 4.
+
+    AND THE ROW ITSELF WAS THREE-QUARTERS WRONG (GST-18). It emitted
+    `{"num": count, "cancel": 0, "net_issue": count}`: `num` is the ROW's
+    index within the nature and not a count, `from`/`to` — the ranges this
+    table exists to declare — were absent entirely, `totnum` appeared nowhere
+    in the codebase, and `cancel` was a literal 0 for every client and every
+    period. `domain/gst/document_series` is the rule; the ranges are contiguous
+    runs inside each series head, so `totnum == to - from + 1` is an invariant
+    rather than a hope.
+
+    `cancelled` is an INPUT. A cancelled document is exactly what this table
+    declares — its number was consumed under Rule 46(b) and no supply was made
+    under it — and it cannot be derived from the posted-and-issued documents
+    the builder is given, which is why the old code hard-coded the zero.
     """
-    counts: dict[str, int] = {
-        "Invoices for outward supply": 0,
-        "Credit Note": 0,
-        "Debit Note": 0,
-    }
+    by_nature: dict[str, list[document_series.IssuedDocument]] = {}
     for inv in invoices:
-        if inv.transaction_type == "sales_invoice":
-            counts["Invoices for outward supply"] += 1
-        elif inv.transaction_type == "credit_note":
-            counts["Credit Note"] += 1
-        elif inv.transaction_type == "debit_note":
-            counts["Debit Note"] += 1
+        nature = _NATURE_OF.get(inv.transaction_type)
+        if nature is None:
+            continue
+        by_nature.setdefault(nature, []).append(
+            document_series.IssuedDocument(number=inv.reference_no))
+    for c in cancelled:
+        nature = _NATURE_OF.get(c.transaction_type)
+        if nature is None:
+            continue
+        by_nature.setdefault(nature, []).append(
+            document_series.IssuedDocument(number=c.reference_no, is_cancelled=True))
 
     result = []
-    for doc_type, count in counts.items():
-        if count == 0:
+    for nature, docs in by_nature.items():
+        rows = document_series.ranges_for(docs)
+        if not rows:
             continue
         result.append({
-            "doc_num": _DOC_NATURES.index(doc_type) + 1,
-            "doc_typ": doc_type,
-            "docs": [{"num": count, "cancel": 0, "net_issue": count}],
+            "doc_num": _DOC_NATURES.index(nature) + 1,
+            "doc_typ": nature,
+            "docs": rows,
         })
     # Ascending by nature, the order the form lists them in.
     return sorted(result, key=lambda d: d["doc_num"])
