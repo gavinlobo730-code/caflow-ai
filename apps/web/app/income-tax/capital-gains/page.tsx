@@ -6,6 +6,17 @@
  * Section 2(29A): Long-term capital gains
  * Section 45: Chargeability of capital gains
  * Section 48: Mode of computation
+ * Section 2(42A), proviso: a security LISTED in a recognised stock exchange in
+ *   India is long-term after 12 months where everything else needs 24 (IT-28).
+ *   The asset type cannot carry it, so it is its own tri-state field; blank is
+ *   NOT RECORDED, takes the unlisted period — more tax, never less — and comes
+ *   back as a named gap rather than a silent answer.
+ * Section 55(2)(ac): the s.112A grandfathered cost (IT-19) — for a holding
+ *   acquired before 01-02-2018 the cost is deemed to be the higher of the
+ *   actual cost and the lower of the 31-01-2018 fair market value and the sale
+ *   value. That fair market value is a fact about one scrip on one day and
+ *   nothing here can derive it, so it is an INPUT and blank is refused and
+ *   named. This page renders the working and computes none of it.
  * Section 54 / 54B / 54EC / 54F: reinvestment exemption (IT-19) — recorded
  *   per claim against a register entry and computed by
  *   domain/income_tax/reinvestment_exemption.py. This page renders the
@@ -45,16 +56,37 @@ import {
   type CapitalGainExemption, type ReinvestmentSectionInfo,
   type ReinvestmentSection, type AcquisitionKind, type TransferredAssetNature,
 } from "@/lib/data/income-tax";
+import { listingIsAsked, grandfatheringIsAsked } from "@/lib/income-tax/capitalGainsFacts";
 
-// Asset types with their holding period thresholds and tax treatment
-const ASSET_TYPES_CALC: { value: CapitalGainsAssetType; label: string }[] = [
+/** Anything the compute endpoint accepts. The calculator and the register
+ *  have different vocabularies and the backend takes the union of both. */
+type AnyCapitalGainsAssetType = CapitalGainsAssetType | CapitalGainsRegisterAssetType;
+
+// Asset types with their holding period thresholds and tax treatment.
+//
+// `bonds` and `other` are the register's values and are offered here too
+// (IT-28): a plain bond or debenture had nowhere to go on this form, so a CA
+// computing one reached for "Debt MF / Bonds", which routes to s.50AA — the
+// wrong section for a bond — and could never say the bond was LISTED, which
+// is what decides whether twelve months or twenty-four apply to it.
+const ASSET_TYPES_CALC: { value: AnyCapitalGainsAssetType; label: string }[] = [
   { value: "equity",     label: "Listed Equity / Equity MF" },
   { value: "debt_mf",    label: "Debt MF / Bonds (post Apr 2023)" },
+  { value: "bonds",      label: "Bonds / Debentures" },
   { value: "property",   label: "Immovable Property" },
   { value: "unlisted",   label: "Unlisted Shares" },
   { value: "vda",        label: "Cryptocurrency / VDA" },
   { value: "gold",       label: "Gold / Jewellery" },
+  { value: "other",      label: "Other Asset" },
 ];
+
+/** A tri-state on the wire: "" is NOT RECORDED and is sent as null, which the
+ *  engine reads as unlisted AND reports as a named gap. It is not a "no". */
+function listedFromChoice(choice: string): boolean | null {
+  if (choice === "listed") return true;
+  if (choice === "unlisted") return false;
+  return null;
+}
 
 // Asset types for register (matches DB constraint)
 const ASSET_TYPES_REG: { value: CapitalGainsRegisterAssetType; label: string }[] = [
@@ -104,6 +136,11 @@ const BLANK_REG = {
   asset_type: "equity_shares" as CapitalGainsRegisterAssetType,
   assessee_type: "unspecified" as CapitalGainsAssesseeType,
   transferred_asset_nature: "" as "" | TransferredAssetNature,
+  // Both "" are a THIRD state, exactly as `other_houses` above: the engine
+  // reads them as NOT RECORDED, takes the answer that cannot under-tax, and
+  // names the gap. Neither is a "no".
+  listed: "" as "" | "listed" | "unlisted",
+  fmv_31_01_2018_rs: "",
   purchase_date: "",
   sale_date: "",
   purchase_cost_rs: "",
@@ -133,7 +170,7 @@ export default function CapitalGainsPage() {
   const ciiYears = Object.keys(ciiByFy).sort();
 
   // ── Calculator state ──
-  const [assetType, setAssetType] = useState<CapitalGainsAssetType>("equity");
+  const [assetType, setAssetType] = useState<AnyCapitalGainsAssetType>("equity");
   // WHO the assessee is. The fifth proviso to s.112(1) gives a resident
   // individual or HUF the lower of 12.5% without indexation and 20% with it on
   // immovable property acquired before 23-07-2024; a company, an LLP or a
@@ -146,6 +183,16 @@ export default function CapitalGainsPage() {
   const [saleDate, setSaleDate] = useState("");
   const [saleRupees, setSaleRupees] = useState("");
   const [improvementRupees, setImprovementRupees] = useState("");
+  // IT-28 and IT-19. Two facts nothing in this product can derive. "" is NOT
+  // RECORDED in both cases and is sent as null, so the engine answers the way
+  // that cannot under-tax and says on the result which fact it was missing.
+  const [listedChoice, setListedChoice] = useState<"" | "listed" | "unlisted">("");
+  const [fmv2018Rupees, setFmv2018Rupees] = useState("");
+  const fmv2018Paise = fmv2018Rupees.trim()
+    ? paiseFromRupeeInput(fmv2018Rupees)
+    : null;
+  const askListing = listingIsAsked(assetType);
+  const askGrandfathering = grandfatheringIsAsked(assetType, purchaseDate);
 
   // A capital gain is sale less cost: read either as ₹1 and the gain is the
   // other one in full, taxed at whatever rate the holding period implies.
@@ -153,7 +200,10 @@ export default function CapitalGainsPage() {
   const salePaise = paiseFromRupeeInput(saleRupees || "0");
   const improvementPaise = paiseFromRupeeInput(improvementRupees || "0");
   const amountsUnreadable =
-    purchasePaise === null || salePaise === null || improvementPaise === null;
+    purchasePaise === null || salePaise === null || improvementPaise === null
+    // A fair market value that is not an amount must not read as "not
+    // recorded": those are opposite states and only one of them is honest.
+    || (fmv2018Rupees.trim() !== "" && fmv2018Paise === null);
   const purchaseFY = purchaseDate ? getFYFromDate(purchaseDate) : "";
   const saleFY = saleDate ? getFYFromDate(saleDate) : "";
 
@@ -168,8 +218,9 @@ export default function CapitalGainsPage() {
       // Not silently nothing: a field that is not an amount has to say so,
       // or the result panel just stays blank and the CA re-types the dates.
       setResult(null);
-      setComputeError("Purchase, sale and improvement costs must be amounts in "
-                      + "rupees, e.g. 2500000 — without commas.");
+      setComputeError("Purchase, sale, improvement and 31-01-2018 fair market "
+                      + "value must be amounts in rupees, e.g. 2500000 — "
+                      + "without commas.");
       return;
     }
     if (!purchaseDate || !saleDate || purchasePaise <= 0 || salePaise <= 0) {
@@ -187,13 +238,20 @@ export default function CapitalGainsPage() {
         sale_value_paise: salePaise as number,
         improvement_cost_paise: improvementPaise as number,
         assessee_type: assesseeType,
+        // Sent even where this form would not render the control, so the
+        // SERVER decides whether either fact reaches the computation. A value
+        // it does not use comes back named in `caveats` rather than silently
+        // discarded.
+        is_listed_security: listedFromChoice(listedChoice),
+        fmv_31_01_2018_paise: fmv2018Paise,
       })
         .then(r => { setResult(r); setComputeError(null); })
         .catch(e => { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); })
         .finally(() => setComputing(false));
     }, 400);
     return () => clearTimeout(timer);
-  }, [assetType, assesseeType, purchaseDate, saleDate, purchasePaise, salePaise, improvementPaise, amountsUnreadable]);
+  }, [assetType, assesseeType, purchaseDate, saleDate, purchasePaise, salePaise,
+      improvementPaise, amountsUnreadable, listedChoice, fmv2018Paise]);
 
   const showIndexation = assetType === "property" && result?.is_long_term && result?.tax_with_indexation_percent != null;
   const showCII = assetType === "property";
@@ -338,12 +396,18 @@ export default function CapitalGainsPage() {
         purchase_cost_paise: rsToP(regForm.purchase_cost_rs),
         sale_value_paise: rsToP(regForm.sale_value_rs),
         improvement_cost_paise: rsToP(regForm.improvement_cost_rs),
+        // The preview must be computed on exactly what will be SAVED, or the
+        // classification the CA approves is not the one persisted.
+        is_listed_security: listedFromChoice(regForm.listed),
+        fmv_31_01_2018_paise: regForm.fmv_31_01_2018_rs.trim()
+          ? paiseFromRupeeInput(regForm.fmv_31_01_2018_rs)
+          : null,
       }).then(setRegPreview).catch(() => setRegPreview(null));
     }, 400);
     return () => clearTimeout(timer);
   }, [showModal, regForm.asset_type, regForm.purchase_date, regForm.sale_date,
       regForm.assessee_type, regForm.purchase_cost_rs, regForm.sale_value_rs,
-      regForm.improvement_cost_rs]);
+      regForm.improvement_cost_rs, regForm.listed, regForm.fmv_31_01_2018_rs]);
 
   async function handleSaveRecord() {
     if (!selectedClientId) return;
@@ -362,6 +426,13 @@ export default function CapitalGainsPage() {
         // Unstated goes as null. Defaulting to any of the four would decide
         // which section reaches this transfer by omission.
         transferred_asset_nature: regForm.transferred_asset_nature || null,
+        // Same rule, two more facts (IT-28, IT-19). "" goes as null, which the
+        // register stores as NOT RECORDED and the engine reports as a gap —
+        // never as a "no".
+        is_listed_security: listedFromChoice(regForm.listed),
+        fmv_31_01_2018_paise: regForm.fmv_31_01_2018_rs.trim()
+          ? paiseFromRupeeInput(regForm.fmv_31_01_2018_rs)
+          : null,
         purchase_date: regForm.purchase_date,
         sale_date: regForm.sale_date,
         purchase_cost_paise: rsToP(regForm.purchase_cost_rs),
@@ -430,10 +501,53 @@ export default function CapitalGainsPage() {
 
               <div>
                 <label className="text-xs font-medium text-[#334155] block mb-1">Asset Type</label>
-                <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value as CapitalGainsAssetType)}>
+                <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={assetType} onChange={e => setAssetType(e.target.value as AnyCapitalGainsAssetType)}>
                   {ASSET_TYPES_CALC.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
               </div>
+
+              {/* IT-28. The proviso to s.2(42A) gives a LISTED security (other
+                  than a unit) twelve months where an unlisted asset needs
+                  twenty-four, and the asset type cannot carry it — a debenture
+                  is the same kind of asset either way. "Not recorded" is a
+                  real third answer: the engine then takes the unlisted period,
+                  which over-states the tax rather than under-stating it, and
+                  says so on the result. */}
+              {askListing && (
+                <div>
+                  <label className="text-xs font-medium text-[#334155] block mb-1">Listed on a recognised stock exchange in India?</label>
+                  <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          aria-label="Listed security"
+                          value={listedChoice} onChange={e => setListedChoice(e.target.value as "" | "listed" | "unlisted")}>
+                    <option value="">Not recorded</option>
+                    <option value="listed">Listed</option>
+                    <option value="unlisted">Not listed</option>
+                  </select>
+                  <p className="text-[11px] text-[#64748B] mt-1">
+                    Section 2(42A), proviso: a security listed in a recognised stock exchange
+                    in India is long-term after 12 months; anything else needs 24.
+                  </p>
+                </div>
+              )}
+
+              {/* IT-19. s.55(2)(ac) — the grandfathered cost. Shown only where
+                  the section reaches the transfer at all: a s.112A asset
+                  acquired before 01-02-2018. */}
+              {askGrandfathering && (
+                <div>
+                  <label className="text-xs font-medium text-[#334155] block mb-1">Fair market value on 31 Jan 2018 (₹) — the whole holding</label>
+                  <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                         aria-label="Fair market value on 31 January 2018"
+                         value={fmv2018Rupees} onChange={e => setFmv2018Rupees(e.target.value)} placeholder="Not recorded" />
+                  <p className="text-[11px] text-[#64748B] mt-1">
+                    Section 55(2)(ac): acquired before 1 February 2018, so the cost is deemed to
+                    be the higher of the actual cost and the lower of this and the sale value.
+                    Enter the value of the WHOLE holding sold, not a per-share price. Left
+                    blank, the actual cost stands and the gain is over-stated by the whole of
+                    the appreciation up to 31 January 2018.
+                  </p>
+                </div>
+              )}
 
               {/* The fifth proviso to s.112(1) — who the assessee is decides
                   whether the grandfathered 20%-with-indexation option is even
@@ -548,6 +662,15 @@ export default function CapitalGainsPage() {
                         <span className="text-[#475569]">Cost of Acquisition</span>
                         <span className="font-medium">₹{((purchasePaise ?? 0) / 100).toLocaleString("en-IN")}</span>
                       </div>
+                      {/* IT-19. Where s.55(2)(ac) substituted the cost, the gain
+                          below is measured against the DEEMED figure, so the
+                          working has to show it or the panel does not add up. */}
+                      {result.grandfathered_cost_is_applied && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-[#475569]">Deemed cost — s.55(2)(ac)</span>
+                          <span className="font-medium">₹{((result.cost_of_acquisition_paise ?? 0) / 100).toLocaleString("en-IN")}</span>
+                        </div>
+                      )}
                       {(improvementPaise ?? 0) > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-[#475569]">Improvement Cost</span>
@@ -603,6 +726,45 @@ export default function CapitalGainsPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* IT-19 / IT-28. `gaps` and `caveats` are NOT the same
+                      thing and are rendered differently on purpose: a gap is a
+                      fact nobody recorded and the CA has to go and find, a
+                      caveat is a settled reason a section does not reach this
+                      transfer. Collapsing them would turn "go and get this"
+                      into "nothing to do here". */}
+                  {(result.gaps?.length ?? 0) > 0 && (
+                    <div className="bg-orange-50 rounded-lg border border-orange-100 p-3 flex gap-2">
+                      <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-semibold text-orange-800">Not recorded — this changes the figure above</p>
+                        <ul className="mt-1 space-y-1">
+                          {result.gaps!.map((g, i) => (
+                            <li key={i} className="text-xs text-orange-700">{g}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                  {(result.caveats?.length ?? 0) > 0 && (
+                    <div className="bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] p-3">
+                      <ul className="space-y-1">
+                        {result.caveats!.map((c, i) => (
+                          <li key={i} className="text-xs text-[#475569]">{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {(result.grandfathering_working?.length ?? 0) > 0 && (
+                    <div className="bg-[#F8FAFC] rounded-lg border border-[#E2E8F0] p-3">
+                      <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide mb-1">Section 55(2)(ac) working</p>
+                      <ul className="space-y-1">
+                        {result.grandfathering_working!.map((w, i) => (
+                          <li key={i} className="text-xs text-[#475569]">{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   <div className="bg-amber-50 rounded-lg p-3 flex gap-2">
                     <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -1023,6 +1185,28 @@ export default function CapitalGainsPage() {
                     </p>
                   </div>
 
+                  {/* IT-28. Same third state as "Sold as" above: unrecorded is
+                      not "no". The engine takes the unlisted period, which
+                      over-states the tax, and names the gap on the preview. */}
+                  {listingIsAsked(regForm.asset_type) && (
+                    <div>
+                      <label className="text-xs font-medium text-[#334155] block mb-1">Listed on a recognised stock exchange in India?</label>
+                      <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              aria-label="Register listed security"
+                              value={regForm.listed}
+                              onChange={e => setRegForm(f => ({ ...f, listed: e.target.value as "" | "listed" | "unlisted" }))}>
+                        <option value="">Not recorded</option>
+                        <option value="listed">Listed</option>
+                        <option value="unlisted">Not listed</option>
+                      </select>
+                      <p className="text-[11px] text-[#64748B] mt-1">
+                        Section 2(42A), proviso — a listed security (other than a unit) is
+                        long-term after 12 months, everything else after 24. &quot;Bonds&quot; above
+                        cannot say which this is.
+                      </p>
+                    </div>
+                  )}
+
                   <div>
                     <label className="text-xs font-medium text-[#334155] block mb-1">Assessee</label>
                     <select className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1048,6 +1232,27 @@ export default function CapitalGainsPage() {
                       <input type="date" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={regForm.sale_date} onChange={e => setRegForm(f => ({ ...f, sale_date: e.target.value }))} />
                     </div>
                   </div>
+
+                  {/* IT-19. Shown only where s.55(2)(ac) reaches the transfer:
+                      a s.112A asset acquired before 01-02-2018. The purchase
+                      date is asked above it because it is half the test. */}
+                  {grandfatheringIsAsked(regForm.asset_type, regForm.purchase_date) && (
+                    <div>
+                      <label className="text-xs font-medium text-[#334155] block mb-1">Fair market value on 31 Jan 2018 (₹) — the whole holding</label>
+                      <input type="number" min="0" className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                             aria-label="Register fair market value on 31 January 2018"
+                             value={regForm.fmv_31_01_2018_rs}
+                             onChange={e => setRegForm(f => ({ ...f, fmv_31_01_2018_rs: e.target.value }))}
+                             placeholder="Not recorded" />
+                      <p className="text-[11px] text-[#64748B] mt-1">
+                        Section 55(2)(ac) — acquired before 1 February 2018, so the cost is
+                        deemed to be the higher of the actual cost and the lower of this and
+                        the sale value. The WHOLE holding, not a per-share price. Left blank,
+                        the actual cost stands and the gain is over-stated by the whole of the
+                        appreciation up to 31 January 2018.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -1080,6 +1285,12 @@ export default function CapitalGainsPage() {
                         <span className="text-[#475569]">Tax Rate</span>
                         <span className="font-medium text-[#0F172A]">{regPreview.tax_rate_percent}%</span>
                       </div>
+                      {regPreview.grandfathered_cost_is_applied && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-[#475569]">Deemed cost — s.55(2)(ac)</span>
+                          <span className="font-medium text-[#0F172A]">{fmtRs(regPreview.cost_of_acquisition_paise ?? 0)}</span>
+                        </div>
+                      )}
                       {regForm.asset_type === "property" && (
                         <div className="flex justify-between text-xs">
                           <span className="text-[#475569]">Indexed Cost</span>
@@ -1087,6 +1298,28 @@ export default function CapitalGainsPage() {
                         </div>
                       )}
                     </div>
+                  )}
+
+                  {/* The classification and the rate above are what gets
+                      PERSISTED, so a fact that would move either has to be
+                      said before the CA presses Save — not afterwards on the
+                      calculator tab. */}
+                  {(regPreview?.gaps?.length ?? 0) > 0 && (
+                    <div className="bg-orange-50 rounded-lg border border-orange-100 px-4 py-3">
+                      <p className="text-xs font-semibold text-orange-800">Not recorded — this changes what is saved</p>
+                      <ul className="mt-1 space-y-1">
+                        {regPreview!.gaps!.map((g, i) => (
+                          <li key={i} className="text-xs text-orange-700">{g}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {(regPreview?.caveats?.length ?? 0) > 0 && (
+                    <ul className="space-y-1">
+                      {regPreview!.caveats!.map((c, i) => (
+                        <li key={i} className="text-xs text-[#475569]">{c}</li>
+                      ))}
+                    </ul>
                   )}
                 </div>
                 <div className="flex justify-end gap-3 px-5 py-4 border-t">

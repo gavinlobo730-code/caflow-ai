@@ -568,13 +568,21 @@ def update_gstr1_status(
         if body.status == "submitted" and not _USE_MOCK:
             from core.supabase_client import get_supabase
             try:
+                _db = get_supabase()
+                # THE REGISTRATION'S OWN REGIME DECIDES WHAT IS LOCKED
+                # (GST-11). A QRMP return (Rule 61A) really covered three
+                # months, so a `filings` row derived as ONE would leave the
+                # other two editable after a return declaring them was filed —
+                # and journal_period_lock_reason reads nothing but this row.
+                _reg = _registration_for(_db, firm_id, rec)
                 record_filing(
-                    get_supabase(), firm_id=firm_id,
+                    _db, firm_id=firm_id,
                     client_id=rec.get("client_id") or "",
                     filing_type=FILING_TYPE_GSTR1, period=rec.get("period") or "",
                     filed_date=body.filed_date, arn=body.arn,
                     tax_payable_paise=rec.get("total_taxable_paise"),
                     summary=rec.get("summary_json"),
+                    frequency=(_reg.filing_frequency if _reg else None),
                 )
             except Exception:
                 # The return IS filed; the CA marked it so. Failing the request
@@ -796,11 +804,15 @@ def update_gstr3b_status(
         if body.status == "submitted" and not _USE_MOCK:
             from core.supabase_client import get_supabase
             try:
+                _db = get_supabase()
+                # See the GSTR-1 path above — a QRMP quarter locks three months.
+                _reg = _registration_for(_db, firm_id, rec)
                 record_filing(
-                    get_supabase(), firm_id=firm_id,
+                    _db, firm_id=firm_id,
                     client_id=rec.get("client_id") or "",
                     filing_type=FILING_TYPE_GSTR3B, period=rec.get("period") or "",
                     filed_date=body.filed_date, arn=body.arn,
+                    frequency=(_reg.filing_frequency if _reg else None),
                     # WHAT WAS PAID, not what the set-off left. §49(4) with
                     # §2(82) makes reverse-charge tax payable in cash on top of
                     # the residual, so net_tax_paise is smaller than the challan
@@ -1670,13 +1682,45 @@ def _delete_return(current_user: dict, table: str, mock_store: dict,
                                "period": rec.get("period")})
 
 
+def _registration_for(db, firm_id: str, rec: dict):
+    """The registration a STORED return row was prepared under, or None.
+
+    Which filing regime a return belongs to is a fact about the REGISTRATION
+    (GST-20 put `filing_frequency` on each), and every caller here holds a row
+    carrying `client_id` and `gstin` rather than a request. Resolving it is
+    what lets a recompute and a filing record cover the same three months a
+    QRMP return actually covered (GST-11).
+
+    None rather than an exception: a stored row whose GSTIN the client no
+    longer holds must still be readable and must still be markable as filed —
+    the monthly window is then what it always was, which is the behaviour every
+    one of these paths had before.
+    """
+    from services import client_gst_registration_service as regs
+    try:
+        return regs.resolve(db, firm_id, rec.get("client_id") or "",
+                            rec.get("gstin") or None)
+    except Exception:  # noqa: BLE001 — see the docstring
+        return None
+
+
 def _books_now(current_user: dict, rec: dict) -> dict:
-    """The figures this period's books produce RIGHT NOW."""
+    """The figures this period's books produce RIGHT NOW.
+
+    Over the SAME window the saved return covers. Recomputing a QRMP quarter as
+    one month would report every quarterly return as stale by two months of
+    supplies and refuse the CA's own approval (GST-11).
+    """
     from core.supabase_client import get_supabase
     from services import gst_return_service
+    db = get_supabase()
+    firm_id = current_user["firm_id"]
+    reg = _registration_for(db, firm_id, rec)
     return gst_return_service.gstr3b_from_books(
-        get_supabase(), current_user["firm_id"], rec.get("client_id") or "",
-        rec.get("period") or "", rec.get("gstin") or "")
+        db, firm_id, rec.get("client_id") or "",
+        rec.get("period") or "", rec.get("gstin") or "",
+        frequency=(reg.filing_frequency if reg else None),
+        state_code=(reg.state_code if reg else None))
 
 
 _COMPARED = ("tax_liability_paise", "itc_claimed_paise", "net_tax_paise")

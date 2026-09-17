@@ -63,6 +63,19 @@ export interface ComplianceInvoice {
    *  shared/eway-parity-vectors.json. Same arrangement, and same reason, as
    *  lib/accounting/scheduleIiiCaptions.ts. */
   eway_assessment?: ServedEwayAssessment | null;
+  /** The invoice's own date, ISO YYYY-MM-DD. Rule 48(4)'s threshold has been
+   *  notified downward six times, and it is the DATE OF THE DOCUMENT that
+   *  decides which one governs — a 2021 invoice keeps 2021's threshold for
+   *  ever. Only the browser FALLBACK reads it; the served answer carries the
+   *  threshold it already resolved. */
+  invoice_date?: string | null;
+  /** What the SERVER decided about Rule 48(4) — `irn_assessment` off
+   *  GET /api/sales-invoices/{id}, computed by apps/api/domain/gst/irn_scope.py,
+   *  which is the authority. `assessIrnScope` below is a FALLBACK for the
+   *  window where this frontend has redeployed ahead of the backend, and is
+   *  pinned to that module by shared/irn-parity-vectors.json. Same arrangement,
+   *  and same reason, as `eway_assessment` above. */
+  irn_assessment?: ServedIrnScope | null;
 }
 
 /** The server's own answer, in its wire spelling. */
@@ -175,9 +188,27 @@ export interface Eligibility {
 const isPosted = (s: InvoiceStatus) => s === "issued" || s === "partially_paid" || s === "paid";
 
 /**
- * IRN eligibility (CGST Rule 48(4)). E-invoicing applies to B2B / export / SEZ
- * supplies of eligible taxpayers; B2C is out of scope. Firm turnover-threshold
- * eligibility is a firm-level setting surfaced as an advisory, never a blocker.
+ * IRN eligibility (CGST Rule 48(4)).
+ *
+ * THE SCOPE TEST IS THE SERVER'S. apps/api/domain/gst/irn_scope.py is the
+ * authority and `assessIrnScope` below is a FALLBACK for the window where this
+ * frontend has redeployed ahead of the backend, pinned to it by
+ * shared/irn-parity-vectors.json — the same arrangement, and the same reason,
+ * as `assessEway` above and lib/accounting/scheduleIiiCaptions.ts.
+ *
+ * Until SALES-18 this function WAS the only implementation of Rule 48(4) in the
+ * repository, which is the defect: a statutory rule in the browser bundle has
+ * no Python twin to disagree with it and no parity vector to fail. It also
+ * declined the entire person-side limb with one fixed sentence on every
+ * invoice — "E-invoicing applies only above your firm's turnover threshold" —
+ * because nothing held an aggregate turnover. Migration 401 does now, so the
+ * server answers that limb and the sentence is a real figure.
+ *
+ * WHAT BLOCKS AND WHAT MERELY WARNS. The SUPPLY limb blocks: preparing an IRN
+ * record for a B2C invoice is meaningless and the IRP rejects it. The PERSON
+ * limb only warns — the recorded turnover may be stale or absent, this is a
+ * prepare-only workflow, and refusing on a figure a CA has not got round to
+ * recording would stop them doing the one thing the screen is for.
  */
 export function irnEligibility(inv: ComplianceInvoice, alreadyGenerated: boolean): Eligibility {
   const blockers: string[] = [];
@@ -185,16 +216,300 @@ export function irnEligibility(inv: ComplianceInvoice, alreadyGenerated: boolean
   if (!isPosted(inv.status)) blockers.push("Issue the invoice before generating an IRN.");
   if (alreadyGenerated) blockers.push("An active IRN already exists for this invoice.");
 
-  const t = gstTreatment(inv);
-  const isExportOrSez = t.treatment !== "regular";
-  if (!t.registered && !isExportOrSez) {
-    blockers.push("IRN applies to B2B/export/SEZ supplies; this is a B2C invoice.");
-  }
+  // THE SERVER'S ANSWER FIRST; the `??` reaches the mirror only where the
+  // backend has not redeployed yet. The mirror passes `null` for the turnover
+  // because the browser holds none — which `assessIrnScope` reports as the
+  // strict reading with a named gap rather than as "below the threshold".
+  const scope = fromServedIrn(inv.irn_assessment) ?? assessIrnScope({
+    treatment: gstTreatment(inv).treatment,
+    recipient_gstin: inv.recipient_gstin ?? null,
+    invoice_date: inv.invoice_date ?? "",
+    highest_aato_paise: null,
+  });
+
+  if (!scope.supplyInScope) blockers.push(scope.supplyReason);
+  else warnings.push(scope.reason);
+  for (const gap of scope.gaps) warnings.push(gap);
+
   for (const i of validateMandatoryGstFields(inv)) {
     (i.severity === "error" ? blockers : warnings).push(i.message);
   }
-  warnings.push("E-invoicing applies only above your firm's turnover threshold — confirm before generating.");
   return { eligible: blockers.length === 0, blockers, warnings };
+}
+
+// ── Rule 48(4): must this supply carry an IRN? ───────────────────────────────
+//
+// MIRRORS apps/api/domain/gst/irn_scope.py, WHICH IS THE AUTHORITY. The rule
+// exists twice because this panel recomputes on every keystroke and a round
+// trip per keystroke is not a panel — the same reason `assessEway` above
+// mirrors domain/gst/eway.py. The two are pinned by
+// shared/irn-parity-vectors.json, read by apps/api/tests/test_irn_parity.py
+// there and scripts/irn-parity.test.ts here. Change one without the other and
+// both suites fail, which is the point.
+//
+// ⚠️ EVERY THRESHOLD AND DATE BELOW IS [S]-GRADED — written from knowledge
+// because egress to .gov.in is refused at this environment's proxy. The Python
+// module carries the full reasoning and
+// tests/test_which_supplies_must_carry_an_irn.py pins each figure exactly.
+
+/** No class of registered person was notified under Rule 48(4) before this. */
+export const IRN_COMMENCEMENT = "2020-10-01";
+
+/** (in force from, threshold in paise, notification), oldest first. */
+export const IRN_THRESHOLDS: ReadonlyArray<readonly [string, number, string]> = [
+  ["2020-10-01", 500_00_00_000_00, "Notification 61/2020-Central Tax"],
+  ["2021-01-01", 100_00_00_000_00, "Notification 88/2020-Central Tax"],
+  ["2021-04-01",  50_00_00_000_00, "Notification 05/2021-Central Tax"],
+  ["2022-04-01",  20_00_00_000_00, "Notification 01/2022-Central Tax"],
+  ["2022-10-01",  10_00_00_000_00, "Notification 17/2022-Central Tax"],
+  ["2023-08-01",   5_00_00_000_00, "Notification 10/2023-Central Tax"],
+];
+
+/** The first proviso to Rule 48(4), named rather than guessed either way. */
+export const IRN_EXEMPTED_CLASSES = [
+  "a Special Economic Zone UNIT (as the supplier — a supply MADE TO an SEZ unit or developer is in scope)",
+  "an insurer, a banking company or a financial institution including an NBFC",
+  "a goods transport agency supplying services in relation to transportation of goods by road in a goods carriage",
+  "a supplier of passenger transportation service",
+  "a supplier of services by way of admission to the exhibition of cinematograph films in multiplex screens",
+  "a government department or a local authority",
+];
+
+export const IRN_TURNOVER_NOT_RECORDED =
+  "No aggregate turnover is recorded for this client, so the strictest " +
+  "reading of Rule 48(4) is shown. CGST §2(6) aggregate turnover is " +
+  "all-India on the PAN and includes exempt supplies, exports and " +
+  "inter-State supplies between distinct persons, so it cannot be derived " +
+  "from one client's books — record it on the client's GST settings.";
+
+export const IRN_GSTIN_MALFORMED =
+  "The customer's GSTIN is recorded but is not a well-formed GSTIN, so " +
+  "whether this is a B2B supply cannot be read off the invoice. It is " +
+  "treated as B2B, which is the direction that cannot omit a required IRN — " +
+  "correct the customer's GSTIN.";
+
+/** The server's own answer, in its wire spelling. */
+export interface ServedIrnScope {
+  verdict: "required" | "not_required";
+  supply_in_scope: boolean;
+  supply_reason: string;
+  threshold_paise: number | null;
+  threshold_citation: string;
+  turnover_paise: number | null;
+  turnover_exceeds: boolean | null;
+  turnover_unknown: boolean;
+  reason: string;
+  gaps: string[];
+}
+
+export interface IrnScope {
+  verdict: "required" | "not_required";
+  supplyInScope: boolean;
+  supplyReason: string;
+  thresholdPaise: number | null;
+  thresholdCitation: string;
+  turnoverPaise: number | null;
+  turnoverExceeds: boolean | null;
+  turnoverUnknown: boolean;
+  reason: string;
+  gaps: string[];
+}
+
+/** The served answer in this module's own vocabulary, or null where the
+ *  backend did not send one. */
+export function fromServedIrn(served: ServedIrnScope | null | undefined): IrnScope | null {
+  if (!served) return null;
+  return {
+    verdict: served.verdict,
+    supplyInScope: served.supply_in_scope,
+    supplyReason: served.supply_reason,
+    thresholdPaise: served.threshold_paise,
+    thresholdCitation: served.threshold_citation,
+    turnoverPaise: served.turnover_paise,
+    turnoverExceeds: served.turnover_exceeds,
+    turnoverUnknown: served.turnover_unknown,
+    reason: served.reason,
+    gaps: served.gaps ?? [],
+  };
+}
+
+export const IRN_INVOICE_DATE_NOT_RECORDED =
+  "This invoice carries no date, so which of Rule 48(4)'s six notified " +
+  "thresholds governs it cannot be resolved. The STRICTEST (most recent) is " +
+  "shown, because an absent date is not a pre-2020 date and reading it as " +
+  "one would report that no IRN is owed — the direction Rule 48(5) makes " +
+  "expensive.";
+
+/** The Rule 48(4) threshold in force on this invoice's own DATE. A 2021
+ *  invoice keeps 2021's threshold for ever — the fork shape.
+ *
+ *  AN ABSENT DATE IS NOT A PRE-COMMENCEMENT DATE. Collapsing the two would
+ *  report an undated invoice as owing no IRN, which Rule 48(5) makes the
+ *  expensive direction — so a missing date takes the STRICTEST threshold and
+ *  flags itself, and only a real date before commencement answers null. */
+export function irnThresholdFor(
+  invoiceDate: string,
+): { paise: number | null; citation: string; dateMissing: boolean } {
+  const day = (invoiceDate ?? "").trim().slice(0, 10);
+  if (!day) {
+    const latest = IRN_THRESHOLDS[IRN_THRESHOLDS.length - 1];
+    return { paise: latest[1], citation: latest[2], dateMissing: true };
+  }
+  if (day < IRN_COMMENCEMENT) {
+    return {
+      paise: null,
+      citation: `Rule 48(4) — no class of registered person was notified before ${IRN_COMMENCEMENT}`,
+      dateMissing: false,
+    };
+  }
+  let chosen = IRN_THRESHOLDS[0];
+  for (const step of IRN_THRESHOLDS) {
+    if (day >= step[0]) chosen = step;
+    else break;
+  }
+  return { paise: chosen[1], citation: chosen[2], dateMissing: false };
+}
+
+/** Is the recipient a registered person? THREE states, and the third is named
+ *  rather than guessed — reading a mistyped GSTIN as "unregistered" takes the
+ *  invoice out of Rule 48(4) and Rule 48(5) then voids it. Shape only: this
+ *  decides B2B-vs-B2C, not whether a human typed a valid check digit. */
+export function irnRegistrationState(
+  recipientGstin: string | null | undefined,
+): "registered" | "unregistered" | "malformed" {
+  const clean = (recipientGstin ?? "").trim().toUpperCase();
+  if (!clean) return "unregistered";
+  return GSTIN_RE.test(clean) ? "registered" : "malformed";
+}
+
+/** ₹ with Indian digit grouping, whole rupees. */
+function rupeesGrouped(paise: number): string {
+  return "₹" + new Intl.NumberFormat("en-IN").format(Math.floor(Math.abs(paise) / 100));
+}
+
+function exemptedClassesSentence(): string {
+  return (
+    "The first proviso to Rule 48(4) exempts some classes of registered " +
+    "person from e-invoicing however large their turnover, and this " +
+    "product does not record which class a client is in: " +
+    IRN_EXEMPTED_CLASSES.join("; ") +
+    ". Confirm the client is not one of them."
+  );
+}
+
+export interface IrnScopeInput {
+  treatment: GstTreatment | null;
+  recipient_gstin: string | null;
+  invoice_date: string;
+  /** The HIGHEST aggregate turnover across every qualifying financial year —
+   *  Rule 48(4) latches ("any preceding financial year from 2017-18 onwards").
+   *  `null` means nobody has recorded one, which is NOT zero. */
+  highest_aato_paise: number | null;
+}
+
+export function assessIrnScope(input: IrnScopeInput): IrnScope {
+  const out: IrnScope = {
+    verdict: "not_required", supplyInScope: false, supplyReason: "",
+    thresholdPaise: null, thresholdCitation: "", turnoverPaise: null,
+    turnoverExceeds: null, turnoverUnknown: false, reason: "", gaps: [],
+  };
+
+  // ── The SUPPLY limb. The treatment is asked FIRST: an export or an SEZ
+  // supply is in scope whatever the buyer's registration, so collapsing this
+  // into a single GSTIN test would take every export out of scope.
+  const kind = (input.treatment ?? "regular").trim().toLowerCase();
+  if (kind !== "regular") {
+    out.supplyInScope = true;
+    out.supplyReason =
+      `Rule 48(4) reaches this supply on its own footing (${kind.replace(/_/g, " ")}): ` +
+      "the sub-rule names exports, and a supply to a Special Economic Zone is a " +
+      "zero-rated supply under IGST §16(1)(b). The recipient's registration does " +
+      "not enter it.";
+  } else {
+    const state = irnRegistrationState(input.recipient_gstin);
+    if (state === "registered") {
+      out.supplyInScope = true;
+      out.supplyReason =
+        "Rule 48(4) reaches a supply made to a REGISTERED person, and the " +
+        "customer's GSTIN is recorded on this invoice (B2B).";
+    } else if (state === "malformed") {
+      out.supplyInScope = true;
+      out.supplyReason =
+        "The customer's GSTIN is not well-formed, so this is read as a B2B " +
+        "supply — the direction that cannot omit a required IRN.";
+      out.gaps.push(IRN_GSTIN_MALFORMED);
+    } else {
+      out.supplyInScope = false;
+      out.supplyReason =
+        "Rule 48(4) reaches a supply to a registered person, an export or a " +
+        "supply to an SEZ. This is an ordinary domestic supply to an " +
+        "unregistered recipient (B2C), which the sub-rule does not reach.";
+    }
+  }
+
+  const threshold = irnThresholdFor(input.invoice_date);
+  out.thresholdPaise = threshold.paise;
+  out.thresholdCitation = threshold.citation;
+  out.turnoverPaise = input.highest_aato_paise;
+
+  // The supply limb SHORT-CIRCUITS. A B2C invoice is outside Rule 48(4) at any
+  // turnover, so reporting on the person limb beside it would be true and
+  // irrelevant — and naming the exempted classes there would send a CA to
+  // check a proviso that cannot change the answer.
+  if (!out.supplyInScope) {
+    out.verdict = "not_required";
+    out.reason = out.supplyReason;
+    return out;
+  }
+
+  // Named only once the supply limb has passed, for the same reason the
+  // exempted classes are: on a B2C invoice the threshold decides nothing, so
+  // the missing date decides nothing either.
+  if (threshold.dateMissing) out.gaps.push(IRN_INVOICE_DATE_NOT_RECORDED);
+
+  if (threshold.paise === null) {
+    out.verdict = "not_required";
+    out.reason =
+      `Rule 48(4) notified no class of registered person before ${IRN_COMMENCEMENT}, ` +
+      `so an invoice dated ${input.invoice_date} owes no IRN whatever the turnover.`;
+    return out;
+  }
+
+  if (input.highest_aato_paise === null || input.highest_aato_paise === undefined) {
+    out.turnoverUnknown = true;
+    out.turnoverExceeds = null;
+    out.verdict = "required";
+    out.reason =
+      `${out.supplyReason} The threshold on this invoice's date is ` +
+      `${rupeesGrouped(threshold.paise)} (${threshold.citation}), and no aggregate ` +
+      "turnover is recorded for this client — the strictest reading is shown.";
+    out.gaps.push(IRN_TURNOVER_NOT_RECORDED);
+    out.gaps.push(exemptedClassesSentence());
+    return out;
+  }
+
+  // "EXCEEDS" — a strict inequality, as in Rule 138(1)'s ₹50,000.
+  out.turnoverExceeds = input.highest_aato_paise > threshold.paise;
+  if (!out.turnoverExceeds) {
+    out.verdict = "not_required";
+    out.reason =
+      `The highest aggregate turnover recorded for this client is ` +
+      `${rupeesGrouped(input.highest_aato_paise)}, which does not exceed the ` +
+      `${rupeesGrouped(threshold.paise)} threshold in force on this invoice's date ` +
+      `(${threshold.citation}).`;
+    return out;
+  }
+
+  out.verdict = "required";
+  out.reason =
+    `${out.supplyReason} The client's recorded aggregate turnover reaches ` +
+    `${rupeesGrouped(input.highest_aato_paise)}, above the ` +
+    `${rupeesGrouped(threshold.paise)} threshold in force on this invoice's date ` +
+    `(${threshold.citation}). Rule 48(5): an invoice this sub-rule reaches, issued ` +
+    "without an IRN, is not treated as an invoice — the recipient's input tax " +
+    "credit goes with it.";
+  out.gaps.push(exemptedClassesSentence());
+  return out;
 }
 
 /**

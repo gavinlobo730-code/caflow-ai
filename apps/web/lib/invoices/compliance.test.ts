@@ -13,7 +13,14 @@ const B2B_GSTIN = "27ABCDE1234F1Z5"; // Maharashtra (27)
 const inv = (over: Partial<ComplianceInvoice> = {}): ComplianceInvoice => ({
   status: "issued", is_interstate: false, supply_state_code: "27",
   recipient_gstin: B2B_GSTIN, is_reverse_charge: false, gst_treatment: null,
-  taxable_amount_paise: 6_000_000, line_hsn_codes: ["998221"], ...over,
+  taxable_amount_paise: 6_000_000, line_hsn_codes: ["998221"],
+  // CGST Rule 48(4)'s threshold has been notified downward six times and it is
+  // the DATE OF THE DOCUMENT that decides which governs (SALES-18), so a
+  // realistic fixture carries one. `client_sales_invoices.invoice_date` is NOT
+  // NULL, and an invoice with no date is pinned separately in
+  // shared/irn-parity-vectors.json.
+  invoice_date: "2026-06-01",
+  ...over,
 });
 
 test("gstTreatment: B2B/B2C + interstate, explicit export wins", () => {

@@ -17,7 +17,6 @@ Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 """
 from __future__ import annotations
 
-import calendar
 from datetime import date
 from typing import Optional
 
@@ -37,6 +36,7 @@ from core.observability import capture_soft_failure
 import domain.gst.bank_charge_gst as bank_charge_gst
 import domain.gst.section_18_6 as section_18_6
 from domain.gst.gstr1_builder import CancelledDocument, InvoiceForGSTR1, build_gstr1
+import domain.gst.return_period as return_period
 from domain.gst.classifier import classify_transaction, TransactionForClassification
 from domain.gst.validator import GSTValidator, InvoiceToValidate
 
@@ -77,15 +77,17 @@ def _paginate_all(make_query, key: str = "id", page: int = 1000) -> list:
     return out
 
 
-def _period_bounds(period: str) -> tuple[str, str]:
-    """'MMYYYY' → (first_iso, last_iso) for that calendar month."""
-    if len(period) != 6 or not period.isdigit():
-        raise ValueError("period must be MMYYYY")
-    mm, yyyy = int(period[:2]), int(period[2:])
-    if not 1 <= mm <= 12:
-        raise ValueError("period month must be 01-12")
-    last = calendar.monthrange(yyyy, mm)[1]
-    return f"{yyyy:04d}-{mm:02d}-01", f"{yyyy:04d}-{mm:02d}-{last:02d}"
+def _period_bounds(period: str, frequency: Optional[str] = None) -> tuple[str, str]:
+    """'MMYYYY' → (first_iso, last_iso) for the period the return covers.
+
+    A MONTH, exactly as before, unless the registration is on QRMP — Rule 61A
+    with the proviso to CGST s.39(1) — in which case it is the whole QUARTER
+    the month falls in. The rule is `domain/gst/return_period`, which is also
+    where the quarter's own storage key comes from; nothing here restates it.
+    Omitting `frequency` means monthly, which is what every caller predating
+    QRMP meant (GST-11).
+    """
+    return return_period.bounds(period, frequency)
 
 
 def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) -> dict:
@@ -542,8 +544,17 @@ def _disposals_declaring_gst(db, firm_id, client_id, start, end) -> list[dict]:
             .gte("disposal_date", start).lte("disposal_date", end))
 
 
-def _gstr2a_for_period(db, firm_id, client_id, period) -> list[dict]:
-    """Supplier-filed records for the period, for the Rule 36(4) comparison.
+def _gstr2a_for_periods(db, firm_id, client_id, periods) -> list[dict]:
+    """Supplier-filed records for every month the return covers (Rule 36(4)).
+
+    ONE month for a monthly filer, THREE for a QRMP quarter. GSTR-2B is
+    generated MONTHLY whatever the filing frequency, so a quarterly return has
+    three of them and capping its book ITC against one would withhold credit
+    §16(2)(aa) does not withhold (GST-11).
+
+    `.in_` over the NAMED months and never a `gte`/`lte` range: `return_period`
+    is TEXT in MMYYYY, so '042025' > '032026' and a range would keep the wrong
+    three months of every Q4.
 
     The from-books path passed an empty list, so the cap has never been able to
     fire on the return a CA actually files — Rule 36(4) was live code reachable
@@ -569,10 +580,11 @@ def _gstr2a_for_period(db, firm_id, client_id, period) -> list[dict]:
     # `neq` rather than `eq("Y")`: a row written before migration 340, and an
     # import (which carries no itcavl at all), have an empty string here, and
     # excluding those would silently shrink the cap instead.
+    keys = [str(p) for p in (periods or []) if p]
     return _paginate_all(lambda: db.table("gstr2a_records")
             .select("id, taxable_value_paise, igst_paise, cgst_paise, sgst_paise")
             .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("return_period", period).neq("itc_available", "N"))
+            .in_("return_period", keys).neq("itc_available", "N"))
 
 
 def _customers_for_3b(db, firm_id, rows) -> dict:
@@ -700,7 +712,8 @@ def _vendor_names(db, firm_id: str, rows: list[dict]) -> dict:
     return out
 
 
-def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> dict:
+def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str,
+                  frequency: Optional[str] = None) -> dict:
     """The documents behind one GSTR-3B line, with their own total.
 
     line is one of GSTR3B_DETAIL_LINES:
@@ -709,11 +722,16 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
       4A    ITC available — purchase bills, gross of any s.17(5) blocked portion
       4B1   permanent reversals — bills cancelled in the period, and blocked credit
       4B2   reclaimable reversals — the ITC reversal register
+
+    `frequency` is the REGISTRATION's own — the detail has to cover the same
+    window as the summary it explains, or a QRMP client is shown one month of
+    documents behind a quarter's figure and told the two do not agree (GST-11).
     """
     if line not in GSTR3B_DETAIL_LINES:
         raise ValueError(f"unknown GSTR-3B line {line!r}; expected one of {GSTR3B_DETAIL_LINES}")
 
-    start, end = _period_bounds(period)
+    window = return_period.resolve(period, frequency)
+    start, end = window.start, window.end
     rows: list[dict] = []
 
     if line == "3.1a":
@@ -797,7 +815,8 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
 
     elif line == "4B2":
         from services import itc_register_service
-        reg = itc_register_service.for_period(db, firm_id, client_id, period)
+        reg = itc_register_service.for_periods(
+            db, firm_id, client_id, list(window.months))
         for r in reg.get("reversals", []):
             i, c, sg = (int(r.get("igst_paise") or 0), int(r.get("cgst_paise") or 0),
                         int(r.get("sgst_paise") or 0))
@@ -815,7 +834,8 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str) -> d
 
     rows.sort(key=lambda r: (r["document_date"], r["document_no"]))
     return {
-        "period": period,
+        "period": window.key,
+        "period_window": window.as_dict(),
         "line": line,
         "rows": rows,
         "count": len(rows),
@@ -863,7 +883,9 @@ def _bank_detail_rows(db, firm_id, client_id, start, end, *, inward: bool) -> li
     return out
 
 
-def _late_filing_block(result, period: str, filed_on) -> dict:
+def _late_filing_block(result, period: str, filed_on,
+                       frequency: Optional[str] = None,
+                       state_code: Optional[str] = None) -> dict:
     """§50 interest and the §47 refusal, for one period (GST-21).
 
     `available: false` where no filing date was given, so a screen can say
@@ -873,6 +895,17 @@ def _late_filing_block(result, period: str, filed_on) -> dict:
     The interest is computed PER HEAD off `cash_payable_*`, which is what
     Rule 88B(1) charges on. `domain/gst/late_filing` explains why using the
     gross output tax instead would demand several times what is due.
+
+    THE DUE DATE IS THE REGISTRATION'S OWN (GST-11). A QRMP filer's GSTR-3B is
+    due the 22nd or 24th of the month after the QUARTER, not the 20th of the
+    month after `period` — so quoting the monthly date here would run the
+    §50(1) clock from up to two months too early and demand interest from a
+    taxpayer who is not late at all. `compliance_engine.gstr3b_due_date` is the
+    one authority for both and is asked with the frequency rather than
+    restated. An unknown STATE takes the EARLIER of the two quarterly dates
+    (that function's own rule, and right for §47), which for interest is the
+    generous-to-the-revenue direction — so it is NAMED in the caveats rather
+    than left to read as computed.
     """
     if filed_on is None or len(period) != 6 or not period.isdigit():
         return {
@@ -882,10 +915,12 @@ def _late_filing_block(result, period: str, filed_on) -> dict:
                        "using today's date would give the figure a value that "
                        "changes every day the return is not filed."),
         }
-    from services.compliance_engine import gstr3b_due_date
+    from services.compliance_engine import (
+        MONTHLY, QUARTERLY, gst_state_category, gstr3b_due_date)
     from domain.gst import late_filing as _lf
 
-    due = gstr3b_due_date(int(period[2:]), int(period[:2]))
+    freq = QUARTERLY if (frequency or "").strip().lower() == QUARTERLY else MONTHLY
+    due = gstr3b_due_date(int(period[2:]), int(period[:2]), freq, state_code)
     heads = [
         ("igst", result.cash_payable_igst),
         ("cgst", result.cash_payable_cgst),
@@ -895,6 +930,13 @@ def _late_filing_block(result, period: str, filed_on) -> dict:
     charges = []
     total = 0
     caveats: list[str] = []
+    if freq == QUARTERLY and gst_state_category(state_code) is None:
+        caveats.append(
+            "This is a QRMP quarter and the registration's state is not "
+            "recorded, so the due date above is the EARLIER of the two Rule 61 "
+            "dates (the 22nd). If the registration is in a 24th state the "
+            "interest below is overstated by two days — record the state code "
+            "on the registration and recompute.")
     period_start = date(int(period[2:]), int(period[:2]), 1)
     for head, cash in heads:
         c = _lf.interest_on_late_return(
@@ -1051,7 +1093,8 @@ def _outward_transactions(db, firm_id: str, client_id: str,
     return sales
 
 
-def outward_turnover(db, firm_id: str, client_id: str, period: str) -> dict:
+def outward_turnover(db, firm_id: str, client_id: str, period: str,
+                     frequency: Optional[str] = None) -> dict:
     """E and F for one tax period — CGST Rule 42/43's turnover fractions.
 
     E is the "aggregate value of exempt supplies". §2(47) defines an exempt
@@ -1074,8 +1117,13 @@ def outward_turnover(db, firm_id: str, client_id: str, period: str) -> dict:
     Read through the SAME documents and the SAME computer that build GSTR-3B
     Table 3.1, so a Rule 43 working and the return it belongs to cannot
     disagree about what was supplied.
+
+    `frequency` is the registration's — a QRMP client's Rule 43 working covers
+    the same quarter its GSTR-3B does, or E and F measure one month against a
+    reversal declared for three (GST-11).
     """
-    start, end = _period_bounds(period)
+    window = return_period.resolve(period, frequency)
+    start, end = window.start, window.end
     sales = _outward_transactions(db, firm_id, client_id, start, end)
     r = compute_gstr3b(sales, [], [], [], [])
     exempt = r.outward_nil_exempt + r.outward_non_gst
@@ -1107,7 +1155,8 @@ def outward_turnover(db, firm_id: str, client_id: str, period: str) -> dict:
             f"be. Adjust by hand where it matters.")
 
     return {
-        "period": period,
+        "period": window.key,
+        "period_window": window.as_dict(),
         "exempt_paise": exempt,
         "total_paise": total,
         "breakdown": {
@@ -1207,7 +1256,9 @@ def _undeclarable_rows() -> list[dict]:
 
 
 def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
-                      filed_on: "date | None" = None) -> dict:
+                      filed_on: "date | None" = None,
+                      frequency: Optional[str] = None,
+                      state_code: Optional[str] = None) -> dict:
     """Compute GSTR-3B from posted books and reconcile to the General Ledger.
 
     `filed_on` is the date the return is (or will be) filed, and it is
@@ -1215,8 +1266,23 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     substituting today would give Table 5.1 a figure that changes every day
     the return is not filed. Give it and §50(1) interest is computed per
     head; omit it and 5.1 is zeros, as before.
+
+    `frequency` and `state_code` are the REGISTRATION'S OWN (GST-11). Rule 61A
+    with the proviso to CGST §39(1) lets a person whose preceding-year
+    aggregate turnover was up to ₹5 crore furnish this return QUARTERLY, and
+    both facts follow from that: the books are read over the whole quarter,
+    and the §50(1) clock runs from the 22nd or 24th of the month after the
+    quarter rather than the 20th of the month after one of its months.
+    Omitting them means monthly, which is what every caller predating QRMP
+    meant and still means.
+
+    EVERY PERIOD-KEYED READ IS ASKED FOR EVERY MONTH THE WINDOW COVERS, which
+    is the rule worth keeping: a GSTR-2B is generated MONTHLY for a quarterly
+    filer too, so capping three months of book ITC against one month's 2B
+    would withhold credit Rule 36(4) does not withhold.
     """
-    start, end = _period_bounds(period)
+    window = return_period.resolve(period, frequency)
+    period, start, end = window.key, window.start, window.end
 
     # BANK-24 — resolved once and used three times: the outward side below, the
     # inward side after the bills, and the caveats on the way out. Both the
@@ -1349,7 +1415,11 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # Each row classifies a journal the CA has already POSTED, so unlike the
     # Rule 37 report these amounts are on the ledger and the reconciliation
     # below must net them.
-    register = itc_register_service.for_period(db, firm_id, client_id, period)
+    # EVERY MONTH OF THE WINDOW. A row is registered against the MMYYYY of the
+    # return it is declared in, and a QRMP quarter declares all three, so
+    # asking for one would leave two months' reversals off a filed return.
+    register = itc_register_service.for_periods(
+        db, firm_id, client_id, list(window.months))
 
     # 4(B)(1), the half that had no route (INV-06). A cancelled bill can be
     # derived from documents; a §17(5)(h) stock write-off cannot — the supply
@@ -1395,7 +1465,7 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # Rule 36(4): ITC is capped at the credit suppliers have actually filed.
     # This used to pass [], so the cap could never fire on the return a CA
     # files.
-    two_a_rows = _gstr2a_for_period(db, firm_id, client_id, period)
+    two_a_rows = _gstr2a_for_periods(db, firm_id, client_id, window.months)
     gstr2a = [
         GSTR2ARecord(
             cgst_paise=int(x.get("cgst_paise") or 0),
@@ -1411,11 +1481,19 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # "reconciled, and nobody filed anything" identical to "never reconciled",
     # so the cap does not fire and the return claims the whole book ITC. That is
     # the credit §16(2)(aa) exists to withhold, on exactly the client whose
-    # suppliers are delinquent. `_gstr2a_for_period` also filters out
+    # suppliers are delinquent. `_gstr2a_for_periods` also filters out
     # itcavl = "N" documents, so a period whose every document is blocked
     # legitimately reaches here with an empty list and MUST still cap.
-    have_2b = gst_2b_reconciliation_service.was_reconciled(
-        db, firm_id=firm_id, client_id=client_id, period=period)
+    # ALL of them, for a quarter. Rule 36(4) caps against what the portal
+    # communicated, and a quarter whose June 2B is on file and whose April and
+    # May are not has not been communicated — capping on one third of the
+    # supporting documents would withhold credit that IS in the other two.
+    # `reconciled_periods` reads the same table `was_reconciled` asks, so the
+    # monthly answer is unchanged by construction.
+    reconciled = set(gst_2b_reconciliation_service.reconciled_periods(
+        db, firm_id=firm_id, client_id=client_id))
+    months_without_2b = [m for m in window.months if m not in reconciled]
+    have_2b = not months_without_2b
 
     # GSTR-1 Table 11 — the advances 3.1(a) has to pay (GST-15). Read through
     # the SAME function that builds the GSTR-1 rows, so the two returns cannot
@@ -1429,7 +1507,8 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # every other soft failure uses rather than swallowed into a zero.
     advances = None
     try:
-        t11 = gst_advance_service.table_11_sections(db, firm_id, client_id, period)
+        t11 = gst_advance_service.table_11_sections(
+            db, firm_id, client_id, period, bounds=(start, end))
         if t11.get("applicable"):
             paise = t11.get("paise") or {}
             advances = AdvanceTaxOnReceipts(received=paise.get("at") or {},
@@ -1541,6 +1620,18 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
 
     return {
         "period": period,
+        # WHAT THIS RETURN ACTUALLY COVERS (GST-11). A monthly registration
+        # sees the month it asked for; a QRMP one (Rule 61A) sees the whole
+        # quarter, keyed on its first month, with every month it contains
+        # named. Served rather than derived on the screen, because the
+        # frequency is a fact about the REGISTRATION and the browser holds no
+        # registration.
+        "period_window": window.as_dict(),
+        # A NIL CAP IS NOT THE SAME AS A CAP NOBODY COULD APPLY. Rule 36(4)
+        # only bites where a GSTR-2B is on file, and a quarter has three of
+        # them; the months with none are named so a CA is not shown a return
+        # whose ITC was left uncapped without being told why.
+        "months_without_gstr2b": months_without_2b,
         "gstin": gstin,
         "source": "posted_general_ledger",
         "validation_errors": [e.as_dict() for e in gstr3b_validation
@@ -1578,7 +1669,9 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # today would give the screen a figure that changes every day the
         # return is not filed. The LATE FEE is a refusal with a named gap: §47's
         # notified rates are not held here. See domain/gst/late_filing.
-        "late_filing": _late_filing_block(result, period, filed_on),
+        "late_filing": _late_filing_block(result, period, filed_on,
+                                          frequency=window.frequency,
+                                          state_code=state_code),
         # TWO OF TABLE 4(A)'S FIVE ROWS ARE STRUCTURALLY NIL, and a nil that
         # means "this product cannot see it" is not the same as a nil that
         # means "this client had none". 4(A)(2) is filled from the books now
@@ -1805,7 +1898,8 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
 
 
 def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
-                     aggregate_turnover_paise: Optional[int] = None) -> dict:
+                     aggregate_turnover_paise: Optional[int] = None,
+                     frequency: Optional[str] = None) -> dict:
     """Build GSTR-1 from posted sales invoices + issued credit/debit notes, and
     reconcile the total output tax to the General Ledger GST-output control
     accounts.
@@ -1816,8 +1910,15 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     return reports as a gap; it used to default to `0`, a real turnover meaning
     "below every threshold", so every client was silently told HSN was optional
     (GST-17).
+
+    `frequency` is the REGISTRATION'S OWN (GST-11). Rule 59(2) with Rule 61A
+    lets a QRMP filer furnish this return QUARTERLY, so the window is the whole
+    quarter and the return is keyed on its first month. Omitting it means
+    monthly. The two interim months' INVOICE FURNISHING FACILITY is not built
+    and the return says so — see `return_period.IFF_NOT_BUILT`.
     """
-    start, end = _period_bounds(period)
+    window = return_period.resolve(period, frequency)
+    period, start, end = window.key, window.start, window.end
 
     invoices_raw = _posted_sales(db, firm_id, client_id, start, end)
     cns_raw = _issued_credit_notes(db, firm_id, client_id, start, end)
@@ -2033,7 +2134,8 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # build_gstr1 returns a GSTR1Payload dataclass; the GSTN JSON is the
     # `.payload` dict inside it. Writing to the dataclass raises, which is how
     # the payload-level test caught this merge never working at all.
-    table_11 = gst_advance_service.table_11_sections(db, firm_id, client_id, period)
+    table_11 = gst_advance_service.table_11_sections(
+        db, firm_id, client_id, period, bounds=(start, end))
     for key in ("at", "txpd"):
         if table_11.get(key):
             payload.payload[key] = table_11[key]
@@ -2041,6 +2143,25 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
     # not declare because nobody recorded its rate or its place of supply. Same
     # list as the builder's own gaps: a document the return does not carry.
     payload.gaps.extend(table_11.get("gaps") or [])
+
+    # WHAT A QUARTERLY RETURN CANNOT SAY ABOUT ITSELF (GST-11). Two sentences,
+    # both REPORTED rather than resolved: the form's own `fp` carries the
+    # quarter's first month and the utility's expectation could not be checked
+    # from this environment, and CGST Rule 59(2)'s Invoice Furnishing Facility
+    # for months 1 and 2 is not produced by this product — so without it the
+    # recipient's credit waits for this return. Emitted only on a quarter: a
+    # monthly filer owes neither.
+    if window.is_quarter:
+        payload.gaps.append({
+            "kind": "REPORTED_NOT_WITHHELD",
+            "reference_no": window.key,
+            "reason": return_period.PAYLOAD_PERIOD_CAVEAT.format(key=window.key),
+        })
+        payload.gaps.append({
+            "kind": "REPORTED_NOT_WITHHELD",
+            "reference_no": window.key,
+            "reason": return_period.IFF_NOT_BUILT,
+        })
 
     # Reconcile output tax to the GL. GSTR-1 tax total is gross (before credit
     # notes, before debit notes); compare against sales-only GST in the GL
@@ -2056,6 +2177,9 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
 
     return {
         "period": period,
+        # WHAT THIS RETURN COVERS (GST-11) — the month asked for, or the whole
+        # QRMP quarter keyed on its first month. See gstr3b_from_books.
+        "period_window": window.as_dict(),
         "gstin": gstin,
         "source": "posted_general_ledger",
         # Paise-precise header totals for gst-workspace SaveGSTR1Request — mirrors

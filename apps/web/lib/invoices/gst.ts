@@ -237,6 +237,13 @@ export interface InvoiceDetail {
    *  the invoice. See ComplianceInvoice.eway_assessment in lib/invoices/
    *  compliance.ts — the browser has a mirror, but only as a fallback. */
   eway_assessment?: import("@/lib/invoices/compliance").ServedEwayAssessment | null;
+  /** CGST Rule 48(4) — must this supply carry an IRN? Decided server-side by
+   *  apps/api/domain/gst/irn_scope.py, which is the authority, and served with
+   *  the invoice. The browser has a mirror (`assessIrnScope`) but only as a
+   *  fallback: the rule's TURNOVER limb reads CGST §2(6) aggregate turnover
+   *  off client_gst_turnover (migration 401), which no screen holds — see
+   *  SALES-18. */
+  irn_assessment?: import("@/lib/invoices/compliance").ServedIrnScope | null;
   /** The supply's treatment, DERIVED server-side from supply_type +
    *  invoice_type + the IGST charged (apps/api/domain/gst/treatment.py), in the
    *  vocabulary the compliance screens use. One answer, from the fields GSTR-1

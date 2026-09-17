@@ -643,6 +643,58 @@ change. The code is the authority; keep this file in step with it.
   the link mandatory by accident. The picker is READ-ONLY where the server
   decided one, because a screen must never invite a CA to type something the
   server will refuse — the `attachmentsReadOnly` discipline.
+- **WHICH SUPPLIES MUST CARRY AN IRN IS `domain/gst/irn_scope.py`, AND THE RULE
+  HAS TWO INDEPENDENT LIMBS** (SALES-18). `apps/web/lib/invoices/compliance.
+  irnEligibility` was the ONLY implementation of CGST Rule 48(4)'s scope test
+  in the repository — the same defect SALES-17 was, a statutory rule with no
+  Python twin and no parity vector, which is exactly how the e-way threshold
+  came to be measured on the pre-GST taxable value and stay that way. The
+  e-way half was closed by MOVING the rule and keeping the browser copy as a
+  pinned mirror; this is the IRN half in the same shape, pinned by
+  `shared/irn-parity-vectors.json`.
+  **THE PERSON LIMB AND THE SUPPLY LIMB ARE FACTS ABOUT DIFFERENT THINGS** —
+  aggregate turnover above the notified threshold, and a supply to a
+  REGISTERED person or an export or an SEZ — so they are computed separately
+  and ANDed once. The supply limb BLOCKS (an IRN record for a B2C invoice is
+  meaningless and the IRP rejects it) and is asked FIRST and short-circuits;
+  the person limb only WARNS, because refusing on a figure nobody has recorded
+  would stop the CA doing the one thing the screen is for.
+  **THE PERSON LIMB IS A RATCHET AND THAT IS THE EASY THING TO GET WRONG.**
+  Notification 78/2020 — the HSN digit rule in `hsn_digits.py` — reads on the
+  turnover "in the PRECEDING Financial Year", so a client who shrinks falls
+  back a band. Rule 48(4) reads on "ANY PRECEDING FINANCIAL YEAR FROM 2017-18
+  ONWARDS", so e-invoicing LATCHES: a client who crossed ₹20 crore in FY
+  2022-23 and has turned over ₹4 crore since is still inside it.
+  `client_gst_turnover_service.highest_turnover_within_rule_48_4` takes the
+  MAXIMUM across `qualifying_financial_years`, and reusing the preceding-year
+  hop would let them out. **That limb is the half the browser cannot answer at
+  all** — CGST §2(6) turnover is PAN-level and all-India (migration 401) and
+  no screen holds it — which is why the answer is SERVED as `irn_assessment`
+  on `GET /api/sales-invoices/{id}` rather than left mirrored; the panel used
+  to decline the whole limb with a fixed sentence on every invoice.
+  **THE THRESHOLD FORKED SIX TIMES and the INVOICE'S OWN DATE decides**
+  (₹500cr → ₹100cr → ₹50cr → ₹20cr → ₹10cr → ₹5cr), the fork shape again — a
+  2021 invoice keeps ₹50 crore for ever. **An ABSENT date is NOT a
+  pre-commencement date**: both would answer "no threshold" if they shared a
+  branch, so an undated invoice would read as owing no IRN; it takes the
+  STRICTEST threshold and says so. **Registration has THREE states** and a
+  malformed GSTIN is read as B2B and NAMED (`rcm_documents`' shape) — reading
+  it as unregistered takes the invoice out of the rule, and **Rule 48(5) makes
+  an invoice this sub-rule reaches, issued without an IRN, not an invoice at
+  all**, so the recipient's credit goes with it. That asymmetry is why every
+  unknown here resolves strict and flagged, and why there is deliberately no
+  `undetermined` verdict (`eway.assess` has one because Rule 138(14) can flip
+  its answer either way; nothing here can). The treatment is TAKEN from
+  `domain/gst/treatment`, never re-derived, and the GSTIN test is SHAPE ONLY —
+  a checksum would put the two implementations in disagreement on a
+  transposition, which says nothing about who the customer is. The first
+  proviso's EXEMPTED CLASSES are named on every "required" answer and on no
+  other (an exemption can only REMOVE a requirement), with the SEZ trap stated:
+  an SEZ **unit** is exempt as the SUPPLIER while a supply **to** an SEZ is in
+  scope. ⚠️ Every threshold and date is `[S]`-graded, `VERIFIED` is False and
+  each is pinned exactly by
+  `tests/test_which_supplies_must_carry_an_irn.py`. Prepare-only: it decides
+  eligibility and reaches no portal.
 - **THE SALES CYCLE BEGINS BEFORE THE TAX INVOICE, AND ONLY ONE OF THE FOUR
   DOCUMENTS IS THE ACT'S** (SALES-21, migration 392). A client quotes, takes an
   order, delivers against it and bills afterwards; the product started at the
@@ -1429,6 +1481,49 @@ change. The code is the authority; keep this file in step with it.
   are `[S]`, written from knowledge because every `.gov.in` is refused at this
   environment's proxy; the FIGURES are not affected, each being a total of
   figures this product computed and the CA filed.
+- **A RETURN PERIOD IS NOT ALWAYS A MONTH, AND THE QUARTER'S KEY WAS ALREADY
+  CHOSEN** (GST-11). Rule 61A with the proviso to §39(1) — Notifications 82,
+  84 and 85/2020-Central Tax — lets a registered person whose preceding-year
+  aggregate turnover was up to ₹5 crore furnish GSTR-1 and GSTR-3B QUARTERLY
+  while paying monthly (QRMP), which is a large share of a small practice's
+  book. The DUE DATES were fully QRMP-aware and the return could not be built
+  at all: `gst_return_service._period_bounds` raised on anything but MMYYYY
+  and returned one calendar month, so the CA was quoted the 13th and the
+  22nd/24th and then had to add three monthly GSTR-3Bs by hand.
+  `domain/gst/return_period.py` is the authority; the quarter is READ OFF
+  `core.ist_clock.fy_quarters` rather than restated, because "which months are
+  in this quarter" already exists twice.
+  **THE KEY IS THE QUARTER'S FIRST MONTH AND THAT IS NOT A NEW DECISION**:
+  `routers/compliance.py::mark_compliance_filed` already writes the `filings`
+  row for a quarterly obligation as `f"{start[5:7]}{start[0:4]}"` off the
+  calendar's own period_start, and `_unsubmitted_workspace_return` looks the
+  prepared return up under it — keying on the quarter END would have left both
+  reading a key nothing writes. It stays six digits, so migration 390's
+  `(client_id, period, gstin)` still constrains and nothing stored collides.
+  **ANY month of the quarter resolves to it** and the answer always reports the
+  canonical key, so the browser saves `result.period` and never the month it
+  asked for.
+  **EVERY PERIOD-KEYED READ IS ASKED FOR EVERY MONTH THE WINDOW COVERS**, which
+  is the half that is easy to get wrong: a GSTR-2B is generated MONTHLY for a
+  quarterly filer too, so Rule 36(4) reads three of them (`.in_` over the named
+  months, never a range — MMYYYY sorts wrong), the reversal register reads
+  three periods, and Table 11 takes the window's bounds. `have_2b` is now "all
+  three on file", and the months with none are NAMED rather than left to read
+  as a supplier's fault. **The §50(1) clock takes the registration's own due
+  date** — the 22nd or 24th after the QUARTER — because the monthly date would
+  demand interest from a taxpayer who is not late; an unknown state keeps
+  `gstr3b_due_date`'s earlier-of-the-two rule and SAYS it did.
+  **The FREQUENCY is a fact about the REGISTRATION**, carried on
+  `domain/gst/registrations.Registration` since GST-20 and thrown away by the
+  engine until now; a caller may state it, because `filing_frequency` is the
+  position TODAY and a return may be rebuilt for a year the client was on the
+  other regime. Two things are REPORTED, not resolved: the form's own `fp` for
+  a quarter carries the first month and whether the offline utility wants that
+  or the last could not be checked here (`[S]`), and **Rule 59(2)'s Invoice
+  Furnishing Facility is not built** — named on every quarterly GSTR-1, because
+  without it the RECIPIENT's credit waits for the quarter. Rule 43's own
+  working stays MONTHLY and says why: whether 43(1)(c)'s one-sixtieth tax
+  period is the quarter was not settled here.
 - **GSTR-3B Table 3.1(a) carries GSTR-1 TABLE 11, and the ledger cannot.**
   §13(2) puts the time of supply for SERVICES at the earlier of invoice or
   payment, so tax on an advance received for services falls due on receipt,
@@ -2590,6 +2685,43 @@ document, so its answer genuinely is a row set; migration 278 made
 the query, and what crosses the wire is what is OWED rather than everything ever
 billed. Both obey the rule. Which shape a report needs is decided by the size of
 its ANSWER, not by the table it reads.
+
+**PAGING IS NOT THE SAME AS BOUNDING, AND A RECONCILIATION NEEDED BOTH**
+(BANK-07). `bank_reconciliation_service._account_txns` was correctly PAGED and
+still read every transaction the account had ever carried, because `_classify`
+did the period filtering in Python — so a client three years into an engagement
+shipped three years of statement lines to answer a question about one month.
+Paging stops a silent truncation; it does nothing about a read that is
+proportional to the ledger. `_session_txns` is the bounded one and the four
+`_classify` callers use it. **`_index_account_txns` was the worse of the two**
+and had no finding: it resolved the handful of ids a CA had just ticked by
+reading the whole account, where the answer is `len(txn_ids)` rows.
+⚠️ **THE FINDING'S OWN SUGGESTED FIX WAS WRONG, and the reason generalises.**
+"Apply the period predicate in the query" is the natural reading and it breaks
+the `reconciled` bucket — the ONE bucket `_classify` deliberately does not
+date-filter, because a cheque written on 28 March and cleared on 3 April is
+claimed by the April session whatever its own date says. A plain `BETWEEN`
+would take its amount out of a tie-out that has already been certified. So the
+fetch is the UNION of what the four buckets need: **the period, OR claimed by
+this session**. Before narrowing any read, check which consumer does NOT apply
+the filter you are about to push down.
+**TWO QUERIES RATHER THAN ONE `or_`**, which is the opposite trade from the one
+`_account_txns` records in its own docstring — there the rejected second
+crossing was the SAME SIZE as the first, here it is bounded by what one session
+has claimed and it removes an unbounded scan. It also keeps a PostgREST
+or-expression out of the code, which matters because two separate fakes stand in
+for the database in this suite and each would need to parse one.
+**`_classify` IS UNCHANGED and still filters in Python**: it is the definition
+of the four buckets, and a narrowed fetch must not become a second, quieter copy
+of it. A test asserts the narrowed and unbounded fetches classify IDENTICALLY on
+a fixture with a row in each limb.
+**AND THE GUARD THAT BROKE WAS NAMING A METHOD AGAIN.**
+`test_one_fetch_serves_all_four_buckets` counted calls to `_account_txns` and
+expected exactly one — a spelling of "no bucket gets its own query" — so it
+failed on a change that made the thing it cares about strictly better. It counts
+reads of the TABLE now, bounded by a number that does not grow with the buckets.
+That is the fourth time this pattern has been fixed; write the rule, not a
+spelling of it.
 
 **A read that IS a row set has its own rule, and it is one line: page it.**
 PostgREST caps a response at ~1000 rows (`db-max-rows`) and reports nothing

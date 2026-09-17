@@ -21,12 +21,56 @@
  * `Gstr1Findings`.
  */
 import type {
-  BankLineTotals, GLReconciliation, LateFilingBlock, UndeclarableRow,
+  BankLineTotals, GLReconciliation, LateFilingBlock, ReturnPeriodWindow,
+  UndeclarableRow,
 } from "@/lib/data/gst";
 
 function rupees(paise: number): string {
   return "₹" + (paise / 100).toLocaleString("en-IN",
     { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** WHAT PERIOD THIS RETURN COVERS (GST-11).
+ *
+ *  CGST Rule 61A with the proviso to s.39(1) lets a registered person with up
+ *  to Rs 5 crore of preceding-year turnover furnish GSTR-1 and GSTR-3B
+ *  QUARTERLY (QRMP). The engine could not express a quarter at all, so a CA
+ *  with such a client was quoted the quarterly due date and then had to add
+ *  three monthly GSTR-3Bs by hand.
+ *
+ *  Now that it can, the screen has to SAY which window it computed — a CA who
+ *  picked "April" and got April to June, or picked "June" and got a return
+ *  keyed on April, has to be able to see why. Rendered only on a quarter: a
+ *  monthly filer gets the month they asked for and needs no sentence. Every
+ *  word is the server's; the frequency is a fact about the REGISTRATION and
+ *  nothing here decides it. */
+export function Gstr3bPeriodWindow({
+  periodWindow: w, monthsWithout2b = [],
+}: { periodWindow?: ReturnPeriodWindow; monthsWithout2b?: string[] }) {
+  // NOT named `window` — `apps/web` is a static export and nothing may touch
+  // the global during render, so the name is kept away from the component.
+  if (!w || w.frequency !== "quarterly") return null;
+  return (
+    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm space-y-1">
+      <p className="font-medium text-indigo-900">
+        Quarterly return (QRMP) — {w.label}
+      </p>
+      <p className="text-[11px] text-indigo-800">
+        This registration furnishes quarterly under CGST Rule 61A, so the
+        figures above cover {w.start} to {w.end} — {w.months_covered} months,
+        not one. It is stored and locked under period {w.key}, the quarter&apos;s
+        first month.
+      </p>
+      {monthsWithout2b.length > 0 && (
+        <p className="text-[11px] text-indigo-800 border-t border-indigo-200 pt-1">
+          No GSTR-2B has been reconciled for {monthsWithout2b.join(", ")}. A
+          quarter has one 2B per month and the Rule 36(4) ceiling is built from
+          the ones on file, so the credit available above is short by whatever
+          those months hold.
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** TABLE 5.1 — WHAT BEING LATE COSTS (GST-21).
@@ -163,18 +207,25 @@ export function Gstr3bUndeclarableRows({ rows = [] }: { rows?: UndeclarableRow[]
   );
 }
 
-/** All three, in the order the return is reviewed: what it costs to be late,
- *  what the bank lines added, then what is nil because nobody can see it. */
+/** In the order the return is reviewed: WHAT PERIOD it covers, then what it
+ *  costs to be late, what the bank lines added, then what is nil because
+ *  nobody can see it. The window comes first because every figure below it is
+ *  a figure for that window. */
 export function Gstr3bFindings({
   lateFiling, reconciliation, bankLineCaveats, undeclarableRows,
+  periodWindow, monthsWithout2b,
 }: {
   lateFiling?: LateFilingBlock;
   reconciliation?: GLReconciliation;
   bankLineCaveats?: string[];
   undeclarableRows?: UndeclarableRow[];
+  periodWindow?: ReturnPeriodWindow;
+  monthsWithout2b?: string[];
 }) {
   return (
     <>
+      <Gstr3bPeriodWindow periodWindow={periodWindow}
+                          monthsWithout2b={monthsWithout2b} />
       <Gstr3bLateFiling lateFiling={lateFiling} />
       <Gstr3bBankLines reconciliation={reconciliation} caveats={bankLineCaveats} />
       <Gstr3bUndeclarableRows rows={undeclarableRows} />

@@ -294,8 +294,25 @@ def record_reclaim(db, firm_id: str, client_id: str, *, journal_entry_id: str,
 
 def for_period(db, firm_id: str, client_id: str, period: str) -> dict:
     """The register rows a GSTR-3B for `period` has to declare."""
+    return for_periods(db, firm_id, client_id, [period])
+
+
+def for_periods(db, firm_id: str, client_id: str, periods: list[str]) -> dict:
+    """The register rows a GSTR-3B covering these MMYYYY periods has to declare.
+
+    ONE period for a monthly filer and THREE for a QRMP quarter (Rule 61A):
+    a row is registered against the MMYYYY of the return it is declared in, and
+    a quarterly return declares every month of its quarter, so asking for one
+    of the three would leave the other two's reversals off a filed return
+    (GST-11).
+
+    `.in_` over the NAMED periods and never a range. MMYYYY is TEXT and sorts
+    wrong — '042025' > '032026' — which is the same reason `gstr9_service`
+    names its twelve one by one.
+    """
+    keys = [str(p) for p in periods if p]
     rows = _paginate_all(lambda: db.table("itc_reversal_register").select("*")
-        .eq("firm_id", firm_id).eq("client_id", client_id).eq("period", period))
+        .eq("firm_id", firm_id).eq("client_id", client_id).in_("period", keys))
     reversals = [r for r in rows if r.get("kind") == "reversal"]
     reclaims = [r for r in rows if r.get("kind") == "reclaim"]
     # SPLIT BY BOX, not by whether the row happens to carry the generated
@@ -310,7 +327,11 @@ def for_period(db, firm_id: str, client_id: str, period: str) -> dict:
         return {h: sum(int(r.get(h) or 0) for r in rs) for h in _HEADS}
 
     return {
-        "period": period,
+        # The period a monthly caller asked for, unchanged. A quarter names all
+        # three under `periods` rather than picking one of them to stand for the
+        # return.
+        "period": keys[0] if len(keys) == 1 else "",
+        "periods": keys,
         # Kept: every caller before INV-06 read `reversals` as 4(B)(2), and it
         # still is — `permanent_reversals` is the box that had no route at all.
         "reversals": reclaimable,               # -> Table 4(B)(2)

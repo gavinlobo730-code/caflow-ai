@@ -703,6 +703,17 @@ class ComputeCapitalGainsRequest(BaseModel):
     purchase_cost_paise: int = Field(ge=0)
     sale_value_paise: int = Field(ge=0)
     improvement_cost_paise: int = Field(default=0, ge=0)
+    # IT-28. The proviso to §2(42A) gives a security LISTED in a recognised
+    # stock exchange in India a 12-month holding period against 24 for
+    # everything else, and `asset_type` cannot carry it. A TRI-STATE: None
+    # means nobody recorded it, which takes the unlisted period — more tax,
+    # not less — and comes back as a named gap on the response.
+    is_listed_security: Optional[bool] = None
+    # IT-19. §55(2)(ac) deems the cost of a §112A asset acquired before
+    # 01-02-2018 to be the higher of the actual cost and the lower of this and
+    # the sale value. The WHOLE holding's figure, not a per-share price. None
+    # leaves the actual cost standing and names the over-statement.
+    fmv_31_01_2018_paise: Optional[int] = Field(default=None, ge=0)
     # The fifth proviso to §112(1) lets a RESIDENT INDIVIDUAL OR HUF pay the
     # lower of 12.5% without indexation and 20% with it, on immovable property
     # acquired before 23-07-2024. A company, an LLP or a non-resident never
@@ -758,6 +769,17 @@ def _cg_response(r) -> dict:
         # notification — and now says which it is.
         "indexation_is_estimated": r.indexation_is_estimated,
         "indexation_note": r.indexation_note,
+        # IT-19 / IT-28. The cost §48 was actually computed on — the actual
+        # cost, or the §55(2)(ac) deemed cost where the substitution ran — and
+        # the two lists that are NOT interchangeable: `gaps` are facts nobody
+        # recorded and a CA has to go and find, `caveats` are settled reasons
+        # a section does not reach this transfer. The screen renders them
+        # differently for that reason.
+        "cost_of_acquisition_paise": r.cost_of_acquisition_paise,
+        "grandfathered_cost_is_applied": r.grandfathered_cost_is_applied,
+        "grandfathering_working": list(r.grandfathering_working),
+        "gaps": list(r.gaps),
+        "caveats": list(r.caveats),
     }
 
 
@@ -772,6 +794,8 @@ def compute_capital_gains_endpoint(
         req.asset_type, req.purchase_date, req.sale_date,
         req.purchase_cost_paise, req.sale_value_paise, req.improvement_cost_paise,
         assessee_type=req.assessee_type,
+        is_listed_security=req.is_listed_security,
+        fmv_31_01_2018_paise=req.fmv_31_01_2018_paise,
     )
     return api_response(True, _cg_response(result))
 
@@ -844,6 +868,8 @@ def create_capital_gains(
         req.asset_type, req.purchase_date, req.sale_date,
         req.purchase_cost_paise, req.sale_value_paise, req.improvement_cost_paise,
         assessee_type=req.assessee_type,
+        is_listed_security=req.is_listed_security,
+        fmv_31_01_2018_paise=req.fmv_31_01_2018_paise,
     )
     payload = {
         "firm_id": current_user["firm_id"],
@@ -873,6 +899,16 @@ def create_capital_gains(
         # other. None is stored where the caller did not say, and the
         # exemption working then REFUSES rather than guessing.
         "transferred_asset_nature": req.transferred_asset_nature,
+        # IT-28 and IT-19 (migration 402). Two facts nothing here can derive,
+        # stored as given and NULL where the caller did not say. Unlike
+        # `indexed_cost_paise` above these are INPUTS, not derived figures:
+        # whether the security was listed and what it was worth on
+        # 31-01-2018 are fixed facts that do not go stale, so storing them is
+        # what makes the entry complete. The DEEMED cost §55(2)(ac) builds out
+        # of the second one is deliberately not stored — it is derived on
+        # every read, because the section's own limbs move by Finance Act.
+        "is_listed_security": req.is_listed_security,
+        "fmv_31_01_2018_paise": req.fmv_31_01_2018_paise,
     }
     if not db:
         return api_response(True, {"id": "mock-id", **payload})

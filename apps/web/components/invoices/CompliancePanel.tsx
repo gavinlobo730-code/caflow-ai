@@ -79,6 +79,17 @@ export function CompliancePanel({
     // What the server decided (apps/api/domain/gst/eway.py, the authority).
     // The browser mirror is only reached where this is absent.
     eway_assessment: invoice.eway_assessment ?? null,
+    // The same arrangement for CGST Rule 48(4) (SALES-18).
+    // apps/api/domain/gst/irn_scope.py is the authority and answers the
+    // TURNOVER limb, which the browser cannot: CGST §2(6) aggregate turnover
+    // is recorded per financial year on client_gst_turnover (migration 401)
+    // and no screen holds it. The panel used to decline that whole limb with a
+    // fixed sentence on every invoice.
+    irn_assessment: invoice.irn_assessment ?? null,
+    // Rule 48(4)'s threshold has been notified downward six times and it is
+    // the DATE OF THE DOCUMENT that decides which governs, so the browser
+    // fallback needs it — a 2021 invoice keeps 2021's threshold for ever.
+    invoice_date: invoice.invoice_date,
   }), [invoice, irn.record]);
 
   const treatment = gstTreatment(compInv);

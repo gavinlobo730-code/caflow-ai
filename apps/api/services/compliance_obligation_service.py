@@ -24,6 +24,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.ist_clock import ist_today, ist_fy_label
+from core.ist_clock import fy_quarters as _fy_quarter_windows
 from services import compliance_engine as ce
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.client_repository import client_repo
@@ -65,13 +66,27 @@ def _spec(obligation_type, compliance_type, period_label, period_start, period_e
 
 def fy_quarters(financial_year: str) -> list[tuple[int, int, int, int]]:
     """The four GST quarters of an Indian FY as (start_year, start_month,
-    end_year, end_month): Apr-Jun, Jul-Sep, Oct-Dec, Jan-Mar."""
-    start = int(str(financial_year)[:4])
+    end_year, end_month): Apr-Jun, Jul-Sep, Oct-Dec, Jan-Mar.
+
+    DERIVED from `core.ist_clock.fy_quarters`, not restated. This function used
+    to carry the four windows as literals — `(start, 4, start, 6)` and so on —
+    which is the one thing that module's own docstring says not to do: *derived
+    from `fy_bounds` rather than restating April, so a change to what a
+    financial year IS cannot leave the quarters describing the old one.* Two
+    functions with the SAME NAME computing the same four windows from different
+    premises is how they come to disagree, and this codebase already records
+    that trap for `parseQuantity` against `quantityFromInput`.
+
+    The SHAPE stays this one's own, which is why the duplicate is not simply
+    deleted: `_gst_obligations` wants year and month NUMBERS to hand to
+    `compliance_engine`'s due-date functions, and `ist_clock` answers in ISO
+    dates because its other callers window a report with them. Converting here
+    keeps one definition of WHICH months a quarter is and lets each caller have
+    the shape it needs.
+    """
     return [
-        (start, 4, start, 6),
-        (start, 7, start, 9),
-        (start, 10, start, 12),
-        (start + 1, 1, start + 1, 3),
+        (int(start[:4]), int(start[5:7]), int(end[:4]), int(end[5:7]))
+        for _label, start, end in _fy_quarter_windows(financial_year)
     ]
 
 
