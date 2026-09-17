@@ -7,19 +7,19 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **233** | re-read against the code. The defect is gone. |
+| closed | **234** | re-read against the code. The defect is gone. |
 | partial | **31** | part of the finding is answered, part is not. Each says which. |
-| open | **9** | re-read and still true. |
+| open | **8** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 40 items — 9 open and 31 partial — not 254.**
+**The work left is 39 items — 8 open and 31 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**Of the 9 open, 4 are blocked on something outside the code** — a statutory schema, a file layout, a registration — and each blocker is named below. The other 5 are ordinary code work with nothing in front of them.
+**Of the 8 open, 4 are blocked on something outside the code** — a statutory schema, a file layout, a registration — and each blocker is named below. The other 4 are ordinary code work with nothing in front of them.
 
 ## Open
 
@@ -30,7 +30,6 @@ is left as "unknown".
 | medium | **GST-18** | GSTR-1 Table 13 (documents issued) is missing the serial-number range the form requires |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
-| medium | **PAY-21** | A payroll run cannot be recomputed or discarded — reversal reopens it at 'review' with the origi |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
@@ -261,6 +260,7 @@ is left as "unknown".
 | medium | **PAY-18** | `logger` is undefined in the /employee-exceptions error path — a failed declarations read raises |
 | medium | **PAY-19** | The payroll module's own statutory calendar contradicts compliance_engine: it invents a PT due d |
 | medium | **PAY-20** | /statutory-position computes PF on basic+DA, not the s.2(y) wage base the payroll run uses, so t |
+| medium | **PAY-21** | A payroll run cannot be recomputed or discarded — reversal reopens it at 'review' with the origi |
 | medium | **PAY-22** | §80CCD(2)'s 14%/10% cap is applied to gross salary instead of basic+DA, so a large employer-NPS  |
 | medium | **PAY-23** | Statutory bonus is computed only inside a leaver's settlement — there is no annual bonus run for |
 | medium | **PAY-24** | Leave is half-built: balances are invented in TypeScript as 12/12/15, nothing accrues or carries |

@@ -218,7 +218,8 @@ def test_the_four_modelled_states_are_the_ones_the_code_verifies():
 
 # ── the endpoints, in mock mode ──────────────────────────────────────────────
 
-import routers.payroll as pr  # noqa: E402
+import routers.payroll as pr
+from tests.payroll_create_path import create_path_source  # noqa: E402
 
 USER = {"id": "u1", "firm_id": "f1", "auth_user_id": "a1", "role": "Partner"}
 
@@ -389,8 +390,10 @@ def test_a_covered_state_stops_being_reported_as_a_gap():
 
 
 def test_the_run_reports_a_set_recorded_against_a_modelled_state():
-    import inspect
-    src = inspect.getsource(pr.create_run)
+    # The create path, not one function: PAY-21 lifted the slip-building body
+    # into `_compute_and_store_slips` so `recompute` could call the same
+    # computation, and this rule is about the PATH.
+    src = create_path_source()
     assert "slabs_recorded_against_a_modelled_state" in src
     assert "_states_the_firm_covers" in src
 
@@ -399,6 +402,9 @@ def test_the_slabs_are_read_once_for_the_whole_run():
     """A 200-employee run in three states is one query, not two hundred — the
     reporting rule in CLAUDE.md, and the mistake the attendance read made."""
     import inspect
-    src = inspect.getsource(pr.create_run)
+    # The create path, not one function: PAY-21 lifted the slip-building body
+    # into `_compute_and_store_slips` so `recompute` could call the same
+    # computation, and this rule is about the PATH.
+    src = create_path_source()
     assert src.count("_read_firm_pt_slabs(") == 1
     assert "_read_firm_pt_slabs" not in inspect.getsource(pr._compute_slip)

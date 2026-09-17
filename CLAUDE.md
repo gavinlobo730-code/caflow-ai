@@ -380,8 +380,24 @@ change. The code is the authority; keep this file in step with it.
   so the month's withholding comes out too SMALL — and §192(1) makes the
   EMPLOYER liable for the shortfall with §201(1A) interest — and it keeps
   somebody in ESI past the ₹21,000 ceiling on a contribution that never
-  happened. There is no discard-and-recompute path (PAY-21), so a draft left
-  behind is permanent.
+  happened.
+  **AND THAT RULE IS WHAT MAKES A DRAFT REBUILDABLE** (PAY-21, closed
+  17-09-2026). `POST /api/payroll/runs/{run_id}/recompute` deletes the slips
+  and rebuilds them, and `DELETE /api/payroll/runs/{run_id}` throws an
+  unreleased run away so migration 237's unique index stops making the month
+  permanently uncreatable — without either, a run computed before the
+  attendance was entered could only be fixed against the database, and
+  reversing a finalised one reopens it at `review` with the SAME slips.
+  Both are safe precisely because a draft has posted no journal, registered no
+  §192 TDS and recorded no loan recovery, and because the two readers above
+  count only RELEASED runs, so a rebuild cannot disturb what an earlier month
+  withheld. `create_run`'s slip-building body is `_compute_and_store_slips` and
+  BOTH doors call it — two copies would be two payrolls that agree until one is
+  changed. A finalised or paid run is refused with a 409 naming the reversal
+  path. **`_PAYROLL_UNRELEASED` is its own tuple and NOT the inverse of
+  `_PAYROLL_RELEASED`**: the two answer different questions — which runs COUNT,
+  and which have not yet paid anybody — and writing either as "not the other"
+  would make a fifth status silently join both.
 - **A FIRST depreciation posting may start at any month and now says what that
   forecloses** (FA-04). `depreciation_posted_through` only moves forward, so an
   asset bought in April and first depreciated in December loses April–November

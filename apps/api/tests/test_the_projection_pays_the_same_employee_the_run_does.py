@@ -34,6 +34,7 @@ from __future__ import annotations
 import pytest
 
 import routers.payroll as pr
+from tests.payroll_create_path import create_path_source
 from tests.test_payroll_reports_what_it_deducted import (   # noqa: F401
     CLIENT, FIRM, LOW_BASIC, USER, _DB, _allow_every_client,
 )
@@ -128,13 +129,15 @@ def test_both_readers_go_through_the_one_merge():
     list is exactly how these two came to disagree, and it would pass every
     behavioural test above on the day it was written."""
     import inspect
-    for fn in (pr.create_run, pr.statutory_position):
-        src = inspect.getsource(fn)
+    # The CREATE PATH for the run (PAY-21 split it in two), and the one
+    # function for the projection.
+    for name, src in (("create_run", create_path_source()),
+                      ("statutory_position", inspect.getsource(pr.statutory_position))):
         assert "_pay_in_force(" in src, (
-            f"{fn.__name__} must merge the month's revision through the shared "
+            f"{name} must merge the month's revision through the shared "
             f"helper — the run and the projection have to describe one employee")
         assert "revisions.get(" not in src, (
-            f"{fn.__name__} reaches into the revision map itself. Which "
+            f"{name} reaches into the revision map itself. Which "
             f"components a revision replaces is _pay_in_force's answer — a "
             f"reader that opens the map is one component away from being a "
             f"second copy of _REVISABLE_COMPONENTS")

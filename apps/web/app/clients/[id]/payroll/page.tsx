@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Play, CheckCircle,
   FileText, TrendingUp, IndianRupee, Download, Upload,
-  CreditCard, Settings, Scale,
+  CreditCard, Settings, Scale, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -589,6 +589,13 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
    *  verbatim; see createRun. */
   const [runGaps, setRunGaps] = useState<string[]>([]);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  // PAY-21. A run computed before the attendance was entered, or against the
+  // wrong client, could not be fixed at all: creating the month again 409s,
+  // there was no delete, and reversing a finalised run reopened it with the
+  // SAME slips. Both actions are the server's and are refused there on anything
+  // released; these two flags only stop a double click.
+  const [rebuilding, setRebuilding] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   /** The run whose finalise was refused, and what stood. Null when nothing is
    *  blocked — a separate state from finalizeError because a block is not a
    *  failure and is answered differently. */
@@ -703,6 +710,49 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
     }
     setBlockedRun(null);
     setOverrideReason("");
+    await load();
+  }
+
+  /** Rebuild a draft run's slips from the master data as it stands now.
+   *
+   *  The SERVER decides whether it may: a finalised run has posted its journal
+   *  and registered its §192 TDS, and the 409 it answers with names the
+   *  reversal path instead. Nothing here re-tests the status — a second opinion
+   *  about what may be rebuilt is how a screen comes to offer an action the
+   *  server refuses. The buttons are hidden on a released run so a CA is not
+   *  invited to try, which is a different thing from deciding.
+   */
+  async function recomputeRun(runId: string) {
+    setRebuilding(runId);
+    setFinalizeError(null);
+    const res = await apiFetch(`/api/payroll/runs/${runId}/recompute`, { method: "POST" })
+      .catch(() => null) as { success?: boolean; error?: string | null; detail?: string } | null;
+    setRebuilding(null);
+    if (!res || res.success === false) {
+      setFinalizeError(
+        (typeof res?.detail === "string" ? res.detail : null)
+        ?? res?.error
+        ?? "Could not recompute the payroll run — the request failed.");
+      return;
+    }
+    await load();
+  }
+
+  /** Throw a draft run away so the month can be created again. */
+  async function deleteRun(runId: string) {
+    setRebuilding(runId);
+    setFinalizeError(null);
+    const res = await apiFetch(`/api/payroll/runs/${runId}`, { method: "DELETE" })
+      .catch(() => null) as { success?: boolean; error?: string | null; detail?: string } | null;
+    setRebuilding(null);
+    setConfirmDelete(null);
+    if (!res || res.success === false) {
+      setFinalizeError(
+        (typeof res?.detail === "string" ? res.detail : null)
+        ?? res?.error
+        ?? "Could not delete the payroll run — the request failed.");
+      return;
+    }
     await load();
   }
 
@@ -875,6 +925,38 @@ function RunsTab({ clientId, firmId }: { clientId: string; firmId: string }) {
                 )}
                 {(r.status === "finalized" || r.status === "paid") && (
                   <span className="text-[11px] text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalized"}</span>
+                )}
+                {/* A DRAFT CAN BE FIXED (PAY-21). Recompute rebuilds the month
+                    from the master data as it stands now — the attendance just
+                    entered, the salary revision just recorded, the employee
+                    just added. Delete is for a run that should not exist at
+                    all, and it is what makes the month creatable again. */}
+                {r.status !== "finalized" && r.status !== "paid" && (
+                  <button onClick={() => recomputeRun(r.id)} disabled={rebuilding === r.id}
+                    title="Rebuild this month's slips from the employee master, attendance and salary revisions as they stand now"
+                    className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155] disabled:opacity-50">
+                    <RefreshCw size={11} /> {rebuilding === r.id ? "Rebuilding…" : "Recompute"}
+                  </button>
+                )}
+                {r.status !== "finalized" && r.status !== "paid" && (
+                  confirmDelete === r.id ? (
+                    <span className="flex items-center gap-1">
+                      <button onClick={() => deleteRun(r.id)} disabled={rebuilding === r.id}
+                        className="text-[11px] px-2.5 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+                        Delete {fmtMonth(r.month)}?
+                      </button>
+                      <button onClick={() => setConfirmDelete(null)}
+                        className="text-[11px] px-2 py-1.5 text-[#64748B] hover:text-[#334155]">
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(r.id)}
+                      title="Throw this draft away — the month becomes creatable again"
+                      className="text-[11px] px-2.5 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 text-red-700">
+                      Delete
+                    </button>
+                  )
                 )}
                 {/* The statutory walk-throughs — only on a settled run, and
                     only where the server says the demo exists (dead-control

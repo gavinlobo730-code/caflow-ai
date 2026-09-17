@@ -2254,56 +2254,30 @@ def list_runs(
     return api_response(True, rows)
 
 
-@router.post("/runs")
-def create_run(
-    data: PayrollRunIn,
-    current_user: dict = Depends(rbac("payroll", "write"))
-):
+def _compute_and_store_slips(db, firm_id: str, client_id: str, month: str,
+                             run_id: str) -> dict:
+    """Compute every slip for `run_id` and store them, and stamp the run's totals.
+
+    ONE COMPUTATION, TWO DOORS (PAY-21). This was the body of `create_run`, and
+    `POST /runs/{run_id}/recompute` needs exactly it — a CA who entered the
+    attendance after creating the run, or corrected a salary revision, has to be
+    able to rebuild the month from the same inputs. Copying two hundred lines
+    would be two payrolls that agree until the day one of them is changed.
+
+    IT WRITES SLIPS AND A RUN HEADER AND NOTHING ELSE. No journal is posted, no
+    TDS is registered, no loan recovery is recorded — those all happen at
+    FINALISE — which is what makes recomputing a draft safe. PAY-04's rule is
+    the other half of that: `_tds_already_deducted_this_fy` and
+    `_members_contributing_earlier_this_period` read only RELEASED runs, so
+    deleting and rebuilding a draft cannot disturb what an earlier month
+    withheld.
+
+    The caller owns the run row: on a create it deletes the header if this
+    raises, and on a recompute it leaves the row in place with no slips, which
+    is recoverable by recomputing again.
     """
-    Create a draft payroll run and compute slips for all active employees.
-    Computation is deterministic from employee master + attendance.
-    """
-    assert_client_access(current_user, data.client_id)
-    db = _db()
-    client_id = data.client_id
-    month     = data.month  # e.g. "2026-06"
-
-    if not db:
-        return api_response(True, {"id": "mock-run", "month": month, "status": "draft"})
-
-    # Guardrail G4: no payroll/HR for the internal practice client.
-    assert_not_internal_for_payroll(client_id, current_user["firm_id"])
-    assert_payroll_enabled(db, current_user["firm_id"], client_id)
-
-    # Check for duplicate run
-    existing = db.table("payroll_runs").select("id").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("month", month).execute()
-    if existing.data:
-        raise HTTPException(status_code=409, detail=f"Payroll run for {month} already exists")
-
-    # task #229 audit finding: the SELECT above is a check-then-act race with
-    # no backing DB constraint until migration 237 — two concurrent requests
-    # for the same (firm, client, month) could both pass it and both insert a
-    # run row. The UNIQUE index (migration 237) is the authoritative backstop
-    # for the race this SELECT can't close; translate a concurrent collision
-    # into the same friendly 409 instead of a raw 500, mirroring
-    # routers/sales_invoices.py's identical duplicate-number guard.
-    from services.numbering import is_unique_violation
-    try:
-        run_res = db.table("payroll_runs").insert({
-            "firm_id":   current_user["firm_id"],
-            "client_id": client_id,
-            "month":     month,
-            "status":    "draft",
-        }).execute()
-    except Exception as e:
-        if is_unique_violation(e):
-            raise HTTPException(status_code=409, detail=f"Payroll run for {month} already exists")
-        raise
-    run = (run_res.data or [{}])[0]
-    run_id = run["id"]
-
     # Fetch active employees
-    emps = db.table("payroll_employees").select("*").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("status", "active").execute().data or []
+    emps = db.table("payroll_employees").select("*").eq("firm_id", firm_id).eq("client_id", client_id).eq("status", "active").execute().data or []
 
     m, y = int(month.split("-")[1]), int(month.split("-")[0])
     fy = current_fy(date(y, m, 1))  # FY of the payroll period, not "today"
@@ -2321,21 +2295,21 @@ def create_run(
     # slips already posted for the same period rather than inferred from their
     # current wage, because the current wage is exactly the thing that changed.
     esi_covered_earlier = _members_contributing_earlier_this_period(
-        db, current_user["firm_id"], client_id, month)
+        db, firm_id, client_id, month)
 
     # What each employee declared under §192, and what has already been withheld
     # from them this financial year. Both are read once for the whole run.
     declarations = _declarations_for_run(
-        db, current_user["firm_id"], client_id, fy)
+        db, firm_id, client_id, fy)
     tds_ytd = _tds_already_deducted_this_fy(
-        db, current_user["firm_id"], client_id, month, fy)
+        db, firm_id, client_id, month, fy)
     # The year's §17(2) valuations, which §192 estimates on and which nothing
     # but the 24Q Annexure II builder had ever read (PAY-07).
-    perquisites = _perquisites_for_run(db, current_user["firm_id"], client_id, fy)
+    perquisites = _perquisites_for_run(db, firm_id, client_id, fy)
 
     # The pay in force this month, and any advance being recovered from it.
-    revisions = _salary_in_force(db, current_user["firm_id"], client_id, month)
-    loan_due = _loan_instalments_for_run(db, current_user["firm_id"], client_id)
+    revisions = _salary_in_force(db, firm_id, client_id, month)
+    loan_due = _loan_instalments_for_run(db, firm_id, client_id)
 
     # Statutory deductions this run did NOT compute because the state's rules are
     # not modelled. Collected per employee and returned with the run: a zero PT
@@ -2348,7 +2322,7 @@ def create_run(
     # three states is one query, and the slabs cannot change mid-run. `pt_on` is
     # the payroll MONTH's end, not today: a run for an earlier month computes at
     # the figures that applied to it.
-    firm_pt_slabs = _read_firm_pt_slabs(db, current_user["firm_id"])
+    firm_pt_slabs = _read_firm_pt_slabs(db, firm_id)
     pt_on = date.fromisoformat(month_end_date(month))
     pt_covered = _states_the_firm_covers(firm_pt_slabs, pt_on)
     # Recorded against a state the code models: reported, never applied. One
@@ -2370,11 +2344,11 @@ def create_run(
     # CLAUDE.md is explicit that the app-layer firm filter is the primary
     # isolation control rather than an optimisation — this query omitted it.
     attendance_by_emp = _attendance_for(
-        db, current_user["firm_id"], [e["id"] for e in emps], y, m)
+        db, firm_id, [e["id"] for e in emps], y, m)
 
     # One-time and variable earnings for the month (migration 331), also one
     # query for the whole run.
-    one_time_by_emp = _one_time_for(db, current_user["firm_id"], client_id, month)
+    one_time_by_emp = _one_time_for(db, firm_id, client_id, month)
 
     for emp in emps:
         # None means NOT ENTERED, and that is now recorded on the slip rather
@@ -2423,17 +2397,16 @@ def create_run(
         totals["loan_recovery"] += slip.get("loan_recovery_paise", 0)
         totals["one_time"] += slip.get("one_time_earnings_paise", 0)
 
-    # Atomicity: the run header row was inserted first (above), but PostgREST
-    # exposes no multi-statement transaction here — so if the slip insert
-    # fails we compensate by deleting the just-created header. Without this a
-    # failed slip insert strands an empty run whose (firm, client, month)
-    # duplicate-guard then 409s every retry, permanently blocking that month.
+    # THE HEADER ROW IS THE CALLER'S, so a failure here simply propagates.
+    # `create_run` deletes the run it just inserted — without that, a failed
+    # slip insert strands an empty run whose (firm, client, month)
+    # duplicate-guard then 409s every retry and permanently blocks that month.
+    # `recompute_run` deliberately does NOT: the run already existed, and
+    # leaving it with no slips is recoverable by recomputing again, while
+    # deleting it would destroy a row a CA has been working on because one
+    # round trip to Mumbai failed.
     if slips:
-        try:
-            db.table("payroll_slips").insert(slips).execute()
-        except Exception:
-            db.table("payroll_runs").delete().eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
-            raise
+        db.table("payroll_slips").insert(slips).execute()
 
     # The ₹500-per-ESTABLISHMENT floor on the admin charge can only be settled
     # here: it is not per member, so summing payslips under-states it for every
@@ -2459,15 +2432,6 @@ def create_run(
         "headcount":         len(emps),
     }).eq("id", run_id).execute()
 
-    run["totals"] = totals
-    run["headcount"] = len(emps)
-    timeline_service.log(
-        client_id, "work", "Payroll Run Created",
-        f"Draft payroll run for {month} created with {len(emps)} employees",
-        "info", firm_id=current_user.get("firm_id", ""),
-        entity_type="payroll_run", entity_id=run_id,
-        actor_id=current_user.get("auth_user_id"),
-    )
     # States this run deducts professional tax in with no PTRC on file. Added
     # to statutory_gaps rather than a list of its own: it is the same kind of
     # fact — a deduction the employer cannot settle — and a screen with three
@@ -2477,7 +2441,7 @@ def create_run(
     # fact about the employer there, and naming it forty times because forty
     # people work in Karnataka would bury every other gap. See
     # domain/payroll/identity.py::pt_registration_gaps.
-    _, pt_registrations = _read_statutory_identity(db, current_user["firm_id"], client_id)
+    _, pt_registrations = _read_statutory_identity(db, firm_id, client_id)
     statutory_gaps.extend(identity_domain.pt_registration_gaps(
         {(e.get("pt_state") or "").strip().upper() for e in emps
          if e.get("pt_applicable") and (e.get("pt_state") or "").strip()},
@@ -2485,8 +2449,248 @@ def create_run(
 
     # Returned WITH the run rather than logged: an omitted statutory deduction
     # that only appears in a log is an omitted statutory deduction.
-    return api_response(True, {**run, "statutory_gaps": statutory_gaps,
-                               "attendance_gaps": attendance_gaps})
+    return {
+        "totals": totals,
+        "headcount": len(emps),
+        "statutory_gaps": statutory_gaps,
+        "attendance_gaps": attendance_gaps,
+    }
+
+
+@router.post("/runs")
+def create_run(
+    data: PayrollRunIn,
+    current_user: dict = Depends(rbac("payroll", "write"))
+):
+    """
+    Create a draft payroll run and compute slips for all active employees.
+    Computation is deterministic from employee master + attendance.
+    """
+    assert_client_access(current_user, data.client_id)
+    db = _db()
+    client_id = data.client_id
+    month     = data.month  # e.g. "2026-06"
+
+    if not db:
+        return api_response(True, {"id": "mock-run", "month": month, "status": "draft"})
+
+    # Guardrail G4: no payroll/HR for the internal practice client.
+    assert_not_internal_for_payroll(client_id, current_user["firm_id"])
+    assert_payroll_enabled(db, current_user["firm_id"], client_id)
+
+    # Check for duplicate run
+    existing = db.table("payroll_runs").select("id").eq("firm_id", current_user["firm_id"]).eq("client_id", client_id).eq("month", month).execute()
+    if existing.data:
+        raise HTTPException(status_code=409, detail=f"Payroll run for {month} already exists")
+
+    # task #229 audit finding: the SELECT above is a check-then-act race with
+    # no backing DB constraint until migration 237 — two concurrent requests
+    # for the same (firm, client, month) could both pass it and both insert a
+    # run row. The UNIQUE index (migration 237) is the authoritative backstop
+    # for the race this SELECT can't close; translate a concurrent collision
+    # into the same friendly 409 instead of a raw 500, mirroring
+    # routers/sales_invoices.py's identical duplicate-number guard.
+    from services.numbering import is_unique_violation
+    try:
+        run_res = db.table("payroll_runs").insert({
+            "firm_id":   current_user["firm_id"],
+            "client_id": client_id,
+            "month":     month,
+            "status":    "draft",
+        }).execute()
+    except Exception as e:
+        if is_unique_violation(e):
+            raise HTTPException(status_code=409, detail=f"Payroll run for {month} already exists")
+        raise
+    run = (run_res.data or [{}])[0]
+    run_id = run["id"]
+
+    try:
+        computed = _compute_and_store_slips(
+            db, current_user["firm_id"], client_id, month, run_id)
+    except Exception:
+        # Atomicity: the header row went in first and PostgREST exposes no
+        # multi-statement transaction, so a failure here would strand an empty
+        # run whose (firm, client, month) duplicate-guard then 409s every retry,
+        # permanently blocking that month. (The compensation used to sit around
+        # the slip INSERT alone; it covers the whole computation now, which is
+        # where it belonged — a fetch that fails strands the run just as badly.)
+        db.table("payroll_runs").delete().eq("id", run_id).eq("firm_id", current_user["firm_id"]).execute()
+        raise
+
+    run["totals"] = computed["totals"]
+    run["headcount"] = computed["headcount"]
+    timeline_service.log(
+        client_id, "work", "Payroll Run Created",
+        f"Draft payroll run for {month} created with {computed['headcount']} employees",
+        "info", firm_id=current_user.get("firm_id", ""),
+        entity_type="payroll_run", entity_id=run_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    # Returned WITH the run rather than logged: an omitted statutory deduction
+    # that only appears in a log is an omitted statutory deduction.
+    return api_response(True, {**run,
+                               "statutory_gaps": computed["statutory_gaps"],
+                               "attendance_gaps": computed["attendance_gaps"]})
+
+
+
+#: The statuses a run may still be rebuilt or thrown away in. NOT the inverse of
+#: `_PAYROLL_RELEASED`: the two lists answer different questions — that one says
+#: which runs COUNT (for the FY TDS aggregate and the ESI period test), this one
+#: says which have not yet paid anybody or posted anything — and writing either
+#: as `not the other` would make a fifth status silently join both.
+_PAYROLL_UNRELEASED = ("draft", "review")
+
+
+def _assert_run_is_unreleased(db, run_id: str, firm_id: str, verb: str) -> dict:
+    """The run row, or a 409 naming what has already happened to it (PAY-21).
+
+    A finalised run has posted a journal, registered its §192 TDS and recorded
+    its loan recoveries; a paid one has also disbursed. Rebuilding or deleting
+    either would leave the ledger describing slips that no longer exist, so both
+    are refused and `POST /runs/{run_id}/reverse` is named instead — that path
+    exists, posts the reversal and puts the loans back.
+    """
+    rows = (db.table("payroll_runs").select("id, client_id, month, status")
+            .eq("id", run_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Payroll run not found")
+    run = rows[0]
+    status = str(run.get("status") or "")
+    if status not in _PAYROLL_UNRELEASED:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"This run is {status}, so it cannot be {verb}. A finalised run has "
+                    "posted its journal and registered its §192 TDS; reverse it first "
+                    "(the reversal posts the contra entry and puts any loan recovery "
+                    "back), then recompute or delete the reopened run."))
+    return run
+
+
+@router.post("/runs/{run_id}/recompute")
+def recompute_run(
+    run_id: str,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Rebuild every slip in a draft run from the master data as it stands now.
+
+    WHAT THIS EXISTS FOR (PAY-21). A run computed before the attendance was
+    entered, or before a salary revision was recorded, or while an employee was
+    still missing from the roster, could not be fixed at all: creating the month
+    again 409s on migration 237's unique index, there was no delete, and
+    reversing a finalised run reopened it at `review` with the SAME slips — so
+    re-finalising posted the identical wrong figures. The only escape was a
+    direct edit against the database.
+
+    IT IS THE CREATE PATH, NOT A SECOND ONE. `_compute_and_store_slips` is the
+    same function `create_run` calls, so a recomputed month cannot differ from a
+    month created today on the same inputs.
+
+    NOTHING IS UNWOUND, BECAUSE A DRAFT DID NOTHING. No journal was posted, no
+    TDS was registered and no loan recovery was recorded — all three happen at
+    FINALISE. The slips are deleted and rebuilt; the run row, its id and its
+    month stay, so anything already pointing at the run still does.
+
+    # CA REVIEW REQUIRED — the rebuilt figures are a draft, exactly as the
+    # first computation was.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"id": run_id, "status": "draft", "recomputed": True})
+
+    _assert_run_scope(db, current_user, run_id)
+    firm_id = current_user["firm_id"]
+    run = _assert_run_is_unreleased(db, run_id, firm_id, "recomputed")
+    client_id, month = run["client_id"], run["month"]
+
+    # The slips go first and the run keeps its header. If the computation below
+    # fails the run is left with none, which is recoverable by recomputing
+    # again — deliberately NOT the create path's compensating delete, which
+    # would destroy a row the CA has been working on because one round trip to
+    # Mumbai failed.
+    db.table("payroll_slips").delete().eq("run_id", run_id).execute()
+
+    computed = _compute_and_store_slips(db, firm_id, client_id, month, run_id)
+
+    from services.audit_service import log_event
+    log_event(firm_id, "payroll_run", run_id, "update",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"),
+              metadata={"what": "recompute", "month": month,
+                        "headcount": computed["headcount"]})
+    timeline_service.log(
+        client_id, "work", "Payroll Run Recomputed",
+        f"Payroll run for {month} rebuilt from current master data "
+        f"({computed['headcount']} employees)",
+        "info", firm_id=firm_id,
+        entity_type="payroll_run", entity_id=run_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    return api_response(True, {**run, "totals": computed["totals"],
+                               "headcount": computed["headcount"],
+                               "statutory_gaps": computed["statutory_gaps"],
+                               "attendance_gaps": computed["attendance_gaps"]})
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(
+    run_id: str,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Throw away a draft run — the month becomes creatable again (PAY-21).
+
+    The other half of recompute, and it is not the same thing: recompute keeps
+    the month and rebuilds it, while this is for a run that should not exist at
+    all — created against the wrong client, or for a month the engagement had
+    not started. Without it, migration 237's unique index makes that month
+    permanently uncreatable.
+
+    THE CHILDREN CASCADE. `payroll_slips`, the release-override row (migration
+    328) and any loan-recovery rows (367) are `ON DELETE CASCADE` on `run_id`,
+    and the ECR and remittance tables are `ON DELETE SET NULL` — so nothing is
+    orphaned and nothing that survives points at a run that is gone. A draft has
+    none of the last three anyway; they are named because the guarantee is the
+    schema's, not this function's.
+
+    Refused on anything released, for the reason `_assert_run_is_unreleased`
+    gives.
+    """
+    db = _db()
+    if not db:
+        return api_response(True, {"id": run_id, "deleted": True})
+
+    _assert_run_scope(db, current_user, run_id)
+    firm_id = current_user["firm_id"]
+    run = _assert_run_is_unreleased(db, run_id, firm_id, "deleted")
+    client_id, month = run["client_id"], run["month"]
+
+    # WHAT IT WAS, recorded BEFORE the row goes. A delete that logs only an id
+    # leaves an audit trail nobody can read afterwards — the same reason a
+    # journal deletion writes the whole entry and its lines (migration 275).
+    slips = (db.table("payroll_slips").select("employee_id, gross_paise, net_paise")
+             .eq("run_id", run_id).execute().data) or []
+    from services.audit_service import log_event
+    log_event(firm_id, "payroll_run", run_id, "delete",
+              actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"),
+              old_data={"month": month, "client_id": client_id,
+                        "status": run.get("status"),
+                        "slip_count": len(slips),
+                        "total_gross_paise": sum(int(x.get("gross_paise") or 0) for x in slips),
+                        "total_net_paise": sum(int(x.get("net_paise") or 0) for x in slips)})
+
+    db.table("payroll_runs").delete().eq("id", run_id).eq("firm_id", firm_id).execute()
+
+    timeline_service.log(
+        client_id, "work", "Payroll Run Deleted",
+        f"Draft payroll run for {month} deleted ({len(slips)} slips)",
+        "warning", firm_id=firm_id,
+        entity_type="payroll_run", entity_id=run_id,
+        actor_id=current_user.get("auth_user_id"),
+    )
+    return api_response(True, {"id": run_id, "month": month, "deleted": True,
+                               "slip_count": len(slips)})
 
 
 @router.get("/runs/{run_id}/slips")
@@ -2792,7 +2996,8 @@ def _release_gaps(db, firm_id: str, run: dict) -> list[str]:
             gaps.append(
                 f"{who}: this slip predates the attendance record-keeping, so "
                 f"whether anybody entered attendance for it cannot be "
-                f"established. Regenerate the run to find out.")
+                f"established. Recompute the run to find out — it rebuilds "
+                f"every slip from the master data as it stands now.")
     return gaps
 
 
