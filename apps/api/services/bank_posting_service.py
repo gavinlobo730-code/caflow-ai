@@ -101,6 +101,43 @@ class BankPostingService:
         "bank ledger to post it to. Re-import the statement with the bank "
         "account selected.")
 
+    def bank_account_id_for(self, db, firm_id, txn) -> Optional[str]:
+        """Which `bank_accounts` row this statement line came out of, or None.
+
+        EXTRACTED so the SETTLEMENT path can have the same answer the POSTING
+        path has always had (ACC-03). `bank_transactions` carries no
+        `bank_account_id` of its own — only `statement_id` — so the account is
+        one hop away, and `match_and_settle_multi` was building its receipt and
+        payment payloads without it. `domain/accounting/payment_account.resolve`
+        then fell through to the firm's generic `%Bank%` ledger, so a statement
+        line PASSED from the queue and the SAME line SETTLED against a bill
+        landed in two different ledgers — which is the exact defect
+        `payment_account.py`'s own docstring says that module exists to end.
+
+        Returns None rather than raising: a transaction with no statement, or a
+        statement whose account was removed, must still settle. The resolver
+        falls back and SAYS it fell back.
+        """
+        stmt_id = txn.get("statement_id")
+        if not stmt_id:
+            return None
+        # Scoped to THIS transaction's firm AND client — task #228's finding was
+        # an unscoped read-by-id in a money path, and this read decides which
+        # sub-ledger real money lands in.
+        try:
+            stmt = (db.table("bank_statements").select("bank_account_id")
+                    .eq("id", stmt_id).eq("firm_id", firm_id)
+                    .eq("client_id", txn["client_id"])
+                    .single().execute().data) or {}
+            return stmt.get("bank_account_id") or None
+        except Exception as e:  # noqa: BLE001
+            from core.observability import capture_posting_failure
+            capture_posting_failure(
+                e, operation="bank_posting.bank_account_id_for",
+                firm_id=firm_id, client_id=txn.get("client_id"), statement_id=stmt_id,
+            )
+            return None
+
     def _resolve_bank(self, db, firm_id, txn, bank_account_id: Optional[str]) -> str:
         if bank_account_id:
             return self._validate_account(db, firm_id, bank_account_id)
@@ -110,21 +147,18 @@ class BankPostingService:
         # returns a row but the code never verifies it belongs to the
         # caller's tenant" pattern task #227 fixed for AR/AP. Scoped here to
         # THIS transaction's firm+client, mirroring _validate_account's own
-        # scoping just above.
-        stmt_id = txn.get("statement_id")
+        # scoping just above; the first hop is `bank_account_id_for` so the
+        # settlement path and this one cannot disagree about which account a
+        # line came from.
         client_id = txn["client_id"]
-        if stmt_id:
+        ba_id = self.bank_account_id_for(db, firm_id, txn)
+        if ba_id:
             try:
-                stmt = (db.table("bank_statements").select("bank_account_id")
-                        .eq("id", stmt_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                        .single().execute().data) or {}
-                ba_id = stmt.get("bank_account_id")
-                if ba_id:
-                    ba = (db.table("bank_accounts").select("coa_account_id")
-                          .eq("id", ba_id).eq("firm_id", firm_id).eq("client_id", client_id)
-                          .single().execute().data) or {}
-                    if ba.get("coa_account_id"):
-                        return ba["coa_account_id"]
+                ba = (db.table("bank_accounts").select("coa_account_id")
+                      .eq("id", ba_id).eq("firm_id", firm_id).eq("client_id", client_id)
+                      .single().execute().data) or {}
+                if ba.get("coa_account_id"):
+                    return ba["coa_account_id"]
             except Exception as e:
                 # Was a fully silent `except: pass` — the caller falls through to
                 # the firm's GENERIC master Bank account below, which posts and
@@ -134,7 +168,8 @@ class BankPostingService:
                 from core.observability import capture_posting_failure
                 capture_posting_failure(
                     e, operation="bank_posting._resolve_bank",
-                    firm_id=firm_id, client_id=client_id, statement_id=stmt_id,
+                    firm_id=firm_id, client_id=client_id,
+                    statement_id=txn.get("statement_id"),
                 )
         raise HTTPException(status_code=422, detail=self._NO_BANK_LEDGER)
 
@@ -1106,6 +1141,15 @@ class BankPostingService:
             raise HTTPException(status_code=409, detail="Transaction already matched/posted.")
 
         date = str(txn["transaction_date"])[:10]
+        # WHICH BANK THIS MONEY ACTUALLY MOVED THROUGH (ACC-03). The statement
+        # line knows, and both payloads below were built without it — so
+        # `domain/accounting/payment_account.resolve` fell through to the firm's
+        # generic `%Bank%` ledger and a line PASSED from the queue and the same
+        # line SETTLED against a document landed in two different ledgers. None
+        # means unknown (a transaction with no statement, or a statement whose
+        # account was removed) and is passed as such: the resolver falls back
+        # exactly as it did before and says that it fell back.
+        settled_from = self.bank_account_id_for(db, firm_id, txn)
         alloc_payloads = [{alloc_key: a["entity_id"], "allocated_paise": int(a["allocated_paise"])} for a in allocations]
 
         try:
@@ -1116,6 +1160,7 @@ class BankPostingService:
                     "amount_paise": amount, "tds_paise": tds_paise, "payment_mode": "bank",
                     "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
                     "allocations": alloc_payloads,
+                    "bank_account_id": settled_from,
                 }
                 if currency:
                     data["currency"] = currency
@@ -1130,6 +1175,7 @@ class BankPostingService:
                     "amount_paise": amount, "payment_mode": "bank",
                     "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
                     "allocations": alloc_payloads,
+                    "bank_account_id": settled_from,
                 }
                 if currency:
                     data["currency"] = currency

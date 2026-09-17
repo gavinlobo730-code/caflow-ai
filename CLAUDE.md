@@ -2999,7 +2999,22 @@ ready" is chunked and resumable; a `proposed` draft is never passed in bulk. A
 rule a Manager+ marks **trusted** passes its lines with no click, as
 `created_by = trusted_by` — the one place the product acts unprompted, an owner
 decision of 2026-09-03 that reversed the earlier "draft only" rule. The
-posting path is still only `bank_posting_service.post`, and **that path is
+posting path is still only `bank_posting_service.post`, and **which BANK
+LEDGER either path posts to comes from one lookup**,
+`BankPostingService.bank_account_id_for` — `bank_transactions` carries no
+`bank_account_id` of its own, only `statement_id`, so the account is one hop
+away through `bank_statements` and `match_and_settle_multi` was building its
+receipt and payment payloads without it (ACC-03). `domain/accounting/
+payment_account.resolve_payment_account` then fell through to the firm's
+generic `%Bank%` ledger, so a line PASSED from the queue and the SAME line
+SETTLED against a document landed in two different ledgers — the defect that
+module's own docstring says it exists to end. The lookup returns None rather
+than raising, because a transaction with no statement must still settle and the
+resolver falls back exactly as before AND SAYS it fell back. ⚠️ `is_fallback`
+and `reason` still reach no caller: the resolver runs inside eight
+journal-line builders, so surfacing them is a refactor through the kernel's
+callers and WHERE a CA is told is an owner decision.
+**`bank_posting_service.post` is
 INR-only and refuses rather than converting** — it calls `_create_journal` with
 no `txn_currency`, so the kernel takes INR at rate 1 and a USD line reading
 1,000.00 would be booked as one thousand RUPEES: balanced, footing, and wrong by
