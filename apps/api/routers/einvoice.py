@@ -90,6 +90,58 @@ class CancelIRNRequest(BaseModel):
     cancellation_reason: str
 
 
+def _invoice_treatment(firm_id: str, client_id: str, sales_invoice_id: Optional[str]) -> Optional[str]:
+    """The treatment of the invoice this record NAMES, or None where it names
+    none this product holds (SALES-19).
+
+    `sales_invoice_id` is optional on the request — a record may be prepared for
+    an invoice raised outside the product — so None is a real answer and not a
+    failure. The read is scoped to the firm AND the client for the ordinary
+    reason: a record must not be able to reach another book's invoice to borrow
+    a treatment from it.
+    """
+    if not sales_invoice_id:
+        return None
+    from domain.gst.treatment import treatment_for_invoice
+
+    def _of(inv: dict) -> str:
+        return treatment_for_invoice(
+            supply_type=inv.get("supply_type"),
+            invoice_type=inv.get("invoice_type"),
+            igst_paise=int(inv.get("igst_paise") or 0),
+        )
+
+    try:
+        from routers.sales_invoices import _USE_MOCK as _SALES_MOCK, MOCK_SALES_INVOICES
+        if _SALES_MOCK:
+            inv = next(
+                (i for i in MOCK_SALES_INVOICES
+                 if i.get("id") == sales_invoice_id
+                 and i.get("firm_id") == firm_id
+                 and i.get("client_id") == client_id),
+                None,
+            )
+            return _of(inv) if inv else None
+
+        from core.supabase_client import get_supabase
+        rows = (
+            get_supabase().table("client_sales_invoices")
+            .select("supply_type, invoice_type, igst_paise")
+            .eq("id", sales_invoice_id)
+            .eq("firm_id", firm_id)
+            .eq("client_id", client_id)
+            .is_("deleted_at", None)
+            .limit(1)
+            .execute().data
+        ) or []
+        return _of(rows[0]) if rows else None
+    except Exception:
+        # An unreadable invoice must not stop a record being prepared: the
+        # caller's own value then stands, exactly as it did before this check.
+        _logger.warning("Could not read invoice %s to derive its GST treatment", sales_invoice_id)
+        return None
+
+
 @router.post("/records")
 def create_record(
     req: CreateEInvoiceRequest,
@@ -97,6 +149,21 @@ def create_record(
 ):
     """Create e-invoice record in draft state."""
     assert_client_access(current_user, req.client_id)
+    # ONE SUPPLY CANNOT BE DECLARED TWO WAYS (SALES-19). The invoice already
+    # settles its own treatment through `supply_type` + `invoice_type` — the
+    # fields GSTR-1 is built from — and this endpoint used to store whatever the
+    # caller typed beside it, so a record could contradict its own invoice and
+    # the compliance panel rendered both labels at once. The rule is
+    # `domain/gst/treatment.treatment_for_record`; this is a 422 rather than a
+    # 500 because the request is wrong, not the server.
+    from domain.gst.treatment import treatment_for_record
+    treatment, refusal = treatment_for_record(
+        stated=req.gst_treatment,
+        derived=_invoice_treatment(current_user["firm_id"], req.client_id, req.sales_invoice_id),
+    )
+    if refusal:
+        raise HTTPException(422, detail=refusal)
+
     from domain.income_tax.einvoice_service import create_einvoice_record
     try:
         rec = create_einvoice_record(
@@ -107,7 +174,7 @@ def create_record(
             created_by=current_user["id"],
             sales_invoice_id=req.sales_invoice_id,
             provider=req.provider,
-            gst_treatment=req.gst_treatment,
+            gst_treatment=treatment,
             lut_number=req.lut_number,
         )
         return api_response(True, {**rec, "ca_review_required": True})

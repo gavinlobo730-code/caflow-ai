@@ -239,10 +239,11 @@ def test_the_floor_rule_lives_in_one_place():
         "the floor is applied in domain/payroll/statutory.py, not inline here"
 
 
+from tests.payroll_create_path import create_path_source
+
+
 def test_the_run_totals_both_and_stores_them():
-    import inspect
-    import routers.payroll as pr
-    src = inspect.getsource(pr.create_run)
+    src = create_path_source()
     assert 'totals["edli"]  += int(slip.get("edli_paise") or 0)' in src
     assert 'totals["admin"] += int(slip.get("pf_admin_paise") or 0)' in src
     assert '"total_edli_paise":     totals["edli"]' in src
@@ -255,4 +256,4 @@ def test_the_floor_is_applied_to_the_run_not_to_a_payslip():
     import inspect
     import routers.payroll as pr
     assert "payroll_admin_charge" not in inspect.getsource(pr._compute_pf)
-    assert "payroll_admin_charge" in inspect.getsource(pr.create_run)
+    assert "payroll_admin_charge" in create_path_source()

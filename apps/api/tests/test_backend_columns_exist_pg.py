@@ -339,7 +339,19 @@ UNFIXED: dict[str, str] = {}
 # dynamic and no literal exists to read. Every other query in that module is
 # readable: the projections are written out at each call site rather than
 # shared through a constant, and both INSERT payloads are inline.
-MAX_UNREADABLE = 457
+# 457 -> 458. `routers/firms.py`'s PATCH builds its `.update(...)` payload from
+# whichever of the thirteen profile fields the caller sent — a screen editing one
+# box must not blank the twelve it did not send — so the dict is genuinely
+# dynamic and no literal exists to read. That is ONE; the other THREE the router
+# arrived with were removed rather than budgeted, the same way the two entries
+# above describe. Both `.select(...)` calls were reaching the projection through
+# a name (first `", ".join(firm_identity.COLUMNS)`, then a module constant) and
+# are written out at each call site now, and `routers/practice.py`'s firms read
+# went back to a literal with it. Removing them paid twice: that router's own
+# guard, `test_a_narrow_projection_names_both_columns`, matches a LITERAL
+# `.select("…gstin…")`, so behind the join it had never fired on the two reads it
+# was written for. It now does, and carries a floor saying how many it must see.
+MAX_UNREADABLE = 458
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

@@ -484,3 +484,39 @@ plus `domain/banking/attachments` is the answer, and the CA confirms the claim
 with their client as part of their own engagement. Recorded as
 `not_a_defect_as_stated` rather than left open, so nobody re-opens it as a
 gap: it is a scope decision, not a hole.
+
+## G. PUR-32, a duplicate supplier with no GSTIN and no PAN — **not yet asked**
+
+**Not blocking anything, and nothing has been built either way.** Raised here so
+the decision is yours rather than mine by default.
+
+`routers/vendors._match_existing_vendor` blocks a duplicate on GSTIN first and
+PAN second, and all three call sites are wrapped in `if gstin or pan`. An
+UNREGISTERED supplier — a local hardware shop, a courier, a one-man contractor —
+usually has neither, so re-uploading a vendor CSV or typing the name twice
+creates two vendor rows for one supplier. Neither guard sees it:
+`_near_duplicates`, which catches a bill entered twice, filters on
+`vendor_id`, so the second bill is under the second vendor and looks like a
+first.
+
+The obvious fix is to match on the NAME as well, and that is what I did not want
+to do unasked. The create endpoint does not REFUSE a duplicate — it returns the
+EXISTING vendor with `duplicate: true` — so a name match would silently attach
+the new bill to a vendor somebody else created, and two genuinely different
+suppliers can share a name ("Sharma Traders" in two cities). Merging two real
+suppliers is worse than the duplicate row, because it is invisible and it moves
+money: their ledgers, their ageing and their §43B(h) position all become one.
+
+**Two ways to go, and it is a product call:**
+
+1. **Warn, never merge.** Create the vendor as asked, and return
+   `possible_duplicates` naming the active vendors with the same normalised
+   name, so the screen can say "you already have a Sharma Traders". Nothing is
+   merged, nothing is refused, and the CA decides. This is the shape the
+   three-way match takes (report, never block), and it is what I would build.
+2. **Match on the name like GSTIN and PAN.** Cheaper, consistent with the two
+   existing branches, and it will occasionally attach a bill to the wrong
+   supplier with nothing to say it happened.
+
+Either way it is a small change; what it needs is your answer to "is a same-name
+supplier the same supplier?".

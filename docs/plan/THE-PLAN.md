@@ -65,7 +65,7 @@ analytics layers 2–3 and the portals add 4–6.
 
 ## Decisions taken — locked, do not re-litigate
 
-Answered by the owner on 16 September 2026.
+Answered by the owner on 16 September 2026, except where a row says otherwise.
 
 | # | decision | answer |
 |---|---|---|
@@ -77,6 +77,20 @@ Answered by the owner on 16 September 2026.
 | D6 | Rupee grouping | **Indian everywhere** (12,34,567 — never 1,234,567) |
 | D7 | Demo on real or seeded data | **All data is demo today.** Seeded demo firm. |
 | D8 | i18n | **Extract strings, translate nothing.** English only. |
+| D9 | A PR that carries a migration | **Merge it like any other — no flag, no pause.** 17 Sep. |
+
+**D9 — why this needed asking at all.** Merging to `main` runs
+`apply pending migrations — production`, which applies every unapplied migration
+to the live Supabase project with no review step in between
+(`docs/deploy-migrations.md`). That is deliberate: it closed a gap where
+migrations 233-241 sat committed and unapplied for up to six days while the code
+that needed them was already live and failing silently behind broad
+`try/except`. Nothing in `CLAUDE.md` or in any doc asks for migrations to be held
+back — the only rule is the one above it, that CI must pass first, which the job
+already enforces. I had been holding migration-carrying work for a confirmation
+that was never asked for; D9 removes that. The job fails the push loudly on a bad
+migration rather than corrupting data quietly, which is the same bargain
+application code has always had here.
 
 **D1 — the tile set:**
 

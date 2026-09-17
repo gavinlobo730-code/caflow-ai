@@ -12,6 +12,7 @@ import {
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
 import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
@@ -3761,29 +3762,20 @@ function ReceiptForm({
             ))}
           </select>
         </div>
-        <div>
-          {/* Hidden for a cash receipt: it did not go into a bank, and offering
-              an account there is what makes a CA pick one and mis-post it. */}
-          {paymentMode !== "cash" && (
-            <>
-              <label className="block text-xs font-medium text-[#475569] mb-1">
-                Deposited Into
-              </label>
-              <select
-                value={bankAccountId}
-                onChange={(e) => setBankAccountId(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Not specified — posts to the general Bank ledger</option>
-                {bankAccounts.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.bank_name} — {String(b.account_no || "").slice(-4)}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-        </div>
+        {/* The SAME picker the two vendor-payment doors now use (ACC-03), so
+            the "not specified" option cannot say one thing here and something
+            neutral there — that sentence is the disclosure that the posting
+            falls through to the firm's generic Bank ledger. Rows are passed in
+            rather than re-fetched: this form already reads them alongside the
+            client's own advance-tax flags in one round trip. */}
+        <PaymentAccountPicker
+          clientId={clientId}
+          value={bankAccountId}
+          onChange={setBankAccountId}
+          label="Deposited Into"
+          paymentMode={paymentMode}
+          accounts={bankAccounts}
+        />
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1">Reference No.</label>
           <input

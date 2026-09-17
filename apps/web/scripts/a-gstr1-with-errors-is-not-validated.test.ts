@@ -79,13 +79,6 @@ test("validated_at is not stamped on a draft", () => {
   assert.match(code("lib/data/gst.ts"), /validated_at:\s*readyToFile \?/);
 });
 
-test("the GSTR-1 screen shows what the return does NOT carry", () => {
-  const src = code("app/gst/gstr1/page.tsx");
-  assert.match(src, /result\.payload_gaps\.length > 0/);
-  assert.match(src, /result\.payload_gaps\.map/,
-    "a gap the builder computes and no screen shows is not a fixed bug");
-});
-
 test("both status values are ones the table's CHECK accepts", () => {
   const migration = fs.readFileSync(
     path.resolve(WEB, "..", "api", "migrations", "036_gst_engine.sql"), "utf8");
@@ -99,12 +92,52 @@ test("both status values are ones the table's CHECK accepts", () => {
   }
 });
 
-test("the GSTR-1 screen shows errors, separately from warnings", () => {
-  const src = code("app/gst/gstr1/page.tsx");
-  assert.match(src, /result\.validation_errors\.length > 0/,
-    "the errors reach this page and nothing renders them");
-  assert.match(src, /result\.validation_errors\.map/);
-  // Separately: a rejection and a judgement call are different things, and one
-  // list would make them look alike.
-  assert.match(src, /result\.validation_warnings\.map/);
+// BOTH SCREENS THAT COMPUTE A GSTR-1, NOT JUST THE ONE (GST-16).
+//
+// These two used to assert that app/gst/gstr1/page.tsx rendered
+// `result.payload_gaps.map(...)` and `result.validation_errors.map(...)`
+// inline — true, and a spelling of the rule rather than the rule. The CLIENT
+// workspace's "Compute from Books" panel calls the same endpoint, got the same
+// three lists, and rendered none of them: the reconciliation banner, the
+// invoice count and two totals. So one computed return looked clean from
+// inside a client and carried errors from the firm-level page.
+//
+// The lists now go through components/gst/Gstr1Findings on both, which is what
+// makes them describe one return the same way, so the assertion is about the
+// SCREENS THAT COMPUTE rather than about one file's JSX.
+const COMPUTES_A_GSTR1 = [
+  "app/gst/gstr1/page.tsx",
+  "app/clients/[id]/compliance/gst/page.tsx",
+];
+
+test("every screen that computes a GSTR-1 renders what the validator said", () => {
+  for (const rel of COMPUTES_A_GSTR1) {
+    const src = code(rel);
+    assert.match(src, /Gstr1Findings/, (
+      `${rel} computes a GSTR-1 and does not render components/gst/Gstr1Findings. ` +
+      "A gap, an error or a warning the builder computes and no screen shows is " +
+      "not a fixed bug — and this is the screen a CA reaches from the client " +
+      "they are working on."
+    ));
+    for (const key of ["validation_errors", "validation_warnings", "payload_gaps"]) {
+      assert.match(src, new RegExp(key), `${rel} does not pass ${key} to it`);
+    }
+  }
+});
+
+test("the findings component keeps the three lists apart, in that order", () => {
+  const src = code("components/gst/Gstr1Findings.tsx");
+  // NOT DECLARED before ERRORS before WARNINGS. A gap is a document the return
+  // does not carry at all and is the only one a CA cannot see any other way; an
+  // error is a rejection and a warning is a judgement call, and one list would
+  // make them look alike.
+  const gaps = src.indexOf("Not declared in this return");
+  const errors = src.indexOf("Errors — the portal will reject these");
+  const warnings = src.indexOf("Warnings");
+  assert.ok(gaps > 0 && errors > gaps, "a gap must be shown before an error");
+  assert.ok(warnings > errors, "a rejection must be shown before a judgement call");
+  // And nothing claims the return is clean: an "all checks passed" banner would
+  // be a claim about checks this component does not run.
+  assert.match(src, /if \(!errors\.length && !warnings\.length && !gaps\.length\) return null/,
+    "with nothing to report it must render nothing rather than a reassurance");
 });

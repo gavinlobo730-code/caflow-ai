@@ -333,6 +333,31 @@ def party_matches(party_name: Optional[str], parsed: ParsedNarration) -> bool:
     return smaller <= larger
 
 
+def parsed_view(parsed: ParsedNarration) -> dict:
+    """The parsed narration as a screen receives it (BANK-28).
+
+    ONE BUILDER, because there were two identical dict literals — one in
+    `bank_entry_service._annotate`, one in `bank_matching_service` — and both
+    omitted `cheque_no`. `ParsedNarration` has carried it since the module was
+    written and `describe` has named it in the summary, so the parser found the
+    one identifier that tells one cheque from the next, and the payload dropped
+    it on the way to the browser. Adding the key to two literals would have been
+    a third place for the next field to be forgotten.
+
+    Display only. The raw narration stays on the row as the record of what
+    arrived; this is a view alongside it.
+    """
+    return {
+        "channel": parsed.channel,
+        "utr": parsed.utr,
+        "vpa": parsed.vpa,
+        "counterparty": parsed.counterparty,
+        "ifsc": parsed.ifsc,
+        "cheque_no": parsed.cheque_no,
+        "summary": describe(parsed),
+    }
+
+
 def describe(parsed: ParsedNarration) -> str:
     """One-line human summary for the work queue: 'UPI · RAMESH KUMAR · UTR
     412345678901'. Display only."""

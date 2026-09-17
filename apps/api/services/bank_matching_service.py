@@ -19,7 +19,7 @@ from core.db_paging import fetch_all
 
 from domain.banking import (
     Candidate, rank_suggestions, match_rule, is_valid_category, CATEGORIES,
-    NEAR_MATCH_BAND_BPS, parse_narration, describe_narration,
+    NEAR_MATCH_BAND_BPS, parse_narration, parsed_view,
     invoice_open_paise, bill_open_paise,
 )
 from domain.banking import posting_map as pmap
@@ -687,12 +687,7 @@ class BankMatchingService:
             # this is a parsed view alongside it, so the queue can show
             # "UPI · RAMESH KUMAR · UTR 412345678901" instead of a wall of
             # slashes. Pure regex over a string already in hand — no extra query.
-            n = parse_narration(t.get("description"))
-            t["parsed"] = {
-                "channel": n.channel, "utr": n.utr, "vpa": n.vpa,
-                "counterparty": n.counterparty, "ifsc": n.ifsc,
-                "summary": describe_narration(n),
-            }
+            t["parsed"] = parsed_view(parse_narration(t.get("description")))
             # Tier 1.3 — who this looks like it was with. Only proposed when the
             # CA has not already named one; a human's answer is never overwritten.
             cid = t.get("client_id")

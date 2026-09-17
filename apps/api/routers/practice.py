@@ -13,6 +13,7 @@ by Guardrail G2 (clients_external + repository/router exclusions).
 import os
 import logging
 from fastapi import APIRouter, Depends
+from domain.firm import identity as firm_identity
 from models.common import api_response
 from models.client import PracticeIdentityUpdate
 from core.permissions import rbac
@@ -58,12 +59,19 @@ def provision_practice(current_user: dict = Depends(rbac("practice", "write"))):
     if _USE_MOCK:
         return api_response(True, {"internal_client_id": None, "provisioned": False,
                                    "message": "Provisioning is a no-op in mock mode."})
-    firm = _db().table("firms").select("name, pan, gstin, state").eq("id", firm_id).maybe_single().execute().data
+    # BOTH gstin columns, or gstin_of's fallback is a silent no-op — the same
+    # trap a narrow projection sets for `is_opening` (see domain/accounting/
+    # opening_documents). domain/firm/identity.COLUMNS is the list; it is spelled
+    # out here rather than joined so both the schema check and this feature's own
+    # narrow-projection guard can read it — see routers/firms._PROJECTION.
+    firm = (_db().table("firms")
+            .select("name, pan, state, gstin, gst_number")
+            .eq("id", firm_id).maybe_single().execute().data)
     if not firm:
         return api_response(False, None, "Firm not found")
     internal_client_id = provision(
         firm_id, firm.get("name") or "Practice", firm.get("pan"),
-        gstin=firm.get("gstin"), state=firm.get("state"),
+        gstin=firm_identity.gstin_of(firm), state=firm.get("state"),
         actor_id=current_user.get("auth_user_id"),
     )
     return api_response(True, {

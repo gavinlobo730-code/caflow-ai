@@ -27,8 +27,10 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getClients } from "@/lib/data/clients";
 import {
-  computeAdvanceTaxInterest, listAdvanceTaxPayments, saveAdvanceTaxPayments,
+  computeAdvanceTaxInterest, computeSection234ABInterest,
+  listAdvanceTaxPayments, saveAdvanceTaxPayments,
   type AdvanceTaxComputeResult, type AdvanceTaxInstallmentInput,
+  type Section234ABResult, type SectionInterestResult,
 } from "@/lib/data/income-tax";
 import type { Client } from "@/lib/types";
 import { todayLocalISO } from "@/lib/dateMath";
@@ -76,6 +78,32 @@ export default function AdvanceTaxPage() {
   // the assessee, not a figure, so the CA says so and the backend decides
   // everything that follows from it.
   const [presumptive, setPresumptive] = useState(false);
+
+  // §234A AND §234B, WHICH THE SERVER HAS COMPUTED ALL ALONG (IT-13).
+  // `POST /api/income-tax/interest/234ab` existed with no caller, so this
+  // screen showed §234C alone — while §234A charges 1% a month for filing
+  // late and §234B 1% a month where advance tax plus TDS fell short of 90% of
+  // the assessed tax, both on figures already on this page. What the screen
+  // could not know are the four facts below.
+  const [tdsTcsRs, setTdsTcsRs] = useState("");
+  // §90/§91 foreign tax credit and §89 relief REDUCE the base both sections
+  // charge on, so leaving it at nil over-states the interest for any client
+  // who has any — and interest is a sum the client pays over.
+  const [reliefRs, setReliefRs] = useState("");
+  // BLANK MEANS NOT YET FURNISHED, and that is not the same as nil interest:
+  // the engine runs the §234A period to today and says it is still running.
+  // A zero for an unfiled return would tell a CA the cheapest moment to file
+  // is never.
+  const [furnishedOn, setFurnishedOn] = useState("");
+  // The two facts Explanation 2 to §139(1) turns on that no column holds.
+  // §44AB applicability is the year's own turnover (domain/income_tax/
+  // tax_audit.py needs figures this screen has not got) and §92E is a
+  // transfer-pricing report; the server decides the date from them and says
+  // whether it could decide at all.
+  const [hasAudit, setHasAudit] = useState(false);
+  const [hasTP, setHasTP] = useState(false);
+  const [lateResult, setLateResult] = useState<Section234ABResult | null>(null);
+  const [lateError, setLateError] = useState<string | null>(null);
 
   useEffect(() => {
     getClients().then(c => { setClients(c); if (c.length > 0) setClientId(c[0].id); }).catch(() => {});
@@ -151,6 +179,42 @@ export default function AdvanceTaxPage() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fy, estimatedTaxPaise, editPaidRs, editPaidDate, editChallan, presumptive]);
+
+  // §234A / §234B. Same debounce and the same refusal to compute on a coerced
+  // zero: a TDS credit read as nil manufactures a §234B shortfall on tax the
+  // client has already suffered deduction on.
+  const tdsTcsPaise = paiseFromRupeeInput(tdsTcsRs || "0");
+  const reliefPaise = paiseFromRupeeInput(reliefRs || "0");
+  const entityType = clients.find(c => c.id === clientId)?.entity_type ?? null;
+  useEffect(() => {
+    if (estimatedTaxPaise <= 0 || badPaidInstalment !== undefined
+        || tdsTcsPaise === null || reliefPaise === null) {
+      setLateResult(null);
+      setLateError(tdsTcsPaise === null
+        ? "TDS / TCS credit: enter the amount in rupees, e.g. 45000 — without commas."
+        : reliefPaise === null
+          ? "Relief: enter the amount in rupees, e.g. 12000 — without commas."
+          : null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      computeSection234ABInterest({
+        fy,
+        tax_on_total_income_paise: estimatedTaxPaise,
+        tds_tcs_paise: tdsTcsPaise,
+        relief_paise: reliefPaise,
+        advance_tax_paid_paise: [1, 2, 3, 4].reduce((t, n) => t + (paidPaiseOf(n) ?? 0), 0),
+        return_furnished_on: furnishedOn || null,
+        entity_type: entityType,
+        has_tax_audit_engagement: hasAudit,
+        has_transfer_pricing_report: hasTP,
+      })
+        .then(r => { setLateResult(r); setLateError(null); })
+        .catch(e => { setLateResult(null); setLateError(e instanceof Error ? e.message : "Failed to compute"); });
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fy, estimatedTaxPaise, editPaidRs, tdsTcsRs, reliefRs, furnishedOn, entityType, hasAudit, hasTP]);
 
   async function handleSave() {
     if (!clientId || estimatedTaxPaise <= 0) {
@@ -246,6 +310,19 @@ export default function AdvanceTaxPage() {
           { label: "Estimated Tax", value: formatPaise(estimatedTaxPaise) },
           { label: "Total Paid", value: formatPaise(totalPaid) },
           { label: "Interest u/s 234C", value: formatPaise(totalInterest), red: totalInterest > 0 },
+          // §234A + §234B, beside §234C rather than instead of it: three
+          // different charges on three different facts, and a CA reconciles
+          // the total against the portal's own computation sheet.
+          {
+            label: "Interest u/s 234A + 234B",
+            value: lateResult ? formatPaise(lateResult.total_interest_paise) : "—",
+            red: (lateResult?.total_interest_paise ?? 0) > 0,
+          },
+          {
+            label: "Total interest",
+            value: lateResult ? formatPaise(totalInterest + lateResult.total_interest_paise) : "—",
+            red: totalInterest + (lateResult?.total_interest_paise ?? 0) > 0,
+          },
         ].map(s => (
           <Card key={s.label}>
             <CardContent className="pt-4 pb-3">
@@ -337,11 +414,128 @@ export default function AdvanceTaxPage() {
         )}
       </Card>
 
+      {/* §234A and §234B — the server has computed these all along (IT-13). */}
+      <Card>
+        <CardContent className="pt-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-sm font-semibold text-[#0F172A]">
+              Late filing and short payment — §234A, §234B
+            </h2>
+            <span className="text-[11px] text-[#94A3B8]">
+              Computed from the estimated tax and the instalments above.
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="text-xs text-[#64748B]">TDS / TCS credit (₹)</label>
+              <input type="text" inputMode="decimal" value={tdsTcsRs}
+                onChange={e => setTdsTcsRs(e.target.value)}
+                className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-40"
+                placeholder="0.00" />
+            </div>
+            <div>
+              <label className="text-xs text-[#64748B]">Relief u/s 89 / 90 / 91 (₹)</label>
+              <input type="text" inputMode="decimal" value={reliefRs}
+                onChange={e => setReliefRs(e.target.value)}
+                className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 w-40"
+                placeholder="0.00" />
+            </div>
+            <div>
+              <label className="text-xs text-[#64748B]">Return furnished on</label>
+              <input type="date" value={furnishedOn}
+                onChange={e => setFurnishedOn(e.target.value)}
+                className="block mt-1 border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              <p className="text-[10px] text-[#94A3B8] mt-1 max-w-[16rem]">
+                Leave blank if it has not been filed — the §234A period then runs to today
+                and keeps running.
+              </p>
+            </div>
+            <label className="flex items-center gap-1.5 text-xs text-[#475569] pb-2"
+                   title="IT Act §139(1), Explanation 2(a)(ii) — accounts required to be audited.">
+              <input type="checkbox" checked={hasAudit} onChange={e => setHasAudit(e.target.checked)} />
+              Tax audit applies
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-[#475569] pb-2"
+                   title="IT Act §139(1), Explanation 2(aa) — a report under §92E is required.">
+              <input type="checkbox" checked={hasTP} onChange={e => setHasTP(e.target.checked)} />
+              §92E report required
+            </label>
+          </div>
+
+          {lateError && <p className="text-xs text-red-600">{lateError}</p>}
+
+          {!lateResult ? (
+            <p className="text-xs text-[#94A3B8]">
+              Enter the estimated annual tax above to see what filing late or paying
+              short would cost.
+            </p>
+          ) : (
+            <>
+              <div className="grid md:grid-cols-2 gap-3">
+                <InterestBlock r={lateResult.section_234a} />
+                <InterestBlock r={lateResult.section_234b} />
+              </div>
+              <div className="rounded-lg bg-[#F8FAFC] border border-[#EEF2F7] px-3 py-2 space-y-1">
+                <p className="text-[11px] text-[#475569]">
+                  §139(1) due date <span className="font-medium tabular-nums">{lateResult.itr_due_date.due_date}</span>
+                  {" — "}{lateResult.itr_due_date.basis}
+                </p>
+                {/* `decided: false` means the statute does not settle the date on
+                    facts this app holds, so the EARLIER of the two was taken and
+                    the §234A figure above is a FLOOR. Saying nothing would let a
+                    CA read a floor as the answer. */}
+                {!lateResult.itr_due_date.decided && (
+                  <p className="text-[11px] text-amber-600 flex items-start gap-1">
+                    <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
+                    The due date is not settled on what is recorded for this client, so the
+                    earlier of the two was used and the §234A interest above is a floor.
+                    {lateResult.itr_due_date.statutory_gaps.length > 0
+                      && ` ${lateResult.itr_due_date.statutory_gaps.join(" ")}`}
+                  </p>
+                )}
+                {!lateResult.return_furnished_on && (
+                  <p className="text-[11px] text-[#64748B]">
+                    Not yet furnished — §234A is charged to {lateResult.assessment_date} and
+                    grows by a further month, or part of one, until it is.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       <p className="text-xs text-[#94A3B8] text-center">
         Interest computed under IT Act Section 234C: a fixed 3-month period on the
         shortfall for instalments 1–3, 1 month for instalment 4 — not based on how
         late the payment actually was. CA Review Required before filing.
       </p>
+    </div>
+  );
+}
+
+/** One section's answer, with its own reasons shown rather than summarised —
+ *  each sentence names the rule applied and the figures it was applied to,
+ *  which is what a CA checks against the portal's computation sheet. */
+function InterestBlock({ r }: { r: SectionInterestResult }) {
+  return (
+    <div className="rounded-lg border border-[#F1F5F9] p-3 space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold text-[#334155]">{r.section}</span>
+        <span className={`text-base font-bold tabular-nums ${r.interest_paise > 0 ? "text-red-600" : "text-[#0F172A]"}`}>
+          {formatPaise(r.interest_paise)}
+        </span>
+      </div>
+      {r.applies && (
+        <p className="text-[11px] text-[#64748B] tabular-nums">
+          {formatPaise(r.base_paise)} × 1% × {r.months} month{r.months === 1 ? "" : "s"}
+          {r.from_date && r.to_date ? ` · ${r.from_date} to ${r.to_date}` : ""}
+        </p>
+      )}
+      {r.reasons.map((x, i) => (
+        <p key={i} className="text-[10px] text-[#94A3B8]">{x}</p>
+      ))}
     </div>
   );
 }

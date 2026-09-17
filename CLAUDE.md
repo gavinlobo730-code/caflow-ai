@@ -103,6 +103,25 @@ change. The code is the authority; keep this file in step with it.
   every June receipt, payment, bank entry, depreciation charge and payroll accrual from
   the 11th onwards. `services/period_lock_service.py` holds the Python twins, pinned to
   the SQL by `tests/test_period_lock_reason_parity_pg.py`.
+  **A RECEIPT IS ONE OF THOSE DOCUMENTS FOR ONE CLASS OF CLIENT, AND THE
+  ARGUMENT FOR LEAVING EVERY OTHER RECEIPT OPEN STILL STANDS** (SALES-15).
+  Both receipt paths asked only the firm-FY validator, on a recorded argument
+  — "a receipt moves Bank and Debtors and touches no output tax" — that GST-15
+  falsified by half: for a client marked `gst_advance_tax_applicable`, CGST
+  §13(2) charges tax on an advance for SERVICES when it is RECEIVED, so the
+  receipt is declared in GSTR-1 Table 11A and discharged in GSTR-3B Table
+  3.1(a). `receipt_service._assert_open_where_a_receipt_feeds_a_return` asks
+  the lock for exactly those clients. **It is UNCONDITIONAL on the receipt's
+  own shape**, the fixed asset's reasoning below: gating on whether the receipt
+  leaves an unallocated balance would be wrong twice, because
+  `table_11_sections` measures what was adjusted BY THE PERIOD END off the
+  ALLOCATION's `created_at` — so a back-dated receipt allocated in full today
+  has no allocation dated inside June and its whole amount lands in June's 11A
+  — and a receipt with no rate or place of supply is NAMED in that return's
+  `gaps`, which is also part of what was filed. **Every other client is
+  untouched and that is the point**: Notification 66/2017-Central Tax removed
+  the charge on advances for GOODS, the flag is off by default, and recording a
+  20 June payment on 15 July stays an ordinary thing to do.
   **A FIXED ASSET is one of those documents.** `create_asset` asked only
   `period_validation_service.validate_posting_date` — firm-FY, no client_id, so
   it cannot see a filed return — while `correct_asset` and `delete_asset` both
@@ -136,7 +155,22 @@ change. The code is the authority; keep this file in step with it.
   it did not (mock mode, the in-memory doubles). A settlement candidate carries
   BOTH figures — `amount_paise` is the document's face value, `outstanding_paise`
   what is left — because `FindMatchModal` renders "· ₹X open" only when the two
-  differ.
+  differ. **And every piece of MATCHING ARITHMETIC runs on the second**
+  (BANK-10): `matcher.candidate_open_paise` is the one definition, read by the
+  fetch band, the in-memory re-test, `rank_suggestions` and
+  `candidate_search.search` alike. The ranker was the last place still
+  subtracting the FACE value, so a ₹1,18,000 invoice half settled by an advance
+  and cleared by a ₹59,000 credit came out "short by ₹59,000" — outside the 25%
+  band, so offered nowhere, on the commonest settlement an Indian practice sees.
+  Two things fall out of it and both are deliberate: the old +15 "matches
+  outstanding balance" bonus is GONE, because it now restates `difference == 0`
+  exactly and a term restating its own branch only inflates documents that
+  happen to carry the column; and a bank line LARGER than what is open is no
+  longer offered by the ranker at all, because offering it invites an allocation
+  bigger than the document can take — the unbanded search still finds it and
+  says the line is larger, which is what that screen is for. `None` means the
+  face value IS the open figure, which is true of the three candidate kinds that
+  carry no such column.
 - `created_by` / `posted_by` FK to `public.users.id` (the internal user id), **not** the
   Supabase auth id.
 - Money crosses the API as raw integer `*_paise`. The frontend formats to ₹. Rupee
@@ -346,8 +380,24 @@ change. The code is the authority; keep this file in step with it.
   so the month's withholding comes out too SMALL — and §192(1) makes the
   EMPLOYER liable for the shortfall with §201(1A) interest — and it keeps
   somebody in ESI past the ₹21,000 ceiling on a contribution that never
-  happened. There is no discard-and-recompute path (PAY-21), so a draft left
-  behind is permanent.
+  happened.
+  **AND THAT RULE IS WHAT MAKES A DRAFT REBUILDABLE** (PAY-21, closed
+  17-09-2026). `POST /api/payroll/runs/{run_id}/recompute` deletes the slips
+  and rebuilds them, and `DELETE /api/payroll/runs/{run_id}` throws an
+  unreleased run away so migration 237's unique index stops making the month
+  permanently uncreatable — without either, a run computed before the
+  attendance was entered could only be fixed against the database, and
+  reversing a finalised one reopens it at `review` with the SAME slips.
+  Both are safe precisely because a draft has posted no journal, registered no
+  §192 TDS and recorded no loan recovery, and because the two readers above
+  count only RELEASED runs, so a rebuild cannot disturb what an earlier month
+  withheld. `create_run`'s slip-building body is `_compute_and_store_slips` and
+  BOTH doors call it — two copies would be two payrolls that agree until one is
+  changed. A finalised or paid run is refused with a 409 naming the reversal
+  path. **`_PAYROLL_UNRELEASED` is its own tuple and NOT the inverse of
+  `_PAYROLL_RELEASED`**: the two answer different questions — which runs COUNT,
+  and which have not yet paid anybody — and writing either as "not the other"
+  would make a fifth status silently join both.
 - **A FIRST depreciation posting may start at any month and now says what that
   forecloses** (FA-04). `depreciation_posted_through` only moves forward, so an
   asset bought in April and first depreciated in December loses April–November
@@ -569,6 +619,30 @@ change. The code is the authority; keep this file in step with it.
   the state list now (as `ReceiptIn.place_of_supply` has been since GST-15),
   the edit path too, and a request whose two disagree is refused rather than
   silently resolved one way.
+- **WHAT KIND OF SUPPLY AN INVOICE IS HAS ONE AUTHORITY, AND THE E-INVOICE
+  RECORD MAY NOT CONTRADICT IT** (SALES-19). `domain/gst/treatment.
+  treatment_for_invoice` derives the treatment — regular, export or SEZ, with
+  or without payment, deemed export — from the invoice's own `supply_type` and
+  `invoice_type`, the pair GSTR-1 is actually built from, reading the EXPORT
+  ROUTE off the tax actually charged (IGST §16(3): (b) on payment of IGST,
+  refunded under §54, against (a) under an LUT or bond with nothing charged —
+  Table 6A's `exp_typ` turns on exactly that, and asking for the wrong one asks
+  for the wrong refund under the wrong rule). `einvoice_records.gst_treatment`
+  is a SECOND record of the same fact, captured when a CA prepares an IRN, and
+  `POST /api/einvoice/records` stored whatever was sent while the picker seeded
+  itself `"regular"` and was never told what the invoice said — so a record
+  could contradict its own invoice and the compliance panel rendered both
+  labels at once. `treatment_for_record` is the rule and the door **422s a
+  disagreement rather than resolving it**: taking the caller's value keeps the
+  wrong export route on the document a human keys the IRP from, and taking the
+  derived value silently discards what somebody just chose on a screen that
+  offered them the choice — `SalesInvoiceIn`'s shape where the two state fields
+  disagree. **A record naming no invoice this product holds is NOT refused**:
+  `sales_invoice_id` is optional (a record may be prepared for an invoice
+  raised elsewhere), so there is nothing to reconcile and refusing would make
+  the link mandatory by accident. The picker is READ-ONLY where the server
+  decided one, because a screen must never invite a CA to type something the
+  server will refuse — the `attachmentsReadOnly` discipline.
 - **THE SALES CYCLE BEGINS BEFORE THE TAX INVOICE, AND ONLY ONE OF THE FOUR
   DOCUMENTS IS THE ACT'S** (SALES-21, migration 392). A client quotes, takes an
   order, delivers against it and bills afterwards; the product started at the
@@ -1126,10 +1200,18 @@ change. The code is the authority; keep this file in step with it.
   in `services/gst_return_service.py` is the one list and it CALLS
   `_table_4a_gaps` rather than restating it, so the 4(A) rows keep one
   definition. **`table_4a_gaps` itself was served since GST-24 and rendered by
-  nothing**, so even the ISD sentence reached nobody; the client GST screen
-  renders the superset now. No figure changes — what an underivable row needs is
-  a document this product does not model, not a number from memory — and a test
-  asserts no reason states a rate or an amount.
+  nothing**, so even the ISD sentence reached nobody. No figure changes — what
+  an underivable row needs is a document this product does not model, not a
+  number from memory — and a test asserts no reason states a rate or an amount.
+  **BOTH GSTR-3B SCREENS RENDER IT, FROM ONE COMPONENT** (GST-22).
+  `components/gst/Gstr3bFindings.tsx` carries this panel, Table 5.1 and the
+  bank-line note; the per-client tab spelled all three out inline and
+  `computeGSTR3B` dropped the four keys on the way through, so the FIRM-LEVEL
+  screen showed none of them and the two disagreed about how much of the return
+  they show. Three older guards had that page's PATH written into them and
+  failed on a move that did not break their rule — `scripts/panelSource.ts`
+  resolves a panel by a phrase only it contains and asserts there is exactly
+  one, which is the same rule stated once instead of three times.
 - **GSTR-3B TABLE 4(A) HAS FIVE ROWS, AN IMPORT OF SERVICES OWNS ONE OF THEM,
   AND TWO ARE STRUCTURALLY NIL** (GST-24). `itc_avl_rows` emits all five in the
   GSTN utility's order and used to put the WHOLE reverse-charge credit on
@@ -2999,7 +3081,34 @@ ready" is chunked and resumable; a `proposed` draft is never passed in bulk. A
 rule a Manager+ marks **trusted** passes its lines with no click, as
 `created_by = trusted_by` — the one place the product acts unprompted, an owner
 decision of 2026-09-03 that reversed the earlier "draft only" rule. The
-posting path is still only `bank_posting_service.post`, and **that path is
+posting path is still only `bank_posting_service.post`, and **which BANK
+LEDGER either path posts to comes from one lookup**,
+`BankPostingService.bank_account_id_for` — `bank_transactions` carries no
+`bank_account_id` of its own, only `statement_id`, so the account is one hop
+away through `bank_statements` and `match_and_settle_multi` was building its
+receipt and payment payloads without it (ACC-03). `domain/accounting/
+payment_account.resolve_payment_account` then fell through to the firm's
+generic `%Bank%` ledger, so a line PASSED from the queue and the SAME line
+SETTLED against a document landed in two different ledgers — the defect that
+module's own docstring says it exists to end. The lookup returns None rather
+than raising, because a transaction with no statement must still settle and the
+resolver falls back exactly as before AND SAYS it fell back. ⚠️ `is_fallback`
+and `reason` still reach no caller: the resolver runs inside eight
+journal-line builders, so surfacing them is a refactor through the kernel's
+callers and WHERE a CA is told is an owner decision.
+**WHAT THE PARSER FOUND IN THE NARRATION IS BUILT ONCE**, by
+`domain/banking/narration.parsed_view`, because there were two identical dict
+literals — one per service — and BOTH omitted `cheque_no` (BANK-28), which
+`ParsedNarration` has carried since the module was written and `describe()` has
+always named in the summary. A cheque has no UTR, so the leaf number is the only
+thing that tells one from the next, and plenty of Indian statements carry no
+reference COLUMN at all — only a narration. So `match_and_settle_multi`'s
+settlement reference falls back **caller → the file's own `reference_no` → the
+parsed UTR → the parsed cheque number**, and that ORDER is the rule: a parse is a
+reading of somebody else's document and must never displace what a person or the
+statement itself said. The screens drop the cheque number where it merely repeats
+`reference_no`.
+**`bank_posting_service.post` is
 INR-only and refuses rather than converting** — it calls `_create_journal` with
 no `txn_currency`, so the kernel takes INR at rate 1 and a USD line reading
 1,000.00 would be booked as one thousand RUPEES: balanced, footing, and wrong by
@@ -3397,6 +3506,29 @@ exports one of those, which COERCES to 0 and is the parity-pinned payload
 builder. Two functions with one name in one directory is how the wrong one gets
 called.
 
+**A QUANTITY HAS THE SAME RULE AND ITS OWN GUARD, and the guard is the RULE
+rather than a list of doors** (INV-09). Every quantity column in this schema is
+`NUMERIC(10,3)` (migrations 050, 188, 210), so a fourth decimal is accepted,
+rounded by Postgres, and the money computed from what was TYPED no longer
+matches what was stored — which is the Inventory-control tie-out this file makes
+load-bearing. `domain/quantity.quantity_violation` is the one rule; the
+OPENING-STOCK door did not ask it while five others did, so
+`opening_qty_units=1.2345` was accepted where the identical figure on a stock
+adjustment was refused. `tests/test_a_quantity_door_asks_the_column_how_many_
+decimals.py` derives the door list from the AST — every Pydantic field whose
+name says quantity and whose annotation is NUMERIC, so a bool like
+`quantity_is_provisional` is not one — checks **per class** (a module-level walk
+passes when only one of a create/PATCH pair is guarded, which is exactly what
+these two were), and follows **one level of indirection**, because
+`models/invoices.py` legitimately factors the check into `_validate_quantity`
+and a scan seeing only the direct call would push the next author into copying
+it back. On the browser side the importer goes through `toQty`, the helper the
+invoice and bill line importers already use, and **`num()` — a bare `parseFloat`
+— is deleted**: its last call site gated a receipt's amount on a value it did
+not parse, so `"1200abc"` passed at 1200 while `toPaise` returned NaN, and
+`NaN <= 0` is FALSE, so the row was built with `amount_paise: NaN`, which
+`JSON.stringify` sends as **null**.
+
 ## Identifiers
 
 - **GSTIN carries a check digit, and the shape regex does not test it.**
@@ -3445,6 +3577,57 @@ called.
   `test_customer_bulk_create`'s own fixtures both ended in `5`, so the import
   path had only ever been exercised with GSTINs the portal would reject. The
   fixtures were corrected, not the guard relaxed.
+
+- **THE FIRM'S OWN GSTIN LIVES IN TWO COLUMNS AND ONLY ONE IS READ.**
+  `public.firms` carries `gst_number` (migration 003) AND `gstin` (014, given
+  its CHECK by 112/316), nothing has ever synced them, and the two sides of the
+  product picked different ones: BOTH screens that edit the firm profile wrote
+  `gst_number` **straight over PostgREST** — Settings and the onboarding
+  wizard's UPDATE step — while every backend reader read `gstin`. So a CA who
+  typed their GSTIN into Settings got a fee invoice with **no supplier GSTIN**
+  on it (CGST Rule 46(a)) and, because `_state_code(None)` is None, the whole
+  tax on a LOCAL supply landed in **IGST** instead of splitting CGST+SGST.
+  `POST /api/onboarding/firm` has always written `gstin` correctly; it is only
+  the screens' own update path that did not, so which route a firm came in
+  through decided whether its own GSTIN was readable at all.
+  **Measured before acting, because the severity turns on it**: on 17-09-2026
+  production held 2 firms with BOTH columns NULL — latent, and live the moment
+  anybody typed one in. The `capital_wip` shape: built, reachable, structurally
+  nil.
+  `domain/firm/identity.py` is the authority: **`gstin` is the column,
+  `gst_number` is READ as a fallback and never written**, and `gstin_of` is the
+  only reader. One writer, `PATCH /api/firms/profile` (Partner-only), which is
+  also where the **CHECK DIGIT** is tested — `firms_gstin_format` is a shape
+  regex and accepts a transposition, and that GSTIN goes on every fee invoice
+  the practice raises with nothing downstream to re-check it. Writing BOTH
+  columns was rejected: it would make `gst_number` a cache with two writers,
+  the shape this file records going wrong on `clients.gstin` and on the retired
+  supplier table. **A narrow `select()` that names one column and not the other
+  makes the fallback a silent no-op** — `routers/practice.py` did exactly that
+  — so every read names BOTH, the same trap
+  `domain/accounting/opening_documents` records for `is_opening`.
+  **AND EACH OF THE THREE PROJECTIONS IS WRITTEN OUT AT ITS CALL SITE rather
+  than shared through `identity.COLUMNS`**, which reads like the thing to
+  factor out and is not: `tests/test_backend_columns_exist_pg.py` checks every
+  `.select()` in `apps/api` against the real schema AS A STRING, and a
+  projection reached through a name — a `", ".join(...)`, a module constant —
+  is invisible to it; so is the guard written for this very feature, which
+  passed having looked at NOTHING until the three became literals. That guard
+  reads the **AST** now, not a regex, because the literal these fifteen columns
+  produce spans three adjacent strings and a regex sees only the first — it was
+  vacuous twice, for two different reasons, and carries a floor saying how many
+  projections it must find.
+  **Migration 399 back-fills `gstin` from `gst_number`** where the first is
+  empty and comments both columns, so the fallback is inert for every existing
+  row. It deliberately does NOT drop `gst_number` (that moves both sides of the
+  production-fixture comparison at once and needs the refresh in
+  `docs/schema-drift.md` — migration 371's decision about
+  `public.tds_section_limits`), does not `SET NOT NULL`, and **leaves a row
+  whose `gstin` is malformed but not empty alone**: `firms_gstin_format` is NOT
+  VALID, so such a row can exist, and preferring the superseded column over a
+  value somebody recorded in the canonical one would be a guess about the
+  firm's own legal identity. ⚠️ The shape carries over; the CHECK DIGIT does
+  not, and the migration says so.
 
 - **A UAN and an IFSC are format-checked at every door; an ESIC number is
   not, and that is a decision.** Both patterns live once, in

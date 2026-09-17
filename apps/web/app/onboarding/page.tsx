@@ -549,21 +549,24 @@ export default function OnboardingPage() {
         setStep(3);
         return;
       }
-      // Firm exists — update its profile fields (permitted by RLS for the firm owner).
-      const { error: updateError } = await supabase
-        .from("firms")
-        .update({
-          name: firmForm.name.trim(),
-          pan: firmForm.pan.trim() || null,
-          gst_number: firmForm.gstin.trim() || null,
-          phone: firmForm.phone.trim() || null,
-          address_line1: firmForm.address.trim() || null,
-          city: firmForm.city.trim() || null,
-          state: firmForm.state || null,
-          pincode: firmForm.pincode.trim() || null,
-        })
-        .eq("id", firmId);
-      if (updateError) throw updateError;
+      // Firm exists — update its profile through the API. This used to write
+      // `public.firms` straight over PostgREST, and it wrote `gst_number`: the
+      // one column no backend reader reads, so a firm onboarded through this
+      // screen ended up with `gstin` NULL and printed fee invoices with no
+      // supplier GSTIN on them. POST /api/onboarding/firm has always written
+      // the right column — it is only this UPDATE step that did not, so which
+      // path a firm came through decided whether its own GSTIN was readable.
+      const updateRes = await api.firm.saveProfile({
+        name: firmForm.name.trim(),
+        pan: firmForm.pan.trim(),
+        gstin: firmForm.gstin.trim(),
+        phone: firmForm.phone.trim(),
+        address_line1: firmForm.address.trim(),
+        city: firmForm.city.trim(),
+        state: firmForm.state,
+        pincode: firmForm.pincode.trim(),
+      });
+      if (!updateRes.success) throw new Error(updateRes.error ?? "Failed to save the firm profile.");
       // Idempotent CoA seed — covers the edge case where firm exists but CoA was
       // never seeded (e.g. partial onboarding). Non-blocking; failure is not fatal.
       api.account.seedCoa().catch(() => {});

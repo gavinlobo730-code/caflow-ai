@@ -344,37 +344,118 @@ def test_issuing_a_sales_invoice_into_a_filed_period_is_refused(db):
     assert "GSTR-1" in e.value.detail
 
 
-def test_a_receipt_is_deliberately_NOT_locked_by_a_filed_return():
-    """The one path SALES-15 asked for that is withheld, and the reason is in
-    services/receipt_service.py beside the decision.
+def _receipt_db(monkeypatch, advance_tax: bool):
+    """A FakeDB with one client, wired for the receipt path."""
+    from services import receipt_service, gst_advance_service
+    d = FakeDB()
+    monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.test")
+    wire_e2e(monkeypatch, d,
+             [receipt_service, gst_advance_service, period_lock_service])
+    d.seed("firms", {"id": FIRM, "name": "F1", "locked_financial_years": []})
+    d.seed("clients", {"id": CLIENT, "firm_id": FIRM, "name": "C1",
+                       "gst_advance_tax_applicable": advance_tax})
+    return d, receipt_service
 
-    A receipt moves Bank and Debtors and touches no output tax, and the only
-    filing types written to public.filings are GSTR-1 and GSTR-3B — returns of
-    SUPPLIES, not of collections. So a receipt back-dated into a filed period
-    makes neither return disagree with anything, while refusing it would block
-    an ordinary thing: recording a payment received on 20 June, entered on
-    15 July, after GSTR-1 for June was filed on the 11th.
 
-    Pinned as a DECISION so that adding the guard later is deliberate, and so
-    that the reason travels with it.
+def test_a_receipt_is_locked_by_a_filed_return_where_it_feeds_one(monkeypatch):
+    """SALES-15. The receipt paths asked only the CA's own financial-year lock,
+    on the argument that "a receipt moves Bank and Debtors and touches no output
+    tax". GST-15 falsified that for one class of client.
+
+    For a client marked `gst_advance_tax_applicable`, CGST s.13(2) puts the time
+    of supply for SERVICES at the earlier of invoice or payment, so the advance
+    is declared in GSTR-1 Table 11A and discharged in GSTR-3B Table 3.1(a). A
+    receipt dated 20 June, entered on 15 July after June's GSTR-1 went on the
+    11th, changes what that filed return should have said.
     """
+    db, receipt_service = _receipt_db(monkeypatch, advance_tax=True)
+    _file_gstr1_for_june(db, filed_on="2026-07-11")
+
+    with pytest.raises(HTTPException) as e:
+        receipt_service._assert_open_where_a_receipt_feeds_a_return(
+            db, FIRM, CLIENT, "2026-06-20")
+
+    assert e.value.status_code == 422
+    assert "GSTR-1" in e.value.detail
+
+
+def test_every_other_client_keeps_the_receipt_open(monkeypatch):
+    """And this is the half that must NOT change. Notification 66/2017-Central
+    Tax removed the charge on advances for GOODS, so the flag is off by default
+    and for most clients a receipt still reaches no return. Refusing there would
+    block an ordinary thing — recording a payment received on 20 June on 15 July.
+    """
+    db, receipt_service = _receipt_db(monkeypatch, advance_tax=False)
+    _file_gstr1_for_june(db, filed_on="2026-07-11")
+
+    receipt_service._assert_open_where_a_receipt_feeds_a_return(
+        db, FIRM, CLIENT, "2026-06-20")          # no raise
+
+
+def test_an_open_period_is_open_for_an_advance_tax_client_too(monkeypatch):
+    """The flag decides WHETHER the question is asked, never the answer."""
+    db, receipt_service = _receipt_db(monkeypatch, advance_tax=True)
+
+    receipt_service._assert_open_where_a_receipt_feeds_a_return(
+        db, FIRM, CLIENT, "2026-06-20")          # nothing filed — no raise
+
+
+def test_mock_mode_has_no_filings_to_read(monkeypatch):
+    """`db is None` is the in-memory path; there is no `filings` table there and
+    a receipt must still be creatable."""
+    from services import receipt_service
+    receipt_service._assert_open_where_a_receipt_feeds_a_return(
+        None, FIRM, CLIENT, "2026-06-20")        # no raise
+
+
+def test_both_receipt_paths_ask_before_they_write():
+    """The rule has ONE implementation and BOTH doors reach it.
+
+    A guard on one door is one code path from being none, and the foreign
+    receipt is the door reached second. The AST is read rather than the text so
+    a call inside a comment or a docstring cannot satisfy it.
+    """
+    import ast
     import inspect
 
     from services import receipt_service
+
+    tree = ast.parse(inspect.getsource(receipt_service))
+    fns = {n.name: n for n in ast.walk(tree)
+           if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+    for door in ("create_receipt_core", "create_foreign_receipt"):
+        called = {c.func.id for c in ast.walk(fns[door])
+                  if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+        assert "_assert_open_where_a_receipt_feeds_a_return" in called, (
+            f"{door} writes a dated receipt without asking whether the period "
+            "is closed for a client whose advances reach a return")
+
+    # And the helper itself must actually ask, rather than being a name that
+    # satisfies the ratchet in test_every_dated_posting_path_asserts_the_client_
+    # lock.py without doing anything.
+    helper = fns["_assert_open_where_a_receipt_feeds_a_return"]
+    attrs = {c.func.attr for c in ast.walk(helper)
+             if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)}
+    assert "assert_open" in attrs
+    assert "advance_tax_applicable" in (attrs | {
+        c.func.id for c in ast.walk(helper)
+        if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}), (
+        "the helper must gate on the client's own flag, not on the receipt's shape")
+
+
+def test_the_premise_behind_leaving_other_receipts_open(monkeypatch):
+    """If a filing type appears that depends on collections or on the balance
+    sheet — an ITR, a tax audit report, GSTR-9 — the decision has to be retaken
+    for EVERY client, not just the advance-tax ones."""
     from services import gst_filing_record_service as gfr
 
-    src = inspect.getsource(receipt_service)
-    assert "period_lock_service.assert_open" not in src.replace(
-        "# DELIBERATELY NOT period_lock_service.assert_open", "")
-    assert "DELIBERATELY NOT" in src, "the omission must be argued, not silent"
-
-    # The premise the decision rests on. If a filing type appears that depends
-    # on collections or on the balance sheet, the decision has to be retaken.
     types = {v for k, v in vars(gfr).items()
              if k.startswith("FILING_TYPE_") and isinstance(v, str)}
     assert types == {"GSTR-1", "GSTR-3B"}, (
         f"public.filings now records {sorted(types)} — re-read the argument in "
-        "receipt_service before leaving receipts unguarded")
+        "receipt_service._assert_open_where_a_receipt_feeds_a_return before "
+        "leaving ordinary receipts unguarded")
 
 
 # ── the purchase side, which had almost none of this (PUR-08) ────────────────

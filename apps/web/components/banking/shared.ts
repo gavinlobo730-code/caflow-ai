@@ -86,7 +86,12 @@ export interface QueueTxn {
    *  there. The raw text stays in `description` as the record of what arrived. */
   parsed?: {
     channel: string | null; utr: string | null; vpa: string | null;
-    counterparty: string | null; ifsc: string | null; summary: string;
+    counterparty: string | null; ifsc: string | null;
+    /** The cheque leaf number, where the narration names one. A cheque carries
+     *  no UTR, so without it a cheque line has nothing that tells it from the
+     *  next one — which is exactly how a bookkeeper finds it (BANK-28). */
+    cheque_no: string | null;
+    summary: string;
   } | null;
   /** Tier 1.2 — the ledgers this ONE line was allocated across. A split row
    *  carries a null category and a null account_id exactly like an untouched

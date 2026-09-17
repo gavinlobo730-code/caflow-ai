@@ -43,6 +43,7 @@ import pytest
 
 from domain.payroll import identity as ident
 import routers.payroll as pr
+from tests.payroll_create_path import create_path_source
 
 
 # ── TAN is checked; the others are not, and that asymmetry is deliberate ─────
@@ -245,8 +246,10 @@ def test_only_the_unregistered_states_are_named():
 def test_the_run_collects_pt_registration_gaps_into_statutory_gaps():
     """One list, not a third one. A screen with three ideas of "incomplete"
     teaches nobody to read any of them."""
-    import inspect
-    src = inspect.getsource(pr.create_run)
+    # The create path, not one function: PAY-21 lifted the slip-building body
+    # into `_compute_and_store_slips` so `recompute` could call the same
+    # computation, and this rule is about the PATH.
+    src = create_path_source()
     assert "identity_domain.pt_registration_gaps" in src
     assert "statutory_gaps.extend(identity_domain.pt_registration_gaps(" in src
 

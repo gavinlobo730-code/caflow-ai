@@ -306,6 +306,13 @@ def test_the_authority_is_still_one_module():
     persons (CGST s.25(4) with Schedule I paragraph 2). A valid-shaped wrong
     one there does not merely mislabel a warehouse — it decides whether a tax
     invoice is owed.
+
+    `firms.py` joined it on 17-09-2026 with PATCH /api/firms/profile. Until
+    then the firm's OWN GSTIN was the one nothing check-digited: both screens
+    wrote `public.firms` straight over PostgREST, where neither rbac() nor this
+    authority runs, and `firms_gstin_format` (migrations 112/316) is a shape
+    regex that accepts a transposition. That GSTIN goes on every fee invoice
+    the practice raises (CGST Rule 46(a)) and nothing downstream re-checks it.
     """
     hits = set()
     for path in (API / "routers").rglob("*.py"):
@@ -313,7 +320,7 @@ def test_the_authority_is_still_one_module():
         if "gstin_problem" in text or "problem_with" in text:
             hits.add(path.name)
     assert hits == {"customers.py", "vendors.py", "onboarding.py",
-                    "inventory.py"}, hits
+                    "inventory.py", "firms.py"}, hits
     for name in sorted(hits):
         src = (API / "routers" / name).read_text()
         assert "from domain.gst.gstin import" in src, (

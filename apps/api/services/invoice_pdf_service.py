@@ -55,6 +55,7 @@ All monetary values arrive as integer paise and are formatted for display only
 — no float arithmetic is performed on amounts. Tax RATES are held in basis
 points and are likewise formatted by integer arithmetic.
 """
+from domain.firm import identity as firm_identity
 from domain.accounting import opening_documents as _opening
 import io
 import logging
@@ -387,11 +388,17 @@ def _address_lines(row: dict) -> list[str]:
 
 
 def _firm_party(firm: dict) -> dict:
-    """The CA practice as a party — supplier of a FEE invoice, and nothing else."""
+    """The CA practice as a party — supplier of a FEE invoice, and nothing else.
+
+    The GSTIN goes through `domain/firm/identity.gstin_of` because `public.firms`
+    carries TWO columns for it and, until 17-09-2026, both screens wrote the one
+    this module does not read — so a practice that had typed its GSTIN into
+    Settings printed a tax invoice with no supplier GSTIN on it (CGST Rule 46(a)).
+    """
     return {
         "name": firm.get("name") or firm.get("firm_name") or "Chartered Accountants",
         "address": _address_lines(firm),
-        "gstin": firm.get("gstin"),
+        "gstin": firm_identity.gstin_of(firm),
         "pan": firm.get("pan"),
     }
 
@@ -468,7 +475,10 @@ def _compute_tax_splits(
         # Fallback: derive from GSTIN geography (Section 12, IGST Act 2017).
         gst_paise = invoice.get("gst_paise", 0)
         total_paise = invoice.get("total_paise", amount_paise + gst_paise)
-        firm_state = _state_code(firm.get("gstin"))
+        # Same two-column resolution as _firm_party: reading the wrong column
+        # here gives None, so `intra_state` is False and the WHOLE tax on a
+        # local supply lands in IGST.
+        firm_state = _state_code(firm_identity.gstin_of(firm))
         client_state = _state_code(client.get("gstin"))
         intra_state = firm_state is not None and firm_state == client_state
         if intra_state:

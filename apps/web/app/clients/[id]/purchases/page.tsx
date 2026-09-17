@@ -45,6 +45,7 @@ import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/da
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { RecurringBills } from "@/components/purchases/RecurringBills";
+import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 
 import { todayLocalISO } from "@/lib/dateMath";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -2297,6 +2298,12 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
   const [payDate, setPayDate] = useState(toDate());
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState("bank");
+  // WHICH ACCOUNT THE MONEY LEFT (ACC-03). `PurchasePaymentIn.bank_account_id`
+  // has been accepted all along and neither vendor-payment door ever sent one,
+  // so every payment posted to the firm's generic Bank ledger whichever of the
+  // client's accounts it actually went out of — and the bank match queue,
+  // settling the very statement line that names the account, did the same.
+  const [payFromAccountId, setPayFromAccountId] = useState("");
   const [refNo, setRefNo] = useState("");
 
   // Multi-Currency (Phase 3 backend, UI added here). Unlike a receipt, a
@@ -2491,6 +2498,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
           amount_paise: amtPaise,
           payment_mode: mode,
           reference_no: refNo || undefined,
+          bank_account_id: payFromAccountId || undefined,
           // The two shapes are mutually exclusive and the server refuses both
           // together: `purchase_bill_id` for the single foreign settlement
           // (which has no multi-bill path), `allocations` for INR. An INR
@@ -2706,6 +2714,13 @@ function Payments({ clientId, financialYear, onFinancialYearChange }: { clientId
               <label className="block text-xs font-medium text-[#475569] mb-1">Reference No.</label>
               <input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+            <PaymentAccountPicker
+              clientId={clientId}
+              value={payFromAccountId}
+              onChange={setPayFromAccountId}
+              label="Paid From"
+              paymentMode={mode}
+            />
           </div>
 
           {/* ONE PAYMENT, SEVERAL BILLS (PUR-22). A practice settles a month's

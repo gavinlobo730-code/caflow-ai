@@ -556,6 +556,75 @@ export async function computeAdvanceTaxInterest(req: ComputeAdvanceTaxRequest): 
   return json.data as AdvanceTaxComputeResult;
 }
 
+/** One section's interest, as apps/api/routers/income_tax._section_interest_payload
+ *  serves it. `reasons` is shown rather than summarised: each sentence names
+ *  the rule applied and the figures it was applied to, which is what a CA
+ *  checks. */
+export interface SectionInterestResult {
+  section: string;
+  applies: boolean;
+  base_paise: number;
+  months: number;
+  interest_paise: number;
+  from_date: string | null;
+  to_date: string | null;
+  reasons: string[];
+}
+
+/** The §139(1) due date and its provenance. `decided: false` means the statute
+ *  does not settle it on facts this app holds, the EARLIER of the two dates was
+ *  taken, and the §234A interest below is therefore a FLOOR — early costs
+ *  nothing and late costs exactly this interest. */
+export interface ITRDueDateBasis {
+  financial_year: string;
+  due_date: string;
+  is_audit: boolean;
+  decided: boolean;
+  basis: string;
+  statutory_gaps: string[];
+}
+
+export interface Section234ABRequest {
+  fy: string;
+  tax_on_total_income_paise: number;
+  assessed_tax_paise?: number | null;
+  tds_tcs_paise?: number;
+  advance_tax_paid_paise?: number;
+  relief_paise?: number;
+  /** null / omitted means NOT YET FURNISHED, which is NOT nil interest — the
+   *  engine runs the period to the assessment date and says it is still
+   *  running. Reporting zero for an unfiled return would tell a CA the
+   *  cheapest moment to file is never. */
+  return_furnished_on?: string | null;
+  assessment_date?: string | null;
+  entity_type?: string | null;
+  has_tax_audit_engagement?: boolean;
+  has_transfer_pricing_report?: boolean;
+}
+
+export interface Section234ABResult {
+  fy: string;
+  section_234a: SectionInterestResult;
+  section_234b: SectionInterestResult;
+  total_interest_paise: number;
+  itr_due_date: ITRDueDateBasis;
+  assessment_date: string;
+  return_furnished_on: string | null;
+}
+
+/** Stateless §234A (filing late) and §234B (advance tax short of 90%) — computes
+ *  only, never persists. The §139(1) due date is NOT sent: it is derived by
+ *  compliance_obligation_service.itr_due_date_for_client, the one authority for
+ *  it, and comes back with its own basis. */
+export async function computeSection234ABInterest(req: Section234ABRequest): Promise<Section234ABResult> {
+  const res = await fetch(`${API_BASE}/api/income-tax/interest/234ab`, {
+    method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error ?? `234A/234B compute failed: ${res.statusText}`);
+  return json.data as Section234ABResult;
+}
+
 export async function listAdvanceTaxPayments(clientId: string, fy: string): Promise<AdvanceTaxRecord[]> {
   const params = new URLSearchParams({ client_id: clientId, fy });
   const res = await fetch(`${API_BASE}/api/income-tax/advance-tax?${params}`, { headers: await _authHeaders() });

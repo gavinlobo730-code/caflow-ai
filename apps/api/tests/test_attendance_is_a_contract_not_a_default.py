@@ -52,6 +52,7 @@ import pytest
 
 from domain.payroll import attendance as att
 import routers.payroll as pr
+from tests.payroll_create_path import create_path_source
 
 
 # ── the identity ─────────────────────────────────────────────────────────────
@@ -298,5 +299,8 @@ def test_the_run_and_the_screen_read_attendance_the_same_way():
     the service-role key bypasses RLS and CLAUDE.md makes that filter the
     primary isolation control."""
     import inspect
-    assert "_attendance_for(" in inspect.getsource(pr.create_run)
+    # The create path, not one function: PAY-21 lifted the slip-building body
+    # into `_compute_and_store_slips` so `recompute` could call the same
+    # computation, and this rule is about the PATH.
+    assert "_attendance_for(" in create_path_source()
     assert '.eq("firm_id", firm_id)' in inspect.getsource(pr._attendance_for)
