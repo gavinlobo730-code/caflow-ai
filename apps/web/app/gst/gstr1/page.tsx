@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -392,67 +393,18 @@ export default function GSTR1Page() {
                       </tr>
                     </tbody>
                   </table>
-                  {/* NOT DECLARED — first, because it is the one a CA cannot
-                      see any other way. An error is a document that IS in the
-                      return and is wrong; this is a document the return does
-                      not carry at all, and filing short is found out from the
-                      recipient. */}
-                  {result.payload_gaps.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        Not declared in this return
-                      </h4>
-                      <ul className="space-y-1.5">
-                        {result.payload_gaps.map((g, i) => (
-                          <li key={i} className="text-xs text-red-700">
-                            <span className="font-mono mr-1">[{g.reference_no}]</span>
-                            <span className="font-medium mr-1">{g.kind}</span>
-                            {g.reason}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {/* ERRORS FIRST, and separately. These are the things the
-                      portal rejects — a duplicate invoice number, IGST on an
-                      intra-state supply, a place of supply that is not a state
-                      — and until this change they were computed by nothing on
-                      this path and shown nowhere. Folding them in with the
-                      warnings would make a rejection look like a judgement
-                      call. */}
-                  {result.validation_errors.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        Errors — the portal will reject these
-                      </h4>
-                      <ul className="space-y-1.5">
-                        {result.validation_errors.map((e, i) => (
-                          <li key={i} className="text-xs text-red-700">
-                            {e.invoice_ref && <span className="font-mono mr-1">[{e.invoice_ref}]</span>}
-                            {e.message}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {result.validation_warnings.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        Warnings
-                      </h4>
-                      <ul className="space-y-1.5">
-                        {result.validation_warnings.map((w, i) => (
-                          <li key={i} className="text-xs text-amber-700">
-                            {w.invoice_ref && <span className="font-mono mr-1">[{w.invoice_ref}]</span>}
-                            {w.message}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  {/* WHAT THIS RETURN LEAVES OUT, GETS WRONG, OR IS UNSURE
+                      ABOUT — moved into components/gst/Gstr1Findings so the
+                      CLIENT workspace's Compute-from-Books panel renders the
+                      same three lists. It rendered none of them (GST-16), so
+                      one computed return looked clean from inside a client and
+                      carried errors from here. The ORDER is load-bearing and
+                      the component says why. */}
+                  <Gstr1Findings
+                    errors={result.validation_errors}
+                    warnings={result.validation_warnings}
+                    gaps={result.payload_gaps}
+                  />
                 </div>
               )}
 

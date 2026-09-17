@@ -229,6 +229,34 @@ test("services: negative opening qty/cost rejected", () => {
   assert.match(badCost.errors[0], /opening stock value/i);
 });
 
+// INV-09. `opening_qty_units` is NUMERIC(10,3) and the opening VALUE posted to
+// the Inventory account is computed from what was typed, so a fourth decimal
+// stored rounded stops Sigma value_delta_paise being Sigma(qty x unit cost).
+// The importer read the cell with `parseFloat`, which takes 1.2345 happily and
+// reads "1,000" as ONE.
+test("services: an opening qty with four decimals is refused, not rounded", () => {
+  const { records, errors } = buildServices([
+    row({ name: "Fastener", kind: "good", opening_qty: "1.2345", opening_cost: "10000" }),
+  ], "c1");
+  assert.equal(records.length, 0);
+  assert.match(errors[0], /opening qty/i);
+});
+
+test("services: three decimals are kept exactly, and a grouped number is not read as one", () => {
+  const ok = buildServices([
+    row({ name: "Fastener", kind: "good", opening_qty: "1.234", opening_cost: "10000" }),
+  ], "c1");
+  assert.equal(ok.errors.length, 0);
+  assert.equal(ok.records[0].opening_qty_units, 1.234);
+
+  // "1,000" is how a person and a Tally export both write a thousand.
+  const grouped = buildServices([
+    row({ name: "Bolt", kind: "good", opening_qty: "1,000", opening_cost: "10000" }),
+  ], "c1");
+  assert.equal(grouped.errors.length, 0);
+  assert.equal(grouped.records[0].opening_qty_units, 1000);
+});
+
 // ── Purchase bills ─────────────────────────────────────────────────────────
 const VENDORS: NameRef[] = [{ id: "v1", name: "Supplier A" }, { id: "v2", name: "Supplier B" }];
 
@@ -323,6 +351,30 @@ test("receipts: bad mode and zero amount reported", () => {
   assert.equal(records.length, 0);
   assert.match(errors[0], /amount/i);
   assert.match(errors[1], /payment_mode/i);
+});
+
+// A DEFECT WITH NO FINDING, found while wiring INV-09's opening-stock door.
+// The amount gate read `Number.isFinite(num(r.amount))` — `parseFloat`, the
+// very parser `toPaise`'s own docstring says is not a rupee parser — while the
+// value stored came from `toPaise`. So "1200abc" passed the gate at 1200,
+// `toPaise` returned NaN, `NaN <= 0` is FALSE, and the receipt was built with
+// `amount_paise: NaN`, which `JSON.stringify` sends as null.
+test("receipts: a cell that is not an amount is refused, never posted as null", () => {
+  for (const amount of ["1200abc", "1e3", "abc", ""]) {
+    const { records, errors } = buildReceipts([
+      row({ customer: "Acme Pvt Ltd", receipt_date: "2026-04-10", amount, payment_mode: "upi" }),
+    ], "c1", CUSTOMERS);
+    assert.equal(records.length, 0, `"${amount}" was accepted`);
+    assert.match(errors[0], /amount/i);
+  }
+});
+
+test("receipts: a grouped amount is the number a person meant", () => {
+  const { records, errors } = buildReceipts([
+    row({ customer: "Acme Pvt Ltd", receipt_date: "2026-04-10", amount: "1,25,000", payment_mode: "upi" }),
+  ], "c1", CUSTOMERS);
+  assert.equal(errors.length, 0);
+  assert.equal(records[0].amount_paise, 12_500_000);
 });
 
 // ── Employees ────────────────────────────────────────────────────────────────

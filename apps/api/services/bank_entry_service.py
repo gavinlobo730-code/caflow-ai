@@ -35,7 +35,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from domain.banking import entry as E
-from domain.banking import match_rule, parse_narration, describe_narration
+from domain.banking import match_rule, parse_narration, parsed_view
 from domain.banking import posting_map as pmap
 from services.bank_matching_service import bank_matching_service
 from services.bank_payee_service import bank_payee_service
@@ -242,10 +242,11 @@ class BankEntryService:
         splits. Cheap — one query for the splits, none for the rest."""
         for t in rows:
             t["kind"] = E.kind_for(t)
-            n = parse_narration(t.get("description"))
-            t["parsed"] = {"channel": n.channel, "utr": n.utr, "vpa": n.vpa,
-                           "counterparty": n.counterparty, "ifsc": n.ifsc,
-                           "summary": describe_narration(n)}
+            # ONE BUILDER — domain/banking/narration.parsed_view. This was a dict
+            # literal here and an identical one in bank_matching_service, and
+            # both omitted `cheque_no` (BANK-28): the parser found it, `describe`
+            # named it in the summary, and the payload dropped it.
+            t["parsed"] = parsed_view(parse_narration(t.get("description")))
             # The trigger wrote entry_state on a real database. A fake has no
             # trigger, so the twin fills it in — and on a real row the two agree,
             # which is what the parity test proves.

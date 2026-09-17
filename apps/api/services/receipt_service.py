@@ -21,6 +21,7 @@ from fastapi import HTTPException
 from domain.accounting.payment_account import resolve_payment_account
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
+from services import period_lock_service
 from services.timeline_service import timeline_service
 from services.numbering import sequence_after
 from core.ist_clock import fy_code, ist_fy_label
@@ -102,6 +103,55 @@ def _next_receipt_seq(db, firm_id: str, client_id: str, fy: str) -> int:
                          firm_id=firm_id, client_id=client_id)
 
 
+def _assert_open_where_a_receipt_feeds_a_return(db, firm_id: str, client_id: str,
+                                                receipt_date: str) -> None:
+    """The portal lock, for the clients whose receipts reach a filed return.
+
+    SALES-15. Both receipt paths ask `period_validation_service` — the CA's own
+    financial-year lock — and deliberately NOT `period_lock_service.assert_open`,
+    the portal one, on the argument that "a receipt moves Bank and Debtors and
+    touches no output tax". That argument was right when it was written and
+    GST-15 falsified half of it.
+
+    For a client marked `gst_advance_tax_applicable`, a receipt IS a document
+    that feeds a return: CGST s.13(2) puts the time of supply for SERVICES at
+    the earlier of invoice or payment, so `gst_advance_service.table_11_sections`
+    declares the advance in GSTR-1 Table 11A and `gst_return_service` carries the
+    same buckets into GSTR-3B Table 3.1(a). A receipt dated 20 June and entered
+    on 15 July — after June's GSTR-1 was filed on the 11th — changes what June's
+    Table 11A should have said, with nothing refusing it and nothing recording
+    why.
+
+    IT IS UNCONDITIONAL ON THE RECEIPT'S OWN SHAPE, for the reason the fixed
+    asset's acquisition is (CLAUDE.md): a rule that depends on which fields
+    happen to be filled in is not a rule. It would be tempting to ask only where
+    the receipt leaves an unallocated balance, and that would be wrong twice
+    over. `table_11_sections` measures what was adjusted BY THE PERIOD END using
+    the allocation's `created_at`, so a back-dated receipt allocated in full
+    today has no allocations dated inside June and its WHOLE amount lands in
+    June's 11A. And a receipt with no rate or place of supply is not silently
+    dropped either — it is NAMED in that return's `gaps`, which is also part of
+    what was filed.
+
+    EVERY OTHER CLIENT IS UNTOUCHED, and that is the point: the flag is off by
+    default (Notification 66/2017-Central Tax removed the charge on advances for
+    GOODS), so the original argument still governs the ordinary case — recording
+    a payment received on 20 June on 15 July stays an ordinary thing to do.
+
+    WHAT WOULD CHANGE THIS AGAIN: a filing type whose figures depend on the
+    balance sheet or on collections — an ITR, a tax audit report, GSTR-9 — being
+    recorded in public.filings. `gst_filing_record_service.FILING_TYPE_*` is the
+    list; when it grows past the two GST returns, this decision has to be taken
+    a third time.
+    """
+    if db is None:
+        return
+    from services.gst_advance_service import advance_tax_applicable
+    if not advance_tax_applicable(db, firm_id or "", client_id):
+        return
+    period_lock_service.assert_open(db, firm_id or "", client_id, receipt_date)
+
+
 def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
     """Foreign customer receipt with realized FX (Multi-Currency Phase 4).
 
@@ -124,6 +174,7 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
     if int(data.get("tds_paise", 0) or 0) != 0:
         raise HTTPException(status_code=422, detail="TDS on a foreign receipt is not supported yet.")
     period_validation_service.validate_posting_date(firm_id or "", data["receipt_date"])
+    _assert_open_where_a_receipt_feeds_a_return(db, firm_id, client_id, data["receipt_date"])
 
     firm = (db.table("firms").select("multi_currency_entitled").eq("id", firm_id).limit(1).execute().data or [None])[0]
     client = (db.table("clients").select("functional_currency, multi_currency_enabled").eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data or [None])[0]
@@ -586,25 +637,26 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     # Posting date must not be in a locked financial year (migration 020).
     period_validation_service.validate_posting_date(firm_id or "", data["receipt_date"])
 
-    # DELIBERATELY NOT period_lock_service.assert_open, unlike the invoice,
-    # credit-note and debit-note paths. SALES-15 asked for it here too; it is
-    # withheld, and this is the argument rather than an oversight.
+    # The portal lock is asked ONLY where a receipt feeds a return, which is a
+    # narrower set than the invoice, credit-note and debit-note paths and a
+    # wider one than this comment used to claim (SALES-15).
     #
-    # The portal lock exists because "the return and the ledger disagree with
-    # nothing recording why" (migration 267). A receipt moves Bank and Debtors
-    # and touches no output tax, and the only filing types written to
-    # public.filings today are GSTR-1 and GSTR-3B — returns of SUPPLIES, not of
-    # collections. So a receipt back-dated into a filed period makes neither
-    # return disagree with anything, while refusing it would block an entirely
-    # ordinary thing: recording a payment received on 20 June, entered on
-    # 15 July, after GSTR-1 for June was filed on the 11th.
+    # It said: "A receipt moves Bank and Debtors and touches no output tax, and
+    # the only filing types written to public.filings today are GSTR-1 and
+    # GSTR-3B — returns of SUPPLIES, not of collections." The first clause
+    # stopped being true when GST-15 landed. For a client marked
+    # `gst_advance_tax_applicable`, CGST s.13(2) charges tax on an advance for
+    # services WHEN IT IS RECEIVED, so the receipt is declared in GSTR-1
+    # Table 11A and discharged in GSTR-3B Table 3.1(a) — the receipt IS the
+    # document. For every other client, which is most of them, the argument is
+    # unchanged and the refusal stands: recording a payment received on 20 June
+    # on 15 July, after June's GSTR-1 was filed on the 11th, is an ordinary
+    # thing to do and must not be blocked.
     #
-    # WHAT WOULD CHANGE THIS: a filing type whose figures depend on the balance
-    # sheet or on collections — an ITR, a tax audit report, GSTR-9 — being
-    # recorded in public.filings. gst_filing_record_service.FILING_TYPE_* is
-    # the list; when it grows past the two GST returns, this decision has to be
-    # taken again. The CA's own financial-year lock, checked above, is the
-    # instrument that already covers the year-end case.
+    # `_assert_open_where_a_receipt_feeds_a_return` is where that is decided,
+    # and its docstring carries the rest of the argument — including what would
+    # change it a third time.
+    _assert_open_where_a_receipt_feeds_a_return(db, firm_id, client_id, data["receipt_date"])
 
     # The FY of the NUMBER comes from the DOCUMENT'S OWN DATE, not from today
     # (SALES-24) — see core.ist_clock.fy_code.

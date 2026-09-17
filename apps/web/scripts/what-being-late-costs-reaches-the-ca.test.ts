@@ -14,10 +14,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripComments } from "./stripComments.ts";
+import { panelSource } from "./panelSource.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// THE SCREEN is where the filing date is typed — that input belongs to the
+// per-client GST tab and stays there. THE PANEL moved into
+// `components/gst/Gstr3bFindings.tsx` when the firm-level GSTR-3B screen needed
+// the same three panels (GST-22), so it is resolved by what it SAYS: a path
+// written in here would have to move with it, and did not.
 const PAGE = path.join(__dirname, "..", "app", "clients", "[id]", "compliance", "gst", "page.tsx");
 const code = stripComments(fs.readFileSync(PAGE, "utf8"));
+const panel = stripComments(panelSource("interest at 18% on the cash payable"));
 
 test("the screen can be told when the return was filed", () => {
   assert.match(code, /const \[filedOn, setFiledOn\] = useState\(""\)/);
@@ -41,16 +48,16 @@ test("Compute is not gated on the filing date", () => {
 });
 
 test("the interest figures come from the server", () => {
-  assert.match(code, /computeResult\.late_filing/);
-  assert.match(code, /interest_total_paise/);
-  assert.doesNotMatch(code, /\*\s*0?\.?18|18\s*\/\s*100/,
+  assert.match(code, /late_filing/, "the screen must pass the server's block to the panel");
+  assert.match(panel, /interest_total_paise/);
+  assert.doesNotMatch(panel, /\*\s*0?\.?18|18\s*\/\s*100/,
     "the rate is applied in apps/api — a second computation here is how the " +
     "screen and the return come to disagree");
 });
 
 test("the §47 refusal reaches the CA in the server's own words", () => {
-  assert.match(code, /late_fee\?\.refused/);
-  assert.match(code, /\{lf\.late_fee\.reason\}/,
+  assert.match(panel, /late_fee\?\.refused/);
+  assert.match(panel, /\{lf\.late_fee\.reason\}/,
     "the sentence naming the notification to read is the server's — rewording " +
     "it here would give one gap two descriptions");
 });
@@ -58,18 +65,18 @@ test("the §47 refusal reaches the CA in the server's own words", () => {
 test("no filing date says why, rather than showing a nil", () => {
   // A nil interest figure reads as "nothing is owed". "Tell me when you filed"
   // is the truth.
-  assert.match(code, /if \(!lf\.available\)/);
-  assert.match(code, /\{lf\.reason\}/);
+  assert.match(panel, /if \(!lf\.available\)/);
+  assert.match(panel, /\{lf\.reason\}/);
 });
 
 test("the per-head working is shown, because that is what a CA checks", () => {
   // The RENDER, not the type declaration. A first draft matched
   // `interest_by_head` anywhere and passed with the table switched off — the
   // identifier survives in the type and in the `const heads = …` line.
-  assert.match(code, /\{heads\.length > 0 && \(/,
+  assert.match(panel, /\{heads\.length > 0 && \(/,
     "the per-head table is not rendered on the heads it has — a CA checking " +
     "18% × days/365 on each head has only the total");
-  assert.match(code, /heads\.map\(\(h\) => \(/);
-  assert.match(code, /\{rupees\(h\.base_paise\)\} × 18% × \{h\.days\}\/365/,
+  assert.match(panel, /heads\.map\(\(h\) => \(/);
+  assert.match(panel, /\{rupees\(h\.base_paise\)\} × 18% × \{h\.days\}\/365/,
     "the working is what makes the total checkable");
 });

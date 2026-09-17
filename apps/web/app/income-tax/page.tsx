@@ -1128,8 +1128,8 @@ export default function IncomeTaxPage() {
               </p>
               <p className="text-sm text-blue-700">
                 Calculate exact advance tax instalments, apply the slab rates
-                for the year, and compute Section 234B/234C interest on
-                shortfalls — per client.
+                for the year, and compute Section 234A, 234B and 234C interest
+                on late filing and shortfalls — per client.
               </p>
             </div>
             <Link

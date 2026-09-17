@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Iterable, Optional
 
-from .matcher import Candidate, detect_tds_rate_bps
+from .matcher import Candidate, candidate_open_paise, detect_tds_rate_bps
 
 # What each direction of a bank line can legitimately settle. Not a filter — a
 # rule. See the module docstring.
@@ -135,12 +135,23 @@ def search(candidates: Iterable[Candidate], *, bank_amount_paise: int,
             continue
         if d_to and (cd is None or cd > d_to):
             continue
+        # The amount FILTERS stay on the face value: a CA typing a range is
+        # narrowing by the figure printed on the document they are looking for,
+        # which is not the same question as what it still has open.
         if min_amount_paise is not None and c.amount_paise < min_amount_paise:
             continue
         if max_amount_paise is not None and c.amount_paise > max_amount_paise:
             continue
 
-        difference = c.amount_paise - int(bank_amount_paise)
+        # AGAINST WHAT IS STILL OPEN (BANK-10). This read the FACE value, so the
+        # search described a half-settled invoice as "Bank line is short by
+        # 1,00,000" against money the customer had already sent — the one screen
+        # a CA opens precisely because the ranked offer was wrong.
+        # `candidate_open_paise` is the one definition, shared with
+        # `rank_suggestions`; `amount_paise` below stays the face value, which is
+        # what the row is labelled with.
+        open_paise = candidate_open_paise(c)
+        difference = open_paise - int(bank_amount_paise)
         hits.append(CandidateHit(
             entity_type=c.entity_type, entity_id=c.entity_id, label=c.label,
             amount_paise=c.amount_paise, entity_date=c.entity_date,
@@ -153,7 +164,7 @@ def search(candidates: Iterable[Candidate], *, bank_amount_paise: int,
             # non-positive shortfall; repeating it here would be a second copy
             # to keep in step. test_a_bank_line_LARGER_..._is_never_called_tds
             # pins the behaviour from this side.
-            tds_rate_bps=detect_tds_rate_bps(c.amount_paise, difference),
+            tds_rate_bps=detect_tds_rate_bps(open_paise, difference),
         ))
 
     def rank(h: CandidateHit):

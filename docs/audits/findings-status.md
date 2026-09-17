@@ -7,19 +7,19 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **225** | re-read against the code. The defect is gone. |
-| partial | **39** | part of the finding is answered, part is not. Each says which. |
-| open | **9** | re-read and still true. |
+| closed | **234** | re-read against the code. The defect is gone. |
+| partial | **31** | part of the finding is answered, part is not. Each says which. |
+| open | **8** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 48 items — 9 open and 39 partial — not 254.**
+**The work left is 39 items — 8 open and 31 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**Of the 9 open, 4 are blocked on something outside the code** — a statutory schema, a file layout, a registration — and each blocker is named below. The other 5 are ordinary code work with nothing in front of them.
+**Of the 8 open, 4 are blocked on something outside the code** — a statutory schema, a file layout, a registration — and each blocker is named below. The other 4 are ordinary code work with nothing in front of them.
 
 ## Open
 
@@ -30,7 +30,6 @@ is left as "unknown".
 | medium | **GST-18** | GSTR-1 Table 13 (documents issued) is missing the serial-number range the form requires |
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
-| medium | **PAY-21** | A payroll run cannot be recomputed or discarded — reversal reopens it at 'review' with the origi |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
 | medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
@@ -53,25 +52,20 @@ is left as "unknown".
 | high | **FA-06** | IT Act §32 block-of-assets depreciation does not exist, and the book-to-tax bridge that needs it |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-13** | The module's most differentiating backend work — amendments, exception report, ITC register, adv |
-| high | **GST-16** | The GSTR-1 validator never runs on the path a CA actually uses |
 | high | **IT-09** | IT Act §32 depreciation (block of assets, WDV, the 180-day half-rate rule, additional depreciati |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
 | high | **IT-17** | itr_field_placements() — 'this figure goes in this field' against the Department's own committed |
 | high | **IT-19** | No §54/§54F/§54EC/§54B reinvestment exemptions and no §112A grandfathering under §55(2)(ac) |
-| high | **PUR-06** | The vendor's TDS rate is collected on a form, shown in a list column, and never used by the comp |
 | high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
-| high | **TDS-13** | No §197 lower-deduction certificate anywhere, and vendors.tds_rate_bps is captured, displayed an |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
-| medium | **BANK-10** | Auto-match never suggests a part payment against a partially-paid invoice, because the amount ba |
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
 | medium | **BANK-13** | The exception-rules engine — materiality, duplicates, cash withdrawals, new payees — is complete |
 | medium | **FA-11** | No CWIP, revaluation, impairment, component accounting, shift working, transfers or physical ver |
 | medium | **GST-19** | Rule 36(4) is applied as an aggregate per-head cap, not invoice-level 2B matching, and the cappe |
 | medium | **GST-21** | No §50 interest and no §47 late fee anywhere in the product |
-| medium | **GST-22** | The GSTR-3B screen prints taxable VALUES in the IGST column and shows none of tables 3.1(d), 3.1 |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **IT-20** | §80CCD(2) is capped at 10% of salary for a non-government employee under the NEW regime, where t |
@@ -79,11 +73,8 @@ is left as "unknown".
 | medium | **IT-32** | The Chapter VI-A surface stops at seven sections — no §80E, §80EE/EEA, §80DD/DDB, §80U, §80GG, § |
 | medium | **PAY-13** | The client workspace's own employee form collects neither PAN, joining date, UAN, ESIC number, b |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
-| medium | **SALES-15** | Credit notes, sales debit notes and receipts can be posted into a period whose GSTR-1 has alread |
-| medium | **SALES-19** | The export/SEZ treatment is captured twice in two different vocabularies that can disagree, and  |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |
-| low | **BANK-28** | The narration parser extracts channel, UTR, VPA, IFSC and counterparty but never a cheque number |
 | low | **INV-09** | Stock quantity is NUMERIC(10,3) with no unit conversion, so high-count or fine-grained items bre |
 | low | **PUR-32** | Duplicate-bill detection is exact-match on vendor plus bill number only, so an OCR typo or a dup |
 | low | **SALES-18** | Statutory rules live in TypeScript with no backend counterpart, against the house rule "zero bus |
@@ -155,6 +146,7 @@ is left as "unknown".
 | high | **GST-10** | GSTR-9 is a tab that can never hold anything: no computation, and no UI that creates a draft |
 | high | **GST-12** | The "Add GST Filing" modal on /gst throws on every save — the period is "MMM YYYY" and is parsed |
 | high | **GST-14** | Two contradictory "filed" states: /gst marks filings in compliance_calendar over PostgREST and n |
+| high | **GST-16** | The GSTR-1 validator never runs on the path a CA actually uses |
 | high | **GST-20** | One GSTIN per client — no multi-state / multi-branch registration model |
 | high | **INV-01** | There is no closing-stock-as-at-a-date figure, and the date-filtered stock ledger's running bala |
 | high | **INV-06** | A §17(5)(h) ITC reversal on a stock write-off is posted to the GL but can never reach GSTR-3B Ta |
@@ -177,6 +169,7 @@ is left as "unknown".
 | high | **PAY-29** | The payslip omits UAN, PF/ESIC numbers, bank account, employer contributions and YTD figures |
 | high | **PUR-03** | Surcharge and 4% cess are added on top of a DTAA treaty rate, over-deducting on every foreign pa |
 | high | **PUR-05** | §17(5) blocked credit cannot be set from any screen — the API field, the DB column and the retur |
+| high | **PUR-06** | The vendor's TDS rate is collected on a form, shown in a list column, and never used by the comp |
 | high | **PUR-07** | No §197 lower-deduction or nil-deduction certificate anywhere — no certificate number, rate, thr |
 | high | **PUR-08** | A purchase bill can be created and received into a period whose GSTR-3B has already been filed — |
 | high | **PUR-09** | The Rule 37 report ignores debit notes and purchase credit notes, over-reversing ITC on any bill |
@@ -200,6 +193,7 @@ is left as "unknown".
 | high | **TDS-07** | §194IA is offered in the vendor TDS-section dropdown but is unknown to the engine — every bill f |
 | high | **TDS-09** | There is no 27Q return builder — non-resident deductions are computed, registered and then delib |
 | high | **TDS-11** | tds_deductions and tds_returns are written directly from the browser with no role check, and the |
+| high | **TDS-13** | No §197 lower-deduction certificate anywhere, and vendors.tds_rate_bps is captured, displayed an |
 | high | **TDS-14** | The purchase-bill editor previews a TDS figure the backend will not compute — no threshold, no § |
 | high | **TDS-15** | The /tds screen's Challans tab never saves anything, and its Returns and Certificates tabs read  |
 | high | **TDS-26** | §195 surcharge picks the wrong ladder and the wrong 'other sums' rate for a non-resident firm, L |
@@ -216,6 +210,7 @@ is left as "unknown".
 | medium | **ACC-24** | The Account Groups screen renders nothing useful for a normally-onboarded firm |
 | medium | **ACC-27** | entry_date is an unvalidated string on the journal models, so a malformed date reaches the datab |
 | medium | **BANK-03** | A foreign-currency bank account can be created, and its statement imports and posts to the ledge |
+| medium | **BANK-10** | Auto-match never suggests a part payment against a partially-paid invoice, because the amount ba |
 | medium | **BANK-14** | A PDF whose first page has ruled table lines and whose later pages do not silently loses the lat |
 | medium | **BANK-15** | Transfer detection scans only the newest 1,000 lines, and is re-run from scratch for every 100-l |
 | medium | **BANK-16** | The nightly trusted-rule sweep will auto-post a line the CA coded themselves, and credit it to t |
@@ -238,6 +233,7 @@ is left as "unknown".
 | medium | **GST-06** | Non-GST outward supplies are dropped from GSTR-3B Table 3.1(e) and counted nowhere |
 | medium | **GST-09** | The correction window always reports 30 November — the "or the annual return, whichever is earli |
 | medium | **GST-15** | GSTR-1 Table 11 advance tax is computed into the filed payload while the advances report tells t |
+| medium | **GST-22** | The GSTR-3B screen prints taxable VALUES in the IGST column and shows none of tables 3.1(d), 3.1 |
 | medium | **GST-24** | Table 4(A) rows for import IGST and ISD are permanently zero, and ISD is now compulsory |
 | medium | **GST-27** | The 2A/2B reconciliation engine is business logic in TypeScript and parses money with parseFloat |
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
@@ -264,6 +260,7 @@ is left as "unknown".
 | medium | **PAY-18** | `logger` is undefined in the /employee-exceptions error path — a failed declarations read raises |
 | medium | **PAY-19** | The payroll module's own statutory calendar contradicts compliance_engine: it invents a PT due d |
 | medium | **PAY-20** | /statutory-position computes PF on basic+DA, not the s.2(y) wage base the payroll run uses, so t |
+| medium | **PAY-21** | A payroll run cannot be recomputed or discarded — reversal reopens it at 'review' with the origi |
 | medium | **PAY-22** | §80CCD(2)'s 14%/10% cap is applied to gross salary instead of basic+DA, so a large employer-NPS  |
 | medium | **PAY-23** | Statutory bonus is computed only inside a leaver's settlement — there is no annual bonus run for |
 | medium | **PAY-24** | Leave is half-built: balances are invented in TypeScript as 12/12/15, nothing accrues or carries |
@@ -283,8 +280,10 @@ is left as "unknown".
 | medium | **PUR-28** | Client-assignment scope is enforced on every purchase API endpoint and on none of the Purchases  |
 | medium | **SALES-07** | TDS deducted by the customer (§194J / §194Q) cannot be recorded on a receipt from any screen |
 | medium | **SALES-12** | Sales invoice numbering is entirely manual; the Invoice Settings numbering series a CA configure |
+| medium | **SALES-15** | Credit notes, sales debit notes and receipts can be posted into a period whose GSTR-1 has alread |
 | medium | **SALES-16** | Nothing checks that a reverse-charge or nil/exempt invoice actually carries zero tax, so the boo |
 | medium | **SALES-17** | The e-way bill threshold is tested against taxable value instead of consignment value including  |
+| medium | **SALES-19** | The export/SEZ treatment is captured twice in two different vocabularies that can disagree, and  |
 | medium | **SALES-20** | No GST compensation cess on a sales line |
 | medium | **SALES-21** | No quotation, proforma invoice, sales order or delivery challan — the sales cycle starts at the  |
 | medium | **SALES-24** | Receipt and credit-note numbers take their financial year from today's date, not the document da |
@@ -311,6 +310,7 @@ is left as "unknown".
 | low | **BANK-17** | Undo reverses the journal of a line that sits inside a completed, certified reconciliation, with |
 | low | **BANK-22** | A statement imported without a bank account posts every line to a generic "Bank" ledger and is i |
 | low | **BANK-25** | Every imported statement shows an amber "pending" chip forever — import_status is written once a |
+| low | **BANK-28** | The narration parser extracts channel, UTR, VPA, IFSC and counterparty but never a cheque number |
 | low | **BANK-29** | A statement's opening/closing-balance row becomes a zero-amount bank line that clogs the queue a |
 | low | **FA-17** | The Add Asset form's Asset Code field is silently discarded |
 | low | **GST-23** | GSTR-1 has no way to record the real ARN and filing date from the client workspace, so its perio |

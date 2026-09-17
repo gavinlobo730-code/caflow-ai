@@ -28,8 +28,6 @@ const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
 export interface ImportColumn { key: string; label: string; required: boolean; hint?: string; }
 
 function str(v: string | undefined): string { return (v ?? "").trim(); }
-function num(v: string | undefined): number { return parseFloat(str(v)); }
-
 /** A spreadsheet cell with the marks a person puts in one taken off: the
  *  currency symbol, the Indian thousands commas, a stray percent sign. */
 function cell(v: string | undefined): string { return str(v).replace(/[,\s₹%]/g, ""); }
@@ -217,14 +215,6 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
         errors.push(`Row ${rowNo}: tds_section is required when TDS applies`); return;
       }
     }
-    // NO RATE IS READ. vendors.tds_rate_bps is the dead field PUR-06 removed
-    // from the vendor form: the engine resolves the rate from the section, the
-    // payee's PAN, the year's aggregate and s.206AA, and never reads this
-    // column. Requiring it here made a CSV import demand a number that is
-    // ignored — and every rate a CA typed into that column was, in production,
-    // the s.194C COMPANY rate applied to individual contractors.
-    const tdsRateBps = 0;
-
     // A blank/absent opening_balance must map to 0, not NaN — toPaise("") is
     // NaN, which JSON.stringify turns into `null` on the wire, and the
     // backend's opening_balance_paise: int = 0 (non-Optional) rejects a
@@ -247,7 +237,16 @@ export function buildVendors(rows: Record<string, string>[], clientId: string): 
       phone: str(r.phone) || undefined,
       tds_applicable: tdsApplicable,
       tds_section: tdsSection,
-      tds_rate_bps: tdsRateBps,
+      // NO RATE IS READ, so a LITERAL zero — the one value
+      // scripts/a-screen-does-not-set-a-vendors-tds-rate.test.ts allows, and
+      // written here rather than through a local so that guard can see it.
+      // vendors.tds_rate_bps is the dead field PUR-06 removed from the vendor
+      // form: the engine resolves the rate from the section, the payee's PAN,
+      // the year's aggregate and s.206AA, and never reads this column.
+      // Requiring it here made a CSV import demand a number that is ignored —
+      // and every rate a CA typed into that column was, in production, the
+      // s.194C COMPANY rate applied to individual contractors.
+      tds_rate_bps: 0,
       opening_balance_paise: openingBalancePaise,
     });
   });
@@ -338,9 +337,16 @@ export function buildServices(rows: Record<string, string>[], clientId: string):
     if (isGood) {
       const openingQtyRaw = str(r.opening_qty);
       if (openingQtyRaw) {
-        openingQty = num(r.opening_qty);
-        if (!Number.isFinite(openingQty) || openingQty < 0) {
-          errors.push(`Row ${rowNo}: opening qty must be a non-negative number`); return;
+        // THE SAME THREE DECIMALS THE COLUMN HAS, through the helper the
+        // invoice and bill line importers already use (INV-09). This was
+        // `num()`, which is `parseFloat`: it reads "1,000" as **1** and
+        // accepts 1.2345, which Postgres rounds to NUMERIC(10,3) while
+        // `seed_opening_balance` derives the opening VALUE from the unrounded
+        // figure — the drift `domain/quantity.py`'s own docstring says it
+        // exists to stop.
+        openingQty = toQty(r.opening_qty);
+        if (!Number.isFinite(openingQty) || (openingQty as number) < 0) {
+          errors.push(`Row ${rowNo}: opening qty must be a non-negative number with at most 3 decimals`); return;
         }
         if (openingQty === 0) openingQty = undefined;
       }
@@ -545,7 +551,13 @@ export function buildReceipts(
 
     if (!customerId) { errors.push(`Row ${rowNo}: unknown customer "${customerName}" — create the customer first`); return; }
     if (!DATE_RE.test(receiptDate)) { errors.push(`Row ${rowNo}: receipt_date must be YYYY-MM-DD`); return; }
-    if (!Number.isFinite(num(r.amount)) || amountPaise <= 0) { errors.push(`Row ${rowNo}: amount (₹) must be greater than zero`); return; }
+    // GATED ON WHAT WAS ACTUALLY PARSED. This read `Number.isFinite(num(
+    // r.amount))` — `parseFloat`, the very parser `toPaise`'s docstring says is
+    // not a rupee parser — so "1200abc" passed it at 1200 while `toPaise`
+    // returned NaN, and `NaN <= 0` is FALSE, so the row went through and the
+    // receipt was posted with `amount_paise: null`. `num` is deleted with this,
+    // its last call site, so it cannot come back.
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0) { errors.push(`Row ${rowNo}: amount (₹) must be greater than zero`); return; }
     // `includes` on a readonly tuple narrows its argument to the union, and
     // `mode` is a string off a spreadsheet — the widening is the point of the
     // check, not a type hole to tighten.

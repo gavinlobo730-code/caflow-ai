@@ -144,6 +144,25 @@ def bill_open_paise(row: dict) -> int:
             - int(row.get("debited_paise") or 0))
 
 
+def candidate_open_paise(c: "Candidate") -> int:
+    """What this candidate still has OPEN — the figure a bank line settles.
+
+    BANK-10. `outstanding_paise` was carried on the Candidate and used for the
+    fetch band and for a scoring bonus, while the RANKER measured the difference
+    against `amount_paise`, the face value. So a ₹1,18,000 invoice half settled
+    by a ₹59,000 advance, paid off by a ₹59,000 bank credit, was measured as
+    "short by ₹59,000" — beyond the 25% near-match band, so it was not offered
+    at all, and in the unbanded search it was OFFERED and labelled short by the
+    money the customer had already sent.
+
+    `amount_paise` stays the FACE value and is what the row is labelled with;
+    this is what the arithmetic runs on. Not every candidate carries the column
+    — a receipt, a payment and a journal entry have no `outstanding_paise` — and
+    None means the face value IS the open figure, which is true of all three.
+    """
+    return int(c.outstanding_paise) if c.outstanding_paise is not None else int(c.amount_paise)
+
+
 @dataclass
 class Suggestion:
     entity_type: str
@@ -232,21 +251,32 @@ def rank_suggestions(
     parsed = parse_narration(narration)
     out: list[Suggestion] = []
     for c in candidates:
-        difference = int(c.amount_paise) - int(txn_amount_paise)
+        # MEASURED AGAINST WHAT IS STILL OPEN, not the face value (BANK-10) —
+        # the band, the TDS shape and the difference the CA is shown all read
+        # the same figure, so they cannot disagree about what this bank line
+        # settles.
+        open_paise = candidate_open_paise(c)
+        difference = open_paise - int(txn_amount_paise)
         tds_rate_bps: Optional[int] = None
 
         if difference == 0:
-            score, reasons = 50, ["exact amount"]
-        elif difference > 0 and txn_amount_paise >= near_match_floor_paise(c.amount_paise):
-            # Bank line is short of the document but within the near-match band.
+            # "exact amount" would be wrong on a part-paid document: the bank
+            # line does not equal the invoice, it clears what is left of it.
+            score = 50
+            reasons = (["exact amount"] if open_paise == int(c.amount_paise)
+                       else [f"settles the {_rupees(open_paise)} still open"])
+        elif difference > 0 and txn_amount_paise >= near_match_floor_paise(open_paise):
+            # Bank line is short of what is open, but within the near-match band.
             score, reasons = 25, [f"short by {_rupees(difference)}"]
-            tds_rate_bps = detect_tds_rate_bps(c.amount_paise, difference)
+            tds_rate_bps = detect_tds_rate_bps(open_paise, difference)
             if tds_rate_bps is not None:
                 score += 20
                 reasons.append(f"shortfall = {_rate_label(tds_rate_bps)} TDS")
         else:
-            # Over the document, or short by more than the band allows — not a
-            # settlement of this document.
+            # Over what is still OPEN, or short by more than the band allows —
+            # not a settlement of this document. Over the open figure is a real
+            # refusal rather than a stricter one: offering it would invite an
+            # allocation larger than the document can take.
             continue
 
         days = _days_between(txn_date, c.entity_date)
@@ -271,8 +301,13 @@ def rank_suggestions(
             score += 15
             reasons.append("party in narration")
 
-        if c.outstanding_paise is not None and c.outstanding_paise == txn_amount_paise:
-            score += 15; reasons.append("matches outstanding balance")
+        # NO "matches outstanding balance" TERM ANY MORE. It existed because the
+        # difference was measured on the face value, so agreeing with the open
+        # figure was a separate fact worth rewarding. It is now exactly
+        # `difference == 0`, and a term that restates the branch above it only
+        # inflates the score of documents that happen to carry the column —
+        # `candidate_search.rank` records the same reasoning for not adding an
+        # "exact first" term beside a zero difference.
 
         if c.entity_type in ("sales_invoice", "purchase_bill"):
             score += 5; reasons.append("open document")

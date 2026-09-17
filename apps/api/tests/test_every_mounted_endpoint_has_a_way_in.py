@@ -88,7 +88,7 @@ MARKETING = _REPO / "apps" / "marketing"
 BUDGET: dict[str, int] = {
     "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 9,
     "/api/task-recurring": 9, "/api/tasks": 9, "/api/copilot": 8,
-    "/api/billing": 7, "/api/engagements": 7, "/api/income-tax": 7,
+    "/api/billing": 7, "/api/engagements": 7, "/api/income-tax": 6,
     "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 6,
     "/api/compliance-records": 6, "/api/intelligence": 6, "/api/payroll": 6,
     "/api/analytics": 5, "/api/automation": 5, "/api/gst-portal": 5,
@@ -134,7 +134,11 @@ BUDGET: dict[str, int] = {
 # bills, POST /api/itr/bf-losses and its siblings, the disallowance status
 # PATCH); all four are still reached under the stricter rule, and the reasons
 # are in git history at this file's previous revision.
-TOTAL_BUDGET = 239
+# 239 -> 238: the advance-tax screen now POSTs to
+# /api/income-tax/interest/234ab, so a CA sees s.234A and s.234B beside the
+# s.234C it has always shown (IT-13). The engine and the endpoint were
+# already there; nothing called them.
+TOTAL_BUDGET = 238
 
 
 # ---------------------------------------------------------------------------

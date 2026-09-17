@@ -55,13 +55,14 @@ API = pathlib.Path(__file__).resolve().parent.parent
 # REMOVED as each is done. Adding one needs a reason that survives review.
 NOT_YET: dict[str, str] = {
     # ── Deliberate, argued where the code lives ──────────────────────────────
-    "services/receipt_service.py:create_receipt_core":
-        "DELIBERATE — a receipt moves Bank and Debtors and touches no output "
-        "tax; public.filings records only GSTR-1/3B, returns of SUPPLIES. "
-        "Argued in the module and pinned by test_documents_locked_by_filed_"
-        "return.py::test_a_receipt_is_deliberately_NOT_locked_by_a_filed_return.",
-    "services/receipt_service.py:create_foreign_receipt":
-        "DELIBERATE — same argument as create_receipt_core.",
+    # The two receipt paths LEFT this list on 17-09-2026 (SALES-15). They read
+    # "DELIBERATE — a receipt moves Bank and Debtors and touches no output
+    # tax", which GST-15 falsified for a client marked
+    # `gst_advance_tax_applicable`: CGST s.13(2) charges tax on an advance for
+    # services when it is RECEIVED, so the receipt is declared in GSTR-1
+    # Table 11A and discharged in GSTR-3B Table 3.1(a). Both now go through
+    # `receipt_service._assert_open_where_a_receipt_feeds_a_return`, which asks
+    # the lock for exactly those clients and leaves every other one alone.
     "services/opening_balance_service.py:post_opening_balances":
         "Opening balances are dated the FY's first day by construction; the "
         "year-open check is the question that applies to them.",
@@ -152,11 +153,35 @@ _FY_CHECKS = ("validate_posting_date", "validate_posting_date_cached")
 
 
 def _attr_calls(fn: ast.AST) -> set[str]:
+    """Every name this function CALLS — `x.assert_open(...)` and `helper(...)`.
+
+    Plain-name calls are collected as well as attribute ones (SALES-15). A path
+    whose answer is conditional — the receipt paths ask the lock only for a
+    client who bears tax on advances — has to put that condition somewhere, and
+    a helper is the one place it can live without being copied into both. A
+    scan that saw only `period_lock_service.assert_open(...)` reported such a
+    path as unguarded, which would push the next author into duplicating the
+    rule to satisfy a test.
+    """
     out: set[str] = set()
     for n in ast.walk(fn):
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
+        if not isinstance(n, ast.Call):
+            continue
+        if isinstance(n.func, ast.Attribute):
             out.add(n.func.attr)
+        elif isinstance(n.func, ast.Name):
+            out.add(n.func.id)
     return out
+
+
+def _asserts_the_lock(calls: set[str]) -> bool:
+    """Directly, or through a helper whose name says that is what it does.
+
+    Deliberately narrow: `assert_open` itself, or a private helper NAMED
+    `_assert_open...`. Anything else has to call the service by name, so the
+    indirection cannot be used to hide a path that does not ask at all.
+    """
+    return any(c == "assert_open" or c.startswith("_assert_open") for c in calls)
 
 
 def _functions_missing_the_client_lock() -> dict[str, None]:
@@ -171,7 +196,7 @@ def _functions_missing_the_client_lock() -> dict[str, None]:
                 if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
                 calls = _attr_calls(fn)
-                if calls & set(_FY_CHECKS) and "assert_open" not in calls:
+                if calls & set(_FY_CHECKS) and not _asserts_the_lock(calls):
                     found[f"{root}/{path.relative_to(API / root).as_posix()}:{fn.name}"] = None
     return found
 

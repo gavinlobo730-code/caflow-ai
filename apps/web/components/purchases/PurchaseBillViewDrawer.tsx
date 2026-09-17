@@ -11,6 +11,7 @@
  * not a byte-for-byte port of the sales hub.
  */
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { useState, useEffect, useCallback } from "react";
 import { Pencil, Trash2, CheckCircle, Paperclip, BookOpen, Clock, Loader2, ChevronDown, ChevronUp, AlertCircle, Copy, Ban, CreditCard, FilePlus2 } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
@@ -449,6 +450,8 @@ function RecordVendorPaymentModal({ bill, clientId, outstanding, onClose, onDone
   const [date, setDate] = useState(today);
   const [mode, setMode] = useState("bank");
   const [reference, setReference] = useState("");
+  // ACC-03 — the second vendor-payment door, and it had no account either.
+  const [payFromAccountId, setPayFromAccountId] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function submit() {
@@ -471,6 +474,9 @@ function RecordVendorPaymentModal({ bill, clientId, outstanding, onClose, onDone
         payment_mode: mode,
         reference_no: reference.trim() || undefined,
         purchase_bill_id: bill.id,
+        // ACC-03 — see components/banking/PaymentAccountPicker. Without it the
+        // resolver falls through to the firm's generic Bank ledger.
+        bank_account_id: payFromAccountId || undefined,
       }, token);
       if (!r.success) throw new Error(r.error ?? "Failed to record payment");
       onDone();
@@ -492,6 +498,13 @@ function RecordVendorPaymentModal({ bill, clientId, outstanding, onClose, onDone
         </select>
       </Field>
       <Field label="Reference (optional)"><input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="UTR / cheque no." className={inputCls} /></Field>
+      <PaymentAccountPicker
+        clientId={clientId}
+        value={payFromAccountId}
+        onChange={setPayFromAccountId}
+        label="Paid From"
+        paymentMode={mode}
+      />
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Record Payment" />
     </ModalShell>
   );

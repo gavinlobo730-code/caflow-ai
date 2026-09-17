@@ -197,26 +197,96 @@ def test_the_pools_fetch_what_the_open_figure_needs():
             assert col in src, f"{fn.__name__} never selects {col}"
 
 
-def test_the_outstanding_bonus_no_longer_fires_on_a_settled_bill():
-    """The scoring consequence. matcher.py adds +15 for 'matches outstanding
-    balance'; on a 90%-paid bill reporting its full payable, a bank line for
-    the FULL payable collected that bonus — the ranker asserting the line
-    settles a bill that has a tenth of it left.
+def test_a_bank_line_larger_than_what_is_open_is_not_offered():
+    """The ranker's whole job is to offer a SETTLEMENT, and a ₹1,00,000 line
+    against a bill with ₹10,000 left is not one — it would over-allocate.
 
-    The Candidate is built here rather than through `_bills_from`, because
-    BANK-10 moved the automatic offer's band onto the open figure and that
-    path no longer produces this pairing at all. The UNBANDED manual search
-    still can — a CA may search a date range and find the bill — so the
-    ranker's own behaviour is what this pins."""
+    This used to be measured on the FACE value, so the pairing scored "exact
+    amount" AND collected a +15 "matches outstanding balance" bonus at the same
+    time: the ranker asserting a line settles a bill that has a tenth of it
+    left. BANK-10 measures the difference on what is still open, so the line is
+    simply larger than the document and the branch that already refused an
+    over-payment refuses it.
+
+    The CA can still reach the bill — the UNBANDED search below finds it and
+    says so in as many words.
+    """
     c = Candidate(entity_type="purchase_bill", entity_id="b1",
                   label="B-1 · Om", amount_paise=100_000,
                   entity_date="2026-04-01", party_name="Om", party_id="v1",
                   outstanding_paise=10_000)
-    [s] = rank_suggestions(100_000, "2026-04-01", "OM STATIONERS", [c])
-    assert "matches outstanding balance" not in s.reasons, (
-        "the bank line is 100,000 and only 10,000 is open — that is not a match "
-        "on the outstanding balance")
-    assert s.outstanding_paise == 10_000, "and the CA is shown what is actually open"
+
+    assert rank_suggestions(100_000, "2026-04-01", "OM STATIONERS", [c]) == []
+
+
+def test_the_search_still_finds_it_and_says_the_line_is_larger():
+    """Lifting the band is exactly what that screen is for, so the row must be
+    reachable — and labelled against what is OPEN, not against the face value."""
+    from domain.banking import candidate_search as cs
+
+    c = Candidate(entity_type="purchase_bill", entity_id="b1",
+                  label="B-1 · Om", amount_paise=100_000,
+                  entity_date="2026-04-01", party_name="Om", party_id="v1",
+                  outstanding_paise=10_000)
+
+    hits, total = cs.search([c], bank_amount_paise=100_000,
+                            bank_date="2026-04-01", is_credit=False)
+
+    assert total == 1
+    assert hits[0].difference_paise == -90_000, "10,000 open less a 100,000 line"
+    assert "larger by ₹900.00" in cs.describe(hits[0])
+
+
+def test_a_part_paid_invoice_settled_exactly_is_offered_and_says_so():
+    """The defect BANK-10 is actually about. A ₹1,18,000 invoice half settled by
+    an advance, cleared by a ₹59,000 bank credit: the face-value difference is
+    ₹59,000, which is outside the 25% near-match band, so the ranker offered
+    NOTHING — on the commonest settlement in an Indian practice.
+    """
+    c = Candidate(entity_type="sales_invoice", entity_id="i1",
+                  label="INV-1 · Acme", amount_paise=118_000,
+                  entity_date="2026-04-01", party_name="Acme", party_id="c1",
+                  outstanding_paise=59_000)
+
+    [s] = rank_suggestions(59_000, "2026-04-01", "ACME PVT LTD", [c])
+
+    assert s.difference_paise == 0
+    assert s.confidence_label == "high"
+    # NOT "exact amount": the bank line does not equal the invoice, it clears
+    # what is left of it, and a CA checking the row needs to read that.
+    assert "exact amount" not in s.reasons
+    assert any("still open" in r for r in s.reasons), s.reasons
+    assert s.amount_paise == 118_000, "the face value is still what the row is labelled with"
+
+
+def test_a_shortfall_is_measured_on_the_open_figure_too():
+    """The TDS shape is the reason a short match is legitimate in India, and it
+    has to be read off the same figure the band is — ₹59,000 open, ₹53,100 in
+    the bank, is 10% withheld, not the 55% a face-value reading would make it.
+    """
+    c = Candidate(entity_type="sales_invoice", entity_id="i1",
+                  label="INV-1 · Acme", amount_paise=118_000,
+                  entity_date="2026-04-01", party_name="Acme", party_id="c1",
+                  outstanding_paise=59_000)
+
+    [s] = rank_suggestions(53_100, "2026-04-01", "ACME PVT LTD", [c])
+
+    assert s.difference_paise == 5_900
+    assert s.tds_rate_bps == 1000
+
+
+def test_a_candidate_with_no_open_column_is_measured_on_its_face_value():
+    """A receipt, a payment and a journal entry carry no `outstanding_paise`,
+    and None means the face value IS the open figure — which is true of all
+    three. Reading None as zero would drop every one of them."""
+    from domain.banking.matcher import candidate_open_paise
+
+    c = Candidate(entity_type="journal_entry", entity_id="j1", label="JV-1",
+                  amount_paise=50_000, entity_date="2026-04-01")
+
+    assert candidate_open_paise(c) == 50_000
+    [s] = rank_suggestions(50_000, "2026-04-01", "NEFT", [c])
+    assert s.reasons[0] == "exact amount"
 
 
 # ── BANK-17: a certified line ────────────────────────────────────────────────
