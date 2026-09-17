@@ -23,6 +23,7 @@ import {
   apiCall, getAuthToken, type Customer,
 } from "@/lib/invoices/shared";
 import { clearReports } from "@/lib/accounting/reportCache";
+import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import {
   PAYMENT_TERM_PRESETS, CUSTOM_TERM, termLabelForDays, daysForTermLabel,
 } from "@/lib/sales/paymentTerms";
@@ -86,6 +87,9 @@ export function CustomerFormModal({
     () => termLabelForDays(existing?.credit_days ?? 30) === CUSTOM_TERM,
   );
   const [saving, setSaving] = useState(false);
+  // PUR-32 — set together: the created customer, and what it resembles.
+  const [resemblances, setResemblances] = useState<PossibleDuplicate[]>([]);
+  const [saved, setSaved] = useState<Customer | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const termValue = termCustom ? CUSTOM_TERM : termLabelForDays(parseInt(creditDays, 10));
@@ -166,12 +170,39 @@ export function CustomerFormModal({
       // The backend may have auto-posted/updated the opening-balance journal, so
       // invalidate cached accounting reports for this client.
       clearReports(clientId);
+      // PUR-32. The customer WAS created either way. Where the server named an
+      // existing customer this one resembles, the dialog HOLDS rather than
+      // closing over the warning — including for the CSV import resolver,
+      // where resolving a row to a customer you may already have is precisely
+      // the moment to look. Nothing is refused and nothing is merged; the
+      // acknowledgement hands the same record to `onSaved` it would have.
+      const dupes = (result.data as { possible_duplicates?: PossibleDuplicate[] })
+        .possible_duplicates ?? [];
+      if (dupes.length) {
+        setResemblances(dupes);
+        setSaved(result.data as Customer);
+        return;
+      }
       onSaved(result.data as Customer);
     } catch (err) {
       fail(err instanceof Error ? err.message : "Failed to save customer");
     } finally {
       setSaving(false);
     }
+  }
+
+  if (saved && resemblances.length) {
+    return (
+      <Modal title="Customer added" onClose={() => onSaved(saved)} maxWidthClass="max-w-2xl">
+        <PossibleDuplicatesNotice duplicates={resemblances} noun="customer" />
+        <div className="flex justify-end">
+          <button onClick={() => onSaved(saved)}
+            className="text-xs px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            Got it
+          </button>
+        </div>
+      </Modal>
+    );
   }
 
   return (

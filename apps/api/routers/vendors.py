@@ -13,6 +13,7 @@ from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError
 from models.common import api_response
+from domain.party_duplicates import possible_duplicates
 from models.parties import VendorIn, VendorUpdateIn
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
@@ -244,14 +245,19 @@ def create_vendor(
         firm_id = payload["firm_id"]
 
         if _USE_MOCK:
+            candidates = [v for v in MOCK_VENDORS
+                          if v.get("client_id") == client_id and v.get("firm_id") == firm_id]
             if gstin or pan:
-                candidates = [v for v in MOCK_VENDORS if v.get("client_id") == client_id and v.get("firm_id") == firm_id]
                 existing = _match_existing_vendor(candidates, gstin, pan)
                 if existing:
                     return api_response(True, {**existing, "duplicate": True})
+            # PUR-32. Read BEFORE the append, or the vendor reports itself.
+            resemblances = possible_duplicates(payload.get("name"), candidates)
             payload["id"] = str(uuid.uuid4())
             MOCK_VENDORS.append(payload)
-            return api_response(True, payload)
+            return api_response(True, {
+                **payload,
+                "possible_duplicates": [d.as_dict() for d in resemblances]})
 
         from core.supabase_client import get_supabase
         db = get_supabase()
@@ -260,15 +266,23 @@ def create_vendor(
         # Never silently create a second vendor matching an existing active one
         # by GSTIN or PAN for the same client; re-importing/resubmitting must
         # not create duplicates. ──────────────────────────────────────────────
+        # ONE read serves both questions. The GSTIN/PAN guard and the PUR-32
+        # name resemblance are asked of the same population — this client's
+        # active vendors — so a second query would be a second Singapore-to-
+        # Mumbai round trip for rows already in hand.
+        active_resp = (
+            db.table("vendors").select("*")
+            .eq("client_id", client_id).eq("firm_id", firm_id).eq("is_active", True)
+            .execute()
+        )
+        active_vendors = active_resp.data or []
         if gstin or pan:
-            existing_resp = (
-                db.table("vendors").select("*")
-                .eq("client_id", client_id).eq("firm_id", firm_id).eq("is_active", True)
-                .execute()
-            )
-            existing = _match_existing_vendor(existing_resp.data or [], gstin, pan)
+            existing = _match_existing_vendor(active_vendors, gstin, pan)
             if existing:
                 return api_response(True, {**existing, "duplicate": True})
+        # PUR-32. A name is not an identifier, so this REPORTS and the vendor
+        # is created exactly as asked — see domain/party_duplicates.
+        resemblances = possible_duplicates(payload.get("name"), active_vendors)
 
         resp = db.table("vendors").insert(payload).execute()
         if not resp.data:
@@ -315,7 +329,9 @@ def create_vendor(
             actor_id=current_user.get("auth_user_id"),
             actor_name=current_user.get("email"),
         )
-        return api_response(True, vendor)
+        return api_response(True, {
+            **vendor,
+            "possible_duplicates": [d.as_dict() for d in resemblances]})
     except HTTPException:
         raise
     except Exception as e:

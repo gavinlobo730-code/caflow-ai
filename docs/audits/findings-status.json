@@ -129,11 +129,11 @@
       "reread_on": "2026-09-17"
     },
     "PUR-32": {
-      "status": "partial",
+      "status": "closed",
       "verified_on": "2026-09-17",
-      "why": "the mistyped-bill-number half is built \u2014 domain/purchases/near_duplicate.near_duplicates warns on same-amount/near-date and confusable spelling, carried on the create response and served as a preflight by routers/purchase_bills.probe_near_duplicates",
+      "why": "both halves built. The bill half was already done (domain/purchases/near_duplicate, warned on the create response and served as a preflight by routers/purchase_bills.probe_near_duplicates). The vendor half is domain/party_duplicates.possible_duplicates, on BOTH create doors (vendors and customers, which have mirrored each other since they were written) and rendered by one component on all three screens. Per the owner's decision it REPORTS and never merges: the party is created exactly as asked and the resemblance travels back beside it, because two genuine suppliers share a name and merging on one is invisible and moves money. Two limbs told apart \u2014 an exact normalised match, and a same base name with a different entity form (Sharma Traders against Sharma Traders Pvt Ltd), which is both the commonest real duplicate and a real pattern of its own.",
       "reread_on": "2026-09-17",
-      "what_is_left": "the VENDOR duplicate guard. routers/vendors._match_existing_vendor still tries only GSTIN then PAN, all three call sites are guarded by `if gstin or pan`, there is no unique constraint on vendors, and _near_duplicates filters .eq('vendor_id', \u2026) \u2014 so one invoice booked under two vendor rows for the same UNREGISTERED supplier is seen by neither guard"
+      "what_is_left": "nothing for this finding. The unique constraint on vendors named in the probe is deliberately NOT added: a name is not an identifier and a database constraint cannot warn."
     },
     "IT-24": {
       "status": "closed",

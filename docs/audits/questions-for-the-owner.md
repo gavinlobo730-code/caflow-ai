@@ -272,7 +272,24 @@ schema: **Partner-only**, and the screen says plainly that a rate is shared
 across the platform. If a typo ever does move another firm's books, the answer
 is an audit trail on the write, not a per-firm copy of a public fact.
 
-## A duplicate supplier: warn, never merge  *(was §G, PUR-32)*
+## A duplicate supplier: warn, never merge  *(was §G, PUR-32)*  **— BUILT 17-09-2026**
+
+`domain/party_duplicates.py` is the rule and it is on BOTH create doors —
+vendors and customers, which have mirrored each other since they were written,
+so guarding only one is one PATCH from guarding neither. One component,
+`components/parties/PossibleDuplicatesNotice.tsx`, renders it on all three
+screens that create a party.
+
+Two limbs, reported separately because they mean different things: an exact
+match of the normalised name, and the same BASE name under a different entity
+form (`Sharma Traders` against `Sharma Traders Pvt Ltd`) — which is at once the
+commonest real duplicate and a real pattern of its own, since a proprietorship
+and the company that succeeded it are two parties. **The entity form is
+canonicalised, never removed**: `Pvt Ltd` / `Private Limited` / `P Ltd` fold
+together, and an **LLP does not fold into them**, because the LLP Act 2008
+makes it a different legal person with its own PAN and its own return.
+Dropping the form altogether is the obvious simplification and would report
+those two as one party.
 
 **Decided: option 1.** Create the vendor as asked and return
 `possible_duplicates` naming active vendors with the same normalised name, so
