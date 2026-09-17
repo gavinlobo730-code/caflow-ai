@@ -60,6 +60,7 @@ _logger.info("CORS allowed origins: %s", _ALLOWED_ORIGINS)
 from routers import clients, compliance, documents, assistant, insights, tasks, reminders, team
 from routers import accounting, compliance_records
 from routers import currencies  # Multi-Currency Phase 1 (read-only currency master + policy)
+from routers import firms  # the practice's own profile — the one door that writes it
 from routers import fx_reports  # Multi-Currency Phase 5 (read-only FX reporting)
 from routers import fx_revaluation  # AS 11 period-end revaluation (its own router: this one POSTS)
 from routers import risks, ai_insights, automation, notifications, ai_copilot
@@ -302,6 +303,12 @@ app.include_router(accounting.router, dependencies=_CLIENT_GUARD)
 # guard is a no-op for the global master list (no client_id) and enforces
 # client-assignment scope for the /policy route (which carries client_id).
 app.include_router(currencies.router, dependencies=_CLIENT_GUARD)
+# The practice's OWN profile. Firm administration, so it carries the MFA
+# guard alongside identity and assignments; no client_id ever reaches it, so
+# the client guard would be a no-op and is left off. Until 17-09-2026 both
+# screens that edit this wrote public.firms straight over PostgREST, where
+# neither rbac() nor the GSTIN check digit ran — see routers/firms.py.
+app.include_router(firms.router, dependencies=_MFA_GUARD)
 app.include_router(fx_reports.router, dependencies=_CLIENT_GUARD)
 app.include_router(fx_revaluation.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_records.router, dependencies=_CLIENT_GUARD)

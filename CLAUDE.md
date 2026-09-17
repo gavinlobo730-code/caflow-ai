@@ -3446,6 +3446,37 @@ called.
   path had only ever been exercised with GSTINs the portal would reject. The
   fixtures were corrected, not the guard relaxed.
 
+- **THE FIRM'S OWN GSTIN LIVES IN TWO COLUMNS AND ONLY ONE IS READ.**
+  `public.firms` carries `gst_number` (migration 003) AND `gstin` (014, given
+  its CHECK by 112/316), nothing has ever synced them, and the two sides of the
+  product picked different ones: BOTH screens that edit the firm profile wrote
+  `gst_number` **straight over PostgREST** — Settings and the onboarding
+  wizard's UPDATE step — while every backend reader read `gstin`. So a CA who
+  typed their GSTIN into Settings got a fee invoice with **no supplier GSTIN**
+  on it (CGST Rule 46(a)) and, because `_state_code(None)` is None, the whole
+  tax on a LOCAL supply landed in **IGST** instead of splitting CGST+SGST.
+  `POST /api/onboarding/firm` has always written `gstin` correctly; it is only
+  the screens' own update path that did not, so which route a firm came in
+  through decided whether its own GSTIN was readable at all.
+  **Measured before acting, because the severity turns on it**: on 17-09-2026
+  production held 2 firms with BOTH columns NULL — latent, and live the moment
+  anybody typed one in. The `capital_wip` shape: built, reachable, structurally
+  nil.
+  `domain/firm/identity.py` is the authority: **`gstin` is the column,
+  `gst_number` is READ as a fallback and never written**, and `gstin_of` is the
+  only reader. One writer, `PATCH /api/firms/profile` (Partner-only), which is
+  also where the **CHECK DIGIT** is tested — `firms_gstin_format` is a shape
+  regex and accepts a transposition, and that GSTIN goes on every fee invoice
+  the practice raises with nothing downstream to re-check it. Writing BOTH
+  columns was rejected: it would make `gst_number` a cache with two writers,
+  the shape this file records going wrong on `clients.gstin` and on the retired
+  supplier table. **A narrow `select()` that names one column and not the other
+  makes the fallback a silent no-op** — `routers/practice.py` did exactly that
+  — so `identity.COLUMNS` is the list to project, the same trap
+  `domain/accounting/opening_documents` records for `is_opening`.
+  ⚠️ The end state is one column, and that is a **migration** (back-fill, then
+  drop) and so an owner decision.
+
 - **A UAN and an IFSC are format-checked at every door; an ESIC number is
   not, and that is a decision.** Both patterns live once, in
   `domain/payroll/identity.py` — `UAN_RE` (12 digits, EPFO's own format) and

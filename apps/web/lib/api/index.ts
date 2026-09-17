@@ -22,6 +22,27 @@ export type MarkFiledResult = {
   workspace_return: { id: string; period: string; status: string; table: string } | null;
 };
 
+/** `public.firms` as the product reads it. `gstin` is RESOLVED — the row's two
+ *  GSTIN columns are not both served, because choosing between them is
+ *  `domain/firm/identity.py`'s job and a screen that could see both would have
+ *  to repeat it. */
+export type FirmProfile = {
+  id?: string;
+  name?: string | null;
+  email?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  icai_mrn?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  address?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+};
+
 /** Standard backend response envelope: { success, data, error }. */
 export type ApiResp<T = unknown> = { success: boolean; data: T; error: string | null };
 
@@ -3452,6 +3473,22 @@ export const api = {
       ).toString();
       return downloadFile(`/api/time-entries/export?${q}`, `time-entries.${params.fmt}`);
     },
+  },
+  /** The CA practice's OWN profile — name, GSTIN, PAN, address.
+   *
+   *  It goes through the API rather than PostgREST because `public.firms`
+   *  carries TWO columns for the GSTIN and both screens used to write the one
+   *  no backend reader reads: the fee invoice then printed no supplier GSTIN
+   *  (CGST Rule 46(a)) and the CGST/SGST-versus-IGST fallback put the whole tax
+   *  on a LOCAL supply into IGST. The endpoint also runs the GSTIN CHECK DIGIT,
+   *  which the column's own CHECK constraint cannot. `domain/firm/identity.py`
+   *  is the authority; the served `gstin` is already resolved, so there is
+   *  nothing here to choose between. */
+  firm: {
+    profile: () => request<ApiResp<FirmProfile>>("/api/firms/profile"),
+    saveProfile: (body: Partial<FirmProfile>) =>
+      request<ApiResp<FirmProfile>>("/api/firms/profile",
+        { method: "PATCH", body: JSON.stringify(body) }),
   },
   onboarding: {
     /** Start a 10-step Product Bible Ch. 7 onboarding checklist for a client. */

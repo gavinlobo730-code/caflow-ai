@@ -7,6 +7,7 @@ GET  /api/onboarding/status     — onboarding completeness check (Partner/Manag
 import re
 import secrets
 import logging
+from domain.firm import identity as firm_identity
 from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -213,7 +214,7 @@ def onboarding_status(
 
     checks = {
         "firm_created": True,
-        "gstin_configured": bool(firm.get("gstin")),
+        "gstin_configured": bool(firm_identity.gstin_of(firm)),
         "team_members_added": len(users) > 1,
         "first_client_added": len(clients) > 0,
     }
