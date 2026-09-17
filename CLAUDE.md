@@ -3482,6 +3482,29 @@ exports one of those, which COERCES to 0 and is the parity-pinned payload
 builder. Two functions with one name in one directory is how the wrong one gets
 called.
 
+**A QUANTITY HAS THE SAME RULE AND ITS OWN GUARD, and the guard is the RULE
+rather than a list of doors** (INV-09). Every quantity column in this schema is
+`NUMERIC(10,3)` (migrations 050, 188, 210), so a fourth decimal is accepted,
+rounded by Postgres, and the money computed from what was TYPED no longer
+matches what was stored — which is the Inventory-control tie-out this file makes
+load-bearing. `domain/quantity.quantity_violation` is the one rule; the
+OPENING-STOCK door did not ask it while five others did, so
+`opening_qty_units=1.2345` was accepted where the identical figure on a stock
+adjustment was refused. `tests/test_a_quantity_door_asks_the_column_how_many_
+decimals.py` derives the door list from the AST — every Pydantic field whose
+name says quantity and whose annotation is NUMERIC, so a bool like
+`quantity_is_provisional` is not one — checks **per class** (a module-level walk
+passes when only one of a create/PATCH pair is guarded, which is exactly what
+these two were), and follows **one level of indirection**, because
+`models/invoices.py` legitimately factors the check into `_validate_quantity`
+and a scan seeing only the direct call would push the next author into copying
+it back. On the browser side the importer goes through `toQty`, the helper the
+invoice and bill line importers already use, and **`num()` — a bare `parseFloat`
+— is deleted**: its last call site gated a receipt's amount on a value it did
+not parse, so `"1200abc"` passed at 1200 while `toPaise` returned NaN, and
+`NaN <= 0` is FALSE, so the row was built with `amount_paise: NaN`, which
+`JSON.stringify` sends as **null**.
+
 ## Identifiers
 
 - **GSTIN carries a check digit, and the shape regex does not test it.**

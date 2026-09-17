@@ -98,9 +98,24 @@ class ServiceCatalogueIn(BaseModel):
 
     @field_validator("opening_qty_units")
     @classmethod
-    def opening_qty_non_negative(cls, v: Optional[float]) -> Optional[float]:
+    def opening_qty_is_a_storable_quantity(cls, v: Optional[float]) -> Optional[float]:
+        """Non-negative AND within the column's three decimals (INV-09).
+
+        `domain.quantity.quantity_violation` is the rule every other quantity
+        door already asks — the adjustment, the count sheet, both document line
+        models — and the OPENING one did not, so `opening_qty_units=1.2345` was
+        accepted while the same figure on a stock adjustment was refused.
+        `seed_opening_balance` then derives `value_delta_paise` from the
+        UNROUNDED figure while Postgres rounds `quantity_delta` to
+        NUMERIC(10,3), which is exactly the drift `domain/quantity.py`'s own
+        docstring says it exists to stop.
+        """
+        from domain.quantity import quantity_violation
         if v is not None and v < 0:
             raise ValueError("Opening quantity cannot be negative.")
+        problem = quantity_violation(v)
+        if problem:
+            raise ValueError(problem)
         return v
 
     @field_validator("opening_cost_paise")
@@ -179,9 +194,24 @@ class ServiceCatalogueUpdateIn(BaseModel):
 
     @field_validator("opening_qty_units")
     @classmethod
-    def opening_qty_non_negative(cls, v: Optional[float]) -> Optional[float]:
+    def opening_qty_is_a_storable_quantity(cls, v: Optional[float]) -> Optional[float]:
+        """Non-negative AND within the column's three decimals (INV-09).
+
+        `domain.quantity.quantity_violation` is the rule every other quantity
+        door already asks — the adjustment, the count sheet, both document line
+        models — and the OPENING one did not, so `opening_qty_units=1.2345` was
+        accepted while the same figure on a stock adjustment was refused.
+        `seed_opening_balance` then derives `value_delta_paise` from the
+        UNROUNDED figure while Postgres rounds `quantity_delta` to
+        NUMERIC(10,3), which is exactly the drift `domain/quantity.py`'s own
+        docstring says it exists to stop.
+        """
+        from domain.quantity import quantity_violation
         if v is not None and v < 0:
             raise ValueError("Opening quantity cannot be negative.")
+        problem = quantity_violation(v)
+        if problem:
+            raise ValueError(problem)
         return v
 
     @field_validator("opening_cost_paise")
