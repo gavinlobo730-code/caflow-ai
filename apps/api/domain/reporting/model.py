@@ -80,6 +80,15 @@ class JournalEntry:
     reference_no: Optional[str] = None
     narration: Optional[str] = None
     created_at: Optional[str] = None
+    # WHICH DOCUMENT produced this entry (journal_entries.source_type /
+    # source_id, migration 104; the vocabulary is
+    # domain/accounting/journal_source.ALL_SOURCES). Read by the ledger so a
+    # row can be opened, and by nothing else — every aggregation report ignores
+    # them. Both Optional because an entry posted before its path stamped a
+    # source carries NULL, and because the three sources in
+    # journal_source.ENTRY_IS_THE_RECORD deliberately carry no source_id.
+    source_type: Optional[str] = None
+    source_id: Optional[str] = None
 
 
 # ── Sales / purchase cycle documents (only the fields the projector needs) ──

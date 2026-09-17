@@ -14,6 +14,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { todayLocalISO } from "@/lib/dateMath";
 import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
+import { openedAt } from "@/lib/accounting/sourceDocument";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
@@ -208,6 +209,16 @@ export default function FixedAssetsPage() {
   // below belonged to, but changing it meant leaving the page to do it.
   const [financialYear, setFinancialYear] = useState(getCurrentFinancialYear());
   const [tab, setTab] = useState<FATab>("register");
+  // ACC-22 — a ledger row's drill-through arrives as ?tab=<id>&doc=<uuid>. All
+  // four asset sources (acquisition, depreciation, disposal, and the two CWIP
+  // ones) name a row on THIS screen, so the tab decides which list and the doc
+  // rings the row. Read in an effect: static export, no `window` during render.
+  const [openDoc, setOpenDoc] = useState<string | null>(null);
+  useEffect(() => {
+    const { tab: t, doc } = openedAt(window.location.search);
+    if (t && TABS.some((x) => x.id === t)) setTab(t as FATab);
+    setOpenDoc(doc);
+  }, []);
 
   return (
     <div className="flex flex-col h-full bg-[#F8FAFC]">
@@ -243,12 +254,12 @@ export default function FixedAssetsPage() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-6">
-        {tab === "register"     && <RegisterTab    clientId={clientId} />}
+        {tab === "register"     && <RegisterTab    clientId={clientId} openDoc={openDoc} />}
         {/* Capital work-in-progress (FA-11a). The schedules are AS AT the end
             of the selected financial year — Schedule III's ageing is a
             reporting-date figure, and a project capitalised in June is work in
             progress in a 31 March note and a fixed asset in a September one. */}
-        {tab === "cwip"         && <CwipTab clientId={clientId}
+        {tab === "cwip"         && <CwipTab clientId={clientId} openDoc={openDoc}
                                      asOf={fyRangeFor(financialYear).end} />}
         {tab === "depreciation" && <DepreciationTab clientId={clientId} />}
         {tab === "disposal"     && <DisposalTab     clientId={clientId} />}
@@ -260,7 +271,10 @@ export default function FixedAssetsPage() {
 
 // ── Asset Register ─────────────────────────────────────────────────────────
 
-function RegisterTab({ clientId }: { clientId: string }) {
+function RegisterTab({ clientId, openDoc }:
+    { clientId: string;
+      /** ACC-22 — the asset a ledger drill-through arrived at. */
+      openDoc?: string | null }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed (thrown/PostgREST error) rather than the
@@ -396,7 +410,8 @@ function RegisterTab({ clientId }: { clientId: string }) {
                 <>
                   <tr
                     key={a.id}
-                    className="hover:bg-[#F8FAFC] cursor-pointer"
+                    className={"hover:bg-[#F8FAFC] cursor-pointer" +
+                      (openDoc && a.id === openDoc ? " bg-amber-50 ring-2 ring-inset ring-amber-300" : "")}
                     onClick={() => setExpanded(expanded === a.id ? null : a.id)}
                   >
                     <td className="px-4 py-2.5 text-[#94A3B8]">

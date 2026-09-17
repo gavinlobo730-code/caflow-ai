@@ -114,10 +114,32 @@ export interface DataTableProps<T> {
   /** Trailing per-row actions column. */
   rowActions?: (row: T) => React.ReactNode;
   onRowClick?: (row: T) => void;
+  /**
+   * Which rows `onRowClick` actually applies to. Default: all of them.
+   *
+   * ACC-22 needed it: a ledger row opens the document behind its entry, and an
+   * entry posted before its path stamped a source has none. Without this the
+   * whole table showed a pointer cursor and every row invited a click, a third
+   * of which did nothing — and the tint cannot be fixed from `rowClassName`,
+   * because `cn` is tailwind-merge and the built-in `cursor-pointer` is applied
+   * after it.
+   */
+  rowClickable?: (row: T) => boolean;
   /** Extra toolbar controls (e.g. a financial-year selector). */
   toolbarExtra?: React.ReactNode;
   /** Per-row classes — a status tint, say. Returning "" keeps the default. */
   rowClassName?: (row: T) => string;
+  /**
+   * ACC-22 — the row a deep link arrived at, ringed and scrolled into view.
+   *
+   * ONE mechanism rather than a bespoke opener per list: every list here
+   * already has `getRowId`, and a drill-through that has to teach each screen
+   * its own way to "open" a document is a dozen conventions to keep in step.
+   * A row that is filtered or paged out is simply not found — nothing is
+   * forced into view and no filter is cleared, because a deep link must not
+   * silently change what the reader is looking at.
+   */
+  highlightRowId?: string | null;
   /**
    * A full-width detail row rendered under `row` while it is expanded, and the
    * predicate that says which rows are. Returning null renders nothing.
@@ -220,8 +242,10 @@ export function DataTable<T>({
   emptyAction,
   rowActions,
   onRowClick,
+  rowClickable,
   toolbarExtra,
   rowClassName,
+  highlightRowId,
   expandedRow,
   isExpanded,
 }: DataTableProps<T>) {
@@ -232,6 +256,14 @@ export function DataTable<T>({
     initialPageSize: serverPaged ? 0 : initialPageSize,
     initialFilters, persistKey,
   });
+  // ACC-22 — bring the deep-linked row into view once, when it first renders.
+  // Keyed on `highlightRowId` rather than on the element: a re-render from
+  // sorting or paging must not yank the reader's scroll position back.
+  const highlightRef = React.useRef<HTMLTableRowElement | null>(null);
+  React.useEffect(() => {
+    if (!highlightRowId) return;
+    highlightRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [highlightRowId]);
   const hasSearch = columns.some((c) => c.searchable);
   const hasBulk = Boolean(bulkActions && bulkActions.length);
   // Which bulk action (by id) is currently running — disables the whole bar
@@ -484,14 +516,18 @@ export function DataTable<T>({
               {page.rows.map((row) => {
                 const id = getRowId(row);
                 const sel = t.isSelected(row);
+                const lit = Boolean(highlightRowId) && id === highlightRowId;
+                const clickable = Boolean(onRowClick) && (rowClickable?.(row) ?? true);
                 const open = Boolean(expandedRow && isExpanded?.(row));
                 const detail = open ? expandedRow!(row) : null;
                 return (
                   <React.Fragment key={id}>
                   <tr
+                    ref={lit ? highlightRef : undefined}
                     className={cn("hover:bg-[#F8FAFC]", rowClassName?.(row),
-                                  sel && "bg-[#EEF2FF]", onRowClick && "cursor-pointer")}
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                                  sel && "bg-[#EEF2FF]", clickable && "cursor-pointer",
+                                  lit && "bg-amber-50 ring-2 ring-inset ring-amber-300")}
+                    onClick={clickable ? () => onRowClick!(row) : undefined}
                   >
                     {hasBulk && (
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>

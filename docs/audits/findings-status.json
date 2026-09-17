@@ -802,14 +802,13 @@
       "reread_on": "2026-09-16"
     },
     "ACC-22": {
-      "status": "open",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. — RE-READ 16-09-2026 against main 171ef0e3: The ledger table still has no link and no row handler: apps/web/app/clients/[id]/accounting/page.tsx:1182-1205 renders `<DataTable data={ledger.lines} columns={ledgerColumns} ... getRowId={(l) => l.entry_id} ...>` with NO `onRowClick` (contrast :969-971, where the journal/day-book table has one), and the six ledger columns at :1107-1125 (Date, Particulars, Ref, Debit, Credit, Balance) render plain spans. The payload cannot support a document link either: apps/api/domain/reporting/builders.py:68-75 emits only `entry_id, entry_date, reference_no, narration, debit_paise, credit_paise, running_balance_paise, is_debit` — no source_type/source_id — and the SQL twin `public.account_ledger_page` (migration 283, still the last definer) does the same at its line 167. `source_id` does not appear anywhere in apps/web outside lib/api/partyCredits.ts:32. The commit this finding was closed against says so itself: 99ac94b5's body reads \"This commit is the missing premise; the drill-through itself is a separate change.\"",
+      "status": "closed",
+      "verified_on": "2026-09-17",
+      "why": "the drill-through is built. domain/reporting/model.JournalEntry carries source_type/source_id, sources._ENTRY_SCALAR_COLS selects them, builders.ledger emits both keys on every row unconditionally, and migration 400 redefines public.account_ledger_page (derived from 283, its last definer) to do the same — held identical by test_account_ledger_sql_parity_pg.py, which gained three document scenarios and three floors so the new keys cannot be a comparison of two silences. apps/web/lib/accounting/sourceDocument.ts is the one route map and the accounting page's Ledger table has a Source column and an onRowClick; sales, purchases, fixed-assets, payroll and bank honour ?tab=&doc= and ring the row through DataTable's new highlightRowId. settlement and year_end_adjustment are REFUSED with their own sentences (the row carries neither the employee nor the engagement id). test_the_browser_can_open_the_document_the_ledger_names.py pins the browser map to journal_source.ALL_SOURCES from the Python side",
+      "reread_on": "2026-09-17",
       "commits": [
-        "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497"
+        "99ac94b5 Five things the ledger and its reports were telling a CA wrongly (#497)"
       ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "Carry source_type/source_id through the reporting model, builders.ledger, migration 283's account_ledger_page and its parity test (the commit names exactly this list), then make the ledger row route to the journal editor for a manual entry and to the source document otherwise.",
       "user_visible_impact": "A CA reading \"Trade Receivables 1,18,000 Dr\" in the ledger cannot click through to the invoice — the row is inert. This is the one keystroke Tally has trained them to expect, and it is the demo moment where the GL looks like a report rather than books. It also removes the only quick way to find which document drifted when the GL and a sub-ledger disagree."
     },
     "ACC-23": {

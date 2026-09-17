@@ -146,8 +146,15 @@ class SupabaseLedgerSource(LedgerSource):
     # reports run whether or not those migrations have been applied.
     _BASE_ACCOUNT_COLS = ("id, account_code, account_name, account_type, "
                       "account_subtype, schedule_iii_mapping")
+    # source_type / source_id (migration 104) ride in the BASE list rather than
+    # behind a probe like reversal_of and the FX memo: 104 predates every
+    # snapshot this codebase compares against, and the ledger's drill-through is
+    # the only reader — a probe would mean the link silently vanishing on the one
+    # deployment where the column is missing, which is indistinguishable from an
+    # entry that has no document. A genuinely absent column fails loudly instead.
     _ENTRY_SCALAR_COLS = ("id, entry_date, client_id, firm_id, entry_type, "
-                          "reference_no, narration, created_at")
+                          "reference_no, narration, created_at, "
+                          "source_type, source_id")
     _BASE_LINE_COLS = "account_id, debit_paise, credit_paise"
     # Multi-Currency Phase 5: optional per-line FX memo (migration 147). Probed for
     # separately (like system_account_key / reversal_of) so reports run whether or
@@ -505,6 +512,9 @@ class SupabaseLedgerSource(LedgerSource):
                 lines=lines, reversal_of=r.get("reversal_of"),
                 reference_no=r.get("reference_no"), narration=r.get("narration"),
                 created_at=r.get("created_at"),
+                # The document behind the entry — read by builders.ledger only.
+                source_type=r.get("source_type"),
+                source_id=(str(r["source_id"]) if r.get("source_id") is not None else None),
             )
         if stats is not None:
             # journal_lines rides along EMBEDDED in each entry row, so the line

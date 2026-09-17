@@ -967,6 +967,55 @@ change. The code is the authority; keep this file in step with it.
   state than `readOnly` (a locked year or a filed return), so a CA is never
   invited to type something the server will refuse.
 
+- **A LEDGER ROW NAMES THE DOCUMENT BEHIND IT, AND THREE FILES HAVE TO AGREE
+  ABOUT WHAT THAT MEANS** (ACC-22, migration 400).
+  `journal_entries.source_type` / `source_id` have existed since migration 104
+  and have been filled in by all twenty-six posting paths since commit
+  99ac94b5 — whose own message says *"This commit is the missing premise; the
+  drill-through itself is a separate change."* The ledger was the half that
+  never READ them, so a CA looking at "Trade Receivables 1,18,000 Dr" had a
+  narration, a reference and nothing to open, which is the one keystroke Tally
+  has trained them to expect and the only quick way to find WHICH document
+  drifted when the GL and a sub-ledger disagree.
+  **The two keys are ALWAYS PRESENT and null where the entry carries none.**
+  An absent key and a null key read the same to `line.source_type ?? null` and
+  are different bugs: null is "this entry has no document", absent is "this
+  build did not send it" — the screen renders the first and cannot detect the
+  second. Both `builders.ledger` and migration 400's `account_ledger_page`
+  emit them unconditionally, and 400 is derived from **283**, still the last
+  definer, because `CREATE OR REPLACE` replaces the whole body.
+  **The ROUTE map is the browser's and the VOCABULARY is Python's.**
+  `apps/web/lib/accounting/sourceDocument.ts` says which screen and which
+  sub-tab each source opens — a fact about Next.js routes the backend cannot
+  hold — and is pinned from the Python side by
+  `tests/test_the_browser_can_open_the_document_the_ledger_names.py`: every
+  member of `journal_source.ALL_SOURCES` is routed, is one of the three in
+  `ENTRY_IS_THE_RECORD`, or is REFUSED with its own sentence. A guard written
+  in `apps/web` would assert that file against a copy of itself, the Schedule
+  III caption lesson. **Two sources are refused and the reasons are not
+  interchangeable**: a `settlement`'s screen is keyed on the EMPLOYEE and the
+  row carries the settlement id, and a `year_end_adjustment` lives under its
+  ENGAGEMENT and the row carries the adjustment id. Sending a CA to a list that
+  cannot show the document is worse than an unclickable row, because it reads
+  as "this is the document".
+  **One deep-link convention — `?tab=<id>&doc=<uuid>` — and one highlight.**
+  A param per kind (`?invoice=`, `?bill=`, `?run=`) would be a second
+  vocabulary; `DataTable`'s `highlightRowId` rings the row and scrolls it into
+  view in ONE place rather than teaching five screens their own idea of
+  "open". A row that is filtered or paged out is simply not found: nothing is
+  forced into view and no filter is cleared, because a deep link must not
+  silently change what the reader is looking at. The tab is validated against
+  each screen's own `TABS` and read from `window.location.search` inside an
+  effect — `apps/web` is a static export, so nothing may touch `window` during
+  render.
+  **Two guards that named a LOCATION broke on a move that did not break their
+  rule**, and both were restated: `test_a_journal_source_reads_as_english`
+  asserted `function sourceLabel` lived in the accounting page (it now finds
+  the single definition by searching `apps/web`), and
+  `the-book-can-be-read-not-only-posted-to` asserted the same spelling (it now
+  asserts the page IMPORTS it). That is the third time this pattern has been
+  fixed in this file's history; write the rule, not a spelling of it.
+
 - **THE SUPPLIER MASTER IS `public.vendors`, AND `public.suppliers` IS RETIRED**
   (PUR-16). Migration 030 created a second one and `/accounting/suppliers` was
   its only writer, straight over PostgREST; every purchase path — bill

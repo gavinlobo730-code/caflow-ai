@@ -34,6 +34,12 @@ def ledger(entries_by_id: dict[str, JournalEntry], accounts: dict[str, Account],
            account_id: str, start: Optional[str], end: Optional[str]) -> dict:
     """Per-account general ledger with opening / running / closing balances.
 
+    Each row also carries the DOCUMENT behind its entry — `source_type` and
+    `source_id`, journal_entries' own columns since migration 104, vocabulary in
+    `domain/accounting/journal_source`. Emitted for the ledger alone: every
+    aggregation report ignores them, and the SQL twin
+    `public.account_ledger_page` emits the same two keys.
+
     Accrual, posted-only (the source already filters is_posted + deleted_at). The
     opening balance is the cumulative debit−credit for the account STRICTLY before
     `start`, so the running balance carries forward across periods (the previous
@@ -74,6 +80,13 @@ def ledger(entries_by_id: dict[str, JournalEntry], accounts: dict[str, Account],
             "credit_paise": ln.credit_paise,
             "running_balance_paise": running,
             "is_debit": running >= 0,
+            # WHICH DOCUMENT this line came from, so the row can be opened
+            # (ACC-22). Always present, `null` where the entry carries none —
+            # an absent key and a null would look the same to the browser, and
+            # "posted before this path stamped a source" is a real answer the
+            # screen has to render as "no document", not as a broken link.
+            "source_type": e.source_type,
+            "source_id": e.source_id,
         }
         # Multi-Currency Phase 5 — optional transaction-currency visibility. Emitted
         # ONLY for genuinely foreign lines, so an INR-only ledger is byte-for-byte

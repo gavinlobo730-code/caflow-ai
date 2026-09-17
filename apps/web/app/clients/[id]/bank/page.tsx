@@ -25,6 +25,7 @@ import type { Account } from "@/components/banking/shared";
 import { EntriesTab } from "@/components/banking/EntriesTab";
 import { BankReconciliation } from "@/components/banking/ReconcileTab";
 import { RulesTab } from "@/components/banking/RulesTab";
+import { openedAt } from "@/lib/accounting/sourceDocument";
 
 type BankTab = "entries" | "reconcile" | "rules";
 
@@ -46,6 +47,16 @@ export default function BankPage() {
   // and the bucket lists the dated lines, so inventing one here would be a
   // second filter to keep in step for no gain.
   const [entriesFocus, setEntriesFocus] = useState<string>("");
+  // ACC-22 — a ledger row's drill-through arrives as ?tab=<id>&doc=<uuid>. Both
+  // bank sources (a passed statement line and an over-payment) stamp the
+  // BANK TRANSACTION, so Entries is where they land. Read in an effect: static
+  // export, so nothing may touch `window` during render.
+  const [openDoc, setOpenDoc] = useState<string | null>(null);
+  useEffect(() => {
+    const { tab: t, doc } = openedAt(window.location.search);
+    if (t && TABS.some((x) => x.id === t)) setTab(t as BankTab);
+    setOpenDoc(doc);
+  }, []);
 
   const loadAccounts = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
@@ -88,7 +99,7 @@ export default function BankPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
-        {tab === "entries"   && <EntriesTab clientId={clientId} accounts={accounts} focusBankAccountId={entriesFocus} />}
+        {tab === "entries"   && <EntriesTab clientId={clientId} accounts={accounts} focusBankAccountId={entriesFocus} openDoc={openDoc} />}
         {tab === "reconcile" && <BankReconciliation clientId={clientId}
                                   onGoToEntries={(id) => { setEntriesFocus(id); setTab("entries"); }} />}
         {tab === "rules"     && <RulesTab clientId={clientId} accounts={accounts} />}
