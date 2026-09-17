@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **228** | re-read against the code. The defect is gone. |
-| partial | **36** | part of the finding is answered, part is not. Each says which. |
+| closed | **229** | re-read against the code. The defect is gone. |
+| partial | **35** | part of the finding is answered, part is not. Each says which. |
 | open | **9** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 45 items — 9 open and 36 partial — not 254.**
+**The work left is 44 items — 9 open and 35 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -80,7 +80,6 @@ is left as "unknown".
 | medium | **SALES-19** | The export/SEZ treatment is captured twice in two different vocabularies that can disagree, and  |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |
-| low | **BANK-28** | The narration parser extracts channel, UTR, VPA, IFSC and counterparty but never a cheque number |
 | low | **INV-09** | Stock quantity is NUMERIC(10,3) with no unit conversion, so high-count or fine-grained items bre |
 | low | **PUR-32** | Duplicate-bill detection is exact-match on vendor plus bill number only, so an OCR typo or a dup |
 | low | **SALES-18** | Statutory rules live in TypeScript with no backend counterpart, against the house rule "zero bus |
@@ -311,6 +310,7 @@ is left as "unknown".
 | low | **BANK-17** | Undo reverses the journal of a line that sits inside a completed, certified reconciliation, with |
 | low | **BANK-22** | A statement imported without a bank account posts every line to a generic "Bank" ledger and is i |
 | low | **BANK-25** | Every imported statement shows an amber "pending" chip forever — import_status is written once a |
+| low | **BANK-28** | The narration parser extracts channel, UTR, VPA, IFSC and counterparty but never a cheque number |
 | low | **BANK-29** | A statement's opening/closing-balance row becomes a zero-amount bank line that clogs the queue a |
 | low | **FA-17** | The Add Asset form's Asset Code field is silently discarded |
 | low | **GST-23** | GSTR-1 has no way to record the real ARN and filing date from the client workspace, so its perio |

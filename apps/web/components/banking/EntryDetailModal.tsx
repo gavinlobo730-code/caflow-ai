@@ -564,11 +564,34 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       <section>
         <p className="text-[10px] uppercase tracking-wide text-[#94A3B8] mb-0.5">Bank narration</p>
         <p className="text-[10px] text-[#475569] break-words select-text font-mono leading-relaxed">{t.description}</p>
-        {(t.parsed?.utr || t.reference_no || t.parsed?.vpa || t.parsed?.ifsc) && (
-          <p className="text-[10px] text-[#94A3B8] break-words select-text mt-0.5">
-            {[t.parsed?.utr ? `UTR ${t.parsed.utr}` : null, t.reference_no && t.reference_no !== t.parsed?.utr ? t.reference_no : null, t.parsed?.vpa, t.parsed?.ifsc].filter(Boolean).join(" · ")}
-          </p>
-        )}
+        {/* THE IDENTIFIERS, AND A CHEQUE HAS ONLY ONE (BANK-28). A cheque line
+            carries no UTR and usually no reference on the row, so before this
+            it showed a bank narration and nothing at all beneath it — while
+            `domain/banking/narration` had parsed the leaf number all along and
+            `describe()` had put it in the summary nobody rendered. The leaf
+            number is how a bookkeeper tells one cheque from the next.
+
+            `reference_no` still WINS where the CA recorded one: it is what a
+            person typed about this line, and the parse is a reading of what the
+            bank printed. The cheque number fills the gap rather than replacing
+            an answer, and is dropped where it merely repeats the reference. */}
+        {(() => {
+          const cheque = t.parsed?.cheque_no
+            ? (t.reference_no === t.parsed.cheque_no ? null : `Cheque ${t.parsed.cheque_no}`)
+            : null;
+          const bits = [
+            t.parsed?.utr ? `UTR ${t.parsed.utr}` : null,
+            t.reference_no && t.reference_no !== t.parsed?.utr ? t.reference_no : null,
+            cheque,
+            t.parsed?.vpa,
+            t.parsed?.ifsc,
+          ].filter(Boolean);
+          return bits.length > 0 ? (
+            <p className="text-[10px] text-[#94A3B8] break-words select-text mt-0.5">
+              {bits.join(" · ")}
+            </p>
+          ) : null;
+        })()}
       </section>
 
       {splitMode === "ledgers" && (

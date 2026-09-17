@@ -3014,6 +3014,18 @@ resolver falls back exactly as before AND SAYS it fell back. ⚠️ `is_fallback
 and `reason` still reach no caller: the resolver runs inside eight
 journal-line builders, so surfacing them is a refactor through the kernel's
 callers and WHERE a CA is told is an owner decision.
+**WHAT THE PARSER FOUND IN THE NARRATION IS BUILT ONCE**, by
+`domain/banking/narration.parsed_view`, because there were two identical dict
+literals — one per service — and BOTH omitted `cheque_no` (BANK-28), which
+`ParsedNarration` has carried since the module was written and `describe()` has
+always named in the summary. A cheque has no UTR, so the leaf number is the only
+thing that tells one from the next, and plenty of Indian statements carry no
+reference COLUMN at all — only a narration. So `match_and_settle_multi`'s
+settlement reference falls back **caller → the file's own `reference_no` → the
+parsed UTR → the parsed cheque number**, and that ORDER is the rule: a parse is a
+reading of somebody else's document and must never displace what a person or the
+statement itself said. The screens drop the cheque number where it merely repeats
+`reference_no`.
 **`bank_posting_service.post` is
 INR-only and refuses rather than converting** — it calls `_create_journal` with
 no `txn_currency`, so the kernel takes INR at rate 1 and a USD line reading

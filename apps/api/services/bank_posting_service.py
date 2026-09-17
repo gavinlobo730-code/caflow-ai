@@ -20,6 +20,7 @@ from domain.accounting.payment_account import resolve_payment_account
 from services.phase2_journal_service import phase2_journal_service
 from services.period_validation_service import period_validation_service
 from services.timeline_service import timeline_service
+from domain.banking import parse_narration
 from domain.banking import posting_map as pmap
 from domain.banking.charge_gst import split_inclusive_charge, build_inclusive_lines
 from domain.banking.splits import build_split_lines, SplitError
@@ -1150,6 +1151,20 @@ class BankPostingService:
         # account was removed) and is passed as such: the resolver falls back
         # exactly as it did before and says that it fell back.
         settled_from = self.bank_account_id_for(db, firm_id, txn)
+        # WHAT TO PUT IN "UTR / cheque no." WHEN NOBODY TYPED ONE (BANK-28).
+        # `bank_transactions.reference_no` comes from a COLUMN in the uploaded
+        # file, and plenty of Indian statements have no such column — only a
+        # narration. So a cheque settled from the queue carried no reference at
+        # all, while `domain/banking/narration` had parsed the leaf number out
+        # of that very narration. A cheque has no UTR and a UTR line has no
+        # cheque number, so the two are alternatives rather than a list.
+        #
+        # ORDER: what the CALLER said, then what the FILE said, then what the
+        # BANK PRINTED. The parse is a reading and never displaces an answer a
+        # person or the statement gave.
+        _n = parse_narration(txn.get("description"))
+        settle_ref = (reference_no or txn.get("reference_no")
+                      or _n.utr or _n.cheque_no or None)
         alloc_payloads = [{alloc_key: a["entity_id"], "allocated_paise": int(a["allocated_paise"])} for a in allocations]
 
         try:
@@ -1158,7 +1173,7 @@ class BankPostingService:
                 data = {
                     "client_id": client_id, "customer_id": party_id, "receipt_date": date,
                     "amount_paise": amount, "tds_paise": tds_paise, "payment_mode": "bank",
-                    "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
+                    "reference_no": settle_ref, "notes": notes,
                     "allocations": alloc_payloads,
                     "bank_account_id": settled_from,
                 }
@@ -1173,7 +1188,7 @@ class BankPostingService:
                 data = {
                     "client_id": client_id, "vendor_id": party_id, "payment_date": date,
                     "amount_paise": amount, "payment_mode": "bank",
-                    "reference_no": reference_no or txn.get("reference_no"), "notes": notes,
+                    "reference_no": settle_ref, "notes": notes,
                     "allocations": alloc_payloads,
                     "bank_account_id": settled_from,
                 }

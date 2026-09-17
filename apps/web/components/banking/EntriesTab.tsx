@@ -81,7 +81,8 @@ export interface Entry {
   posted_by_rule_id: string | null;
   gst_allowed?: boolean;
   parsed?: { channel: string | null; utr: string | null; vpa: string | null;
-             counterparty: string | null; ifsc: string | null; summary: string } | null;
+             counterparty: string | null; ifsc: string | null;
+             cheque_no: string | null; summary: string } | null;
 }
 
 interface Counts {
@@ -465,7 +466,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId }: {
       accessor: (t) => t.parsed?.counterparty || t.description,
       render: (t) => (
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="truncate text-[#1E293B]" title={[t.description, t.parsed?.utr ? `UTR ${t.parsed.utr}` : null].filter(Boolean).join("\n")}>
+          <span className="truncate text-[#1E293B]" title={[t.description, t.parsed?.utr ? `UTR ${t.parsed.utr}` : null, t.parsed?.cheque_no ? `Cheque ${t.parsed.cheque_no}` : null].filter(Boolean).join("\n")}>
             {t.parsed?.counterparty || t.description}
           </span>
           {t.parsed?.channel && (

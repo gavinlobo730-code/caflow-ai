@@ -1101,16 +1101,15 @@
       "reread_on": "2026-09-16"
     },
     "BANK-28": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. — RE-READ 16-09-2026 against main 171ef0e3: PARSED: apps/api/domain/banking/narration.py:140 `cheque_no` on ParsedNarration, populated at :264/:273 from `_RE_CHEQUE_AFTER`/`_RE_CHEQUE_BEFORE`, and included in `describe()` at :346. NOT SURFACED: the `parsed` payload both services build omits the key — services/bank_entry_service.py:246 and services/bank_matching_service.py:692 send only channel/utr/vpa/counterparty/ifsc/summary — and no screen renders `parsed.summary` (grep for `parsed.summary` and for `cheque_no` across apps/web returns nothing; EntriesTab.tsx:465-472 renders counterparty + channel chip, EntryDetailModal.tsx:569 renders utr/reference_no/vpa/ifsc). No fallback into `reference_no` exists anywhere.",
+      "status": "closed",
+      "verified_on": "2026-09-17",
+      "why": "CLOSED 17-09-2026, all three halves. (1) `domain/banking/narration.parsed_view` is the ONE builder of the `parsed` payload and both services call it — there were two identical dict literals (`bank_entry_service._annotate`, `bank_matching_service`) and both omitted `cheque_no`, so adding the key twice would have left a third place for the next field to be forgotten, which is exactly how this one was lost. (2) Both screens render it: `EntriesTab` puts it in the row tooltip and `EntryDetailModal` in the identifiers line, DROPPED where it merely repeats `reference_no` so the same number is not printed twice. (3) `match_and_settle_multi`'s settlement reference is now caller → `bank_transactions.reference_no` → parsed UTR → parsed cheque number, and that ORDER is the rule: a parse is a reading of somebody else's document and must never displace what a person or the statement itself said. The parsed fallback matters because plenty of Indian statements carry no reference COLUMN at all, only a narration — so a cheque settled from the match queue used to carry no reference anywhere while the leaf number sat parsed out of that very narration. tests/test_a_cheque_line_says_which_cheque.py, 8 tests; the negative control was run per half rather than by reverting everything (a blunt revert errors at import collection): frontend reverted → 2 fail, settlement reverted → 2 fail, services reverted → 2 fail, all restored → 8 pass.",
       "commits": [
         "b8160f39 Six figures the tax computation accepts and its screen never sent, and",
         "920513d6 Six bank-module reads that answered a question nobody asked (#500)"
       ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "Add `cheque_no` to the `parsed` dict the two services build, render it (or `parsed.summary`) in EntriesTab/EntryDetailModal, and implement the fix's second half — fall back to the parsed cheque number where `reference_no` is empty.",
-      "user_visible_impact": "A cheque line parsed off a statement with no cheque column still shows as \"CHEQUE · <name>\" in Entries with nothing to tell one cheque from another; the number is only visible inside the raw narration (the row tooltip, or the description when no counterparty was parsed), and the Bank Book / reconciliation Ref column stays blank for it."
+      "reread_on": "2026-09-17",
+      "user_visible_impact": "WAS: a cheque line parsed off a statement with no cheque column showed as \"CHEQUE · <name>\" in Entries with nothing to tell one cheque from another, and a cheque settled from the bank match queue left the Ref column blank on both the receipt/payment and the Bank Book. NOW: the number is on the row, in the detail modal, and on the settled document."
     },
     "BANK-29": {
       "status": "closed",
