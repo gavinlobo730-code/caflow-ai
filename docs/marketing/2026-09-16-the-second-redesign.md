@@ -671,3 +671,110 @@ as they were.
 Both were negative-controlled: restoring the `opacity`, shrinking the canvas to
 100%, unbalancing the tree and off-centring the offset each fail the intended
 test and only that test.
+
+---
+
+# Addendum 4 — the hero globe against a reference (17 September 2026, later)
+
+A reference image this time, and a twenty-point brief with it. The owner's
+verdict on Addendum 3's globe, in its own words: *"The current globe looks like
+a flat dotted world map wrapped onto a sphere"*, *"oversized and visually
+heavy"*, and the tick *"a giant checkmark sitting on top of the Earth"*.
+
+All three are right, and the first one is the one that matters.
+
+## The Earth is a shaded planet now, not a dark ball with dots on it
+
+The reference shows Africa, Arabia, India and Australia as **landmass** — a
+dark blue-grey fill against a near-black ocean, shaded by the light and
+darkened toward the limb — with the lights on top of that. Addendum 3 drew a
+radial-gradient sphere and let the dots imply the continents. However dense the
+dots, that reads as a stencil.
+
+So the core shader samples the land mask as a **texture**. `buildLandTexture`
+renders the same 0.5-degree bitmask the point field walks into a canvas — one
+pixel per cell, row 0 at +90, column 0 at −180 — upscaled 2× with bilinear
+smoothing and a canvas blur so a coastline is an edge rather than a staircase.
+Three's `SphereGeometry` lays its UVs out exactly that way (u is
+(lon + 180) / 360, and because it pushes `1 − v`, the image's top row is the
+north pole), so the fill and the lights cannot disagree about where a coastline
+is. Four terms in the fragment, in order: the land/ocean mix; the terminator;
+limb darkening; and a fresnel rim *added* on top, brighter on the lit side —
+the planet's own blue edge before the atmosphere shell adds the glow outside it.
+
+With the fill carrying the shape, the dots stop having to. **200,000 candidates
+→ 160,000**, and each surviving point now has its own brightness (0.55–1.0),
+its own size (0.55–1.45×) and a ~3% chance of being a **beacon** — larger,
+near-white, the thing the eye reads as a city rather than as texture. The
+brief: *"avoid making every dot identical."*
+
+## The network is the nervous system, so it has more than fifty neurons
+
+Addendum 3's surface mesh was ~50 nodes and ~80 links, and it was invisible
+under the lights. The reference's mesh is one of its strongest elements. Now
+5.2° apart with three links each — roughly a hundred nodes, two hundred links,
+still one `LineSegments` draw call.
+
+## Smaller, and the size is arithmetic
+
+`CAMERA_Z` 4.3 → **5.3**: 0.657 → 0.528 of the canvas height, which on the
+hero's stage is **643 → 517 CSS pixels**. That is 72% of the right half's width
+and 57% of the viewport height at 1440×900 — inside the brief's *"55–65% of
+the right-side visual area"* — with room around it for the system it is
+supposed to be the centre of. `GLOBE_RX`/`GLOBE_RY` re-derived (33 / 35.9).
+
+## Three kinds of orbit and a fourth depth layer
+
+The reference draws several of its paths as **chains of dots**, one of them
+warm. `OrbitDef` gained `kind: "solid" | "dotted"`; a dotted orbit is a `Points`
+object sampled along the same ellipse, each point with its own size and
+brightness, the far half dimmed by depth the same way the tubes are. Seven
+orbits: four solid, three dotted, one of those gold.
+
+And `FAR_ORBITS` — the brief's *"Layer 2 — far network: small orbital paths and
+distant data points, low brightness"*, which Addendum 3 did not have. Three
+large dim orbits whose **centres sit behind the planet** (oz −1.15 to −1.6), so
+the disc hides the middle of each and only the outer sweep shows, plus 110 dim
+points in the space behind. They are what makes the layer read as *far* rather
+than merely faint.
+
+## The tick is a core, not a mechanism
+
+Addendum 3's housing was 124px with a 36-graduation ring, two bright arcs and
+four registration ticks — at the middle of the frame, the first thing the eye
+landed on. The brief: *"The viewer's first impression should be 'What is this
+incredible digital system?' not 'There is a checkmark in the middle.'"*
+
+Now: a 40px badge, one hairline ring at 9% and one dashed ring at 17%, both far
+below the brightness of anything on the planet. It is there when looked for.
+The mark itself is unchanged.
+
+## Cards and fragments
+
+Cards moved to an organic set — AI assistant to bottom-centre overlapping the
+planet's lower limb, Compliance and Clients overlapping its left edge — and the
+glass gained what the reference's has: a bright hairline along the **top edge**
+(`inset 0 1px 0`) and a soft blue glow standing off the card, both scaling with
+depth. Accounting's line is the brief's own: *"A ledger that looks ahead."*
+
+Fragments: four → seven, all at 40%, several **over the planet's face** as the
+reference's are. **The gauge is gone** — a ring inside a ring with a dot in the
+middle is the exact thing the brief names as clutter (*"decorative circles
+inside circles"*); a three-line data block took its place. A `Sheet` helper
+draws the document shape at any size so the markup is not repeated.
+
+## Measured
+
+The overlap harness found four near-misses on the new layout, each 1–5px short
+of the 26px bob clearance (Accounting × sheet, Banking × bars, Clients × doc,
+and AI assistant × the tagline at 1280×800). Sheet to the very top, doc up 1%,
+Banking down 2%, AI assistant up 2%. All six widths clear.
+
+## Not done, and said so
+
+**React Three Fiber + Drei.** The brief prefers them *"if compatible with the
+existing project."* The project vendors `three.min.js` r128 and has no R3F; the
+scene is already a single static frame with explicit `renderOrder` and shader
+materials, which is the part R3F would abstract. Adding a dependency and a
+component model for the same pixels is a refactor with no visual outcome, so it
+is left for the interactive stage, if it earns its place there.

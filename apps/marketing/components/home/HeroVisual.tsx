@@ -169,17 +169,17 @@ const MIN_LEFT_ANCHOR = 37;
  * the box.
  *
  * Derived, not measured off a screenshot. HeroGlobe's camera puts the sphere's
- * diameter at 65.7% of its CANVAS height, and that canvas is 136% of the stage
- * height — so the radius is 0.657 * 1.36 / 2 = 44.7% of the stage's HEIGHT,
+ * diameter at 52.8% of its CANVAS height, and that canvas is 136% of the stage
+ * height — so the radius is 0.528 * 1.36 / 2 = 35.9% of the stage's HEIGHT,
  * exactly, whatever size the stage is.
  *
  * ⚠️ THE HORIZONTAL FIGURE IS NOT A CONSTANT AND IS DELIBERATELY UNDERSTATED.
  * The connector SVG's viewBox is a unit square stretched over the stage, so the
  * same radius in x is (0.447 * stageHeight) / 640 — which depends on the stage's
- * own aspect, and the stage is min(84vh, 720px) tall. That runs from about 41%
- * of the width on a short laptop to 50% on a tall monitor.
+ * own aspect, and the stage is min(84vh, 720px) tall. That runs from about 33%
+ * of the width on a short laptop to 40% on a tall monitor.
  *
- * 42 is the SHORT end, and taking the short end is what makes the error safe:
+ * 33 is the SHORT end, and taking the short end is what makes the error safe:
  * under-stating the radius lands every line further INSIDE the planet's face,
  * while over-stating it would put the line's endpoint past the limb on exactly
  * the screens where the stage is shortest — a data line ending in empty space
@@ -187,8 +187,8 @@ const MIN_LEFT_ANCHOR = 37;
  * around 0.7 of the true radius instead of 0.8, which is not a difference
  * anybody can see.
  */
-const GLOBE_RX = 42;
-const GLOBE_RY = 44.7;
+const GLOBE_RX = 33;
+const GLOBE_RY = 35.9;
 
 /**
  * Where a card's data line meets the planet.
@@ -217,25 +217,35 @@ const TINT = {
 } as const;
 
 const MODULES: Module[] = [
-  { key: "compliance", title: "Compliance", line: "GST, TDS, ITR & ROC", icon: <FileText size={16} />, x: 37, y: 11, side: "left", depth: 0.92, land: 0.72, tint: TINT.sky },
-  { key: "accounting", title: "Accounting", line: "A ledger that foots", icon: <Calculator size={16} />, x: 70, y: 19, side: "right", depth: 1, tint: TINT.gold },
-  { key: "clients", title: "Clients", line: "Every entity, one record", icon: <Building size={16} />, x: 40, y: 34, side: "left", depth: 0.62, tint: TINT.indigo },
-  { key: "payroll", title: "Payroll", line: "Salary, PF, ESI & TDS", icon: <Users size={16} />, x: 74, y: 33, side: "right", depth: 0.86, land: 0.8, tint: TINT.pale },
-  { key: "analytics", title: "Practice analytics", line: "The whole firm at a glance", icon: <BarChart size={16} />, x: 37, y: 59, side: "left", depth: 0.98, land: 0.68, secondary: true, tint: TINT.gold },
-  { key: "documents", title: "Documents", line: "Read by AI, checked by you", icon: <Layers size={16} />, x: 72, y: 66, side: "right", depth: 0.56, land: 0.86, tint: TINT.sky },
-  { key: "banking", title: "Banking", line: "Statements become vouchers", icon: <Landmark size={16} />, x: 45, y: 85, side: "left", depth: 0.7, secondary: true, tint: TINT.pale },
-  { key: "ai", title: "AI assistant", line: "It knows your practice", icon: <Sparkles size={16} />, x: 66, y: 90, side: "right", depth: 0.8, land: 0.76, tint: TINT.indigo },
+  { key: "compliance", title: "Compliance", line: "GST, TDS, ITR & ROC", icon: <FileText size={16} />, x: 39, y: 9, side: "left", depth: 0.92, land: 0.78, tint: TINT.sky },
+  { key: "accounting", title: "Accounting", line: "A ledger that looks ahead", icon: <Calculator size={16} />, x: 72, y: 15, side: "right", depth: 1, tint: TINT.gold },
+  { key: "clients", title: "Clients", line: "Every entity, one record", icon: <Building size={16} />, x: 37, y: 33, side: "left", depth: 0.62, tint: TINT.indigo },
+  { key: "payroll", title: "Payroll", line: "Salary, PF, ESI & TDS", icon: <Users size={16} />, x: 74, y: 31, side: "right", depth: 0.86, land: 0.84, tint: TINT.pale },
+  { key: "analytics", title: "Practice analytics", line: "The whole firm at a glance", icon: <BarChart size={16} />, x: 38, y: 60, side: "left", depth: 0.98, land: 0.74, secondary: true, tint: TINT.gold },
+  { key: "documents", title: "Documents", line: "Read by AI, checked by you", icon: <Layers size={16} />, x: 70, y: 67, side: "right", depth: 0.56, land: 0.86, tint: TINT.sky },
+  { key: "banking", title: "Banking", line: "Statements become vouchers", icon: <Landmark size={16} />, x: 43, y: 86, side: "left", depth: 0.7, secondary: true, tint: TINT.pale },
+  { key: "ai", title: "AI assistant", line: "It knows your practice", icon: <Sparkles size={16} />, x: 56, y: 91, side: "right", depth: 0.8, land: 0.8, tint: TINT.indigo },
 ];
 
 /**
  * The interface fragments.
  *
- * The brief asks for "a very limited number of" floating document sheets,
- * dashboard fragments and chart pieces, as "secondary details that reward
- * people who look closely" — and immediately afterwards, "do not clutter the
- * composition". Four of them, none wider than 96px, none above 46% opacity, and
- * all four are xl-only: at 1024-1280 the card set has already been thinned to
- * six and adding scenery to a crowded frame is the opposite of the brief.
+ * The brief asks for "a small number of floating document/interface fragments"
+ * — document sheets, small UI panels, tiny charts, data blocks — that make the
+ * viewer think "information is constantly moving through this system", frozen
+ * for the static stage. And in the same breath: no random icons everywhere, no
+ * unnecessary graphs, no "decorative circles inside circles". Seven of them,
+ * none wider than 96px, all at 40% opacity, and all xl-only: at 1024-1280 the
+ * card set has already been thinned to six and adding scenery to a crowded
+ * frame is the opposite of the brief.
+ *
+ * THE GAUGE IS GONE. It was a ring inside a ring with a dot in the middle,
+ * which is the exact thing the brief names as clutter. A data block of three
+ * ruled lines took its place.
+ *
+ * Several sit OVER the planet's face, as the reference's do — they are the
+ * foreground layer, and a fragment that never overlaps anything reads as
+ * something pinned to the page rather than floating in the space.
  *
  * They carry no words that could read as a claim. A fragment showing a number
  * is a fragment somebody will read as a statistic.
@@ -249,6 +259,25 @@ const MODULES: Module[] = [
  */
 type Fragment = { key: string; left: number; top: number; side: "left" | "right"; body: ReactNode };
 
+/** A small dark glass panel with ruled lines — the document shape, at any size. */
+function Sheet({ w, h, lines, gold }: { w: number; h: number; lines: number[]; gold?: number }) {
+  const pad = 7;
+  const gap = (h - pad * 2) / (lines.length + 0.5);
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" aria-hidden="true">
+      <rect x="0.6" y="0.6" width={w - 1.2} height={h - 1.2} rx="4" stroke="rgba(174,205,247,0.28)" strokeWidth="1.1" fill="rgba(10,19,40,0.55)" />
+      <g stroke="rgba(190,215,250,0.5)" strokeWidth="1.4" strokeLinecap="round">
+        {lines.map((len, i) => (
+          <path key={i} d={`M${pad} ${pad + 3 + gap * i}h${len}`} />
+        ))}
+      </g>
+      {gold !== undefined && (
+        <path d={`M${w - pad - gold} ${pad + 3 + gap * (lines.length - 1)}h${gold}`} stroke="#e0b57e" strokeWidth="1.6" strokeLinecap="round" />
+      )}
+    </svg>
+  );
+}
+
 const FRAGMENTS: Fragment[] = [
   {
     key: "spark",
@@ -257,7 +286,7 @@ const FRAGMENTS: Fragment[] = [
     side: "right",
     body: (
       <svg width="96" height="44" viewBox="0 0 96 44" fill="none" aria-hidden="true">
-        <rect x="0.6" y="0.6" width="94.8" height="42.8" rx="5" stroke="rgba(174,205,247,0.3)" strokeWidth="1.1" fill="rgba(12,22,44,0.5)" />
+        <rect x="0.6" y="0.6" width="94.8" height="42.8" rx="5" stroke="rgba(174,205,247,0.28)" strokeWidth="1.1" fill="rgba(10,19,40,0.55)" />
         <path d="M9 32 L20 26 L30 29 L41 18 L52 22 L63 12 L74 15 L87 9" stroke="#9dc4f5" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
         <circle cx="63" cy="12" r="2.1" fill="#dbe9ff" />
         <path d="M9 37h78" stroke="rgba(157,196,245,0.22)" strokeWidth="0.8" />
@@ -273,16 +302,29 @@ const FRAGMENTS: Fragment[] = [
     // highlighted one; the page around them is what needed the room.
     key: "sheet",
     left: 84,
-    top: 5,
+    top: 1,
+    side: "right",
+    body: <Sheet w={78} h={26} lines={[34, 22]} gold={20} />,
+  },
+  { key: "doc", left: 44, top: 21, side: "left", body: <Sheet w={58} h={30} lines={[30, 18]} /> },
+  {
+    key: "panel",
+    left: 60,
+    top: 42,
     side: "right",
     body: (
-      <svg width="78" height="26" viewBox="0 0 78 26" fill="none" aria-hidden="true">
-        <rect x="0.6" y="0.6" width="76.8" height="24.8" rx="4" stroke="rgba(174,205,247,0.3)" strokeWidth="1.1" fill="rgba(12,22,44,0.5)" />
+      <svg width="64" height="34" viewBox="0 0 64 34" fill="none" aria-hidden="true">
+        <rect x="0.6" y="0.6" width="62.8" height="32.8" rx="4" stroke="rgba(174,205,247,0.28)" strokeWidth="1.1" fill="rgba(10,19,40,0.55)" />
         <g stroke="rgba(190,215,250,0.5)" strokeWidth="1.4" strokeLinecap="round">
-          <path d="M8 9h34" />
-          <path d="M8 17h22" />
+          <path d="M7 9h22" />
+          <path d="M7 16h14" />
         </g>
-        <path d="M50 17h20" stroke="#e0b57e" strokeWidth="1.6" strokeLinecap="round" />
+        <g fill="rgba(143,182,255,0.5)">
+          <rect x="38" y="16" width="4" height="10" rx="1" />
+          <rect x="45" y="10" width="4" height="16" rx="1" />
+          <rect x="52" y="19" width="4" height="7" rx="1" />
+        </g>
+        <rect x="45" y="10" width="4" height="16" rx="1" fill="rgba(224,181,126,0.6)" />
       </svg>
     ),
   },
@@ -305,19 +347,8 @@ const FRAGMENTS: Fragment[] = [
       </svg>
     ),
   },
-  {
-    key: "gauge",
-    left: 52,
-    top: 92,
-    side: "left",
-    body: (
-      <svg width="46" height="46" viewBox="0 0 46 46" fill="none" aria-hidden="true">
-        <circle cx="23" cy="23" r="18" stroke="rgba(157,196,245,0.22)" strokeWidth="2.6" />
-        <circle cx="23" cy="23" r="18" stroke="#9dc4f5" strokeWidth="2.6" strokeLinecap="round" strokeDasharray="76 114" transform="rotate(-90 23 23)" />
-        <circle cx="23" cy="23" r="4.4" fill="rgba(219,233,255,0.5)" />
-      </svg>
-    ),
-  },
+  { key: "tag", left: 81, top: 80, side: "right", body: <Sheet w={48} h={22} lines={[26]} /> },
+  { key: "block", left: 54, top: 92, side: "left", body: <Sheet w={56} h={30} lines={[32, 20]} gold={14} /> },
 ];
 
 export function HeroVisual({ className = "" }: { className?: string }) {
@@ -386,8 +417,14 @@ export function HeroVisual({ className = "" }: { className?: string }) {
           // see-through.
           const scale = 0.74 + m.depth * 0.26;
           const shadow = Math.round(10 + m.depth * 18);
-          const fill = (0.040 + m.depth * 0.048).toFixed(3);
-          const edge = (0.09 + m.depth * 0.15).toFixed(3);
+          const fill = (0.045 + m.depth * 0.05).toFixed(3);
+          const edge = (0.10 + m.depth * 0.16).toFixed(3);
+          // The reference's cards have a bright hairline along their TOP edge
+          // — a glass slab catching the light — and a soft blue glow standing
+          // off the whole card. Both scale with depth like everything else.
+          const topLight = (0.08 + m.depth * 0.10).toFixed(3);
+          const glowPx = Math.round(26 + m.depth * 22);
+          const glowA = (0.05 + m.depth * 0.07).toFixed(3);
           const blur = (5 + m.depth * 8).toFixed(1);
           // Turned slightly TOWARD the centre of the composition, which is the
           // brief's "subtle rotation/perspective". Small on purpose: past about
@@ -439,10 +476,9 @@ export function HeroVisual({ className = "" }: { className?: string }) {
                     borderColor: `rgba(176,206,255,${edge})`,
                     backdropFilter: `blur(${blur}px)`,
                     WebkitBackdropFilter: `blur(${blur}px)`,
-                    boxShadow: `0 ${shadow}px ${shadow * 2.4}px rgba(2,6,20,${(
-                      0.3 +
-                      m.depth * 0.28
-                    ).toFixed(2)})`,
+                    boxShadow: `inset 0 1px 0 rgba(255,255,255,${topLight}), 0 ${shadow}px ${
+                      shadow * 2.4
+                    }px rgba(2,6,20,${(0.3 + m.depth * 0.28).toFixed(2)}), 0 0 ${glowPx}px rgba(80,140,255,${glowA})`,
                   }}
                 >
                   <span
@@ -486,7 +522,7 @@ export function HeroVisual({ className = "" }: { className?: string }) {
             style={{
               left: `${f.left}%`,
               top: `${f.top}%`,
-              opacity: 0.46,
+              opacity: 0.4,
               transform:
                 f.side === "left" ? "translate(-100%, -50%)" : "translate(0, -50%)",
             }}
@@ -498,77 +534,40 @@ export function HeroVisual({ className = "" }: { className?: string }) {
         ))}
       </div>
 
-      {/* THE CONTROL NODE AT THE CENTRE OF THE SYSTEM.
-          The brief: keep the tick, but make it "the central control/identity
-          node of the entire network … use a subtle circular/digital housing
-          around it". So the mark itself is unchanged and what is around it is
-          new — a graduation ring, a containing ring with two bright arc
-          segments at different lengths, and four registration ticks. Rings
-          rather than a plate, because a plate would hide the planet it is
-          supposed to be reading.
+      {/* THE PRACTICESYNC CORE.
 
-          IT WAS REMOVED ON 16-09-2026 AND RESTORED THE SAME DAY, which is
-          worth recording because the removal fixed the symptom and not the
-          cause. It sat at 50%/50% and the globe put INDIA at 50%/50%, so the
-          badge covered the subcontinent — and the conclusion drawn was that
-          the badge had to go. Both belong here: the mark dead centre and India
-          clearly above it. The planet was in the wrong pose, not the mark in
-          the wrong place, and HeroGlobe's INDIA_TILT_X is the actual fix. */}
+          SMALL, and that is the correction. Owner brief, 17-09-2026: "DO NOT
+          make the tick large … DO NOT put a large solid circle around it.
+          Create a subtle central PracticeSync identity/control node … a small
+          intelligent core embedded into the network … The viewer's first
+          impression should be 'What is this incredible digital system?' not
+          'There is a checkmark in the middle.'"
+
+          The previous housing was 124px across with a 36-graduation ring, two
+          bright arcs and four registration ticks — a mechanism, and at the
+          middle of the frame, the first thing the eye landed on. What is here
+          instead is a 40px badge, one faint hairline ring and one faint dashed
+          ring, both far below the brightness of anything on the planet. It is
+          there when looked for.
+
+          The mark itself is the same mark it has always been; only what is
+          round it changed. */}
       <div
         className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 lg:block"
         aria-hidden="true"
       >
-        <div className="relative grid h-[124px] w-[124px] place-items-center">
-          <svg viewBox="0 0 124 124" className="absolute inset-0 h-full w-full" fill="none" aria-hidden="true">
-            {/* 36 graduations. The circumference at r=60 is 377, so the dash
-                period is 377/36 = 10.47 — written out rather than eyeballed,
-                or the last graduation lands a fraction from the first. */}
-            <circle
-              cx="62"
-              cy="62"
-              r="60"
-              stroke="rgba(157,196,245,0.28)"
-              strokeWidth="1"
-              strokeLinecap="round"
-              strokeDasharray="1.2 9.27"
-            />
-            <circle cx="62" cy="62" r="49" stroke="rgba(157,196,245,0.18)" strokeWidth="0.75" />
-            {/* Two arcs of different lengths at different angles: a ring broken
-                in one place reads as a gap, broken in two as a mechanism. */}
-            <circle
-              cx="62"
-              cy="62"
-              r="49"
-              stroke="#8dc0f8"
-              strokeOpacity="0.55"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeDasharray="42 266"
-              transform="rotate(-118 62 62)"
-            />
-            <circle
-              cx="62"
-              cy="62"
-              r="49"
-              stroke="#8dc0f8"
-              strokeOpacity="0.3"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeDasharray="20 288"
-              transform="rotate(44 62 62)"
-            />
-            <g stroke="rgba(200,224,255,0.38)" strokeWidth="1" strokeLinecap="round">
-              <path d="M62 3.5v7" />
-              <path d="M62 113.5v7" />
-              <path d="M3.5 62h7" />
-              <path d="M113.5 62h7" />
-            </g>
-            <circle cx="62" cy="62" r="35" stroke="rgba(141,192,248,0.2)" strokeWidth="0.75" />
+        <div className="relative grid h-[96px] w-[96px] place-items-center">
+          <svg viewBox="0 0 96 96" className="absolute inset-0 h-full w-full" fill="none" aria-hidden="true">
+            <circle cx="48" cy="48" r="47" stroke="rgba(157,196,245,0.09)" strokeWidth="0.75" />
+            {/* 40 dashes: the circumference at r=35 is 219.9, so the period is
+                5.5 — written out rather than eyeballed, or the last dash lands
+                a fraction from the first. */}
+            <circle cx="48" cy="48" r="35" stroke="rgba(157,196,245,0.17)" strokeWidth="0.75" strokeDasharray="1.4 4.1" />
           </svg>
 
-          <span className="relative grid h-[58px] w-[58px] place-items-center rounded-full border border-white/25 bg-[#050c1d]/90 shadow-[0_0_56px_rgba(116,180,245,0.5)] backdrop-blur-sm">
-            <svg width="28" height="28" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-              <circle cx="32" cy="32" r="24" strokeWidth="3" stroke="rgba(255,255,255,0.2)" />
+          <span className="relative grid h-[40px] w-[40px] place-items-center rounded-full border border-white/[0.22] bg-[#050c1d]/85 shadow-[0_0_26px_rgba(116,180,245,0.32)] backdrop-blur-sm">
+            <svg width="20" height="20" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+              <circle cx="32" cy="32" r="24" strokeWidth="3" stroke="rgba(255,255,255,0.18)" />
               <circle
                 cx="32"
                 cy="32"

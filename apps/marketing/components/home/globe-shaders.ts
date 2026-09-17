@@ -59,30 +59,63 @@ void main() {
 `;
 
 /**
- * The ocean-dark body of the planet.
+ * The body of the planet — and it is a SHADED PLANET now, not a dark ball.
  *
- * Opaque and depth-writing, so it is what occludes the far side of every point
- * cloud, every arc and the half of every orbit that passes behind it.
+ * Owner brief, 17-09-2026, on the previous revision: "The current globe looks
+ * like a flat dotted world map wrapped onto a sphere." It did, and the reason
+ * is that the sphere under the dots was a plain radial gradient: the only thing
+ * that said "Africa" was the outline the dots happened to make. The reference
+ * shows the continents as LANDMASS — a dark blue-grey fill against a near-black
+ * ocean, shaded by the light and darkened toward the limb — with the lights on
+ * top of that.
  *
- * TWO GRADIENTS, NOT ONE. The first is a function of how squarely the surface
- * faces the camera and rounds the disc. The second is the terminator — the side
- * the light is on lifts a little out of black, and that is most of what stops a
- * night-side Earth reading as a flat cut-out. It is deliberately gentle: this
- * is a NIGHT globe, and a hard day side would put the city lights in daylight.
+ * So the core samples the land mask as a texture. HeroGlobe builds it from the
+ * same 0.5-degree bitmask the point field walks (see buildLandTexture), so the
+ * fill and the lights cannot disagree about where a coastline is. Three's
+ * SphereGeometry lays its UVs out exactly as the mask is laid out — u is
+ * (lon + 180) / 360 and, because it pushes 1 - v, the top row of the image is
+ * the north pole — which is why no remapping happens here.
+ *
+ * FOUR TERMS, IN ORDER: the land/ocean mix; the terminator (the lit side lifts,
+ * the night side keeps uShadow); limb darkening (the edge of the disc drops
+ * away, which is what a sphere does and a gradient does not); and a fresnel rim
+ * ADDED on top, brighter on the lit side, which is the planet's own blue edge
+ * before the atmosphere shell adds the glow outside it.
  */
-export const CORE_VERTEX = SURFACE_VERTEX;
+export const CORE_VERTEX = `
+varying vec2 vUv;
+${SURFACE_VARYINGS}
+void main() {
+  vUv = uv;
+  vNormal = normalize(normalMatrix * normal);
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vView = mv.xyz;
+  gl_Position = projectionMatrix * mv;
+}
+`;
 export const CORE_FRAGMENT = `
-uniform vec3 uCentre;
-uniform vec3 uLimb;
+uniform sampler2D uLand;
+uniform vec3 uOcean;
+uniform vec3 uLandCol;
+uniform vec3 uRim;
 uniform vec3 uSun;
 uniform float uShadow;
+varying vec2 vUv;
 ${SURFACE_VARYINGS}
 void main() {
   vec3 n = normalize(vNormal);
+  float land = texture2D(uLand, vUv).r;
   float facing = clamp(dot(n, normalize(-vView)), 0.0, 1.0);
-  vec3 base = mix(uLimb, uCentre, smoothstep(0.0, 0.9, facing));
-  float lit = smoothstep(-0.45, 0.95, dot(n, normalize(uSun)));
-  gl_FragColor = vec4(base * mix(uShadow, 1.0, lit), 1.0);
+  float lit = smoothstep(-0.55, 1.0, dot(n, normalize(uSun)));
+
+  vec3 base = mix(uOcean, uLandCol, land);
+  base *= mix(uShadow, 1.0, lit);
+  base *= mix(0.5, 1.0, smoothstep(0.0, 0.75, facing));
+
+  float rim = pow(1.0 - facing, 2.8);
+  base += uRim * rim * (0.42 + 0.58 * lit);
+
+  gl_FragColor = vec4(base, 1.0);
 }
 `;
 
@@ -124,13 +157,13 @@ void main() {
   vec3 tint = mix(uColor, uHot, lit);
   tint = mix(tint, uWarm, lit * lit * uWarmGain);
 
-  // THE FLOOR IS 0.45, NOT 1.0, AND THAT IS THE DIFFERENCE BETWEEN A LIMB AND
+  // THE FLOOR IS 0.55, NOT 1.0, AND THAT IS THE DIFFERENCE BETWEEN A LIMB AND
   // A HOOP. The first draft ran this at (1.0 + lit * 1.2), so the shaded side's
   // rim was at full strength and the ring was the brightest thing in the frame
   // all the way round — a glowing blue band bolted to the planet, exactly what
   // the brief rules out. A lit atmosphere is nearly invisible on the night side
   // and fierce on the day side; this is that ratio.
-  gl_FragColor = vec4(tint, band * uIntensity * (0.45 + lit * 1.7));
+  gl_FragColor = vec4(tint, band * uIntensity * (0.55 + lit * 1.6));
 }
 `;
 

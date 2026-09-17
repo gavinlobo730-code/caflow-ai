@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadThree, canRunGlobe } from "./three-loader";
 import { CITIES, ARCS, INDIA_CENTRE } from "./geography";
-import { isLand } from "./landmask";
+import { isLand, MASK_W, MASK_H } from "./landmask";
 import {
   CORE_VERTEX,
   CORE_FRAGMENT,
@@ -107,17 +107,22 @@ const R = 1;
  *
  * This is the size control, and it is arithmetic rather than taste. A sphere of
  * radius r at distance d projects to a circle whose radius, as a fraction of
- * half the canvas height, is (r / sqrt(d^2 - r^2)) / tan(fov/2). At d = 4.3 and
- * a 40-degree vertical field that is 0.657, so the planet's DIAMETER is 65.7%
+ * half the canvas height, is (r / sqrt(d^2 - r^2)) / tan(fov/2). At d = 5.3 and
+ * a 40-degree vertical field that is 0.528, so the planet's DIAMETER is 52.8%
  * of the canvas height — and the canvas is deliberately larger than the grid
  * cell it sits in (see HeroVisual), which is what the brief's "may extend
  * beyond the normal boundaries of the hero composition slightly" means here.
  *
- * It was 5.05, giving 55.5% of a canvas that WAS the cell. Together with the
- * oversized canvas that is 643 CSS pixels of planet on the hero's own stage,
- * where it used to be 355.
+ * IT WAS 4.3 FOR A DAY, and the owner's verdict on that was "oversized and
+ * visually heavy … Globe occupies approximately 55-65% of the right-side
+ * visual area." At 4.3 the planet was 643 CSS pixels on a 640px stage — the
+ * whole cell, with the orbits, the cards and the fragments squeezed onto its
+ * face. At 5.3 it is about 517 pixels: 72% of the right half's width and 57%
+ * of the viewport's height at 1440x900, which is the band the brief names,
+ * with room around it for the system it is supposed to be the centre of. The
+ * ORIGINAL globe, before either, was 355.
  */
-const CAMERA_Z = 4.3;
+const CAMERA_Z = 5.3;
 
 /** Vertical field of view, degrees. The point shaders need it — see projScale. */
 const FOV = 40;
@@ -125,18 +130,23 @@ const FOV = 40;
 /**
  * How many candidate points are walked to build the land field.
  *
- * About 29% of the globe is land and roughly two thirds of those survive the
- * density cull below, so this yields around 38,000 points on the continents —
- * up from 26,000. It is a startup cost only, paid once on a thread that is
- * already past first paint with the SVG globe on screen, and NOT a per-frame
- * cost: the draw is one Points object whatever the count.
+ * About 29% of the globe is land and a little over half of those survive the
+ * density cull below, so this yields around 26,000 points on the continents.
+ * It WAS 200,000 candidates for 38,000 points, and that was the wrong answer
+ * to "make it detailed": with the landmass now drawn as a shaded fill under
+ * them (see CORE_FRAGMENT), the dots no longer have to carry the shape of a
+ * continent, and a field dense enough to do that reads as a stencil. Fewer,
+ * more varied lights over a visible landmass is what the reference shows.
+ * It is a startup cost only, paid once on a thread that is already past first
+ * paint with the SVG globe on screen, and NOT a per-frame cost: the draw is
+ * one Points object whatever the count.
  *
  * The lat/lon conversion runs for every candidate; everything more expensive
  * than that (the density field, the coastline probe, the distance to India)
  * runs only for the ~29% that are land. That ordering is what keeps this in the
  * tens of milliseconds rather than the hundreds.
  */
-const LAND_CANDIDATES = 200000;
+const LAND_CANDIDATES = 160000;
 
 /**
  * The X tilt that puts INDIA WHERE THE COMPOSITION NEEDS IT — above the centre
@@ -164,11 +174,12 @@ const INDIA_TILT_X = -0.045;
  * across and rendered the planet as one white disc.
  *
  * At the hero's size a point on the front face sits at depth CAMERA_Z - 1, so
- * this lands an ordinary dot a little over 1.5 CSS pixels: fine enough to read
- * as lights rather than as a grid of circles, at a density where the coastlines
- * still join up.
+ * this lands an ordinary dot a little under 1.5 CSS pixels: fine enough to read
+ * as lights rather than as a grid of circles. The size then VARIES per point,
+ * by more than it used to — the brief asks that the dots differ in brightness,
+ * density, scale and depth, and "avoid making every dot identical".
  */
-const LAND_DOT_WORLD = 0.0042;
+const LAND_DOT_WORLD = 0.0050;
 
 /** Radius of a city hub's halo, in world units. Major cities, then the rest. */
 const HUB_DOT_WORLD = { major: 0.058, minor: 0.036 };
@@ -193,7 +204,7 @@ const SUN_DIR: [number, number, number] = [0.72, 0.52, 0.45];
  * overall. Shared by the ocean, the land field and the surface network so the
  * three cannot disagree about where the terminator is.
  */
-const NIGHT_SHADOW = 0.68;
+const NIGHT_SHADOW = 0.72;
 
 /** Warm accent — India's own lights, its atmosphere sliver and its bloom. */
 const WARM = 0xffc27a;
@@ -213,11 +224,18 @@ const WARM = 0xffc27a;
  * particles: "the particles should simply be positioned as if they are
  * travelling along those paths."
  *
- * The last entry is deliberately INSIDE the atmosphere shell (1.085) and nearly
- * edge-on, so it reads as a close orbit hugging the planet and disappears
- * behind it for half its length.
+ * THREE KINDS, because the reference has three. A `solid` orbit is a fine
+ * continuous tube. A `dotted` one is a chain of small points — the reference
+ * draws several of its paths that way, and one of them warm — which is a
+ * Points object sampled along the same ellipse rather than a tube, so the
+ * same parameterisation serves both. And the FAR_ORBITS below are a fourth
+ * depth layer the brief asks for by name ("Layer 2 — far network: small
+ * orbital paths and distant data points, low brightness"): larger, dimmer,
+ * their centres pushed BEHIND the planet so the disc hides the middle of each
+ * and only the outer sweep shows.
  */
 type OrbitDef = {
+  kind: "solid" | "dotted";
   a: number;
   b: number;
   rx: number;
@@ -231,28 +249,51 @@ type OrbitDef = {
   phase: number;
   sweep: number;
   nodes: number[];
+  /** Dotted only: a warm chain rather than a cool one. */
+  warm?: boolean;
 };
 
 const ORBITS: OrbitDef[] = [
-  { a: 1.17, b: 1.13, rx: 0.36, ry: 0.08, rz: 0.10, ox: 0.02, oy: -0.03, oz: 0,
-    tube: 0.0042, opacity: 0.80, phase: 0.4, sweep: 0.55, nodes: [0.08, 0.42, 0.71] },
-  { a: 1.38, b: 1.27, rx: -1.26, ry: 0.46, rz: 0.24, ox: -0.05, oy: 0.04, oz: 0.02,
-    tube: 0.0036, opacity: 0.54, phase: 2.1, sweep: 0.70, nodes: [0.22, 0.63] },
-  { a: 1.62, b: 1.38, rx: 0.18, ry: -0.92, rz: 1.06, ox: 0.07, oy: 0.05, oz: -0.03,
-    tube: 0.0038, opacity: 0.58, phase: 4.0, sweep: 0.60, nodes: [0.05, 0.36, 0.55, 0.88] },
-  { a: 1.90, b: 1.63, rx: 1.12, ry: 0.55, rz: 0.34, ox: -0.09, oy: -0.06, oz: 0,
-    tube: 0.0032, opacity: 0.40, phase: 1.2, sweep: 0.75, nodes: [0.18, 0.66] },
-  { a: 2.20, b: 2.05, rx: -0.30, ry: 0.58, rz: -0.52, ox: 0.10, oy: 0.09, oz: 0.04,
-    tube: 0.0030, opacity: 0.30, phase: 5.2, sweep: 0.80, nodes: [0.30, 0.79] },
-  { a: 2.58, b: 1.96, rx: 0.88, ry: 0.22, rz: 0.98, ox: -0.12, oy: 0.02, oz: 0,
-    tube: 0.0028, opacity: 0.24, phase: 3.1, sweep: 0.85, nodes: [0.46] },
-  { a: 1.05, b: 1.05, rx: 1.35, ry: -0.62, rz: 0, ox: 0.15, oy: -0.21, oz: 0,
-    tube: 0.0026, opacity: 0.36, phase: 0.9, sweep: 0.40, nodes: [0.13, 0.62] },
+  { kind: "solid", a: 1.19, b: 1.14, rx: 0.36, ry: 0.08, rz: 0.10, ox: 0.02, oy: -0.03, oz: 0,
+    tube: 0.0040, opacity: 0.78, phase: 0.4, sweep: 0.55, nodes: [0.08, 0.42, 0.71] },
+  { kind: "dotted", a: 1.36, b: 1.26, rx: -1.26, ry: 0.46, rz: 0.24, ox: -0.05, oy: 0.04, oz: 0.02,
+    tube: 0.0036, opacity: 0.62, phase: 2.1, sweep: 0.70, nodes: [0.22, 0.63], warm: true },
+  { kind: "solid", a: 1.62, b: 1.38, rx: 0.18, ry: -0.92, rz: 1.06, ox: 0.07, oy: 0.05, oz: -0.03,
+    tube: 0.0036, opacity: 0.56, phase: 4.0, sweep: 0.60, nodes: [0.05, 0.36, 0.55, 0.88] },
+  { kind: "dotted", a: 1.92, b: 1.64, rx: 1.12, ry: 0.55, rz: 0.34, ox: -0.09, oy: -0.06, oz: 0,
+    tube: 0.0032, opacity: 0.50, phase: 1.2, sweep: 0.75, nodes: [0.18, 0.66] },
+  { kind: "solid", a: 2.22, b: 2.06, rx: -0.30, ry: 0.58, rz: -0.52, ox: 0.10, oy: 0.09, oz: 0.04,
+    tube: 0.0028, opacity: 0.30, phase: 5.2, sweep: 0.80, nodes: [0.30, 0.79] },
+  { kind: "dotted", a: 2.56, b: 1.98, rx: 0.88, ry: 0.22, rz: 0.98, ox: -0.12, oy: 0.02, oz: 0,
+    tube: 0.0028, opacity: 0.34, phase: 3.1, sweep: 0.85, nodes: [0.46] },
+  { kind: "solid", a: 1.06, b: 1.06, rx: 1.35, ry: -0.62, rz: 0, ox: 0.15, oy: -0.21, oz: 0,
+    tube: 0.0024, opacity: 0.34, phase: 0.9, sweep: 0.40, nodes: [0.13, 0.62] },
 ];
 
-/** The background star field and the drifting motes between the orbits. */
+/**
+ * The far layer: big, dim, and centred BEHIND the planet.
+ *
+ * Their centres sit at oz = -1.2 or so, which is what makes them read as far
+ * rather than merely faint: the planet occludes the middle of each, so what is
+ * visible is a wide sweep emerging from behind the disc on both sides. Face-on
+ * rather than tilted, because a tilted far orbit would come round the front
+ * and stop being far. All three are solid — a dotted path at this brightness
+ * would be noise.
+ */
+const FAR_ORBITS: OrbitDef[] = [
+  { kind: "solid", a: 2.05, b: 1.82, rx: 0.22, ry: -0.18, rz: 0.30, ox: 0.10, oy: 0.14, oz: -1.15,
+    tube: 0.0030, opacity: 0.16, phase: 1.7, sweep: 0.5, nodes: [0.12, 0.58] },
+  { kind: "solid", a: 2.48, b: 2.30, rx: -0.16, ry: 0.24, rz: -0.62, ox: -0.14, oy: -0.08, oz: -1.35,
+    tube: 0.0028, opacity: 0.12, phase: 3.9, sweep: 0.5, nodes: [0.33, 0.80] },
+  { kind: "solid", a: 2.90, b: 2.40, rx: 0.30, ry: 0.10, rz: 1.10, ox: 0.18, oy: 0.04, oz: -1.6,
+    tube: 0.0026, opacity: 0.09, phase: 0.6, sweep: 0.45, nodes: [0.25] },
+];
+
+/** The background star field, the drifting motes between the orbits, and
+ *  the distant points of the far layer. */
 const STAR_COUNT = 460;
 const MOTE_COUNT = 150;
+const FAR_POINT_COUNT = 110;
 
 /** Geographic latitude/longitude to a point on a sphere of radius `r`. */
 function latLonToVec3(lat: number, lon: number, r: number): [number, number, number] {
@@ -475,11 +516,28 @@ function buildLandField() {
     // dim with it, which is also how a night composite looks.
     const polar = Math.max(0.28, 1 - Math.max(0, (Math.abs(lat) - 56) / 30));
 
-    const lift = (1 + home * 0.22) * polar;
-    col.push(Math.min(1, r * lift), Math.min(1, g * lift), Math.min(1, b * lift));
+    // PER-POINT VARIANCE, and a lot of it. The brief: the dots "should vary
+    // subtly in brightness, density, scale and depth. Avoid making every dot
+    // identical." Three hashes decide each point's own brightness (0.45 to
+    // 1.0), its own size (0.55 to 1.45 of the base), and whether it is one of
+    // the ~3% that are BEACONS — a larger, near-white point that the eye reads
+    // as a city rather than as texture. The reference field is exactly that:
+    // a fine cool stipple with bright pins scattered through it.
+    const glow = 0.55 + hash01(i * 11 + 3) * 0.45;
+    const scale = 0.55 + hash01(i * 11 + 17) * 0.90;
+    const beacon = hash01(i * 11 + 41) > 0.968 ? 1 : 0;
+
+    const lift = (1 + home * 0.22) * polar * glow;
+    col.push(
+      Math.min(1, r * lift + beacon * 0.35),
+      Math.min(1, g * lift + beacon * 0.30),
+      Math.min(1, b * lift + beacon * 0.20)
+    );
     size.push(
       LAND_DOT_WORLD *
-        (0.80 + field * 0.34 + edge * 0.40 * polar + home * 0.35 + region * 0.10)
+        (0.80 + field * 0.30 + edge * 0.34 * polar + home * 0.30 + region * 0.10) *
+        scale *
+        (1 + beacon * 1.1)
     );
   }
 
@@ -510,10 +568,15 @@ function buildLandField() {
  * excluded: a link across the pole is a long line over an empty white cap and
  * it reads as an error.
  */
-const NETWORK_CANDIDATES = 3200;
-const NETWORK_MIN_SEPARATION_DEG = 7.5;
-const NETWORK_LINK_MAX_DEG = 33;
-const NETWORK_LINKS_PER_NODE = 2;
+// DENSE. The first cut was 7.5 degrees apart with two links each — about fifty
+// nodes and eighty links — and it was invisible under the city lights. The
+// reference's mesh is what its own brief calls "the nervous system", and a
+// nervous system with fifty neurons is a diagram. Roughly a hundred nodes and
+// two hundred links now, still one draw call.
+const NETWORK_CANDIDATES = 6400;
+const NETWORK_MIN_SEPARATION_DEG = 5.2;
+const NETWORK_LINK_MAX_DEG = 24;
+const NETWORK_LINKS_PER_NODE = 3;
 
 function buildSurfaceNetwork() {
   const nodes: { lat: number; lon: number; v: [number, number, number] }[] = [];
@@ -617,6 +680,72 @@ function orbitPointAt(def: OrbitDef, t: number): [number, number, number] {
   y = ny; z = nz2;
 
   return [x + def.ox, y + def.oy, z + def.oz];
+}
+
+/**
+ * The land mask as a texture, for the planet's own surface.
+ *
+ * THIS IS WHAT MAKES IT A PLANET. The reference shows Africa, Arabia and India
+ * as shaded LANDMASS with the lights on top; the previous revision drew a
+ * gradient sphere and let the dots imply the continents, and the owner's
+ * reading of that was "a flat dotted world map wrapped onto a sphere." The
+ * same 0.5-degree bitmask the point field walks is rendered here into a
+ * canvas — one pixel per cell, row 0 at +90, column 0 at -180, which is
+ * exactly how Three's SphereGeometry lays out its UVs (see CORE_FRAGMENT) —
+ * and the core shader mixes ocean and land by it.
+ *
+ * Drawn at 1x and then upscaled 2x with bilinear smoothing, plus a canvas blur
+ * where the browser has one, so a coastline is a soft edge rather than a
+ * staircase of half-degree cells. A faint per-cell grain on the land keeps the
+ * fill from reading as a flat colour.
+ *
+ * RepeatWrapping in u, or the seam at +/-180 shows as a hairline down the
+ * Pacific when the linear filter reaches past the edge.
+ */
+function buildLandTexture(THREE: any) {
+  const W = MASK_W;
+  const H = MASK_H;
+  const src = document.createElement("canvas");
+  src.width = W;
+  src.height = H;
+  const sctx = src.getContext("2d");
+  if (!sctx) return null;
+  const img = sctx.createImageData(W, H);
+  for (let row = 0; row < H; row++) {
+    const lat = 90 - ((row + 0.5) * 180) / H;
+    for (let col = 0; col < W; col++) {
+      const lon = -180 + ((col + 0.5) * 360) / W;
+      const i = (row * W + col) * 4;
+      if (isLand(lat, lon)) {
+        const grain = 205 + Math.floor(hash01(row * 977 + col) * 50);
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = grain;
+      }
+      img.data[i + 3] = 255;
+    }
+  }
+  sctx.putImageData(img, 0, 0);
+
+  const out = document.createElement("canvas");
+  out.width = W * 2;
+  out.height = H * 2;
+  const octx = out.getContext("2d");
+  if (!octx) return null;
+  octx.imageSmoothingEnabled = true;
+  try {
+    (octx as any).imageSmoothingQuality = "high";
+    (octx as any).filter = "blur(1.1px)";
+  } catch {
+    /* an older canvas; the bilinear upscale alone is still soft enough */
+  }
+  octx.drawImage(src, 0, 0, out.width, out.height);
+
+  const tex = new THREE.CanvasTexture(out);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
+  return tex;
 }
 
 /** A soft radial sprite, drawn once into a canvas. */
@@ -742,10 +871,13 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         const orbitMats: any[] = [];
 
         /**
-         * THREE DEPTH LAYERS, as the brief asks for them by name.
+         * FOUR DEPTH LAYERS, as the brief asks for them by name.
          *
          *   bg   deep space: the star field and a very soft nebula wash. Added
          *        to the scene root, so nothing about the planet's pose moves it.
+         *   far  the brief's "Layer 2 — far network": large dim orbits whose
+         *        centres sit behind the planet, and distant points. Low
+         *        brightness, and the disc hides the middle of each of them.
          *   mid  the orbital paths, their nodes and the drifting motes. Its own
          *        group rather than a child of the planet's, so each orbit's
          *        inclination is exactly the one written in ORBITS instead of
@@ -766,13 +898,14 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
          * planet is hidden whatever order it is drawn in.
          */
         const bg = new THREE.Group();
+        const far = new THREE.Group();
         const mid = new THREE.Group();
         const tilt = new THREE.Group();
         tilt.rotation.x = INDIA_TILT_X;
         const spin = new THREE.Group();
         spin.rotation.y = rotationFacing(INDIA_CENTRE.lon);
         tilt.add(spin);
-        scene.add(bg, mid, tilt);
+        scene.add(bg, far, mid, tilt);
 
         // ── BACKGROUND: the nebula wash ───────────────────────────────────
         // A very faint, very large cool wash well behind everything. The hero
@@ -845,22 +978,32 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         disposables.push(starGeo, starMat);
 
         // ── FOREGROUND: the planet's body ─────────────────────────────────
-        const coreGeo = new THREE.SphereGeometry(R * 0.994, 72, 54);
+        // A SHADED PLANET, not a dark ball — see CORE_FRAGMENT and
+        // buildLandTexture for why this changed on 17-09-2026. 96 x 72 rather
+        // than 72 x 54 because the fresnel rim is evaluated per vertex normal
+        // and a coarser sphere shows its facets along the limb.
+        const landTex = buildLandTexture(THREE);
+        const coreGeo = new THREE.SphereGeometry(R * 0.994, 96, 72);
         const coreMat = new THREE.ShaderMaterial({
           vertexShader: CORE_VERTEX,
           fragmentShader: CORE_FRAGMENT,
           uniforms: {
-            // NEAR-BLACK, not navy. Contrast is what makes a lit coastline
-            // read, and it is made at both ends: the dots lift toward white and
-            // the ocean drops away under them.
-            uCentre: { value: new THREE.Color(0x061021) },
-            uLimb: { value: new THREE.Color(0x01040b) },
+            uLand: { value: landTex },
+            // The ocean is near-black and the land a dark desaturated blue —
+            // the reference's own values, read off it: the continents are
+            // clearly THERE and clearly darker than any light on them.
+            uOcean: { value: new THREE.Color(0x03081a) },
+            uLandCol: { value: new THREE.Color(0x1c3259) },
+            // The planet's own edge light, before the atmosphere shell adds
+            // its glow outside the silhouette. Electric blue.
+            uRim: { value: new THREE.Color(0x3d7fe0) },
             uSun: { value: sun },
             uShadow: { value: NIGHT_SHADOW },
           },
         });
         spin.add(new THREE.Mesh(coreGeo, coreMat));
         disposables.push(coreGeo, coreMat);
+        if (landTex) disposables.push(landTex);
 
         // ── FOREGROUND: the continents ────────────────────────────────────
         const field = buildLandField();
@@ -910,7 +1053,7 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
             // FAINT. This layer is texture, not subject: it has to be legible
             // when looked for and invisible when not, or it competes with the
             // city lights it is drawn over.
-            uOpacity: { value: 0.42 },
+            uOpacity: { value: 0.5 },
           },
           transparent: true,
           depthWrite: false,
@@ -934,8 +1077,8 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
           nnPos[i * 3 + 2] = n.v[2] * R * 1.0055;
           const dIndia = angularDistanceDeg(n.lat, n.lon, INDIA_CENTRE.lat, INDIA_CENTRE.lon);
           const warm = Math.max(0, 1 - dIndia / 42);
-          nnSize[i] = 0.011 + warm * 0.009;
-          nnGlow[i] = 0.30 + warm * 0.45;
+          nnSize[i] = 0.012 + warm * 0.009;
+          nnGlow[i] = 0.34 + warm * 0.45;
           nnCol[i * 3] = 0.52 + warm * 0.44;
           nnCol[i * 3 + 1] = 0.68 + warm * 0.16;
           nnCol[i * 3 + 2] = 0.96 - warm * 0.44;
@@ -1046,8 +1189,8 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         // air above it, which no amount of dot colour can produce: the dots
         // are the source, this is the glow.
         const indiaTex = radialTexture(THREE, [
-          [0, "rgba(255,196,118,0.27)"],
-          [0.4, "rgba(255,168,88,0.10)"],
+          [0, "rgba(255,196,118,0.32)"],
+          [0.4, "rgba(255,168,88,0.12)"],
           [1, "rgba(255,150,70,0)"],
         ]);
         const indiaMat = new THREE.SpriteMaterial({
@@ -1065,7 +1208,7 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         disposables.push(indiaTex, indiaMat);
 
         // ── FOREGROUND: the atmosphere ────────────────────────────────────
-        const atmGeo = new THREE.SphereGeometry(R * 1.062, 64, 48);
+        const atmGeo = new THREE.SphereGeometry(R * 1.07, 64, 48);
         const atmMat = new THREE.ShaderMaterial({
           vertexShader: ATMOSPHERE_VERTEX,
           fragmentShader: ATMOSPHERE_FRAGMENT,
@@ -1082,8 +1225,8 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
             // A HIGH power is what keeps this a rim. The fresnel term falls off
             // as pow(1 - facing, uPower), so a low exponent spreads it inward
             // across the whole disc.
-            uPower: { value: 3.6 },
-            uIntensity: { value: 0.70 },
+            uPower: { value: 3.2 },
+            uIntensity: { value: 0.95 },
           },
           side: THREE.BackSide,
           transparent: true,
@@ -1101,8 +1244,8 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         // stop is nearly clear because it sits BEHIND the planet and is meant
         // to escape past the edge, not wash over the face.
         const haloTex = radialTexture(THREE, [
-          [0, "rgba(96,150,240,0.15)"],
-          [0.5, "rgba(84,126,224,0.055)"],
+          [0, "rgba(96,150,240,0.19)"],
+          [0.5, "rgba(84,126,224,0.07)"],
           [1, "rgba(76,112,216,0)"],
         ]);
         const haloMat = new THREE.SpriteMaterial({
@@ -1118,56 +1261,152 @@ export function HeroGlobe({ className = "" }: { className?: string }) {
         tilt.add(halo);
         disposables.push(haloTex, haloMat);
 
-        // ── MIDDLE: the orbital paths ─────────────────────────────────────
+        // ── MIDDLE and FAR: the orbital paths ─────────────────────────────
         const orbitNodePos: number[] = [];
         const orbitNodeSize: number[] = [];
         const orbitNodeGlow: number[] = [];
         const orbitNodeCol: number[] = [];
 
-        ORBITS.forEach((def, i) => {
-          const pts: any[] = [];
-          for (let s = 0; s < 220; s++) {
-            const [x, y, z] = orbitPointAt(def, s / 220);
-            pts.push(new THREE.Vector3(x, y, z));
+        /** One orbit, of either kind, into the group it belongs to. */
+        const addOrbit = (def: OrbitDef, i: number, group: any, far: boolean) => {
+          if (def.kind === "solid") {
+            const pts: any[] = [];
+            for (let s = 0; s < 220; s++) {
+              const [x, y, z] = orbitPointAt(def, s / 220);
+              pts.push(new THREE.Vector3(x, y, z));
+            }
+            const curve = new THREE.CatmullRomCurve3(pts, true);
+            const g = new THREE.TubeGeometry(curve, 240, def.tube, 6, true);
+            const m = new THREE.ShaderMaterial({
+              vertexShader: ORBIT_VERTEX,
+              fragmentShader: ORBIT_FRAGMENT,
+              uniforms: {
+                uColor: { value: new THREE.Color(far ? 0x5a8ad8 : 0x7fb2f2) },
+                uHot: { value: new THREE.Color(0xe4f0ff) },
+                uOpacity: { value: def.opacity },
+                // The globe's centre is at the origin and the camera looks
+                // straight at it, so its view-space depth IS the camera
+                // distance. A far orbit's own centre is behind that, and the
+                // dimming should be measured from the planet, not from it.
+                uCentreDepth: { value: CAMERA_Z },
+                uPhase: { value: def.phase },
+                uSweep: { value: def.sweep },
+                uResolution: { value: new THREE.Vector2(w * RENDER_DPR, h * RENDER_DPR) },
+                uEdge: { value: 0.11 },
+              },
+              transparent: true,
+              depthWrite: false,
+              blending: THREE.AdditiveBlending,
+            });
+            const mesh = new THREE.Mesh(g, m);
+            mesh.renderOrder = far ? -5 : 6;
+            group.add(mesh);
+            orbitMats.push(m);
+            disposables.push(g, m);
+          } else {
+            // A DOTTED orbit: the same ellipse, sampled into a chain of small
+            // points. The reference draws several of its paths this way, and
+            // the read is different from a solid line — a string of
+            // waypoints rather than a track. Every point carries its own
+            // size and brightness so the chain has texture rather than
+            // being a perforated line, and the ones on the far half are
+            // dimmed by depth the same way the tubes are.
+            const N = 180;
+            const dp: number[] = [];
+            const ds: number[] = [];
+            const dg: number[] = [];
+            const dc: number[] = [];
+            const warm = def.warm ? 1 : 0;
+            for (let s = 0; s < N; s++) {
+              const t = s / N;
+              const [x, y, z] = orbitPointAt(def, t);
+              dp.push(x, y, z);
+              const v = hash01(i * 1000 + s);
+              const sweep = 0.55 + 0.45 * Math.sin(t * Math.PI * 2 + def.phase);
+              // Depth: -mv.z is CAMERA_Z - z here since the camera is on +z
+              // looking at the origin with no rotation of the mid group.
+              const front = Math.max(0, Math.min(1, 1 - (CAMERA_Z - z - (CAMERA_Z - 0.85)) / 1.7));
+              ds.push(def.tube * (2.2 + v * 2.4));
+              dg.push(def.opacity * sweep * (0.25 + 0.75 * front) * (0.6 + v * 0.4));
+              dc.push(0.55 + warm * 0.45, 0.72 + warm * 0.06, 0.98 - warm * 0.5);
+            }
+            const g = new THREE.BufferGeometry();
+            g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(dp), 3));
+            g.setAttribute("aSize", new THREE.BufferAttribute(new Float32Array(ds), 1));
+            g.setAttribute("aGlow", new THREE.BufferAttribute(new Float32Array(dg), 1));
+            g.setAttribute("aColor", new THREE.BufferAttribute(new Float32Array(dc), 3));
+            const m = new THREE.ShaderMaterial({
+              vertexShader: SPRITE_POINT_VERTEX,
+              fragmentShader: STAR_FRAGMENT,
+              uniforms: { uScale: { value: projScale() } },
+              transparent: true,
+              depthWrite: false,
+              blending: THREE.AdditiveBlending,
+            });
+            const pts = new THREE.Points(g, m);
+            pts.renderOrder = 6;
+            group.add(pts);
+            scaleMats.push(m);
+            disposables.push(g, m);
           }
-          const curve = new THREE.CatmullRomCurve3(pts, true);
-          const g = new THREE.TubeGeometry(curve, 240, def.tube, 6, true);
-          const m = new THREE.ShaderMaterial({
-            vertexShader: ORBIT_VERTEX,
-            fragmentShader: ORBIT_FRAGMENT,
-            uniforms: {
-              uColor: { value: new THREE.Color(0x7fb2f2) },
-              uHot: { value: new THREE.Color(0xe4f0ff) },
-              uOpacity: { value: def.opacity },
-              // The globe's centre is at the origin and the camera looks
-              // straight at it, so its view-space depth IS the camera distance.
-              uCentreDepth: { value: CAMERA_Z },
-              uPhase: { value: def.phase },
-              uSweep: { value: def.sweep },
-              uResolution: { value: new THREE.Vector2(w * RENDER_DPR, h * RENDER_DPR) },
-              uEdge: { value: 0.11 },
-            },
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-          });
-          const mesh = new THREE.Mesh(g, m);
-          mesh.renderOrder = 6;
-          mid.add(mesh);
-          orbitMats.push(m);
-          disposables.push(g, m);
 
           for (const t of def.nodes) {
             const [x, y, z] = orbitPointAt(def, t);
             orbitNodePos.push(x, y, z);
             // The inner orbits carry the larger, brighter nodes: they are
             // nearer the subject and a uniform node size flattens the set.
-            const near = Math.max(0, 1 - i / ORBITS.length);
-            orbitNodeSize.push(0.018 + near * 0.020);
-            orbitNodeGlow.push(0.45 + near * 0.50);
-            orbitNodeCol.push(0.70 + near * 0.22, 0.83 + near * 0.12, 1.0);
+            // A far orbit's nodes are small and dim by construction.
+            const near = far ? 0 : Math.max(0, 1 - i / ORBITS.length);
+            orbitNodeSize.push((far ? 0.012 : 0.018) + near * 0.020);
+            orbitNodeGlow.push((far ? 0.22 : 0.45) + near * 0.50);
+            const w2 = def.warm ? 1 : 0;
+            orbitNodeCol.push(0.70 + near * 0.22 + w2 * 0.3, 0.83 + near * 0.12 - w2 * 0.05, 1.0 - w2 * 0.45);
           }
+        };
+
+        ORBITS.forEach((def, i) => addOrbit(def, i, mid, false));
+        FAR_ORBITS.forEach((def, i) => addOrbit(def, i + 20, far, true));
+
+        // ── FAR: distant data points ──────────────────────────────────────
+        // The far layer's other half — small dim points in the space behind
+        // the planet, between it and the star field, so the orbits back there
+        // are not alone. All at z < -0.6, so the planet occludes the ones that
+        // fall behind its disc and the rest sit clearly outside it.
+        const fpPos = new Float32Array(FAR_POINT_COUNT * 3);
+        const fpSize = new Float32Array(FAR_POINT_COUNT);
+        const fpGlow = new Float32Array(FAR_POINT_COUNT);
+        const fpCol = new Float32Array(FAR_POINT_COUNT * 3);
+        for (let i = 0; i < FAR_POINT_COUNT; i++) {
+          const rr = 1.5 + hash01(i * 13 + 7) * 1.9;
+          const th = hash01(i * 13 + 23) * Math.PI * 2;
+          fpPos[i * 3] = rr * Math.cos(th);
+          fpPos[i * 3 + 1] = rr * Math.sin(th) * 0.78;
+          fpPos[i * 3 + 2] = -0.6 - hash01(i * 13 + 59) * 1.6;
+          const v = hash01(i * 13 + 97);
+          fpSize[i] = 0.010 + v * 0.014;
+          fpGlow[i] = 0.14 + v * 0.30;
+          fpCol[i * 3] = 0.52;
+          fpCol[i * 3 + 1] = 0.68;
+          fpCol[i * 3 + 2] = 0.96;
+        }
+        const fpGeo = new THREE.BufferGeometry();
+        fpGeo.setAttribute("position", new THREE.BufferAttribute(fpPos, 3));
+        fpGeo.setAttribute("aSize", new THREE.BufferAttribute(fpSize, 1));
+        fpGeo.setAttribute("aGlow", new THREE.BufferAttribute(fpGlow, 1));
+        fpGeo.setAttribute("aColor", new THREE.BufferAttribute(fpCol, 3));
+        const fpMat = new THREE.ShaderMaterial({
+          vertexShader: SPRITE_POINT_VERTEX,
+          fragmentShader: STAR_FRAGMENT,
+          uniforms: { uScale: { value: projScale() } },
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
         });
+        const farPoints = new THREE.Points(fpGeo, fpMat);
+        farPoints.renderOrder = -5;
+        far.add(farPoints);
+        scaleMats.push(fpMat);
+        disposables.push(fpGeo, fpMat);
 
         const onGeo = new THREE.BufferGeometry();
         onGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(orbitNodePos), 3));
