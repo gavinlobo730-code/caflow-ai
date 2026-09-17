@@ -1392,6 +1392,57 @@ def _eway_assessment(lines: list) -> dict:
     ]).as_dict()
 
 
+def _irn_assessment(inv: dict, treatment: str, db=None,
+                    firm_id: Optional[str] = None) -> dict:
+    """CGST Rule 48(4) — must this supply carry an IRN? Served with the invoice.
+
+    THE AUTHORITY IS HERE, not in the browser (SALES-18).
+    `apps/web/lib/invoices/compliance.irnEligibility` was the only
+    implementation of the Rule 48(4) scope test in the repository, which is the
+    same defect SALES-17 was — a statutory rule with no Python twin and no
+    parity vector. `domain/gst/irn_scope.assess` decides it now and
+    `assessIrnScope` in the browser survives as a FALLBACK for the window where
+    the frontend has redeployed ahead of the backend, pinned to this module by
+    shared/irn-parity-vectors.json.
+
+    THE TURNOVER LIMB IS THE HALF THE BROWSER CANNOT ANSWER AT ALL, which is
+    why this is served rather than left mirrored. CGST §2(6) aggregate turnover
+    is recorded per financial year on `client_gst_turnover` (migration 401,
+    GST-17) and no screen holds it, so the panel used to decline the whole
+    person-side limb with a fixed sentence on every invoice: "E-invoicing
+    applies only above your firm's turnover threshold — confirm before
+    generating."
+
+    `highest_turnover_within_rule_48_4` rather than the preceding-year hop:
+    Rule 48(4) reads on "any preceding financial year from 2017-18 onwards", so
+    it latches. `None` where nobody has recorded one — never 0, which is a real
+    turnover below every threshold — and `irn_scope` then takes the strict
+    reading and names the gap.
+
+    The treatment is PASSED IN rather than re-derived, because
+    `domain/gst/treatment` is the one authority for what kind of supply an
+    invoice is (SALES-19) and `get_invoice` has already asked it.
+    """
+    from domain.gst.irn_scope import assess
+
+    highest = None
+    client_id = inv.get("client_id")
+    if db is not None and firm_id and client_id:
+        from services.client_gst_turnover_service import (
+            highest_turnover_within_rule_48_4,
+        )
+        highest = highest_turnover_within_rule_48_4(
+            db, firm_id, str(client_id), str(inv.get("invoice_date") or ""))
+    return assess(
+        treatment=treatment,
+        # The RECIPIENT's registration, which is what the supply limb turns on
+        # for an ordinary domestic supply. The embed is the customer row.
+        recipient_gstin=(inv.get("customers") or {}).get("gstin"),
+        invoice_date=str(inv.get("invoice_date") or ""),
+        highest_aato_paise=highest,
+    ).as_dict()
+
+
 def _gst_treatment(inv: dict) -> str:
     """The supply's treatment, DERIVED FROM THE INVOICE (SALES-19).
 
@@ -1424,6 +1475,10 @@ def get_invoice(
             inv["lines"] = [ln for ln in MOCK_SALES_INVOICE_LINES if ln["invoice_id"] == invoice_id]
             inv["eway_assessment"] = _eway_assessment(inv["lines"])
             inv["gst_treatment"] = _gst_treatment(inv)
+            # No `db` in mock mode, so no recorded turnover: the answer is the
+            # strict reading with the gap naming it, which is honest about a
+            # fixture rather than asserting a figure nobody holds.
+            inv["irn_assessment"] = _irn_assessment(inv, inv["gst_treatment"])
             return api_response(True, inv)
 
         from core.supabase_client import get_supabase
@@ -1450,6 +1505,8 @@ def get_invoice(
         invoice["lines"] = lines_resp.data or []
         invoice["eway_assessment"] = _eway_assessment(invoice["lines"])
         invoice["gst_treatment"] = _gst_treatment(invoice)
+        invoice["irn_assessment"] = _irn_assessment(
+            invoice, invoice["gst_treatment"], db, current_user.get("firm_id"))
         # Resolve a human "Created By" for the detail view (UX only). Prefer the
         # users table; fall back to the create event in the audit trail (covers
         # invoices created before created_by was captured). Never fatal.

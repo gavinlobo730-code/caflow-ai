@@ -643,6 +643,58 @@ change. The code is the authority; keep this file in step with it.
   the link mandatory by accident. The picker is READ-ONLY where the server
   decided one, because a screen must never invite a CA to type something the
   server will refuse — the `attachmentsReadOnly` discipline.
+- **WHICH SUPPLIES MUST CARRY AN IRN IS `domain/gst/irn_scope.py`, AND THE RULE
+  HAS TWO INDEPENDENT LIMBS** (SALES-18). `apps/web/lib/invoices/compliance.
+  irnEligibility` was the ONLY implementation of CGST Rule 48(4)'s scope test
+  in the repository — the same defect SALES-17 was, a statutory rule with no
+  Python twin and no parity vector, which is exactly how the e-way threshold
+  came to be measured on the pre-GST taxable value and stay that way. The
+  e-way half was closed by MOVING the rule and keeping the browser copy as a
+  pinned mirror; this is the IRN half in the same shape, pinned by
+  `shared/irn-parity-vectors.json`.
+  **THE PERSON LIMB AND THE SUPPLY LIMB ARE FACTS ABOUT DIFFERENT THINGS** —
+  aggregate turnover above the notified threshold, and a supply to a
+  REGISTERED person or an export or an SEZ — so they are computed separately
+  and ANDed once. The supply limb BLOCKS (an IRN record for a B2C invoice is
+  meaningless and the IRP rejects it) and is asked FIRST and short-circuits;
+  the person limb only WARNS, because refusing on a figure nobody has recorded
+  would stop the CA doing the one thing the screen is for.
+  **THE PERSON LIMB IS A RATCHET AND THAT IS THE EASY THING TO GET WRONG.**
+  Notification 78/2020 — the HSN digit rule in `hsn_digits.py` — reads on the
+  turnover "in the PRECEDING Financial Year", so a client who shrinks falls
+  back a band. Rule 48(4) reads on "ANY PRECEDING FINANCIAL YEAR FROM 2017-18
+  ONWARDS", so e-invoicing LATCHES: a client who crossed ₹20 crore in FY
+  2022-23 and has turned over ₹4 crore since is still inside it.
+  `client_gst_turnover_service.highest_turnover_within_rule_48_4` takes the
+  MAXIMUM across `qualifying_financial_years`, and reusing the preceding-year
+  hop would let them out. **That limb is the half the browser cannot answer at
+  all** — CGST §2(6) turnover is PAN-level and all-India (migration 401) and
+  no screen holds it — which is why the answer is SERVED as `irn_assessment`
+  on `GET /api/sales-invoices/{id}` rather than left mirrored; the panel used
+  to decline the whole limb with a fixed sentence on every invoice.
+  **THE THRESHOLD FORKED SIX TIMES and the INVOICE'S OWN DATE decides**
+  (₹500cr → ₹100cr → ₹50cr → ₹20cr → ₹10cr → ₹5cr), the fork shape again — a
+  2021 invoice keeps ₹50 crore for ever. **An ABSENT date is NOT a
+  pre-commencement date**: both would answer "no threshold" if they shared a
+  branch, so an undated invoice would read as owing no IRN; it takes the
+  STRICTEST threshold and says so. **Registration has THREE states** and a
+  malformed GSTIN is read as B2B and NAMED (`rcm_documents`' shape) — reading
+  it as unregistered takes the invoice out of the rule, and **Rule 48(5) makes
+  an invoice this sub-rule reaches, issued without an IRN, not an invoice at
+  all**, so the recipient's credit goes with it. That asymmetry is why every
+  unknown here resolves strict and flagged, and why there is deliberately no
+  `undetermined` verdict (`eway.assess` has one because Rule 138(14) can flip
+  its answer either way; nothing here can). The treatment is TAKEN from
+  `domain/gst/treatment`, never re-derived, and the GSTIN test is SHAPE ONLY —
+  a checksum would put the two implementations in disagreement on a
+  transposition, which says nothing about who the customer is. The first
+  proviso's EXEMPTED CLASSES are named on every "required" answer and on no
+  other (an exemption can only REMOVE a requirement), with the SEZ trap stated:
+  an SEZ **unit** is exempt as the SUPPLIER while a supply **to** an SEZ is in
+  scope. ⚠️ Every threshold and date is `[S]`-graded, `VERIFIED` is False and
+  each is pinned exactly by
+  `tests/test_which_supplies_must_carry_an_irn.py`. Prepare-only: it decides
+  eligibility and reaches no portal.
 - **THE SALES CYCLE BEGINS BEFORE THE TAX INVOICE, AND ONLY ONE OF THE FOUR
   DOCUMENTS IS THE ACT'S** (SALES-21, migration 392). A client quotes, takes an
   order, delivers against it and bills afterwards; the product started at the

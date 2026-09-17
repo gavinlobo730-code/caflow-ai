@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Optional
 
 from core.ist_clock import normalise_fy_label
-from domain.gst import hsn_digits
+from domain.gst import hsn_digits, irn_scope
 
 #: The table, for a caller that wants to name it. Every query below writes the
 #: name out as a LITERAL instead of reaching through this: a dynamic table name
@@ -88,6 +88,54 @@ def turnover_governing_period(db, firm_id: str, client_id: str,
     """
     fy = hsn_digits.governing_financial_year(period_start)
     return turnover_for_fy(db, firm_id, client_id, fy)
+
+
+def highest_turnover_within_rule_48_4(db, firm_id: str, client_id: str,
+                                      invoice_date: str) -> Optional[int]:
+    """The highest aggregate turnover that can bring this client within Rule 48(4).
+
+    THIS IS NOT `turnover_governing_period` AND THE DIFFERENCE IS THE WHOLE
+    POINT. Notification 78/2020 (the HSN digit rule above) reads on the
+    turnover "in the PRECEDING Financial Year" — one year, and a client who
+    shrinks falls back down a band. CGST Rule 48(4) reads on the turnover "in
+    ANY PRECEDING FINANCIAL YEAR FROM 2017-18 ONWARDS", so e-invoicing LATCHES:
+    a client who crossed ₹20 crore in FY 2022-23 and has turned over ₹4 crore
+    every year since is still within it. Reusing the preceding-year hop here
+    would let them out, and Rule 48(5) makes the invoice they then issue
+    without an IRN not an invoice at all.
+
+    So this takes the MAXIMUM across every qualifying year, not the latest.
+    `domain.gst.irn_scope` owns which years those are; this only fetches them.
+
+    None means NO ROW IN ANY of those years — nobody has recorded a figure. It
+    is never 0, for `turnover_for_fy`'s reason: 0 is a client who turned over
+    nothing and None is nobody having said, and `irn_scope.assess` resolves the
+    two differently.
+    """
+    years = irn_scope.qualifying_financial_years(invoice_date)
+    if not years:
+        # An invoice inside FY 2017-18 itself has no PRECEDING year the rule
+        # can reach, so there is nothing to fetch and `.in_` on an empty list
+        # is a query with no meaning rather than a query with no rows.
+        return None
+    rows = (db.table("client_gst_turnover")
+            .select("id, firm_id, client_id, financial_year, "
+                    "aggregate_turnover_paise, source_note, recorded_by, updated_at")
+            # firm_id explicitly, not RLS alone — the service-role key bypasses
+            # RLS and the app-layer filter is the primary isolation control.
+            .eq("firm_id", firm_id)
+            .eq("client_id", client_id)
+            # `.in_` over the named years rather than a gte/lte range: the
+            # column is TEXT, so '2019-20' > '2017-18' happens to sort right
+            # only because every label is the same width and starts with the
+            # year — a range would still be an ordering this rule never asked
+            # for. The same reasoning `gstr9_builder` records for MMYYYY.
+            .in_("financial_year", years)
+            .order("financial_year", desc=True)
+            .execute().data or [])
+    if not rows:
+        return None
+    return max(int(r.get("aggregate_turnover_paise") or 0) for r in rows)
 
 
 def record(db, firm_id: str, client_id: str, financial_year: str,
