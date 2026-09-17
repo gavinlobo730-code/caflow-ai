@@ -142,8 +142,16 @@ export function Hero() {
         {/* ── Visual ────────────────────────────────────────────────────── */}
         {/* Square-ish on desktop so the connector SVG's unit viewBox barely
             distorts; a short fixed band on mobile, where §14 asks for the
-            headline first and a simplified globe beneath it. */}
-        <HeroVisual className="h-[320px] w-full sm:h-[420px] lg:h-[min(80vh,640px)]" />
+            headline first and a simplified globe beneath it.
+
+            THE 80px THE DESKTOP BAND GAINED ON 17-09-2026 IS THE ONLY CHANGE
+            THIS FILE NEEDED for the larger globe, and that is deliberate: the
+            brief asked for a globe that dominates the right half and, in the
+            same breath, not to redesign the hero's typography or layout. The
+            planet grew by 81% and almost none of it came from here — the
+            canvas it is drawn on is hung OUTSIDE this cell (see HeroVisual),
+            so the copy column, the grid and every card anchor are untouched. */}
+        <HeroVisual className="h-[320px] w-full sm:h-[420px] lg:h-[min(84vh,720px)]" />
       </div>
 
       {/* The vertical rail, from the reference. Four words for what the platform

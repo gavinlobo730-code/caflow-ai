@@ -721,3 +721,125 @@ def test_a_hero_card_does_not_position_itself_on_the_element_that_bobs():
         "no left-hand placement transform left in HeroVisual — this rule "
         "guards nothing"
     )
+
+
+def test_a_card_that_bobs_is_not_inside_something_with_an_opacity():
+    """A card's GLASS dies silently if any ancestor sets `opacity`.
+
+    An element with opacity below 1 is a BACKDROP ROOT. `backdrop-filter` on
+    anything inside it then samples that element's own contents instead of the
+    page behind it — so the card renders as a flat translucent rectangle with no
+    blur, and the composition loses the one property that makes it read as glass
+    rather than as a grey chip.
+
+    It is entirely silent. There is no console warning, no failed style, nothing
+    in a computed-style dump that says the filter did nothing, and the card is
+    still there. It shipped for exactly as long as it took to look at a
+    screenshot side by side.
+
+    THE OBVIOUS WAY TO PUSH A CARD BACK IS THE WAY THAT BREAKS IT, which is why
+    this is worth a test rather than a comment. The hero's capability cards
+    carry a `depth`, and the first thing anyone reaches for to express depth is
+    `opacity` on the positioning element. Depth is expressed in the card's own
+    colours instead — fill, border, blur radius, shadow and text — which is also
+    the truer cue: something further away is lower in CONTRAST, not
+    see-through.
+
+    The interface FRAGMENTS beside them do set opacity, and that is fine: they
+    are bare SVG with no backdrop-filter anywhere inside. So the rule is about
+    ancestry, not about the property, and this walks the tree to say so.
+    """
+    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+
+    # Only div and span nest in this file; every other element (the icons,
+    # <svg>, <line>, <circle>) is self-closing or a leaf, so tracking those two
+    # is enough to know what is inside what.
+    #
+    # THE FILTER AND THE OPACITY ARE BOTH ATTRIBUTES OF A TAG, not text between
+    # tags — `backdropFilter` lives inside a style={{...}} on the card's own
+    # <div>. The first draft of this scan looked for them as separate tokens and
+    # found none at all, because the tag pattern had already swallowed them.
+    tag_re = re.compile(r"</?(?:div|span)\b[^>]*>")
+    stack: list[bool] = []
+    seen = 0
+    broken = []
+    for m in tag_re.finditer(src):
+        tag = m.group(0)
+        if tag.startswith("</"):
+            if stack:
+                stack.pop()
+            continue
+        has_opacity = "opacity" in tag
+        has_backdrop = "backdrop-blur" in tag or "backdropFilter" in tag
+        if has_backdrop:
+            seen += 1
+            # An ancestor's opacity is the real failure; the element's OWN is
+            # counted too, because an element with opacity is a backdrop root
+            # for the subtree it heads and the browsers disagree about whether
+            # that includes its own filter. Nothing here needs to find out.
+            if any(stack) or has_opacity:
+                broken.append(f"HeroVisual.tsx:{src.count(chr(10), 0, m.start()) + 1}")
+        if not tag.endswith("/>"):
+            stack.append(has_opacity)
+
+    # VACUITY, BOTH WAYS. A scan that found no backdrop filter proves nothing,
+    # and one whose stack did not balance was not reading the tree at all — and
+    # that second case is the one that passes green for any input whatsoever,
+    # which is the failure this file has already shipped twice.
+    assert seen, (
+        "no backdrop filter left in HeroVisual — this rule guards nothing. The "
+        "hero cards are meant to be glass."
+    )
+    assert not stack, (
+        f"the div/span scan ended with {len(stack)} tags unclosed, so it was not "
+        f"reading the tree correctly and would pass for any input."
+    )
+    assert not broken, (
+        "a backdrop-filtered hero card sits inside an element that sets "
+        "`opacity`. That element is a BACKDROP ROOT, so the blur samples its "
+        "own contents rather than the page and the glass silently becomes a "
+        "flat rectangle. Express depth in the card's own colours instead:\n  "
+        + "\n  ".join(broken)
+    )
+
+
+def test_the_globe_canvas_is_larger_than_the_cell_it_is_given():
+    """The planet's size does not come from the grid, and must not be "tidied"
+    back into it.
+
+    Owner brief, 17-09-2026: the globe should "dominate the right half of the
+    hero" and may "extend beyond the normal boundaries of the hero composition
+    slightly" — while the hero's own layout and typography stay as they are. The
+    grid cell is 640px and every card anchor in HeroVisual, plus both of the
+    limits they are checked against, is a percentage of it. So the cell cannot
+    grow; the globe's CANVAS is hung outside it instead.
+
+    That is one `absolute` element with four lg: classes, and it reads exactly
+    like something a later tidy-up would replace with `inset-0`. Doing so costs
+    the planet about a third of its diameter, changes no anchor, breaks no
+    layout and produces no error — the hero simply goes back to the small flat
+    globe the brief was written about.
+    """
+    src = (MARKETING / "components" / "home" / "HeroVisual.tsx").read_text(encoding="utf-8")
+
+    w = re.search(r"lg:w-\[(\d+)%\]", src)
+    h = re.search(r"lg:h-\[(\d+)%\]", src)
+    assert w and h, (
+        "HeroVisual no longer sizes the globe's canvas past its own cell. The "
+        "planet's scale comes from that oversize, not from the grid."
+    )
+    assert int(w.group(1)) > 110 and int(h.group(1)) > 110, (
+        f"the globe canvas is {w.group(1)}% x {h.group(1)}% of the stage. Below "
+        f"about 110% there is nothing for the atmosphere and the outer orbits "
+        f"to spill into and the planet has to shrink to fit."
+    )
+    # Offset by half the overhang in each axis, or the planet stops being
+    # centred on the cell the cards are anchored to.
+    for axis, over in (("left", int(w.group(1))), ("top", int(h.group(1)))):
+        m = re.search(rf"lg:{axis}-\[-(\d+)%\]", src)
+        assert m, f"the canvas has no lg:{axis} offset, so it is not centred on the stage"
+        assert abs(int(m.group(1)) - (over - 100) / 2) <= 2, (
+            f"lg:{axis} is -{m.group(1)}% for a {over}% canvas; centring it needs "
+            f"-{(over - 100) / 2:.0f}%. Off-centre, the globe and the card ring "
+            f"no longer share a middle and the control node stops sitting on it."
+        )
