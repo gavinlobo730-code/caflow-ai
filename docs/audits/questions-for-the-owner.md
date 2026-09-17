@@ -1,13 +1,18 @@
-# Questions waiting on you
+# Questions for the owner — and what was decided
 
 **Your instruction, 17 September 2026:** *"any compliance question please you
 research and take those decisions, and code questions you take those
 decisions."*
 
-So this file changed shape. **Fifteen questions were open; three are.** The
-other twelve were compliance or code, and each now appears below the line with
-the decision I took and the reasoning, so you can overrule any of them by
-saying so — a decision you cannot find is a decision nobody can revisit.
+So this file changed shape twice in one day. **Fifteen questions were open;
+twelve were compliance or code and became mine; you answered the last three that
+evening. Nothing is waiting on you.**
+
+Every decision appears below with its reasoning, so you can overrule any of them
+by saying so — a decision you cannot find is a decision nobody can revisit. Two
+places where I did NOT do exactly what you asked are called out as such, in §2
+(roles are kept as a template rather than deleted) and §3 (a gap you did not ask
+about, not started).
 
 ---
 
@@ -38,47 +43,97 @@ than a flagged gap. Search gives me fragments of those tables, not tables.
 
 ---
 
-# STILL YOURS — three
+# NOTHING IS WAITING ON YOU
 
-## 1. Which module is the design reference implementation?  *(was §6)*
+All three were answered on **17 September 2026** and all three are built. They
+are recorded below with what was built and what I decided inside them, because a
+decision you cannot find is a decision nobody can revisit.
 
-You answered density ("depends on the CA") and dark mode ("no, the current one
-is good"). The one still open: **Banking Entries or Sales Invoices?**
+---
 
-Banking Entries is the densest screen in the product, so whatever survives
-there survives everywhere. Sales Invoices has fewer states but is what a CA
-shows a client.
+## 1. Design reference implementation — **"the redesign like the functions and features won't change right its just the design then yes go for the banking module"**  *(was §6)*
 
-**Why this stays yours:** it is taste, and it is about what your firm's work
-looks like. Nothing in the statute or the code decides it.
+**Banking Entries.** Presentational only, confirmed: same endpoints, same
+posting paths, same `entry_state`, same Pass verb, same trusted-rule behaviour.
 
-## 2. Was per-person module access ever INTENDED?  *(was §8)*
+**What the work turned out to be, which was not what the question assumed.** The
+question read as "invent a look". The palette was already designed —
+`tailwind.config.ts` and `app/globals.css` have carried deep blue `#182350`,
+powder `#AFD2FA`, premium gold `#B9915E`, a type scale and three named shadows
+since the app was built. **Nothing read it.** 10,283 colours were spelled as
+Tailwind arbitrary values across 263 files, banking used the tokens **zero**
+times in 5,783 lines, and three different "primary" colours were live at once.
 
-The Team screen had a per-member access grid headed *"Changes are saved
-instantly. Overrides the role default for that individual."* Every clause was
-false — the ticks went to `localStorage`, and `rbac()` decides from the ROLE
-alone. I made the grid read-only and served it from the real matrix.
+So the redesign is APPLYING the brand rather than choosing one, and the reason
+it had gone unapplied was that the token set could not say what a screen needed:
+no ink scale, no state colours, no single primary. Three decisions were mine
+inside that:
 
-**Why this stays yours:** I can tell you the control did nothing. I cannot
-tell you whether you meant to build it. If you did, it is a table, a change to
-`rbac()`, and a decision about whether an override may GRANT as well as deny.
-If you did not, the read-only grid is finished.
+* **Ink is named by ROLE, not numbered** (ink / body / label / hint / disabled),
+  and has **four** steps rather than three — the app ran two hover conventions
+  side by side (104 sites hint→label, 67 label→body) and a three-step scale
+  collapsed one so the hover silently stopped changing anything. The first pass
+  did exactly that; the check caught it.
+* **State is a first-class token** (ready / attention / problem / done). A CA
+  reads a bank screen for state before they read it for text.
+* **Money direction is NOT state.** The first pass mapped "Deposits" to the
+  ready green and "Withdrawals" to the problem red, because those were the
+  colours that file held. Both are false signals — a withdrawal is half of what
+  a bank account does. `money.in` / `money.out` / `money.negative` are their own
+  scale and a test asserts they are not aliases.
 
-## 3. Should the product ever email your clients' CUSTOMERS?  *(was §H, SALES-23)*
+Held by `apps/web/scripts/a-screen-reads-the-palette-it-was-given.test.ts`:
+converted directories at zero, the rest of the app a measured ratchet.
 
-A reminder cadence would send mail to a third party who never signed up for
-anything here, whose address arrived in a CSV, and who will read it as coming
-from your client's business.
+## 2. Per-person module access — **"remove the role wise access and only keep person wise … they also have which clients have which access its per person right"**  *(was §8)*
 
-**I took the code decision and left the business one to you.** Building
-**option 3 — a queue, not a sender**: the product proposes the reminders due
-today and the CA sends the batch with one click. No unattended outbound mail,
-and it removes the manual labour the finding is actually about.
+**Built, as per-person permissions with the role kept as the template.** Your
+observation was right and it is the precedent: `user_client_assignments` is
+already per person, and a role is five buckets a practice is not staffed in.
 
-**What stays yours:** whether you ever want option 2 — a genuine cadence that
-sends without a human, per client, with a per-customer opt-out. That is a
-decision about your clients' relationships with their customers, and no amount
-of research settles it.
+**Where I did not do exactly what you asked, and why.** You asked to remove
+roles entirely. I measured first: `public.get_my_role()` is asked at **61 sites
+across 32 migrations**, and those RLS policies are what protect the ~83 tables
+the browser reads directly over PostgREST, where `rbac()` never runs at all.
+Rewriting them per-person is a migration touching ~50 tables whose failure mode
+is a **silent cross-client read** — no error, no log, nothing that surfaces.
+
+So the role keeps three jobs and loses the one that mattered:
+
+| | |
+|---|---|
+| **Lost** | it no longer decides access — `user_permissions` does, and a row wins |
+| Kept | answering those 61 SQL policies |
+| Kept | `_FIRMWIDE_ROLES` — "every client, or only my assigned book" is about SCOPE, a different question this grid deliberately does not answer |
+| Kept | the template a new hire's grid is pre-filled from, so onboarding is one choice rather than thirty silent toggles |
+
+`rbac()` is the seam, so all **1037** of its call sites are unchanged. Three
+states, not two — Role / Allow / Block — because a two-state control could never
+hand a permission back to the role. **No backfill**, so nobody's access moved on
+the day it landed. A Partner cannot be denied the four pairs that reach the
+screen, or the grid becomes unrepairable.
+
+**Say the word if you still want roles gone entirely** — the grid is already the
+authority, so what remains is the 61-policy rewrite, and it is the part I would
+want to do slowly.
+
+## 3. Emailing your clients' customers — **"Yes ofc that is a feature right not auto email … there is a send button right from there"**  *(was §H, SALES-23)*
+
+**Confirmed and already correct — nothing was built, because nothing needed to
+be.** The sales-invoice send is manual, goes through the backend, runs
+`rbac("invoice","write")`, stamps a delivery row, and is honest about failure:
+`success: false`, the row marked `failed`, the real provider reason in the
+server log only, and the screen checks `result.success` rather than showing a
+false "sent". No auto-send exists anywhere. An unverified Resend domain
+therefore surfaces as a visible error, which is the right behaviour.
+
+**One gap you did not ask about.** There are exactly **three** send buttons in
+the product — engagement letter, payment link, sales invoice. Purchase has none
+and should not (a bill comes *from* the vendor). But a **purchase order** is a
+document your client sends *to* a vendor and has no send path, and nor do
+quotations or proforma invoices. Each needs its own PDF service (there are six
+today, one per document kind), so it is a real build rather than the wiring I
+first said it was. **Not started — say if you want it.**
 
 ---
 
