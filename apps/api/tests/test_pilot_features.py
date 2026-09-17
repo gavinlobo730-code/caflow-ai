@@ -93,7 +93,7 @@ class TestNotificationsRepo:
 
     def test_mark_one_read(self):
         from routers.notifications import read_one
-        from domain.notification_service import MOCK_NOTIFICATIONS
+        from domain.notification_fixtures import MOCK_NOTIFICATIONS
         unread = [n for n in MOCK_NOTIFICATIONS if not n["is_read"]]
         if not unread:
             pytest.skip("No unread notifications")

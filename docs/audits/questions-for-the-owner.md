@@ -217,9 +217,27 @@ work rather than a blocked item.
 ## Delete both dead modules and both dead tables  *(was §9 and §12b)*
 
 - **`domain/notification_service.py`** — an older copy whose store is a
-  hardcoded `MOCK_NOTIFICATIONS` list, imported by nothing. **Deleting it.**
-  The hazard is exactly the `public.suppliers` shape: a future reader reaches
-  for the name and writes notifications nobody receives.
+  hardcoded `MOCK_NOTIFICATIONS` list. **Done 17-09-2026, and NOT by deleting
+  it: the premise "imported by nothing" was false.**
+  `repositories/notifications_repository.py` imports `MOCK_NOTIFICATIONS` and
+  `_notif_index` from it inside an `if _USE_MOCK:` block, so it is the fixture
+  store the entire ~15,800-test mock suite runs against; the delete this
+  section authorised would have broken every test in it. The hazard was real
+  and is what got fixed — the file is **renamed to
+  `domain/notification_fixtures.py`** so its name stops competing with
+  `services/notification_service.py`, and the six module-level functions that
+  read as an API (`create_notification`, `get_notifications`, `mark_read`,
+  `mark_all_read`, `get_unread_count`, `get_notification_stats`) are deleted,
+  each verified at zero callers first — every apparent reference was the
+  router's own endpoint function or the repository's own method sharing the
+  name.
+
+  **Why nobody caught it:** `tests/test_a_domain_module_has_a_reader.py`
+  listed the production roots by hand and `repositories` was not among them,
+  so twenty-seven modules the routers import all day were invisible to the
+  scan and the entry's "nothing in the production tree imports it" passed.
+  The roots are **derived from the tree** now, which is the rule rather than a
+  spelling of it.
 - **`/accounting/suppliers`** — repoint to the client's Vendors tab. Needs
   `credit_limit_paise` on `vendors` first, so it carries a migration.
 - **`public.suppliers` and `public.msme_payments`** — both DROP. `suppliers`

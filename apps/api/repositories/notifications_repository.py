@@ -7,7 +7,7 @@ from repositories.base import BaseRepository
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
 if _USE_MOCK:
-    from domain.notification_service import MOCK_NOTIFICATIONS, _notif_index
+    from domain.notification_fixtures import MOCK_NOTIFICATIONS, _notif_index
 
 
 def _get_db():
