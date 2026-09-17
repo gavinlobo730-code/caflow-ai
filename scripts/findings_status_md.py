@@ -62,6 +62,29 @@ def main() -> None:
         return ("| finding | what actually blocks it |\n|---|---|\n"
                 + "".join(f"| **{fid}** | {r['needs']} |\n" for _, fid, _, r in rs))
 
+    # DERIVED, not asserted. This sentence used to read "most are not code
+    # problems — nearly every one needs a migration", which was true of the
+    # four open findings it was written for and false the moment the 17-09
+    # re-read added three that are ordinary code work. A count the file can
+    # compute cannot go stale that way.
+    _open = rows("open")
+    _blocked = [r for r in _open if r[3].get("needs")]
+    _n, _b = len(_open), len(_blocked)
+    if _n == 0:
+        open_split = "**Nothing is open.**"
+    elif _b == 0:
+        open_split = (f"**All {_n} open findings are ordinary code work** — none is waiting "
+                      f"on a schema, a file layout or a registration.")
+    elif _b == _n:
+        open_split = (f"**Every one of the {_n} open findings is blocked on something outside "
+                      f"the code** — a statutory schema, a file layout, a registration. Each "
+                      f"blocker is named below.")
+    else:
+        open_split = (f"**Of the {_n} open, {_b} are blocked on something outside the code** — a "
+                      f"statutory schema, a file layout, a registration — and each blocker is "
+                      f"named below. The other {_n - _b} are ordinary code work with nothing in "
+                      f"front of them.")
+
     c = {}
     for v in led.values():
         c[v["status"]] = c.get(v["status"], 0) + 1
@@ -115,8 +138,7 @@ The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the {len(led)} now carries a verdict**; none
 is left as "unknown".
 
-**And of the {c.get('open',0)} open, most are not code problems.** Nearly every one needs a
-migration; a handful need a statutory document a person has to read.
+{open_split}
 
 ## Open
 
