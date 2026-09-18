@@ -118,6 +118,39 @@ def assess_invoice(inv: dict, today: Optional[date] = None,
 
 
 def _open_invoices(firm_id: str, internal_id: Optional[str]) -> list[dict]:
+    """The firm's OWN fee ledger — open invoices to the internal practice client.
+
+    AN ABSENT SCOPE IS NOT "EVERY CLIENT". `internal_id` is
+    `firms.internal_client_id`, and migration 074's own comment calls a NULL one
+    an "unprovisioned firm" — a contemplated state, live on one of the two firms
+    in production on 18-09-2026. This used to apply the id as `if internal_id:`,
+    so an unprovisioned firm lost the client filter entirely and all three
+    callers — the overdue sweep, the aging report and `send_overdue_reminders` —
+    ran over every client's customer invoices, against this module's own header
+    ("a thin read/sweep layer over the internal client's sales invoices") and
+    all three of their docstrings.
+
+    That was not harmless: `send_overdue_reminders` advanced `reminder_count`,
+    and `email_service.send_payment_reminder_to_customer` escalates its tone on
+    that number, so two real client invoices reached `reminder_count = 5` with
+    ZERO reminders ever emailed — the next genuine send would have opened as a
+    final demand to a customer never contacted. Migration 405 repairs those rows
+    and splits the counters.
+
+    An unprovisioned firm has an EMPTY fee ledger, so the answer is `[]`. That
+    costs nothing that was working: measured before changing it, the PROVISIONED
+    firm's 5,659 client invoices carried zero `is_overdue`, zero `aging_bucket`
+    and zero `days_overdue` — correctly scoped, they had never been swept — and
+    the sales screen's `isOverdueForUi` has always carried a due-date fallback
+    for exactly that reason.
+
+    MOCK MODE IS DIFFERENT AND THE DIFFERENCE IS REAL, not a leak of the same
+    bug. `internal_client_service.get_internal_client_id` returns None
+    unconditionally when there is no `SUPABASE_URL`, so mock mode cannot express
+    an internal client at all and `MOCK_SALES_INVOICES` *is* the fee ledger.
+    Two different facts wearing one `None`: "this firm has no fee ledger" and
+    "this deployment has no such concept". They are told apart here, once.
+    """
     if _USE_MOCK:
         from routers.sales_invoices import MOCK_SALES_INVOICES
         return [i for i in MOCK_SALES_INVOICES
@@ -126,6 +159,8 @@ def _open_invoices(firm_id: str, internal_id: Optional[str]) -> list[dict]:
                 and i.get("status") in _OPEN_STATUSES
                 and (int(i.get("total_paise", 0)) + int(i.get("debit_note_paise", 0) or 0)
                      - int(i.get("paid_paise", 0)) - int(i.get("credited_paise", 0) or 0)) > 0]
+    if not internal_id:
+        return []
     def make_q():
         # outstanding_paise is a generated column (migration 278) carrying exactly
         # the formula below — total + debit notes − paid − credited. Filtering on it
@@ -133,12 +168,13 @@ def _open_invoices(firm_id: str, internal_id: Optional[str]) -> list[dict]:
         # rather than to every issued/partially_paid invoice in the fee ledger
         # (CLAUDE.md, "Reporting performance"). The Python filter after the fetch is
         # retained: it is what mock mode and older test doubles run on.
-        q = (_db().table("client_sales_invoices").select("*")
-             .eq("firm_id", firm_id).in_("status", list(_OPEN_STATUSES))
-             .gt("outstanding_paise", 0))
-        if internal_id:
-            q = q.eq("client_id", internal_id)
-        return q
+        # client_id unconditionally: the guard above has already answered [] for
+        # a firm with no fee ledger, so there is no longer a branch in which
+        # this predicate is dropped.
+        return (_db().table("client_sales_invoices").select("*")
+                .eq("firm_id", firm_id).eq("client_id", internal_id)
+                .in_("status", list(_OPEN_STATUSES))
+                .gt("outstanding_paise", 0))
     rows = _paginate_all(make_q)
     # Same outstanding formula as assess_invoice — a "partially_paid" invoice
     # whose debit note is the only thing still owed (paid_paise == total_paise)
@@ -240,55 +276,88 @@ def dashboard(firm_id: str, date_from: Optional[str] = None, date_to: Optional[s
     }
 
 
-def send_overdue_reminders(firm_id: str, today: Optional[date] = None) -> dict:
-    """Send a collections reminder for overdue invoices not reminded within the
-    cadence window. Idempotent (last_reminded_at gate). Reuses timeline_service;
-    notification dispatch is best-effort. Portal/WhatsApp mirroring is Batch 7+."""
+def flag_overdue_for_internal_followup(firm_id: str, today: Optional[date] = None) -> dict:
+    """FLAG overdue fee invoices for the practice's own attention. SENDS NOTHING.
+
+    `jobs/scheduler.py`'s own header has always called this "internal reminder
+    logging (no email)" and that is exactly what it does: it writes a timeline
+    entry and advances a counter. No email_service function is reached from
+    here, and a test asserts that on the code rather than on this sentence.
+
+    WHY IT HAS ITS OWN COUNTER (migration 405). It used to advance
+    `reminder_count` / `last_reminded_at`, which are the columns
+    `_dispatch_invoice_reminder` writes AFTER a real send — and
+    `email_service.send_payment_reminder_to_customer` ESCALATES ITS TONE on that
+    number: 1 is a friendly reminder, 2 is "Second reminder", 3 or more is
+    "Final reminder ... significantly overdue". So every night this ran it spent
+    a number the customer never received, and the first genuine email would have
+    opened as a final demand. Production carried two such invoices at
+    `reminder_count = 5` against zero reminder deliveries.
+
+    THE CADENCE GATE THEREFORE READS ITS OWN COLUMN. Reading the emailed one cut
+    both ways: a real send suppressed the internal note for a week, and an
+    internal note suppressed a real send.
+
+    AND IT SAYS WHAT HAPPENED. The timeline entry used to be headed "Payment
+    Reminder Sent" and read "Reminder #5 for invoice X" — a false statement in
+    the client's own timeline about a message nobody received.
+    """
     from services.timeline_service import timeline_service
     today = today or _today()
     internal_id = get_internal_client_id(firm_id)
     cutoff = datetime.now(timezone.utc) - timedelta(days=REMINDER_INTERVAL_DAYS)
-    sent = 0
+    flagged = 0
     for inv in _open_invoices(firm_id, internal_id):
         m = assess_invoice(inv, today)
         if not m["is_overdue"]:
             continue
-        last = inv.get("last_reminded_at")
+        last = inv.get("last_internal_followup_at")
         if last:
             try:
                 if datetime.fromisoformat(str(last).replace("Z", "+00:00")) > cutoff:
-                    continue  # reminded recently — skip (anti-spam)
+                    continue  # flagged recently — skip (anti-spam)
             except ValueError:
                 pass
         now_iso = datetime.now(timezone.utc).isoformat()
-        count = int(inv.get("reminder_count", 0)) + 1
+        count = int(inv.get("internal_followup_count", 0) or 0) + 1
         if _USE_MOCK:
-            inv.update({"last_reminded_at": now_iso, "reminder_count": count})
+            inv.update({"last_internal_followup_at": now_iso,
+                        "internal_followup_count": count})
         else:
             _db().table("client_sales_invoices").update({
-                "last_reminded_at": now_iso, "reminder_count": count,
+                "last_internal_followup_at": now_iso,
+                "internal_followup_count": count,
             }).eq("id", inv["id"]).execute()
         try:
             timeline_service.log(
-                inv.get("client_id", ""), "ai", "Payment Reminder Sent",
-                f"Reminder #{count} for invoice {inv.get('invoice_no','')} "
-                f"(₹{m['outstanding_paise'] // 100:,} overdue {m['days_overdue']}d)",
+                inv.get("client_id", ""), "ai", "Flagged for Collections Follow-up",
+                f"Internal note #{count} for invoice {inv.get('invoice_no','')} "
+                f"(₹{m['outstanding_paise'] // 100:,} overdue {m['days_overdue']}d). "
+                f"Nothing was sent to the customer.",
                 "warning", firm_id=firm_id,
                 entity_type="sales_invoice", entity_id=inv.get("id"),
                 amount_paise=m["outstanding_paise"],
             )
         except Exception:  # pragma: no cover - timeline is best-effort
             pass
-        sent += 1
-    return {"reminders_sent": sent}
+        flagged += 1
+    return {"invoices_flagged_for_followup": flagged}
 
 
 # ── Phase 4.2 — Customer-facing payment reminders (collections only) ──────────
 # These send the CUSTOMER an overdue-payment reminder email (with the invoice PDF)
 # and record the send in invoice_deliveries (kind='reminder'). They are purely
 # informational: NO journal, NO statement, NO GST/cash-flow impact. Distinct from
-# send_overdue_reminders() above, which is the practice's internal fee-collections
-# sweep (timeline-only, Partner dashboard).
+# flag_overdue_for_internal_followup() above, which is the practice's internal
+# fee-collections sweep (timeline-only, Partner dashboard) and emails nobody.
+#
+# THESE TWO ARE THE ONLY WRITERS OF THE TWO PAIRS OF COLUMNS AND THE PAIRS DO NOT
+# CROSS (migration 405): _dispatch_invoice_reminder owns reminder_count /
+# last_reminded_at, the sweep owns internal_followup_count /
+# last_internal_followup_at. They shared one pair until 18-09-2026, which put a
+# number on an email nobody had received -- and send_payment_reminder_to_customer
+# escalates its tone on that number, so three sweep nights turned the customer's
+# FIRST contact into a final demand.
 
 # Only attach_pdf remains. enabled/interval_days/max_reminders governed the
 # automatic bulk cadence run (run_due_reminders), removed entirely: it looped

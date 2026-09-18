@@ -3984,7 +3984,12 @@ export const api = {
     dashboard: (params?: Record<string, string>) =>
       request(`/api/billing/collections/dashboard${params ? "?" + new URLSearchParams(params) : ""}`),
     sweep: () => request("/api/billing/collections/sweep", { method: "POST" }),
-    sendReminders: () => request("/api/billing/collections/send-reminders", { method: "POST" }),
+    // Flags the practice's OWN overdue fee invoices for internal follow-up. It
+    // emails nobody — the customer-facing reminder is salesInvoices remind().
+    // Named `sendReminders` against `/collections/send-reminders` until
+    // 18-09-2026, when both were found to send nothing (migration 405).
+    flagOverdueForFollowup: () =>
+      request("/api/billing/collections/flag-followups", { method: "POST" }),
     unbilledWork: (clientId?: string) =>
       request(`/api/billing/unbilled-work${clientId ? `?client_id=${clientId}` : ""}`),
     listCostRates: () => request("/api/billing/staff-cost-rates"),

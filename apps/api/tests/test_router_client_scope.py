@@ -1209,8 +1209,10 @@ EXEMPT: dict[str, str] = {
     "/api/billing/collections/sweep":
         "firm-wide batch: recompute aging on every open invoice. No single "
         "client addressed, same reasoning as /run above.",
-    "/api/billing/collections/send-reminders":
-        "firm-wide batch reminder sweep. No client_id in the request.",
+    "/api/billing/collections/flag-followups":
+        "firm-wide batch over the practice's OWN fee ledger. No client_id in "
+        "the request, and none is possible: it is scoped to "
+        "firms.internal_client_id and answers nothing where that is NULL.",
     "/api/billing/collections/reminder-settings":
         "firm-level policy (GET and PUT) — cadence/cap/attach-PDF for the "
         "whole firm. No client_id in the request.",

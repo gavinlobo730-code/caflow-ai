@@ -205,16 +205,25 @@ def run_daily_jobs(firm_id: Optional[str] = None, force: bool = False) -> dict:
         else:
             firm_result["invoice_overdue"] = {"skipped": "already ran today"}
 
-        # 4. Collections — AR overdue sweep + reminders (Amendment v1.1 Batch 4).
-        #    Operates on the firm's internal-client fee invoices. Sweep is
-        #    idempotent; reminders are cadence-gated (anti-spam).
+        # 4. Collections — AR overdue sweep + internal follow-up flags
+        #    (Amendment v1.1 Batch 4). Operates on the firm's internal-client FEE
+        #    invoices and NOTHING ELSE: `_open_invoices` answers [] for a firm
+        #    whose `internal_client_id` is NULL rather than widening to every
+        #    client, which is what it used to do. Sweep is idempotent; the flag
+        #    is cadence-gated (anti-spam) on its own column.
+        #
+        #    NEITHER STEP EMAILS ANYBODY, which this header has always said and
+        #    the code did not: the flag used to advance `reminder_count`, the
+        #    column whose number decides whether a real reminder reads as
+        #    friendly, second or FINAL. See migration 405.
         if force or not _already_ran_today("collections", fid):
             t0 = _now_iso()
             try:
-                from services.collections_service import sweep_overdue, send_overdue_reminders
+                from services.collections_service import (
+                    sweep_overdue, flag_overdue_for_internal_followup)
                 swept = sweep_overdue(fid)
-                reminders = send_overdue_reminders(fid)
-                outcome = {**swept, **reminders}
+                flagged = flag_overdue_for_internal_followup(fid)
+                outcome = {**swept, **flagged}
                 firm_result["collections"] = outcome
                 _log_run("collections", fid, "success", outcome, started_at=t0)
             except Exception as e:
