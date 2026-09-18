@@ -188,8 +188,59 @@ def hsn_finding(code: Optional[str], *, line_no: int) -> Optional[Finding]:
     return None
 
 
+#: "Quantity and Unit Quantity Code are mandatory for Goods and optional for
+#: Services." Askable since migration 411 gave `client_sales_invoice_lines` an
+#: `is_service`; before that the column did not exist, so a service line with
+#: no unit and a goods line missing one were the same row.
+#:
+#: THE THIRD STATE IS NOT A FAILURE. `None` means nobody recorded what kind of
+#: supply the line is, and both guesses are wrong in opposite directions —
+#: reading it as goods demands a UQC on every professional's fee line, reading
+#: it as a service waives a particular CGST Rule 46(h) asks for. So it is
+#: reported as unrecorded, in its own sentence, and the CA decides.
+_UNIT_RULE = (
+    "the e-invoice portal makes quantity and Unit Quantity Code mandatory for "
+    "a supply of GOODS and optional for services, and CGST Rule 46(h) asks for "
+    "them on goods")
+
+
+def goods_unit_finding(*, is_service: Optional[bool], unit: Optional[str],
+                       line_no: int) -> Optional[Finding]:
+    """Why the IRP would refuse this line's unit, or None.
+
+    `is_service` is the RESOLVED answer from `domain/gst/goods_or_services`,
+    not the stored column: a SAC is Chapter 99 of the tariff, so the code itself
+    answers for almost every line and reading the column alone would report
+    "nobody said" against `998313`. `None` is the third state — no recorded
+    value AND no code that can say — which this reports rather than resolving.
+
+    The quantity itself is not checked: it is `NUMERIC(10,3) NOT NULL DEFAULT 1`
+    on every line table, so it is never absent, and `domain/quantity` already
+    refuses a fourth decimal at six doors.
+    """
+    field = f"ItemList[{line_no}].Unit"
+    clean = (unit or "").strip()
+    if clean:
+        return None
+    if is_service is True:
+        return None
+    if is_service is False:
+        return Finding(field=field, value="",
+                       reason=(f"no unit of measure on a line recorded as GOODS — "
+                               f"{_UNIT_RULE}."),
+                       source=_SOURCE_ITEMS)
+    return Finding(
+        field=field, value="",
+        reason=(f"no unit of measure, and this line does not say whether it is "
+                f"a supply of goods or of services — {_UNIT_RULE}. Record which "
+                f"it is on the line rather than leaving the portal to decide."),
+        source=_SOURCE_ITEMS)
+
+
 def assess(*, document_number: Optional[str],
            hsn_codes: Sequence[Optional[str]] = (),
+           units: Sequence[Optional[str]] = (),
+           is_service_flags: Sequence[Optional[bool]] = (),
            preceding_document_number: Optional[str] = None) -> list[Finding]:
     """Everything the IRP would refuse about the values this product holds.
 
@@ -213,6 +264,13 @@ def assess(*, document_number: Optional[str],
         found = hsn_finding(code, line_no=i)
         if found:
             out.append(found)
+    # ZIPPED against `units` rather than indexed into it: a caller that knows
+    # the HSN codes and not the units is answered about the codes only, which
+    # is honest rather than reporting a missing unit on a line nobody described.
+    for i, (unit, svc) in enumerate(zip(units, is_service_flags)):
+        found = goods_unit_finding(is_service=svc, unit=unit, line_no=i)
+        if found:
+            out.append(found)
     return out
 
 
@@ -230,13 +288,10 @@ NOT_HELD = {
         "of — so a clean answer here is not a promise of acceptance."),
     "IsServc against the HSN class": (
         "\"If Is Service is selected, then the HSN codes must belong to "
-        "services\" — which needs the master above, and `client_sales_invoice_"
-        "lines` records no is_service at all (the sales-cycle tables do)."),
-    "quantity and UQC on a goods line": (
-        "\"Quantity and Unit Quantity Code are mandatory for Goods and "
-        "optional for Services\" — the same missing is_service decides which "
-        "rule a line is under, so asking it would report every service line "
-        "as a goods line missing a quantity."),
+        "services\" — which needs the HSN master above. Migration 411 gave the "
+        "line an `is_service` and `goods_unit_finding` uses it, so this is the "
+        "half that is still refused, and it is refused on the MASTER rather "
+        "than on the flag."),
     "the payload's own field expressions": (
         "Amounts, dates, phone numbers and e-mail addresses each have a "
         "published expression, and every one of them describes a field in a "

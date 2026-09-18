@@ -819,6 +819,40 @@ change. The code is the authority; keep this file in step with it.
   test asserts each against that file. Two rules that look like one another are
   pinned APART: Sr. 10.3's transport document number admits a leading `0` and
   caps no length, and harmonising it is the tempting mistake.
+- **A LINE SAYS GOODS OR SERVICES, THE CODE USUALLY ANSWERS, AND THE COLUMN IS
+  THE OVERRIDE** (migration 411). `models/invoices.InvoiceLineIn.is_service`
+  was declared, validated and DROPPED: `client_sales_invoice_lines` had no such
+  column, so a caller set it and the INSERT never mentioned it. It matters
+  because the e-invoice portal makes **quantity and UQC mandatory for GOODS and
+  optional for services**, and CGST Rule 46(h) asks for them on goods — so
+  without it a service line with no unit and a goods line missing one were the
+  same row and `irp_validations` could not ask at all.
+  **`domain/gst/goods_or_services.py` IS THE RULE AND IT HAD NO PYTHON TWIN.**
+  A Service Accounting Code is Chapter **99** of the tariff and the HSN of goods
+  runs Chapters 1-98, so a well-formed code answers by itself —
+  `apps/web/lib/invoices/compliance.isServiceCode` has done exactly that since
+  the e-way split was built, as the ONLY implementation in the repository, the
+  same defect SALES-17 and SALES-18 were. `tests/fixtures/goods_or_services.json`
+  pins the two, from the Python side.
+  **THE RECORDED VALUE WINS, THEN THE CODE, THEN `None`** — the
+  `place_of_supply` chain shape. The reverse order would make the column
+  unwritable in practice, since every line carrying an HSN would ignore it; and
+  reading the COLUMN alone (which the router did for one commit, and a negative
+  control caught) reports "nobody said" against a line whose own code reads
+  `998313`. The browser folds the third state into `false` and that is right
+  for ITS caller — the e-way split counts unclassified lines on the HSN being
+  absent — so the fixture records the difference rather than bending either
+  side.
+  **NULLABLE, NO DEFAULT, NO BACKFILL, and the model default moved from `False`
+  to `None`.** Migration 392's sibling columns ARE `NOT NULL DEFAULT false` and
+  that is not an inconsistency: those tables were new, so every row in them was
+  written by a door that sets the value, while every row already in
+  `client_sales_invoice_lines` predates the column — `false` there would assert
+  that every line ever raised was goods. `PurchaseBillLineIn` keeps its `False`
+  default for the same reason in reverse. **Nothing computes money from it**: a
+  test asserts `domain/sales/line_tax` and `gstr1_builder` never mention it,
+  because goods-or-services changes the PLACE OF SUPPLY rules (IGST §§10-13),
+  which is a question about the transaction and not a label on a line.
 - **A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE
   PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY** (SALES-13).
   `invoice_templates` and `email_templates` (migration 126) have been written

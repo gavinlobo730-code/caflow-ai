@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Whether an HSN/SAC code names a supply of SERVICES. Read by BOTH suites:",
+    "apps/api/tests/test_a_line_says_goods_or_services.py and",
+    "apps/web/scripts/the-service-code-rule-is-pinned.test.ts.",
+    "",
+    "A Service Accounting Code is Chapter 99 of the tariff; the HSN of goods runs",
+    "Chapters 1 to 98 and never begins 99. `null` is the third answer and means",
+    "the code cannot say — absent, or not a number — which is a different thing",
+    "from 'not a service'.",
+    "",
+    "apps/web/lib/invoices/compliance.isServiceCode returns a BOOLEAN and folds",
+    "the third state into false, which is right for its own caller (the e-way",
+    "goods/service split counts unclassified lines separately, on the code being",
+    "absent rather than on this function). So the browser column below is what",
+    "that function returns and the python column is the tri-state; where they",
+    "differ the fixture says so, rather than either side being changed to match."
+  ],
+  "cases": [
+    { "code": "998313", "python": true,  "browser": true,  "why": "SAC — information technology consulting" },
+    { "code": "9983",   "python": true,  "browser": true,  "why": "SAC — professional and technical, four digits" },
+    { "code": "99",     "python": true,  "browser": true,  "why": "the chapter itself" },
+    { "code": "8471",   "python": false, "browser": false, "why": "HSN — automatic data processing machines" },
+    { "code": "1001",   "python": false, "browser": false, "why": "HSN — wheat" },
+    { "code": "9801",   "python": false, "browser": false, "why": "HSN chapter 98, project imports — NOT chapter 99" },
+    { "code": "",       "python": null,  "browser": false, "why": "absent: python says nobody can tell, the browser's caller asks elsewhere" },
+    { "code": "9",      "python": null,  "browser": false, "why": "one digit cannot name a chapter" },
+    { "code": "SAC998", "python": null,  "browser": false, "why": "not a number" },
+    { "code": "99.83",  "python": null,  "browser": false, "why": "not a number" },
+    { "code": " 998313 ", "python": true, "browser": true, "why": "trimmed on both sides" }
+  ]
+}

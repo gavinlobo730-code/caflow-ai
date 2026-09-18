@@ -203,11 +203,16 @@ def test_the_Act_side_is_UNTOUCHED_by_this_module():
 
 
 def test_what_is_NOT_held_is_named_and_the_reasons_DIFFER():
-    """Five refusals, each its own sentence. A shared "not implemented" would
+    """Four refusals, each its own sentence. A shared "not implemented" would
     say the wrong thing about most of them — the HSN master is a fact this
-    product cannot hold, and the payload expressions are a decision."""
-    assert len(irp.NOT_HELD) == 5
-    assert len(set(irp.NOT_HELD.values())) == 5
+    product cannot hold, and the payload expressions are a decision.
+
+    It was FIVE until migration 411 gave a sales invoice line an `is_service`:
+    the goods-only quantity rule is built now, and the IsServc-against-the-HSN
+    entry narrowed to the half that is still refused — the MASTER, not the flag.
+    """
+    assert len(irp.NOT_HELD) == 4
+    assert len(set(irp.NOT_HELD.values())) == 4
     assert all(len(v) > 80 for v in irp.NOT_HELD.values())
     joined = " ".join(irp.NOT_HELD.values())
     assert "master" in joined and "GST-32" in joined
@@ -223,17 +228,21 @@ def test_the_payload_is_STILL_refused():
             f"{forbidden} — this module checks values, it does not build a payload"
 
 
-def _served(*, invoice_no, gstin, hsn="998313"):
+def _served(*, invoice_no, gstin, hsn="998313", unit="PCS", is_service=False):
     """The assessment the endpoint actually serves, through the real function.
 
     A guard that only greps the router survives a router that computes the
     findings and throws them away — which is exactly what a first attempt at
     the negative control for this test did by accident.
+
+    The line carries a UNIT and an `is_service` because the default fixture is
+    meant to be CLEAN: the goods-only unit rule fires on a line that records
+    neither, which is correct and is asserted on its own fixtures below.
     """
     from routers.sales_invoices import _irn_assessment
     inv = {"invoice_no": invoice_no, "invoice_date": "2026-06-01",
            "client_id": "C1", "customers": {"gstin": gstin},
-           "lines": [{"hsn_sac": hsn}]}
+           "lines": [{"hsn_sac": hsn, "unit": unit, "is_service": is_service}]}
     return _irn_assessment(inv, "regular")
 
 
@@ -270,3 +279,84 @@ def test_the_router_gates_on_the_supply_limb_in_SOURCE_too():
         "..", "routers", "sales_invoices.py").resolve().read_text()
     assert "irp_validations" in router
     assert 'scope.get("supply_in_scope")' in router
+
+
+# ── the goods-only unit rule, askable since migration 411 ────────────────────
+
+def test_a_GOODS_line_with_no_unit_is_refused():
+    found = irp.goods_unit_finding(is_service=False, unit="", line_no=0)
+    assert found is not None
+    assert "GOODS" in found.reason and "46(h)" in found.reason
+
+
+def test_a_SERVICE_line_with_no_unit_is_FINE():
+    """The portal's own words: mandatory for goods, optional for services. A
+    professional's fee line has no unit and owes none."""
+    assert irp.goods_unit_finding(is_service=True, unit="", line_no=0) is None
+    assert irp.goods_unit_finding(is_service=True, unit=None, line_no=0) is None
+
+
+def test_an_UNRECORDED_kind_is_its_OWN_answer_and_not_either_guess():
+    """Both guesses are wrong in opposite directions — goods demands a UQC on
+    every fee line, services waives one Rule 46(h) asks for. So it says so."""
+    goods = irp.goods_unit_finding(is_service=False, unit="", line_no=0)
+    unknown = irp.goods_unit_finding(is_service=None, unit="", line_no=0)
+    assert unknown is not None
+    assert unknown.reason != goods.reason
+    assert "does not say whether" in unknown.reason
+
+
+def test_a_unit_that_IS_recorded_ends_the_question_whatever_the_kind():
+    for svc in (True, False, None):
+        assert irp.goods_unit_finding(is_service=svc, unit="PCS", line_no=0) is None
+
+
+def test_the_unit_rule_is_asked_THROUGH_the_served_assessment():
+    got = _served(invoice_no="INV-1", gstin="27AAACI1195H1ZM")
+    assert got["irp_findings"] == [], "premise: the fixture line carries a unit"
+    from routers.sales_invoices import _irn_assessment
+    inv = {"invoice_no": "INV-1", "invoice_date": "2026-06-01", "client_id": "C1",
+           "customers": {"gstin": "27AAACI1195H1ZM"},
+           "lines": [{"hsn_sac": "998313", "unit": None, "is_service": False}]}
+    out = _irn_assessment(inv, "regular")["irp_findings"]
+    assert [f["field"] for f in out] == ["ItemList[0].Unit"]
+
+
+def test_a_caller_that_supplies_NO_units_is_answered_about_the_CODES_only():
+    """Zipped rather than indexed: reporting a missing unit on a line nobody
+    described would be a finding about the caller, not about the invoice."""
+    out = irp.assess(document_number="INV-1", hsn_codes=["998313", "998313"])
+    assert out == []
+
+
+def test_the_quantity_itself_is_NOT_checked_and_the_reason_is_recorded():
+    """It is NUMERIC(10,3) NOT NULL DEFAULT 1 on every line table, so it is
+    never absent, and `domain/quantity` already refuses a fourth decimal at six
+    doors. A second check here would fire on nothing."""
+    src = Path(irp.__file__).read_text()
+    assert irp.QUANTITY_DECIMALS_AGREE_WITH_THE_COLUMN == 3
+    assert "NUMERIC(10,3)" in src
+
+
+def test_the_router_RESOLVES_rather_than_reading_the_column_raw():
+    """The distinguishing case, and NC-D found it unguarded.
+
+    A line with `is_service = NULL` and an HSN of `998313` is a SERVICE — the
+    code says so, Chapter 99 of the tariff — so it owes no unit. Reading the
+    stored column alone would answer "nobody said" and report a gap on every
+    professional's fee line, which is the reason `goods_or_services.resolve`
+    exists rather than the router reading `ln["is_service"]`.
+    """
+    from routers.sales_invoices import _irn_assessment
+    def _findings(hsn):
+        inv = {"invoice_no": "INV-1", "invoice_date": "2026-06-01",
+               "client_id": "C1", "customers": {"gstin": "27AAACI1195H1ZM"},
+               "lines": [{"hsn_sac": hsn, "unit": None, "is_service": None}]}
+        return [f["field"] for f in _irn_assessment(inv, "regular")["irp_findings"]]
+
+    assert _findings("998313") == [], \
+        "a SAC with no unit is complete; the router is not resolving from the code"
+    assert _findings("8471") == ["ItemList[0].Unit"], \
+        "an HSN of goods with no unit owes one"
+    assert _findings("") == ["ItemList[0].HsnCd", "ItemList[0].Unit"], \
+        "no code and no unit: two findings, and the unit one says nobody can tell"
