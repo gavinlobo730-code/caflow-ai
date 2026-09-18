@@ -832,6 +832,43 @@ export type StockCountSheet = {
   gaps: string[];
 };
 
+/** INV-04 — one item's units ON HAND, bucketed by how long they have been
+ *  held. Migration 408. Everything here is the server's: the bands, the FIFO
+ *  consumption, the value split and the four caveats. */
+export type StockAgeingItem = {
+  service_catalogue_id: string;
+  name: string;
+  unit: string;
+  /** NUMERIC(10,3) crosses the wire as a STRING and stays one — a quantity
+   *  turned into a float is how a register stops footing. */
+  qty_units: string;
+  /** The carrying amount, which ties to the Inventory control account. */
+  value_paise: number;
+  band_qty: Record<string, string>;
+  band_value_paise: Record<string, number>;
+  oldest_holding_date: string | null;
+  /** Position at or below nil: there is nothing to age, and the bands are
+   *  empty for a REASON rather than because the stock is new. */
+  nothing_on_hand: boolean;
+};
+
+export type StockAgeing = {
+  as_of: string;
+  /** Youngest to oldest. Rendered in THIS order — the server's — because the
+   *  keys do not sort into it alphabetically. */
+  bands: string[];
+  band_labels: Record<string, string>;
+  items: StockAgeingItem[];
+  total_qty_by_band: Record<string, string>;
+  total_value_by_band: Record<string, number>;
+  total_value_paise: number;
+  total_items: number;
+  /** The bands are a convention, ageing is FIFO whatever the cost formula is,
+   *  the value is pro-rated, and no provision is computed. Rendered, never
+   *  re-worded here. */
+  notes: string[];
+};
+
 export type StockCountPostResult = {
   session_id: string;
   reference_no: string;
@@ -2637,6 +2674,16 @@ export const api = {
      *  running totals are chained in insertion order. Migration 363. */
     stockSummary: (params: Record<string, string>) =>
       request(`/api/inventory/stock-summary?${new URLSearchParams(params)}`),
+    /** INV-04 — the units ON HAND bucketed by how long they have been held,
+     *  first-in-first-out. A DIFFERENT question from Days Idle, which is about
+     *  the ITEM: an item selling steadily has a recent last-movement date and
+     *  may still be carrying stock bought three years ago behind the units
+     *  that keep turning over, and those are the AS-2 paragraph 24
+     *  obsolescence the write-down endpoint exists for. Every band, every
+     *  caveat and the value split are the server's. Migration 408. */
+    stockAgeing: (params: Record<string, string>) =>
+      request<ApiResp<StockAgeing>>(
+        `/api/inventory/stock-ageing?${new URLSearchParams(params)}`),
     ledger: (serviceCatalogueId: string, params: Record<string, string>) =>
       request(`/api/inventory/items/${serviceCatalogueId}/ledger?${new URLSearchParams(params)}`),
     adjust: (serviceCatalogueId: string, body: unknown) =>

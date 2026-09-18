@@ -14,11 +14,15 @@
   "verified_on": "2026-09-18",
   "findings": {
     "INV-04": {
-      "status": "partial",
-      "verified_on": "2026-09-17",
-      "why": "the slow/non-moving half is built \u2014 the inventory screen's daysIdle with asAtColumns renders Last Moved / Days Idle (amber at 90, 'never moved' its own state) off migration 363's stock_position_as_at",
-      "reread_on": "2026-09-17",
-      "what_is_left": "stock AGEING proper and movement analysis. domain/inventory/costing.Layer carries quantity and value_paise with NO date, so nothing can bucket units on hand by how long they have been held; the only bucketed inventory report, domain/inventory/batches.BUCKETS, keys on EXPIRY. The 12-09 probe pass asked for this half to be split into its own finding and it never was, so grading it closed absorbed it. Also: the finding's premise limb 'routers/inventory.py exposes four endpoints only' is now false \u2014 the router mounts 21"
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026. Both halves are built and they are different questions. The slow/non-moving half was already there \u2014 Last Moved and Days Idle off migration 363, which asks whether the ITEM has moved. Ageing proper asks about the UNITS: migration 408's `public.stock_ageing_as_at` buckets the units ON HAND by how long each has been held, first-in-first-out, with `domain/reporting/stock_ageing.py` as the mock-mode twin and `tests/test_stock_ageing_parity_pg.py` holding the two identical over eighteen scenarios. That distinction is the point of the build: an item selling steadily has a recent last-movement date and may still be carrying units bought three years ago behind the ones that keep turning over, and those are the AS-2 paragraph 24 obsolescence `/items/{id}/writedown` has always offered with nothing to decide it on. FIFO FOR EVERY CLIENT whatever their AS-2 paragraph 14 cost formula is \u2014 a physical question about the godown, not a cost assignment \u2014 and a test asserts the two modules never read each other. The VALUE in each band is the item's own carrying amount pro-rated by quantity, largest remainder, never the layer's own cost: under the weighted average the layer costs would not sum to the carrying amount and the report would not foot to the Inventories line. The bands are a stated CONVENTION (Schedule III prescribes ageing for trade receivables and payables only) and no provision is computed, because AS-2 paragraph 21 makes net realisable value an estimate of selling price less costs to sell. An item with nothing on hand carries `nothing_on_hand` rather than six zeroes, which would read as a clean bill of health. `GET /api/inventory/stock-ageing` serves it and `StockAgeingPanel` renders it on the client Inventory tab.",
+      "reread_on": "2026-09-18",
+      "what_is_left": "None.",
+      "user_visible_impact": "Closed. The CA can answer 'which stock has not moved in a year' per item and per band, which is the evidence the NRV write-down needs and one of the first things asked in a stock audit.",
+      "commits": [
+        "INV-04 \u2014 how long has the stock on hand been held"
+      ]
     },
     "INV-07": {
       "status": "closed",

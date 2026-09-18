@@ -2948,6 +2948,51 @@ delta at exactly that date. For the same reason a ledger's **Balance column is a
 property of the order it is shown in** and is derived at display time from an
 opening figure, never rendered from the stored chain.
 
+**HOW OLD THE STOCK IS, IS A QUESTION ABOUT THE UNITS AND NOT ABOUT THE ITEM**
+(INV-04, migration 408). Last Moved and Days Idle come off 363 and ask whether
+the ITEM has moved; an item selling steadily has a recent answer and may still
+be carrying units bought three years ago behind the ones that keep turning
+over. Those are the AS-2 paragraph 24 obsolescence `/items/{id}/writedown` has
+always offered with nothing to decide it on. `public.stock_ageing_as_at`
+buckets the units ON HAND first-in-first-out, with
+`domain/reporting/stock_ageing.py` as the mock-mode twin and
+`tests/test_stock_ageing_parity_pg.py` pinning them.
+**THE CONSUMPTION IS AGGREGATE, NOT STEP BY STEP**, which is what makes it
+order-independent the way 363 needs: with `T` the total quantity out and `cum`
+the cumulative quantity in up to a receipt, what survives is
+`min(qty, max(0, cum − T))`, and Σ over the receipts is the position by
+construction. The step-by-step walk agrees whenever the position is
+non-negative and differs only in the oversold case, where it has to invent a
+rule for what a later receipt clears first.
+**AGEING IS FIFO FOR EVERY CLIENT, whatever their cost formula is.** AS-2
+paragraph 14's choice (migration 394) governs what an ISSUE is valued at, not
+which carton was carried out, so a weighted-average client's ageing is the same
+physical answer — and tests assert the two modules never read each other, since
+a batch or a band leaking into costing would make specific identification (AS-2
+paragraph 13) a third cost formula by accident.
+**THE VALUE IS THE CARRYING AMOUNT PRO-RATED BY QUANTITY, never the layer's own
+cost.** Under the weighted average the value that LEFT was the blended figure,
+so the surviving layers' costs do not sum to the carrying amount — and a stock
+ageing report whose total disagrees with the Inventories line is worse than no
+report, because somebody will foot it. Largest remainder, so the parts sum to
+the whole exactly.
+**The six bands are a stated CONVENTION** — Schedule III's ageing schedules
+(G.S.R. 207(E)) reach trade receivables and payables only and AS-2 sets none —
+and **no provision is computed**, because AS-2 paragraph 21 makes net
+realisable value an estimate of selling price less the costs to complete and
+sell, a fact about the market no ledger holds. Three more refusals: nothing is
+bucketed by godown or batch (`domain/inventory/batches.py` already ages by
+EXPIRY, which is the other question), an item with **nothing on hand carries
+`nothing_on_hand` rather than six zeroes**, which would read as a clean bill of
+health beside a negative quantity, and an item whose position netted to nil is
+still reported, 363's rule about a report that silently omits rows.
+⚠️ **The FIFO tie-break on the row id is DETERMINISM, not correctness**, and
+the difference is recorded because the obvious claim is wrong: two receipts
+sharing a `movement_date` share a BAND by construction, so whichever is
+consumed first the figures are identical. A negative control that dropped the
+key PASSED, which is how this was found. It is kept and pinned so the two
+halves walk the same layers if a later change makes layer identity matter.
+
 **AND WHAT THAT RECEIPT COSTS INCLUDES THE TAX NOBODY CAN RECLAIM.** AS-2 (and
 Ind AS 2) paragraph 6 puts "duties and taxes (OTHER THAN THOSE SUBSEQUENTLY
 RECOVERABLE by the enterprise from the taxing authorities)" in the cost of

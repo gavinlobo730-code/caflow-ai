@@ -25,6 +25,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { StockCountSheetPanel } from "@/components/inventory/StockCountSheet";
 import { CostFormulaPanel } from "@/components/inventory/CostFormulaPanel";
 import { LocationsAndBatches } from "@/components/inventory/LocationsAndBatches";
+import { StockAgeingPanel } from "@/components/inventory/StockAgeing";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 interface StockItem {
@@ -421,6 +422,16 @@ export default function InventoryPage() {
             got". The as-at date is the register's own, so the two agree. */}
         <div className="mb-4">
           <LocationsAndBatches clientId={clientId} asOf={asAt || todayLocalISO()} />
+        </div>
+
+        {/* INV-04 — how long the units ON HAND have been held. Beside
+            Locations and Batches rather than in the register's own columns,
+            because it is six bands per item and the register is already wide;
+            and BELOW it for the same reason that one sits below the register —
+            "what do I hold" first, "how old is it" second. The as-at date is
+            the register's own, so the three agree. */}
+        <div className="mb-4">
+          <StockAgeingPanel clientId={clientId} asOf={asAt || todayLocalISO()} />
         </div>
         <DataTable
           data={items}
