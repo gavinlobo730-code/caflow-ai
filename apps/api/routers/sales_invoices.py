@@ -22,6 +22,7 @@ from core.authz import assert_client_access, filter_by_client
 from core.permissions import rbac
 from services.audit_service import log_event
 from domain.gst import place_of_supply
+from domain.gst import inter_state as _inter_state
 from domain.gst import supply_classification
 from domain.gst.validator import VALID_STATE_CODES
 from services.period_validation_service import period_validation_service
@@ -809,14 +810,22 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         supplier_state=client_state_code,
     )
 
-    # CGST Act §8: intra-state if both in the same state, inter-state otherwise.
-    # `is_inter_state` on the request is honoured as an override where it is
-    # explicitly true, which is what the mock branch has always done and what
-    # an export (place of supply 96) relies on.
-    is_interstate = bool(
-        data.get("is_inter_state", False)
-        or (client_state_code and effective_supply_state
-            and client_state_code != effective_supply_state)
+    # WHETHER THIS IS INTER-STATE IS NOT ONLY A QUESTION ABOUT STATES.
+    # This was `client_state_code != effective_supply_state` with the request's
+    # own flag OR-ed in front — CGST §8(1), right for an ordinary domestic
+    # supply and wrong for the two classes IGST §7(5) makes inter-State by
+    # statute whatever the geography. A supply to an SEZ unit inside the
+    # supplier's own state compared EQUAL and booked CGST + SGST; an export to
+    # a buyer with no GSTIN and no state fell through `recipient_place_of_supply`
+    # to the SUPPLIER's state, compared equal, and did the same.
+    # `domain/gst/inter_state` asks the treatment first and the states second,
+    # and carries the sentence saying which rule decided.
+    _supply_treatment = _gst_treatment_for(data)
+    is_interstate, _inter_state_reason = _inter_state.is_inter_state(
+        gst_treatment=_supply_treatment,
+        supplier_state_code=client_state_code,
+        place_of_supply=effective_supply_state,
+        stated=data.get("is_inter_state"),
     )
 
     # ── Multi-Currency (Phase 3): resolve + freeze the document currency ──────
@@ -1441,6 +1450,29 @@ def _irn_assessment(inv: dict, treatment: str, db=None,
         invoice_date=str(inv.get("invoice_date") or ""),
         highest_aato_paise=highest,
     ).as_dict()
+
+
+def _gst_treatment_for(data: dict) -> str:
+    """The treatment of a document being CREATED, before any tax is computed.
+
+    `_gst_treatment` reads a STORED invoice and passes its `igst_paise`, which
+    is what tells an export made on payment of tax from one made under an LUT.
+    At create time that figure does not exist yet — it is what the caller is
+    about to compute — so this passes zero, and the two export variants and the
+    two SEZ variants collapse into one another.
+
+    That is sound for the one question this feeds: IGST §7(5) makes BOTH export
+    variants and BOTH SEZ variants inter-State, so the limb that is being
+    guessed cannot change the answer. It would NOT be sound for anything that
+    turns on which limb applies, which is why this is its own function with its
+    own name rather than a default argument on the other one.
+    """
+    from domain.gst.treatment import treatment_for_invoice
+    return treatment_for_invoice(
+        supply_type=data.get("supply_type"),
+        invoice_type=data.get("invoice_type"),
+        igst_paise=0,
+    )
 
 
 def _gst_treatment(inv: dict) -> str:
