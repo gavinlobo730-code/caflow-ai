@@ -21,6 +21,7 @@ from domain.income_tax.capital_gains_engine import (
     ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
 from domain.income_tax.assessee import AssesseeKind, assessee_kind_for_entity_type
+from domain.income_tax.chapter_vi_a import ChapterVIAClaims
 from domain.income_tax import msmed_interest as _msmed
 from domain.income_tax import reinvestment_exemption as rex
 from services import capital_gain_exemption_service as cgx
@@ -67,6 +68,88 @@ class S80DInput(BaseModel):
     self_family_is_senior: bool = False
     parents_premium_paise: int = 0
     parents_is_senior: bool = False
+    #: A PREVENTIVE HEALTH CHECK-UP is allowed WITHIN the ceiling, not on top
+    #: of it — ₹5,000 of the ₹25,000 or ₹50,000. It is also the one part of
+    #: §80D that may be paid in cash.
+    self_family_preventive_paise: int = 0
+    parents_preventive_paise: int = 0
+    #: MEDICAL EXPENDITURE on an UNINSURED senior citizen, against the same
+    #: ceiling. The route a CA needs most often — an eighty-year-old parent no
+    #: insurer will cover — and there was no field for it, so the spend went
+    #: into the unlabelled "other deductions" figure with no cap at all.
+    self_family_medical_paise: int = 0
+    parents_medical_paise: int = 0
+
+
+def _chapter_vi_a_claims(inp: "ChapterVIAInput") -> ChapterVIAClaims:
+    """The API shape into the domain shape, with the one DATE parsed here.
+
+    The boundary parses; the rule does not. `housing_loan_sanctioned_on`
+    arrives as a string and `chapter_vi_a.housing_loan_section` takes a `date`,
+    so a malformed one becomes None — which that function reads as "no date
+    given" and answers by allowing NOTHING, because §80EE's and §80EEA's limits
+    differ by ₹1,00,000 and there is no safe default between them.
+    """
+    from datetime import date as _date
+
+    sanctioned = None
+    raw = (inp.housing_loan_sanctioned_on or "").strip()
+    if raw:
+        try:
+            sanctioned = _date.fromisoformat(raw[:10])
+        except ValueError:
+            sanctioned = None
+    return ChapterVIAClaims(
+        education_loan_interest_paise=inp.education_loan_interest_paise,
+        education_loan_year=inp.education_loan_year,
+        housing_loan_extra_interest_paise=inp.housing_loan_extra_interest_paise,
+        housing_loan_sanctioned_on=sanctioned,
+        has_disabled_dependant=inp.has_disabled_dependant,
+        dependant_disability_is_severe=inp.dependant_disability_is_severe,
+        assessee_is_disabled=inp.assessee_is_disabled,
+        assessee_disability_is_severe=inp.assessee_disability_is_severe,
+        specified_disease_spend_paise=inp.specified_disease_spend_paise,
+        specified_disease_reimbursed_paise=inp.specified_disease_reimbursed_paise,
+        patient_is_senior=inp.patient_is_senior,
+        rent_paid_paise=inp.rent_paid_paise,
+        receives_hra=inp.receives_hra,
+    )
+
+
+class ChapterVIAInput(BaseModel):
+    """§80E, §80EE/§80EEA, §80DD, §80DDB, §80U and §80GG (IT-32).
+
+    Everything here used to be lumped into `other_deductions_paise` — one
+    unlabelled figure with no ceiling and no section attribution, which is
+    exactly the set of deductions most likely to be questioned.
+    `domain/income_tax/chapter_vi_a.py` is the authority for every limit.
+
+    The two DISABILITY facts are booleans rather than a percentage on purpose:
+    the Act's test is a CERTIFIED band (40% and 80%), a typed 79 and a typed 80
+    differ by ₹50,000 of deduction, and it is the Form 10-IA certificate that
+    decides — not a number a form should invite somebody to guess at.
+    """
+    education_loan_interest_paise: int = 0
+    #: Which of §80E's eight assessment years this is. Omitting it is allowed
+    #: and NAMED: the deduction runs out and nothing here counts the years.
+    education_loan_year: Optional[int] = Field(default=None, ge=1)
+    housing_loan_extra_interest_paise: int = 0
+    #: §80EE and §80EEA are shut windows keyed on the SANCTION date, which fixes
+    #: the section for the life of the loan. Their limits differ by ₹1,00,000,
+    #: so an absent date allows NOTHING rather than one being assumed.
+    housing_loan_sanctioned_on: Optional[str] = None
+    has_disabled_dependant: bool = False
+    dependant_disability_is_severe: bool = False
+    assessee_is_disabled: bool = False
+    assessee_disability_is_severe: bool = False
+    specified_disease_spend_paise: int = 0
+    specified_disease_reimbursed_paise: int = 0
+    #: The PATIENT's age band sets §80DDB's ceiling, not the assessee's.
+    patient_is_senior: bool = False
+    rent_paid_paise: int = 0
+    #: §80GG is only for an assessee who receives NO house rent allowance.
+    #: Where HRA is received, §10(13A) is the relief and is already computed.
+    receives_hra: bool = False
 
 
 class Donation80GInput(BaseModel):
@@ -208,6 +291,7 @@ class ComputeITRRequest(BaseModel):
     is_government_employee: bool = False
     salary_for_80ccd2_paise: Optional[int] = None
     s80d: S80DInput = Field(default_factory=S80DInput)
+    chapter_vi_a: ChapterVIAInput = Field(default_factory=ChapterVIAInput)
     donations_80g: list[Donation80GInput] = Field(default_factory=list)
     savings_interest_80tta_paise: int = 0
     hra: HRAInput = Field(default_factory=HRAInput)
@@ -310,7 +394,12 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             self_family_is_senior=req.s80d.self_family_is_senior,
             parents_premium_paise=req.s80d.parents_premium_paise,
             parents_is_senior=req.s80d.parents_is_senior,
+            self_family_preventive_paise=req.s80d.self_family_preventive_paise,
+            parents_preventive_paise=req.s80d.parents_preventive_paise,
+            self_family_medical_paise=req.s80d.self_family_medical_paise,
+            parents_medical_paise=req.s80d.parents_medical_paise,
         ),
+        chapter_vi_a=_chapter_vi_a_claims(req.chapter_vi_a),
         donations_80g=[
             Donation80G(
                 description=d.description,
@@ -378,6 +467,15 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             "s80tta_paise": result.deduction_80tta_paise,
             "hra_paise": result.deduction_hra_paise,
             "s24b_paise": result.deduction_24b_paise,
+            # IT-32. §80E, §80EE/§80EEA, §80DD, §80DDB, §80U and §80GG, ONE
+            # LINE EACH — what was claimed, what was allowed, and the sentence
+            # naming the ceiling that bit. A total alone would restate exactly
+            # what `other_deductions_paise` was: these are the deductions most
+            # likely to be questioned, and the CA is the one who has to defend
+            # the working. `restricted_paise` on a line is the part the section
+            # did NOT allow, which is invisible in any total.
+            "chapter_vi_a_paise": result.chapter_vi_a_paise,
+            "chapter_vi_a_lines": result.chapter_vi_a_lines,
         },
         "tax": {
             "tax_before_cess_paise": result.tax_before_cess_paise,

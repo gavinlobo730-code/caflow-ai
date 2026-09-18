@@ -27,6 +27,8 @@ from domain.income_tax.loss_set_off import (
     apply_brought_forward_losses, BroughtForwardLoss,
 )
 from domain.income_tax.minimum_tax import apply_minimum_tax, compute_amt, compute_mat
+from domain.income_tax.chapter_vi_a import (
+    ChapterVIAClaims, add_section_80gg, compute as compute_chapter_vi_a)
 
 
 # ── Constants (all paise) ─────────────────────────────────────────────────────
@@ -66,6 +68,16 @@ LIMIT_80D_SELF_PAISE: int = 25_000 * 100
 LIMIT_80D_SELF_SENIOR_PAISE: int = 50_000 * 100
 LIMIT_80D_PARENTS_PAISE: int = 25_000 * 100
 LIMIT_80D_PARENTS_SENIOR_PAISE: int = 50_000 * 100
+
+# §80D's PREVENTIVE HEALTH CHECK-UP sub-limit (IT-32). ₹5,000, and it is a
+# SUB-limit rather than an addition: the check-up is allowed WITHIN the ₹25,000
+# or ₹50,000 above, not on top of it. Reading it as extra over-claims by up to
+# ₹5,000 per person on a deduction every salaried return carries.
+#
+# It is deliberately NOT a separate DeductionLine: it does not change the
+# section's ceiling, only what may be counted towards it, so a reader looking
+# for "what did §80D allow" must see one figure.
+LIMIT_80D_PREVENTIVE_PAISE: int = 5_000 * 100
 
 # IT Act Section 80TTA (savings interest for non-senior)
 LIMIT_80TTA_PAISE: int = 10_000 * 100
@@ -117,16 +129,64 @@ class Deductions80C:
 
 @dataclass
 class Deductions80D:
-    """IT Act Section 80D — health insurance premiums."""
+    """IT Act Section 80D — health insurance, and TWO ROUTES THAT ARE NOT IT.
+
+    ⚠️ Every figure here is `[S]`-graded; each is pinned exactly by
+    `tests/test_a_chapter_vi_a_deduction_has_its_own_section.py`.
+
+    THE PREVENTIVE HEALTH CHECK-UP IS INSIDE THE CEILING, NOT ON TOP OF IT.
+    ₹5,000 of the ₹25,000 (or ₹50,000) may be spent on a check-up, and it is
+    the one part of §80D that may be paid in cash. Adding it to the ceiling
+    rather than counting it within over-claims by up to ₹5,000 a head.
+
+    AND A SENIOR CITIZEN WITH NO POLICY MAY CLAIM THE MEDICAL EXPENDITURE
+    ITSELF (IT-32). Where no insurance is in force on a senior citizen, actual
+    medical expenditure on them counts against the SAME ₹50,000 ceiling. That
+    is the route a CA needs most often — an eighty-year-old parent no insurer
+    will cover — and there was no field for it, so the spend went into the
+    unlabelled "other deductions" figure with no cap at all.
+
+    The two are mutually limited, not cumulative: expenditure and premium share
+    one ceiling per person, which is why `eligible_paise` sums them BEFORE
+    capping rather than capping each.
+    """
     self_family_premium_paise: int = 0
     self_family_is_senior: bool = False
     parents_premium_paise: int = 0
     parents_is_senior: bool = False
+    #: Preventive health check-up, WITHIN the ceiling. Split self/parents
+    #: because each side has its own ceiling to be counted against.
+    self_family_preventive_paise: int = 0
+    parents_preventive_paise: int = 0
+    #: Medical expenditure on an UNINSURED senior. Ignored where the same side
+    #: carries a premium — the section allows it only where no policy is in
+    #: force — and ignored where that side is not a senior citizen.
+    self_family_medical_paise: int = 0
+    parents_medical_paise: int = 0
+
+    def _side_paise(self, premium: int, preventive: int, medical: int,
+                    is_senior: bool, limit: int) -> int:
+        # The check-up is counted WITHIN the ceiling, and only up to ₹5,000.
+        counted = premium + min(preventive, LIMIT_80D_PREVENTIVE_PAISE)
+        # Medical expenditure only where the person is a SENIOR and NO policy
+        # is in force on them. Both conditions, because the section allows it
+        # in place of a premium and not beside one.
+        if is_senior and premium == 0:
+            counted += medical
+        return min(counted, limit)
 
     def eligible_paise(self) -> int:
         self_limit = LIMIT_80D_SELF_SENIOR_PAISE if self.self_family_is_senior else LIMIT_80D_SELF_PAISE
         parents_limit = LIMIT_80D_PARENTS_SENIOR_PAISE if self.parents_is_senior else LIMIT_80D_PARENTS_PAISE
-        return min(self.self_family_premium_paise, self_limit) + min(self.parents_premium_paise, parents_limit)
+        return (
+            self._side_paise(self.self_family_premium_paise,
+                             self.self_family_preventive_paise,
+                             self.self_family_medical_paise,
+                             self.self_family_is_senior, self_limit)
+            + self._side_paise(self.parents_premium_paise,
+                               self.parents_preventive_paise,
+                               self.parents_medical_paise,
+                               self.parents_is_senior, parents_limit))
 
 
 # IT Act Section 80G(4) — the qualifying limit. Donations in the "subject to
@@ -407,6 +467,12 @@ class ITRComputeRequest:
     savings_interest_80tta_paise: int = 0
     hra: HRADetails = field(default_factory=HRADetails)
     home_loan_interest_24b_paise: int = 0
+    #: §80E, §80EE/§80EEA, §80DD, §80DDB, §80U and §80GG, EACH WITH ITS OWN
+    #: LIMIT (IT-32). Everything in here used to go through
+    #: `other_deductions_paise` — one unlabelled figure with no ceiling and no
+    #: section — which is exactly the set of deductions most likely to be
+    #: questioned. domain/income_tax/chapter_vi_a.py is the authority.
+    chapter_vi_a: "ChapterVIAClaims" = field(default_factory=lambda: ChapterVIAClaims())
     other_deductions_paise: int = 0
 
     # TDS already deducted (for net payable computation)
@@ -434,6 +500,10 @@ class ITRComputeResult:
     deduction_80d_paise: int = 0
     deduction_80g_paise: int = 0
     deduction_80tta_paise: int = 0
+    #: One line per section claimed, with what limited it — the audit trail
+    #: `other_deductions_paise` could never carry.
+    chapter_vi_a_lines: list = field(default_factory=list)
+    chapter_vi_a_paise: int = 0
     deduction_hra_paise: int = 0
     deduction_24b_paise: int = 0
     standard_deduction_paise: int = 0
@@ -786,6 +856,18 @@ class ITREngine:
             result.deduction_24b_paise = d24b
             head_reliefs += d24b
 
+            # ── Chapter VI-A BY SECTION, each with its own limit (IT-32) ──
+            #
+            # §80E, §80EE/§80EEA, §80DD, §80DDB and §80U. Every one of these
+            # used to go through `other_deductions_paise` below — one
+            # unlabelled figure, uncapped and unattributed — which is exactly
+            # the set a CA is most often asked to substantiate.
+            #
+            # §80GG is NOT here: its ceiling is a percentage of income after
+            # every other Chapter VI-A deduction, so it is added below beside
+            # §80G, which takes its base the same way and for the same reason.
+            chvia = compute_chapter_vi_a(req.chapter_vi_a)
+
             # ANYTHING ELSE THE CA CLAIMS, WITH NO SECTION ATTACHED.
             #
             # This IS Chapter VI-A — it is the catch-all for the heads this
@@ -846,6 +928,25 @@ class ITREngine:
             # inventing a figure nobody supplied would move the ceiling in
             # the direction that over-claims. If either is ever added as an
             # input it belongs in this subtraction.
+            adjusted_gti = max(0, ordinary_income - head_reliefs - deductions)
+
+            # §80GG BEFORE §80G, and the order is the Act's rather than a
+            # preference. §80GG's own limbs are 25% of "total income" and rent
+            # over 10% of it, where that figure is gross total income reduced
+            # by every OTHER Chapter VI-A deduction — and §80G(4)'s ceiling is
+            # in turn reduced by "any amount in respect of which the assessee
+            # is entitled to a deduction under any other provision of this
+            # Chapter", which §80GG now is. Computing §80G first would leave
+            # §80GG out of its base and over-state the donation ceiling.
+            add_section_80gg(chvia, req.chapter_vi_a, adjusted_gti)
+            result.chapter_vi_a_lines = [l.to_dict() for l in chvia.lines]
+            result.chapter_vi_a_paise = chvia.total_allowed_paise
+            deductions += chvia.total_allowed_paise
+            result.warnings.extend(chvia.gaps)
+            # The caveats travel too: every figure in that module is
+            # `[S]`-graded, and a working that does not say so reads as checked.
+            result.warnings.extend(chvia.caveats)
+
             adjusted_gti = max(0, ordinary_income - head_reliefs - deductions)
             d80g, warnings_80g = compute_80g_deduction(req.donations_80g, adjusted_gti)
             result.deduction_80g_paise = d80g
