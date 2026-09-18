@@ -103,9 +103,16 @@ def test_the_served_shape_is_the_whole_assessment():
         "verdict", "supply_in_scope", "supply_reason", "threshold_paise",
         "threshold_citation", "turnover_paise", "turnover_exceeds",
         "turnover_unknown", "reason", "gaps",
+        # GST-32: what the PORTAL would refuse, beside whether Rule 48(4)
+        # requires the IRN at all. Two authorities on one payload — the Act's
+        # scope test and the IRP's own acceptance rules — and the panel has to
+        # be able to tell them apart, so they are separate keys rather than
+        # more entries in `gaps`.
+        "irp_findings",
     }, sorted(got)
     assert isinstance(got["reason"], str) and got["reason"]
     assert isinstance(got["gaps"], list)
+    assert isinstance(got["irp_findings"], list)
 
 
 def test_the_turnover_is_read_from_the_register_not_defaulted_to_zero():

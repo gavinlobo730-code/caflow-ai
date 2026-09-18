@@ -97,6 +97,59 @@ def _files():
                 yield path, text
 
 
+#: A PROSE MENTION IS NOT A READ, and the guard used to say otherwise.
+#:
+#: This scanned the whole file for the table's name, so naming it in a COMMENT
+#: as the cautionary example it is — "a constant whose name promises to be the
+#: authority and which nothing reads is the tds_section_limits shape" — failed
+#: the very guard that documentation exists to keep true. That is the "a guard
+#: states one SPELLING of its own rule" shape this repository has now fixed six
+#: times, and it pushes the next author into deleting the comment rather than
+#: the read.
+#:
+#: What a READ looks like is a string literal in executable code —
+#: db.table("…"), a from("…") in the browser, a SELECT in SQL — and every one
+#: of those survives this. The premise test below is what stops the stripper
+#: quietly making the scan vacuous.
+_PY_DOCSTRING = re.compile(r'("""|\'\'\')(?:(?!\1)[\s\S])*\1')
+_BLOCK_COMMENT = re.compile(r'/\*[\s\S]*?\*/')
+_LINE_COMMENT = re.compile(r'^[ \t]*(?:#|//|--).*$', re.M)
+_TRAILING_COMMENT = re.compile(r'(?:#|//|--)[^\n"\']*$', re.M)
+
+
+def _without_prose(body: str) -> str:
+    """The file with its comments and docstrings removed.
+
+    Docstrings FIRST: a `#` inside one is not a comment, and stripping line
+    comments before them would cut a docstring in half and leave its closing
+    quotes behind for the next pattern to misread.
+    """
+    body = _PY_DOCSTRING.sub(" ", body)
+    body = _BLOCK_COMMENT.sub(" ", body)
+    body = _LINE_COMMENT.sub(" ", body)
+    return _TRAILING_COMMENT.sub(" ", body)
+
+
+def test_the_strip_does_not_hide_a_real_read():
+    """The premise. Every shape a real read takes must survive the stripper,
+    and every shape prose takes must not."""
+    for real in (
+        'db.table("%s").select("*")' % TABLE,
+        "supabase.from('%s')" % TABLE,
+        "SELECT section FROM public.%s;" % TABLE,
+        'TABLES = ["%s"]' % TABLE,
+    ):
+        assert TABLE in _without_prose(real), real
+    for prose in (
+        '"""A comment naming %s."""' % TABLE,
+        "# %s is the trap\n" % TABLE,
+        "-- %s is dead\n" % TABLE,
+        "/* %s */" % TABLE,
+        "x = 1  # see %s\n" % TABLE,
+    ):
+        assert TABLE not in _without_prose(prose), prose
+
+
 def test_no_code_reads_the_dead_rate_master():
     offenders = []
     for path, text in _files():
@@ -108,7 +161,7 @@ def test_no_code_reads_the_dead_rate_master():
             body = path.read_text(errors="ignore")
         except OSError:
             continue
-        if TABLE in body:
+        if TABLE in _without_prose(body):
             offenders.append(text)
     assert offenders == [], (
         f"public.{TABLE} is seeded with pre-Finance-Act-2025 thresholds and "

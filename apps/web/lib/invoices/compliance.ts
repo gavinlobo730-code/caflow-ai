@@ -288,6 +288,24 @@ export const IRN_GSTIN_MALFORMED =
   "treated as B2B, which is the direction that cannot omit a required IRN — " +
   "correct the customer's GSTIN.";
 
+/** One value the e-invoice portal would refuse, in the server's wire spelling.
+ *
+ *  A SECOND AUTHORITY, NOT MORE `gaps` (GST-32). `gaps` are about Rule 48(4) —
+ *  what this module could not decide about whether an IRN is owed. These are
+ *  the IRP's own published acceptance rules, which are STRICTER than the Act:
+ *  its `Document_Num` expression takes a first character of a letter or 1-9
+ *  only, so `0001` is a lawful CGST Rule 46(b) number the portal rejects.
+ *  `domain/gst/irp_validations.py` is the authority and there is deliberately
+ *  no mirror of it here — this is a fact about a portal, not about an invoice,
+ *  and the browser has nothing to decide. */
+export interface ServedIrpFinding {
+  /** The IRP's own name for the field, so it lines up with the portal's error. */
+  field: string;
+  value: string;
+  reason: string;
+  source: string;
+}
+
 /** The server's own answer, in its wire spelling. */
 export interface ServedIrnScope {
   verdict: "required" | "not_required";
@@ -300,6 +318,7 @@ export interface ServedIrnScope {
   turnover_unknown: boolean;
   reason: string;
   gaps: string[];
+  irp_findings?: ServedIrpFinding[];
 }
 
 export interface IrnScope {
@@ -313,6 +332,10 @@ export interface IrnScope {
   turnoverUnknown: boolean;
   reason: string;
   gaps: string[];
+  /** Empty where the backend has not redeployed, which reads the same as a
+   *  document with nothing wrong — safe, because these only ever ADD a
+   *  warning to a verdict the Act's own rule has already decided. */
+  irpFindings: ServedIrpFinding[];
 }
 
 /** The served answer in this module's own vocabulary, or null where the
@@ -330,6 +353,7 @@ export function fromServedIrn(served: ServedIrnScope | null | undefined): IrnSco
     turnoverUnknown: served.turnover_unknown,
     reason: served.reason,
     gaps: served.gaps ?? [],
+    irpFindings: served.irp_findings ?? [],
   };
 }
 
@@ -412,6 +436,14 @@ export function assessIrnScope(input: IrnScopeInput): IrnScope {
     verdict: "not_required", supplyInScope: false, supplyReason: "",
     thresholdPaise: null, thresholdCitation: "", turnoverPaise: null,
     turnoverExceeds: null, turnoverUnknown: false, reason: "", gaps: [],
+    // ALWAYS EMPTY IN THE FALLBACK, and that is the honest answer rather than
+    // a gap: whether the e-invoice PORTAL would accept a value is a fact about
+    // the portal's own published rules, which live in
+    // `domain/gst/irp_validations.py` and are deliberately not mirrored here.
+    // This function exists for the window where the browser has redeployed
+    // ahead of the backend; in that window there is no served answer, and
+    // inventing one would be the second implementation SALES-18 removed.
+    irpFindings: [],
   };
 
   // ── The SUPPLY limb. The treatment is asked FIRST: an export or an SEZ

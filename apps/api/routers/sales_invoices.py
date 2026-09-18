@@ -1452,6 +1452,7 @@ def _irn_assessment(inv: dict, treatment: str, db=None,
     `domain/gst/treatment` is the one authority for what kind of supply an
     invoice is (SALES-19) and `get_invoice` has already asked it.
     """
+    from domain.gst import irp_validations as _irp_validations
     from domain.gst.irn_scope import assess
 
     highest = None
@@ -1462,7 +1463,7 @@ def _irn_assessment(inv: dict, treatment: str, db=None,
         )
         highest = highest_turnover_within_rule_48_4(
             db, firm_id, str(client_id), str(inv.get("invoice_date") or ""))
-    return assess(
+    scope = assess(
         treatment=treatment,
         # The RECIPIENT's registration, which is what the supply limb turns on
         # for an ordinary domestic supply. The embed is the customer row.
@@ -1470,6 +1471,27 @@ def _irn_assessment(inv: dict, treatment: str, db=None,
         invoice_date=str(inv.get("invoice_date") or ""),
         highest_aato_paise=highest,
     ).as_dict()
+    # WHAT THE PORTAL WOULD REFUSE, BESIDE WHETHER IT MUST BE ASKED (GST-32).
+    #
+    # Rule 48(4) says WHICH supplies need an IRN; `domain/gst/irp_validations`
+    # is the separate, stricter authority for whether the IRP would accept the
+    # values this one carries — its published `Document_Num` expression admits
+    # a first character of a letter or 1-9 only, so `0001` is a lawful Rule
+    # 46(b) number the portal refuses, and `sales_numbering_service` will
+    # suggest exactly that to a firm with an empty prefix.
+    #
+    # ASKED ONLY WHERE THE SUPPLY LIMB IS IN SCOPE, which is `irn_scope`'s own
+    # short-circuit: a B2C invoice never reaches an IRP, so reporting its
+    # number format would put a portal's rule on every retail document. The
+    # TURNOVER limb is deliberately not a gate — it only warns, and a client
+    # about to cross the threshold wants the series fixed before they do.
+    scope["irp_findings"] = (
+        [f.__dict__ for f in _irp_validations.assess(
+            document_number=inv.get("invoice_no"),
+            hsn_codes=[(ln.get("hsn_sac") or "") for ln in (inv.get("lines") or [])],
+        )]
+        if scope.get("supply_in_scope") else [])
+    return scope
 
 
 def _gst_treatment_for(data: dict) -> str:

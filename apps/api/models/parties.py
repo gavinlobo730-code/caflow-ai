@@ -311,6 +311,20 @@ class CustomerUpdateIn(BaseModel):
             err = validate_gstin(self.gstin)
             if err:
                 errors.append(err)
+            elif self.state_code and self.gstin[:2] != self.state_code:
+                # THE CROSS-CHECK THE CREATE DOOR HAS ALWAYS HAD. CGST §25
+                # makes a GSTIN's first two characters its registration's
+                # state, so a party carrying both and disagreeing has one of
+                # them wrong — and which one is not this model's to decide.
+                #
+                # ⚠️ IT REACHES ONLY WHAT THIS REQUEST CARRIES. A PATCH sending
+                # a new GSTIN and no state_code is compared against nothing,
+                # because the model never sees the stored row; the same is true
+                # the other way round. Naming that is the honest half: closing
+                # it means a read inside the service, which is a different
+                # change from a field validator.
+                errors.append(f"GSTIN state code '{self.gstin[:2]}' does not "
+                              f"match state_code '{self.state_code}'.")
         if self.pan:
             # IT Act §139A: PAN is canonically uppercase — same normalization
             # as GSTIN above.
@@ -547,6 +561,20 @@ class VendorUpdateIn(BaseModel):
             err = validate_gstin(self.gstin)
             if err:
                 errors.append(err)
+            elif self.state_code and self.gstin[:2] != self.state_code:
+                # THE CROSS-CHECK THE CREATE DOOR HAS ALWAYS HAD. CGST §25
+                # makes a GSTIN's first two characters its registration's
+                # state, so a party carrying both and disagreeing has one of
+                # them wrong — and which one is not this model's to decide.
+                #
+                # ⚠️ IT REACHES ONLY WHAT THIS REQUEST CARRIES. A PATCH sending
+                # a new GSTIN and no state_code is compared against nothing,
+                # because the model never sees the stored row; the same is true
+                # the other way round. Naming that is the honest half: closing
+                # it means a read inside the service, which is a different
+                # change from a field validator.
+                errors.append(f"GSTIN state code '{self.gstin[:2]}' does not "
+                              f"match state_code '{self.state_code}'.")
         if self.pan:
             # IT Act §139A: PAN is canonically uppercase — same normalization
             # as GSTIN above.
