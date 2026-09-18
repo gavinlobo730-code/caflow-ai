@@ -1,6 +1,28 @@
 "use client";
 
-/** Create or edit one employee.
+/** Create or edit one employee. THE ONLY EMPLOYEE FORM IN THE PRODUCT.
+ *
+ *  PAY-13. There were two, and they disagreed about what an employee IS. This
+ *  one held PAN, UAN, ESIC number, joining date, bank details, gender, DA, EPS
+ *  eligibility and Gratuity Act coverage; the client workspace's own inline
+ *  form (app/clients/[id]/payroll/page.tsx) held employee code, date of birth
+ *  and Aadhaar and NONE of the first list. So which screen a CA happened to
+ *  add an employee from decided whether:
+ *
+ *    * `domain/payroll/ecr.py` would accept them at all — it REFUSES a member
+ *      whose UAN is absent or not twelve digits, so a whole EPFO filing
+ *      stopped on an employee added from the client screen;
+ *    * §192 withheld at the ordinary rate or at §206AA's 20% floor, which is
+ *      what a missing PAN costs;
+ *    * the §192 projection annualised a mid-year joiner's pay correctly — the
+ *      2026-09-01 audit measured ₹1,46,250 of over-deduction on one employee
+ *      with no joining date;
+ *    * there was a bank account to pay them into.
+ *
+ *  Neither form could be fixed by adding fields to it: two forms is the
+ *  defect. This one takes the UNION and the client screen now opens it, so the
+ *  Aadhaar last-4 rule and the employee code stop being reachable from only
+ *  one of the two surfaces. `scripts/one-employee-form.test.ts` holds the line.
  *
  *  Every rupee field goes through paiseFromRupeeInput and every percentage
  *  through bpsFromPercentInput — both REFUSE rather than coerce, because
@@ -18,17 +40,24 @@ import { PT_STATES, type Client, type Employee } from "@/components/payroll/shar
 export function AddEmployeeModal({
   clients,
   employee,
+  lockedClientId,
   onClose,
   onSaved,
 }: {
   clients: Client[];
   employee?: Employee | null;
+  /** The client workspace already knows whose payroll this is, so the picker
+   *  is shown as a fixed label there. Locking it rather than hiding it: a form
+   *  that does not say which client it is adding to is how an employee lands
+   *  on the wrong one. */
+  lockedClientId?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isEdit = !!employee;
+  const clientLocked = !!lockedClientId;
   const [form, setForm] = useState({
-    client_id: employee?.client_id ?? clients[0]?.id ?? "",
+    client_id: employee?.client_id ?? lockedClientId ?? clients[0]?.id ?? "",
     name: employee?.name ?? "",
     pan: employee?.pan ?? "",
     gender: employee?.gender ?? "",
@@ -63,6 +92,24 @@ export function AddEmployeeModal({
     bank_account_no: employee?.bank_account_no ?? "",
     bank_ifsc: employee?.bank_ifsc ?? "",
     bank_name: employee?.bank_name ?? "",
+    // THE THREE THE CLIENT SCREEN HELD AND THIS DID NOT (PAY-13).
+    // `employee_code` is the identifier the CLIENT uses — EMP001, a number off
+    // their previous payroll software — unique per client (migration 333) and
+    // what the bulk import is idempotent on, so without it "fix the
+    // spreadsheet and upload it again" creates duplicates instead of updating.
+    // `date_of_birth` is NOT demographics: Part III of the First Schedule
+    // widens the OLD-regime nil band at 60 and again at 80, and
+    // domain/payroll/age.py reads it to decide which ladder §192 withholds on.
+    employee_code: employee?.employee_code ?? "",
+    date_of_birth: employee?.date_of_birth ?? "",
+    // AADHAAR IS TYPED IN FULL AND NEVER SENT IN FULL. models/payroll.py says
+    // it plainly — "we store ONLY the last 4 digits ... The full value must
+    // never reach the backend" — so the twelve digits are validated here and
+    // `aadhaar_last4` is what crosses the wire. Blank on edit rather than
+    // pre-filled, because the stored value IS only four digits and showing
+    // them in a twelve-digit box invites somebody to save those four as the
+    // whole number.
+    aadhaar: "",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -100,6 +147,15 @@ export function AddEmployeeModal({
       return;
     }
 
+    // Aadhaar: twelve digits or nothing. Checked BEFORE the request, because
+    // the backend only ever sees four and cannot tell a truncated eleven-digit
+    // number from a correct one.
+    const aadhaarDigits = form.aadhaar.replace(/\D/g, "");
+    if (aadhaarDigits && aadhaarDigits.length !== 12) {
+      setErr("Aadhaar must be 12 digits. Only the last 4 are stored.");
+      return;
+    }
+
     setSaving(true);
     setErr("");
     try {
@@ -126,6 +182,12 @@ export function AddEmployeeModal({
         bank_account_no: form.bank_account_no.trim() || null,
         bank_ifsc: form.bank_ifsc.trim().toUpperCase() || null,
         bank_name: form.bank_name.trim() || null,
+        // undefined, not null: migration 333 puts a NOT-BLANK check on the
+        // code, and Postgres will not read "" as a date. Both columns mean
+        // "unknown" when absent.
+        employee_code: form.employee_code.trim() || undefined,
+        date_of_birth: form.date_of_birth || undefined,
+        aadhaar_last4: aadhaarDigits ? aadhaarDigits.slice(-4) : undefined,
       };
       if (isEdit && employee) {
         // client_id can't change on edit (EmployeeUpdateIn has no client_id).
@@ -152,7 +214,7 @@ export function AddEmployeeModal({
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="block text-xs font-medium text-[#334155] mb-1">Client</label>
-            {isEdit ? (
+            {isEdit || clientLocked ? (
               <div className="w-full border rounded-lg px-3 py-2 text-sm bg-[#F8FAFC] text-[#64748B]">
                 {clients.find(c => c.id === form.client_id)?.client_name ?? "—"}
               </div>
@@ -179,6 +241,32 @@ export function AddEmployeeModal({
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">Designation</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))} />
+          </div>
+          <div>
+            <label htmlFor="employee-code" className="block text-xs font-medium text-[#334155] mb-1">Employee Code</label>
+            <input id="employee-code" className="w-full border rounded-lg px-3 py-2 text-sm"
+              placeholder="e.g. EMP001"
+              value={form.employee_code} onChange={e => setForm(f => ({ ...f, employee_code: e.target.value }))} />
+            <p className="text-[10px] text-[#94A3B8] mt-1">
+              The client&apos;s own identifier. The bulk import is idempotent on it.
+            </p>
+          </div>
+          <div>
+            <label htmlFor="date-of-birth" className="block text-xs font-medium text-[#334155] mb-1">Date of Birth</label>
+            <input id="date-of-birth" type="date" className="w-full border rounded-lg px-3 py-2 text-sm"
+              value={form.date_of_birth} onChange={e => setForm(f => ({ ...f, date_of_birth: e.target.value }))} />
+            <p className="text-[10px] text-[#94A3B8] mt-1">
+              Not demographics — the old regime&apos;s nil band widens at 60 and again at 80.
+            </p>
+          </div>
+          <div>
+            <label htmlFor="aadhaar" className="block text-xs font-medium text-[#334155] mb-1">Aadhaar</label>
+            <input id="aadhaar" inputMode="numeric" maxLength={14} className="w-full border rounded-lg px-3 py-2 text-sm tabular-nums"
+              placeholder={employee?.aadhaar_last4 ? `•••• •••• ${employee.aadhaar_last4}` : "12 digits"}
+              value={form.aadhaar} onChange={e => setForm(f => ({ ...f, aadhaar: e.target.value }))} />
+            <p className="text-[10px] text-[#94A3B8] mt-1">
+              Only the last 4 digits are stored (UIDAI norms). Leave blank to keep what is on file.
+            </p>
           </div>
           <div>
             <label className="block text-xs font-medium text-[#334155] mb-1">Gender</label>
