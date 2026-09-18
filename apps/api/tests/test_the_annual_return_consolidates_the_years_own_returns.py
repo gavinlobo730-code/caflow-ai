@@ -376,31 +376,42 @@ def test_each_unbuilt_table_says_WHY(table):
     assert g9.NOT_BUILT[table].strip()
 
 
-def test_the_late_fee_table_points_at_the_refusal_that_already_exists():
-    """Table 19 must not invent a late fee for the ANNUAL return.
+def test_table_19_declares_no_late_fee_even_now_that_one_is_computed():
+    """Table 19 must not fill itself in from the engine.
 
-    THIS TEST NAMED A SPELLING AND THE SPELLING MOVED. It asserted
-    `LATE_FEE_RATES == {}`, which was a fine proxy while the table was empty
-    for every return — and the notified GSTR-1 and GSTR-3B ladders
-    (Notifications 19/2021 and 20/2021) have since been written in, so the
-    proxy failed on a change that did not touch this rule at all. The fourth
-    or fifth time this pattern has been fixed in this repository.
+    THIS TEST HAS NAMED A SPELLING TWICE AND IS NOW WRITTEN AS THE RULE. It
+    first asserted `LATE_FEE_RATES == {}`, which broke when the monthly ladders
+    were written in. It then asserted that a GSTR-9 late fee is REFUSED, which
+    broke on 18-09-2026 when Notification 7/2023-Central Tax was read and
+    §47(2) became computable. Neither assertion was ever what the rule is
+    about.
 
-    The RULE is about GSTR-9 specifically, and it still holds. s.47(2)'s
-    annual-return fee is a DIFFERENT figure from the monthly one — ₹200 a day
-    combined, capped at a percentage of the taxpayer's turnover in the State,
-    reduced again by its own notifications — and none of it is held here. So
-    the assertion is what it was always about: ask for a GSTR-9 late fee and be
-    REFUSED, whatever other returns the table has learned."""
+    The rule is that **Table 19 has TWO boxes and the engine can only ever
+    answer one of them.** What is PAYABLE is now computed — banded by aggregate
+    turnover, capped at a percentage of turnover in the State, which nothing
+    here holds, so even that answer carries a named gap. What is PAID is a fact
+    about a challan this product does not record. A return declaring the fee as
+    paid when it has not been is a false declaration, not a rounding, so the
+    table stays unbuilt and says why."""
     from datetime import date as _d
-    from domain.gst.late_filing import late_fee
-    out = late_fee(return_type="gstr9", financial_year="2025-26",
-                   due_date=_d(2026, 12, 31), filed_on=_d(2027, 2, 15))
-    assert out["refused"] is True, (
-        "s.47(2)'s annual-return fee is not held — Table 19 must not invent one"
+    from domain.gst.late_filing import late_fee, GAP_STATE_TURNOVER_NOT_HELD
+
+    payable = late_fee(return_type="gstr9", financial_year="2025-26",
+                       due_date=_d(2026, 12, 31), filed_on=_d(2027, 2, 15))
+    assert not isinstance(payable, dict), (
+        "7/2023 is held now — the engine answers what is payable"
     )
-    assert "fee_paise" not in out
-    assert "late_filing" in g9.NOT_BUILT["19"]
+    assert payable.cap_gap == GAP_STATE_TURNOVER_NOT_HELD
+
+    assert "19" in g9.NOT_BUILT, "the table itself stays unbuilt"
+    why = g9.NOT_BUILT["19"]
+    assert "late_filing" in why
+    assert "PAID" in why, "the half that cannot be answered must be named"
+    built = _build()
+    assert "19" not in built.tables, (
+        "no figure reaches Table 19 from the engine, however much of s.47(2) "
+        "the engine has learned to compute"
+    )
 
 
 # ── The inv_typ map is read off the builder that writes them ────────────────

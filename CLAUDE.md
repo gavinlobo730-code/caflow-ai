@@ -1812,24 +1812,52 @@ change. The code is the authority; keep this file in step with it.
   reader withdraw it to a refusal, and a test exercises that branch. ⚠️ The
   2020/2021 concessional notifications are still **not held**, so a tax period
   they covered is charged at 24% and the caveat on every charge says so.
-  **THE §47 LATE FEE IS COMPUTED FROM FY 2021-22 AND REFUSED BEFORE IT.**
-  Notifications **19/2021-CT** (GSTR-3B) and **20/2021-CT** (GSTR-1), 43rd
-  Council: **₹50 a day** (₹25 + ₹25), **₹20** for a nil return capped at
-  **₹500**, and the cap banded by aggregate turnover — **₹2,000** to ₹1.5
-  crore, **₹5,000** to ₹5 crore, **₹10,000** above. `[S]` throughout,
-  `verified=False`, each figure pinned exactly. **THE CAP IS BANDED AND THE
-  PER-DAY RATE IS NOT**, which is why this is not one number; an unrecorded
-  turnover takes the LOWEST cap and the answer SAYS it assumed, because the
-  PORTAL computes the fee at filing so an understatement is corrected there
-  while an overstatement tells a CA to budget for money nobody owes.
-  `_late_fee_turnover` resolves it through the same
-  `client_gst_turnover_service.turnover_governing_period` hop the HSN digits
-  use — NOT `highest_turnover_within_rule_48_4`, which is a ratchet because
-  Rule 48(4) reads "any preceding financial year" while 19/2021 reads on the
-  preceding year alone. **An earlier year and GSTR-9 still REFUSE**: 4/2018 and
-  76/2018 carry different caps and no bands, and §47(2)'s annual fee is a
-  different figure. The statutory ₹200 a day stays recorded and is still
-  deliberately NOT a fallback. Two conventions
+  **THE §47 LATE FEE IS NOW COMPUTED FOR EVERY PERIOD THE CHARGE HAS EXISTED,
+  AND §47(2) IS A DIFFERENT SUB-SECTION WITH A DIFFERENT SHAPE.** Four
+  notifications were read on 18-09-2026 and are committed under
+  `docs/compliance/sources/gst-notifications/`. **THE PER-DAY RATE HAS NEVER
+  MOVED** — 4/2018 (GSTR-1) and 76/2018 (GSTR-3B) both waive above ₹25 a day
+  central tax and ₹10 for a nil return, exactly what 19/2021 and 20/2021 kept;
+  what 2021 ADDED was the turnover-banded ceiling (**₹2,000** to ₹1.5 crore,
+  **₹5,000** to ₹5 crore, **₹10,000** above) and the **₹500** nil cap. So the
+  fork is entirely in the CAP, and FY 2017-18 to 2020-21 take §47(1)'s own
+  ₹5,000 under each Act because neither 2018 notification sets one.
+  **A LADDER WITH ONE BAND ASSUMES NOTHING**: `turnover_band_assumed` is gated
+  on `len(turnover_caps) > 1`, because flagging it on a 2019 answer would
+  attach a caveat naming ₹1.5 crore and ₹5 crore thresholds that did not exist
+  that year — a sentence about the wrong notification on a figure that is
+  exactly right.
+  ⚠️ **APRIL AND MAY 2021 ARE INSIDE FY 2021-22 AND OUTSIDE 19/2021 AND
+  20/2021**, which run from the tax period JUNE 2021. The table is keyed on a
+  financial year, so those two months are the one place the key is coarser than
+  the notification. `late_fee` takes an optional `tax_period_start` and resolves
+  them exactly; a caller who omits it gets the banded cap and a caveat NAMING
+  the two months. The direction is deliberate — the banded cap is the SMALLER
+  for every taxpayer below ₹5 crore, so the assumption understates.
+  **§47(2)'s ANNUAL fee is `_annual_late_fee` and could not have been a fourth
+  row of that table**, because its ceiling is a **PERCENTAGE** and not a figure.
+  Notification 7/2023-CT, FY 2022-23 onwards: **₹50 a day** to ₹5 crore of
+  aggregate turnover and **₹100 a day** to ₹20 crore, each capped at **0.04%**
+  of turnover in the State; above ₹20 crore the notification gives no reduction
+  and §47(2)'s own ₹200 a day capped at 0.5% applies — written as the ladder's
+  third BAND rather than as a fallback, so a rate resolved by walking a table
+  cannot silently find nothing. **THE CAP NEEDS A DIFFERENT TURNOVER FROM THE
+  BAND**: the band is CGST §2(6) aggregate turnover, PAN-level and all-India,
+  which `client_gst_turnover` (migration 401) holds; the cap is "turnover in the
+  STATE or Union territory", which nothing here holds and which differs per
+  registration. So `cap_gap` names it and the answer is the **UNCAPPED**
+  accrual — the one figure in this module that errs HIGH, and it says so,
+  because the alternative is no figure at all and a CA told what is missing
+  knows both their maximum and what to record. The **amnesty proviso** (FY
+  2017-18 to 2021-22 furnished 1 Apr – 30 Jun 2023, capped ₹20,000) is asked
+  FIRST because it REPLACES the bands and needs no turnover at all; that window
+  has closed, so the branch can only describe a return already on the record.
+  **GSTR-9 Table 19 stays unbuilt** and its sentence now names the half that
+  cannot be answered: what is PAYABLE is computed, what is PAID is a fact about
+  a challan this product does not record, and a return declaring the fee paid
+  when it has not been is a false declaration rather than a rounding. An unknown
+  return type — GSTR-4, GSTR-7, GSTR-8, CMP-08 — is still REFUSED.
+  Two conventions
   are stated rather than assumed: **DAYS, not months** (due 20 July, paid 21
   July is one day — NOT the §201(1A) "month or part of a month" arithmetic,
   which would be thirty times wrong here), and **rounded UP**, because interest

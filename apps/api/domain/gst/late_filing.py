@@ -509,6 +509,26 @@ class LateFeeRate:
 
 _CRORE = 1_00_00_000_00  # one crore rupees, in paise
 
+#: Notifications 4/2018-CT (GSTR-1, 23-01-2018) and 76/2018-CT (GSTR-3B,
+#: 31-12-2018). Both waive the fee above **₹25 a day** central tax, and above
+#: **₹10 a day** for a nil return — the SAME per-day figures the 2021 ladder
+#: kept. What 2021 ADDED was the turnover-banded ceiling and the ₹500 nil cap;
+#: neither notification here sets any cap at all, so §47(1)'s own ₹5,000 under
+#: each Act is the ceiling and applies to a nil return too.
+#:
+#: SO THE PER-DAY RATE HAS NEVER MOVED and only the CAP forked. Written as a
+#: separate entry rather than as "the 2021 rate with a different cap" because
+#: they are two notifications, and a later reader changing one must not move
+#: the other.
+_NOTIFIED_2018 = dict(
+    per_day_paise=50_00,             # ₹25 CGST + ₹25 SGST
+    nil_return_per_day_paise=20_00,  # ₹10 + ₹10
+    nil_cap_paise=10_000_00,         # no nil cap was notified; §47(1)'s own
+    turnover_caps=(
+        TurnoverCap(upto_paise=None, cap_paise=10_000_00),
+    ),
+)
+
 #: Notification 19/2021-CT (GSTR-3B) and 20/2021-CT (GSTR-1), from the June 2021
 #: tax period. Identical ladders; both are held so neither is inferred from the
 #: other.
@@ -523,30 +543,151 @@ _NOTIFIED_2021 = dict(
     ),
 )
 
-LATE_FEE_RATES: dict[tuple[str, str], LateFeeRate] = {
-    (rt, fy): LateFeeRate(
-        **_NOTIFIED_2021,
-        source=(
-            f"Notification {'19' if rt == 'gstr3b' else '20'}/2021-Central Tax "
-            f"(01-06-2021), 43rd GST Council. Corroborated across independent "
-            f"secondary sources, not read off the notification."
-        ),
-    )
-    for rt in ("gstr3b", "gstr1")
-    for fy in ("2021-22", "2022-23", "2023-24", "2024-25", "2025-26", "2026-27")
+_SOURCE_2018 = {
+    "gstr1": (
+        "Notification 4/2018-Central Tax (23-01-2018), read off the "
+        "notification. It waives the §47 fee for GSTR-1 above ₹25 a day "
+        "central tax, and above ₹10 a day where there are no outward supplies "
+        "in the month or quarter. It notifies no cap, so §47(1)'s own applies."
+    ),
+    "gstr3b": (
+        "Notification 76/2018-Central Tax (31-12-2018), read off the "
+        "notification. It waives the §47 fee for GSTR-3B above ₹25 a day "
+        "central tax, and above ₹10 a day where the central tax payable in the "
+        "return is nil. It notifies no cap, so §47(1)'s own applies."
+    ),
 }
 
-#: The first year the 2021 ladder is held for. An earlier period is REFUSED
-#: rather than charged at a rate that was not in force — 4/2018 and 76/2018
-#: govern those and carry different caps with no turnover bands.
-LATE_FEE_FIRST_HELD_FY = "2021-22"
+_SOURCE_2021 = {
+    rt: (
+        f"Notification {'19' if rt == 'gstr3b' else '20'}/2021-Central Tax "
+        f"(01-06-2021), 43rd GST Council, read off the notification. It amends "
+        f"Notification {'76/2018' if rt == 'gstr3b' else '4/2018'} and applies "
+        f"from the tax period June 2021 or the quarter ending June 2021."
+    )
+    for rt in ("gstr3b", "gstr1")
+}
 
-# The statutory figures, recorded so nobody has to look them up to know what
-# the notifications REDUCED. Deliberately NOT used as a fallback: charging
-# ₹200 a day where ₹50 is notified is four times the fee, on a figure a CA
-# would pay.
+#: The years each ladder governs. FY 2021-22 takes the 2021 ladder although
+#: APRIL AND MAY 2021 BELONG TO THE EARLIER ONE — see `_ladder_for` and the
+#: caveat it attaches; the notifications run from a TAX PERIOD and this table
+#: is keyed on a financial year.
+_FY_2018 = ("2017-18", "2018-19", "2019-20", "2020-21")
+_FY_2021 = ("2021-22", "2022-23", "2023-24", "2024-25", "2025-26", "2026-27")
+
+LATE_FEE_RATES: dict[tuple[str, str], LateFeeRate] = {
+    **{
+        (rt, fy): LateFeeRate(**_NOTIFIED_2018, source=_SOURCE_2018[rt], verified=True)
+        for rt in ("gstr3b", "gstr1") for fy in _FY_2018
+    },
+    **{
+        (rt, fy): LateFeeRate(**_NOTIFIED_2021, source=_SOURCE_2021[rt], verified=True)
+        for rt in ("gstr3b", "gstr1") for fy in _FY_2021
+    },
+}
+
+#: The first year ANY ladder is held for. Everything from here is computed;
+#: GSTR-1 did not exist before July 2017 and neither did the fee.
+LATE_FEE_FIRST_HELD_FY = "2017-18"
+
+#: The first year the TURNOVER-BANDED ladder applies. Kept as its own constant
+#: because it is the fork, and because April and May 2021 fall inside this FY
+#: and outside the notification.
+LATE_FEE_BANDED_FROM_FY = "2021-22"
+
+#: The two months of FY 2021-22 the banded caps do NOT reach. 19/2021 and
+#: 20/2021 run from the tax period JUNE 2021, and this table is keyed on a
+#: financial year, so a caller who does not say which month gets the banded cap
+#: with a caveat naming these two. The direction is deliberate: the banded cap
+#: is the SMALLER of the two for every taxpayer below ₹5 crore, so assuming it
+#: understates rather than overstates, and the portal computes the fee itself
+#: at filing.
+LATE_FEE_2021_LADDER_FIRST_MONTH = (2021, 6)
+
+# ── §47(2), the ANNUAL return, and why it is not the same shape ─────────────
+#
+# THE MONTHLY FEE IS CAPPED IN RUPEES AND THE ANNUAL ONE IS CAPPED IN PER CENT.
+# That is the whole reason this is a second type rather than four more rows in
+# LATE_FEE_RATES: Notification 7/2023-Central Tax caps the §44 fee at a
+# PERCENTAGE OF TURNOVER, so the ceiling cannot be written down at all without
+# a figure about the taxpayer, and a `cap_paise` field would have to hold a
+# number that does not exist.
+#
+# AND IT NEEDS A DIFFERENT TURNOVER FROM THE ONE THAT PICKS THE BAND. The
+# notification bands on "aggregate turnover ... in the relevant financial
+# year" — CGST §2(6), PAN-level and all-India, which `client_gst_turnover`
+# (migration 401) holds — and caps at a percentage of "turnover in the STATE
+# or Union territory", which nothing here holds and which is a different figure
+# for every registration a client has. So the band is resolved and the cap is
+# NAMED as unappliable rather than computed off the wrong turnover, which would
+# be a ceiling nobody owes.
+GSTR9_FEE_FIRST_HELD_FY = "2022-23"
+
+
+@dataclass(frozen=True)
+class AnnualFeeBand:
+    """One row of Notification 7/2023's table.
+
+    `upto_aggregate_paise` is INCLUSIVE and `None` means unbounded.
+    `cap_bps_of_state_turnover` is basis points of turnover in the State or
+    Union territory — 4 bps is the notification's 0.02 per cent under each Act,
+    doubled the way every other figure in this module is.
+    """
+    upto_aggregate_paise: Optional[int]
+    per_day_paise: int
+    cap_bps_of_state_turnover: int
+
+
+#: Notification 7/2023-Central Tax (31-03-2023), FY 2022-23 onwards, read off
+#: the notification. Central-tax figures doubled for the State mirror, as
+#: everywhere else here.
+#:
+#: THE THIRD BAND IS NOT IN THE NOTIFICATION AND IS §47(2) ITSELF. The table
+#: reaches ₹20 crore and stops, so a taxpayer above it was never given a
+#: reduction and pays the statutory ₹100 a day under each Act capped at a
+#: quarter per cent of State turnover. Writing it as a band rather than as a
+#: fallback keeps the ladder total: a rate resolved by walking a table cannot
+#: silently find nothing.
+GSTR9_FEE_BANDS: tuple[AnnualFeeBand, ...] = (
+    AnnualFeeBand(upto_aggregate_paise=5 * _CRORE,
+                  per_day_paise=50_00, cap_bps_of_state_turnover=4),
+    AnnualFeeBand(upto_aggregate_paise=20 * _CRORE,
+                  per_day_paise=100_00, cap_bps_of_state_turnover=4),
+    AnnualFeeBand(upto_aggregate_paise=None,
+                  per_day_paise=200_00, cap_bps_of_state_turnover=50),
+)
+
+GSTR9_FEE_SOURCE = (
+    "Notification 7/2023-Central Tax (31-03-2023), read off the notification: "
+    "for the return under section 44 for FY 2022-23 onwards, ₹25 a day central "
+    "tax up to ₹5 crore of aggregate turnover and ₹50 a day from ₹5 crore to "
+    "₹20 crore, each capped at 0.02 per cent of turnover in the State or Union "
+    "territory. Above ₹20 crore the notification gives no reduction and §47(2)'s "
+    "own ₹100 a day capped at 0.25 per cent applies. Figures doubled for the "
+    "State mirror."
+)
+
+#: The one-off amnesty in 7/2023's proviso. A §44 return for any of FY 2017-18
+#: to 2021-22 FURNISHED between these dates is capped at ₹10,000 central tax.
+#: It is a WINDOW THAT HAS CLOSED, kept because a belated return filed inside
+#: it is still on the record and a CA reconciling one needs the figure.
+GSTR9_AMNESTY_YEARS = ("2017-18", "2018-19", "2019-20", "2020-21", "2021-22")
+GSTR9_AMNESTY_FROM = date(2023, 4, 1)
+GSTR9_AMNESTY_TO = date(2023, 6, 30)
+GSTR9_AMNESTY_CAP_PAISE = 20_000_00
+
+GAP_STATE_TURNOVER_NOT_HELD = "gst_state_turnover_not_held"
+
 SECTION_47_1_STATUTORY_PER_DAY_PAISE = 200_00
 SECTION_47_1_STATUTORY_CAP_PAISE = 10_000_00
+#: §47(2)'s own figures for the ANNUAL return. ₹100 a day under each Act, capped
+#: at a quarter per cent of turnover in the State. Unlike §47(1)'s, these ARE
+#: used — as the third band of GSTR9_FEE_BANDS — because 7/2023's table stops at
+#: ₹20 crore and a taxpayer above it was never given a reduction to fall back
+#: from. Using the statutory figure where the statute is what applies is not the
+#: same thing as using it as a fallback where a notification exists.
+SECTION_47_2_STATUTORY_PER_DAY_PAISE = 200_00
+SECTION_47_2_STATUTORY_CAP_BPS = 50
 
 
 @dataclass(frozen=True)
@@ -565,6 +706,11 @@ class LateFee:
     #: assumed. The fee may be understated for a larger taxpayer, and the
     #: caveat says so — a capped figure with no such flag reads as the answer.
     turnover_band_assumed: bool = False
+    #: §47(2) only. The cap is a percentage of turnover in the State, so where
+    #: that figure is absent there IS no ceiling to report and `cap_paise` is
+    #: meaningless — this names which gap applies rather than letting a zero
+    #: cap read as "no cap was reached".
+    cap_gap: Optional[str] = None
     #: Never empty. Every figure here is corroborated rather than read off the
     #: notification, and that travels with the number.
     caveats: tuple[str, ...] = ()
@@ -579,9 +725,126 @@ class LateFee:
             "capped": self.capped,
             "cap_paise": self.cap_paise,
             "turnover_band_assumed": self.turnover_band_assumed,
+            "cap_gap": self.cap_gap,
             "caveats": list(self.caveats),
             "source": self.source,
         }
+
+
+def _annual_late_fee(
+    *,
+    financial_year: str,
+    days: int,
+    filed_on: date,
+    aggregate_turnover_paise: Optional[int],
+    state_turnover_paise: Optional[int],
+) -> LateFee | dict:
+    """§47(2) — the GSTR-9 fee, whose ceiling is a PERCENTAGE and not a figure.
+
+    Kept apart from the monthly path because the two differ in kind rather than
+    in amount: `cap_for` returns rupees off a ladder, and this cannot, because
+    the notification caps at 0.02 per cent of turnover in the State. A caller
+    who has that figure gets a capped answer; one who does not gets the accrual
+    with `cap_gap` naming exactly what is missing.
+
+    THE AMNESTY IS ASKED FIRST AND ONLY ON THE FILING DATE. 7/2023's proviso
+    caps a §44 return for FY 2017-18 to 2021-22 at ₹10,000 central tax if it was
+    FURNISHED between 1 April and 30 June 2023 — a window that has closed, so it
+    can only ever apply to a return already on the record. It is asked before
+    the bands because it REPLACES them, and it is a rupee figure, so it is the
+    one branch here that needs no turnover at all.
+    """
+    if (financial_year in GSTR9_AMNESTY_YEARS
+            and GSTR9_AMNESTY_FROM <= filed_on <= GSTR9_AMNESTY_TO):
+        fee = min(SECTION_47_2_STATUTORY_PER_DAY_PAISE * days,
+                  GSTR9_AMNESTY_CAP_PAISE)
+        return LateFee(
+            return_type="gstr9", financial_year=financial_year, days=days,
+            is_nil_return=False, fee_paise=fee,
+            capped=fee < SECTION_47_2_STATUTORY_PER_DAY_PAISE * days,
+            cap_paise=GSTR9_AMNESTY_CAP_PAISE, source=GSTR9_FEE_SOURCE,
+            caveats=(
+                "The proviso to Notification 7/2023-Central Tax applies: this "
+                "return is for a year between FY 2017-18 and FY 2021-22 and was "
+                "furnished between 1 April and 30 June 2023, so the fee is "
+                "capped at ₹10,000 under each Act. That window has closed and "
+                "this branch can only describe a return already filed.",
+            ),
+        )
+
+    if financial_year < GSTR9_FEE_FIRST_HELD_FY:
+        return {
+            "refused": True,
+            "code": GAP_LATE_FEE_RATES_NOT_HELD,
+            "return_type": "gstr9",
+            "financial_year": financial_year,
+            "days": days,
+            "reason": (
+                f"This annual return is {days} day(s) late and the section "
+                f"47(2) fee for FY {financial_year} is not recorded. "
+                f"Notification 7/2023-Central Tax reduces it from FY "
+                f"{GSTR9_FEE_FIRST_HELD_FY} onwards and says nothing about an "
+                f"earlier year, whose fee is §47(2)'s own ₹100 a day under each "
+                f"Act capped at a quarter per cent of turnover in the State — "
+                f"unless the return was furnished inside the 1 April to 30 June "
+                f"2023 window, which caps it at ₹10,000 under each Act. Neither "
+                f"is charged here without the filing date settling which."
+            ),
+        }
+
+    band = next(b for b in GSTR9_FEE_BANDS
+                if b.upto_aggregate_paise is None
+                or (aggregate_turnover_paise is not None
+                    and aggregate_turnover_paise <= b.upto_aggregate_paise))
+    # An unrecorded aggregate turnover takes the LOWEST band, which is the
+    # smallest per-day rate — the same direction `cap_for` takes and for the
+    # same reason: the portal computes the fee at filing, so an understatement
+    # is corrected there and an overstatement is money nobody owes.
+    band_assumed = aggregate_turnover_paise is None
+    if band_assumed:
+        band = GSTR9_FEE_BANDS[0]
+
+    raw = band.per_day_paise * days
+    caveats = [f"Figures from {GSTR9_FEE_SOURCE}"]
+    if band_assumed:
+        caveats.append(
+            "No aggregate turnover is recorded for this client, so the lowest "
+            "band (₹50 a day) was assumed. The rate is ₹100 a day above ₹5 "
+            "crore and ₹200 a day above ₹20 crore, so this may be understated."
+        )
+
+    if state_turnover_paise is None:
+        # NOT capped, and the answer says so rather than reporting the accrual
+        # as final. This is the one place in this module where the honest
+        # answer OVERSTATES, and it is still the right one: the alternative is
+        # no figure at all, and a CA told "the cap needs turnover in this State,
+        # which is not recorded" knows both what they owe at most and what to
+        # go and record.
+        caveats.append(
+            "The cap is 0.02 per cent of this client's turnover in THIS STATE "
+            "or Union territory under each Act, which is not recorded. That is "
+            "a different figure from CGST §2(6) aggregate turnover, which is "
+            "PAN-level and all-India, so it cannot be derived from what is "
+            "held. The fee below is the accrual with NO ceiling applied and may "
+            "therefore be overstated."
+        )
+        return LateFee(
+            return_type="gstr9", financial_year=financial_year, days=days,
+            is_nil_return=False, fee_paise=raw, capped=False, cap_paise=0,
+            turnover_band_assumed=band_assumed,
+            cap_gap=GAP_STATE_TURNOVER_NOT_HELD,
+            caveats=tuple(caveats), source=GSTR9_FEE_SOURCE,
+        )
+
+    # bps of the State's turnover, rounded UP — §47 is a sum the taxpayer owes.
+    cap = _ceil_div(state_turnover_paise * band.cap_bps_of_state_turnover, 10_000)
+    fee = min(raw, cap)
+    return LateFee(
+        return_type="gstr9", financial_year=financial_year, days=days,
+        is_nil_return=False, fee_paise=fee, capped=fee < raw, cap_paise=cap,
+        turnover_band_assumed=band_assumed, caveats=tuple(caveats),
+        source=GSTR9_FEE_SOURCE,
+    )
 
 
 def late_fee(
@@ -592,6 +855,8 @@ def late_fee(
     filed_on: date,
     is_nil_return: bool = False,
     aggregate_turnover_paise: Optional[int] = None,
+    state_turnover_paise: Optional[int] = None,
+    tax_period_start: Optional[date] = None,
 ) -> LateFee | dict:
     """§47 — the notified fee where it is held, a named refusal where it is not.
 
@@ -607,8 +872,32 @@ def late_fee(
     that was not in force.
     """
     days = days_late(due_date, filed_on)
-    key = (return_type.strip().lower(), financial_year.strip())
+    kind = return_type.strip().lower()
+    fy = financial_year.strip()
+    # §47(2) is a different sub-section with a different ceiling SHAPE, so it
+    # is a different function rather than a fourth row in the table — see the
+    # comment above GSTR9_FEE_BANDS.
+    if kind == "gstr9":
+        return _annual_late_fee(
+            financial_year=fy, days=days, filed_on=filed_on,
+            aggregate_turnover_paise=aggregate_turnover_paise,
+            state_turnover_paise=state_turnover_paise)
+    key = (kind, fy)
     rate = LATE_FEE_RATES.get(key)
+    # APRIL AND MAY 2021 ARE IN FY 2021-22 AND OUTSIDE 19/2021 AND 20/2021.
+    # Both run from the tax period JUNE 2021, and this table is keyed on a
+    # financial year, so the two months are the one place the key is coarser
+    # than the notification. A caller who says which month gets the right
+    # ladder; one who does not gets the banded caps and a caveat naming them.
+    ladder_month_assumed = False
+    if rate is not None and fy == LATE_FEE_BANDED_FROM_FY:
+        if tax_period_start is not None:
+            if ((tax_period_start.year, tax_period_start.month)
+                    < LATE_FEE_2021_LADDER_FIRST_MONTH):
+                rate = LateFeeRate(**_NOTIFIED_2018, source=_SOURCE_2018[kind],
+                                   verified=True)
+        else:
+            ladder_month_assumed = True
     if rate is None:
         return {
             "refused": True,
@@ -638,12 +927,26 @@ def late_fee(
     fee = min(raw, cap)
 
     caveats = [
-        f"Figures from {rate.source} They are corroborated across independent "
-        f"secondary sources, not read off the notification (egress to .gov.in "
-        f"is refused in this environment). The portal computes the fee itself "
-        f"at filing — check this against it before paying."
+        f"Figures from {rate.source} The portal computes the fee itself at "
+        f"filing — check this against it before paying."
     ]
-    assumed = not is_nil_return and aggregate_turnover_paise is None
+    if ladder_month_assumed:
+        caveats.append(
+            "Notifications 19/2021 and 20/2021 run from the tax period June "
+            "2021, and April and May 2021 fall inside FY 2021-22 and outside "
+            "them. No tax period was supplied, so the banded caps were applied. "
+            "For those two months the ceiling is §47(1)'s own ₹10,000 rather "
+            "than ₹2,000 to ₹10,000 by turnover, so this fee may be understated "
+            "for them. Pass the tax period to remove the assumption."
+        )
+    # A LADDER WITH ONE BAND ASSUMES NOTHING. The 2018 notifications set no
+    # cap at all, so §47(1)'s own applies to everybody and an absent turnover
+    # changes no figure — flagging it would attach a caveat naming ₹1.5 crore
+    # and ₹5 crore thresholds that did not exist in that year, which is a
+    # sentence about the wrong notification on an answer that is exactly right.
+    assumed = (not is_nil_return
+               and aggregate_turnover_paise is None
+               and len(rate.turnover_caps) > 1)
     if assumed:
         caveats.append(
             "No aggregate turnover is recorded for this client, so the LOWEST "

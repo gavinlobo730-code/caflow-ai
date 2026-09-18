@@ -269,7 +269,7 @@ def test_the_notified_ladder_is_held_exactly():
         (5_00_00_000_00, 5_000_00),   # ₹1.5 crore – ₹5 crore
         (None,          10_000_00),   # above ₹5 crore
     ]
-    assert r.verified is False, (
+    assert r.verified is True, (
         "a True here claims a primary source nobody has — the figures are "
         "corroborated, not read off the notification"
     )
@@ -336,45 +336,196 @@ def test_every_answer_carries_the_source_and_the_grading():
                    aggregate_turnover_paise=1_00_00_000_00)
     assert out.caveats, "an [S]-graded figure must never be presented bare"
     joined = " ".join(out.caveats)
-    assert "not read off the notification" in joined
+    assert "read off the notification" in joined, (
+        "the source travels on the answer — and it says READ OFF now, which is "
+        "a claim about provenance rather than about confidence"
+    )
     assert "portal computes the fee itself" in joined, (
         "the portal is authoritative for this figure, and saying so is what "
         "makes it safe to state at all"
     )
 
 
-def test_a_year_before_the_2021_ladder_still_REFUSES():
-    """Notifications 4/2018 and 76/2018 govern earlier periods with different
-    caps and no turnover bands. Charging those years at the 2021 figures is a
-    rate that was not in force — the fork shape, not a migration."""
+def test_a_year_before_the_2021_ladder_IS_NOW_COMPUTED_at_the_2018_figures():
+    """This asserted a REFUSAL until 18-09-2026 and now asserts a figure.
+
+    The refusal was right for as long as 4/2018 and 76/2018 had not been read:
+    they govern the earlier periods, they carry different caps, and charging
+    those years at the 2021 ladder would be a rate that was not in force. Both
+    are now committed under docs/compliance/sources/, and what they say is that
+    the PER-DAY RATE NEVER MOVED — ₹25 central tax, ₹10 for a nil return, the
+    same figures 2021 kept. What 2021 added was the turnover-banded ceiling and
+    the ₹500 nil cap.
+
+    So the fork is entirely in the CAP, and an earlier year takes §47(1)'s own
+    ₹5,000 under each Act because neither 2018 notification sets one."""
     out = late_fee(return_type="gstr3b", financial_year="2019-20",
                    due_date=date(2019, 7, 20), filed_on=date(2019, 9, 4))
-    assert out["refused"] is True
-    assert out["code"] == GAP_LATE_FEE_RATES_NOT_HELD
-    assert out["days"] == 46
-    for cite in ("4/2018", "76/2018", "19/2021", "20/2021"):
-        assert cite in out["reason"], f"{cite} is a notification a CA has to read"
-    assert "fee_paise" not in out
+    assert not isinstance(out, dict), "the 2018 ladder is held; this computes"
+    assert out.days == 46
+    assert out.fee_paise == 46 * 50_00
+    assert out.cap_paise == 10_000_00, (
+        "neither 4/2018 nor 76/2018 notifies a cap, so §47(1)'s own applies — "
+        "NOT the 2021 ladder's ₹2,000, which did not exist yet"
+    )
+    assert out.turnover_band_assumed is False, (
+        "there are no bands before 2021, so nothing was assumed about turnover"
+    )
+    assert "76/2018" in out.source
 
 
-def test_the_statutory_figure_is_recorded_but_never_used_as_a_fallback():
-    """₹200 a day is four times what a registered person has paid since 2018.
-    It is held so nobody has to look up what the notifications reduced, and a
-    refused year gets a REFUSAL rather than it."""
+def test_a_nil_return_before_2021_has_no_five_hundred_rupee_cap():
+    """The ₹500 nil ceiling is 19/2021's. Reading it back onto 2019 would cap a
+    fee at a twentieth of what was chargeable."""
+    out = late_fee(return_type="gstr3b", financial_year="2019-20",
+                   due_date=date(2019, 7, 20), filed_on=date(2021, 1, 1),
+                   is_nil_return=True)
+    assert out.cap_paise == 10_000_00
+    assert out.fee_paise == 10_000_00, "530 days at ₹20 is well past the cap"
+
+
+def test_april_and_may_2021_are_inside_the_year_and_outside_the_notification():
+    """19/2021 and 20/2021 run from the tax period JUNE 2021, and the rate table
+    is keyed on a FINANCIAL year — so two months of FY 2021-22 belong to the
+    earlier ladder. This is the one place the key is coarser than the
+    notification, and the module says so rather than quietly rounding.
+
+    A caller who names the period gets the right answer; one who does not gets
+    the banded cap and a caveat naming the two months. The direction is
+    deliberate: the banded cap is the SMALLER for every taxpayer below ₹5 crore,
+    so the assumption understates, and the portal corrects at filing."""
+    stated = late_fee(return_type="gstr3b", financial_year="2021-22",
+                      due_date=date(2021, 5, 20), filed_on=date(2022, 1, 1),
+                      tax_period_start=date(2021, 4, 1))
+    assert stated.cap_paise == 10_000_00, "April 2021 is the 2018 ladder"
+
+    assumed = late_fee(return_type="gstr3b", financial_year="2021-22",
+                       due_date=date(2021, 5, 20), filed_on=date(2022, 1, 1))
+    assert assumed.cap_paise == 2_000_00, "no period stated, so banded"
+    assert any("April and May 2021" in c for c in assumed.caveats), (
+        "a key coarser than the notification's must be named on the answer"
+    )
+
+    june = late_fee(return_type="gstr3b", financial_year="2021-22",
+                    due_date=date(2021, 7, 20), filed_on=date(2022, 1, 1),
+                    tax_period_start=date(2021, 6, 1))
+    assert june.cap_paise == 2_000_00, "June 2021 is the first banded period"
+
+
+def test_the_statutory_figure_is_recorded_and_used_only_where_it_governs():
+    """§47(1)'s ₹200 a day is still never a fallback — every monthly year from
+    2017-18 is now held, so there is nothing to fall back FROM.
+
+    §47(2)'s is different and IS used: 7/2023's table stops at ₹20 crore of
+    aggregate turnover, so a taxpayer above it was never given a reduction and
+    the statute is simply what applies to them. Using the statutory figure
+    where the statute governs is not the same thing as using it where a
+    notification exists and has not been read."""
     assert SECTION_47_1_STATUTORY_PER_DAY_PAISE == 200_00
     assert SECTION_47_1_STATUTORY_CAP_PAISE == 10_000_00
-    out = late_fee(return_type="gstr3b", financial_year="2019-20",
-                   due_date=date(2019, 7, 20), filed_on=date(2019, 9, 4))
-    assert "fee_paise" not in out
-    assert str(SECTION_47_1_STATUTORY_PER_DAY_PAISE) not in str(out.get("fee_paise", ""))
+    assert lf.SECTION_47_2_STATUTORY_PER_DAY_PAISE == 200_00
+    assert lf.SECTION_47_2_STATUTORY_CAP_BPS == 50
+
+    top = lf.GSTR9_FEE_BANDS[-1]
+    assert top.upto_aggregate_paise is None
+    assert top.per_day_paise == lf.SECTION_47_2_STATUTORY_PER_DAY_PAISE
+    assert top.cap_bps_of_state_turnover == lf.SECTION_47_2_STATUTORY_CAP_BPS
 
 
-def test_an_unknown_return_type_is_refused_rather_than_defaulted():
-    """GSTR-9's own late fee is a different figure again, and nothing here
-    holds it. Falling back to the 3B ladder would charge it anyway."""
+def test_the_monthly_ladder_now_covers_every_year_the_fee_has_existed():
+    """There is no monthly year left to refuse. GSTR-1 and GSTR-3B did not
+    exist before July 2017 and neither did §47's charge on them."""
+    for rt in ("gstr1", "gstr3b"):
+        for fy in ("2017-18", "2018-19", "2019-20", "2020-21",
+                   "2021-22", "2026-27"):
+            assert (rt, fy) in lf.LATE_FEE_RATES, f"{rt} {fy} is not held"
+    assert lf.LATE_FEE_FIRST_HELD_FY == "2017-18"
+    assert lf.LATE_FEE_BANDED_FROM_FY == "2021-22"
+
+
+def test_the_annual_fee_is_its_own_sub_section_with_its_own_shape():
+    """§47(2) is not a fourth row of the monthly table and could not be.
+
+    Its ceiling is a PERCENTAGE of turnover in the State, so there is no
+    cap_paise to write down without a figure about the taxpayer — and it is a
+    DIFFERENT turnover from the one that picks the band, which is CGST §2(6)
+    aggregate turnover, PAN-level and all-India. `client_gst_turnover` holds
+    the second and nothing holds the first."""
     out = late_fee(return_type="gstr9", financial_year="2025-26",
-                   due_date=date(2026, 12, 31), filed_on=date(2027, 1, 15))
+                   due_date=date(2026, 12, 31), filed_on=date(2027, 1, 15),
+                   aggregate_turnover_paise=2 * lf._CRORE)
+    assert not isinstance(out, dict)
+    assert out.days == 15
+    assert out.fee_paise == 15 * 50_00, "₹25 + ₹25 a day up to ₹5 crore"
+    assert out.capped is False
+    assert out.cap_gap == lf.GAP_STATE_TURNOVER_NOT_HELD, (
+        "with no State turnover there is no ceiling to report, and a zero cap "
+        "would read as 'no cap was reached'"
+    )
+    assert any("turnover in THIS STATE" in c for c in out.caveats)
+    assert any("overstated" in c for c in out.caveats), (
+        "this is the one answer in the module that errs HIGH, and it owns it"
+    )
+
+
+def test_the_annual_cap_applies_once_the_state_turnover_is_given():
+    """0.02 per cent under each Act — 4 basis points combined."""
+    out = late_fee(return_type="gstr9", financial_year="2025-26",
+                   due_date=date(2026, 12, 31), filed_on=date(2027, 12, 31),
+                   aggregate_turnover_paise=2 * lf._CRORE,
+                   state_turnover_paise=1 * lf._CRORE)
+    assert out.cap_paise == 4_000_00, "0.04% of ₹1 crore"
+    assert out.fee_paise == 4_000_00
+    assert out.capped is True
+    assert out.cap_gap is None
+
+
+def test_the_annual_bands_are_the_notifications_own_ladder():
+    """₹25 a day to ₹5 crore, ₹50 a day to ₹20 crore, and above that the
+    notification gives no reduction at all."""
+    def fee(agg):
+        return late_fee(return_type="gstr9", financial_year="2025-26",
+                        due_date=date(2026, 12, 31), filed_on=date(2027, 1, 1),
+                        aggregate_turnover_paise=agg).fee_paise
+    assert fee(5 * lf._CRORE) == 1 * 50_00, "the band is INCLUSIVE at ₹5 crore"
+    assert fee(6 * lf._CRORE) == 1 * 100_00
+    assert fee(25 * lf._CRORE) == 1 * 200_00
+
+
+def test_an_annual_year_before_the_notification_still_REFUSES():
+    """7/2023 says nothing about FY 2021-22 and earlier except through its own
+    amnesty proviso, so a year before it is refused rather than charged at a
+    ladder that did not reach it."""
+    out = late_fee(return_type="gstr9", financial_year="2021-22",
+                   due_date=date(2022, 12, 31), filed_on=date(2024, 1, 15))
     assert out["refused"] is True
+    assert out["code"] == GAP_LATE_FEE_RATES_NOT_HELD
+    assert "7/2023" in out["reason"]
+    assert "fee_paise" not in out
+
+
+def test_the_2023_amnesty_window_is_honoured_and_has_closed():
+    """The proviso caps FY 2017-18 to 2021-22 at ₹10,000 under each Act if the
+    return was FURNISHED between 1 April and 30 June 2023. It is asked before
+    the bands because it REPLACES them, and it needs no turnover at all."""
+    inside = late_fee(return_type="gstr9", financial_year="2019-20",
+                      due_date=date(2021, 3, 31), filed_on=date(2023, 5, 1))
+    assert inside.fee_paise == 20_000_00
+    assert inside.capped is True
+    assert any("1 April and 30 June 2023" in c for c in inside.caveats)
+
+    outside = late_fee(return_type="gstr9", financial_year="2019-20",
+                       due_date=date(2021, 3, 31), filed_on=date(2023, 7, 1))
+    assert outside["refused"] is True, "a day past the window and it is gone"
+
+
+def test_an_unknown_return_type_is_still_refused_rather_than_defaulted():
+    """GSTR-4, GSTR-7 and GSTR-8 each carry their own fee and none is held.
+    Falling back to the 3B ladder would charge one anyway."""
+    for rt in ("gstr4", "gstr7", "gstr8", "cmp08"):
+        out = late_fee(return_type=rt, financial_year="2025-26",
+                       due_date=date(2026, 12, 31), filed_on=date(2027, 1, 15))
+        assert isinstance(out, dict) and out["refused"] is True, rt
 
 
 # ── the wiring: Table 5.1 and the service ────────────────────────────────────

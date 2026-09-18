@@ -799,8 +799,12 @@ NOT_BUILT = {
            "code, but the table's own requirement has moved by notification "
            "more than once and could not be read here — every .gov.in is "
            "refused at this environment's egress proxy."),
-    "19": ("Late fee payable and paid. domain/gst/late_filing.py holds the "
-           "section 47 rates as EMPTY: the figure in force depends on the "
-           "return, the year and the taxpayer's own turnover, and a late fee "
-           "written from memory is a number a CA would pay over."),
+    "19": ("Late fee payable and PAID. domain/gst/late_filing.py computes what "
+           "is PAYABLE under section 47(2) — Notification 7/2023-Central Tax "
+           "was read on 18-09-2026 — but its ceiling is a percentage of "
+           "turnover in the State, which nothing here holds, so the answer "
+           "carries that gap. What is PAID is a fact about a challan this "
+           "product does not record, and the two boxes of this table are not "
+           "one figure: a return showing the fee as paid when it has not been "
+           "is a declaration, not a rounding."),
 }
