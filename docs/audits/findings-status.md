@@ -7,19 +7,19 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **246** | re-read against the code. The defect is gone. |
+| closed | **247** | re-read against the code. The defect is gone. |
 | partial | **22** | part of the finding is answered, part is not. Each says which. |
-| open | **5** | re-read and still true. |
+| open | **4** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 27 items — 5 open and 22 partial — not 254.**
+**The work left is 26 items — 4 open and 22 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**Of the 5 open, 4 are blocked on something outside the code** — a statutory schema, a file layout, a registration — and each blocker is named below. The other 1 are ordinary code work with nothing in front of them.
+**Every one of the 4 open findings is blocked on something outside the code** — a statutory schema, a file layout, a registration. Each blocker is named below.
 
 ## Open
 
@@ -28,7 +28,6 @@ is left as "unknown".
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
 | medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
 | medium | **PAY-27** | No bank advice file, no payslip delivery, no reimbursements or flexible benefits, no overtime or |
-| medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
 
 ### What actually blocks each of them
@@ -61,8 +60,8 @@ is left as "unknown".
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **IT-20** | §80CCD(2) is capped at 10% of salary for a non-government employee under the NEW regime, where t |
-| medium | **IT-32** | The Chapter VI-A surface stops at seven sections — no §80E, §80EE/EEA, §80DD/DDB, §80U, §80GG, § |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
+| medium | **SALES-23** | No automated payment-reminder cadence to customers — the automatic run was removed and only a ma |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |
 | low | **INV-09** | Stock quantity is NUMERIC(10,3) with no unit conversion, so high-count or fine-grained items bre |
@@ -247,6 +246,7 @@ is left as "unknown".
 | medium | **IT-28** | §50AA is applied to every debt mutual fund regardless of acquisition date, and listed bonds and  |
 | medium | **IT-29** | The Cost Inflation Index stops at FY 2025-26, so every indexed cost computed and STORED in the c |
 | medium | **IT-31** | 26AS reconciliation never feeds the computation — the TDS credit on the return is a number the C |
+| medium | **IT-32** | The Chapter VI-A surface stops at seven sections — no §80E, §80EE/EEA, §80DD/DDB, §80U, §80GG, § |
 | medium | **PAY-04** | A draft payroll run that was never finalised is counted as TDS already deducted, months already  |
 | medium | **PAY-05** | pt_applicable with no pt_state withholds zero professional tax and is reported as a gap by nothi |
 | medium | **PAY-07** | §17(2) perquisites are valued, stored and reported on Form 16 but never enter the monthly §192 w |
