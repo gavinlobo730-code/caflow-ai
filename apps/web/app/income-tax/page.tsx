@@ -845,6 +845,13 @@ export default function IncomeTaxPage() {
             <a href="/income-tax/section-32" className="text-xs font-medium text-[#64748B] hover:text-[#334155] border border-[#E2E8F0] px-2.5 py-1 rounded-lg hover:bg-[#F8FAFC] transition-colors">
               Depreciation §32
             </a>
+            {/* …and the statement the two depreciation systems meet in. The
+                bridge engine and its endpoint existed with no caller at all,
+                so a CA could record §32 blocks and never see what they did to
+                taxable income. */}
+            <a href="/income-tax/book-to-tax" className="text-xs font-medium text-ps-label hover:text-ps-body border border-ps-border px-2.5 py-1 rounded-lg hover:bg-ps-bg transition-colors">
+              Book-to-tax bridge
+            </a>
           </div>
         </div>
         <button
