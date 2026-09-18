@@ -30,10 +30,14 @@ export type Employee = {
   hra_percent: number;
   da_percent: number;
   other_allowances_paise: number;
-  // Optional fixed components — this page's Add-Employee form doesn't capture
-  // them, but an employee created via the per-client payroll page can carry
-  // them, and the backend slip folds all of them into gross. Included here so
+  // Optional fixed components. The one employee form does not capture them —
+  // they are set through EmployeeDrawer's salary revision, which records the
+  // whole component set AS AT A DATE so arrears have something to compute
+  // from — and the backend slip folds all of them into gross. Included here so
   // the on-screen CTC preview matches the computed slip for every employee.
+  //
+  // (This used to say "an employee created via the per-client payroll page can
+  // carry them", which described the second form PAY-13 deleted.)
   lta_paise?: number;
   medical_paise?: number;
   special_allowance_paise?: number;
@@ -61,6 +65,13 @@ export type Employee = {
   // shipped will not carry them and `?? true` is the column's own default.
   eps_eligible?: boolean;
   gratuity_act_covered?: boolean;
+  // PAY-13: the three the CLIENT workspace's own form held and this one's did
+  // not, now on the single shared form. `aadhaar_last4` is four digits and
+  // never twelve — models/payroll.py: "The full value must never reach the
+  // backend" — so it is a display value here, not something to edit in place.
+  employee_code?: string | null;
+  date_of_birth?: string | null;
+  aadhaar_last4?: string | null;
 };
 
 export type PayrollRun = {

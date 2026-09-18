@@ -481,11 +481,11 @@
       "reread_on": "2026-09-17"
     },
     "PAY-13": {
-      "status": "partial",
-      "verified_on": "2026-09-17",
-      "why": "the ALLOWANCE limb is closed \u2014 EmployeeDrawer's revision panel posts da_percent/lta_paise/medical_paise/special_allowance_paise and routers/payroll._pay_in_force merges _REVISABLE_COMPONENTS into the run \u2014 and PAY-05 added the pt_state field",
-      "reread_on": "2026-09-17",
-      "what_is_left": "the IDENTITY limb. The client payroll form's state has no PAN, joining date, UAN, ESIC number or bank details, EmployeeDrawer's SECTIONS offer no identity editor, and api.payroll.updateEmployee is called only from AddEmployeeModal and /payroll/people \u2014 never from the client workspace. The finding's actual fix, ONE employee form used by both surfaces, is not done, and the two remain disjoint"
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026, and the finding's ACTUAL FIX \u2014 one employee form used by both surfaces \u2014 is what was done. The allowance limb closed earlier (EmployeeDrawer's revision panel posts da_percent/lta/medical/special and `_pay_in_force` merges them into the run; PAY-05 added pt_state). THE IDENTITY LIMB WAS A SECOND FORM, not a missing field. `components/payroll/AddEmployeeModal` held pan, uan, esi_number, joining_date, gender, da_percent, bank details, eps_eligible and gratuity_act_covered; the client workspace's own inline form held employee_code, date_of_birth and aadhaar and NONE of the first list. So which screen a CA happened to add an employee from decided whether `domain/payroll/ecr.py` would accept them at all (it REFUSES a member whose UAN is absent or not twelve digits, so one employee stopped a whole EPFO filing), whether \u00a7192 withheld at the ordinary rate or \u00a7206AA's 20% floor, whether the \u00a7192 projection annualised a mid-year joiner correctly (the 2026-09-01 audit measured \u20b91,46,250 of over-deduction on one employee), and whether there was a bank account to pay them into. AddEmployeeModal now carries the UNION \u2014 including the Aadhaar last-4 rule and employee_code, which had been reachable from ONLY the deleted form \u2014 and `lockedClientId` shows the client as a fixed label rather than hiding the field. The inline form and its `addEmployee` are gone, with them a browser-supplied `firm_id` the server took off the token anyway.",
+      "reread_on": "2026-09-18",
+      "needs": "Nothing. `apps/web/scripts/payroll-money-is-exact.test.ts` holds the rule: exactly one employee form, the client workspace opens it, no second create path on that page, and every field the deleted form held reaches the PAYLOAD \u2014 asserted on the payload object rather than on the file, because the first version passed its own negative control (a name deleted from the payload survives in the form state and on the input, so a field can be collected from the CA and silently dropped)."
     },
     "GST-27": {
       "status": "closed",
@@ -599,11 +599,11 @@
       "reread_on": "2026-09-17"
     },
     "PUR-15": {
-      "status": "partial",
-      "verified_on": "2026-09-17",
-      "why": "the browser-side rule is gone and rebuilt on the purchase ledger: msme_43bh_service._bills derives the whole answer from purchase_bills, BOTH payment shapes and vendors.msme_status through section_43b_h.compute, with migration 373 giving the written agreement its own column",
-      "reread_on": "2026-09-17",
-      "what_is_left": "MSMED \u00a716 interest \u2014 three times the RBI bank rate, compounded monthly \u2014 which the finding names in its evidence, its ca_experience and its suggested fix. It is neither computed nor carried as a named refusal in Section43BHResult.caveats, unlike \u00a747's late fee or SECTION_50_3_NOTIFIED_RATE_BPS"
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026, both halves. THE DEDUCTION HALF: the browser-side rule is gone and rebuilt on the purchase ledger \u2014 `msme_43bh_service._bills` derives the whole answer from `purchase_bills`, BOTH payment shapes and `vendors.msme_status` through `section_43b_h.compute`, with migration 373 giving the written agreement its own column. THE INTEREST HALF: `domain/income_tax/msmed_interest.py` is MSMED \u00a716 \u2014 compound interest WITH MONTHLY RESTS at THREE TIMES the RBI Bank Rate, which is a DEBT TO THE SUPPLIER rather than a deferral of the buyer's own deduction, so a working reporting only the add-back reports the smaller of the two numbers. \u00a723 then disallows that interest OUTRIGHT, which is the part a CA can miss: unlike \u00a743B(h), paying it never releases it, so the two add-backs are independent and are reported separately. \u00a722's disclosure is named on every answer. It rides on the SAME `section_43b_h` result rather than re-reading anything \u2014 \u00a716's clock starts at the appointed day, which is exactly `outcome.due_by` \u2014 and `GET /api/income-tax/msme-43bh` serves it as `msmed_interest`, rendered by `/accounting/msme-tracker`. THREE DECISIONS WORTH KEEPING: the charge is ONE PRINCIPAL PER LATE TRANCHE (a bill part-paid one month late and cleared six months late owes two periods, and one principal over the longer one over-charges); a REST IS A MONTH THAT HAS FALLEN DUE, so 45 days is one rest and 14 reported days, because a proportion of a rest is simple interest wearing a compound name; and every rounding goes UP, the direction that cannot leave a small supplier short.",
+      "reread_on": "2026-09-18",
+      "needs": "Nothing in code. The RBI BANK RATE is a human step by design \u2014 `perquisites.py` refuses the SBI rate for Rule 3(7)(i) the same way and `public.dtaa_treaty_rates` the same way again: it moves by notification partway through a year, so a delay spanning a change is governed by more than one, and \u00a716 TRIPLES whatever it is given. `interest_refusal` returns a sentence naming what to look up and the working (which bills, from when, over how many rests) survives the refusal, so the screen is useful before anybody records a figure. A guessed rate would be unsafe in BOTH directions and by a factor of three."
     },
     "PUR-22": {
       "status": "closed",
@@ -1150,17 +1150,17 @@
       "reread_on": "2026-09-16"
     },
     "FA-06": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. \u2014 RE-READ 16-09-2026 against main 171ef0e3: \u00a732 HALF IS CLOSED: apps/api/domain/income_tax/section_32.py implements \u00a72(11) blocks, \u00a743(6)(c) WDV movement, the second proviso's 180-day half rate (half_rate_cutoff derived from the FY end), \u00a732(1)(iia) as a never-inferred per-addition flag and \u00a750's short-term gain; services/section_32_service.py assembles blocks from income_tax_asset_blocks (migration 357) plus register additions/deletions and names unclassified assets and blocks with no opening WDV; routers/income_tax.py:1729 GET /api/income-tax/section-32 and :1764 PUT /section-32/blocks serve it; apps/web/app/income-tax/section-32/page.tsx renders it and is linked from app/income-tax/page.tsx:845. BRIDGE HALF IS ONLY API-DEEP: routers/income_tax.py:1807 POST /api/income-tax/book-to-tax-bridge calls build_bridge and feeds it the \u00a732 allowance only when section_32[\"is_complete\"], but `grep -rn \"book-to-tax\\|bookToTax\" apps/web` returns two comments and no caller \u2014 no screen posts to it.",
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026. The \u00a732 half closed earlier: `domain/income_tax/section_32.py` implements \u00a72(11) blocks, \u00a743(6)(c)'s written-down value, the second proviso's 180-day half rate, \u00a732(1)(iia) as a never-inferred per-addition flag and \u00a750's short-term gain, with `/income-tax/section-32` rendering it. THE BRIDGE HALF IS NOW REACHED: `apps/web/app/income-tax/book-to-tax/page.tsx` posts to `POST /api/income-tax/book-to-tax-bridge` and is linked from the income-tax hub, so a CA finally sees profit per the accounts reconciled down to taxable income \u2014 the document the client reads and an assessing officer asks for. THREE OF THE FOUR INPUTS ARE NOW DERIVED rather than typed, which is more than the finding asked for and is what the bridge module's own docstring was complaining about (\"Book profit was taken as an INPUT ... PRECISELY BECAUSE NOTHING DERIVED IT\"): book profit from the same Profit & Loss the client has already read, depreciation from `fixed_asset_movement.posted_depreciation_paise` (imported, never restated \u2014 FA-05's rule), and the \u00a743B(h) add-back from the module that decides it. A caller's value still WINS and is marked `derived: false`, because a CA may be bridging a client whose accounts were prepared elsewhere. A FIGURE THAT COULD NOT BE READ IS PASSED AS ZERO AND MAKES THE BRIDGE INCOMPLETE \u2014 `foots` and `is_complete` stay two different properties, which is the module's own central claim: a bridge that reconciles and lies is worse than one that refuses to reconcile.",
       "commits": [
         "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre",
         "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre",
         "dba0996f Phase 9d + Phase 10: the BRS has two sides, and the IT Act's own depre"
       ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "A screen (or a panel on the tax computation page) that calls POST /api/income-tax/book-to-tax-bridge and renders its lines, missing[] and reasons[].",
-      "user_visible_impact": "A CA can compute and record \u00a732 block depreciation, but there is no screen anywhere that shows profit per the accounts reconciled down to taxable income; the bridge exists only as an endpoint, so in a demo the book-to-tax reconciliation is still invisible. (Form 3CD, also named in the finding's evidence, is still not produced \u2014 only mentioned in tax_audit.py and engagement-letter text.)"
+      "reread_on": "2026-09-18",
+      "user_visible_impact": "A CA can compute and record \u00a732 block depreciation, but there is no screen anywhere that shows profit per the accounts reconciled down to taxable income; the bridge exists only as an endpoint, so in a demo the book-to-tax reconciliation is still invisible. (Form 3CD, also named in the finding's evidence, is still not produced \u2014 only mentioned in tax_audit.py and engagement-letter text.)",
+      "needs": "Nothing for the bridge. BROUGHT-FORWARD LOSS SET-OFF is deliberately never derived and says so on every answer: \u00a772, \u00a773(4), \u00a774 and \u00a771B each let a loss reach only certain HEADS of income and the bridge holds one figure for the whole computation, so a set-off derived from it would assert a head-wise answer nothing here can see. FORM 3CD, named in the finding's evidence, is still not produced \u2014 a separate build."
     },
     "FA-07": {
       "status": "closed",

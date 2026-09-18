@@ -39,7 +39,8 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getClients } from "@/lib/data/clients";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
-import { api, type MSME43BHWorking } from "@/lib/api";
+import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { api, type MSME43BHWorking, type MSMEDInterest } from "@/lib/api";
 import * as XLSX from "xlsx";
 import type { Client } from "@/lib/types";
 
@@ -53,6 +54,13 @@ export default function MSME43BHPage() {
   const [working, setWorking] = useState<MSME43BHWorking | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // MSMED §16 charges THREE TIMES the RBI Bank Rate, and nothing in this
+  // product holds that rate: it moves by notification partway through a year,
+  // so a delay spanning a change is governed by more than one. It is the CA's
+  // own figure, typed here — the shape the DTAA treaty rates use. Empty means
+  // the server refuses the charge and names what to look up, which is a
+  // different thing from a nil charge.
+  const [bankRate, setBankRate] = useState("");
 
   useEffect(() => { getClients().then(setClients).catch(() => setClients([])); }, []);
 
@@ -61,7 +69,10 @@ export default function MSME43BHPage() {
     setLoading(true);
     setError(null);
     try {
-      const r = await api.incomeTax.msme43bh(clientId, fy);
+      // bpsFromPercentInput is the one parser for a typed percentage; a bare
+      // parseFloat here is the money-parser defect wearing a rate's clothes.
+      const bps = bankRate.trim() === "" ? undefined : bpsFromPercentInput(bankRate);
+      const r = await api.incomeTax.msme43bh(clientId, fy, bps ?? undefined);
       if (!r.success) { setWorking(null); setError(r.error ?? "Could not compute the §43B(h) working"); return; }
       setWorking(r.data);
     } catch (e) {
@@ -70,7 +81,7 @@ export default function MSME43BHPage() {
     } finally {
       setLoading(false);
     }
-  }, [clientId, fy]);
+  }, [clientId, fy, bankRate]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -132,6 +143,21 @@ export default function MSME43BHPage() {
         >
           {fyChoices.map(y => <option key={y} value={y}>FY {y}</option>)}
         </select>
+        <div className="flex items-center gap-2">
+          <label htmlFor="bank-rate" className="text-xs text-ps-label whitespace-nowrap">
+            RBI Bank Rate
+          </label>
+          <input
+            id="bank-rate"
+            inputMode="decimal"
+            placeholder="6.75"
+            title="MSMED §16 charges three times this. Not the repo rate and not a lending rate."
+            className="w-[90px] border border-ps-border rounded-lg px-3 py-2 text-sm tabular-nums outline-none focus:border-blue-500"
+            value={bankRate}
+            onChange={e => setBankRate(e.target.value)}
+          />
+          <span className="text-xs text-ps-hint">%</span>
+        </div>
       </div>
 
       {error && <div className="bg-red-50 text-red-700 rounded-lg px-5 py-4 text-sm">{error}</div>}
@@ -173,6 +199,13 @@ export default function MSME43BHPage() {
               </p>
             </div>
           </div>
+
+          {/* MSMED §16 — A DEBT, NOT A DEFERRAL, and the second number this screen
+              exists to show. §43B(h) above moves a deduction between years;
+              §16 makes the client liable to the SUPPLIER for compound interest
+              at three times the Bank Rate, and §23 then disallows that
+              interest outright, so paying it never releases it. */}
+          <MsmedInterestPanel interest={working.msmed_interest} />
 
           {working.gaps.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
@@ -257,6 +290,134 @@ export default function MSME43BHPage() {
           </Card>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * MSMED §16 — the DEBT a late payment creates.
+ *
+ * This is deliberately a SECOND panel and not another tile beside the §43B(h)
+ * figures, because it is a different KIND of number and netting them would be
+ * wrong twice over:
+ *
+ *   §43B(h)  moves a DEDUCTION into the year the sum is actually paid. The
+ *            money is the client's own tax, and paying the supplier releases
+ *            it.
+ *   §16      makes the client LIABLE TO THE SUPPLIER for compound interest
+ *            with monthly rests at three times the RBI Bank Rate, and §23
+ *            then disallows that interest outright — so paying it never
+ *            releases it, and it is owed to somebody else entirely.
+ *
+ * THE CHARGE IS NULL WHERE NO BANK RATE WAS GIVEN, AND A NULL IS NOT A NIL.
+ * Nothing in this product holds the Bank Rate: it moves by RBI notification
+ * partway through a year, so a delay spanning a change is governed by more
+ * than one. The working still renders — which bills are accruing, since when,
+ * over how many rests — because that is useful before anybody looks a rate up,
+ * and a panel that shows nothing until a figure is typed reads as broken.
+ */
+function MsmedInterestPanel({ interest }: { interest: MSMEDInterest }) {
+  const rows = interest.amounts;
+  const charged = interest.charged_rate_bps;
+  const unknownRate = interest.interest_paise === null;
+
+  if (rows.length === 0) {
+    return (
+      <div className="bg-ps-bg border border-ps-border rounded-xl px-5 py-4">
+        <p className="text-sm font-semibold text-ps-ink">MSMED §16 interest</p>
+        <p className="text-xs text-ps-label mt-1">
+          No amount has missed its MSMED §15 limit, so §16 charges nothing.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`rounded-xl border ${unknownRate
+      ? "bg-state-attention-surface border-state-attention-border" : "bg-ps-surface border-ps-border"}`}>
+      <div className="px-5 py-4 border-b border-ps-border">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-ps-ink">
+              MSMED §16 — interest owed to the supplier
+            </p>
+            <p className="text-xs text-ps-label mt-0.5">
+              Compound interest with monthly rests, at three times the RBI Bank Rate.
+              {charged !== null && (
+                <> Charged at <strong className="tabular-nums">
+                  {(charged / 100).toFixed(2)}%
+                </strong> a year.</>
+              )}
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-xs text-ps-label">As at {interest.as_at ?? "—"}</p>
+            <p className="text-2xl font-bold tabular-nums mt-0.5 text-ps-ink">
+              {unknownRate ? "—" : formatPaise(interest.interest_paise ?? 0)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {interest.gaps.length > 0 && (
+        <div className="px-5 py-3 bg-state-attention-surface/60 border-b border-state-attention-border/60 space-y-1">
+          {interest.gaps.map((g, i) => (
+            <p key={i} className="text-xs text-state-attention">• {g}</p>
+          ))}
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[820px]">
+          <thead>
+            <tr className="border-b border-ps-border bg-ps-bg">
+              <th className="px-3 py-2 text-left text-[11px] font-semibold text-ps-label uppercase">Supplier</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold text-ps-label uppercase">Bill</th>
+              <th className="px-3 py-2 text-right text-[11px] font-semibold text-ps-label uppercase">Amount</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold text-ps-label uppercase">Interest from</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold text-ps-label uppercase">To</th>
+              <th className="px-3 py-2 text-right text-[11px] font-semibold text-ps-label uppercase">Rests</th>
+              <th className="px-3 py-2 text-right text-[11px] font-semibold text-ps-label uppercase">Interest</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((a, i) => (
+              <tr key={`${a.bill_id}-${i}`} className="border-b border-ps-muted last:border-0">
+                <td className="px-3 py-2.5 text-ps-ink">{a.vendor_name}</td>
+                <td className="px-3 py-2.5 text-ps-label">{a.bill_no ?? "—"}</td>
+                <td className="px-3 py-2.5 tabular-nums text-right">{formatPaise(a.principal_paise)}</td>
+                <td className="px-3 py-2.5 text-ps-label tabular-nums">{a.from_date ?? "—"}</td>
+                <td className="px-3 py-2.5 text-ps-label tabular-nums">
+                  {a.to_date ?? "—"}
+                  {a.still_running && (
+                    <span className="ml-1.5 text-[10px] text-state-attention">still accruing</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 tabular-nums text-right" title={a.reason}>
+                  {a.months}
+                  {a.part_days > 0 && (
+                    /* A part month is a rest that has not fallen due, so it is
+                       reported and NOT charged — shown so the figure below can
+                       be reconciled rather than looking arbitrary. */
+                    <span className="text-[10px] text-ps-hint"> +{a.part_days}d</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 tabular-nums text-right font-medium">
+                  {a.interest_paise === null
+                    ? <span className="text-ps-hint">—</span>
+                    : formatPaise(a.interest_paise)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="px-5 py-3 border-t border-ps-border space-y-1.5 bg-ps-bg">
+        {interest.caveats.map((c, i) => (
+          <p key={i} className="text-xs text-ps-label">{c}</p>
+        ))}
+      </div>
     </div>
   );
 }

@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **243** | re-read against the code. The defect is gone. |
-| partial | **25** | part of the finding is answered, part is not. Each says which. |
+| closed | **246** | re-read against the code. The defect is gone. |
+| partial | **22** | part of the finding is answered, part is not. Each says which. |
 | open | **5** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 30 items — 5 open and 25 partial — not 254.**
+**The work left is 27 items — 5 open and 22 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -45,14 +45,12 @@ is left as "unknown".
 | severity | finding | what it is |
 |---|---|---|
 | high | **ACC-03** | Every receipt and vendor payment posts to one generic "Bank Account" ledger, while bank-statemen |
-| high | **FA-06** | IT Act §32 block-of-assets depreciation does not exist, and the book-to-tax bridge that needs it |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-13** | The module's most differentiating backend work — amendments, exception report, ITC register, adv |
 | high | **IT-09** | IT Act §32 depreciation (block of assets, WDV, the 180-day half-rate rule, additional depreciati |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
 | high | **IT-13** | §234A and §234B are implemented and tested but exposed by no endpoint and no screen — only §234C |
 | high | **IT-17** | itr_field_placements() — 'this figure goes in this field' against the Department's own committed |
-| high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
@@ -64,7 +62,6 @@ is left as "unknown".
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |
 | medium | **IT-20** | §80CCD(2) is capped at 10% of salary for a non-government employee under the NEW regime, where t |
 | medium | **IT-32** | The Chapter VI-A surface stops at seven sections — no §80E, §80EE/EEA, §80DD/DDB, §80U, §80GG, § |
-| medium | **PAY-13** | The client workspace's own employee form collects neither PAN, joining date, UAN, ESIC number, b |
 | medium | **PAY-26** | The employee portal shows a payslip list and a leave number and nothing else a self-service port |
 | medium | **SALES-25** | No warning when a credit note is issued outside the §34(2) window, and no customer credit limit  |
 | medium | **SALES-28** | E-invoice and e-way bill are record-keeping ledgers only — no JSON is produced, no applicability |
@@ -130,6 +127,7 @@ is left as "unknown".
 | high | **FA-03** | The Depreciation tab recomputes the annual charge in TypeScript with the exact bug the backend f |
 | high | **FA-04** | Depreciation is monthly-only with no catch-up, and a missed month can never be posted |
 | high | **FA-05** | The auto-generated Fixed Assets note reports a theoretical annual charge that need not match any |
+| high | **FA-06** | IT Act §32 block-of-assets depreciation does not exist, and the book-to-tax bridge that needs it |
 | high | **FA-07** | Asset acquisition always credits Bank — no vendor, no GST/ITC, and no link to the purchase bill, |
 | high | **FA-08** | Disposal does not charge depreciation up to the disposal date, so the gain/loss on every mid-yea |
 | high | **FA-10** | No way to edit, correct, reverse or delete an asset once created |
@@ -170,6 +168,7 @@ is left as "unknown".
 | high | **PUR-11** | The GSTR-2A/2B reconciliation asks the CA to export and re-upload the purchase register the plat |
 | high | **PUR-13** | §194Q deducts 0.1% on the whole purchase value instead of on the value exceeding ₹50 lakh, and h |
 | high | **PUR-14** | The TDS register's statutory gaps are computed on every receive and never reach a screen — the e |
+| high | **PUR-15** | The MSME §43B(h) tracker is a manually re-keyed side table with the whole statutory rule compute |
 | high | **SALES-03** | Invoice PDF always states "tax payable on reverse charge basis: No", and never prints the place  |
 | high | **SALES-04** | Deleting a middle draft credit note (or sales debit note) permanently wedges that client's numbe |
 | high | **SALES-05** | The Sales screen's "Outstanding" tile overstates receivables — it sums the full invoice total fo |
@@ -253,6 +252,7 @@ is left as "unknown".
 | medium | **PAY-07** | §17(2) perquisites are valued, stored and reported on Form 16 but never enter the monthly §192 w |
 | medium | **PAY-08** | Reversing a payroll run does not restore employee loan balances, so re-finalising the same run r |
 | medium | **PAY-10** | The TDS projection screen computes §192 in TypeScript with hardcoded FY 2025-26 new-regime rates |
+| medium | **PAY-13** | The client workspace's own employee form collects neither PAN, joining date, UAN, ESIC number, b |
 | medium | **PAY-15** | Attendance and LOP cannot be entered from the client Payroll tab at all — they live on a firm-wi |
 | medium | **PAY-17** | Annual professional tax for §16(iii) is estimated as this month's PT × 12 — six times the year's |
 | medium | **PAY-18** | `logger` is undefined in the /employee-exceptions error path — a failed declarations read raises |

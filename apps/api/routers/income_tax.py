@@ -21,6 +21,7 @@ from domain.income_tax.capital_gains_engine import (
     ASSESSEE_TYPES, ASSESSEE_UNSPECIFIED,
 )
 from domain.income_tax.assessee import AssesseeKind, assessee_kind_for_entity_type
+from domain.income_tax import msmed_interest as _msmed
 from domain.income_tax import reinvestment_exemption as rex
 from services import capital_gain_exemption_service as cgx
 from domain.income_tax.advance_tax_interest_engine import (
@@ -1719,6 +1720,12 @@ class Section32BlockIn(BaseModel):
 def msme_section_43bh(
     client_id: str,
     fy: Annotated[FYLabel, Query(description="YYYY-YY, e.g. 2025-26")],
+    bank_rate_bps: Annotated[Optional[int], Query(
+        ge=0, le=5000,
+        description="RBI Bank Rate over the delay, in basis points (675 = 6.75%). "
+                    "MSMED §16 charges THREE TIMES this. Omit it and the §16 "
+                    "working still comes back, with the charge refused and named.",
+    )] = None,
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     """What §43B(h) adds back this year, and what it releases — DERIVED (PUR-15).
@@ -1743,6 +1750,20 @@ def msme_section_43bh(
     Every live bill is read, not only the year's own — an earlier year's bill
     paid late during this year comes back as a deduction now.
 
+    AND `msmed_interest` IS THE OTHER NUMBER. §43B(h) defers a DEDUCTION; MSMED
+    §16 makes the buyer liable to the SUPPLIER for compound interest with
+    monthly rests at three times the RBI Bank Rate, which §23 then disallows
+    outright — so paying it never releases it, and the two add-backs are
+    independent. A working that reports only the deferral reports the smaller
+    figure.
+
+    **THE BANK RATE IS NOT HELD HERE AND IS NOT GUESSED.** It moves by RBI
+    notification partway through a year and a delay spanning a change is
+    governed by more than one, so `bank_rate_bps` is the CA's own figure — the
+    shape `public.dtaa_treaty_rates` uses for a treaty rate. Omit it and the
+    working still names which bills are accruing, from when and over how many
+    monthly rests, with the charge itself refused in `gaps`.
+
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal. This
     # computes a working for the tax computation; it writes nothing.
     """
@@ -1752,11 +1773,16 @@ def msme_section_43bh(
         return api_response(True, {
             "financial_year": fy, "applicable": True, "disallowed_paise": 0,
             "allowed_on_payment_paise": 0, "bills": [], "gaps": [],
-            "caveats": [], "source": "mock", "ca_review_required": True})
+            "caveats": [], "source": "mock", "ca_review_required": True,
+            # The §16 shape is present in mock mode too, so a screen reading it
+            # does not have to branch on which backend answered.
+            "msmed_interest": _msmed.compute(
+                [], financial_year=fy, bank_rate_bps=bank_rate_bps).to_dict()})
     from services.msme_43bh_service import MSME43BHError, for_financial_year
     try:
         return api_response(True, for_financial_year(
-            db, current_user["firm_id"], client_id, fy))
+            db, current_user["firm_id"], client_id, fy,
+            bank_rate_bps=bank_rate_bps))
     except MSME43BHError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -1830,12 +1856,30 @@ def upsert_section_32_block(
 
 
 class BookToTaxBridgeRequest(BaseModel):
-    """The bridge's inputs. §32 is fetched, not supplied."""
+    """The bridge's inputs, and THREE OF THEM ARE NOW OPTIONAL.
+
+    §32 was already fetched rather than supplied. Book profit, the depreciation
+    charged in the accounts and the §43B(h) disallowance are figures these books
+    ALSO hold, so leaving one out derives it and says where it came from —
+    `services/book_to_tax_service.py` records why a re-keyed figure drifts from
+    the ledger the moment anything is corrected.
+
+    A value that IS supplied wins, and is marked `derived: false` on its own
+    line. That is not a fallback: a CA may be bridging a client whose accounts
+    were prepared elsewhere, and refusing their figure would make the screen
+    useless for exactly the clients whose bridge is hardest.
+
+    `brought_forward_loss_set_off_paise` stays REQUIRED-OR-ZERO and is never
+    derived. §72, §73(4), §74 and §71B each let a loss reach only certain HEADS
+    of income and the bridge holds one figure for the whole computation, so a
+    set-off derived from it would assert a head-wise answer nothing here can
+    see. The refusal is named in the response.
+    """
     client_id: str
     fy: FYLabel
-    book_profit_paise: int
-    disallowances_paise: int = 0
-    depreciation_per_books_paise: int = 0
+    book_profit_paise: Optional[int] = None
+    disallowances_paise: Optional[int] = None
+    depreciation_per_books_paise: Optional[int] = None
     brought_forward_loss_set_off_paise: int = 0
 
 
@@ -1859,6 +1903,7 @@ def book_to_tax_bridge(
     """
     assert_client_access(current_user, req.client_id)
     from domain.income_tax.book_to_tax_bridge import build_bridge
+    from services import book_to_tax_service as _b2t
 
     section_32 = None
     db = _db()
@@ -1867,10 +1912,33 @@ def book_to_tax_bridge(
         section_32 = section_32_service.assemble(
             db, current_user["firm_id"], req.client_id, req.fy)
 
+    # THE THREE DERIVABLE INPUTS. A caller's value wins; anything omitted is
+    # read out of these books and carries a sentence saying so. A figure that
+    # could not be read comes back None and is passed as 0 WITH ITS REASON —
+    # zero depreciation in the accounts and depreciation that could not be read
+    # are different facts, and the bridge's `reasons` is where the second one
+    # belongs.
+    if db:
+        resolved = _b2t.resolve_inputs(
+            db, current_user["firm_id"], req.client_id, req.fy, current_user,
+            book_profit_paise=req.book_profit_paise,
+            disallowances_paise=req.disallowances_paise,
+            depreciation_per_books_paise=req.depreciation_per_books_paise)
+    else:
+        resolved = {
+            k: _b2t.DerivedInput(v, _b2t.CALLER_SUPPLIED, False)
+            for k, v in (("book_profit", req.book_profit_paise or 0),
+                         ("disallowances", req.disallowances_paise or 0),
+                         ("depreciation_per_books",
+                          req.depreciation_per_books_paise or 0))
+        }
+    unreadable = [d.source for d in resolved.values() if d.value is None]
+
     bridge = build_bridge(
-        book_profit_paise=req.book_profit_paise,
-        disallowances_paise=req.disallowances_paise,
-        depreciation_per_books_paise=req.depreciation_per_books_paise,
+        book_profit_paise=resolved["book_profit"].value or 0,
+        disallowances_paise=resolved["disallowances"].value or 0,
+        depreciation_per_books_paise=(
+            resolved["depreciation_per_books"].value or 0),
         depreciation_under_section_32_paise=(
             section_32["allowance_paise"]
             if section_32 and section_32["is_complete"] else None),
@@ -1885,10 +1953,17 @@ def book_to_tax_bridge(
             for l in bridge.lines
         ],
         "taxable_income_paise": bridge.taxable_income_paise,
-        "is_complete": bridge.is_complete,
+        # A figure that could not be READ makes the bridge incomplete, for the
+        # same reason a withheld §32 figure does: it foots on a zero that is
+        # not a measurement.
+        "is_complete": bridge.is_complete and not unreadable,
         "missing": list(bridge.missing),
-        "reasons": list(bridge.reasons),
+        "reasons": list(bridge.reasons) + unreadable
+                   + [_b2t.BF_LOSS_IS_NOT_DERIVED],
         "foots": bridge.foots(),
+        # Where each input came from, so a reader can tell a figure this
+        # product derived from one somebody typed.
+        "inputs": {k: v.to_dict() for k, v in resolved.items()},
         # The §32 answer beside the bridge, so a CA who sees "incomplete" can
         # see WHY without a second request.
         "section_32": section_32,
