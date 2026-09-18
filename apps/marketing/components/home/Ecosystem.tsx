@@ -242,7 +242,7 @@ export function Ecosystem() {
                   className={`grid h-11 w-11 place-items-center rounded-full border transition-all duration-300 ${
                     on
                       ? "scale-110 border-brand-light/60 bg-brand-light/20 text-white"
-                      : "border-white/12 bg-white/[0.05] text-white/60 hover:border-white/30 hover:text-white"
+                      : "border-white/10 bg-white/[0.05] text-white/60 hover:border-white/30 hover:text-white"
                   }`}
                 >
                   {m.icon}

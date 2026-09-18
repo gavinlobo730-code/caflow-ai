@@ -6,71 +6,40 @@ import { ArrowRight } from "../icons";
 import { Parallax } from "../motion";
 
 /**
- * THE HERO'S EARTH IS ARTWORK, NOT CODE, AND THAT IS AN OWNER DECISION.
+ * THE HERO'S EARTH IS ARTWORK, AND NOTHING IS DRAWN OVER IT.
  *
- * Three passes tried to build this scene in the browser — a dotted globe, a
- * shaded planet, then a WebGL night Earth generated from a coastline mask and
- * a table of world cities. The owner reviewed the last one on a deploy
- * preview and it was still not the thing they had in mind, so on 17-09-2026
- * they supplied the finished artwork and the instruction was explicit: *"This
- * is a static image, not something to draw with code ... Do not attempt to
- * recreate the globe, city lights, starfield, or card artwork with SVG,
- * Canvas, or CSS shapes."*
+ * Four passes tried to draw this scene in the browser — a dotted globe, a
+ * shaded planet, a WebGL night Earth from a coastline mask, and a table of
+ * world cities. On 17-09-2026 the owner supplied finished artwork instead and
+ * the instruction was explicit: *"This is a static image, not something to draw
+ * with code ... Do not attempt to recreate the globe, city lights, starfield,
+ * or card artwork with SVG, Canvas, or CSS shapes."* It is all in git at
+ * e566d9f5 if the animated version is ever wanted.
  *
- * So `components/home/hero/` is gone — ten modules, and with it the vendored
- * three.min.js, the lazy loader, the Natural Earth coastline mask and its
- * generator, since nothing imported any of them once the scene went. 3,365
- * lines. It is all in git at e566d9f5 if the animated version is ever wanted.
+ * ⚠️ THE EIGHT CAPABILITY CARDS WERE BUILT AS REAL HTML HERE FOR ONE DAY AND
+ * THE OWNER REMOVED THEM ON SIGHT: *"remove the cards it doesnt look good you
+ * know"* (18-09-2026, on the deploy preview). They had been added the same day,
+ * also on their instruction, after they supplied a render with the cards baked
+ * in and asked whether HTML ones would look better. So both answers have now
+ * been tried on a real screen and the picture wins on its own.
  *
- * WHAT IS IN THE IMAGE AND WHAT IS NOT. The artwork carries the Earth, the
- * network, the orbits, the starfield, the asteroids, the moon AND the eight
- * capability cards — all baked in. Everything textual stays real HTML on top:
- * the eyebrow, the rotating word, the headline, the paragraph, both calls to
- * action, the trust chips and the figures. None of that is in the image, so it
- * is still selectable, still scales with the type system, still translatable
- * and still read by a screen reader.
+ * WHAT IS WORTH KEEPING FROM THAT DAY, because it is the reason not to reach
+ * for them again casually:
  *
- * ⚠️ THE CARDS ARE NO LONGER TEXT, and that is the one real cost of this
- * approach rather than a detail. "Compliance", "Payroll", "AI assistant" and
- * the five others are pixels now: a screen reader cannot read them, they do
- * not reflow, and they cannot be translated. The image therefore carries an
- * `alt` that NAMES all eight in order, which is the only way that content
- * reaches assistive technology at all. If those labels ever change, the
- * artwork has to be re-exported — they cannot be edited here.
+ *   * the baked-in render could not have been used full-bleed either. Its
+ *     leftmost card begins at x=535 of 1600 — 33.4% of the width — and this
+ *     hero's copy runs to 38%, so the two overlap by about 5% of the screen.
+ *
+ *   * two of the CSS classes the cards were styled with generated no rule at
+ *     all, because `bg-[#081b3d]/72` is not on Tailwind's opacity scale. The
+ *     panels were absent rather than translucent and one card rendered white
+ *     text at 1.1:1. `test_a_tailwind_opacity_modifier_is_one_tailwind_generates`
+ *     exists because of it and is worth more than the cards were.
+ *
+ * The eight modules are not lost: the Ecosystem section immediately below names
+ * every one of them, which is where a reader who wants the list goes.
  */
-const ARTWORK = "/hero/earth-network.webp";
-
-/**
- * The deep-space field that carries the artwork across the rest of the hero.
- *
- * DERIVED FROM `ARTWORK`, not drawn: `scripts/build-space-field.py` cuts the
- * artwork's own stars out of its cleanest deep-space tiles and re-scatters
- * them, so the left of the hero is the same picture's sky rather than a
- * starfield somebody generated. Purely decorative — it carries no content, so
- * unlike the artwork it takes an empty `alt`.
- *
- * Re-run that script if the artwork is ever re-exported; the stars come from
- * it.
- */
-const STARS = "/hero/space-field.webp";
-
-/**
- * The eight modules the artwork has baked into it, in reading order.
- *
- * Kept as a list rather than written into one long string so that it is
- * obvious this is content the image is carrying, and so a future change has
- * one place to make it.
- */
-const ARTWORK_CARDS = [
-  "Compliance — GST, TDS, ITR and ROC",
-  "Clients — every entity, one record",
-  "Practice analytics — the whole firm at a glance",
-  "Banking — statements become vouchers",
-  "Accounting — a ledger that looks ahead",
-  "Payroll — salary, PF, ESI and TDS",
-  "Documents — read by AI, checked by you",
-  "AI assistant — it knows your practice",
-];
+const ARTWORK = "/hero/space-earth.webp";
 
 /**
  * The hero.
@@ -109,303 +78,286 @@ const HERO_FACTS = [
 
 export function Hero() {
   return (
-    <section
-      className="relative flex min-h-screen flex-col justify-center overflow-hidden text-white"
-      /*
-        THE HERO'S BACKGROUND IS THE ARTWORK'S OWN EDGE COLOUR, MEASURED, AND
-        IT IS DELIBERATELY NOT `bg-brand-dark`.
-
-        The brief asks that "the section's background color is a plain dark
-        navy/black behind it so the fade blends cleanly", and this is that
-        requirement met exactly rather than approximately. The artwork is
-        letterboxed — it is 1117x853 shown at 66% of the viewport width, so at
-        1440x900 it is 950x726 with 87px of section showing above and below —
-        and its top, bottom and right edges are OPAQUE. So wherever the
-        section's colour differs from the artwork's border, that difference
-        draws a hard line.
-
-        It did. `brand-dark` is #0D1635 and the artwork's opaque border has a
-        median of #010918, which put a visible horizontal edge across the hero
-        at the top of the image. Sampled rather than guessed: top row mean
-        rgb(4,14,33), bottom row (5,13,29), right column (1,7,19).
-
-        The token itself is left alone. `brand-dark` is shared by the header,
-        the footer, the demo form, the cinematic panels and the access page,
-        and recolouring it to suit one image would restyle the site — which the
-        brief forbids. So the colour lives here, on the one section that needs
-        to disappear behind a specific asset.
-      */
-      /*
-        AND THE TWO GRADIENTS ARE THE COLOUR OF SPACE ON THE HALF THE ARTWORK
-        DOES NOT REACH.
-
-        Owner review, 17-09-2026: *"can we you know create the background image
-        a bit more universy like see the image is already right but only the
-        right side it is but the left is blank so i was thinking that the whole
-        screen gets that look"*, then, on scope: *"there should be only one
-        page and the page with the hero that is the original page"* — this
-        section, not the site.
-
-        BOTH COLOURS ARE MEASURED OFF THE ARTWORK rather than picked: #0c254b
-        is the mean of its own pixels in the 26-46 luminance band, its haze,
-        and #010817 the mean below 14, its deep space, which is the #010918
-        this section already carried. So the left half is lit in the picture's
-        own palette and reads as the same photograph continuing, not as a
-        tinted panel beside it.
-
-        WHY A GRADIENT AND NOT MORE IMAGE. Two attempts put this wash in the
-        asset, derived from the artwork as a tiny flipped thumbnail — see
-        `scripts/build-space-field.py`, which records both. The first kept
-        enough of the artwork's bright limb to read as a galaxy arm, which §12
-        prohibits outright; the second was structureless and then BANDED into
-        concentric rings, because a smooth gradient at that strength spans
-        about twenty of the 256 levels 8-bit gives you. Dithering fixed the
-        rings and multiplied the file by ten. The browser renders a gradient at
-        higher precision than the file format can hold, so it simply does not
-        band, and it weighs nothing. It is also not one of the four things the
-        brief says not to recreate — the globe, the city lights, the starfield
-        and the cards are all still the owner's own pixels.
-
-        Sized in PERCENTAGES, so the wash is a proportion of the hero at every
-        width; a px-sized ellipse is most of a phone and a corner of a 27-inch
-        monitor. Off-centre and of two different sizes because one centred
-        ellipse reads as a vignette.
-      */
-      style={{
-        backgroundColor: "#010918",
-        backgroundImage: [
-          "radial-gradient(115% 95% at 20% 36%, rgba(12,37,75,0.50), rgba(12,37,75,0) 68%)",
-          "radial-gradient(85% 70% at 46% 88%, rgba(12,37,75,0.30), rgba(12,37,75,0) 72%)",
-        ].join(","),
-        boxShadow: "inset 0 0 180px rgba(0,0,0,0.4)",
-      }}
-    >
-      {/*
-        ── The stars ──────────────────────────────────────────────────────────
-
-        EVERY STAR HERE IS ONE OF THE ARTWORK'S OWN, MOVED.
-        `scripts/build-space-field.py` cuts them out of the artwork's cleanest
-        deep-space tiles and scatters them at new positions under a fixed seed,
-        which is the one way to extend the picture leftwards without either
-        drawing a starfield in code (§23 of the brief forbids it by name) or
-        mirroring a patch, which the eye catches immediately because repeated
-        constellations are the easiest pattern there is to see.
-
-        BEFORE the artwork in the DOM and at the same z-index, so it paints
-        underneath: the artwork is the subject and this is the room it is in.
-
-        `object-cover` with `object-left`. On a box wider than 16:9 cover
-        scales by width and the horizontal anchor does not matter; on a
-        narrower one it scales by height and crops WIDTH, and anchoring left
-        keeps the populated side and throws away the faded side rather than the
-        other way round. The asset's own alpha already fades it out before the
-        artwork's opaque half begins, so the two star populations never overlap
-        and there is no density step down the middle of the hero.
-      */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={STARS}
-          alt=""
-          width={1920}
-          height={1080}
-          loading="eager"
-          decoding="async"
-          className="h-full w-full object-cover object-left"
-        />
-      </div>
-
-      {/* The 460px watermark "01" that used to sit here is gone, with the rest
-          of the panel numerals — owner review, 16-09-2026: "the 01 and the
-          numbering in the big light on all pages they also dont look asthetic".
-          Section numbering now lives in SerifHeading's `index`, at 13px. */}
-
+    <section className="relative flex min-h-screen flex-col justify-center overflow-hidden text-white">
       {/*
         ── The artwork ────────────────────────────────────────────────────────
 
-        A DIRECT CHILD OF THE SECTION, not of the grid, and that is the whole
-        reason this is positioned here rather than inside a component in the
-        right-hand cell. The brief asks for it on "the right ~65-70% of the
-        hero section, bleeding off the right edge, vertically centered" —
-        against the SECTION. The grid container below is itself `relative` and
-        is capped at max-w-[1320px] with responsive padding, so anything
-        absolutely positioned inside it measures against that padded box and
-        stops short of the viewport edge. There would be no bleed.
+        FULL BLEED, WHICH IS A CHANGE OF KIND FROM THE ARTWORK IT REPLACED. The
+        17-09-2026 asset was 1117x853 with a transparent left edge, designed to
+        sit in the right 62% of the section over a flat field; this one is a
+        complete 16:9 composition — galaxy, asteroid belt, moons and planet —
+        and the owner asked for "the whole background image". So it covers the
+        section, and the flat `#010918` behind it plus the derived star field
+        that used to extend it are both gone, along with their generator.
 
-        NO GRADIENT, NO MASK, AND NONE IS NEEDED. The artwork's own left edge
-        fades out over its first ~200px: measured, alpha 0 at x=0 rising
-        linearly to 255 by x=200 of 1117. So the only requirement is that what
-        sits behind it is a plain dark field of the same colour, which is why
-        the section carries #010918 above. Adding a CSS gradient on top would
-        double the fade and show as a band.
+        ⚠️ `object-cover`, AND THE FIT HAS NOW BEEN SET THREE TIMES BY THE OWNER
+        LOOKING AT IT. The sequence is worth keeping, because each instruction
+        was right about what was on their screen and the two requirements
+        cannot both hold:
 
-        `object-contain` with `object-right`: the container is the full height
-        of the hero and 68% of its width, and the image is wider than it is
-        tall (1.309), so contain fits it by WIDTH and centres it vertically —
-        which is exactly the brief's "vertically centered" without a magic
-        offset. Right-anchored so its own right edge stays flush as the
-        viewport changes shape.
+          1. `cover` — *"can the whole image fit on the first page i guess some
+             parts is cutting right?"* Correct: cover crops whatever does not
+             fit the section's shape.
 
-        ⚠️ 62%, NOT THE BRIEF'S 65-70%, AND THE THREE POINTS ARE A REAL
-        TRADE-OFF RATHER THAN A ROUNDING.
+          2. `contain` — the whole frame, and then bars wherever the viewport
+             is not 16:9. Measured at their own window, 1598x745: the picture
+             came out 1459x821 inside a 1583-wide box, so **62px of flat colour
+             down each side**.
 
-        The artwork's own Clients and Practice analytics cards sit at its far
-        left, INSIDE its fade, and they are pixels: they cannot be nudged.
-        Where exactly they start is measured on the RENDER rather than on the
-        asset, and the difference mattered — see the copy column's note below,
-        which records the collisions that reached production because this
-        figure was first derived from the asset's alpha instead.
+          3. `cover` again — *"the image is not fitting on the whole hero first
+             page right so i guess you will have to trim the image on something
+             right so can you do it"*. Trimming is accepted, which is what
+             settles it: cover fills the section edge to edge at every size and
+             the browser does the trimming per viewport, so no trimmed asset is
+             needed and no window ever shows flat colour.
 
-        Re-tested at 66% and 68% once the copy stopped drifting: both collide,
-        at five and six widths respectively, and in both cases the failures are
-        at the LAPTOP end (1039-1600) rather than on a wide screen. The
-        constraint is not the wide monitor and it is not the image — it is that
-        the hero's EXISTING type is larger relative to the viewport than the
-        type in the reference composition, where the eyebrow occupies 26% of
-        the width against 35% here. The brief says not to redesign the hero
-        typography, and of the two instructions the one that cannot be broken
-        silently is the collision: overlapping text is a defect at any size,
-        three percentage points is not.
+        WHAT COVER TRIMS, AND WHY IT IS THE RIGHT THING TO LOSE. On a box WIDER
+        than 16:9 it fits by width and takes equal slices off the top and
+        bottom — the moon and some galaxy above, the asteroid belt's corner
+        below. On a NARROWER box it fits by height and takes equal slices off
+        the sides — the galaxy's left edge and the right-hand moon. The globe
+        is centred in the frame and survives every case; only the periphery
+        goes. A wider export of the same picture would reduce how much.
 
-        If the artwork should be bigger, the copy has to be smaller — that is
-        one max-width change away and is an owner call, not something to
-        decide here.
+        ⚠️ AND A SEPARATE THING IS ALSO TRUE AT THAT WINDOW, which no fit can
+        fix: the hero is `min-h-screen` and the copy needs 821px, so at a
+        745px-tall viewport the section is **76px TALLER than the screen** and
+        its last 76px are below the fold whatever the picture does. That is
+        ordinary for a hero carrying this much copy, and the band it puts below
+        the fold is the artwork's bottom corner rather than anything in it.
 
-        AND IT STOPS GROWING AT 1400px, WHICH IS NOW ABOUT HEIGHT RATHER THAN
-        WIDTH. The cap was added when the copy still centred and the two edges
-        converged; the copy is anchored now, so on the horizontal axis the
-        clearance only ever grows. What the cap still earns is the vertical: at
-        3440 an uncapped artwork is 1622px tall inside a 1440px viewport and
-        crops its own top and bottom. 1400px keeps the height under 1070px, so
-        it fits a 1080p screen whole, and beyond that the hero reads as a
-        capped composition on a dark field — which is what the rest of the page
-        already does.
-
-        On mobile it sits across the bottom instead, under the stacked copy,
-        which is where the visual has always been below `lg`.
+        `alt=""` because the picture now carries no content: the eight module
+        labels that used to be baked into an earlier asset, and then briefly
+        rendered over this one, are the Ecosystem section's job.
       */}
       <div
-        aria-hidden="false"
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-0 lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-1/2 lg:w-[62%] lg:max-w-[1400px] lg:-translate-y-1/2"
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 bg-[#020a18]"
       >
-        {/*
-          A plain <img>, deliberately. next/image earns its place by resizing
-          and reformatting at request time, and this project is `output:
-          "export"` with `images.unoptimized` already set — so next/image here
-          is a wrapper that emits the same tag with extra client JS. One
-          artwork, one format, already compressed to 186KB.
-
-          Eager and high priority: it is the largest thing above the fold, so
-          it IS the Largest Contentful Paint. Lazy-loading it would delay the
-          only image that matters.
-        */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={ARTWORK}
-          alt={
-            "An illuminated night-time Earth centred on India, wrapped in a " +
-            "network of data links and orbital paths, with eight floating " +
-            "panels naming the platform's modules: " +
-            ARTWORK_CARDS.join("; ") +
-            "."
-          }
-          width={1117}
-          height={853}
+          alt=""
+          width={1600}
+          height={900}
           loading="eager"
           fetchPriority="high"
           decoding="async"
-          className="block h-auto w-full"
           /*
-            A SHORT FADE ON THE TOP AND BOTTOM EDGES ONLY, and this is the one
-            place the brief's "no extra gradient/mask needed" does not apply —
-            because that sentence is about the LEFT edge, which the artwork
-            already fades for itself.
+            ⚠️ THE PHONE STILL CROPS, AND `contain` WAS TRIED THERE AND
+            MEASURED AS WORSE. Owner question, 18-09-2026: *"what abt the
+            mobile how is it going to look on mobile can you look into that as
+            well"*.
 
-            The top and bottom are a different problem and they come from
-            letterboxing. The image is shown at 62% of the viewport width with
-            its natural 1.309 aspect, so at 1440x900 it is 893x682 with 109px
-            of section above and below it — and its own top and bottom rows are
-            OPAQUE. No single background colour can hide that, because the
-            artwork's top edge is not one colour: it carries the moon's glow
-            and a faint nebula. Measured on the render, the boundary stepped
-            from rgb(0,8,23) to rgb(16,27,46) — a line right across the hero.
+            A 16:9 picture in a 9:19.5 viewport is the hardest case there is.
+            Contained, the whole frame survives as a band 375x211 — and the
+            hero on a phone is 1124 tall against an 844 viewport, so that band
+            lands at y=913 and a phone reader sees a plain dark screen with no
+            artwork on it at all. Measured on the render, not guessed.
+            `object-top` instead would show it and push the headline off the
+            first screen.
 
-            7% of the height at each end, which is about 48px: enough to
-            dissolve the edge, short enough that it only touches the outermost
-            orbital arcs and the dark space above the asteroids. Left and right
-            are deliberately untouched — left is the artwork's own fade and
-            right is meant to bleed.
+            So below `lg` it is `cover` at the 30% anchor. At 390x1124 cover
+            scales the frame to 1998px wide and shows a fifth of it, and the
+            anchor decides WHICH fifth: `center` gives India's own light
+            cluster, which put every line of body text on lit continents and
+            was unreadable, while 30% lands on the planet's dark limb and the
+            galaxy beside it. The picture is cropped and the globe is there.
+
+            Desktop cropped too in the end — see above — so the two agree on
+            the fit now and differ only in the ANCHOR, because a phone's crop
+            is severe enough that which fifth of the picture it keeps decides
+            whether the body text is readable.
           */
+          className="h-full w-full object-cover object-[30%_center] lg:object-center"
+        />
+      </div>
+
+      {/*
+        ── The asteroid field, lifted ─────────────────────────────────────────
+
+        Owner question, 18-09-2026: *"the left bottom corner there are asteroids
+        and some other planet or something right should we make it a bit bright
+        what do you think?"*
+
+        Yes, and the first answer was wrong. The assumption was that the corner
+        looked dim because the scrim below was sitting on it, so the scrim's
+        bottom-left wash was narrowed from 70% to 40% — which is right in
+        itself, since at the owner's 1599px window it had been reaching x=1215
+        while the copy ends at x=612. But an A/B of the two gradients put the
+        difference at **+2.4 luma at its peak and +0.8 over the whole corner**.
+        The scrim was not what was dimming it. The corner is simply dark in the
+        artwork, so brightening it means brightening the PICTURE.
+
+        A SECOND COPY OF THE IMAGE, FILTERED AND MASKED TO THAT CORNER. It costs
+        no second download — same `src`, so the browser decodes once — and it
+        leaves the owner's own file untouched, which a baked-in edit would not.
+        `brightness(1.35)` takes the asteroid field from 28 to 33 of 255:
+        enough for the rim-lit rocks to read as rocks rather than noise, and
+        well short of competing with the planet, which is the thing that must
+        stay the subject.
+
+        THE MASK KEEPS IT OFF THE TEXT, which is the whole reason it is masked
+        rather than applied to the picture. It is centred at 34% across — past
+        the copy column — and fades out by 75%, so the trust chips and the four
+        figures' 11px labels at `text-white/45` keep their dark floor. Measured
+        through the lift, the region behind the figures goes from 23 to 26 of
+        255 and the worst line of hero copy stays above 8:1 against a 4.5:1
+        requirement.
+
+        `lg` and up only: on a phone the crop is anchored at 30% and this corner
+        is not on screen at all.
+      */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 hidden lg:block"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={ARTWORK}
+          alt=""
+          width={1600}
+          height={900}
+          loading="eager"
+          decoding="async"
+          className="h-full w-full object-cover object-center"
           style={{
+            filter: "brightness(1.35) saturate(1.1)",
             maskImage:
-              "linear-gradient(to bottom, transparent 0%, #000 7%, #000 93%, transparent 100%)",
+              "radial-gradient(46% 58% at 34% 100%, #000 0%, #000 35%, transparent 75%)",
             WebkitMaskImage:
-              "linear-gradient(to bottom, transparent 0%, #000 7%, #000 93%, transparent 100%)",
+              "radial-gradient(46% 58% at 34% 100%, #000 0%, #000 35%, transparent 75%)",
           }}
         />
       </div>
 
       {/*
-        ── The copy, ANCHORED LEFT RATHER THAN CENTRED ────────────────────────
+        ── The scrim ──────────────────────────────────────────────────────────
+
+        WHITE TEXT OVER A PHOTOGRAPH NEEDS A FLOOR UNDER IT, and measuring said
+        where. Over a 16x9 grid of the artwork the copy's own band is dark — cell
+        means of 6 to 40 of 255 through the middle rows — but the 95th
+        percentile in the lower left reaches 160 to 189, because the asteroid
+        belt is lit, and that is exactly where the trust chips and the four
+        figures sit. A scrim only in the middle would have looked fine on my
+        screenshots and failed on the row that matters.
+
+        Two layers rather than one: a horizontal wash that is strongest at the
+        left edge and gone by 58%, and a shorter bottom-left corner wash for the
+        belt. Both stop well before the planet, so nothing dims the picture's
+        subject. The whole thing is one element with two gradients so it is one
+        paint, and it sits ABOVE the image and BELOW the content.
+
+        ⚠️ THE CORNER WASH IS 40% WIDE, NOT 70%, AND THAT IS THE ASTEROID BELT
+        BEING LET THROUGH ON PURPOSE. Owner question, 18-09-2026: *"the left
+        bottom corner there are asteroids and some other planet or something
+        right should we make it a bit bright what do you think?"*
+
+        The answer is yes for most of it and no for the part under the text,
+        and the reason is measurable rather than a matter of taste. At 70%
+        width the ellipse reached x=1215 at the owner's own 1599px window while
+        the copy ends at x=612 — so it was dimming about 600px of picture that
+        has no text over it at all, and 850px at 1920. Narrowing it to 40%
+        brings the reach back to roughly where the copy ends, so the belt and
+        the moon beyond it are seen at the artwork's own brightness.
+
+        WHAT STAYS DARK IS THE PART DIRECTLY UNDER THE COPY, because that is
+        where the hero's most fragile text is: the trust chips and the four
+        figures' 11px labels at `text-white/45`, sitting on the brightest part
+        of the lower left (95th-percentile luminance 160-189 measured on the
+        artwork). Brightening there would take contrast off the weakest thing
+        on the screen. Measured either side of this change, the worst line of
+        hero copy is unmoved.
+
+        Nothing is brightened beyond what the picture already contains — no
+        filter, no boost. The scrim simply stops covering ground it did not
+        need to.
+
+        ⚠️ AND THE PHONE GETS A FLAT ONE INSTEAD, because a DIRECTIONAL scrim
+        is the wrong tool there. On a phone the copy is not in a left column,
+        it is the whole width — so a wash that fades out by 58% leaves the
+        right-hand half of every line of body text unprotected, which is
+        exactly how it rendered. Below `lg` it is a single even veil.
+      */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-[1] bg-[#020a18]/65 lg:hidden"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-[1] hidden lg:block"
+        style={{
+          backgroundImage: [
+            "linear-gradient(100deg, rgba(2,8,22,0.92) 0%, rgba(2,8,22,0.78) 22%, rgba(2,8,22,0.34) 42%, rgba(2,8,22,0) 58%)",
+            "radial-gradient(40% 52% at 4% 100%, rgba(2,8,22,0.82), rgba(2,8,22,0) 72%)",
+          ].join(","),
+        }}
+      />
+
+      {/*
+        ── The copy, ANCHORED LEFT AND SIZED TO THE WINDOW'S HEIGHT ───────────
+
+        ⚠️ EVERY VERTICAL GAP IN HERE IS `clamp(min, Nvh, today's value)`, AND
+        THAT IS WHAT MAKES THE HERO FIT ON A SHORT LAPTOP. The section is
+        `min-h-screen`, so it is at least the height of the window — but the
+        copy inside it was a FIXED 677px whatever the window did, and with
+        88px of padding above and 56px below that made a hero that always
+        needed 821px. Whether it fitted was therefore a fact about the
+        reader's browser rather than about the page.
+
+        Measured, before this change:
+
+            page area 955px (1080p, no bookmarks bar)   821 — fits
+            page area 880px (1080p, bookmarks + taskbar) 821 — fits
+            page area 780px (13-inch MacBook Air)        833 — over by 53
+            page area 760px (the owner's own window)     821 — over by 61
+            page area 730px (1536x864 at 125% scaling)   821 — over by 91
+
+        which is the answer to "does it differ really to laptop to laptop or
+        its a website thing?" — it is one thing seen from two sides. The page
+        asked for a fixed height and the laptop supplies a variable one, and
+        display scaling, browser zoom and a bookmarks bar move it as much as
+        the screen does.
+
+        Each maximum below is the value the gap had before, so a window with
+        room is unchanged; the `vh` term only bites when there is not enough.
+        That buys about 100px, which covers every case in the table. It does
+        NOT cover a 600px page area — a 1280x800 screen at 150% scaling — where
+        the copy alone is taller than the window; fixing that needs the display
+        type to shrink too, which changes the hero's look rather than its
+        spacing and is an owner decision.
+
+        ── AND ANCHORED LEFT RATHER THAN CENTRED ──────────────────────────────
 
         THE HERO IS THE ONE SECTION THAT MUST NOT USE A CENTRED CONTAINER, and
-        the reason is the artwork beside it. Every other section on this site
-        sits in a column that is capped and then centred, so its left gutter
-        grows by half of every pixel added to the window. The artwork is pinned
-        to the VIEWPORT's right edge and grows at 62% of it. Two things
-        measured from different origins, advancing at different rates: they
-        converge, and then they overlap.
+        the reason survives the change of artwork. Every other section sits in a
+        column that is capped and then centred, so its left gutter grows by half
+        of every pixel added to the window — while everything it shares the
+        screen with here is positioned against the VIEWPORT. Two things measured
+        from different origins, advancing at different rates: they converge, and
+        then the text is on the picture.
 
-        Owner review, 17-09-2026: *"will you be able to see the headlines and
-        all move to the left as it looks odd right as the globe is on extreme
-        right it doesnt look aligned"*. Measured on the shipped page, the copy's
-        left gutter was 72px at 1280, 125 at 1440, 205 at 1600 and 365 at 1920
-        while the artwork's right gutter stayed 0 at every one of them.
+        It was not theoretical. On the page shipped 17-09-2026 the copy's left
+        gutter ran 72px at 1280, 125 at 1440, 205 at 1600 and 365 at 1920, and a
+        render harness found hero text over visible artwork at 1366, 1440, 1600
+        AND 1920 — the four commonest desktop widths there are.
 
-        ⚠️ IT WAS NOT ONLY A COMPOSITION PROBLEM — TEXT WAS ON THE ARTWORK.
-        `tests/…/collide` harness (scratch): with the copy column hidden so
-        every bright pixel belongs to the image, the supporting paragraph
-        overlapped visible artwork at 1366, 1440, 1600 and 1920, and at 1920 so
-        did the rotating word, the second headline line and a trust figure.
-        Those are the four commonest desktop widths there are. The 62% ceiling
-        derived when the artwork landed was computed from the asset's first
-        NEAR-OPAQUE card body at x=157 of 1117 (14.1%) — which is a real
-        measurement of the wrong thing, because the cards' outer glow and the
-        Practice analytics card's leading edge are visible well before they are
-        opaque, from about 9% of the width. Arithmetic on the asset cannot see
-        that; a render can.
+        So: no `mx-auto`, no cap, and a flat 72px gutter from `lg` up, which is
+        the same clamp the padding already used. The copy column is capped in
+        its own right at `clamp(330px,34vw,540px)`, because an uncapped
+        container hands a `1fr` column the whole viewport and runs the headline
+        back under the planet — the same defect reached from the other side.
 
-        So: no `mx-auto`, no cap, and a fixed 72px gutter from `lg` up, which
-        is the same clamp the padding already used — the copy simply stops
-        drifting. Clearance to the artwork goes from +45/+40/+29px at
-        1440/1600/1920 to +104/+129/+278, and the harness reports no text over
-        artwork at 1039, 1100, 1280, 1366, 1440, 1600, 1920, 2560 or 3440.
-
-        THE COPY COLUMN IS CAPPED SO THE FIX CANNOT UNDO ITSELF. With the
-        container uncapped, `1fr` would hand the copy the whole viewport and the
-        headline would run back under the planet, so the column takes
-        `clamp(330px,34vw,540px)`: 484px at 1440 against the 496px it had
-        before, so nothing re-wraps, and it stops growing at 1585px where the
-        artwork is still advancing. The 34vw middle term is what keeps the
-        laptop widths clear — a flat 540px collides at 1039.
-
-        AND IT IS 62%, STILL. Raising the artwork to the brief's 65-70% was
-        re-tested now that the copy has moved, since more clearance was the
-        whole point: 66% collides at five widths and 68% at six, both from
-        1039 up to 1440-1600. The ceiling is the laptop, not the wide screen.
-
-        ⚠️ THE HEADLINE NO LONGER LINES UP WITH THE NAV LOGO, and that is a
-        deliberate trade rather than an oversight. `container-ps` caps the
-        header at 1200px and centres it, so the logo also drifts — 137px at
-        1440, 377 at 1920 — and by coincidence of those two numbers it used to
-        track the hero copy within 12px. It cannot track it and stop drifting
-        at the same time. Aligning them would mean either re-centring the hero
-        (which is the defect) or moving the header's own container, which is
-        shared by every page and would then sit 164px left of all six pages'
-        content. The nav is a bar with its own bounding box and the brief says
-        not to redesign it, so the hero goes full-bleed and the header stays.
+        ⚠️ THE HEADLINE DOES NOT LINE UP WITH THE NAV LOGO, and that is a trade
+        rather than an oversight. `container-ps` caps the header at 1200px and
+        centres it, so the logo drifts too — 137px at 1440, 377 at 1920 — and by
+        coincidence of those two numbers it used to track the hero copy within
+        12px. It cannot track the copy and stop drifting at the same time.
+        Aligning them would mean either re-centring the hero, which is the
+        defect, or moving the header's own container, which is shared by every
+        page and would then sit 164px left of all of their content.
       */}
-      <div className="relative z-[1] mx-auto grid w-full max-w-[1320px] items-center gap-12 px-[clamp(20px,6vw,72px)] pb-14 pt-[clamp(88px,11vh,132px)] lg:mx-0 lg:max-w-none lg:grid-cols-[minmax(0,clamp(330px,34vw,540px))_minmax(0,1fr)] lg:gap-10">
+      <div className="relative z-[3] mx-auto grid w-full max-w-[1320px] items-center gap-12 px-[clamp(20px,6vw,72px)] pb-[clamp(20px,4vh,56px)] pt-[clamp(64px,9vh,132px)] lg:mx-0 lg:max-w-none lg:grid-cols-[minmax(0,clamp(330px,34vw,540px))_minmax(0,1fr)] lg:gap-10">
         {/* ── Copy ──────────────────────────────────────────────────────── */}
         <div>
           <Parallax speed={0.05}>
@@ -414,7 +366,7 @@ export function Hero() {
             </p>
           </Parallax>
 
-          <h1 className="mt-7">
+          <h1 className="mt-[clamp(12px,2.4vh,28px)]">
             <span className="sr-only">
               {HERO_WORDS.join(" ")} Run your entire practice on one intelligent platform.
             </span>
@@ -432,12 +384,12 @@ export function Hero() {
             </span>
           </h1>
 
-          <p className="mt-6 max-w-[48ch] text-[16.5px] leading-[1.65] text-slate-300">
+          <p className="mt-[clamp(12px,2.2vh,24px)] max-w-[48ch] text-[16.5px] leading-[1.65] text-slate-300">
             From clients and compliance to accounts and advisory — PracticeSync brings
             everything together, so you can focus on what truly matters.
           </p>
 
-          <div className="mt-8 flex flex-wrap items-center gap-6">
+          <div className="mt-[clamp(16px,3vh,32px)] flex flex-wrap items-center gap-6">
             <Magnetic max={10}>
               <a
                 href="/demo"
@@ -456,7 +408,7 @@ export function Hero() {
             </a>
           </div>
 
-          <ul className="mt-8 flex flex-wrap gap-x-7 gap-y-3 text-[12.5px] font-medium leading-none text-white/45">
+          <ul className="mt-[clamp(14px,2.6vh,32px)] flex flex-wrap gap-x-7 gap-y-3 text-[12.5px] font-medium leading-none text-white/45">
             <li>No credit card needed</li>
             <li>Data hosted in India</li>
             <li>Nothing filed without your click</li>
@@ -479,7 +431,7 @@ export function Hero() {
               four the page already states further down, which is deliberate: a
               number that appears twice on one page had better agree with
               itself. */}
-          <dl className="mt-7 grid max-w-[32rem] grid-cols-2 gap-x-8 gap-y-5 border-t border-white/10 pt-6 sm:grid-cols-4 sm:gap-x-5">
+          <dl className="mt-[clamp(14px,2.6vh,28px)] grid max-w-[32rem] grid-cols-2 gap-x-8 gap-y-5 border-t border-white/10 pt-[clamp(12px,2vh,24px)] sm:grid-cols-4 sm:gap-x-5">
             {HERO_FACTS.map((f) => (
               <div key={f.label}>
                 <dt className="sr-only">{f.label}</dt>
@@ -492,46 +444,42 @@ export function Hero() {
           </dl>
         </div>
 
-        {/* ── The space the artwork occupies ─────────────────────────────
+        {/* ── The space the artwork and the cards occupy ─────────────────
 
-            AN EMPTY CELL, ON PURPOSE, AND ITS JOB IS NOW MOBILE-ONLY. The
-            artwork is a section-level layer above, so nothing is rendered
-            here. On `lg` the track is the `1fr` that soaks up everything the
-            capped copy column does not take — it no longer has to hold the
-            copy back, because the copy column caps itself; keeping the cell
-            costs nothing and removing it would make the grid single-column,
-            which changes the mobile stack.
+            AN EMPTY CELL, ON PURPOSE, AND ITS JOB IS NOW MOBILE-ONLY. Both the
+            background and the card layer are section-level layers, so nothing
+            is rendered here. On `lg` the track is the `1fr` that soaks up
+            whatever the capped copy column does not take; it no longer has to
+            hold the copy back, because the copy column caps itself, and
+            removing the cell would make the grid single-column and change the
+            mobile stack.
 
-            Below `lg` it IS load-bearing: it is the clearance the artwork
-            needs at the bottom of the hero, the height the stacked visual has
-            always had. */}
-        <div aria-hidden="true" className="h-[300px] lg:h-auto" />
+            Below `lg` it is clearance at the bottom of the hero, which is where
+            the visual has always been on a phone — and where, with a full-bleed
+            background, it keeps the copy off the brightest part of the crop. */}
+        <div aria-hidden="true" className="h-[260px] lg:h-auto" />
       </div>
 
       {/*
-        THE VERTICAL RAIL AND THE CLOSING TAGLINE ARE GONE, BECAUSE THE ARTWORK
-        ALREADY SAYS IT.
+        THE VERTICAL RAIL AND THE CLOSING TAGLINE ARE GONE, BECAUSE THE FIRST
+        SUPPLIED ARTWORK ALREADY SAID IT.
 
         Two decorative text elements used to sit on the right edge of this
         section: a rail reading PEOPLE / DATA / COMPLIANCE / GROWTH / ALL IN
         SYNC, and a closing "SYNC TODAY. A STRONGER TOMORROW." at the bottom
         right. Both were written for a hero whose right half was empty canvas.
 
-        The supplied artwork carries "A STRONGER PRACTICE TOMORROW" baked into
-        its own right side, so keeping the HTML versions produced two defects
-        at once: the same sentiment stated twice, and the rail rendering
-        directly ON TOP of the Payroll card at 1440px, where the image is
-        opaque. Neither could be nudged clear — the card is pixels and cannot
-        move, and the rail has nowhere left to go.
-
-        So the artwork wins and the markup gives way. Nothing is lost: the
-        words are still on the page, they are simply in the image now, and the
-        `alt` text names what the image carries.
+        The 17-09-2026 artwork carried "A STRONGER PRACTICE TOMORROW" baked into
+        its own right side, so keeping the HTML versions stated the same
+        sentiment twice and the rail rendered on top of a card. The artwork that
+        replaced it carries no words at all — so the rail COULD come back now.
+        It is deliberately not being restored: it was decoration for an empty
+        half, and that half now has eight cards in it.
       */}
 
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-9 left-1/2 z-[1] flex -translate-x-1/2 flex-col items-center gap-2.5 opacity-45"
+        className="pointer-events-none absolute bottom-9 left-1/2 z-[3] flex -translate-x-1/2 flex-col items-center gap-2.5 opacity-45"
       >
         <span
           className="scroll-cue block h-[38px] w-px bg-current"

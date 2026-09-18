@@ -16,7 +16,9 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
   {
     title: "Company",
     links: [
-      { label: "Our Story", href: "/story" },
+      // The homepage from the top, not a page and not a fragment — see NAV in
+      // lib/site.ts, which records why this has moved three times.
+      { label: "Our Story", href: "/" },
       { label: "Support", href: "/support" },
       { label: "Contact", href: `mailto:${CONTACT.email}`, external: true },
     ],
