@@ -88,7 +88,10 @@ MARKETING = _REPO / "apps" / "marketing"
 BUDGET: dict[str, int] = {
     "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 9,
     "/api/task-recurring": 9, "/api/tasks": 9, "/api/copilot": 8,
-    "/api/billing": 7, "/api/engagements": 7, "/api/income-tax": 6,
+    # /api/income-tax 6 -> 5 on 18-09-2026: POST /book-to-tax-bridge got its
+    # first caller (FA-06). The engine and the endpoint had been complete for
+    # months with two comments in apps/web and nothing calling either.
+    "/api/billing": 7, "/api/engagements": 7, "/api/income-tax": 5,
     "/api/memory": 7, "/api/relationships": 7, "/api/ai-insights": 6,
     "/api/compliance-records": 6, "/api/intelligence": 6, "/api/payroll": 6,
     "/api/analytics": 5, "/api/automation": 5, "/api/gst-portal": 5,

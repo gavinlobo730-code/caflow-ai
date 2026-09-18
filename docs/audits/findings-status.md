@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **244** | re-read against the code. The defect is gone. |
-| partial | **24** | part of the finding is answered, part is not. Each says which. |
+| closed | **245** | re-read against the code. The defect is gone. |
+| partial | **23** | part of the finding is answered, part is not. Each says which. |
 | open | **5** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 29 items — 5 open and 24 partial — not 254.**
+**The work left is 28 items — 5 open and 23 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -45,7 +45,6 @@ is left as "unknown".
 | severity | finding | what it is |
 |---|---|---|
 | high | **ACC-03** | Every receipt and vendor payment posts to one generic "Bank Account" ledger, while bank-statemen |
-| high | **FA-06** | IT Act §32 block-of-assets depreciation does not exist, and the book-to-tax bridge that needs it |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **GST-13** | The module's most differentiating backend work — amendments, exception report, ITC register, adv |
 | high | **IT-09** | IT Act §32 depreciation (block of assets, WDV, the 180-day half-rate rule, additional depreciati |
@@ -129,6 +128,7 @@ is left as "unknown".
 | high | **FA-03** | The Depreciation tab recomputes the annual charge in TypeScript with the exact bug the backend f |
 | high | **FA-04** | Depreciation is monthly-only with no catch-up, and a missed month can never be posted |
 | high | **FA-05** | The auto-generated Fixed Assets note reports a theoretical annual charge that need not match any |
+| high | **FA-06** | IT Act §32 block-of-assets depreciation does not exist, and the book-to-tax bridge that needs it |
 | high | **FA-07** | Asset acquisition always credits Bank — no vendor, no GST/ITC, and no link to the purchase bill, |
 | high | **FA-08** | Disposal does not charge depreciation up to the disposal date, so the gain/loss on every mid-yea |
 | high | **FA-10** | No way to edit, correct, reverse or delete an asset once created |
