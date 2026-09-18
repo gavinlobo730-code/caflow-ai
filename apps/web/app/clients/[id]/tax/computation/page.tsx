@@ -188,6 +188,24 @@ interface ComputeResult {
     basic_exemption_absorbed_paise: number;
     basic_exemption_absorption: string[];
   };
+  /** IT-32. Chapter VI-A, one line per section — what was claimed, what was
+   *  allowed and what limited it. This is the audit trail
+   *  `other_deductions_paise` could never carry: one unlabelled figure added
+   *  with no ceiling and no section attribution, on exactly the deductions an
+   *  assessing officer asks about. The per-line `restricted_paise` is the part
+   *  the section did NOT allow, which no total can show. */
+  deductions?: {
+    chapter_vi_a_paise?: number;
+    chapter_vi_a_lines?: {
+      section: string;
+      label: string;
+      claimed_paise: number;
+      allowed_paise: number;
+      restricted_paise: number;
+      basis: string;
+      caveats: string[];
+    }[];
+  };
   /** §10 income, echoed. The field on this form was live, sent, accepted and
    *  then read by nothing — the tax is right without it (§10 income is not
    *  part of total income) but a CA typed a figure that changed nothing and
@@ -349,6 +367,26 @@ export default function TaxComputationPage() {
   const [savingsInterest80tta, setSavingsInterest80tta] = useState("");
   const [homeLoanInterest24b, setHomeLoanInterest24b] = useState("");
   const [otherDeductions, setOtherDeductions] = useState("");
+  // IT-32 — Chapter VI-A, SECTION BY SECTION. These used to be typed into
+  // "Other deductions", one unlabelled figure the engine added with no ceiling
+  // and no section attribution: exactly the deductions an assessing officer
+  // asks about. `domain/income_tax/chapter_vi_a.py` holds every limit and the
+  // server applies them; nothing here caps anything.
+  const [s80eInterest, setS80eInterest] = useState("");
+  const [s80eYear, setS80eYear] = useState("");
+  const [housingExtraInterest, setHousingExtraInterest] = useState("");
+  // §80EE and §80EEA are shut windows keyed on the SANCTION date, which fixes
+  // the section for the life of the loan. Their limits differ by ₹1,00,000, so
+  // the server allows NOTHING where no date is given rather than assuming one.
+  const [housingSanctionedOn, setHousingSanctionedOn] = useState("");
+  const [hasDisabledDependant, setHasDisabledDependant] = useState(false);
+  const [dependantDisabilitySevere, setDependantDisabilitySevere] = useState(false);
+  const [assesseeIsDisabled, setAssesseeIsDisabled] = useState(false);
+  const [assesseeDisabilitySevere, setAssesseeDisabilitySevere] = useState(false);
+  const [diseaseSpend, setDiseaseSpend] = useState("");
+  const [diseaseReimbursed, setDiseaseReimbursed] = useState("");
+  const [patientIsSenior, setPatientIsSenior] = useState(false);
+  const [s80ggRent, setS80ggRent] = useState("");
 
   // IT-05, the five the endpoint accepts and this screen still did not send.
   //
@@ -724,6 +762,12 @@ export default function TaxComputationPage() {
       ["Savings interest (80TTA)", savingsInterest80tta],
       ["Home loan interest (24b)", homeLoanInterest24b],
       ["Other deductions", otherDeductions],
+      // IT-32. In the list like the rest, for the reason stated above.
+      ["Section 80E — education loan interest", s80eInterest],
+      ["Section 80EE/80EEA — additional housing interest", housingExtraInterest],
+      ["Section 80DDB — treatment spend", diseaseSpend],
+      ["Section 80DDB — reimbursed", diseaseReimbursed],
+      ["Section 80GG — rent paid", s80ggRent],
       // IT-05. In the list like the rest: toP() casts the parser's answer
       // `as number`, so a field left out of this check reaches the server as
       // null the moment somebody types an amount the way Indians write one.
@@ -789,6 +833,30 @@ export default function TaxComputationPage() {
           savings_interest_80tta_paise: toP(savingsInterest80tta),
           home_loan_interest_24b_paise: toP(homeLoanInterest24b),
           other_deductions_paise: toP(otherDeductions),
+
+          // IT-32. Sent as CLAIMS, never as allowances: every ceiling, window
+          // and flat amount is the server's, and the answer comes back as one
+          // line per section saying what limited it. §80GG's own `receives_hra`
+          // is derived from the HRA box rather than asked twice — the section
+          // reaches only an assessee who receives none, and two controls for
+          // one fact is how they come to disagree.
+          chapter_vi_a: {
+            education_loan_interest_paise: toP(s80eInterest),
+            education_loan_year:
+              s80eYear.trim() === "" ? null : Number(s80eYear),
+            housing_loan_extra_interest_paise: toP(housingExtraInterest),
+            housing_loan_sanctioned_on:
+              housingSanctionedOn.trim() === "" ? null : housingSanctionedOn,
+            has_disabled_dependant: hasDisabledDependant,
+            dependant_disability_is_severe: dependantDisabilitySevere,
+            assessee_is_disabled: assesseeIsDisabled,
+            assessee_disability_is_severe: assesseeDisabilitySevere,
+            specified_disease_spend_paise: toP(diseaseSpend),
+            specified_disease_reimbursed_paise: toP(diseaseReimbursed),
+            patient_is_senior: patientIsSenior,
+            rent_paid_paise: toP(s80ggRent),
+            receives_hra: (paiseFromRupeeInput(hraReceived || "0") ?? 0) > 0,
+          },
 
           // IT-05. Sent under BOTH regimes and left to the server to allow or
           // withdraw: §115BAC(2) is a statutory list, and a screen that
@@ -1435,7 +1503,13 @@ export default function TaxComputationPage() {
                       set: setSavingsInterest80tta },
                     { label: "§24(b) — home loan interest (₹)", value: homeLoanInterest24b,
                       set: setHomeLoanInterest24b },
-                    { label: "Other deductions (₹)", value: otherDeductions, set: setOtherDeductions },
+                    // IT-32 left this box for what the sections below do NOT
+                    // reach. It is still uncapped and still unattributed, which
+                    // is why the hint says so rather than the box being quietly
+                    // removed: a CA with a genuine §80GGC or §80CCC claim needs
+                    // somewhere to put it.
+                    { label: "Other deductions (₹)", value: otherDeductions, set: setOtherDeductions,
+                      hint: "Anything the sections below do not reach — added with no ceiling and no section" },
                   ].map(({ label, value, set, hint }) => (
                     <div key={label}>
                       <label className="text-[10px] text-[#64748B] mb-1 block">{label}</label>
@@ -1459,6 +1533,140 @@ export default function TaxComputationPage() {
                       {label}
                     </label>
                   ))}
+                </div>
+
+                {/* IT-32 — THE SECTIONS THAT USED TO BE "OTHER DEDUCTIONS".
+                    Each has its own limit and its own shape, and confusing the
+                    shapes is the common error: §80DD and §80U are FLAT amounts
+                    that do not depend on what was spent, §80DDB and §80EE/§80EEA
+                    are capped expenditure, and §80E has no monetary limit at all.
+                    Every one of those rules is the server's — this block collects
+                    the facts and caps nothing. */}
+                <div className="space-y-3 border-t border-ps-border pt-3">
+                  <p className="text-[11px] font-semibold text-ps-ink">
+                    By section
+                    <span className="font-normal text-ps-hint">
+                      {" "}— §80E, §80EE/§80EEA, §80DD, §80DDB, §80U, §80GG
+                    </span>
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] text-ps-label mb-1 block">
+                        §80E — education loan interest (₹)
+                      </label>
+                      <input type="text" inputMode="decimal" value={s80eInterest}
+                        onChange={e => setS80eInterest(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0" />
+                      <p className="text-[10px] text-ps-hint mt-0.5">
+                        Interest only, and no monetary ceiling — eight assessment
+                        years.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-ps-label mb-1 block">
+                        §80E — which of the eight years
+                      </label>
+                      <input type="number" min={1} value={s80eYear}
+                        onChange={e => setS80eYear(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Blank if unknown" />
+                      <p className="text-[10px] text-ps-hint mt-0.5">
+                        Left blank the claim is allowed and the gap named —
+                        nothing here counts the years.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-ps-label mb-1 block">
+                        §80EE / §80EEA — additional housing interest (₹)
+                      </label>
+                      <input type="text" inputMode="decimal" value={housingExtraInterest}
+                        onChange={e => setHousingExtraInterest(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0" />
+                      <p className="text-[10px] text-ps-hint mt-0.5">
+                        Over and above the §24(b) interest above.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-ps-label mb-1 block">
+                        Loan sanctioned on
+                      </label>
+                      <input type="date" value={housingSanctionedOn}
+                        onChange={e => setHousingSanctionedOn(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <p className="text-[10px] text-ps-hint mt-0.5">
+                        This date alone decides which section applies. Both
+                        windows are shut, and the two limits differ by ₹1,00,000
+                        — without it nothing is allowed.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-ps-label mb-1 block">
+                        §80DDB — treatment of a specified disease (₹)
+                      </label>
+                      <input type="text" inputMode="decimal" value={diseaseSpend}
+                        onChange={e => setDiseaseSpend(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-ps-label mb-1 block">
+                        §80DDB — reimbursed by an insurer or employer (₹)
+                      </label>
+                      <input type="text" inputMode="decimal" value={diseaseReimbursed}
+                        onChange={e => setDiseaseReimbursed(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0" />
+                      <p className="text-[10px] text-ps-hint mt-0.5">
+                        Subtracted from the spend before the ceiling, not after.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-ps-label mb-1 block">
+                        §80GG — rent paid, where no HRA is received (₹)
+                      </label>
+                      <input type="text" inputMode="decimal" value={s80ggRent}
+                        onChange={e => setS80ggRent(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="0" />
+                      <p className="text-[10px] text-ps-hint mt-0.5">
+                        The least of ₹60,000, rent over 10% of income, and 25% of
+                        income. Withheld where the HRA box above carries a figure
+                        — §10(13A) is that assessee&apos;s relief.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* A CERTIFIED BAND, NOT A PERCENTAGE. The Act's test is 40%
+                      and 80% on a Form 10-IA certificate; a typed 79 and a typed
+                      80 differ by ₹50,000 of deduction, so the form must not
+                      invite the number. */}
+                  <div className="flex flex-wrap gap-4">
+                    {[
+                      { label: "§80DD: a dependant has a certified disability",
+                        v: hasDisabledDependant, set: setHasDisabledDependant },
+                      { label: "§80DD: that disability is severe (80%+)",
+                        v: dependantDisabilitySevere, set: setDependantDisabilitySevere },
+                      { label: "§80U: the assessee has a certified disability",
+                        v: assesseeIsDisabled, set: setAssesseeIsDisabled },
+                      { label: "§80U: that disability is severe (80%+)",
+                        v: assesseeDisabilitySevere, set: setAssesseeDisabilitySevere },
+                      { label: "§80DDB: the patient is a senior citizen",
+                        v: patientIsSenior, set: setPatientIsSenior },
+                    ].map(({ label, v, set }) => (
+                      <label key={label} className="flex items-center gap-1.5 text-[11px] text-ps-body">
+                        <input type="checkbox" checked={v} onChange={e => set(e.target.checked)} />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-ps-hint">
+                    §80DD and §80U are FLAT: the amount does not depend on what
+                    was spent, so there is nothing to type. §80DDB&apos;s ceiling
+                    follows the PATIENT&apos;s age, not the assessee&apos;s.
+                  </p>
                 </div>
 
                 {/* §80CCD(1B) — the assessee's OWN NPS, ₹50,000 over and above
@@ -1781,6 +1989,36 @@ export default function TaxComputationPage() {
                     {computeResult.exempt_income!.note}
                   </p>
                 )}
+                {/* IT-32. ONE LINE PER SECTION, with what was claimed, what
+                    was allowed and the sentence naming the ceiling that bit.
+                    The figure this replaced was a single "other deductions"
+                    total: a CA defending the return could see how much had been
+                    deducted and not under which section, nor how much a ceiling
+                    had withheld. `restricted_paise` is the part the section did
+                    not allow, which is invisible in any total. */}
+                {computeResult.deductions?.chapter_vi_a_lines?.length ? (
+                  <div className="mt-3 border-t border-ps-border pt-2 space-y-1.5">
+                    <p className="text-[10px] font-semibold text-ps-ink">
+                      Chapter VI-A by section —{" "}
+                      {paise(computeResult.deductions.chapter_vi_a_paise ?? 0)} allowed
+                    </p>
+                    {computeResult.deductions.chapter_vi_a_lines.map((ln, i) => (
+                      <div key={i} className="text-[10px]">
+                        <p className={ln.allowed_paise > 0 ? "text-ps-ink" : "text-ps-hint"}>
+                          <span className="font-mono">§{ln.section}</span> {ln.label} —{" "}
+                          {paise(ln.allowed_paise)} allowed
+                          {ln.restricted_paise > 0
+                            ? ` of ${paise(ln.claimed_paise)} claimed, ${paise(ln.restricted_paise)} withheld`
+                            : ""}
+                        </p>
+                        <p className="text-[10px] text-ps-hint pl-3">{ln.basis}</p>
+                        {ln.caveats?.map((cv, j) => (
+                          <p key={j} className="text-[10px] text-ps-hint pl-3">{cv}</p>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {/* IT-10. Which section reached which head, per loss — and a
                     loss that found no home shown as such, with the reason. A
                     zero beside "set off" and a loss simply missing from the

@@ -11,7 +11,7 @@
     "partial": "verified against the code: part of the finding is fixed and part is still true. `why` says which part is closed and `what_is_left` says what is not. Never quote one of these as done."
   },
   "_the_stale_problem_this_exists_to_end": "docs/audits/2026-09-11-the-verification-pass.md measured the backlog ~10% stale. Five days later docs/audits/2026-09-12-the-probe-pass/ measured the same backlog 38-59% stale by subsystem, because five tranches had landed and nothing re-scored. On 12 September a further hand-check found INV-04, INV-07, FA-03, FA-16, FA-18, PAY-17, PAY-18, PUR-30, TDS-31, GST-03 and PUR-12 all recorded open and all in fact closed. A status that is only ever written by an audit is a status that is wrong by the time it is read.",
-  "verified_on": "2026-09-17",
+  "verified_on": "2026-09-18",
   "findings": {
     "INV-04": {
       "status": "partial",
@@ -366,11 +366,11 @@
       "reread_on": "2026-09-17"
     },
     "SALES-23": {
-      "status": "open",
+      "status": "partial",
       "verified_on": "2026-09-18",
       "why": "THE BULK HALF IS BUILT (18-09-2026). The client Sales tab's bulkActions carried Issue, Delete/Void and Send and no Remind, so chasing a month of overdue invoices meant opening the row menu once per invoice; `bulkRemindInvoices` now runs the SAME customer-facing sender the single path uses, capped at 8 in flight. It filters on `isOverdueForUi`, the very predicate the row menu uses to decide whether to OFFER Remind, so what is offered in bulk and what is offered per row cannot disagree, and POST /remind re-validates server-side either way. AND THE 13-09 `why` WAS RIGHT ABOUT THE OTHER HALF: `collections_service`'s nightly sweep is the practice's own fee ledger and emails nobody \u2014 but it was WORSE than 'timeline-only'. It advanced `reminder_count`, the column `email_service.send_payment_reminder_to_customer` escalates its tone on, so three sweep nights turned a customer's FIRST email into a final demand. Migration 405 gives the sweep its own counter and repairs the two production rows that had reached reminder_count = 5 against zero reminder deliveries.",
       "reread_on": "2026-09-18",
-      "what_is_left": "The automated customer-facing CADENCE, and it is a RECORDED OWNER REFUSAL rather than unscheduled work: asked directly, the owner answered that email is a feature but \"not auto email ... there is a send button ... they are able to send it\". So a reminder goes out because a CA pressed something, never because a clock fired. `apps/web/scripts/a-bulk-email-is-bounded-and-nothing-schedules-it.test.ts` asserts no timer wraps the reminder endpoint and `tests/test_a_reminder_the_customer_got_is_counted_separately.py` asserts the nightly job reaches no sender at all, so a cadence cannot arrive without the decision that authorises one. Reopen only on an owner decision reversing that."
+      "what_is_left": "Nothing buildable. STATUS CORRECTED 18-09-2026 from `open`: the 18-09 re-read above records the bulk half BUILT and the sweep half repaired by migration 405, so `open` \u2014 which means re-read and STILL TRUE \u2014 was wrong about the finding as a whole. The one part outstanding is the automated customer-facing CADENCE, and that is a RECORDED OWNER REFUSAL rather than unscheduled work: asked directly, the owner answered that email is a feature but \"not auto email ... there is a send button ... they are able to send it\". So a reminder goes out because a CA pressed something, never because a clock fired. `apps/web/scripts/a-bulk-email-is-bounded-and-nothing-schedules-it.test.ts` asserts no timer wraps the reminder endpoint and `tests/test_a_reminder_the_customer_got_is_counted_separately.py` asserts the nightly job reaches no sender at all, so a cadence cannot arrive without the decision that authorises one. Reopen only on an owner decision reversing that."
     },
     "ACC-01": {
       "status": "closed",
@@ -1634,15 +1634,14 @@
       "reread_on": "2026-09-16"
     },
     "IT-32": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. \u2014 RE-READ 16-09-2026 against main 171ef0e3: CLOSED PART: apps/api/routers/income_tax.py:61 S80CInput.other_paise is now exposed and routed into the \u00a780CCE cap at :301. NOT CLOSED PART: `grep -rn '80GG|80DDB|80EEA|\\\"80E\\\"' apps/api/domain apps/api/routers apps/api/services` returns only the two warning strings at apps/api/domain/income_tax/itr_engine.py:796 and :809 \u2014 no section is modelled. apps/api/domain/income_tax/itr_engine.py:802-803 still adds req.other_deductions_paise to `deductions` with no limit and no section attribution; the only change is the warning appended at :804-812. \u00a780D is still `req.s80d.eligible_paise()` at :761 with limits LIMIT_80D_* at :65-68 and no \u20b95,000 preventive health check-up sub-limit (grep 'preventive' over the module returns nothing) and no medical-expenditure route for an uninsured senior.",
+      "status": "closed",
+      "verified_on": "2026-09-18",
+      "reread_on": "2026-09-18",
+      "why": "CLOSED 18-09-2026. `domain/income_tax/chapter_vi_a.py` is the authority for \u00a780E, \u00a780EE/\u00a780EEA, \u00a780DD, \u00a780DDB, \u00a780U and \u00a780GG, each with its own limit and its own result line; `itr_engine` carries `chapter_vi_a_lines` and `chapter_vi_a_paise`, POST /api/income-tax/compute takes the claims and serves the working, and the client Tax Computation tab both sends every claim and renders a line per section with what the ceiling withheld. \u00a780D gained the \u20b95,000 preventive check-up sub-limit WITHIN the ceiling and the medical-expenditure route for an uninsured senior. THE THREE SHAPES ARE KEPT APART, which is what the finding was really about: \u00a780DD and \u00a780U are FLAT amounts that do not depend on the spend, \u00a780DDB/\u00a780EE/\u00a780EEA are capped expenditure, \u00a780E has no monetary limit at all, and \u00a780GG is a least-of-three computed BEFORE \u00a780G because \u00a780G(4)'s base is reduced by every other Chapter VI-A deduction. `other_deductions_paise` survives as the residual for what these sections do not reach, and the box now says so. \u00a780JJAA is REFUSED with its reason rather than half-modelled \u2014 240 days, \u20b925,000 a month, a recognised PF, non-cash payment, a \u00a744AB audit and a Form 10DA report, none of which these books hold.",
       "commits": [
         "c3c63c35 Phase 13 \u2014 the verification pass, and every fix it produced (#493)"
       ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "Model \u00a780E, \u00a780EE/\u00a780EEA, \u00a780DD, \u00a780DDB, \u00a780U, \u00a780GG and \u00a780JJAA with their own limits and their own result lines (tax_deduction_claims already carries a `section` column), and add \u00a780D's \u20b95,000 preventive sub-limit and the uninsured-senior medical-expenditure route.",
-      "user_visible_impact": "An old-regime individual with an education loan (\u00a780E), a disabled dependant (\u00a780DD), a specified illness (\u00a780DDB), a disability (\u00a780U) or rent with no HRA (\u00a780GG) still has to be lumped into one unlabelled 'other deductions' figure with no cap check and no line on the computation sheet \u2014 exactly the deductions most likely to be questioned, with no audit trail. The engine now warns that no ceiling was applied, which makes the gap visible but does not close it. A senior citizen paying for a preventive health check-up or medical expenditure with no policy cannot claim either through \u00a780D."
+      "what_is_left": "Nothing for this finding. \u26a0\ufe0f Every figure in the new module is `[S]`-graded \u2014 egress is refused at this environment's proxy, so none was read off the Act \u2014 `VERIFIED` is False, each constant is pinned exactly by tests/test_a_chapter_vi_a_deduction_has_its_own_section.py, and the caveat travels on every answer. Check them against the Finance Act before filing."
     },
     "IT-33": {
       "status": "closed",
