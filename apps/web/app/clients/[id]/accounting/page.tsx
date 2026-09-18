@@ -3252,7 +3252,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
         <button
           onClick={runVerification}
           disabled={verifying || !clientId || clientId === "_placeholder"}
-          className="flex-shrink-0 text-xs font-medium px-4 py-2 bg-brand-dark text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-shrink-0 text-xs font-medium px-4 py-2 bg-brand-dark text-white rounded-lg hover:bg-brand disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {verifying ? "Verifying…" : "Verify Books"}
         </button>

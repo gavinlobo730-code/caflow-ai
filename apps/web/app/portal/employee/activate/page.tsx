@@ -207,7 +207,7 @@ export default function EmployeeActivatePage() {
         </div>
         <button
           onClick={() => router.replace("/portal/employee")}
-          className="w-full bg-brand-dark text-white rounded-lg py-2.5 text-sm font-medium hover:bg-brand-dark"
+          className="w-full bg-brand-dark text-white rounded-lg py-2.5 text-sm font-medium hover:bg-brand"
         >
           View my payslips
         </button>

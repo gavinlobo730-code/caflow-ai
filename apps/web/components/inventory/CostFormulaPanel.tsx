@@ -162,7 +162,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
               Cancel
             </button>
             <button onClick={save} disabled={saving || !method}
-                    className="px-2.5 py-1.5 text-xs bg-brand-dark text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
+                    className="px-2.5 py-1.5 text-xs bg-brand-dark text-white rounded-lg hover:bg-brand disabled:opacity-50">
               {saving ? "Saving…" : "Record"}
             </button>
           </div>
