@@ -7,14 +7,14 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **253** | re-read against the code. The defect is gone. |
-| partial | **16** | part of the finding is answered, part is not. Each says which. |
+| closed | **254** | re-read against the code. The defect is gone. |
+| partial | **15** | part of the finding is answered, part is not. Each says which. |
 | open | **4** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 20 items — 4 open and 16 partial — not 254.**
+**The work left is 19 items — 4 open and 15 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
@@ -46,7 +46,6 @@ is left as "unknown".
 | high | **ACC-03** | Every receipt and vendor payment posts to one generic "Bank Account" ledger, while bank-statemen |
 | high | **GST-11** | QRMP quarterly returns cannot be computed, saved or recorded — every period in the return engine |
 | high | **IT-11** | Tax audit is a four-field tracker: no Form 3CD at all, and the §44AB applicability test is decid |
-| high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
 | high | **TDS-22** | §194J's 2% technical-services rate and §194I's 2% plant-and-machinery rate are not modelled — bo |
 | medium | **ACC-13** | No day book, no cost centres, no bill-wise references, no party ledgers in the GL |
 | medium | **BANK-11** | The rule engine is one case-insensitive substring plus an amount range and a direction — no rege |
@@ -174,6 +173,7 @@ is left as "unknown".
 | high | **SALES-09** | GSTR-1 Table 11A/11B (tax on advances, §13(2)) is unreachable — the three columns it needs are n |
 | high | **SALES-10** | Export/SEZ invoices produce a GSTR-1 the portal will reject — shipping bill number, date and por |
 | high | **SALES-11** | No discount field anywhere on a sales invoice — not per line, not at document level |
+| high | **SALES-13** | Firm branding, invoice templates, bank/UPI details and footer text are stored by a full Settings |
 | high | **SALES-14** | An unallocated advance receipt can never be applied to a later invoice from any screen, and it n |
 | high | **TDS-03** | "Prepare a Return" on /tds/returns cannot work in production — it sends no auth token, and the d |
 | high | **TDS-04** | Form 16/16A certificate creation always fails silently against the real database — the UI sends  |

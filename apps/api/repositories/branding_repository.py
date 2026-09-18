@@ -105,6 +105,34 @@ class BrandingRepository(BaseRepository[dict]):
         r = _get_db().table("invoice_templates").select("*").eq("firm_id", firm_id).order("created_at").execute()
         return r.data or []
 
+    def get_default_invoice_template(self, firm_id: str) -> Optional[dict]:
+        """The layout this firm's own invoices are rendered with (SALES-13).
+
+        THE READER THIS TABLE NEVER HAD. `invoice_templates` has been written
+        by a full Settings screen since migration 126 and nothing read a single
+        column of it — see `domain/branding/invoice_layout.py`.
+
+        BOTH `is_default` AND `is_active`. The partial unique index is on
+        `(firm_id) WHERE is_default`, so a firm cannot have two defaults; it
+        says nothing about a default somebody has since deactivated, and
+        rendering a deactivated layout would honour a decision the CA has
+        withdrawn. None means the firm has never chosen one, which is every
+        firm that has not opened the screen, and the renderer then uses
+        migration 126's own defaults.
+        """
+        if _USE_MOCK:
+            return next((t for t in _MOCK_INVOICE_TEMPLATES
+                         if t["firm_id"] == firm_id
+                         and t.get("is_default") and t.get("is_active", True)), None)
+        r = (_get_db().table("invoice_templates")
+             .select("id, firm_id, name, template_type, logo_position, "
+                     "header_style, footer_style, signature_placement, "
+                     "is_active, is_default")
+             .eq("firm_id", firm_id).eq("is_default", True)
+             .eq("is_active", True).limit(1).execute())
+        rows = r.data or []
+        return rows[0] if rows else None
+
     def get_invoice_template(self, template_id: str) -> Optional[dict]:
         if _USE_MOCK:
             return next((t for t in _MOCK_INVOICE_TEMPLATES if t["id"] == template_id), None)
@@ -178,6 +206,31 @@ class BrandingRepository(BaseRepository[dict]):
             return next((t for t in _MOCK_EMAIL_TEMPLATES if t["id"] == template_id), None)
         r = _get_db().table("email_templates").select("*").eq("id", template_id).maybe_single().execute()
         return r.data
+
+    def get_active_email_template(self, firm_id: str,
+                                  template_type: str) -> Optional[dict]:
+        """The wording this firm sends this kind of mail in (SALES-13).
+
+        THE READER THIS TABLE NEVER HAD either: `services/email_service.py`
+        mentioned no template at all and every body was a hard-coded
+        f-string, so a CA who rewrote the invoice email watched the product
+        send the stock one.
+
+        `is_active` is the key the partial unique index is built on — one
+        active template per kind per firm — so an inactive row is a previous
+        wording kept for the record and is not sent.
+        """
+        if _USE_MOCK:
+            return next((t for t in _MOCK_EMAIL_TEMPLATES
+                         if t["firm_id"] == firm_id
+                         and t.get("template_type") == template_type
+                         and t.get("is_active", True)), None)
+        r = (_get_db().table("email_templates")
+             .select("id, firm_id, template_type, subject, body, is_active")
+             .eq("firm_id", firm_id).eq("template_type", template_type)
+             .eq("is_active", True).limit(1).execute())
+        rows = r.data or []
+        return rows[0] if rows else None
 
     def upsert_email_template(self, firm_id: str, template_type: str, data: dict) -> dict:
         """Create or replace the active template for the given type."""

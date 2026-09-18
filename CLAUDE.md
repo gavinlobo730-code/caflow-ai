@@ -741,6 +741,59 @@ change. The code is the authority; keep this file in step with it.
   each is pinned exactly by
   `tests/test_which_supplies_must_carry_an_irn.py`. Prepare-only: it decides
   eligibility and reaches no portal.
+- **A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE
+  PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY** (SALES-13).
+  `invoice_templates` and `email_templates` (migration 126) have been written
+  by two full Settings screens since the module was built and **nothing in
+  `apps/api` read a single column of either** — a Partner set the logo centred
+  and the signature left, marked it default, and every PDF came out logo-left
+  signature-right; rewrote the engagement email and the product sent the stock
+  one. `domain/branding/invoice_layout.py` and
+  `domain/branding/email_template.py` are the authorities.
+  **CGST Rule 46 lists what a tax invoice must CONTAIN**, so a layout picker
+  that could remove one would let a CA issue a document that is not a tax
+  invoice. Every field moves where something sits or how much room it takes;
+  the tagline is the only thing a header style removes and the `detailed`
+  footer only ADDS. `signature_placement = 'none'` looks like the exception
+  and is not — **Rule 46's FIRST PROVISO** dispenses with the signature for an
+  invoice digitally signed under the IT Act 2000 — so it is honoured and
+  `RULE_46_Q_NOTE` travels with the template to the screen, beside
+  `LAYOUT_NEVER_CHANGES_PARTICULARS`, which is on EVERY layout because a CA
+  choosing `minimal` needs to know it is not dropping the HSN. An unknown
+  value falls back to migration 126's own default rather than raising: the row
+  came through a validating door behind a CHECK, so an unknown value means the
+  vocabulary MOVED, and refusing to produce an invoice over a layout
+  preference is the wrong direction. **`build_sales_invoice_pdf` takes no
+  `layout` and no `branding`** — the practice's signature placement on a
+  document its client issues to a stranger is the confusion its own docstring
+  already refuses the UPI id for.
+  **THE EMAIL CONTRACT IS MEASURED AT THE SENDER, AND ONLY ONE OF THE FOUR
+  KINDS HAS A LIVE MAIL.** `engagement` is wired (the practice IS the sender);
+  `invoice` has no fee-invoice email path at all, `reminder`'s
+  `send_compliance_due_soon` is written and has NO CALLER, and a document
+  request sends nothing — three DIFFERENT reasons, served as
+  `status_by_kind` and rendered where the CA types, because four kinds offered
+  as equals with three inert is the `BrowserOnlyNotice` shape. `FIELDS_BY_KIND`
+  holds only the live kind: **`{{financial_year}}` is NOT available on an
+  engagement mail** because `public.engagements` (migration 115) has no such
+  column, and the shipped default lost it — a default a CA presses Reset for
+  must be one the door accepts. **An unfillable field is refused where it is
+  TYPED, never blanked where it is SENT**, because by then there is nobody to
+  tell; an unknown field and an unfillable one get different sentences; and
+  `render` REFUSES rather than leaving a hole, so the built-in wording goes out
+  instead. A kind with no live mail refuses no field — there is nothing to be
+  unfilled by a mail nobody sends.
+  **THE TWO CUSTOMER-FACING MAILS NAME THE CLIENT** (no finding; found here).
+  The sales-invoice send and the payment reminder both carry a CLIENT's
+  invoice to that client's own customer and both signed with the PRACTICE's
+  name — "Invoice INV/001 from Sharma & Co" to somebody who bought goods from
+  Acme Traders. They read the client's `legal_name` then `client_name`, the
+  same preference `_client_party(legal_name_first=True)` applies to the very
+  document attached, falling back to a neutral word and never to the
+  practice's. ⚠️ The headline test was VACUOUS at first: reportlab stamps a
+  creation date and document id on every render, so two identical PDFs differ
+  — `rl_config.invariant` pins it and a premise test asserts two identical
+  renders are byte-identical.
 - **THE SALES CYCLE BEGINS BEFORE THE TAX INVOICE, AND ONLY ONE OF THE FOUR
   DOCUMENTS IS THE ACT'S** (SALES-21, migration 392). A client quotes, takes an
   order, delivers against it and bills afterwards; the product started at the

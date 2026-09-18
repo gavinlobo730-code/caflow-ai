@@ -314,10 +314,19 @@ def test_the_authority_is_still_one_module():
     regex that accepts a transposition. That GSTIN goes on every fee invoice
     the practice raises (CGST Rule 46(a)) and nothing downstream re-checks it.
     """
+    # MATCHED ON THE AUTHORITY, NOT ON THE WORD `problem_with`.
+    #
+    # `problem_with` is this codebase's SHAPE for "what is wrong with this
+    # thing somebody typed" and there is more than one of them — `domain/gst/
+    # uqc`, and `domain/branding/email_template` since SALES-13. A scan for the
+    # bare name counted the email-template validator as a GSTIN check and
+    # failed on a change that touched no GSTIN at all, which is the "a guard
+    # states a spelling of its own rule" shape. What this asserts is which
+    # routers reach the GSTIN authority.
     hits = set()
     for path in (API / "routers").rglob("*.py"):
         text = path.read_text()
-        if "gstin_problem" in text or "problem_with" in text:
+        if "domain.gst.gstin" in text or "gstin_problem" in text:
             hits.add(path.name)
     assert hits == {"customers.py", "vendors.py", "onboarding.py",
                     "inventory.py", "firms.py"}, hits

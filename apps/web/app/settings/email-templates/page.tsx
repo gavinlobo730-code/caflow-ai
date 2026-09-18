@@ -18,12 +18,19 @@ interface EmailTemplate {
   is_active: boolean;
 }
 
+// WHICH OF THESE IS ACTUALLY SENT IS THE SERVER'S ANSWER, not a sentence
+// here — `status_by_kind` on GET /api/settings/email-templates, measured
+// against the email service and its callers (SALES-13). These descriptions say
+// what each wording is FOR; the panel below says whether it is used.
 const TEMPLATE_TABS: { type: TemplateType; label: string; desc: string }[] = [
-  { type: "invoice", label: "Invoice", desc: "Sent when an invoice is issued or a payment reminder is due." },
+  { type: "invoice", label: "Invoice", desc: "For the practice's own fee invoice to a client." },
   { type: "engagement", label: "Engagement", desc: "Sent when an engagement letter is ready for client review." },
-  { type: "document_request", label: "Document Request", desc: "Sent when you request documents from a client." },
-  { type: "reminder", label: "Reminder", desc: "Sent for upcoming compliance deadlines and due date reminders." },
+  { type: "document_request", label: "Document Request", desc: "For a request for documents from a client." },
+  { type: "reminder", label: "Reminder", desc: "For a compliance deadline reminder to a client." },
 ];
+
+/** Whether a kind's mail exists, and why not — served, never spelled here. */
+interface KindStatus { kind: string; is_applied: boolean; reason: string | null }
 
 const MERGE_FIELDS = [
   { field: "{{firm_name}}", label: "Firm Name" },
@@ -55,12 +62,16 @@ With regards,
 {{firm_name}}`,
     is_active: true,
   },
+  // NO {{financial_year}} HERE, AND THAT IS NOT A TRIM. `public.engagements`
+  // (migration 115) has no financial-year column, so the mail has no value to
+  // put there; the server refuses the field on this kind for exactly that
+  // reason, and the shipped default has to be one a CA can save.
   engagement: {
     template_type: "engagement",
     subject: "Engagement Letter from {{firm_name}} — Action Required",
     body: `Dear {{client_name}},
 
-Please review and sign the engagement letter from {{firm_name}} for {{financial_year}}.
+Please review and sign the engagement letter from {{firm_name}}.
 
 Access your engagement letter here:
 {{portal_link}}
@@ -233,6 +244,11 @@ export default function EmailTemplatesPage() {
   });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Whether each kind's mail actually exists. The SERVER's answer — see
+  // `domain/branding/email_template.KIND_IS_LIVE`, measured against the email
+  // service and its callers. Three of the four are not sent today, and a CA
+  // rewriting one of those is writing into a void unless the screen says so.
+  const [kindStatus, setKindStatus] = useState<Record<string, KindStatus>>({});
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const showToast = (message: string, type: "success" | "error") => setToast({ message, type });
@@ -241,7 +257,10 @@ export default function EmailTemplatesPage() {
     if (!user) return;
     setLoading(true);
     try {
-      const res = await api.emailTemplates.list() as ApiResp<{ templates: EmailTemplate[] }>;
+      const res = await api.emailTemplates.list() as ApiResp<{
+        templates: EmailTemplate[];
+        status_by_kind?: Record<string, KindStatus>;
+      }>;
       if (res.success) {
         const map: Record<TemplateType, EmailTemplate | null> = {
           invoice: null, engagement: null, document_request: null, reminder: null,
@@ -250,6 +269,7 @@ export default function EmailTemplatesPage() {
           map[t.template_type] = t;
         }
         setTemplates(map);
+        setKindStatus(res.data.status_by_kind ?? {});
       }
       setLoadError(null);
     } catch (e) {
@@ -270,6 +290,7 @@ export default function EmailTemplatesPage() {
   }
 
   const activeTabInfo = TEMPLATE_TABS.find((t) => t.type === activeTab)!;
+  const activeStatus = kindStatus[activeTab];
 
   return (
     <RoleGuard allowed={["Partner"]}>
@@ -322,7 +343,21 @@ export default function EmailTemplatesPage() {
           </div>
 
           <div className="px-5 py-4">
-            <p className="text-xs text-[#94A3B8] mb-4">{activeTabInfo.desc}</p>
+            <p className="text-xs text-[#94A3B8] mb-2">{activeTabInfo.desc}</p>
+            {/* WHETHER THIS WORDING IS EVER SENT. The server's answer, rendered
+                where the CA is about to type — the alternative is four tabs
+                offered as equals with three of them inert, which is exactly the
+                shape `BrowserOnlyNotice` was deleted for. */}
+            {activeStatus && !activeStatus.is_applied && activeStatus.reason && (
+              <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 mb-4">
+                {activeStatus.reason}
+              </p>
+            )}
+            {activeStatus?.is_applied && (
+              <p className="text-xs text-state-ready bg-state-ready-surface border border-state-ready-border rounded-lg px-3 py-2 mb-4">
+                This wording is used on every engagement letter you send.
+              </p>
+            )}
             {loading ? (
               <div className="py-8 text-center text-sm text-[#94A3B8]">Loading…</div>
             ) : (
