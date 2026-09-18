@@ -784,7 +784,7 @@ export default function WhatsAppPage() {
                         </p>
                       </div>
                       {!client.mobile && (
-                        <span className="text-[10px] text-red-600 font-medium">
+                        <span className="text-3xs text-red-600 font-medium">
                           No phone
                         </span>
                       )}

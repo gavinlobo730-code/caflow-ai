@@ -301,7 +301,7 @@ export default function InventoryPage() {
     { key: "stock_value_paise", header: "Stock Value", accessor: (i) => i.stock_value_paise ?? 0, sortable: true, align: "right",
       exportValue: (i) => (i.stock_value_paise ?? 0) / 100,
       render: (i) => isUntrackedOversold(i) ? (
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700"
+        <span className="text-3xs px-1.5 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700"
           title="Cost not established — this item sold before it ever had a purchase or opening balance recorded. Enter one to start valuing its stock.">
           Cost unknown
         </span>
@@ -310,7 +310,7 @@ export default function InventoryPage() {
       ) },
     { key: "is_active", header: "Status", accessor: (i) => (i.is_active ? "active" : "archived"),
       render: (i) => (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${i.is_active ? "bg-green-50 text-green-700" : "bg-ps-muted text-ps-label"}`}>
+        <span className={`text-3xs px-1.5 py-0.5 rounded-full font-medium ${i.is_active ? "bg-green-50 text-green-700" : "bg-ps-muted text-ps-label"}`}>
           {i.is_active ? "Active" : "Archived"}
         </span>
       ) },
@@ -321,10 +321,10 @@ export default function InventoryPage() {
         <span className="flex items-center justify-end gap-2 whitespace-nowrap">
           <button
             onClick={(e) => { e.stopPropagation(); setRowAction({ item: i, kind: "adjust" }); }}
-            className="text-[11px] text-blue-600 hover:underline">Adjust</button>
+            className="text-2xs text-blue-600 hover:underline">Adjust</button>
           <button
             onClick={(e) => { e.stopPropagation(); setRowAction({ item: i, kind: "writedown" }); }}
-            className="text-[11px] text-blue-600 hover:underline">Write down</button>
+            className="text-2xs text-blue-600 hover:underline">Write down</button>
         </span>
       ) },
   ];
@@ -346,7 +346,7 @@ export default function InventoryPage() {
         const d = daysIdle(i.last_movement_date, asAt);
         if (d === null) {
           return (
-            <span className="text-[10px] text-ps-hint"
+            <span className="text-3xs text-ps-hint"
                   title="No movement on or before this date — the item has never received or issued stock in this book.">
               never moved
             </span>
@@ -388,7 +388,7 @@ export default function InventoryPage() {
         </div>
         <div className="flex items-end gap-3">
           <div>
-            <label htmlFor="stock-as-at" className="block text-[10px] font-medium text-ps-hint mb-1">
+            <label htmlFor="stock-as-at" className="block text-3xs font-medium text-ps-hint mb-1">
               As at
             </label>
             <input id="stock-as-at" type="date" value={asAt} onChange={(e) => setAsAt(e.target.value)}
@@ -574,7 +574,7 @@ function StockLedgerDrillDown({
         <div className="px-5 py-4 border-b border-ps-muted flex items-center justify-between shrink-0">
           <div>
             <p className="text-sm font-semibold text-ps-ink">{item.name}</p>
-            <p className="text-[11px] text-ps-hint mt-0.5">Stock movement ledger</p>
+            <p className="text-2xs text-ps-hint mt-0.5">Stock movement ledger</p>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setAdjustOpen(true)}
@@ -591,12 +591,12 @@ function StockLedgerDrillDown({
 
         <div className="px-5 py-3 border-b border-ps-muted flex items-end gap-3 flex-wrap shrink-0">
           <div>
-            <label className="block text-[10px] font-medium text-ps-hint mb-1">From</label>
+            <label className="block text-3xs font-medium text-ps-hint mb-1">From</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="block text-[10px] font-medium text-ps-hint mb-1">To</label>
+            <label className="block text-3xs font-medium text-ps-hint mb-1">To</label>
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
@@ -778,7 +778,7 @@ function AdjustStockModal({
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
         </div>
         <div className="p-5 space-y-3">
-          <p className="text-[11px] text-ps-hint">
+          <p className="text-2xs text-ps-hint">
             Currently {fmtQty(item.stock_qty_units)} on hand. This posts a journal entry immediately — review the details before saving.
           </p>
 
@@ -907,7 +907,7 @@ function NrvWritedownModal({
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
         </div>
         <div className="p-5 space-y-3">
-          <p className="text-[11px] text-ps-hint">
+          <p className="text-2xs text-ps-hint">
             AS-2 / Ind AS 2 / ICDS-II: inventory must be carried at the lower of cost or net realisable value. Quantity
             never changes — only the recorded value. Current average cost is {formatServicePrice(item.avg_cost_paise) || "₹0"}/unit
             on {fmtQty(qty)} units on hand.

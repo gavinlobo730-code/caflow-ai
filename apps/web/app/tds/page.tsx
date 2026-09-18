@@ -397,26 +397,26 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
               </span>
             </div>
             {quote && !quote.explain.applies && (
-              <p className="text-[11px] text-blue-800">
+              <p className="text-2xs text-blue-800">
                 Nothing is deducted — this payment is below §{section}&apos;s threshold, and
                 the year&apos;s total for this payee has not reached it either.
               </p>
             )}
             {quote && quote.explain.fy_prior_tds_paise > 0 && (
-              <p className="text-[11px] text-blue-800">
+              <p className="text-2xs text-blue-800">
                 Charged on the year&apos;s aggregate for this payee, crediting the{" "}
                 {formatPaise(quote.explain.fy_prior_tds_paise)} already withheld (IT Act §200).
               </p>
             )}
             {quote && quote.quarter && (
-              <p className="text-[10px] text-blue-700">
+              <p className="text-3xs text-blue-700">
                 Recorded in {quote.quarter}, derived from the payment date.
               </p>
             )}
             {quote?.explain.gap_messages.map((m) => (
-              <p key={m} className="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1">{m}</p>
+              <p key={m} className="text-2xs text-amber-700 bg-amber-50 rounded px-2 py-1">{m}</p>
             ))}
-            {quoteErr && <p className="text-[11px] text-red-600">{quoteErr}</p>}
+            {quoteErr && <p className="text-2xs text-red-600">{quoteErr}</p>}
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Payment Date</label>
@@ -434,7 +434,7 @@ function AddDeductionModal({ clientId, onClose, onAdded }: {
             {saving ? "Saving…" : "Add Deduction"}
           </button>
         </div>
-        <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1.5">
+        <p className="text-3xs text-amber-600 bg-amber-50 rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           Deposit TDS to the government account via e-Pay Tax on incometax.gov.in (challan ITNS 281). PracticeSync does not auto-submit.
         </p>
@@ -581,12 +581,12 @@ function DepositDuePanel({ clientId }: { clientId: string }) {
           {/* The scope note is on EVERY worksheet, not only an empty one: a
               total that looks like "the month's TDS" and is only part of it is
               the thing this panel must not be read as. */}
-          <p className="mx-5 mb-4 text-[11px] text-ps-hint">{state.sheet.covers}</p>
+          <p className="mx-5 mb-4 text-2xs text-ps-hint">{state.sheet.covers}</p>
 
           {state.sheet.statutory_gaps.map(g => (
             <p key={g.kind} className="mx-5 mb-3 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
               {g.message}
-              {g.deductees.length > 0 && <span className="block mt-1 text-[11px] text-amber-700">{g.deductees.join(", ")}</span>}
+              {g.deductees.length > 0 && <span className="block mt-1 text-2xs text-amber-700">{g.deductees.join(", ")}</span>}
             </p>
           ))}
         </>
@@ -704,7 +704,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Amount (₹)</label>
             <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={amtRupees} onChange={e => { setAmtRupees(e.target.value); setError(null); }} />
-            <p className="text-[10px] text-ps-hint mt-1">
+            <p className="text-3xs text-ps-hint mt-1">
               The TOTAL that left the bank. Tax is whatever is left after the three below.
             </p>
           </div>
@@ -726,7 +726,7 @@ function AddChallanModal({ clientId, onClose, onAdded }: {
               <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={penaltyRupees} onChange={e => { setPenaltyRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
           </div>
-          <p className="text-[10px] text-ps-hint -mt-1">
+          <p className="text-3xs text-ps-hint -mt-1">
             Interest is IT Act s.201(1A); fee is the s.234E ₹200-a-day late-filing
             charge. Leave them blank if the deposit is only tax. The Deposit Due
             panel works both out for you.
@@ -915,7 +915,7 @@ export default function TDSPage() {
       render: (d) => (
         <>
           <span className="text-xs font-mono font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">{d.section}</span>
-          <p className="text-[10px] text-ps-hint mt-0.5">{SECTION_LABELS[d.section]}</p>
+          <p className="text-3xs text-ps-hint mt-0.5">{SECTION_LABELS[d.section]}</p>
         </>
       ),
     },

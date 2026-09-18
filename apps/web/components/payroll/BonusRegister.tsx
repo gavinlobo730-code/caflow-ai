@@ -117,7 +117,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
               Statutory bonus
             </h2>
           </div>
-          <p className="text-[11px] text-ps-label mt-0.5">
+          <p className="text-2xs text-ps-label mt-0.5">
             Payment of Bonus Act 1965 · the minimum is payable whether or not
             there is an allocable surplus
           </p>
@@ -136,7 +136,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-[11px] text-red-700">
+        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-2xs text-red-700">
           {error}
         </div>
       )}
@@ -156,12 +156,12 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
                 <p className="text-xs font-semibold text-ps-ink">
                   Rate {(data.rate_bps / 100).toFixed(2)}%
                   {data.rate_is_the_statutory_minimum && (
-                    <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 border border-slate-200">
+                    <span className="ml-2 px-1.5 py-0.5 rounded text-3xs bg-slate-100 text-slate-600 border border-slate-200">
                       statutory minimum
                     </span>
                   )}
                 </p>
-                <p className="text-[11px] text-ps-label">
+                <p className="text-2xs text-ps-label">
                   Due {data.due_date}
                   {data.minimum_wage_monthly_paise != null && (
                     <> · §12 minimum wage {rupees(data.minimum_wage_monthly_paise)} a month
@@ -208,7 +208,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
               ["Employees", `${data.eligible_count} in · ${data.excluded_count} out`],
             ].map(([label, value]) => (
               <div key={label} className="border border-ps-border rounded-lg bg-white px-3 py-2">
-                <p className="text-[10px] text-ps-hint">{label}</p>
+                <p className="text-3xs text-ps-hint">{label}</p>
                 <p className="text-[13px] font-semibold text-ps-ink tabular-nums">{value}</p>
               </div>
             ))}
@@ -217,7 +217,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
           {data.gaps.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
               {data.gaps.map((g, i) => (
-                <p key={i} className="text-[11px] text-amber-800 flex gap-1.5 leading-relaxed">
+                <p key={i} className="text-2xs text-amber-800 flex gap-1.5 leading-relaxed">
                   <AlertTriangle size={12} className="shrink-0 mt-0.5" />
                   <span>{g}</span>
                 </p>
@@ -226,7 +226,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
           )}
 
           <div className="border border-ps-border rounded-lg bg-white overflow-x-auto">
-            <table className="w-full text-[11px]">
+            <table className="w-full text-2xs">
               <thead className="bg-ps-bg text-ps-label">
                 <tr>
                   <th className="text-left px-3 py-2 font-medium">Employee</th>
@@ -243,7 +243,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
                     <td className="px-3 py-2">
                       <p className="text-ps-ink">{e.employee_name}</p>
                       {[...e.reasons, ...e.gaps].map((r, i) => (
-                        <p key={i} className="text-[10px] text-ps-hint mt-0.5 leading-relaxed">{r}</p>
+                        <p key={i} className="text-3xs text-ps-hint mt-0.5 leading-relaxed">{r}</p>
                       ))}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{rupees(e.monthly_salary_paise)}</td>
@@ -270,7 +270,7 @@ export function BonusRegisterTab({ clientId }: { clientId: string }) {
 
           <div className="space-y-1">
             {data.notes.map((n, i) => (
-              <p key={i} className="text-[11px] text-ps-label leading-relaxed">{n}</p>
+              <p key={i} className="text-2xs text-ps-label leading-relaxed">{n}</p>
             ))}
           </div>
         </>

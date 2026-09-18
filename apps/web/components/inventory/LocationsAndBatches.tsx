@@ -176,13 +176,13 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                     <td className="px-5 py-2 text-ps-ink">
                       {g.name}
                       {g.is_default && (
-                        <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                        <span className="ml-1.5 text-3xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
                           default
                         </span>
                       )}
                     </td>
                     <td className="px-5 py-2 text-ps-label">{g.state_code ?? "—"}</td>
-                    <td className="px-5 py-2 font-mono text-[11px] text-ps-label">
+                    <td className="px-5 py-2 font-mono text-2xs text-ps-label">
                       {/* Not recorded is its own answer: whether a transfer is a
                           supply cannot be determined without it. */}
                       {g.gstin ?? <span className="font-sans text-amber-700">Not recorded</span>}
@@ -209,7 +209,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
         {unallocated.length > 0 && unallocatedMeans && (
           <div className="px-5 py-3 border-t border-ps-muted bg-ps-bg flex gap-2">
             <Info size={13} className="shrink-0 mt-0.5 text-ps-hint" />
-            <span className="text-[11px] text-ps-label">{unallocatedMeans}</span>
+            <span className="text-2xs text-ps-label">{unallocatedMeans}</span>
           </div>
         )}
       </div>
@@ -218,7 +218,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
       <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-50">
           <h3 className="text-sm font-semibold text-ps-ink">Stock by godown and lot</h3>
-          <p className="text-[11px] text-ps-hint mt-0.5">As at {asOf}</p>
+          <p className="text-2xs text-ps-hint mt-0.5">As at {asOf}</p>
         </div>
         {detail.length === 0 ? (
           <p className="px-5 py-6 text-xs text-ps-hint">No stock movements yet.</p>
@@ -311,11 +311,11 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-ps-muted">
             {expiry.bucket_order.map((b) => (
               <div key={b} className="bg-white px-4 py-3">
-                <p className="text-[11px] text-ps-hint">{expiry.bucket_labels[b]}</p>
+                <p className="text-2xs text-ps-hint">{expiry.bucket_labels[b]}</p>
                 <p className="text-sm font-semibold text-ps-ink tabular-nums mt-0.5">
                   {formatPaise(expiry.buckets[b]?.value_paise ?? 0)}
                 </p>
-                <p className="text-[10px] text-ps-hint">
+                <p className="text-3xs text-ps-hint">
                   {expiry.buckets[b]?.batches ?? 0} lot(s)
                 </p>
               </div>
@@ -346,7 +346,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                         {/* The BUCKET is the server's; the colour is the only
                             thing decided here, and it is decided from the
                             bucket rather than from the date. */}
-                        <span className={`text-[11px] px-1.5 py-0.5 rounded ${
+                        <span className={`text-2xs px-1.5 py-0.5 rounded ${
                           r.bucket === "expired" ? "bg-red-50 text-red-700"
                           : r.bucket === "within_30_days" ? "bg-amber-50 text-amber-700"
                           : r.bucket === "no_expiry_recorded" ? "bg-ps-muted text-ps-label"
@@ -354,7 +354,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
                           {expiry.bucket_labels[r.bucket]}
                         </span>
                         {r.expiry_date && (
-                          <span className="ml-1.5 text-[10px] text-ps-hint">{r.expiry_date}</span>
+                          <span className="ml-1.5 text-3xs text-ps-hint">{r.expiry_date}</span>
                         )}
                       </td>
                     </tr>
@@ -366,7 +366,7 @@ export function LocationsAndBatches({ clientId, asOf }: { clientId: string; asOf
           {expiry.notes.length > 0 && (
             <div className="px-5 py-3 border-t border-ps-muted space-y-1">
               {expiry.notes.map((n, i) => (
-                <p key={i} className="text-[11px] text-ps-label">{n}</p>
+                <p key={i} className="text-2xs text-ps-label">{n}</p>
               ))}
             </div>
           )}
@@ -574,7 +574,7 @@ function GodownModal({ clientId, onClose, onSaved }: {
             <span className="block text-ps-hint mb-1">GST registration (optional)</span>
             <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())}
               className={`${INPUT} font-mono`} maxLength={15} />
-            <span className="block text-[10px] text-ps-hint mt-1">
+            <span className="block text-3xs text-ps-hint mt-1">
               Only needed where this client holds more than one. Whether moving
               stock out of here is a supply depends on it.
             </span>
@@ -662,7 +662,7 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
             <label className="block text-xs">
               <span className="block text-ps-hint mb-1">Expires (optional)</span>
               <input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} className={INPUT} />
-              <span className="block text-[10px] text-ps-hint mt-1">
+              <span className="block text-3xs text-ps-hint mt-1">
                 Leave blank if this item does not expire.
               </span>
             </label>

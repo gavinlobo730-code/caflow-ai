@@ -276,7 +276,7 @@ export default function StatutoryValuesPage() {
                           <p className="text-sm font-semibold text-ps-ink">
                             {first.state} — effective {first.effective_from}
                             {first.basis === "half_yearly" && (
-                              <span className="ml-2 text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                              <span className="ml-2 text-3xs font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
                                 half-yearly
                               </span>
                             )}
@@ -298,7 +298,7 @@ export default function StatutoryValuesPage() {
                       </div>
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-[10px] uppercase tracking-wide text-ps-hint">
+                          <tr className="text-3xs uppercase tracking-wide text-ps-hint">
                             <th className="text-left px-4 py-2">From</th>
                             <th className="text-left px-4 py-2">To</th>
                             <th className="text-right px-4 py-2">Tax</th>
@@ -340,7 +340,7 @@ export default function StatutoryValuesPage() {
                 </p>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {stillMissing.map(code => (
-                    <span key={code} className="text-[11px] px-2 py-0.5 rounded bg-ps-muted text-ps-label">
+                    <span key={code} className="text-2xs px-2 py-0.5 rounded bg-ps-muted text-ps-label">
                       {levying[code]} ({code})
                     </span>
                   ))}
@@ -369,7 +369,7 @@ export default function StatutoryValuesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-ps-label mb-1">Read against</label>
+                  <label className="block text-2xs text-ps-label mb-1">Read against</label>
                   <select value={basis} onChange={e => setBasis(e.target.value)}
                     className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400">
                     <option value="monthly">The month&apos;s gross</option>
@@ -378,7 +378,7 @@ export default function StatutoryValuesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-ps-label mb-1">
+                  <label className="block text-2xs text-ps-label mb-1">
                     Deducted in — leave all unticked for every month
                   </label>
                   <div className="flex flex-wrap gap-1">
@@ -386,7 +386,7 @@ export default function StatutoryValuesPage() {
                       <button key={m} type="button"
                         onClick={() => setMonths(prev => prev.includes(i + 1)
                           ? prev.filter(x => x !== i + 1) : [...prev, i + 1].sort((a, b) => a - b))}
-                        className={`text-[11px] px-2 py-1 rounded border ${
+                        className={`text-2xs px-2 py-1 rounded border ${
                           months.includes(i + 1)
                             ? "bg-indigo-600 text-white border-indigo-600"
                             : "border-ps-border text-ps-label hover:bg-ps-bg"}`}>
@@ -398,11 +398,11 @@ export default function StatutoryValuesPage() {
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] text-ps-label">
+                    <label className="text-2xs text-ps-label">
                       Bands — must start at ₹0, meet end to start, and leave the last &quot;To&quot; blank
                     </label>
                     <button type="button" onClick={() => setBands(b => [...b, { ...EMPTY_BAND }])}
-                      className="text-[11px] text-indigo-600 hover:underline">+ band</button>
+                      className="text-2xs text-indigo-600 hover:underline">+ band</button>
                   </div>
                   <div className="space-y-1.5">
                     {bands.map((band, i) => (
@@ -451,7 +451,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }: {
 }) {
   return (
     <div>
-      <label className="block text-[11px] text-ps-label mb-1">{label}</label>
+      <label className="block text-2xs text-ps-label mb-1">{label}</label>
       <input type={type} value={value} placeholder={placeholder}
         onChange={e => onChange(e.target.value)}
         className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-indigo-400" />

@@ -515,15 +515,15 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-2.5 text-center">
                   <p className="text-lg font-semibold text-green-700 tabular-nums">{result.imported}</p>
-                  <p className="text-[11px] text-green-600">New</p>
+                  <p className="text-2xs text-green-600">New</p>
                 </div>
                 <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-center">
                   <p className="text-lg font-semibold text-amber-700 tabular-nums">{result.skipped ?? 0}</p>
-                  <p className="text-[11px] text-amber-600">Already existed</p>
+                  <p className="text-2xs text-amber-600">Already existed</p>
                 </div>
                 <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-center">
                   <p className="text-lg font-semibold text-red-600 tabular-nums">{result.errors.length}</p>
-                  <p className="text-[11px] text-red-500">Failed</p>
+                  <p className="text-2xs text-red-500">Failed</p>
                 </div>
               </div>
 

@@ -162,7 +162,7 @@ export default function RelationshipExplorerPage() {
                     <Badge className={`text-[9px] px-1.5 ${ENTITY_TYPE_COLORS[e.entity_type] ?? "bg-gray-100 text-gray-600"}`}>
                       {e.entity_type}
                     </Badge>
-                    {e.pan && <span className="text-[10px] text-gray-500 font-mono">{e.pan}</span>}
+                    {e.pan && <span className="text-3xs text-gray-500 font-mono">{e.pan}</span>}
                   </div>
                 </button>
               ))}
@@ -188,7 +188,7 @@ export default function RelationshipExplorerPage() {
                     <div>
                       <h2 className="text-base font-semibold text-brand">{selected.full_name}</h2>
                       <div className="flex items-center gap-3 mt-1">
-                        <Badge className={`text-[10px] ${ENTITY_TYPE_COLORS[selected.entity_type] ?? "bg-gray-100 text-gray-600"}`}>
+                        <Badge className={`text-3xs ${ENTITY_TYPE_COLORS[selected.entity_type] ?? "bg-gray-100 text-gray-600"}`}>
                           {selected.entity_type}
                         </Badge>
                         {selected.pan && <span className="text-xs text-gray-500 font-mono">PAN: {selected.pan}</span>}
@@ -215,7 +215,7 @@ export default function RelationshipExplorerPage() {
                     <div className="space-y-2">
                       {selected.roles!.map((r, i) => (
                         <div key={i} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded-md">
-                          <Badge className="bg-blue-100 text-blue-700 text-[10px]">{r.role_type}</Badge>
+                          <Badge className="bg-blue-100 text-blue-700 text-3xs">{r.role_type}</Badge>
                           <span className="text-xs text-gray-500 font-mono">{r.client_id.slice(0, 12)}…</span>
                         </div>
                       ))}
@@ -240,7 +240,7 @@ export default function RelationshipExplorerPage() {
                           <div key={i} className="flex items-center gap-3 px-3 py-2 bg-gray-50 rounded-md">
                             <span className="text-xs text-gray-800">{selected.full_name}</span>
                             <ArrowRight size={12} className="text-brand shrink-0" />
-                            <Badge className="bg-brand/10 text-brand text-[10px]">{r.relationship_type}</Badge>
+                            <Badge className="bg-brand/10 text-brand text-3xs">{r.relationship_type}</Badge>
                             <ArrowRight size={12} className="text-brand shrink-0" />
                             <button
                               onClick={() => { const e = entities.find((e) => e.id === otherId); if (e) handleSelect(e); }}

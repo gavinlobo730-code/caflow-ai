@@ -824,7 +824,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   // ── DataTable columns (money columns return integer paise, right-aligned) ────
   const billColumns: Column<PurchaseBillRow>[] = useMemo(() => [
     { key: "our_reference", header: "Our Ref", accessor: (b) => b.our_reference ?? "", searchable: true,
-      render: (b) => <span className="font-mono text-[10px] text-ps-label">{b.our_reference ?? "—"}</span> },
+      render: (b) => <span className="font-mono text-3xs text-ps-label">{b.our_reference ?? "—"}</span> },
     { key: "bill_no", header: "Vendor Invoice", accessor: (b) => b.bill_no ?? "", searchable: true,
       render: (b) => (
         <span className="text-ps-label inline-flex items-center gap-1">
@@ -856,7 +856,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
       render: (b) => <span className="font-mono font-semibold text-ps-ink">{fmt(b.net_payable_paise)}</span> },
     { key: "status", header: "Status", accessor: (b) => b.status, sortable: true,
       render: (b) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[b.status] ?? "bg-ps-muted text-ps-label"}`}>{b.status}</span>
+        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${STATUS_COLORS[b.status] ?? "bg-ps-muted text-ps-label"}`}>{b.status}</span>
       ) },
     // PUR-11. §16(2)(aa): the credit on this bill is available only where the
     // supplier has furnished the invoice and it has been communicated through
@@ -872,19 +872,19 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
         const r = recon2B[b.id];
         if (!r) {
           return reconciledPeriods.has(periodOf(b.bill_date))
-            ? <span className="text-[10px] text-red-700" title="This period's GSTR-2B was reconciled and this bill is not in it — §16(2)(aa) holds the credit back until the supplier files.">supplier has not filed</span>
-            : <span className="text-[10px] text-ps-hint" title="No GSTR-2B has been reconciled for this bill's period. Upload it on the GST tab.">not reconciled</span>;
+            ? <span className="text-3xs text-red-700" title="This period's GSTR-2B was reconciled and this bill is not in it — §16(2)(aa) holds the credit back until the supplier files.">supplier has not filed</span>
+            : <span className="text-3xs text-ps-hint" title="No GSTR-2B has been reconciled for this bill's period. Upload it on the GST tab.">not reconciled</span>;
         }
         if (r.itc_available === "N") {
-          return <span className="text-[10px] text-amber-700" title={r.itc_unavailable_reason}>2B: ITC not available</span>;
+          return <span className="text-3xs text-amber-700" title={r.itc_unavailable_reason}>2B: ITC not available</span>;
         }
         if (r.match_status === "matched") {
-          return <span className="text-[10px] text-green-700" title={r.supplier_filed_on ? `Supplier filed on ${r.supplier_filed_on}` : undefined}>matched</span>;
+          return <span className="text-3xs text-green-700" title={r.supplier_filed_on ? `Supplier filed on ${r.supplier_filed_on}` : undefined}>matched</span>;
         }
         if (r.match_status === "amount_mismatch") {
-          return <span className="text-[10px] text-amber-700" title={`Books claim ${fmt(Math.abs(r.match_difference_paise))} ${r.match_difference_paise > 0 ? "more" : "less"} tax than 2B carries`}>amount mismatch</span>;
+          return <span className="text-3xs text-amber-700" title={`Books claim ${fmt(Math.abs(r.match_difference_paise))} ${r.match_difference_paise > 0 ? "more" : "less"} tax than 2B carries`}>amount mismatch</span>;
         }
-        return <span className="text-[10px] text-ps-label">{r.match_status}</span>;
+        return <span className="text-3xs text-ps-label">{r.match_status}</span>;
       } },
     // `reconciledPeriods` is read at two accessors above and loads ASYNC — it
     // starts as an empty Set. Omitting it here built the columns once against
@@ -1006,7 +1006,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                   </li>
                 ))}
               </ul>
-              <p className="text-[11px] text-amber-700 mt-1.5">
+              <p className="text-2xs text-amber-700 mt-1.5">
                 Nothing is blocked — the bill and its journal are posted. These decide which
                 statement the deduction lands in and what its deductee row must carry, so they
                 are cheaper to settle now than at the quarter end.
@@ -1021,15 +1021,15 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
       {/* Summary strip */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="bg-white rounded-xl border border-ps-muted p-4">
-          <p className="text-[10px] text-ps-label mb-1">Outstanding Payable</p>
+          <p className="text-3xs text-ps-label mb-1">Outstanding Payable</p>
           <p className="text-lg font-bold text-orange-700 tabular-nums">{loadFailed ? "—" : fmt(totalPayable)}</p>
         </div>
         <div className="bg-white rounded-xl border border-ps-muted p-4">
-          <p className="text-[10px] text-ps-label mb-1">Total Bills (Selected Period)</p>
+          <p className="text-3xs text-ps-label mb-1">Total Bills (Selected Period)</p>
           <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : fmt(totalThisFy)}</p>
         </div>
         <div className="bg-white rounded-xl border border-ps-muted p-4">
-          <p className="text-[10px] text-ps-label mb-1">Bills in Selected Period</p>
+          <p className="text-3xs text-ps-label mb-1">Bills in Selected Period</p>
           <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : bills.length}</p>
         </div>
       </div>
@@ -1680,9 +1680,9 @@ function Vendors({ clientId }: { clientId: string }) {
     { key: "name", header: "Name", accessor: (v) => v.name, searchable: true, sortable: true, sticky: true, hideable: false,
       render: (v) => <span className="font-medium text-ps-ink">{v.name}</span> },
     { key: "gstin", header: "GSTIN", accessor: (v) => v.gstin ?? "", searchable: true,
-      render: (v) => <span className="font-mono text-[10px] text-ps-label">{v.gstin ?? "—"}</span> },
+      render: (v) => <span className="font-mono text-3xs text-ps-label">{v.gstin ?? "—"}</span> },
     { key: "tds_applicable", header: "TDS", accessor: (v) => v.tds_applicable, align: "center",
-      render: (v) => v.tds_applicable ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Yes</span> : <span className="text-ps-hint">—</span> },
+      render: (v) => v.tds_applicable ? <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-blue-100 text-blue-700">Yes</span> : <span className="text-ps-hint">—</span> },
     { key: "tds_section", header: "Section", accessor: (v) => v.tds_section ?? "",
       render: (v) => <span className="text-ps-label">{v.tds_section ?? "—"}</span> },
     // Shown because an unclassified vendor is filed on an ASSUMPTION — 26Q,
@@ -1691,7 +1691,7 @@ function Vendors({ clientId }: { clientId: string }) {
     { key: "residential_status", header: "Residence", accessor: (v) => v.residential_status ?? "",
       render: (v) =>
         v.residential_status === "non_resident"
-          ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">
+          ? <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-amber-100 text-amber-700">
               Non-resident{v.country_of_residence ? ` · ${v.country_of_residence}` : ""}
             </span>
           : v.residential_status === "resident"
@@ -1706,9 +1706,9 @@ function Vendors({ clientId }: { clientId: string }) {
       render: (v) => <span className="text-ps-label">{v.phone ?? "—"}</span> },
     { key: "is_active", header: "Status", accessor: (v) => (v.is_active ? "active" : "inactive"),
       render: (v) => v.is_active ? (
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Active</span>
+        <span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-green-100 text-green-700">Active</span>
       ) : (
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">Inactive</span>
+        <span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">Inactive</span>
       ) },
   ], []);
 
@@ -2006,7 +2006,7 @@ function Vendors({ clientId }: { clientId: string }) {
                     <option key={o} value={o}>{o === "registered" ? "Registered" : "Unregistered"}</option>
                   ))}
                 </select>
-                <p className="text-[10px] text-ps-hint mt-1">
+                <p className="text-3xs text-ps-hint mt-1">
                   Only needed where there is no GSTIN above — a GSTIN is the registration.
                 </p>
               </div>
@@ -2094,7 +2094,7 @@ function Vendors({ clientId }: { clientId: string }) {
                       <option value="firm_llp">Firm or LLP</option>
                       <option value="co_operative">Co-operative society</option>
                     </select>
-                    <p className="text-[10px] text-ps-hint mt-0.5">
+                    <p className="text-3xs text-ps-hint mt-0.5">
                       Firm/LLP and co-operative are recordable but not yet rateable — this
                       software does not hold Part II&apos;s ladder for them, and will say so
                       rather than guess.
@@ -2600,7 +2600,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   // ── DataTable columns (amount returns integer paise, right-aligned) ──────────
   const paymentColumns: Column<PaymentRow>[] = useMemo(() => [
     { key: "payment_no", header: "Payment No", accessor: (p) => p.payment_no, searchable: true, sticky: true, hideable: false,
-      render: (p) => <span className="font-mono text-[10px] text-ps-label">{p.payment_no}</span> },
+      render: (p) => <span className="font-mono text-3xs text-ps-label">{p.payment_no}</span> },
     { key: "payment_date", header: "Date", accessor: (p) => p.payment_date, sortable: true,
       render: (p) => <span className="text-ps-label">{p.payment_date}</span> },
     { key: "vendor", header: "Vendor", accessor: (p) => p.vendors?.name ?? "", searchable: true,
@@ -2619,10 +2619,10 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
     { key: "payment_mode", header: "Mode", accessor: (p) => p.payment_mode, searchable: true,
       render: (p) => <span className="text-ps-label capitalize">{p.payment_mode}</span> },
     { key: "reference_no", header: "Reference", accessor: (p) => p.reference_no ?? "", searchable: true,
-      render: (p) => <span className="text-[10px] text-ps-hint">{p.reference_no ?? "—"}</span> },
+      render: (p) => <span className="text-3xs text-ps-hint">{p.reference_no ?? "—"}</span> },
     { key: "is_reversed", header: "Status", accessor: (p) => (p.is_reversed ? "Reversed" : "Active"),
       render: (p) => p.is_reversed ? (
-        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">Reversed</span>
+        <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-red-100 text-red-700">Reversed</span>
       ) : null },
   ], []);
 
@@ -2645,11 +2645,11 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-xl border border-ps-muted p-4">
-          <p className="text-[10px] text-ps-label mb-1">Total Paid (FY)</p>
+          <p className="text-3xs text-ps-label mb-1">Total Paid (FY)</p>
           <p className="text-lg font-bold text-green-700 tabular-nums">{loadFailed ? "—" : fmt(totalPaid)}</p>
         </div>
         <div className="bg-white rounded-xl border border-ps-muted p-4">
-          <p className="text-[10px] text-ps-label mb-1">Transactions</p>
+          <p className="text-3xs text-ps-label mb-1">Transactions</p>
           <p className="text-lg font-bold text-ps-ink tabular-nums">{loadFailed ? "—" : payments.length}</p>
         </div>
       </div>
@@ -2722,7 +2722,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                   placeholder="— Select the bill this settles —"
                   ariaLabel="Against bill"
                 />
-                <p className="mt-1 text-[10px] text-ps-hint">A foreign payment must be linked to the bill it settles — no unlinked foreign advance, and one bill per payment.</p>
+                <p className="mt-1 text-3xs text-ps-hint">A foreign payment must be linked to the bill it settles — no unlinked foreign advance, and one bill per payment.</p>
               </div>
             )}
             <div>
@@ -2769,7 +2769,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                     type="button"
                     onClick={applyOldestFirst}
                     disabled={!allocatableBills.length || !((amountPaiseTyped ?? 0) > 0)}
-                    className="text-[11px] px-2.5 py-1 border border-ps-border bg-white rounded-md hover:bg-ps-muted disabled:opacity-40"
+                    className="text-2xs px-2.5 py-1 border border-ps-border bg-white rounded-md hover:bg-ps-muted disabled:opacity-40"
                   >
                     Apply oldest first
                   </button>
@@ -2777,20 +2777,20 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                     type="button"
                     onClick={() => setAlloc({})}
                     disabled={!Object.keys(alloc).length}
-                    className="text-[11px] px-2.5 py-1 border border-ps-border bg-white rounded-md hover:bg-ps-muted disabled:opacity-40"
+                    className="text-2xs px-2.5 py-1 border border-ps-border bg-white rounded-md hover:bg-ps-muted disabled:opacity-40"
                   >
                     Clear
                   </button>
                 </div>
               </div>
               {allocatableBills.length === 0 ? (
-                <p className="px-3 py-3 text-[11px] text-ps-hint">
+                <p className="px-3 py-3 text-2xs text-ps-hint">
                   This vendor has no open bills. The whole payment is recorded as an advance.
                 </p>
               ) : (
                 <div className="max-h-56 overflow-y-auto">
                   <table className="w-full text-xs">
-                    <thead className="text-[10px] uppercase tracking-wide text-ps-hint">
+                    <thead className="text-3xs uppercase tracking-wide text-ps-hint">
                       <tr>
                         <th className="text-left font-medium px-3 py-1.5">Bill</th>
                         <th className="text-left font-medium px-3 py-1.5">Date</th>
@@ -2840,7 +2840,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
                 </span>
               </div>
               {unallocatedPaise < 0 && (
-                <p className="px-3 pb-2 text-[10px] text-red-600">
+                <p className="px-3 pb-2 text-3xs text-red-600">
                   More is allocated than the payment is for.
                 </p>
               )}
@@ -2880,11 +2880,11 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
         rowActions={(p) => !p.is_reversed && (
           <div className="flex items-center justify-end gap-3">
             <button onClick={() => setVoucherFor(p.id)}
-              className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
+              className="text-2xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
               Payment voucher
             </button>
             <button onClick={() => reversePayment(p)}
-              className="text-[11px] text-red-600 hover:text-red-800 hover:underline">
+              className="text-2xs text-red-600 hover:text-red-800 hover:underline">
               Reverse
             </button>
           </div>
@@ -3180,7 +3180,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
       render: (d) => <span className="font-mono font-semibold text-ps-ink">{fmt(d.total_paise)}</span> },
     { key: "status", header: "Status", accessor: (d) => d.status, sortable: true,
       render: (d) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[d.status] ?? "bg-ps-muted text-ps-label"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${STATUS_COLORS[d.status] ?? "bg-ps-muted text-ps-label"}`}>
           {d.status}
         </span>
       ) },
@@ -3647,7 +3647,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
       render: (d) => <span className="font-mono font-semibold text-ps-ink">{fmt(d.total_paise)}</span> },
     { key: "status", header: "Status", accessor: (d) => d.status, sortable: true,
       render: (d) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[d.status] ?? "bg-ps-muted text-ps-label"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${STATUS_COLORS[d.status] ?? "bg-ps-muted text-ps-label"}`}>
           {d.status}
         </span>
       ) },

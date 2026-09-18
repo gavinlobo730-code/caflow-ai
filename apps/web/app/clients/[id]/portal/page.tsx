@@ -194,10 +194,10 @@ export default function PortalPage() {
               <div key={c.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-ps-ink truncate">{c.name || c.email}</p>
-                  {c.name && <p className="text-[11px] text-ps-hint truncate">{c.email}</p>}
+                  {c.name && <p className="text-2xs text-ps-hint truncate">{c.email}</p>}
                 </div>
                 <span
-                  className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                  className={`shrink-0 text-2xs px-2 py-0.5 rounded-full font-medium ${
                     c.status === "active" ? "bg-green-100 text-green-700"
                       : c.status === "invited" ? "bg-amber-100 text-amber-700"
                       : "bg-ps-muted text-ps-label"

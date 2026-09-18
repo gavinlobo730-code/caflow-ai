@@ -35,12 +35,12 @@ export function HomePanel() {
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 shrink-0">
         <p className="text-[13px] font-semibold text-brand">Home</p>
-        <p className="text-[11px] text-gray-500 mt-0.5">{dateStr}</p>
+        <p className="text-2xs text-gray-500 mt-0.5">{dateStr}</p>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-1">
+        <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-1">
           Navigate
         </p>
         <div className="space-y-0.5">

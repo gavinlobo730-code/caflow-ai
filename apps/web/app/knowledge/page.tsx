@@ -130,7 +130,7 @@ function KnowledgeInner() {
               <button disabled={rowBusy} onClick={() => open(a.id)} className="w-full flex items-center justify-between px-4 py-3 text-left">
                 <div>
                   <p className="text-[13px] font-medium text-brand">{a.title}</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
+                  <p className="text-2xs text-gray-400 mt-0.5">
                     {a.scope}{a.department ? ` · ${a.department}` : ""} · v{a.current_version}
                     {a.tags && a.tags.length > 0 ? ` · ${a.tags.join(", ")}` : ""}
                   </p>
@@ -140,7 +140,7 @@ function KnowledgeInner() {
               {expanded === a.id && (
                 <div className="border-t border-gray-100 px-4 py-3">
                   <p className="text-[13px] text-gray-700 whitespace-pre-wrap mb-3">{content || <span className="text-gray-400">No content.</span>}</p>
-                  <p className="text-[11px] font-medium text-gray-500 uppercase mb-1">Version history</p>
+                  <p className="text-2xs font-medium text-gray-500 uppercase mb-1">Version history</p>
                   <ul className="space-y-1">
                     {versions.map((v) => (
                       <li key={v.version} className="flex items-center justify-between text-[12px] text-gray-600">

@@ -755,7 +755,7 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
               the shares, which is a LOWER BOUND on what is remitted: three
               members at ₹60 each owe ₹500, not ₹180. Said out loud rather than
               left for a CA to discover against the challan. */}
-          <p className="text-[11px] text-amber-700 mt-1">
+          <p className="text-2xs text-amber-700 mt-1">
             Per-employee cost. The PF admin charge has a ₹500 per-establishment
             monthly floor, so the total below is the sum of member shares — the
             remittable challan figure is on the client&apos;s Statutory summary.
@@ -960,7 +960,7 @@ function TdsProjectionTab({ employees, fyOptions }: {
               <p className="text-base font-bold text-orange-700 mt-0.5">
                 {remainingMonths > 0 ? fmtPaise(suggestedMonthlyTds) : "—"}
               </p>
-              {remainingMonths > 0 && <p className="text-[10px] text-orange-600">over {remainingMonths} remaining months</p>}
+              {remainingMonths > 0 && <p className="text-3xs text-orange-600">over {remainingMonths} remaining months</p>}
             </div>
           </div>
 

@@ -88,7 +88,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
             <TrendingUp size={15} className="text-blue-600" />
             Tax deducted from your salary
           </h2>
-          <p className="text-[11px] text-ps-hint mt-0.5">
+          <p className="text-2xs text-ps-hint mt-0.5">
             Income-tax Act s.192 · what has been deducted, and what is expected
           </p>
         </div>
@@ -114,7 +114,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
               ["Expected for the year", formatPaise(data.estimated_annual_tds_paise)],
             ].map(([label, value]) => (
               <div key={label} className="bg-white px-4 py-3">
-                <p className="text-[11px] text-ps-hint">{label}</p>
+                <p className="text-2xs text-ps-hint">{label}</p>
                 <p className="text-sm font-semibold text-ps-ink tabular-nums mt-0.5">{value}</p>
               </div>
             ))}
@@ -141,11 +141,11 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
                           same: one is what came out of a payslip, the other is
                           an estimate that can still move. */}
                       {m.actual ? (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                        <span className="text-2xs px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
                           Paid
                         </span>
                       ) : (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-ps-muted text-ps-label">
+                        <span className="text-2xs px-1.5 py-0.5 rounded bg-ps-muted text-ps-label">
                           Expected
                         </span>
                       )}
@@ -161,7 +161,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
           {data.gaps.length > 0 && (
             <div className="px-5 py-3 border-t border-ps-muted space-y-1.5">
               {data.gaps.map((g, i) => (
-                <p key={i} className="text-[11px] text-ps-label flex gap-1.5">
+                <p key={i} className="text-2xs text-ps-label flex gap-1.5">
                   <Info size={12} className="shrink-0 mt-0.5 text-ps-hint" />
                   <span>{g}</span>
                 </p>
@@ -170,7 +170,7 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
           )}
 
           <div className="px-5 py-3 border-t border-ps-muted bg-ps-bg">
-            <p className="text-[11px] text-ps-hint">
+            <p className="text-2xs text-ps-hint">
               These figures come from the same calculation your payslip is made
               from. If something looks wrong, speak to your employer — a
               declaration you submit changes the months still to come.

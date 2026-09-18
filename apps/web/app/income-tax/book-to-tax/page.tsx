@@ -179,7 +179,7 @@ export default function BookToTaxBridgePage() {
                   value={typed[box.key] ?? ""}
                   onChange={e => setTyped(t => ({ ...t, [box.key]: e.target.value }))}
                   className="mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm tabular-nums outline-none focus:border-blue-500" />
-                <p className="text-[11px] text-ps-hint mt-1">{box.hint}</p>
+                <p className="text-2xs text-ps-hint mt-1">{box.hint}</p>
               </div>
             ))}
             <div>
@@ -189,7 +189,7 @@ export default function BookToTaxBridgePage() {
               <input id="bf-loss" inputMode="decimal" placeholder="0"
                 value={bfLoss} onChange={e => setBfLoss(e.target.value)}
                 className="mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm tabular-nums outline-none focus:border-blue-500" />
-              <p className="text-[11px] text-ps-hint mt-1">
+              <p className="text-2xs text-ps-hint mt-1">
                 Never derived — each head has its own section and its own set-off rules
               </p>
             </div>
@@ -218,13 +218,13 @@ export default function BookToTaxBridgePage() {
                     <tr key={i} className="border-b border-ps-muted">
                       <td className="px-4 py-3 text-ps-ink">
                         {l.label}
-                        <span className="ml-2 text-[10px] text-ps-hint">{l.reference}</span>
+                        <span className="ml-2 text-3xs text-ps-hint">{l.reference}</span>
                         {/* `derived` is the engine's own field: true where the
                             figure came from these books, false where a human
                             supplied it. A reader checking a bridge needs to
                             know which, and the two look identical otherwise. */}
                         {!l.derived && (
-                          <span className="ml-2 text-[10px] text-state-attention">entered</span>
+                          <span className="ml-2 text-3xs text-state-attention">entered</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs text-ps-label">{l.note}</td>

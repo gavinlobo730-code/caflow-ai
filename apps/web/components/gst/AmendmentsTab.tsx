@@ -55,7 +55,7 @@ function WindowBadge({ window: w }: { window?: { status?: string; closes_on?: st
     : w.status === "closing_soon" ? "bg-amber-50 text-amber-800 border-amber-200"
     : "bg-emerald-50 text-emerald-700 border-emerald-200";
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${tone}`}>
+    <span className={`text-3xs px-1.5 py-0.5 rounded-full border ${tone}`}>
       {w.status === "expired" ? "window closed"
         : w.status === "closing_soon" ? "closing soon" : "open"}
       {w.closes_on ? ` · ${w.closes_on}` : ""}
@@ -66,7 +66,7 @@ function WindowBadge({ window: w }: { window?: { status?: string; closes_on?: st
 function HeadRow({ heads }: { heads?: GSTHeads }) {
   if (!heads) return <span className="text-ps-disabled">—</span>;
   return (
-    <span className="font-mono text-[11px]">
+    <span className="font-mono text-2xs">
       {money(heads.taxable_paise)}
       <span className="text-ps-hint">
         {" "}· C {money(heads.cgst_paise)} · S {money(heads.sgst_paise)}
@@ -86,9 +86,9 @@ function DocList({ title, why, docs }: {
       <p className="text-[12px] font-semibold text-ps-ink">
         {title} <span className="text-ps-hint font-normal">· {docs.length}</span>
       </p>
-      <p className="text-[10px] text-ps-hint mt-0.5 max-w-[80ch]">{why}</p>
+      <p className="text-3xs text-ps-hint mt-0.5 max-w-[80ch]">{why}</p>
       <div className="overflow-x-auto mt-2">
-        <table className="w-full text-[11px]">
+        <table className="w-full text-2xs">
           <thead>
             <tr className="text-left text-ps-label border-b border-ps-border">
               <th className="py-1.5 pr-2">Document</th>
@@ -104,16 +104,16 @@ function DocList({ title, why, docs }: {
               <tr key={`${d.doc_no ?? "row"}-${i}`} className="border-b border-ps-muted align-top">
                 <td className="py-1.5 pr-2">
                   <span className="font-mono text-ps-ink">{d.doc_no ?? "—"}</span>
-                  {d.doc_date && <span className="block text-[10px] text-ps-hint">{d.doc_date}</span>}
+                  {d.doc_date && <span className="block text-3xs text-ps-hint">{d.doc_date}</span>}
                   {d.filed_section && d.books_section && (
-                    <span className="block text-[10px] text-amber-700">
+                    <span className="block text-3xs text-amber-700">
                       {d.filed_section} → {d.books_section}
                     </span>
                   )}
                 </td>
                 <td className="py-1.5 pr-2 text-ps-label">{d.counterparty ?? "—"}</td>
                 <td className="py-1.5 pr-2">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-label">
+                  <span className="text-3xs px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-label">
                     {d.declare_in ?? "—"}
                   </span>
                 </td>
@@ -181,7 +181,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
           declared in a later return&apos;s amendment tables — <b>9A</b> invoices,
           {" "}<b>9C</b> credit and debit notes, <b>10</b> B2C-others.
         </p>
-        <p className="text-[10px] text-ps-hint mt-1">
+        <p className="text-3xs text-ps-hint mt-1">
           Nothing on this tab files anything or alters a return.
         </p>
       </div>
@@ -191,7 +191,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
       {/* ── 1. What drifted in a period already filed ────────────────────── */}
       <section className="space-y-3">
         <div className="flex items-end gap-2 flex-wrap">
-          <label className="text-[11px] text-ps-label">
+          <label className="text-2xs text-ps-label">
             Filed period to check
             <input value={filedPeriod} placeholder="062026"
               onChange={(e) => setFiledPeriod(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
@@ -203,7 +203,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
             {busy === "exceptions" ? "Comparing…" : "Compare books to the return"}
           </button>
           {isPeriod(filedPeriod) && (
-            <span className="text-[11px] text-ps-hint pb-1.5">{periodLabel(filedPeriod)}</span>
+            <span className="text-2xs text-ps-hint pb-1.5">{periodLabel(filedPeriod)}</span>
           )}
         </div>
 
@@ -265,10 +265,10 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                       · {exceptions.b2cs.changed.length}
                     </span>
                   </p>
-                  <p className="text-[10px] text-ps-hint mt-0.5 max-w-[80ch]">
+                  <p className="text-3xs text-ps-hint mt-0.5 max-w-[80ch]">
                     {exceptions.b2cs.note}
                   </p>
-                  <table className="w-full text-[11px] mt-2">
+                  <table className="w-full text-2xs mt-2">
                     <thead>
                       <tr className="text-left text-ps-label border-b border-ps-border">
                         <th className="py-1.5 pr-2">Place of supply</th>
@@ -304,7 +304,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
       {/* ── 2. What the period being prepared has to carry ───────────────── */}
       <section className="space-y-3 border-t border-ps-border pt-5">
         <div className="flex items-end gap-2 flex-wrap">
-          <label className="text-[11px] text-ps-label">
+          <label className="text-2xs text-ps-label">
             Period being prepared
             <input value={targetPeriod} placeholder="072026"
               onChange={(e) => setTargetPeriod(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
@@ -342,12 +342,12 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                 action. */}
             {!!amendments.expired?.length && (
               <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                <p className="text-[11px] font-semibold text-red-700">
+                <p className="text-2xs font-semibold text-red-700">
                   {amendments.expired.length} period(s) beyond repair — the correction
                   window has closed
                 </p>
                 {amendments.expired.map((e, i) => (
-                  <p key={i} className="text-[11px] text-red-700 mt-0.5">
+                  <p key={i} className="text-2xs text-red-700 mt-0.5">
                     · {periodLabel(e.period)} <WindowBadge window={e.window} />
                     {e.window?.reason ? ` — ${e.window.reason}` : ""}
                   </p>
@@ -357,11 +357,11 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
 
             {!!amendments.closing_soon?.length && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <p className="text-[11px] font-semibold text-amber-800">
+                <p className="text-2xs font-semibold text-amber-800">
                   Still fixable, but not for much longer
                 </p>
                 {amendments.closing_soon.map((e, i) => (
-                  <p key={i} className="text-[11px] text-amber-800 mt-0.5">
+                  <p key={i} className="text-2xs text-amber-800 mt-0.5">
                     · {periodLabel(e.period)} <WindowBadge window={e.window} />
                   </p>
                 ))}
@@ -370,10 +370,10 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
 
             {!!amendments.needs_decision?.length && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <p className="text-[11px] font-semibold text-amber-800">
+                <p className="text-2xs font-semibold text-amber-800">
                   {amendments.needs_decision.length} need your decision
                 </p>
-                <p className="text-[10px] text-amber-800 mt-0.5 max-w-[80ch]">
+                <p className="text-3xs text-amber-800 mt-0.5 max-w-[80ch]">
                   Cancelled after the period was filed. There is no single right answer —
                   amend to nil, or raise a credit note — so nothing here chooses one.
                 </p>
@@ -382,10 +382,10 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
 
             {!!amendments.carry_forward?.length && (
               <div className="rounded-lg border border-ps-border bg-white p-3">
-                <p className="text-[11px] font-semibold text-ps-ink">
+                <p className="text-2xs font-semibold text-ps-ink">
                   {amendments.carry_forward.length} to carry forward, not amend
                 </p>
-                <p className="text-[10px] text-ps-hint mt-0.5 max-w-[80ch]">
+                <p className="text-3xs text-ps-hint mt-0.5 max-w-[80ch]">
                   Raised after their period was filed, so never declared — there is
                   nothing to supersede and they belong in this period&apos;s ordinary
                   tables.
@@ -400,13 +400,13 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
             <p className="text-[12px] font-semibold text-ps-ink">
               GSTR-1 for {periodLabel(targetPeriod)}, with amendments merged
             </p>
-            <p className="text-[11px] text-ps-label">
+            <p className="text-2xs text-ps-label">
               Amendment sections in the payload:{" "}
               {built.amendments?.sections?.length
                 ? <b>{built.amendments.sections.join(", ")}</b>
                 : <span className="text-ps-hint">none</span>}
             </p>
-            <p className="text-[10px] text-ps-hint max-w-[80ch]">
+            <p className="text-3xs text-ps-hint max-w-[80ch]">
               Out-of-time corrections are excluded upstream, so nothing here can declare
               an amendment the law no longer allows. Documents needing a decision and
               invoices never declared stay OUT of the payload — neither is an amendment.
@@ -426,7 +426,7 @@ export default function AmendmentsTab({ clientId }: { clientId: string }) {
                 className="px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">
                 Download the payload
               </button>
-              <span className="text-[10px] text-amber-700">
+              <span className="text-3xs text-amber-700">
                 CA REVIEW REQUIRED — uploading it to gst.gov.in stays a deliberate human act.
               </span>
             </div>

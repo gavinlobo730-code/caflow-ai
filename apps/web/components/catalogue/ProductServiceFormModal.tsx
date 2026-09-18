@@ -202,7 +202,7 @@ export function ProductServiceFormModal({
               {/* The sentence, not the number, is what stops the factor going
                   in upside down. */}
               {form.alternateUnit && form.unitsPerAlternate && (
-                <span className="block text-[11px] text-ps-hint mt-1">
+                <span className="block text-2xs text-ps-hint mt-1">
                   1 {form.alternateUnit} = {form.unitsPerAlternate} {form.unit || "units"}
                 </span>
               )}
@@ -211,7 +211,7 @@ export function ProductServiceFormModal({
               <input type="number" min="0" step="0.001" value={form.reorderLevel}
                 onChange={(e) => set("reorderLevel", e.target.value)}
                 placeholder="—" className={inputCls} />
-              <span className="block text-[11px] text-ps-hint mt-1">
+              <span className="block text-2xs text-ps-hint mt-1">
                 Left blank, nothing is assumed — a level of 0 means &ldquo;tell me when it runs out&rdquo;.
               </span>
             </Field>
@@ -225,7 +225,7 @@ export function ProductServiceFormModal({
         {form.kind === "good" && !stockAlreadyStarted && (form.openingQty || form.openingCost) && (
           <Field label="Opening balance as of (optional)">
             <input type="date" value={form.openingBalanceDate} onChange={(e) => set("openingBalanceDate", e.target.value)} className={inputCls} />
-            <span className="block text-[11px] text-ps-hint mt-1">
+            <span className="block text-2xs text-ps-hint mt-1">
               The date this stock is on hand as of — not when you&apos;re entering it. Defaults to your client&apos;s financial-year start if left blank.
             </span>
           </Field>
@@ -254,7 +254,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
     <label className="block space-y-1">
       <span className="block text-xs font-medium text-ps-label">{label}</span>
       {children}
-      {error && <span className="block text-[11px] text-red-600">{error}</span>}
+      {error && <span className="block text-2xs text-red-600">{error}</span>}
     </label>
   );
 }

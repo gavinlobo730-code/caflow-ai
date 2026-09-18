@@ -424,7 +424,7 @@ export default function RecurringPage() {
                   <tr key={t.id} className="hover:bg-ps-bg">
                     <td className="px-5 py-2.5">
                       <p className="font-medium text-ps-ink">{t.name}</p>
-                      {t.narration && <p className="text-[11px] text-ps-hint">{t.narration}</p>}
+                      {t.narration && <p className="text-2xs text-ps-hint">{t.narration}</p>}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-ps-label">
                       {clients.find(c => c.id === t.client_id)?.client_name ?? "—"}
@@ -564,7 +564,7 @@ export default function RecurringPage() {
                 disabled={!!editing}
               />
               {editing && (
-                <p className="text-[10px] text-ps-hint mt-1">
+                <p className="text-3xs text-ps-hint mt-1">
                   A template cannot move to another client — its generated journals
                   would still belong to this one.
                 </p>
@@ -688,7 +688,7 @@ export default function RecurringPage() {
               />
             </div>
 
-            {formError && <p className="text-[11px] text-red-600">{formError}</p>}
+            {formError && <p className="text-2xs text-red-600">{formError}</p>}
 
             <div className="flex gap-2 pt-1">
               <button onClick={() => setModalOpen(false)} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">

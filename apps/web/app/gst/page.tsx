@@ -327,9 +327,9 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {dueDateErr ? (
-            <p className="text-[10px] text-state-attention mt-1">{dueDateErr}</p>
+            <p className="text-3xs text-state-attention mt-1">{dueDateErr}</p>
           ) : (
-            <p className="text-[10px] text-ps-hint mt-1">
+            <p className="text-3xs text-ps-hint mt-1">
               {returnType === "GSTR-1" && "CGST Act Section 37 — 11th of following month"}
               {returnType === "GSTR-3B" && "CGST Act Section 39 — 20th of following month"}
               {returnType === "GSTR-9" && "CGST Act Section 44 — 31st December following the end of the financial year"}
@@ -367,7 +367,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           </button>
         </div>
 
-        <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1.5">
+        <p className="text-3xs text-amber-600 bg-amber-50 rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           PracticeSync never auto-submits to the GST portal. Always file manually after CA review.
         </p>
@@ -520,7 +520,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
                   <span className="text-ps-hint"> · {f.return_type} · {f.period}</span>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-medium text-ps-body mb-1">
+                  <label className="block text-3xs font-medium text-ps-body mb-1">
                     Acknowledgement Number (ARN) <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -531,7 +531,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
                     className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   {rowErrors[f.id] && (
-                    <p className="text-[10px] text-red-600 mt-1">{rowErrors[f.id]}</p>
+                    <p className="text-3xs text-red-600 mt-1">{rowErrors[f.id]}</p>
                   )}
                 </div>
               </div>
@@ -990,7 +990,7 @@ export default function GSTPage() {
           }
         />
 
-        <p className="text-[10px] text-ps-hint">
+        <p className="text-3xs text-ps-hint">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           GSTR-1 (Section 37): 11th · GSTR-3B (Section 39): 20th · GSTR-9 (Section 44): 31 Dec ·
           PracticeSync does not auto-submit to the GST portal — always file manually after CA review.

@@ -1044,15 +1044,15 @@ export default function TaxComputationPage() {
           <p className="text-xs font-semibold text-ps-body mb-3">Latest Computation (v{latestSnap.version})</p>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <p className="text-[10px] text-ps-hint">Taxable Income</p>
+              <p className="text-3xs text-ps-hint">Taxable Income</p>
               <p className="text-sm font-semibold text-ps-ink">{paise(latestSnap.taxable_income_paise)}</p>
             </div>
             <div>
-              <p className="text-[10px] text-ps-hint">Tax Liability</p>
+              <p className="text-3xs text-ps-hint">Tax Liability</p>
               <p className="text-sm font-semibold text-ps-ink">{paise(latestSnap.tax_liability_paise)}</p>
             </div>
             <div>
-              <p className="text-[10px] text-ps-hint">
+              <p className="text-3xs text-ps-hint">
                 {latestSnap.is_refund ? "Refund" : "Payable"}
               </p>
               <p className={`text-sm font-semibold ${latestSnap.is_refund ? "text-green-600" : "text-red-600"}`}>
@@ -1061,12 +1061,12 @@ export default function TaxComputationPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 mt-3">
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+            <span className={`text-3xs px-2 py-0.5 rounded-full font-medium ${
               latestSnap.status === "reviewed" ? "bg-green-100 text-green-700" :
               latestSnap.status === "finalized" ? "bg-blue-100 text-blue-700" :
               "bg-ps-muted text-ps-label"
             }`}>{latestSnap.status}</span>
-            <span className="text-[10px] text-ps-hint">
+            <span className="text-3xs text-ps-hint">
               {regimeLabel(latestSnap.regime)} · FY {latestSnap.financial_year}
             </span>
           </div>
@@ -1087,7 +1087,7 @@ export default function TaxComputationPage() {
           <div className="px-5 pb-5 border-t border-ps-muted space-y-4 pt-4">
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="text-[10px] text-ps-label mb-1 block">Assessment Year</label>
+                <label className="text-3xs text-ps-label mb-1 block">Assessment Year</label>
                 <select value={ay} onChange={e => setAy(e.target.value)}
                   className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                   {AY_OPTIONS.map(a => <option key={a}>{a}</option>)}
@@ -1101,7 +1101,7 @@ export default function TaxComputationPage() {
                     company is offering an election it cannot make. */}
                 {isCompany ? (
                   <>
-                    <label className="text-[10px] text-ps-label mb-1 block">Company Regime</label>
+                    <label className="text-3xs text-ps-label mb-1 block">Company Regime</label>
                     <select value={companyRegime} onChange={e => setCompanyRegime(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                       <option value="normal">Normal rates — 25% or 30%</option>
@@ -1111,14 +1111,14 @@ export default function TaxComputationPage() {
                   </>
                 ) : isEntity ? (
                   <>
-                    <label className="text-[10px] text-ps-label mb-1 block">Tax Regime</label>
+                    <label className="text-3xs text-ps-label mb-1 block">Tax Regime</label>
                     <p className="text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-ps-bg text-ps-label">
                       Flat 30% — a firm has no regime election
                     </p>
                   </>
                 ) : (
                   <>
-                    <label className="text-[10px] text-ps-label mb-1 block">Tax Regime</label>
+                    <label className="text-3xs text-ps-label mb-1 block">Tax Regime</label>
                     <select value={regime} onChange={e => setRegime(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                       <option value="new">New Regime (Default)</option>
@@ -1147,11 +1147,11 @@ export default function TaxComputationPage() {
             </div>
 
             {assesseeRefusal ? (
-              <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
+              <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
                 {assesseeRefusal}
               </p>
             ) : entityType ? (
-              <p className="text-[11px] text-ps-label">
+              <p className="text-2xs text-ps-label">
                 Assessed as recorded on the client: <strong>{entityType}</strong>.
                 {isEntity && " Taxed at a flat rate from the first rupee — no slabs, no exemption limit and no §87A rebate."}
               </p>
@@ -1165,11 +1165,11 @@ export default function TaxComputationPage() {
               <div className={`rounded-lg border px-4 py-3 ${
                 claim.available ? "border-blue-100 bg-blue-50/50" : "border-amber-200 bg-amber-50"}`}>
                 {!claim.available ? (
-                  <p className="text-[11px] text-amber-900">{claim.reason}</p>
+                  <p className="text-2xs text-amber-900">{claim.reason}</p>
                 ) : (
                   <>
                     <div className="flex items-baseline justify-between gap-3">
-                      <p className="text-[11px] font-medium text-ps-body">
+                      <p className="text-2xs font-medium text-ps-body">
                         Form 26AS supports {paise(claim.tds_claimable_paise ?? 0)} of TDS
                         {(claim.tcs_claimable_paise ?? 0) > 0 &&
                           <> and {paise(claim.tcs_claimable_paise ?? 0)} of TCS</>}
@@ -1180,7 +1180,7 @@ export default function TaxComputationPage() {
                       {tdsTouched && (
                         <button
                           onClick={() => { setTds(String((claim.tds_claimable_paise ?? 0) / 100)); }}
-                          className="text-[10px] text-blue-700 border border-blue-200 rounded-md px-2 py-0.5 hover:bg-blue-100 flex-shrink-0"
+                          className="text-3xs text-blue-700 border border-blue-200 rounded-md px-2 py-0.5 hover:bg-blue-100 flex-shrink-0"
                         >
                           Use the 26AS figure
                         </button>
@@ -1196,7 +1196,7 @@ export default function TaxComputationPage() {
                         caught exactly that here. */}
                     {tdsTouched
                       && (paiseFromRupeeInput(tds || "0") ?? 0) !== (claim.tds_claimable_paise ?? 0) && (
-                      <p className="text-[11px] text-amber-800 mt-1">
+                      <p className="text-2xs text-amber-800 mt-1">
                         You have entered {paise(paiseFromRupeeInput(tds || "0") ?? 0)}, which is
                         not the 26AS figure. Under Rule 37BA(1) the department gives credit on the
                         deductor&apos;s statement — a claim above it is the one that comes back as a
@@ -1204,14 +1204,14 @@ export default function TaxComputationPage() {
                       </p>
                     )}
                     {(claim.caveats ?? []).map((c, i) => (
-                      <p key={i} className="text-[10px] text-ps-label mt-1">{c}</p>
+                      <p key={i} className="text-3xs text-ps-label mt-1">{c}</p>
                     ))}
                     {(claim.by_deductor ?? []).length > 0 && (
                       <details className="mt-1.5">
-                        <summary className="text-[10px] text-blue-700 cursor-pointer">
+                        <summary className="text-3xs text-blue-700 cursor-pointer">
                           Per deductor ({(claim.by_deductor ?? []).length})
                         </summary>
-                        <table className="w-full text-[10px] mt-1">
+                        <table className="w-full text-3xs mt-1">
                           <tbody>
                             {(claim.by_deductor ?? []).map((d, i) => (
                               <tr key={i} className="border-t border-blue-100">
@@ -1256,7 +1256,7 @@ export default function TaxComputationPage() {
                 { label: "Exempt Income (₹)", value: exemptIncome, set: setExemptIncome },
               ].map(({ label, value, set, hint }) => (
                 <div key={label}>
-                  <label className="text-[10px] text-ps-label mb-1 block">{label}</label>
+                  <label className="text-3xs text-ps-label mb-1 block">{label}</label>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -1265,7 +1265,7 @@ export default function TaxComputationPage() {
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="0"
                   />
-                  {hint && <p className="text-[10px] text-ps-hint mt-0.5">{hint}</p>}
+                  {hint && <p className="text-3xs text-ps-hint mt-0.5">{hint}</p>}
                 </div>
               ))}
             </div>
@@ -1283,7 +1283,7 @@ export default function TaxComputationPage() {
                 file would be a second copy of the section. */}
             <div className="space-y-3 border-t border-ps-muted pt-3">
               <div className="flex items-center gap-3">
-                <label className="text-[11px] font-semibold text-ps-body whitespace-nowrap">
+                <label className="text-2xs font-semibold text-ps-body whitespace-nowrap">
                   Presumptive scheme
                 </label>
                 <select value={presumptiveScheme}
@@ -1299,7 +1299,7 @@ export default function TaxComputationPage() {
 
               {presumptiveScheme && (
                 <>
-                  <p className="text-[10px] text-ps-hint">
+                  <p className="text-3xs text-ps-hint">
                     A presumptive figure REPLACES the business income above and
                     every accepted disallowance — §44AD(2), §44ADA(3) and
                     §44AE(6) each deem the deductions already allowed.
@@ -1323,23 +1323,23 @@ export default function TaxComputationPage() {
                       : []
                     ).map(({ label, value, set, hint }) => (
                       <div key={label}>
-                        <label className="text-[10px] text-ps-label mb-1 block">{label}</label>
+                        <label className="text-3xs text-ps-label mb-1 block">{label}</label>
                         <input type="text" inputMode="decimal" value={value}
                           onChange={e => set(e.target.value)}
                           className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           placeholder="0" />
-                        {hint && <p className="text-[10px] text-ps-hint mt-0.5">{hint}</p>}
+                        {hint && <p className="text-3xs text-ps-hint mt-0.5">{hint}</p>}
                       </div>
                     ))}
                     <div>
-                      <label className="text-[10px] text-ps-label mb-1 block">
+                      <label className="text-3xs text-ps-label mb-1 block">
                         Income declared, if higher (₹)
                       </label>
                       <input type="text" inputMode="decimal" value={presDeclared}
                         onChange={e => setPresDeclared(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Blank uses the deemed figure" />
-                      <p className="text-[10px] text-ps-hint mt-0.5">
+                      <p className="text-3xs text-ps-hint mt-0.5">
                         Declaring LESS is refused — §44AD(5) then requires books
                         under §44AA and an audit under §44AB.
                       </p>
@@ -1349,7 +1349,7 @@ export default function TaxComputationPage() {
                   {presumptiveScheme === "44ae" && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <p className="text-[11px] font-semibold text-ps-body">
+                        <p className="text-2xs font-semibold text-ps-body">
                           Goods carriages
                           <span className="font-normal text-ps-hint">
                             {" "}— §44AE charges per vehicle per month
@@ -1357,7 +1357,7 @@ export default function TaxComputationPage() {
                         </p>
                         <button type="button"
                           onClick={() => setPresVehicles(v => [...v, { weight: "", months: "12" }])}
-                          className="text-[11px] text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                          className="text-2xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
                           <Plus className="w-3 h-3" /> Add carriage
                         </button>
                       </div>
@@ -1375,12 +1375,12 @@ export default function TaxComputationPage() {
                             className="col-span-5 text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
                           <button type="button" aria-label="Remove carriage"
                             onClick={() => setPresVehicles(rows => rows.filter((_, j) => j !== i))}
-                            className="col-span-1 text-[11px] text-ps-hint hover:text-red-600">
+                            className="col-span-1 text-2xs text-ps-hint hover:text-red-600">
                             ×
                           </button>
                         </div>
                       ))}
-                      <p className="text-[10px] text-ps-hint">
+                      <p className="text-3xs text-ps-hint">
                         A part of a month counts as a whole one. Over 12,000 kg is
                         charged per tonne of gross weight; at or under, a flat rate.
                       </p>
@@ -1394,7 +1394,7 @@ export default function TaxComputationPage() {
                   </button>
 
                   {presError && (
-                    <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
+                    <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2.5">
                       {presError}
                     </p>
                   )}
@@ -1410,10 +1410,10 @@ export default function TaxComputationPage() {
                           : `${presResult.section} is not available`}
                       </p>
                       {presResult.workings.map((w, i) => (
-                        <p key={i} className="text-[10px] text-ps-label">{w}</p>
+                        <p key={i} className="text-3xs text-ps-label">{w}</p>
                       ))}
                       {presResult.reasons.map((r, i) => (
-                        <p key={i} className="text-[10px] text-[#92400E]">{r}</p>
+                        <p key={i} className="text-3xs text-[#92400E]">{r}</p>
                       ))}
                     </div>
                   )}
@@ -1427,16 +1427,16 @@ export default function TaxComputationPage() {
                 the old-regime gate below. */}
             {!isEntity && (
               <div className="space-y-3 border-t border-ps-muted pt-3">
-                <p className="text-[11px] font-semibold text-ps-body">
+                <p className="text-2xs font-semibold text-ps-body">
                   Residence and employer NPS
                   <span className="font-normal text-ps-hint"> — both regimes</span>
                 </p>
-                <label className="flex items-start gap-1.5 text-[11px] text-ps-body">
+                <label className="flex items-start gap-1.5 text-2xs text-ps-body">
                   <input type="checkbox" checked={isResident} className="mt-0.5"
                     onChange={e => setIsResident(e.target.checked)} />
                   <span>
                     Resident in India
-                    <span className="block text-[10px] text-ps-hint">
+                    <span className="block text-3xs text-ps-hint">
                       Unused basic exemption may be set against a capital gain only
                       for a RESIDENT individual — the provisos to §111A(1),
                       §112(1)(a)(ii) and §112A(2). Clearing this withdraws it.
@@ -1445,36 +1445,36 @@ export default function TaxComputationPage() {
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] text-ps-label mb-1 block">
+                    <label className="text-3xs text-ps-label mb-1 block">
                       §80CCD(2) — employer NPS contribution (₹)
                     </label>
                     <input type="text" inputMode="decimal" value={employerNps}
                       onChange={e => setEmployerNps(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="0" />
-                    <p className="text-[10px] text-ps-hint mt-0.5">
+                    <p className="text-3xs text-ps-hint mt-0.5">
                       Allowed under the new regime too — §115BAC(2) withdraws the
                       rest of Chapter VI-A and leaves this.
                     </p>
                   </div>
                   <div>
-                    <label className="text-[10px] text-ps-label mb-1 block">
+                    <label className="text-3xs text-ps-label mb-1 block">
                       Salary for the §80CCD(2) ceiling (₹)
                     </label>
                     <input type="text" inputMode="decimal" value={nps80ccd2Salary}
                       onChange={e => setNps80ccd2Salary(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="Blank uses the gross salary above" />
-                    <p className="text-[10px] text-ps-hint mt-0.5">
+                    <p className="text-3xs text-ps-hint mt-0.5">
                       Basic + dearness allowance, not the gross.
                     </p>
                   </div>
                 </div>
-                <label className="flex items-center gap-1.5 text-[11px] text-ps-body">
+                <label className="flex items-center gap-1.5 text-2xs text-ps-body">
                   <input type="checkbox" checked={isGovtEmployee}
                     onChange={e => setIsGovtEmployee(e.target.checked)} />
                   Employed by the Central or a State Government
-                  <span className="text-[10px] text-ps-hint">(a higher §80CCD(2) ceiling)</span>
+                  <span className="text-3xs text-ps-hint">(a higher §80CCD(2) ceiling)</span>
                 </label>
               </div>
             )}
@@ -1487,7 +1487,7 @@ export default function TaxComputationPage() {
                 them — it reads as relief that was claimed and refused. */}
             {!isEntity && regime === "old" && (
               <div className="space-y-3 border-t border-ps-muted pt-3">
-                <p className="text-[11px] font-semibold text-ps-body">
+                <p className="text-2xs font-semibold text-ps-body">
                   Chapter VI-A deductions
                   <span className="font-normal text-ps-hint"> — old regime only</span>
                 </p>
@@ -1510,12 +1510,12 @@ export default function TaxComputationPage() {
                       hint: "Anything the sections below do not reach — added with no ceiling and no section" },
                   ].map(({ label, value, set, hint }) => (
                     <div key={label}>
-                      <label className="text-[10px] text-ps-label mb-1 block">{label}</label>
+                      <label className="text-3xs text-ps-label mb-1 block">{label}</label>
                       <input type="text" inputMode="decimal" value={value}
                         onChange={e => set(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0" />
-                      {hint && <p className="text-[10px] text-ps-hint mt-0.5">{hint}</p>}
+                      {hint && <p className="text-3xs text-ps-hint mt-0.5">{hint}</p>}
                     </div>
                   ))}
                 </div>
@@ -1526,7 +1526,7 @@ export default function TaxComputationPage() {
                     { label: "Assessee is a senior citizen (60+)", v: isSenior, set: setIsSenior },
                     { label: "Assessee is very senior (80+)", v: isVerySenior, set: setIsVerySenior },
                   ].map(({ label, v, set }) => (
-                    <label key={label} className="flex items-center gap-1.5 text-[11px] text-ps-body">
+                    <label key={label} className="flex items-center gap-1.5 text-2xs text-ps-body">
                       <input type="checkbox" checked={v} onChange={e => set(e.target.checked)} />
                       {label}
                     </label>
@@ -1541,7 +1541,7 @@ export default function TaxComputationPage() {
                     Every one of those rules is the server's — this block collects
                     the facts and caps nothing. */}
                 <div className="space-y-3 border-t border-ps-border pt-3">
-                  <p className="text-[11px] font-semibold text-ps-ink">
+                  <p className="text-2xs font-semibold text-ps-ink">
                     By section
                     <span className="font-normal text-ps-hint">
                       {" "}— §80E, §80EE/§80EEA, §80DD, §80DDB, §80U, §80GG
@@ -1550,58 +1550,58 @@ export default function TaxComputationPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] text-ps-label mb-1 block">
+                      <label className="text-3xs text-ps-label mb-1 block">
                         §80E — education loan interest (₹)
                       </label>
                       <input type="text" inputMode="decimal" value={s80eInterest}
                         onChange={e => setS80eInterest(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0" />
-                      <p className="text-[10px] text-ps-hint mt-0.5">
+                      <p className="text-3xs text-ps-hint mt-0.5">
                         Interest only, and no monetary ceiling — eight assessment
                         years.
                       </p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-ps-label mb-1 block">
+                      <label className="text-3xs text-ps-label mb-1 block">
                         §80E — which of the eight years
                       </label>
                       <input type="number" min={1} value={s80eYear}
                         onChange={e => setS80eYear(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Blank if unknown" />
-                      <p className="text-[10px] text-ps-hint mt-0.5">
+                      <p className="text-3xs text-ps-hint mt-0.5">
                         Left blank the claim is allowed and the gap named —
                         nothing here counts the years.
                       </p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-ps-label mb-1 block">
+                      <label className="text-3xs text-ps-label mb-1 block">
                         §80EE / §80EEA — additional housing interest (₹)
                       </label>
                       <input type="text" inputMode="decimal" value={housingExtraInterest}
                         onChange={e => setHousingExtraInterest(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0" />
-                      <p className="text-[10px] text-ps-hint mt-0.5">
+                      <p className="text-3xs text-ps-hint mt-0.5">
                         Over and above the §24(b) interest above.
                       </p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-ps-label mb-1 block">
+                      <label className="text-3xs text-ps-label mb-1 block">
                         Loan sanctioned on
                       </label>
                       <input type="date" value={housingSanctionedOn}
                         onChange={e => setHousingSanctionedOn(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      <p className="text-[10px] text-ps-hint mt-0.5">
+                      <p className="text-3xs text-ps-hint mt-0.5">
                         This date alone decides which section applies. Both
                         windows are shut, and the two limits differ by ₹1,00,000
                         — without it nothing is allowed.
                       </p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-ps-label mb-1 block">
+                      <label className="text-3xs text-ps-label mb-1 block">
                         §80DDB — treatment of a specified disease (₹)
                       </label>
                       <input type="text" inputMode="decimal" value={diseaseSpend}
@@ -1610,26 +1610,26 @@ export default function TaxComputationPage() {
                         placeholder="0" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-ps-label mb-1 block">
+                      <label className="text-3xs text-ps-label mb-1 block">
                         §80DDB — reimbursed by an insurer or employer (₹)
                       </label>
                       <input type="text" inputMode="decimal" value={diseaseReimbursed}
                         onChange={e => setDiseaseReimbursed(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0" />
-                      <p className="text-[10px] text-ps-hint mt-0.5">
+                      <p className="text-3xs text-ps-hint mt-0.5">
                         Subtracted from the spend before the ceiling, not after.
                       </p>
                     </div>
                     <div>
-                      <label className="text-[10px] text-ps-label mb-1 block">
+                      <label className="text-3xs text-ps-label mb-1 block">
                         §80GG — rent paid, where no HRA is received (₹)
                       </label>
                       <input type="text" inputMode="decimal" value={s80ggRent}
                         onChange={e => setS80ggRent(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="0" />
-                      <p className="text-[10px] text-ps-hint mt-0.5">
+                      <p className="text-3xs text-ps-hint mt-0.5">
                         The least of ₹60,000, rent over 10% of income, and 25% of
                         income. Withheld where the HRA box above carries a figure
                         — §10(13A) is that assessee&apos;s relief.
@@ -1654,13 +1654,13 @@ export default function TaxComputationPage() {
                       { label: "§80DDB: the patient is a senior citizen",
                         v: patientIsSenior, set: setPatientIsSenior },
                     ].map(({ label, v, set }) => (
-                      <label key={label} className="flex items-center gap-1.5 text-[11px] text-ps-body">
+                      <label key={label} className="flex items-center gap-1.5 text-2xs text-ps-body">
                         <input type="checkbox" checked={v} onChange={e => set(e.target.checked)} />
                         {label}
                       </label>
                     ))}
                   </div>
-                  <p className="text-[10px] text-ps-hint">
+                  <p className="text-3xs text-ps-hint">
                     §80DD and §80U are FLAT: the amount does not depend on what
                     was spent, so there is nothing to type. §80DDB&apos;s ceiling
                     follows the PATIENT&apos;s age, not the assessee&apos;s.
@@ -1673,14 +1673,14 @@ export default function TaxComputationPage() {
                     this one is withdrawn by §115BAC(2). */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] text-ps-label mb-1 block">
+                    <label className="text-3xs text-ps-label mb-1 block">
                       §80CCD(1B) — own NPS (₹)
                     </label>
                     <input type="text" inputMode="decimal" value={nps80ccd1b}
                       onChange={e => setNps80ccd1b(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="0" />
-                    <p className="text-[10px] text-ps-hint mt-0.5">
+                    <p className="text-3xs text-ps-hint mt-0.5">
                       Ceiling ₹50,000, in addition to §80C.
                     </p>
                   </div>
@@ -1693,7 +1693,7 @@ export default function TaxComputationPage() {
                     was not collecting: an old-regime salaried client paying
                     rent had it omitted entirely. */}
                 <div className="space-y-2">
-                  <p className="text-[11px] font-semibold text-ps-body">
+                  <p className="text-2xs font-semibold text-ps-body">
                     House rent allowance — §10(13A)
                   </p>
                   <div className="grid grid-cols-2 gap-3">
@@ -1704,20 +1704,20 @@ export default function TaxComputationPage() {
                       { label: "Rent actually paid (₹)", value: hraRent, set: setHraRent },
                     ].map(({ label, value, set, hint }) => (
                       <div key={label}>
-                        <label className="text-[10px] text-ps-label mb-1 block">{label}</label>
+                        <label className="text-3xs text-ps-label mb-1 block">{label}</label>
                         <input type="text" inputMode="decimal" value={value}
                           onChange={e => set(e.target.value)}
                           className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           placeholder="0" />
-                        {hint && <p className="text-[10px] text-ps-hint mt-0.5">{hint}</p>}
+                        {hint && <p className="text-3xs text-ps-hint mt-0.5">{hint}</p>}
                       </div>
                     ))}
                   </div>
-                  <label className="flex items-center gap-1.5 text-[11px] text-ps-body">
+                  <label className="flex items-center gap-1.5 text-2xs text-ps-body">
                     <input type="checkbox" checked={hraMetro}
                       onChange={e => setHraMetro(e.target.checked)} />
                     Accommodation is in Delhi, Mumbai, Kolkata or Chennai
-                    <span className="text-[10px] text-ps-hint">(50% of salary, else 40%)</span>
+                    <span className="text-3xs text-ps-hint">(50% of salary, else 40%)</span>
                   </label>
                 </div>
 
@@ -1726,7 +1726,7 @@ export default function TaxComputationPage() {
                     §80G(5D) bars a cash donation over ₹2,000 outright. */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-semibold text-ps-body">
+                    <p className="text-2xs font-semibold text-ps-body">
                       Donations — §80G
                     </p>
                     <button type="button"
@@ -1734,12 +1734,12 @@ export default function TaxComputationPage() {
                         description: "", amount: "", pct: 50,
                         subjectToLimit: true, paidInCash: "",
                       }])}
-                      className="text-[11px] text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                      className="text-2xs text-blue-600 hover:text-blue-700 flex items-center gap-1">
                       <Plus className="w-3 h-3" /> Add donation
                     </button>
                   </div>
                   {donations.length === 0 && (
-                    <p className="text-[10px] text-ps-hint">
+                    <p className="text-3xs text-ps-hint">
                       None recorded. §80G(4) caps the residual category at 10% of
                       adjusted gross total income, so the ceiling depends on the
                       rest of the computation and is applied last.
@@ -1772,10 +1772,10 @@ export default function TaxComputationPage() {
                       </select>
                       <button type="button" aria-label="Remove donation"
                         onClick={() => setDonations(rows => rows.filter((_, j) => j !== i))}
-                        className="col-span-1 text-[11px] text-ps-hint hover:text-red-600 py-1.5">
+                        className="col-span-1 text-2xs text-ps-hint hover:text-red-600 py-1.5">
                         ×
                       </button>
-                      <label className="col-span-12 flex items-center gap-1.5 text-[10px] text-ps-label -mt-1">
+                      <label className="col-span-12 flex items-center gap-1.5 text-3xs text-ps-label -mt-1">
                         <input type="checkbox" checked={d.subjectToLimit}
                           onChange={e => setDonations(rows => rows.map((r, j) =>
                             j === i ? { ...r, subjectToLimit: e.target.checked } : r))} />
@@ -1795,7 +1795,7 @@ export default function TaxComputationPage() {
               <div className="grid grid-cols-2 gap-3">
                 {isCompany && (
                   <div>
-                    <label className="text-[10px] text-ps-label mb-1 block">
+                    <label className="text-3xs text-ps-label mb-1 block">
                       Turnover in {computeResult?.assessee?.turnover_reference_fy ?? "the reference year"} (₹)
                     </label>
                     <input type="text" inputMode="decimal" value={turnoverRefYear}
@@ -1805,27 +1805,27 @@ export default function TaxComputationPage() {
                     {/* The 25% concession looks at the turnover of a year TWO
                         BACK, not the year being taxed. Left blank, the higher
                         rate is used: a concession has to be established. */}
-                    <p className="text-[10px] text-ps-hint mt-0.5">
+                    <p className="text-3xs text-ps-hint mt-0.5">
                       Two years back — not this year. Under ₹400 crore gives 25%.
                     </p>
                   </div>
                 )}
                 <div>
-                  <label className="text-[10px] text-ps-label mb-1 block">
+                  <label className="text-3xs text-ps-label mb-1 block">
                     {isCompany ? "Book profit — §115JB (₹)" : "Adjusted total income — §115JC (₹)"}
                   </label>
                   <input type="text" inputMode="decimal" value={bookProfit}
                     onChange={e => setBookProfit(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder={isCompany ? "Companies Act profit as adjusted" : "Total income with §10AA/§35AD/VI-A Part C added back"} />
-                  <p className="text-[10px] text-ps-hint mt-0.5">
+                  <p className="text-3xs text-ps-hint mt-0.5">
                     {isCompany
                       ? "Not taxable income — the gap between them is why §115JB exists."
                       : "Total income with the §10AA, §35AD and Chapter VI-A Part C deductions added back."}
                   </p>
                 </div>
                 {!isCompany && (
-                  <label className="flex items-start gap-2 text-[11px] text-ps-label col-span-2">
+                  <label className="flex items-start gap-2 text-2xs text-ps-label col-span-2">
                     <input type="checkbox" checked={claimedSpecifiedDeduction}
                       onChange={e => setClaimedSpecifiedDeduction(e.target.checked)}
                       className="mt-0.5" />
@@ -1856,7 +1856,7 @@ export default function TaxComputationPage() {
 
             {computeResult && computeResult.fy && computeResult.fy !== fy && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-                <p className="text-[11px] text-amber-800">
+                <p className="text-2xs text-amber-800">
                   Computed at <strong>FY {computeResult.fy}</strong> rates, not
                   FY {fy} — this build has no rate table for the year you
                   selected. Treat the figures as indicative only.
@@ -1865,7 +1865,7 @@ export default function TaxComputationPage() {
             )}
             {computeResult && computeResult.rates_verified === false && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-                <p className="text-[11px] text-amber-800">
+                <p className="text-2xs text-amber-800">
                   FY {computeResult.fy} rates are <strong>provisional</strong> —
                   carried forward pending the Finance Act.
                 </p>
@@ -1917,12 +1917,12 @@ export default function TaxComputationPage() {
                     permanent cost that is invisible in the year it arises. */}
                 {computeResult.minimum_tax?.applied && (
                   <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1">
-                    <p className="text-[11px] font-medium text-amber-900">
+                    <p className="text-2xs font-medium text-amber-900">
                       §{computeResult.minimum_tax.section} minimum tax applies —{" "}
                       {paise(computeResult.minimum_tax.minimum_tax_paise)} is payable
                       instead of the ordinary computation.
                     </p>
-                    <p className="text-[11px] text-amber-900">
+                    <p className="text-2xs text-amber-900">
                       Credit carried forward:{" "}
                       <strong>{paise(computeResult.minimum_tax.credit_paise)}</strong>
                       {computeResult.minimum_tax.credit_expires_after_ay
@@ -1931,14 +1931,14 @@ export default function TaxComputationPage() {
                       .
                     </p>
                     {computeResult.minimum_tax.reasons?.map((r: string, i: number) => (
-                      <p key={i} className="text-[10px] text-amber-800">{r}</p>
+                      <p key={i} className="text-3xs text-amber-800">{r}</p>
                     ))}
                   </div>
                 )}
                 {computeResult.assessee?.workings?.length ? (
                   <div className="mt-2 space-y-0.5">
                     {computeResult.assessee.workings.map((w: string, i: number) => (
-                      <p key={i} className="text-[10px] text-ps-label">{w}</p>
+                      <p key={i} className="text-3xs text-ps-label">{w}</p>
                     ))}
                   </div>
                 ) : null}
@@ -1950,13 +1950,13 @@ export default function TaxComputationPage() {
                 {computeResult.capital_gains?.lines?.some(
                   l => l.gross_paise > 0) ? (
                   <div className="mt-3 border-t border-ps-muted pt-2 space-y-1.5">
-                    <p className="text-[10px] font-semibold text-ps-body">
+                    <p className="text-3xs font-semibold text-ps-body">
                       Capital gains — {paise(computeResult.capital_gains.tax_paise)} tax
                     </p>
                     {computeResult.capital_gains.lines
                       .filter(l => l.gross_paise > 0)
                       .map((l, i) => (
-                        <p key={i} className="text-[10px] text-ps-ink">
+                        <p key={i} className="text-3xs text-ps-ink">
                           <span className="font-mono">{l.section}</span> —{" "}
                           {paise(l.gross_paise)} gain
                           {l.exempt_paise > 0 ? `, less ${paise(l.exempt_paise)} exempt` : ""}
@@ -1968,10 +1968,10 @@ export default function TaxComputationPage() {
                         </p>
                       ))}
                     {computeResult.capital_gains.basic_exemption_absorption.map((w, i) => (
-                      <p key={i} className="text-[10px] text-ps-label pl-3">{w}</p>
+                      <p key={i} className="text-3xs text-ps-label pl-3">{w}</p>
                     ))}
                     {computeResult.capital_gains.basic_exemption_absorbed_paise > 0 && (
-                      <p className="text-[10px] text-ps-hint pl-3">
+                      <p className="text-3xs text-ps-hint pl-3">
                         The order is the engine&apos;s choice — the provisos to §111A(1),
                         §112(1)(a)(ii) and §112A(2) fix none, so the exemption is set
                         against the highest-rate gain first.
@@ -1982,7 +1982,7 @@ export default function TaxComputationPage() {
                 {/* Received, not taxable — said rather than left to be inferred
                     from a figure that does not appear anywhere in the result. */}
                 {(computeResult.exempt_income?.reported_paise ?? 0) > 0 && (
-                  <p className="mt-2 text-[10px] text-ps-label">
+                  <p className="mt-2 text-3xs text-ps-label">
                     Exempt income {paise(computeResult.exempt_income!.reported_paise)} —{" "}
                     {computeResult.exempt_income!.note}
                   </p>
@@ -1996,12 +1996,12 @@ export default function TaxComputationPage() {
                     not allow, which is invisible in any total. */}
                 {computeResult.deductions?.chapter_vi_a_lines?.length ? (
                   <div className="mt-3 border-t border-ps-border pt-2 space-y-1.5">
-                    <p className="text-[10px] font-semibold text-ps-ink">
+                    <p className="text-3xs font-semibold text-ps-ink">
                       Chapter VI-A by section —{" "}
                       {paise(computeResult.deductions.chapter_vi_a_paise ?? 0)} allowed
                     </p>
                     {computeResult.deductions.chapter_vi_a_lines.map((ln, i) => (
-                      <div key={i} className="text-[10px]">
+                      <div key={i} className="text-3xs">
                         <p className={ln.allowed_paise > 0 ? "text-ps-ink" : "text-ps-hint"}>
                           <span className="font-mono">§{ln.section}</span> {ln.label} —{" "}
                           {paise(ln.allowed_paise)} allowed
@@ -2009,9 +2009,9 @@ export default function TaxComputationPage() {
                             ? ` of ${paise(ln.claimed_paise)} claimed, ${paise(ln.restricted_paise)} withheld`
                             : ""}
                         </p>
-                        <p className="text-[10px] text-ps-hint pl-3">{ln.basis}</p>
+                        <p className="text-3xs text-ps-hint pl-3">{ln.basis}</p>
                         {ln.caveats?.map((cv, j) => (
-                          <p key={j} className="text-[10px] text-ps-hint pl-3">{cv}</p>
+                          <p key={j} className="text-3xs text-ps-hint pl-3">{cv}</p>
                         ))}
                       </div>
                     ))}
@@ -2023,11 +2023,11 @@ export default function TaxComputationPage() {
                     list are opposite statements, and the CA needs the first. */}
                 {computeResult.brought_forward?.lines?.length ? (
                   <div className="mt-3 border-t border-ps-muted pt-2 space-y-1.5">
-                    <p className="text-[10px] font-semibold text-ps-body">
+                    <p className="text-3xs font-semibold text-ps-body">
                       Brought-forward losses — {paise(computeResult.brought_forward.set_off_paise)} set off
                     </p>
                     {computeResult.brought_forward.lines.map((ln, i) => (
-                      <div key={i} className="text-[10px]">
+                      <div key={i} className="text-3xs">
                         <p className={ln.set_off_paise > 0 ? "text-ps-ink" : "text-ps-hint"}>
                           <span className="font-mono">{ln.section}</span>{" "}
                           {ln.loss_type.replace(/_/g, " ")} — {paise(ln.set_off_paise)} set off
@@ -2037,7 +2037,7 @@ export default function TaxComputationPage() {
                             : ""}
                         </p>
                         {ln.reasons.map((r, j) => (
-                          <p key={j} className="text-[10px] text-ps-hint pl-3">{r}</p>
+                          <p key={j} className="text-3xs text-ps-hint pl-3">{r}</p>
                         ))}
                       </div>
                     ))}
@@ -2046,7 +2046,7 @@ export default function TaxComputationPage() {
                 {(computeResult.warnings?.length > 0) && (
                   <div className="mt-2 space-y-1">
                     {computeResult.warnings.map((w: string, i: number) => (
-                      <p key={i} className="text-[10px] text-amber-600">⚠ {w}</p>
+                      <p key={i} className="text-3xs text-amber-600">⚠ {w}</p>
                     ))}
                   </div>
                 )}
@@ -2064,7 +2064,7 @@ export default function TaxComputationPage() {
         >
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold text-ps-body">Disallowances</p>
-            <span className="text-[10px] px-1.5 py-0.5 bg-red-50 text-red-600 rounded-full">
+            <span className="text-3xs px-1.5 py-0.5 bg-red-50 text-red-600 rounded-full">
               {disallowances.length}
             </span>
           </div>
@@ -2073,7 +2073,7 @@ export default function TaxComputationPage() {
 
         {activeSection === "disallowances" && (
           <div className="px-5 pb-5 border-t border-ps-muted pt-4 space-y-3">
-            <p className="text-[11px] text-ps-label">
+            <p className="text-2xs text-ps-label">
               IT Act §40A(3): Cash payments &gt;₹10,000 | §43B: Unpaid statutory liabilities
             </p>
 
@@ -2085,13 +2085,13 @@ export default function TaxComputationPage() {
                   <div key={d.id} className="flex items-center justify-between p-3 bg-ps-bg rounded-lg">
                     <div>
                       <p className="text-xs font-medium text-ps-ink">{d.description}</p>
-                      <p className="text-[10px] text-ps-hint">
+                      <p className="text-3xs text-ps-hint">
                         §{d.section} · {d.auto_detected ? "Auto-detected" : "Manual"}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-semibold text-red-600">{paise(d.amount_paise)}</p>
-                      <span className={`text-[10px] ${d.status === "accepted" ? "text-green-600" : d.status === "rejected" ? "text-red-500" : "text-amber-600"}`}>
+                      <span className={`text-3xs ${d.status === "accepted" ? "text-green-600" : d.status === "rejected" ? "text-red-500" : "text-amber-600"}`}>
                         {d.status}
                         {d.status !== "accepted" && <span className="text-ps-hint"> · not in the computation</span>}
                       </span>
@@ -2109,7 +2109,7 @@ export default function TaxComputationPage() {
                               type="button"
                               onClick={() => setDisallowanceStatus(d.id, "accepted")}
                               disabled={statusBusy === d.id || actionInFlight}
-                              className="text-[10px] px-2 py-0.5 rounded border border-green-200 text-green-700 hover:bg-green-50 disabled:opacity-40"
+                              className="text-3xs px-2 py-0.5 rounded border border-green-200 text-green-700 hover:bg-green-50 disabled:opacity-40"
                             >
                               {statusBusy === d.id ? "…" : "Accept"}
                             </button>
@@ -2119,14 +2119,14 @@ export default function TaxComputationPage() {
                               type="button"
                               onClick={() => setDisallowanceStatus(d.id, "rejected")}
                               disabled={statusBusy === d.id || actionInFlight}
-                              className="text-[10px] px-2 py-0.5 rounded border border-ps-border text-ps-label hover:bg-ps-bg disabled:opacity-40"
+                              className="text-3xs px-2 py-0.5 rounded border border-ps-border text-ps-label hover:bg-ps-bg disabled:opacity-40"
                             >
                               {statusBusy === d.id ? "…" : "Reject"}
                             </button>
                           )}
                         </div>
                       ) : d.status === "pending" ? (
-                        <p className="text-[10px] text-ps-hint mt-1">a Manager accepts this</p>
+                        <p className="text-3xs text-ps-hint mt-1">a Manager accepts this</p>
                       ) : null}
                     </div>
                   </div>
@@ -2138,7 +2138,7 @@ export default function TaxComputationPage() {
                 amber rows totalling ₹4,00,000 has no way to tell, from the
                 rows alone, that the computation is using none of them. */}
             {disallowances.length > 0 && (
-              <p className="text-[11px] text-ps-label border-t border-ps-muted pt-2">
+              <p className="text-2xs text-ps-label border-t border-ps-muted pt-2">
                 Added back to income:{" "}
                 <span className="font-mono text-ps-body">
                   {paise(disallowances.filter(d => d.status === "accepted")
@@ -2149,7 +2149,7 @@ export default function TaxComputationPage() {
             )}
 
             {statusError && (
-              <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{statusError}</p>
+              <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{statusError}</p>
             )}
 
             {!showDisallForm ? (
@@ -2163,20 +2163,20 @@ export default function TaxComputationPage() {
               <div className="border border-ps-border rounded-xl p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] text-ps-label mb-1 block">Section</label>
+                    <label className="text-3xs text-ps-label mb-1 block">Section</label>
                     <select value={disallSection} onChange={e => setDisallSection(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                       {SECTION_OPTIONS.map(s => <option key={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] text-ps-label mb-1 block">Amount (₹)</label>
+                    <label className="text-3xs text-ps-label mb-1 block">Amount (₹)</label>
                     <input type="number" value={disallAmount} onChange={e => setDisallAmount(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="0" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] text-ps-label mb-1 block">Description</label>
+                  <label className="text-3xs text-ps-label mb-1 block">Description</label>
                   <input value={disallDesc} onChange={e => setDisallDesc(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="Payment description" />
                 </div>
@@ -2205,7 +2205,7 @@ export default function TaxComputationPage() {
         >
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold text-ps-body">Brought Forward Losses</p>
-            <span className="text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-full">
+            <span className="text-3xs px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-full">
               {bfLosses.length}
             </span>
           </div>
@@ -2219,7 +2219,7 @@ export default function TaxComputationPage() {
                 and was hardcoded — true of three heads and wrong about
                 speculation, which §73(4) carries for FOUR years. */}
             {lossTypes.length > 0 && (
-              <p className="text-[11px] text-ps-label">
+              <p className="text-2xs text-ps-label">
                 IT Act{" "}
                 {lossTypes.filter(t => t.years !== null).map((t, i) => (
                   <span key={t.loss_type}>
@@ -2234,7 +2234,7 @@ export default function TaxComputationPage() {
                 type="button"
                 onClick={() => { setShowAddLoss(v => !v); setLossError(null); }}
                 disabled={actionInFlight}
-                className="text-[11px] px-2.5 py-1 disabled:opacity-40 rounded border border-ps-border text-ps-body hover:bg-ps-bg inline-flex items-center gap-1"
+                className="text-2xs px-2.5 py-1 disabled:opacity-40 rounded border border-ps-border text-ps-body hover:bg-ps-bg inline-flex items-center gap-1"
               >
                 <Plus size={11} /> {showAddLoss ? "Cancel" : "Record a loss"}
               </button>
@@ -2243,7 +2243,7 @@ export default function TaxComputationPage() {
             {showAddLoss && (
               <div className="rounded-lg border border-ps-border bg-ps-bg p-3 space-y-2">
                 <div className="grid grid-cols-2 gap-2">
-                  <label className="text-[11px] text-ps-label">
+                  <label className="text-2xs text-ps-label">
                     Assessment year the loss was computed in
                     <select
                       id="bf-loss-ay"
@@ -2257,7 +2257,7 @@ export default function TaxComputationPage() {
                       ))}
                     </select>
                   </label>
-                  <label className="text-[11px] text-ps-label">
+                  <label className="text-2xs text-ps-label">
                     Head
                     <select
                       id="bf-loss-type"
@@ -2279,13 +2279,13 @@ export default function TaxComputationPage() {
                     "speculation" should see that it is four years and reaches
                     only speculation income before they save. */}
                 {lossForm.loss_type && (
-                  <p className="text-[11px] text-ps-label bg-white border border-ps-border rounded px-2 py-1">
+                  <p className="text-2xs text-ps-label bg-white border border-ps-border rounded px-2 py-1">
                     {lossTypes.find(t => t.loss_type === lossForm.loss_type)?.note}
                   </p>
                 )}
 
                 <div className="grid grid-cols-2 gap-2">
-                  <label className="text-[11px] text-ps-label">
+                  <label className="text-2xs text-ps-label">
                     Loss amount (₹)
                     <input
                       id="bf-loss-amount"
@@ -2296,7 +2296,7 @@ export default function TaxComputationPage() {
                       onChange={e => setLossForm(f => ({ ...f, amount: e.target.value }))}
                     />
                   </label>
-                  <label className="text-[11px] text-ps-label">
+                  <label className="text-2xs text-ps-label">
                     Last assessment year it may be set off in
                     <select
                       id="bf-loss-expiry"
@@ -2311,7 +2311,7 @@ export default function TaxComputationPage() {
                     </select>
                   </label>
                 </div>
-                <p className="text-[10px] text-ps-hint">
+                <p className="text-3xs text-ps-hint">
                   Left blank, the expiry is worked out from the head&apos;s own section.
                   Set one only where you mean to override it.
                 </p>
@@ -2319,7 +2319,7 @@ export default function TaxComputationPage() {
                 {lossNotModelled.length > 0 && (
                   <ul className="space-y-0.5">
                     {lossNotModelled.map(n => (
-                      <li key={n.what} className="text-[10px] text-[#92400E] bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                      <li key={n.what} className="text-3xs text-[#92400E] bg-amber-50 border border-amber-200 rounded px-2 py-1">
                         <span className="font-medium">{n.what}</span> — {n.why}
                       </li>
                     ))}
@@ -2327,7 +2327,7 @@ export default function TaxComputationPage() {
                 )}
 
                 {lossError && (
-                  <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{lossError}</p>
+                  <p className="text-2xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">{lossError}</p>
                 )}
                 <div className="flex justify-end">
                   <button
@@ -2352,11 +2352,11 @@ export default function TaxComputationPage() {
                       <p className="text-xs font-medium text-ps-ink capitalize">
                         {l.loss_type.replace(/_/g, " ")} Loss — AY {l.assessment_year}
                       </p>
-                      <p className="text-[10px] text-ps-hint">Expires AY {l.expiry_assessment_year}</p>
+                      <p className="text-3xs text-ps-hint">Expires AY {l.expiry_assessment_year}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-semibold text-ps-ink">{paise(l.remaining_amount_paise)}</p>
-                      <p className="text-[10px] text-ps-hint">remaining of {paise(l.original_amount_paise)}</p>
+                      <p className="text-3xs text-ps-hint">remaining of {paise(l.original_amount_paise)}</p>
                     </div>
                   </div>
                 ))}
@@ -2382,14 +2382,14 @@ export default function TaxComputationPage() {
                 <div key={s.id} className="flex items-center justify-between p-3 bg-ps-bg rounded-lg">
                   <div>
                     <p className="text-xs font-medium text-ps-ink">Version {s.version} — {regimeLabel(s.regime)}</p>
-                    <p className="text-[10px] text-ps-hint">{new Date(s.created_at).toLocaleDateString("en-IN")}</p>
+                    <p className="text-3xs text-ps-hint">{new Date(s.created_at).toLocaleDateString("en-IN")}</p>
                   </div>
                   <div className="text-right flex items-center gap-2">
                     {s.status !== "reviewed" && (
                       <button
                         onClick={() => markSnapshotReviewed(s.id)}
                         disabled={reviewing !== null}
-                        className="text-[10px] px-2 py-1 border border-ps-border rounded-md text-ps-label hover:bg-white disabled:opacity-50"
+                        className="text-3xs px-2 py-1 border border-ps-border rounded-md text-ps-label hover:bg-white disabled:opacity-50"
                         title="A filing cannot leave draft while the computation it pins is unreviewed"
                       >
                         {reviewing === s.id ? "Marking…" : "Mark reviewed"}
@@ -2400,7 +2400,7 @@ export default function TaxComputationPage() {
                       <p className="text-xs font-semibold text-ps-ink">
                         {s.is_refund ? "+" : ""}{paise(Math.abs(s.net_payable_paise))}
                       </p>
-                      <p className={`text-[10px] ${s.is_refund ? "text-green-600" : "text-red-500"}`}>
+                      <p className={`text-3xs ${s.is_refund ? "text-green-600" : "text-red-500"}`}>
                         {s.is_refund ? "Refund" : "Payable"}
                       </p>
                     </div>
@@ -2408,7 +2408,7 @@ export default function TaxComputationPage() {
                 </div>
               ))}
               {reviewError && (
-                <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <p className="text-2xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                   {reviewError}
                 </p>
               )}

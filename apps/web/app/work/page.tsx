@@ -65,23 +65,23 @@ function isOverdue(dateStr?: string) {
 function TaskRow({ task }: { task: Task }) {
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-ps-bg rounded-lg transition-colors">
-      <Badge className={`text-[10px] px-1.5 py-0 shrink-0 ${STATUS_COLORS[task.status]}`}>
+      <Badge className={`text-3xs px-1.5 py-0 shrink-0 ${STATUS_COLORS[task.status]}`}>
         {STATUS_LABEL[task.status]}
       </Badge>
       <div className="flex-1 min-w-0">
         <p className="text-sm text-ps-ink truncate font-medium">{task.title}</p>
         {task.client_name && (
-          <p className="text-[11px] text-ps-hint truncate">{task.client_name}</p>
+          <p className="text-2xs text-ps-hint truncate">{task.client_name}</p>
         )}
       </div>
       <div className="shrink-0 text-right">
         {task.priority && (
-          <Badge className={`text-[10px] px-1.5 py-0 ${PRIORITY_COLORS[task.priority]}`}>
+          <Badge className={`text-3xs px-1.5 py-0 ${PRIORITY_COLORS[task.priority]}`}>
             {task.priority}
           </Badge>
         )}
         {task.due_date && (
-          <p className={`text-[11px] mt-0.5 ${isOverdue(task.due_date) ? "text-red-500 font-medium" : "text-ps-hint"}`}>
+          <p className={`text-2xs mt-0.5 ${isOverdue(task.due_date) ? "text-red-500 font-medium" : "text-ps-hint"}`}>
             {fmt(task.due_date)}
           </p>
         )}
@@ -197,7 +197,7 @@ export default function WorkPage() {
                   <CheckSquare size={11} /> My Tasks
                 </div>
                 <p className="text-2xl font-bold text-ps-ink">{counts?.active ?? 0}</p>
-                <p className="text-[11px] text-ps-hint">active</p>
+                <p className="text-2xs text-ps-hint">active</p>
               </CardContent>
             </Card>
             <Card className={(counts?.due_today ?? 0) > 0 ? "border-amber-200 bg-amber-50/30" : ""}>
@@ -208,7 +208,7 @@ export default function WorkPage() {
                 <p className={`text-2xl font-bold ${(counts?.due_today ?? 0) > 0 ? "text-amber-700" : "text-ps-ink"}`}>
                   {counts?.due_today ?? 0}
                 </p>
-                <p className="text-[11px] text-ps-hint">tasks</p>
+                <p className="text-2xs text-ps-hint">tasks</p>
               </CardContent>
             </Card>
             <Card className={(counts?.overdue ?? 0) > 0 ? "border-red-200 bg-red-50/20" : ""}>
@@ -219,7 +219,7 @@ export default function WorkPage() {
                 <p className={`text-2xl font-bold ${(counts?.overdue ?? 0) > 0 ? "text-red-600" : "text-ps-ink"}`}>
                   {counts?.overdue ?? 0}
                 </p>
-                <p className="text-[11px] text-ps-hint">tasks</p>
+                <p className="text-2xs text-ps-hint">tasks</p>
               </CardContent>
             </Card>
             <Card>
@@ -228,7 +228,7 @@ export default function WorkPage() {
                   <CheckCircle2 size={11} /> Done
                 </div>
                 <p className="text-2xl font-bold text-green-600">{counts?.completed_recent ?? 0}</p>
-                <p className="text-[11px] text-ps-hint">last 7 days</p>
+                <p className="text-2xs text-ps-hint">last 7 days</p>
               </CardContent>
             </Card>
           </div>
@@ -240,7 +240,7 @@ export default function WorkPage() {
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <Clock size={13} className="text-amber-500" /> Due Today
                   {todayTasks.length > 0 && (
-                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700">{todayTasks.length}</Badge>
+                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-amber-100 text-amber-700">{todayTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
@@ -259,7 +259,7 @@ export default function WorkPage() {
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <AlertTriangle size={13} className="text-red-500" /> Overdue
                   {overdueTasks.length > 0 && (
-                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-red-100 text-red-700">{overdueTasks.length}</Badge>
+                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-red-100 text-red-700">{overdueTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
@@ -278,7 +278,7 @@ export default function WorkPage() {
                 <CardTitle className="text-sm flex items-center gap-1.5">
                   <Calendar size={13} className="text-blue-600" /> Due This Week
                   {thisWeekTasks.length > 0 && (
-                    <Badge className="ml-1 text-[10px] px-1.5 py-0 bg-blue-50 text-blue-600">{thisWeekTasks.length}</Badge>
+                    <Badge className="ml-1 text-3xs px-1.5 py-0 bg-blue-50 text-blue-600">{thisWeekTasks.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>

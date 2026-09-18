@@ -318,7 +318,7 @@ export default function EntityDetailPage() {
                     <tr key={role.id} className="hover:bg-gray-700/30">
                       <td className="px-5 py-3 text-white font-medium">{role.client_name}</td>
                       <td className="px-3 py-3">
-                        <Badge className="bg-cyan-800 text-cyan-300 text-[11px]">{role.role_type}</Badge>
+                        <Badge className="bg-cyan-800 text-cyan-300 text-2xs">{role.role_type}</Badge>
                       </td>
                       <td className="px-3 py-3 text-slate-300">
                         {role.ownership_pct !== null ? `${role.ownership_pct}%` : "—"}
@@ -357,7 +357,7 @@ export default function EntityDetailPage() {
                     <tr key={rel.id} className="hover:bg-gray-700/30">
                       <td className="px-5 py-3 text-white font-medium">{rel.related_entity_name}</td>
                       <td className="px-3 py-3">
-                        <Badge className="bg-slate-700 text-slate-300 text-[11px]">{rel.relationship_type}</Badge>
+                        <Badge className="bg-slate-700 text-slate-300 text-2xs">{rel.relationship_type}</Badge>
                       </td>
                       <td className="px-3 py-3 text-slate-400 text-xs">{rel.notes || "—"}</td>
                       <td className="px-5 py-3 text-right">
@@ -414,7 +414,7 @@ export default function EntityDetailPage() {
                   {matches.map((match) => (
                     <tr key={match.id} className="hover:bg-gray-700/30">
                       <td className="px-5 py-3">
-                        <Badge className="bg-violet-800 text-violet-300 text-[11px]">{match.match_type}</Badge>
+                        <Badge className="bg-violet-800 text-violet-300 text-2xs">{match.match_type}</Badge>
                       </td>
                       <td className="px-3 py-3">
                         <p className="text-slate-400 text-xs">{match.match_field}</p>
@@ -436,7 +436,7 @@ export default function EntityDetailPage() {
                       </td>
                       <td className="px-3 py-3">
                         <Badge
-                          className={`text-[11px] ${
+                          className={`text-2xs ${
                             match.status === "confirmed"
                               ? "bg-green-800 text-green-300"
                               : match.status === "dismissed"

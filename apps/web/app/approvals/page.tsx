@@ -126,14 +126,14 @@ export default function ApprovalsPage() {
             <div key={r.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-brand truncate">{r.summary || r.request_type}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">
+                <p className="text-2xs text-gray-400 mt-0.5">
                   <span className="font-mono">{r.request_type}</span>
                   {r.requested_by_email ? ` · by ${r.requested_by_email}` : ""}
                   {r.reason ? ` · ${r.reason}` : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_STYLE[r.status] ?? ""}`}>
+                <span className={`text-2xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_STYLE[r.status] ?? ""}`}>
                   {r.status}
                 </span>
                 {r.status === "pending" && canApprove && (

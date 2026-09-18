@@ -81,7 +81,7 @@ const TRIGGER_TYPE_LABELS: Record<string, string> = {
 
 function SeverityBadge({ severity }: { severity: string }) {
   return (
-    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${SEVERITY_STYLES[severity] ?? "bg-slate-100 text-slate-600"}`}>
+    <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full ${SEVERITY_STYLES[severity] ?? "bg-slate-100 text-slate-600"}`}>
       {severity.toUpperCase()}
     </span>
   );
@@ -94,7 +94,7 @@ function ConfidenceBar({ value }: { value: number }) {
       <div className="w-20 h-1.5 rounded-full bg-slate-200 overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${value}%` }} />
       </div>
-      <span className="text-[11px] text-slate-500">{value}%</span>
+      <span className="text-2xs text-slate-500">{value}%</span>
     </div>
   );
 }
@@ -172,7 +172,7 @@ function TriggersTab() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-brand-light/30 text-brand">
+                <span className="text-2xs font-medium px-2 py-0.5 rounded-full bg-brand-light/30 text-brand">
                   {TRIGGER_TYPE_LABELS[t.trigger_type] ?? t.trigger_type}
                 </span>
                 <SeverityBadge severity={t.severity} />
@@ -185,7 +185,7 @@ function TriggersTab() {
 
           {t.evidence.length > 0 && (
             <div className="mt-3 bg-slate-50 rounded-lg p-3">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Evidence</p>
+              <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Evidence</p>
               <ul className="space-y-1">
                 {t.evidence.map((e, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm text-slate-600">
@@ -199,11 +199,11 @@ function TriggersTab() {
 
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
             <div>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Why it matters</p>
+              <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider">Why it matters</p>
               <p className="text-sm text-slate-600 mt-0.5">{t.why_it_matters}</p>
             </div>
             <div>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Recommended action</p>
+              <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider">Recommended action</p>
               <p className="text-sm text-slate-600 mt-0.5">{t.recommended_action}</p>
             </div>
           </div>
@@ -305,7 +305,7 @@ function ProfilesTab() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-800 truncate">{p.client_id}</p>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-2xs text-slate-400">
                   Updated {new Date(p.last_computed_at).toLocaleDateString("en-IN")}
                 </p>
               </div>
@@ -313,19 +313,19 @@ function ProfilesTab() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Compliance</p>
+                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Compliance</p>
                 <p className={`text-xl font-bold mt-0.5 ${scoreColor}`}>{p.compliance_score.toFixed(0)}%</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Engagement</p>
+                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Engagement</p>
                 <p className="text-xl font-bold mt-0.5 text-brand">{p.portal_engagement.toFixed(0)}%</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Doc Reliability</p>
+                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Doc Reliability</p>
                 <p className="text-xl font-bold mt-0.5 text-slate-700">{p.doc_upload_reliability.toFixed(0)}%</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Response (days)</p>
+                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Response (days)</p>
                 <p className="text-xl font-bold mt-0.5 text-slate-700">
                   {p.avg_response_time_days != null ? p.avg_response_time_days.toFixed(1) : "—"}
                 </p>
@@ -334,10 +334,10 @@ function ProfilesTab() {
 
             {p.recurring_issues.length > 0 && (
               <div className="mt-3">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Recurring Issues</p>
+                <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Recurring Issues</p>
                 <div className="flex flex-wrap gap-1">
                   {p.recurring_issues.map((ri, i) => (
-                    <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+                    <span key={i} className="text-2xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
                       {ri.type} ({ri.count}x)
                     </span>
                   ))}
@@ -437,10 +437,10 @@ function AnomaliesTab() {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                  <span className="text-2xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
                     {a.anomaly_type.replace(/_/g, " ")}
                   </span>
-                  <span className="text-[11px] text-slate-400">{a.period}</span>
+                  <span className="text-2xs text-slate-400">{a.period}</span>
                 </div>
                 <h3 className="font-semibold text-slate-800 text-sm">{a.metric_name.replace(/_/g, " ")}</h3>
                 <p className="text-sm text-slate-500 mt-0.5">{a.explanation}</p>
@@ -453,22 +453,22 @@ function AnomaliesTab() {
 
             <div className="mt-3 grid grid-cols-3 gap-3">
               <div className="bg-slate-50 rounded-lg p-3 text-center">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Baseline</p>
+                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Baseline</p>
                 <p className="text-lg font-bold text-slate-700 mt-0.5">{a.baseline_value.toFixed(1)}</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3 text-center">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Actual</p>
+                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Actual</p>
                 <p className={`text-lg font-bold mt-0.5 ${deviationColor}`}>{a.actual_value.toFixed(1)}</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3 text-center">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Score</p>
+                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Score</p>
                 <p className="text-lg font-bold text-slate-700 mt-0.5">{a.deviation_score.toFixed(2)}</p>
               </div>
             </div>
 
             {a.evidence.length > 0 && (
               <div className="mt-3 bg-slate-50 rounded-lg p-3">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Evidence</p>
+                <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Evidence</p>
                 <ul className="space-y-1">
                   {a.evidence.map((e, i) => (
                     <li key={i} className="flex items-start gap-1.5 text-sm text-slate-600">

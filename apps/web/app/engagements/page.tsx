@@ -753,7 +753,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-ps-muted">
           <div>
-            <p className="text-[10px] font-mono text-ps-hint">{letter.engagement_number}</p>
+            <p className="text-3xs font-mono text-ps-hint">{letter.engagement_number}</p>
             <h2 className="text-base font-semibold text-ps-ink">{letter.title}</h2>
           </div>
           <div className="flex items-center gap-3">
@@ -1542,7 +1542,7 @@ function EngagementsPageInner() {
                       </span>
                     </div>
                     {t.is_default && (
-                      <span className="shrink-0 text-[10px] bg-green-50 text-green-600 rounded-full px-1.5 py-0.5 font-medium">
+                      <span className="shrink-0 text-3xs bg-green-50 text-green-600 rounded-full px-1.5 py-0.5 font-medium">
                         Default
                       </span>
                     )}

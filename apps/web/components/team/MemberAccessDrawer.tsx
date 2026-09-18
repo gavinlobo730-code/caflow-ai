@@ -235,13 +235,13 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
                       >
                         <div className="min-w-0 flex items-center gap-2">
                           <span className="text-xs text-ps-body">{humanise(p.action)}</span>
-                          <span className="text-[10px] text-ps-hint">
+                          <span className="text-3xs text-ps-hint">
                             {roleGives ? "role allows" : "role does not allow"}
                           </span>
                           {p.privilege_changing && (
                             <span
                               title="Granting this lets them change what other people can do."
-                              className="inline-flex items-center gap-1 text-[10px] text-state-attention bg-state-attention-surface px-1.5 py-px rounded"
+                              className="inline-flex items-center gap-1 text-3xs text-state-attention bg-state-attention-surface px-1.5 py-px rounded"
                             >
                               <ShieldAlert className="w-3 h-3" />
                               changes others&apos; access
@@ -250,7 +250,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
                           {partnerFloor && (
                             <span
                               title="A Partner cannot be blocked from this — it is what reaches this screen, so removing it would leave nobody able to put it back."
-                              className="inline-flex items-center gap-1 text-[10px] text-ps-label bg-ps-muted px-1.5 py-px rounded"
+                              className="inline-flex items-center gap-1 text-3xs text-ps-label bg-ps-muted px-1.5 py-px rounded"
                             >
                               <Lock className="w-3 h-3" />
                               always on for a Partner
@@ -271,7 +271,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
                                 disabled={disabled}
                                 onClick={() => setDraft((d) => ({ ...d, [key]: c.key }))}
                                 className={[
-                                  "px-2 py-1 text-[11px] border-r last:border-r-0 border-ps-border",
+                                  "px-2 py-1 text-2xs border-r last:border-r-0 border-ps-border",
                                   disabled
                                     ? "text-ps-disabled cursor-not-allowed"
                                     : active

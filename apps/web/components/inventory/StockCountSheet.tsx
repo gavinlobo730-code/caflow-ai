@@ -116,7 +116,7 @@ export function StockCountSheetPanel({
               <p className="text-sm font-semibold text-ps-ink">
                 Physical stock count — {sheet?.session.reference_no ?? ""}
               </p>
-              <p className="text-[11px] text-ps-hint">
+              <p className="text-2xs text-ps-hint">
                 Counted as at {sheet?.session.count_date ?? "—"} · {sheet?.session.status ?? ""}
               </p>
             </div>
@@ -152,7 +152,7 @@ export function StockCountSheetPanel({
                 ["Will post", sheet.postable_count], ["Needs you", sheet.blocked_count]]
                 .map(([label, n]) => (
                 <div key={label as string} className="bg-ps-bg rounded-lg px-3 py-2">
-                  <p className="text-[11px] text-ps-label">{label}</p>
+                  <p className="text-2xs text-ps-label">{label}</p>
                   <p className="text-sm font-semibold text-ps-ink">{n}</p>
                 </div>
               ))}
@@ -160,7 +160,7 @@ export function StockCountSheetPanel({
           )}
 
           {sheet?.gaps?.map((g, i) => (
-            <p key={i} className="text-[11px] text-amber-900 flex gap-1.5">
+            <p key={i} className="text-2xs text-amber-900 flex gap-1.5">
               <AlertTriangle size={12} className="shrink-0 mt-0.5" />{g}
             </p>
           ))}
@@ -183,7 +183,7 @@ export function StockCountSheetPanel({
                     <td className="px-3 py-2">
                       <p className="font-medium text-ps-ink">{l.item_name}</p>
                       {l.caveats.map((c, i) => (
-                        <p key={i} className="text-[10px] text-ps-label italic">{c}</p>
+                        <p key={i} className="text-3xs text-ps-label italic">{c}</p>
                       ))}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-ps-label">
@@ -259,7 +259,7 @@ export function StockCountSheetPanel({
 
           {open && (
             <div className="flex items-center justify-between gap-3 border-t pt-3">
-              <p className="text-[11px] text-ps-label">
+              <p className="text-2xs text-ps-label">
                 Posting writes one adjustment per varying line, all under{" "}
                 <span className="font-mono">{sheet?.session.reference_no}</span>, dated{" "}
                 {sheet?.session.count_date}. A line that needs you is left alone.

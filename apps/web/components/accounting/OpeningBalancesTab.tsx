@@ -180,7 +180,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">Opening balances, bill by bill</h2>
-          <p className="text-[11px] text-ps-label mt-1 max-w-2xl">
+          <p className="text-2xs text-ps-label mt-1 max-w-2xl">
             The opening balance on each customer and vendor is what the ledger
             carries. Ageing is per document, so record the invoices and bills
             still open at the opening date here — with the numbers and dates the
@@ -228,7 +228,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
             ["Not broken up", listing.opening_balance_paise - listing.documents_paise],
           ].map(([label, value]) => (
             <div key={label as string} className="border border-ps-border rounded-lg px-3 py-2">
-              <p className="text-[10px] text-ps-hint leading-tight">{label}</p>
+              <p className="text-3xs text-ps-hint leading-tight">{label}</p>
               <p className="text-sm font-semibold text-ps-ink tabular-nums mt-0.5">
                 {rupees(value as number)}
               </p>
@@ -250,7 +250,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
             {doubles.length === 1 ? "account was" : "accounts were"} opened twice
           </p>
           {doubles.map((d) => <p key={d.account_id}>{d.sentence}</p>)}
-          <p className="text-[10px] text-red-700/80 pt-0.5">
+          <p className="text-3xs text-red-700/80 pt-0.5">
             Reverse whichever opening you did not mean. Nothing here is undone
             automatically — both postings are real journal entries.
           </p>
@@ -305,7 +305,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                   <td className="py-2 text-right tabular-nums">{rupees(d.outstanding_paise)}</td>
                   <td className="py-2 text-right">
                     <button onClick={() => handleRemove(d.id, d.document_no)} disabled={busy}
-                      className="px-2 py-1 text-[11px] text-ps-hint hover:text-red-600 disabled:opacity-40">
+                      className="px-2 py-1 text-2xs text-ps-hint hover:text-red-600 disabled:opacity-40">
                       Remove
                     </button>
                   </td>
@@ -317,7 +317,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       )}
 
       {kinds?.section_194_aggregate && kind === "payable" && (
-        <p className="text-[10px] text-ps-hint leading-tight max-w-2xl">
+        <p className="text-3xs text-ps-hint leading-tight max-w-2xl">
           {kinds.section_194_aggregate}
         </p>
       )}
@@ -349,7 +349,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                 <input value={form.document_no}
                   onChange={(e) => setForm((f) => ({ ...f, document_no: e.target.value }))}
                   className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg font-mono" />
-                <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
+                <span className="block text-3xs text-ps-hint mt-1 leading-tight">
                   The number the other system issued. It is not part of this
                   client&apos;s own series and no gap is reported against it.
                 </span>
@@ -376,7 +376,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                   onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
                   placeholder="0.00"
                   className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg text-right tabular-nums" />
-                <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
+                <span className="block text-3xs text-ps-hint mt-1 leading-tight">
                   What is still open at the opening date, not the document&apos;s
                   original value. A document already settled by then is not part
                   of the opening balance.
@@ -385,7 +385,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
             </div>
 
             <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-between">
-              <p className="text-[10px] text-ps-hint max-w-[14rem] leading-tight">
+              <p className="text-3xs text-ps-hint max-w-[14rem] leading-tight">
                 No journal is posted. The tax on this document was declared where
                 it was issued.
               </p>

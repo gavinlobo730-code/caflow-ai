@@ -44,13 +44,13 @@ function DeadlinesPanelInner() {
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 shrink-0">
         <p className="text-[13px] font-semibold text-brand">Deadlines</p>
-        <p className="text-[11px] text-gray-500 mt-0.5">Cross-client monitoring</p>
+        <p className="text-2xs text-gray-500 mt-0.5">Cross-client monitoring</p>
       </div>
 
       <div className="mx-2 mt-2 shrink-0">
         <div className="flex items-start gap-2 p-2.5 rounded-[7px] bg-amber-50 border border-amber-500/20">
           <Info size={11} className="text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-[11px] text-amber-700 leading-relaxed">
+          <p className="text-2xs text-amber-700 leading-relaxed">
             Triage view. To file, open a{" "}
             <Link
               href="/clients"
@@ -64,7 +64,7 @@ function DeadlinesPanelInner() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-2">
+        <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-2">
           By Type
         </p>
         <div className="space-y-0.5">
@@ -95,7 +95,7 @@ function DeadlinesPanelInner() {
         </div>
 
         <div className="mt-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5">
+          <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5">
             Filing Workspaces
           </p>
           <div className="space-y-0.5">
@@ -124,7 +124,7 @@ function DeadlinesPanelInner() {
         </div>
 
         <div className="mt-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5">
+          <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5">
             Critical Tools
           </p>
           <Link

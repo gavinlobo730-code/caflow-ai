@@ -87,16 +87,16 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
         <div>
-          <label htmlFor="wal-from" className="block text-[11px] font-medium text-ps-label mb-1">From</label>
+          <label htmlFor="wal-from" className="block text-2xs font-medium text-ps-label mb-1">From</label>
           <input id="wal-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)}
             className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
         </div>
         <div>
-          <label htmlFor="wal-to" className="block text-[11px] font-medium text-ps-label mb-1">To</label>
+          <label htmlFor="wal-to" className="block text-2xs font-medium text-ps-label mb-1">To</label>
           <input id="wal-to" type="date" value={to} onChange={(e) => setTo(e.target.value)}
             className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
         </div>
-        <p className="text-[11px] text-ps-hint pb-1.5">
+        <p className="text-2xs text-ps-hint pb-1.5">
           Posted lines only. Nothing here changes an entry — it is what to test,
           not what to approve.
         </p>
@@ -140,7 +140,7 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
           {Object.keys(data.policy).length > 0 && (
             /* Materiality is a judgement, not a constant. A list that does not
                say what it was measured against cannot be argued with. */
-            <p className="text-[11px] text-ps-hint">
+            <p className="text-2xs text-ps-hint">
               Measured at: material above {fmt(data.policy.materiality_paise)},
               settlement tolerance {fmt(data.policy.settlement_tolerance_paise)},
               cash withdrawal {fmt(data.policy.cash_withdrawal_paise)},
@@ -161,11 +161,11 @@ function Row({ row }: { row: WorthALookRow }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="min-w-0">
           <span className="text-xs font-medium text-ps-ink">{row.payee_name || "—"}</span>
-          <span className="text-[11px] text-ps-hint"> · {row.transaction_date}</span>
+          <span className="text-2xs text-ps-hint"> · {row.transaction_date}</span>
           {row.matched_document_no && (
-            <span className="text-[11px] text-ps-hint"> · {row.matched_document_no}</span>
+            <span className="text-2xs text-ps-hint"> · {row.matched_document_no}</span>
           )}
-          <p className="text-[11px] text-ps-label truncate">{row.description}</p>
+          <p className="text-2xs text-ps-label truncate">{row.description}</p>
         </div>
         {/* Money direction, which is NOT state — the ps.money scale exists so a
             withdrawal is not rendered in the colour that means "a problem". */}
@@ -176,7 +176,7 @@ function Row({ row }: { row: WorthALookRow }) {
       <ul className="mt-2 space-y-1">
         {row.exceptions.map((e) => (
           <li key={e.code}
-            className={`rounded border px-2 py-1 text-[11px] ${SEVERITY_STYLE[e.severity] ?? SEVERITY_STYLE.low}`}>
+            className={`rounded border px-2 py-1 text-2xs ${SEVERITY_STYLE[e.severity] ?? SEVERITY_STYLE.low}`}>
             {e.message}
             {e.blocking && (
               <span className="ml-1 opacity-75">

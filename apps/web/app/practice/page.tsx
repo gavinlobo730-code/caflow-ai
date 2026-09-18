@@ -20,7 +20,7 @@ function KpiCard({ label, value, icon: Icon, tone }: {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">{label}</p>
+        <p className="text-2xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
         <Icon size={15} className={tone ?? "text-gray-400"} />
       </div>
       <p className="text-xl font-semibold text-brand mt-2 tabular-nums">{value}</p>
@@ -99,7 +99,7 @@ function PracticeOverview() {
         <KpiCard label="TDS Receivable" value={formatPaise(dash?.tds_receivable_paise ?? 0)} icon={ReceiptText} tone="text-amber-500" />
         <KpiCard label="Collected (cash)" value={formatPaise(dash?.collected_cash_paise ?? 0)} icon={Wallet} tone="text-green-600" />
       </div>
-      <p className="text-[11px] text-gray-400 mt-4">
+      <p className="text-2xs text-gray-400 mt-4">
         All figures computed server-side from the internal client&apos;s books. Partner-only.
       </p>
     </div>

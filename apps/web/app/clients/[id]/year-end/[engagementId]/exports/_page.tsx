@@ -213,12 +213,12 @@ export default function ExportsPage() {
                   <p className={`text-xs font-semibold ${cfg.primary ? "text-blue-700" : "text-ps-body"}`}>
                     {cfg.label}
                   </p>
-                  <p className="text-[10px] text-ps-hint mt-0.5">{description}</p>
+                  <p className="text-3xs text-ps-hint mt-0.5">{description}</p>
                 </div>
               </div>
 
               {latest && (
-                <p className="text-[10px] text-ps-hint">
+                <p className="text-3xs text-ps-hint">
                   Last generated: {timeAgo(latest.generated_at ?? latest.created_at)}
                   {(latest.is_draft ?? false) && " · DRAFT"}
                 </p>
@@ -284,9 +284,9 @@ export default function ExportsPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       {(exp.is_draft ?? false) ? (
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Draft</span>
+                        <span className="text-3xs font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Draft</span>
                       ) : (
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Final</span>
+                        <span className="text-3xs font-medium px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Final</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">

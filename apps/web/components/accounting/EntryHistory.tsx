@@ -157,7 +157,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
                     </div>
                     {moved.length > 0 && (
                       <p className="mt-1 text-ps-label">
-                        Changed: <span className="font-mono text-[11px]">{moved.join(", ")}</span>
+                        Changed: <span className="font-mono text-2xs">{moved.join(", ")}</span>
                       </p>
                     )}
                   </li>

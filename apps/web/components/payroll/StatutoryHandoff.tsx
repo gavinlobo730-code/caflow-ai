@@ -96,17 +96,17 @@ function IdentityRow({ label, value, note }: {
   return (
     <div className="flex items-start justify-between gap-3 py-1.5">
       <div className="min-w-0">
-        <p className="text-[11px] text-ps-label">{label}</p>
+        <p className="text-2xs text-ps-label">{label}</p>
         {value ? (
           <p className="text-[13px] font-mono text-ps-ink break-all">{value}</p>
         ) : (
           <p className="text-[12px] text-red-600">Not recorded</p>
         )}
-        {note && <p className="text-[10px] text-ps-hint mt-0.5">{note}</p>}
+        {note && <p className="text-3xs text-ps-hint mt-0.5">{note}</p>}
       </div>
       {value && (
         <button onClick={copy} title="Copy"
-          className="shrink-0 px-2 py-1 border border-ps-border rounded-lg text-[11px]
+          className="shrink-0 px-2 py-1 border border-ps-border rounded-lg text-2xs
                      text-ps-body hover:bg-ps-bg flex items-center gap-1">
           {copied ? <Check size={11} /> : <Copy size={11} />}
           {copied ? "Copied" : "Copy"}
@@ -191,11 +191,11 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
 
   return (
     <div className="mt-3 rounded-xl border border-ps-border bg-ps-bg p-3 space-y-2">
-      <p className="text-[11px] font-semibold text-ps-ink">
+      <p className="text-2xs font-semibold text-ps-ink">
         After you file: record {obligation.record_back}
       </p>
       {isEpf && options.length > 1 && (
-        <p className="text-[10px] text-ps-hint">
+        <p className="text-3xs text-ps-hint">
           This month needs {options.length} returns. Record each one as you
           file it — a Supplementary recorded as a Regular leaves the real
           Regular outstanding, and EPFO will block next month.
@@ -204,7 +204,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
       <div className="grid grid-cols-3 gap-2">
         {isEpf && (
           <div className="col-span-3">
-            <label className="block text-[10px] text-ps-label mb-0.5">
+            <label className="block text-3xs text-ps-label mb-0.5">
               Return type
             </label>
             <select value={returnType} onChange={(e) => setReturnType(e.target.value)}
@@ -223,7 +223,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           </div>
         )}
         <div>
-          <label className="block text-[10px] text-ps-label mb-0.5">
+          <label className="block text-3xs text-ps-label mb-0.5">
             {isEpf ? "TRRN" : "Challan number"}
           </label>
           <input value={reference} onChange={(e) => setReference(e.target.value)}
@@ -232,14 +232,14 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
                        outline-none focus:border-blue-400" />
         </div>
         <div>
-          <label className="block text-[10px] text-ps-label mb-0.5">Date</label>
+          <label className="block text-3xs text-ps-label mb-0.5">Date</label>
           <input type="date" value={on} onChange={(e) => setOn(e.target.value)}
             className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-[12px]
                        outline-none focus:border-blue-400" />
         </div>
         {!isEpf && (
           <div>
-            <label className="block text-[10px] text-ps-label mb-0.5">
+            <label className="block text-3xs text-ps-label mb-0.5">
               Amount paid (₹)
             </label>
             <input value={amount} onChange={(e) => setAmount(e.target.value)}
@@ -253,18 +253,18 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           s.39(5) can be added at the portal, and a CA reconciling the two needs
           the number that actually left the bank. */}
       {!isEpf && (
-        <p className="text-[10px] text-ps-hint">
+        <p className="text-3xs text-ps-hint">
           Enter what the challan says, not what we computed — interest or
           damages added at the portal are part of what left the bank.
         </p>
       )}
-      <label className="flex items-center gap-2 text-[11px] text-ps-label">
+      <label className="flex items-center gap-2 text-2xs text-ps-label">
         <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} />
         {isEpf ? "The portal shows this as approved — which is what clears the month"
                : "The money has gone — this is paid, not just filed"}
       </label>
       {isEpf && !paid && (
-        <p className="text-[10px] text-ps-hint">
+        <p className="text-3xs text-ps-hint">
           A Regular that is submitted but not yet approved still BLOCKS the next
           month at EPFO. Come back and mark it approved once the portal does.
         </p>
@@ -319,12 +319,12 @@ function MappedIpCheck({ runId }: { runId: string }) {
     <div className="border-t border-ps-muted pt-3">
       {!open ? (
         <button onClick={() => setOpen(true)}
-          className="text-[11px] text-blue-700 hover:underline">
+          className="text-2xs text-blue-700 hover:underline">
           Check against ESIC&rsquo;s mapped list first →
         </button>
       ) : (
         <div className="space-y-2">
-          <p className="text-[11px] text-ps-label">
+          <p className="text-2xs text-ps-label">
             Paste the insured persons mapped at ESIC, from the portal&rsquo;s own
             screen. Names alongside the numbers are fine. Nothing is stored —
             this is compared and discarded.
@@ -340,17 +340,17 @@ function MappedIpCheck({ runId }: { runId: string }) {
               {busy ? "Checking…" : "Check"}
             </button>
             <button onClick={() => { setOpen(false); setResult(null); setPasted(""); }}
-              className="text-[11px] text-ps-hint hover:text-ps-body">
+              className="text-2xs text-ps-hint hover:text-ps-body">
               Close
             </button>
           </div>
 
           {err && (
-            <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>
+            <p className="text-2xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>
           )}
 
           {result && (
-            <div className={`rounded-lg px-3 py-2 border text-[11px] ${
+            <div className={`rounded-lg px-3 py-2 border text-2xs ${
               result.would_be_rejected
                 ? "bg-red-50 border-red-200 text-red-800"
                 : result.not_mapped_at_esic.length
@@ -360,16 +360,16 @@ function MappedIpCheck({ runId }: { runId: string }) {
                   sentence written here would lose. */}
               <p>{result.what_it_means}</p>
               {!!result.missing_from_file.length && (
-                <p className="mt-1.5 font-mono text-[10px] break-all">
+                <p className="mt-1.5 font-mono text-3xs break-all">
                   Mapped, not in the file: {result.missing_from_file.join(", ")}
                 </p>
               )}
               {!!result.not_mapped_at_esic.length && (
-                <p className="mt-1.5 font-mono text-[10px] break-all">
+                <p className="mt-1.5 font-mono text-3xs break-all">
                   In the file, not mapped: {result.not_mapped_at_esic.join(", ")}
                 </p>
               )}
-              <p className="mt-1.5 text-[10px] opacity-80">
+              <p className="mt-1.5 text-3xs opacity-80">
                 {result.mapped_count} mapped at ESIC · {result.file_count} in the file
               </p>
             </div>
@@ -427,22 +427,22 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <p className="text-[13px] font-semibold text-ps-ink">{o.title}</p>
-          <p className="text-[11px] text-ps-label">
+          <p className="text-2xs text-ps-label">
             {o.authority} · {o.period_label}
           </p>
           {o.statute && (
-            <p className="text-[10px] text-ps-hint mt-0.5">{o.statute}</p>
+            <p className="text-3xs text-ps-hint mt-0.5">{o.statute}</p>
           )}
         </div>
         <div className="text-right shrink-0">
           {o.due_date ? (
-            <p className="text-[11px] text-ps-body">
+            <p className="text-2xs text-ps-body">
               Due <span className="font-semibold">{o.due_date}</span>
             </p>
           ) : (
-            <p className="text-[11px] text-ps-hint">No due date shown</p>
+            <p className="text-2xs text-ps-hint">No due date shown</p>
           )}
-          <p className="text-[10px] text-ps-hint flex items-center gap-1 justify-end mt-0.5">
+          <p className="text-3xs text-ps-hint flex items-center gap-1 justify-end mt-0.5">
             {o.portal_host ? <ExternalLink size={9} /> : null}
             {o.portal_host || o.portal}
           </p>
@@ -453,7 +453,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
           calendar is worse than a missing one, and silence is worse than
           either — it reads as "nothing is due". */}
       {o.due_note && (
-        <p className="text-[11px] text-ps-label bg-ps-muted rounded-lg px-3 py-2
+        <p className="text-2xs text-ps-label bg-ps-muted rounded-lg px-3 py-2
                       flex items-start gap-2">
           <Info size={12} className="mt-0.5 shrink-0 text-ps-label" />
           {o.due_note}
@@ -462,7 +462,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
 
       {/* ── what would be refused at the portal today ───────────────────── */}
       {o.blocking.map((b, i) => (
-        <p key={i} className="text-[11px] text-red-700 bg-red-50 border border-red-200
+        <p key={i} className="text-2xs text-red-700 bg-red-50 border border-red-200
                               rounded-lg px-3 py-2 flex items-start gap-2">
           <Lock size={12} className="mt-0.5 shrink-0" />{b}
         </p>
@@ -470,7 +470,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
 
       {/* ── what changes what you do, but does not stop you ─────────────── */}
       {o.warnings.map((w, i) => (
-        <p key={i} className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200
+        <p key={i} className="text-2xs text-amber-900 bg-amber-50 border border-amber-200
                               rounded-lg px-3 py-2 flex items-start gap-2">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />{w}
         </p>
@@ -478,7 +478,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
 
       {/* ── 1. the identifiers the portal asks for ──────────────────────── */}
       <div className="border-t border-ps-muted pt-2">
-        <p className="text-[10px] uppercase tracking-wide text-ps-hint mb-1">
+        <p className="text-3xs uppercase tracking-wide text-ps-hint mb-1">
           What identifies this filing
         </p>
         {o.identity.map((f) => (
@@ -488,7 +488,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
 
       {/* ── 2. the figures the portal will show back ────────────────────── */}
       <div className="border-t border-ps-muted pt-2">
-        <p className="text-[10px] uppercase tracking-wide text-ps-hint mb-1">
+        <p className="text-3xs uppercase tracking-wide text-ps-hint mb-1">
           Check these against the portal before you submit
         </p>
         <table className="w-full text-[12px]">
@@ -498,7 +498,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
                 <td className="py-1.5 pr-2 text-ps-label align-top">
                   {f.label}
                   {f.note && (
-                    <span className="block text-[10px] text-ps-hint">{f.note}</span>
+                    <span className="block text-3xs text-ps-hint">{f.note}</span>
                   )}
                 </td>
                 <td className="py-1.5 text-right font-mono text-ps-ink align-top
@@ -530,12 +530,12 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
             {busy ? "Building…" : `Download ${o.artefact.filename}`}
           </button>
         ) : (
-          <p className="text-[11px] text-ps-label bg-ps-bg rounded-lg px-3 py-2">
+          <p className="text-2xs text-ps-label bg-ps-bg rounded-lg px-3 py-2">
             {o.artefact.why_not}
           </p>
         )}
         {note && (
-          <p className={`text-[11px] mt-2 px-3 py-2 rounded-lg ${
+          <p className={`text-2xs mt-2 px-3 py-2 rounded-lg ${
             note.kind === "ok" ? "bg-green-50 text-green-700"
             : note.kind === "warn" ? "bg-amber-50 text-amber-800"
             : "bg-red-50 text-red-600"}`}>{note.text}</p>
@@ -545,7 +545,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
       {/* ── 4. what came back ───────────────────────────────────────────── */}
       {recorded ? (
         <div className="border-t border-ps-muted pt-3">
-          <p className="text-[11px] text-green-800 bg-green-50 border border-green-200
+          <p className="text-2xs text-green-800 bg-green-50 border border-green-200
                         rounded-lg px-3 py-2 flex items-start gap-2">
             <Check size={12} className="mt-0.5 shrink-0" />
             <span>
@@ -621,7 +621,7 @@ function Retract({ clientId, remittanceId, onDone, onError }: {
   if (!confirming) {
     return (
       <button type="button" onClick={() => setConfirming(true)}
-        className="mt-2 text-[11px] text-ps-label hover:text-red-600 underline
+        className="mt-2 text-2xs text-ps-label hover:text-red-600 underline
                    underline-offset-2">
         Recorded in error? Retract
       </button>
@@ -630,19 +630,19 @@ function Retract({ clientId, remittanceId, onDone, onError }: {
   return (
     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2
                     space-y-2">
-      <p className="text-[11px] text-amber-900">
+      <p className="text-2xs text-amber-900">
         This removes PracticeSync&apos;s record that the return was filed and the
         challan paid. It does not undo anything at the portal, and it does not
         touch the ledger — if a bank entry paid this, that entry stays.
       </p>
       <div className="flex items-center gap-2">
         <button type="button" onClick={go} disabled={busy}
-          className="text-[11px] font-semibold text-white bg-red-600 hover:bg-red-700
+          className="text-2xs font-semibold text-white bg-red-600 hover:bg-red-700
                      disabled:opacity-50 rounded-md px-3 py-1.5">
           {busy ? "Retracting…" : "Yes, retract it"}
         </button>
         <button type="button" onClick={() => setConfirming(false)} disabled={busy}
-          className="text-[11px] text-ps-label hover:text-ps-ink px-2 py-1.5">
+          className="text-2xs text-ps-label hover:text-ps-ink px-2 py-1.5">
           Keep it
         </button>
       </div>
@@ -710,7 +710,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
         <p className="text-[13px] font-semibold text-ps-ink">
           Paid, but not yet matched to a bank payment ({rows.length})
         </p>
-        <p className="text-[11px] text-ps-label mt-0.5">
+        <p className="text-2xs text-ps-label mt-0.5">
           On the ledger these look exactly like a liability nobody has paid.
           Matching one records WHICH entry cleared it — it posts nothing, and
           the entry itself is unchanged.
@@ -718,7 +718,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
       </div>
 
       {note && (
-        <p className={`text-[11px] px-3 py-2 rounded-lg ${
+        <p className={`text-2xs px-3 py-2 rounded-lg ${
           note.kind === "ok" ? "bg-green-50 text-green-700"
           : "bg-red-50 text-red-600"}`}>{note.text}</p>
       )}
@@ -737,12 +737,12 @@ function UnmatchedRemittances({ clientId, onLinked }: {
               {fmtPaise(r.amount_paise)}
             </p>
           </div>
-          <p className="text-[10px] text-ps-hint">
+          <p className="text-3xs text-ps-hint">
             Paid {r.paid_on ?? "—"}
           </p>
 
           {r.candidates.length === 0 ? (
-            <p className="text-[11px] text-ps-label mt-2 bg-ps-bg rounded-lg px-3 py-2">
+            <p className="text-2xs text-ps-label mt-2 bg-ps-bg rounded-lg px-3 py-2">
               No entry in the books clears this liability around that date. Either
               the bank line has not been passed yet, or the payment went through
               a different account — pass the statement line first, then come back.
@@ -754,7 +754,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
                   className="flex items-start justify-between gap-3 rounded-lg
                              border border-ps-border px-3 py-2">
                   <div className="min-w-0">
-                    <p className="text-[11px] text-ps-ink">
+                    <p className="text-2xs text-ps-ink">
                       <span className={`inline-block px-1.5 py-0.5 rounded mr-1.5
                         text-[9px] font-semibold uppercase tracking-wide ${
                         c.grade === "exact" ? "bg-green-100 text-green-800"
@@ -768,11 +768,11 @@ function UnmatchedRemittances({ clientId, onLinked }: {
                         statutory reasoning — that interest on a late challan
                         rides on the same payment — which a string built here
                         would lose. */}
-                    <p className="text-[10px] text-ps-label mt-0.5">{c.reason}</p>
+                    <p className="text-3xs text-ps-label mt-0.5">{c.reason}</p>
                   </div>
                   <button onClick={() => link(r.id, c.journal_entry_id)}
                     disabled={busy !== null}
-                    className="shrink-0 px-2.5 py-1 text-[11px] border border-ps-border
+                    className="shrink-0 px-2.5 py-1 text-2xs border border-ps-border
                                rounded-lg hover:bg-ps-bg text-ps-body
                                disabled:opacity-40 flex items-center gap-1">
                     <Link2 size={11} />
@@ -845,7 +845,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <label className="text-[11px] text-ps-label">Month</label>
+        <label className="text-2xs text-ps-label">Month</label>
         <select value={runId} onChange={(e) => setRunId(e.target.value)}
           className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px]
                      outline-none focus:border-blue-400">
@@ -856,7 +856,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
       </div>
 
       {/* The one sentence that has to survive every redesign of this screen. */}
-      <p className="text-[11px] text-ps-label bg-blue-50 border border-blue-200
+      <p className="text-2xs text-ps-label bg-blue-50 border border-blue-200
                     rounded-xl px-3 py-2">
         You file these yourself, on the portals. PracticeSync computes the
         figures, builds the files and remembers what you filed — it transmits
@@ -875,7 +875,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
       <UnmatchedRemittances clientId={clientId} onLinked={load} />
 
       {handoff?.unattributed_pt_paise ? (
-        <p className="text-[11px] text-red-700 bg-red-50 border border-red-200
+        <p className="text-2xs text-red-700 bg-red-50 border border-red-200
                       rounded-xl px-3 py-2">
           {fmtPaise(handoff.unattributed_pt_paise)} of professional tax was
           withheld from employees with no state recorded, so it belongs to no

@@ -60,7 +60,7 @@ const DATA_SECTIONS = new Set(["invoices", "statements", "reminders", "complianc
 
 function StatusBadge({ status, danger }: { status: string | null; danger?: boolean }) {
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${
+    <span className={`inline-block rounded-full px-2 py-0.5 text-2xs font-medium ${
       danger ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"}`}>
       {status ?? "—"}
     </span>
@@ -275,7 +275,7 @@ export default function PortalDashboardPage() {
         </div>
         {memberships.length > 1 && (
           <label className="text-xs text-gray-600">
-            <span className="block text-[11px] text-gray-400 mb-0.5">Client</span>
+            <span className="block text-2xs text-gray-400 mb-0.5">Client</span>
             <select
               value={activeClient ?? ""}
               onChange={(e) => { setActiveClient(e.target.value || null); }}
@@ -299,15 +299,15 @@ export default function PortalDashboardPage() {
           {dues && (
             <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="rounded-xl border border-gray-200 bg-white p-4">
-                <p className="text-[11px] uppercase tracking-wide text-gray-400">Total Outstanding</p>
+                <p className="text-2xs uppercase tracking-wide text-gray-400">Total Outstanding</p>
                 <p className="mt-1 text-xl font-semibold text-brand">{formatPaise(dues.total_outstanding_paise)}</p>
               </div>
               <div className={`rounded-xl border p-4 ${dues.overdue_paise > 0 ? "border-red-200 bg-red-50" : "border-gray-200 bg-white"}`}>
-                <p className="text-[11px] uppercase tracking-wide text-gray-400">Overdue</p>
+                <p className="text-2xs uppercase tracking-wide text-gray-400">Overdue</p>
                 <p className={`mt-1 text-xl font-semibold ${dues.overdue_paise > 0 ? "text-red-700" : "text-brand"}`}>{formatPaise(dues.overdue_paise)}</p>
               </div>
               <div className="rounded-xl border border-gray-200 bg-white p-4">
-                <p className="text-[11px] uppercase tracking-wide text-gray-400">Overdue Invoices</p>
+                <p className="text-2xs uppercase tracking-wide text-gray-400">Overdue Invoices</p>
                 <p className="mt-1 text-xl font-semibold text-brand">{dues.overdue_count}</p>
               </div>
             </div>
@@ -385,7 +385,7 @@ export default function PortalDashboardPage() {
                   className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1 text-xs text-white disabled:opacity-40">
                   <Download size={13} /> Download PDF
                 </button>
-                <span className="text-[11px] text-gray-400">Defaults to the current financial year.</span>
+                <span className="text-2xs text-gray-400">Defaults to the current financial year.</span>
               </div>
               {statement === null ? (sectionFailed["statements"] ? <ErrorRetry onRetry={() => loadSection("statements", activeClient!)} /> : <Loading />) : statement.available === false ? (
                 <Empty label="No statement is available for this client yet." />
@@ -451,7 +451,7 @@ export default function PortalDashboardPage() {
         </>
       )}
 
-      <p className="text-[11px] text-gray-400 mt-6">
+      <p className="text-2xs text-gray-400 mt-6">
         Figures reflect your account with your accountant. For anything that looks off, message your accountant.
       </p>
     </div>
@@ -471,7 +471,7 @@ function Table({ head, children }: { head: string[]; children: React.ReactNode }
   return (
     <table className="w-full text-left text-sm">
       <thead>
-        <tr className="text-[11px] uppercase tracking-wide text-gray-400">
+        <tr className="text-2xs uppercase tracking-wide text-gray-400">
           {head.map((h, i) => <th key={i} className="px-3 py-1.5 font-medium">{h}</th>)}
         </tr>
       </thead>

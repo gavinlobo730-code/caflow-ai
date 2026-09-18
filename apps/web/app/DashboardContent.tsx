@@ -152,19 +152,19 @@ function Skeleton({ className }: { className?: string }) {
 
 function DeadlineBadge({ daysLeft }: { daysLeft: number }) {
   if (daysLeft === 0) return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-bold ring-1 ring-red-500/20">Today</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-bold ring-1 ring-red-500/20">Today</span>
   );
   if (daysLeft <= 3) return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold">{daysLeft}d</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold">{daysLeft}d</span>
   );
   if (daysLeft <= 7) return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-semibold">{daysLeft}d</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-semibold">{daysLeft}d</span>
   );
   if (daysLeft <= 14) return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 font-medium">{daysLeft}d</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 font-medium">{daysLeft}d</span>
   );
   return (
-    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium">{daysLeft}d</span>
+    <span className="text-2xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium">{daysLeft}d</span>
   );
 }
 
@@ -180,7 +180,7 @@ function StatusBadge({ status }: { status: string | null }) {
   const s = status ?? "todo";
   const cfg = STATUS_CONFIG[s] ?? STATUS_CONFIG.todo;
   return (
-    <span className={cn("text-[11px] px-2 py-0.5 rounded-full font-medium", cfg.color)}>
+    <span className={cn("text-2xs px-2 py-0.5 rounded-full font-medium", cfg.color)}>
       {cfg.label}
     </span>
   );
@@ -355,8 +355,8 @@ export default function DashboardContent() {
                       <Icon size={15} />
                     </div>
                     <p className="text-[13px] font-semibold text-white leading-tight">{step.title}</p>
-                    <p className="text-[11px] text-blue-200 leading-snug flex-1">{step.desc}</p>
-                    <div className="flex items-center gap-1 text-[11px] text-white/70 group-hover:text-white/90 transition-colors mt-auto pt-1">
+                    <p className="text-2xs text-blue-200 leading-snug flex-1">{step.desc}</p>
+                    <div className="flex items-center gap-1 text-2xs text-white/70 group-hover:text-white/90 transition-colors mt-auto pt-1">
                       Go <ArrowRight size={10} />
                     </div>
                   </div>
@@ -465,7 +465,7 @@ export default function DashboardContent() {
                     )} />
                     <div className="min-w-0">
                       <p className="text-[13px] text-ps-ink font-medium truncate">{d.name}</p>
-                      <p className="text-[11px] text-ps-hint mt-0.5">
+                      <p className="text-2xs text-ps-hint mt-0.5">
                         {new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                       </p>
                     </div>
@@ -505,15 +505,15 @@ export default function DashboardContent() {
               recentClients.map((c) => (
                 <Link key={c.id} href={`/clients/${c.id}`}>
                   <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-ps-bg transition-colors">
-                    <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-500/20 flex items-center justify-center text-blue-600 text-[11px] font-bold shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-500/20 flex items-center justify-center text-blue-600 text-2xs font-bold shrink-0">
                       {c.client_name.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] font-semibold text-ps-ink truncate">{c.client_name}</p>
-                      {c.gstin && <p className="text-[11px] text-ps-hint font-mono">{c.gstin}</p>}
+                      {c.gstin && <p className="text-2xs text-ps-hint font-mono">{c.gstin}</p>}
                     </div>
                     {c.entity_type && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-ps-muted text-ps-label font-medium shrink-0">
+                      <span className="text-2xs px-2 py-0.5 rounded-full bg-ps-muted text-ps-label font-medium shrink-0">
                         {c.entity_type}
                       </span>
                     )}
@@ -568,9 +568,9 @@ export default function DashboardContent() {
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-medium text-ps-ink truncate">{t.title}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      {t.client_name && <span className="text-[11px] text-ps-hint truncate">{t.client_name}</span>}
+                      {t.client_name && <span className="text-2xs text-ps-hint truncate">{t.client_name}</span>}
                       {t.due_date && (
-                        <span className="text-[11px] text-ps-disabled">
+                        <span className="text-2xs text-ps-disabled">
                           · {new Date(t.due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                         </span>
                       )}

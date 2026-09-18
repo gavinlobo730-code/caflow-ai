@@ -95,7 +95,7 @@ export default function SalesInvoicePageClient() {
       <InvoiceWorkspaceLayout
         breadcrumbs={invoiceBreadcrumbs(clientId, ctx.clientName, "New Invoice")}
         title="New Sales Invoice"
-        statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">Draft</span>}
+        statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">Draft</span>}
       >
         <EmptyState
           title="No customers yet"
@@ -132,7 +132,7 @@ export default function SalesInvoicePageClient() {
     <InvoiceWorkspaceLayout
       breadcrumbs={invoiceBreadcrumbs(clientId, ctx?.clientName, isNew ? "New Invoice" : (invoice ? `Edit ${invoice.invoice_no}` : "Edit Invoice"))}
       title={isNew ? "New Sales Invoice" : (invoice ? `Edit ${invoice.invoice_no}` : "Edit Invoice")}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">{isNew ? "Draft" : (invoice ? invoice.status.replace("_", " ") : "…")}</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">{isNew ? "Draft" : (invoice ? invoice.status.replace("_", " ") : "…")}</span>}
       toolbar={!error ? <InvoiceToolbarSkeleton /> : undefined}
       summary={!error ? <SummaryPanelSkeleton /> : undefined}
     >

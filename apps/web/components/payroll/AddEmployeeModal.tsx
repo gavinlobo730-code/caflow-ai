@@ -247,7 +247,7 @@ export function AddEmployeeModal({
             <input id="employee-code" className="w-full border rounded-lg px-3 py-2 text-sm"
               placeholder="e.g. EMP001"
               value={form.employee_code} onChange={e => setForm(f => ({ ...f, employee_code: e.target.value }))} />
-            <p className="text-[10px] text-ps-hint mt-1">
+            <p className="text-3xs text-ps-hint mt-1">
               The client&apos;s own identifier. The bulk import is idempotent on it.
             </p>
           </div>
@@ -255,7 +255,7 @@ export function AddEmployeeModal({
             <label htmlFor="date-of-birth" className="block text-xs font-medium text-ps-body mb-1">Date of Birth</label>
             <input id="date-of-birth" type="date" className="w-full border rounded-lg px-3 py-2 text-sm"
               value={form.date_of_birth} onChange={e => setForm(f => ({ ...f, date_of_birth: e.target.value }))} />
-            <p className="text-[10px] text-ps-hint mt-1">
+            <p className="text-3xs text-ps-hint mt-1">
               Not demographics — the old regime&apos;s nil band widens at 60 and again at 80.
             </p>
           </div>
@@ -264,7 +264,7 @@ export function AddEmployeeModal({
             <input id="aadhaar" inputMode="numeric" maxLength={14} className="w-full border rounded-lg px-3 py-2 text-sm tabular-nums"
               placeholder={employee?.aadhaar_last4 ? `•••• •••• ${employee.aadhaar_last4}` : "12 digits"}
               value={form.aadhaar} onChange={e => setForm(f => ({ ...f, aadhaar: e.target.value }))} />
-            <p className="text-[10px] text-ps-hint mt-1">
+            <p className="text-3xs text-ps-hint mt-1">
               Only the last 4 digits are stored (UIDAI norms). Leave blank to keep what is on file.
             </p>
           </div>
@@ -276,7 +276,7 @@ export function AddEmployeeModal({
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
-            <p className="text-[10px] text-ps-hint mt-1">Used for Maharashtra PT — women earning ≤ ₹25,000/month are exempt.</p>
+            <p className="text-3xs text-ps-hint mt-1">Used for Maharashtra PT — women earning ≤ ₹25,000/month are exempt.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Basic Salary (Rs/month) *</label>
@@ -321,7 +321,7 @@ export function AddEmployeeModal({
               onChange={e => setForm(f => ({ ...f, eps_eligible: e.target.checked }))} />
             <label htmlFor="eps" className="text-sm text-ps-body">
               EPS 1995 member
-              <span className="block text-[11px] text-ps-hint">
+              <span className="block text-2xs text-ps-hint">
                 Untick only where para 6 of the scheme (GSR 609(E), from
                 01-09-2014) excludes them — first joined EPF on or after that
                 date with pay above the wage ceiling. When ticked, 8.33% of the
@@ -335,7 +335,7 @@ export function AddEmployeeModal({
               onChange={e => setForm(f => ({ ...f, gratuity_act_covered: e.target.checked }))} />
             <label htmlFor="gratuity" className="text-sm text-ps-body">
               Payment of Gratuity Act 1972 applies
-              <span className="block text-[11px] text-ps-hint">
+              <span className="block text-2xs text-ps-hint">
                 §1(3), and §1(3A) which keeps it applying once it has. It
                 decides which limb of IT Act §10(10) exempts a leaver&apos;s
                 gratuity — clause (ii) when covered, clause (iii) when not,
@@ -350,7 +350,7 @@ export function AddEmployeeModal({
               these, and a blank whose consequence is unstated gets left blank. */}
           <div className="col-span-2 border-t pt-3 mt-1">
             <p className="text-xs font-medium text-ps-ink">Statutory identifiers</p>
-            <p className="text-[11px] text-ps-label">
+            <p className="text-2xs text-ps-label">
               Blank is allowed. Each one names what cannot be produced without it.
             </p>
           </div>
@@ -358,19 +358,19 @@ export function AddEmployeeModal({
             <label className="block text-xs font-medium text-ps-body mb-1">UAN</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.uan}
                    onChange={e => setForm(f => ({ ...f, uan: e.target.value }))} maxLength={12} inputMode="numeric" />
-            <p className="text-[10px] text-ps-hint mt-0.5">12 digits. Without it this member cannot go in the EPFO ECR.</p>
+            <p className="text-3xs text-ps-hint mt-0.5">12 digits. Without it this member cannot go in the EPFO ECR.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">ESIC IP number</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.esi_number}
                    onChange={e => setForm(f => ({ ...f, esi_number: e.target.value }))} />
-            <p className="text-[10px] text-ps-hint mt-0.5">Without it this member cannot go in the ESIC return.</p>
+            <p className="text-3xs text-ps-hint mt-0.5">Without it this member cannot go in the ESIC return.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Joining date</label>
             <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.joining_date}
                    onChange={e => setForm(f => ({ ...f, joining_date: e.target.value }))} />
-            <p className="text-[10px] text-ps-hint mt-0.5">
+            <p className="text-3xs text-ps-hint mt-0.5">
               Without it a mid-year joiner&apos;s tax is estimated over twelve months, not the months they actually work — which over-deducts.
             </p>
           </div>
@@ -388,7 +388,7 @@ export function AddEmployeeModal({
             <label className="block text-xs font-medium text-ps-body mb-1">IFSC</label>
             <input className="w-full border rounded-lg px-3 py-2 text-sm uppercase" value={form.bank_ifsc}
                    onChange={e => setForm(f => ({ ...f, bank_ifsc: e.target.value }))} maxLength={11} />
-            <p className="text-[10px] text-ps-hint mt-0.5">The account and IFSC are what a salary payment file is built from.</p>
+            <p className="text-3xs text-ps-hint mt-0.5">The account and IFSC are what a salary payment file is built from.</p>
           </div>
           <div className="col-span-2">
             <label className="block text-xs font-medium text-ps-body mb-1">Bank name</label>

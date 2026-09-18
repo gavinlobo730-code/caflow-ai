@@ -496,7 +496,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
         return (
           <div className="min-w-0">
             <p className={`truncate text-xs ${cls}`} title={e.main}>{e.main}</p>
-            {e.sub && <p className="truncate text-[10px] text-ps-hint" title={e.sub}>{e.sub}</p>}
+            {e.sub && <p className="truncate text-3xs text-ps-hint" title={e.sub}>{e.sub}</p>}
           </div>
         );
       },
@@ -515,7 +515,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       key: "state", header: "Status", width: "6.5rem", sortable: true,
       accessor: (t) => STATE_LABEL[t.entry_state],
       render: (t) => (
-        <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded border ${STATE_STYLE[t.entry_state]}`}
+        <span className={`inline-block text-3xs px-1.5 py-0.5 rounded border ${STATE_STYLE[t.entry_state]}`}
           title={t.posted_by_rule_id ? "Passed by a trusted rule" : undefined}>
           {STATE_LABEL[t.entry_state]}{t.posted_by_rule_id ? " · rule" : ""}
         </span>
@@ -529,20 +529,20 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
   const actionCell = (t: Entry) => {
     const stop = (e: React.MouseEvent) => e.stopPropagation();
     if (t.entry_state === "passed") {
-      return <button onClick={(e) => { stop(e); undoOne(t); }} className="text-[11px] px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><Undo2 size={11} /> Undo</button>;
+      return <button onClick={(e) => { stop(e); undoOne(t); }} className="text-2xs px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><Undo2 size={11} /> Undo</button>;
     }
     if (t.entry_state === "set_aside") {
-      return <button onClick={(e) => { stop(e); restoreOne(t); }} className="text-[11px] px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><RotateCcw size={11} /> Restore</button>;
+      return <button onClick={(e) => { stop(e); restoreOne(t); }} className="text-2xs px-2.5 py-1 border border-ps-border rounded-md text-ps-label hover:bg-ps-bg inline-flex items-center gap-1"><RotateCcw size={11} /> Restore</button>;
     }
-    if (t.entry_state === "covered") return <span className="text-[10px] text-ps-hint">—</span>;
+    if (t.entry_state === "covered") return <span className="text-3xs text-ps-hint">—</span>;
     const canPass = t.entry_state === "ready" || (t.entry_state === "proposed" && t.draft_source !== "document");
     if (canPass) {
       return <button onClick={(e) => { stop(e); passOne(t); }}
         title={t.entry_state === "proposed" ? "Accept the proposal and pass it" : "Pass this entry into the books"}
-        className={`text-[11px] px-2.5 py-1 rounded-md font-medium text-white ${t.entry_state === "ready" ? "bg-state-ready-solid hover:bg-state-ready" : "bg-brand hover:bg-brand-dark"}`}>Pass</button>;
+        className={`text-2xs px-2.5 py-1 rounded-md font-medium text-white ${t.entry_state === "ready" ? "bg-state-ready-solid hover:bg-state-ready" : "bg-brand hover:bg-brand-dark"}`}>Pass</button>;
     }
     return <button onClick={(e) => { stop(e); setDetailId(t.id); }}
-      className="text-[11px] px-2.5 py-1 rounded-md font-medium text-state-attention bg-state-attention-surface border border-state-attention-border hover:bg-state-attention-border">Answer</button>;
+      className="text-2xs px-2.5 py-1 rounded-md font-medium text-state-attention bg-state-attention-surface border border-state-attention-border hover:bg-state-attention-border">Answer</button>;
   };
 
   // ── bulk ─────────────────────────────────────────────────────────────────
@@ -766,7 +766,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
           onChange: ({ offset, pageSize: size }) => { setPageSize(size); setPage(Math.floor(offset / size)); },
         }}
       />
-      <p className="text-[10px] text-ps-hint text-center">
+      <p className="text-3xs text-ps-hint text-center">
         A line is a Receipt, a Payment or a Contra — the bank decides which. Click a line to answer it; Pass puts it in the books; Undo takes it back out.
       </p>
 
@@ -775,7 +775,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Book under a ledger">
             <h3 className="text-sm font-semibold text-ps-ink">Book {bookUnder.length} line{bookUnder.length === 1 ? "" : "s"} under…</h3>
             <AccountLookup accounts={orderedAccounts} value={bookAccountId} onChange={setBookAccountId} ariaLabel="Ledger" placeholder="Choose a ledger…" />
-            <p className="text-[10px] text-ps-hint">The lines become Ready with this ledger; nothing is passed until you pass it.</p>
+            <p className="text-3xs text-ps-hint">The lines become Ready with this ledger; nothing is passed until you pass it.</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setBookUnder(null)} disabled={bookBusy} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <button onClick={applyBookUnder} disabled={actionInFlight || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</button>
@@ -802,7 +802,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-sm font-semibold text-ps-ink">Bank accounts and statements</h3>
-                <p className="text-[11px] text-ps-hint mt-0.5">Add an account once; import a statement when the bank sends one. New lines are proposed for the moment an import finishes.</p>
+                <p className="text-2xs text-ps-hint mt-0.5">Add an account once; import a statement when the bank sends one. New lines are proposed for the moment an import finishes.</p>
               </div>
               <button onClick={() => setShowAccounts(false)} className="text-ps-hint hover:text-ps-label" aria-label="Close"><X size={16} /></button>
             </div>

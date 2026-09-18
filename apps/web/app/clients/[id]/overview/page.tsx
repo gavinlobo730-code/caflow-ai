@@ -150,7 +150,7 @@ export default function OverviewPage() {
         {/* Timeline */}
         <div className="bg-white rounded-xl border border-ps-border p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-ps-hint">
+            <p className="text-2xs font-semibold uppercase tracking-widest text-ps-hint">
               Activity
             </p>
             <FinancialYearPicker value={financialYear} onChange={setFinancialYear} ariaLabel="Activity financial year" />
@@ -176,8 +176,8 @@ export default function OverviewPage() {
                 <div key={i} className={`rounded-lg border px-2.5 py-2 flex items-start gap-2 ${colors}`}>
                   <Icon size={11} className="shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-[10px] font-semibold">{alert.dimension}</p>
-                    <p className="text-[10px] opacity-80 leading-snug">{alert.message}</p>
+                    <p className="text-3xs font-semibold">{alert.dimension}</p>
+                    <p className="text-3xs opacity-80 leading-snug">{alert.message}</p>
                   </div>
                 </div>
               );
@@ -188,7 +188,7 @@ export default function OverviewPage() {
         {/* Health score */}
         {health && (
           <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint">
+            <p className="text-3xs font-semibold uppercase tracking-widest text-ps-hint">
               Health Score
             </p>
             <div className="flex items-center gap-2">
@@ -205,11 +205,11 @@ export default function OverviewPage() {
 
         {/* Client info */}
         <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint">
+          <p className="text-3xs font-semibold uppercase tracking-widest text-ps-hint">
             Client
           </p>
           <p className="text-[13px] font-semibold text-ps-ink leading-snug">{client.client_name}</p>
-          <p className="text-[10px] text-ps-hint">
+          <p className="text-3xs text-ps-hint">
             {ENTITY_TYPE_LABELS[client.entity_type] ?? client.entity_type}
           </p>
           <div className="space-y-1.5 pt-1 border-t border-ps-border">
@@ -220,25 +220,25 @@ export default function OverviewPage() {
               <InfoRow label="GSTIN" value={client.gstin} mono />
             )}
             {client.email && (
-              <div className="flex items-center gap-1.5 text-[11px] text-ps-label">
+              <div className="flex items-center gap-1.5 text-2xs text-ps-label">
                 <Mail size={11} className="shrink-0" />
                 <span className="truncate">{client.email}</span>
               </div>
             )}
             {client.mobile && (
-              <div className="flex items-center gap-1.5 text-[11px] text-ps-label">
+              <div className="flex items-center gap-1.5 text-2xs text-ps-label">
                 <Phone size={11} className="shrink-0" />
                 <span>{client.mobile}</span>
               </div>
             )}
             {client.city && (
-              <div className="flex items-center gap-1.5 text-[11px] text-ps-label">
+              <div className="flex items-center gap-1.5 text-2xs text-ps-label">
                 <MapPin size={11} className="shrink-0" />
                 <span>{client.city}{client.state ? `, ${client.state}` : ""}</span>
               </div>
             )}
             {client.gst_filing_frequency && (
-              <div className="flex items-center gap-1.5 text-[11px] text-ps-label">
+              <div className="flex items-center gap-1.5 text-2xs text-ps-label">
                 <Calendar size={11} className="shrink-0" />
                 <span>GST: {client.gst_filing_frequency}</span>
               </div>
@@ -249,7 +249,7 @@ export default function OverviewPage() {
         {/* Upcoming deadlines */}
         {compliance.filter((c) => c.filing_status !== "filed" && c.due_date >= today).length > 0 && (
           <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-ps-hint">
+            <p className="text-3xs font-semibold uppercase tracking-widest text-ps-hint">
               Upcoming
             </p>
             <div className="space-y-2">
@@ -258,8 +258,8 @@ export default function OverviewPage() {
                 .slice(0, 4)
                 .map((c) => (
                   <div key={c.id} className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] text-ps-label truncate">{c.compliance_type}</p>
-                    <p className={`text-[10px] font-mono shrink-0 ${
+                    <p className="text-2xs text-ps-label truncate">{c.compliance_type}</p>
+                    <p className={`text-3xs font-mono shrink-0 ${
                       daysUntil(c.due_date) <= 7 ? "text-amber-600" : "text-ps-label"
                     }`}>
                       {formatDate(c.due_date)}
@@ -297,7 +297,7 @@ function StatCard({
     <div className={`rounded-xl border p-3 space-y-1 ${bg}`}>
       <div className="flex items-center gap-1.5">
         {icon}
-        <p className="text-[10px] text-ps-hint">{label}</p>
+        <p className="text-3xs text-ps-hint">{label}</p>
       </div>
       <p className="text-2xl font-bold text-ps-ink tabular-nums">{value}</p>
     </div>
@@ -310,8 +310,8 @@ function ScoreRow({ label, value }: { label: string; value: number }) {
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-ps-label">{label}</span>
-        <span className="text-[10px] font-semibold tabular-nums text-ps-ink">
+        <span className="text-3xs text-ps-label">{label}</span>
+        <span className="text-3xs font-semibold tabular-nums text-ps-ink">
           {value}
         </span>
       </div>
@@ -329,7 +329,7 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
   return (
     <div className="flex items-start gap-1.5">
       <span className="text-[9px] text-ps-hint mt-0.5 shrink-0 w-10">{label}</span>
-      <span className={`text-[11px] text-ps-label break-all ${mono ? "font-mono" : ""}`}>{value}</span>
+      <span className={`text-2xs text-ps-label break-all ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
 }

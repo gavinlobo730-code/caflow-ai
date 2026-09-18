@@ -93,8 +93,8 @@ export default function HealthAlertsPage() {
               <CardContent className="p-4 flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <Badge className={`text-[10px] ${SEVERITY_COLORS[a.severity] ?? "bg-gray-100 text-gray-600"}`}>{a.severity.toUpperCase()}</Badge>
-                    <span className="text-[10px] text-gray-500">{a.alert_type}</span>
+                    <Badge className={`text-3xs ${SEVERITY_COLORS[a.severity] ?? "bg-gray-100 text-gray-600"}`}>{a.severity.toUpperCase()}</Badge>
+                    <span className="text-3xs text-gray-500">{a.alert_type}</span>
                   </div>
                   <p className="text-sm text-gray-800">{a.message}</p>
                   <p className="text-xs text-gray-500 mt-1">Client: {a.client_id.slice(0,12)}… · {formatDate(a.created_at)}</p>

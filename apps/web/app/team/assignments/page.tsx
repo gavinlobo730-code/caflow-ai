@@ -103,7 +103,7 @@ export default function AssignmentsPage() {
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
           {/* Staff list */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-3 py-2 border-b border-gray-100 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+            <div className="px-3 py-2 border-b border-gray-100 text-2xs font-semibold uppercase tracking-wide text-gray-400">
               Staff
             </div>
             {members.length === 0 && <p className="px-3 py-4 text-[12px] text-gray-400">No staff members.</p>}
@@ -116,7 +116,7 @@ export default function AssignmentsPage() {
                 }`}
               >
                 <p className="text-[13px] font-medium">{m.full_name || m.email || "—"}</p>
-                <p className={`text-[11px] ${selectedUser === m.id ? "text-white/70" : "text-gray-400"}`}>{m.role}</p>
+                <p className={`text-2xs ${selectedUser === m.id ? "text-white/70" : "text-gray-400"}`}>{m.role}</p>
               </button>
             ))}
           </div>
@@ -135,7 +135,7 @@ export default function AssignmentsPage() {
                     placeholder="Filter clients…"
                     className="flex-1 text-sm outline-none"
                   />
-                  <span className="text-[11px] text-gray-400">{assigned.size} assigned</span>
+                  <span className="text-2xs text-gray-400">{assigned.size} assigned</span>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto">
                   {shownClients.map((c) => {
@@ -149,7 +149,7 @@ export default function AssignmentsPage() {
                       >
                         <div className="text-left">
                           <p className="text-[13px] text-brand">{c.client_name}</p>
-                          <p className="text-[11px] text-gray-400">{c.entity_type}{c.gstin ? ` · ${c.gstin}` : ""}</p>
+                          <p className="text-2xs text-gray-400">{c.entity_type}{c.gstin ? ` · ${c.gstin}` : ""}</p>
                         </div>
                         <span className={`flex items-center justify-center w-5 h-5 rounded border ${
                           on ? "bg-brand border-brand text-white" : "border-gray-300"

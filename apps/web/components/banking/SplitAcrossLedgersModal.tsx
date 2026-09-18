@@ -191,7 +191,7 @@ export function SplitAcrossLedgersModal({
           ) : (
             <>
               {!editable && (
-                <p className="text-[11px] text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
+                <p className="text-2xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
                   This line already has a journal, so its split is frozen. Undo the posting first.
                 </p>
               )}
@@ -214,7 +214,7 @@ export function SplitAcrossLedgersModal({
                       onChange={(e) => update(l.key, { narration: e.target.value })}
                       placeholder="What this part was for (optional)"
                       aria-label={`Note for line ${i + 1}`}
-                      className="mt-1 w-full border border-ps-border rounded px-2 py-1 text-[11px]"
+                      className="mt-1 w-full border border-ps-border rounded px-2 py-1 text-2xs"
                     />
                   </div>
                   <div className="w-32 shrink-0">
@@ -230,7 +230,7 @@ export function SplitAcrossLedgersModal({
                       type="button"
                       onClick={() => takeTheRest(l.key)}
                       disabled={!editable || saving}
-                      className="mt-1 w-full text-[10px] text-brand hover:underline disabled:opacity-40">
+                      className="mt-1 w-full text-3xs text-brand hover:underline disabled:opacity-40">
                       Take the rest
                     </button>
                   </div>
@@ -256,7 +256,7 @@ export function SplitAcrossLedgersModal({
             </>
           )}
 
-          {error && <p className="text-[11px] text-state-problem">{error}</p>}
+          {error && <p className="text-2xs text-state-problem">{error}</p>}
         </div>
 
         <div className="px-5 py-3 border-t border-ps-muted flex items-center gap-3">
@@ -270,7 +270,7 @@ export function SplitAcrossLedgersModal({
           {/* Only when the amount is NOT the problem — otherwise the figure to
               its left is already saying the same thing twice. */}
           {left === 0 && blocked && (
-            <p className="text-[10px] text-ps-hint truncate">{blocked}</p>
+            <p className="text-3xs text-ps-hint truncate">{blocked}</p>
           )}
           <div className="ml-auto flex items-center gap-2">
             {wasSplit && editable && (

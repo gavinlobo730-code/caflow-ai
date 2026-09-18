@@ -142,7 +142,7 @@ function ComplianceDashboard() {
           { label: "Overdue", value: s?.overdue ?? 0, cls: "text-red-600" },
         ].map((t) => (
           <div key={t.label} className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-[11px] text-gray-500 uppercase">{t.label}</p>
+            <p className="text-2xs text-gray-500 uppercase">{t.label}</p>
             <p className={`text-2xl font-semibold tabular-nums mt-1 ${t.cls}`}>{t.value}</p>
           </div>
         ))}
@@ -160,7 +160,7 @@ function ComplianceDashboard() {
           <div className="flex items-center gap-2">
             <CalendarClock size={15} className="text-brand" />
             <h2 className="text-sm font-semibold text-brand">Compliance queue</h2>
-            <span className="text-[11px] text-gray-400">{queue.length} of {dash?.queue?.length ?? 0}</span>
+            <span className="text-2xs text-gray-400">{queue.length} of {dash?.queue?.length ?? 0}</span>
           </div>
           <div className="flex gap-2">
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
@@ -205,7 +205,7 @@ function ComplianceDashboard() {
                       {overdue && <AlertTriangle size={11} className="inline mr-1 -mt-0.5" />}{o.due_date}
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[o.status] ?? "bg-gray-100 text-gray-600"}`}>{o.status}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${STATUS_BADGE[o.status] ?? "bg-gray-100 text-gray-600"}`}>{o.status}</span>
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-gray-500">{o.risk_score ?? "—"}</td>
                     <td className="px-4 py-2.5 text-right">
@@ -214,7 +214,7 @@ function ComplianceDashboard() {
                       ) : (
                         <select disabled={busy} defaultValue=""
                           onChange={(e) => { if (e.target.value) transition(o, e.target.value); }}
-                          className="text-[11px] border border-gray-200 rounded px-1.5 py-1 text-brand">
+                          className="text-2xs border border-gray-200 rounded px-1.5 py-1 text-brand">
                           <option value="">→ move to…</option>
                           {(NEXT_STATUS[o.status] ?? []).map((st) => <option key={st} value={st}>{st}</option>)}
                         </select>
@@ -228,7 +228,7 @@ function ComplianceDashboard() {
         )}
       </div>
 
-      <p className="text-[11px] text-gray-400 mt-4">
+      <p className="text-2xs text-gray-400 mt-4">
         Obligations are generated from active engagements using statutory due dates. Escalations are internal only —
         clients are never emailed. Nothing here files or submits to any government portal.
       </p>

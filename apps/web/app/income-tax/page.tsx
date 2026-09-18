@@ -351,7 +351,7 @@ function BulkMarkFiledModal({
                           }`}
                         />
                         {rowError && (
-                          <p className="text-[10px] text-red-600 mt-1">{rowError}</p>
+                          <p className="text-3xs text-red-600 mt-1">{rowError}</p>
                         )}
                       </div>
                     )}

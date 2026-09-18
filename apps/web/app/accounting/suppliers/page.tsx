@@ -512,7 +512,7 @@ export default function SuppliersPage() {
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-ps-hint mt-1 leading-tight">
+                <p className="text-2xs text-ps-hint mt-1 leading-tight">
                   A reverse-charge bill from an unregistered supplier needs a self-invoice
                   (CGST Act s.31(3)(f)). Left unrecorded, the self-invoice says so rather
                   than guessing.
@@ -535,7 +535,7 @@ export default function SuppliersPage() {
               </div>
 
               {form.tds_section && (
-                <p className="text-[11px] text-ps-hint leading-tight">
+                <p className="text-2xs text-ps-hint leading-tight">
                   The rate is the section&rsquo;s own, for the bill&rsquo;s financial year — it is not
                   recorded here. A lower rate under an Assessing Officer&rsquo;s s.197 certificate is
                   recorded against the certificate, on the client&rsquo;s TDS compliance screen.
@@ -546,12 +546,12 @@ export default function SuppliersPage() {
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Credit Limit (₹)</label>
                   <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_limit_rs} onChange={e => setForm(f => ({ ...f, credit_limit_rs: e.target.value }))} placeholder="Leave blank for none" />
-                  <p className="text-[11px] text-ps-hint mt-1 leading-tight">Recorded only — no bill is blocked or flagged by it.</p>
+                  <p className="text-2xs text-ps-hint mt-1 leading-tight">Recorded only — no bill is blocked or flagged by it.</p>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Payment Terms (days)</label>
                   <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={form.credit_days} onChange={e => setForm(f => ({ ...f, credit_days: e.target.value }))} placeholder="Leave blank if unconfirmed" />
-                  <p className="text-[11px] text-ps-hint mt-1 leading-tight">Blank and 0 differ: 0 is Due on Receipt.</p>
+                  <p className="text-2xs text-ps-hint mt-1 leading-tight">Blank and 0 differ: 0 is Due on Receipt.</p>
                 </div>
               </div>
 

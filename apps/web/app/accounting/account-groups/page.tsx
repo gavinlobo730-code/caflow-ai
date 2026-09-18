@@ -100,17 +100,17 @@ function LedgerDialog({ account, onClose, onSaved }:
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="block text-[11px] font-medium text-ps-label mb-1">Ledger name</label>
+            <label className="block text-2xs font-medium text-ps-label mb-1">Ledger name</label>
             <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                    value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-ps-label mb-1">Code</label>
+            <label className="block text-2xs font-medium text-ps-label mb-1">Code</label>
             <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs font-mono"
                    value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-ps-label mb-1">Type</label>
+            <label className="block text-2xs font-medium text-ps-label mb-1">Type</label>
             {account ? (
               // Fixed once anything can have been posted — it decides which side
               // of the trial balance this account falls on.
@@ -124,14 +124,14 @@ function LedgerDialog({ account, onClose, onSaved }:
             )}
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-ps-label mb-1">Parent group</label>
+            <label className="block text-2xs font-medium text-ps-label mb-1">Parent group</label>
             <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                    placeholder="Current Assets"
                    value={form.parent_group}
                    onChange={e => setForm(f => ({ ...f, parent_group: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-ps-label mb-1">Sub group</label>
+            <label className="block text-2xs font-medium text-ps-label mb-1">Sub group</label>
             <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                    placeholder="Sundry Debtors"
                    value={form.sub_group}
@@ -145,7 +145,7 @@ function LedgerDialog({ account, onClose, onSaved }:
             "Bank Account" reaches Cash & Cash Equivalents and a blank reaches
             the coarse fallback for the account's type. */}
         <div>
-          <label className="block text-[11px] font-medium text-ps-label mb-1">
+          <label className="block text-2xs font-medium text-ps-label mb-1">
             Nature (for the Balance Sheet)
           </label>
           <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
@@ -153,7 +153,7 @@ function LedgerDialog({ account, onClose, onSaved }:
                  value={form.account_subtype}
                  onChange={e => setForm(f => ({ ...f, account_subtype: e.target.value }))} />
           {!form.account_subtype.trim() && (
-            <p className="mt-1 text-[10px] text-amber-700">
+            <p className="mt-1 text-3xs text-amber-700">
               Without this, the ledger presents under the generic caption for its
               type — an Asset as Other Current Assets — on the Balance Sheet and
               in every year-end schedule. Schedule III Mapping can override it
@@ -165,7 +165,7 @@ function LedgerDialog({ account, onClose, onSaved }:
         {error && (
           <div className="flex gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
             <AlertCircle size={13} className="text-red-600 shrink-0 mt-0.5" />
-            <p className="text-[11px] text-red-700">{error}</p>
+            <p className="text-2xs text-red-700">{error}</p>
           </div>
         )}
 
@@ -290,7 +290,7 @@ export default function AccountGroupsPage() {
                 <span className="text-sm font-semibold text-ps-body">
                   {pg}
                   {derived.has(pg) && (
-                    <span className="ml-2 font-normal text-[10px] text-ps-hint"
+                    <span className="ml-2 font-normal text-3xs text-ps-hint"
                           title="No group recorded for these ledgers, so they are shown under their account type. Edit a ledger to file it where you want it.">
                       by account type
                     </span>
@@ -302,18 +302,18 @@ export default function AccountGroupsPage() {
                 <div key={sg}>
                   <div className="px-5 py-2 border-b border-ps-bg flex items-center justify-between bg-[#FAFAFA]">
                     <span className="text-xs font-medium text-ps-label">{sg}</span>
-                    <span className="text-[10px] text-ps-hint">{grouped[pg][sg].length}</span>
+                    <span className="text-3xs text-ps-hint">{grouped[pg][sg].length}</span>
                   </div>
                   <table className="w-full text-xs">
                     <tbody className="divide-y divide-ps-bg">
                       {grouped[pg][sg].map(acc => (
                         <tr key={acc.id} className="hover:bg-ps-bg">
-                          <td className="px-5 py-2 font-mono text-[10px] text-ps-hint w-16">{acc.account_code}</td>
+                          <td className="px-5 py-2 font-mono text-3xs text-ps-hint w-16">{acc.account_code}</td>
                           <td className="px-3 py-2 font-medium text-ps-ink">{acc.account_name}</td>
                           <td className="px-3 py-2 text-ps-label">{acc.account_type}</td>
                           <td className="px-3 py-2 text-ps-hint">{acc.account_subtype ?? "—"}</td>
                           <td className="px-5 py-2 text-right">
-                            <button onClick={() => setEditing(acc)} className="text-[11px] text-blue-600 hover:underline">Edit</button>
+                            <button onClick={() => setEditing(acc)} className="text-2xs text-blue-600 hover:underline">Edit</button>
                           </td>
                         </tr>
                       ))}

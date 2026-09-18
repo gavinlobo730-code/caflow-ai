@@ -98,7 +98,7 @@ export function Modal({
             <X size={16} />
           </button>
         </div>
-        {note && <p className="text-[11px] text-ps-label">{note}</p>}
+        {note && <p className="text-2xs text-ps-label">{note}</p>}
         {children}
       </div>
     </div>

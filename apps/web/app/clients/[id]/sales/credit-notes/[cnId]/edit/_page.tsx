@@ -75,7 +75,7 @@ export default function SalesCreditNotePageClient() {
           { label: "New Credit Note" },
         ]}
         title="New Credit Note"
-        statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">Draft</span>}
+        statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">Draft</span>}
       >
         <EmptyState
           title="No customers yet"
@@ -112,7 +112,7 @@ export default function SalesCreditNotePageClient() {
         { label: isNew ? "New Credit Note" : (note ? `Edit ${note.credit_note_no}` : "Edit Credit Note") },
       ]}
       title={isNew ? "New Credit Note" : (note ? `Edit ${note.credit_note_no}` : "Edit Credit Note")}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">{isNew ? "Draft" : (note ? note.status : "…")}</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">{isNew ? "Draft" : (note ? note.status : "…")}</span>}
       toolbar={!error ? <InvoiceToolbarSkeleton /> : undefined}
       summary={!error ? <SummaryPanelSkeleton /> : undefined}
     >

@@ -204,7 +204,7 @@ export default function NotesPage() {
                 <span className="text-xs font-semibold text-ps-body min-w-[56px]">
                   Note {noteNumber(note)}
                 </span>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[noteType(note)] ?? "bg-ps-muted text-ps-label"}`}>
+                <span className={`text-3xs font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[noteType(note)] ?? "bg-ps-muted text-ps-label"}`}>
                   {noteType(note) === "auto" ? "Auto-generated" : "Manual"}
                 </span>
                 <p className="text-xs text-ps-label flex-1 truncate">{note.title}</p>
@@ -293,12 +293,12 @@ export default function NotesPage() {
                     </div>
                   )}
                   {note.is_locked && (
-                    <div className="flex items-center gap-1.5 text-[10px] text-ps-hint">
+                    <div className="flex items-center gap-1.5 text-3xs text-ps-hint">
                       <Unlock size={10} /> Note is locked — contact an admin to unlock.
                     </div>
                   )}
 
-                  <p className="text-[10px] text-ps-disabled">
+                  <p className="text-3xs text-ps-disabled">
                     Updated {new Date(note.updated_at).toLocaleDateString("en-IN")}
                   </p>
                 </div>
@@ -332,7 +332,7 @@ function FixedAssetMovement({ data }: { data?: NoteData | null }) {
   return (
     <div className="space-y-2">
       <div className="overflow-x-auto rounded-lg border border-ps-border">
-        <table className="w-full text-[11px]">
+        <table className="w-full text-2xs">
           <thead>
             <tr className="bg-ps-bg text-ps-label">
               <th className="px-3 py-2 text-left font-semibold">Class</th>
@@ -373,8 +373,8 @@ function FixedAssetMovement({ data }: { data?: NoteData | null }) {
       </div>
       {gaps.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
-          <p className="text-[11px] font-semibold text-amber-900">What this note does not account for</p>
-          {gaps.map((g, i) => <p key={i} className="text-[11px] text-amber-800">{g}</p>)}
+          <p className="text-2xs font-semibold text-amber-900">What this note does not account for</p>
+          {gaps.map((g, i) => <p key={i} className="text-2xs text-amber-800">{g}</p>)}
         </div>
       )}
     </div>
@@ -406,7 +406,7 @@ function AutoNoteContent({ content, locked }: { content: string | null; locked: 
               <thead>
                 <tr className="border-b border-ps-border text-ps-hint">
                   {parsed.headers.map((h, i) => (
-                    <th key={i} className="py-2 px-3 text-left font-semibold text-[10px]">{h}</th>
+                    <th key={i} className="py-2 px-3 text-left font-semibold text-3xs">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -425,7 +425,7 @@ function AutoNoteContent({ content, locked }: { content: string | null; locked: 
               </tbody>
             </table>
           </div>
-          {locked && <p className="text-[10px] text-ps-hint">🔒 Locked</p>}
+          {locked && <p className="text-3xs text-ps-hint">🔒 Locked</p>}
         </div>
       );
     }

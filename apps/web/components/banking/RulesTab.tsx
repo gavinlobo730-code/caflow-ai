@@ -252,7 +252,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
     <div className="space-y-4 max-w-3xl mx-auto">
       <div className="bg-ps-hover border border-brand-light rounded-xl px-4 py-3">
         <p className="text-xs font-semibold text-brand-dark">How rules work</p>
-        <p className="text-[11px] text-brand mt-1">
+        <p className="text-2xs text-brand mt-1">
           A rule watches for lines that match its conditions and <strong>proposes</strong> how to book
           them — the proposal shows on the line in Entries, ready to pass. A rule marked{" "}
           <strong>trusted</strong> goes one step further: its lines are passed with no click, after each
@@ -279,7 +279,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
             <input value={form.rule_name} onChange={(e) => setForm((f) => ({ ...f, rule_name: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. HDFC bank charges" />
           </div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-ps-hint pt-1">When</p>
+          <p className="text-3xs font-semibold uppercase tracking-wide text-ps-hint pt-1">When</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Look at</label>
@@ -291,7 +291,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                 <option value="payee_name">The payee name</option>
                 <option value="any">Any of the three</option>
               </select>
-              <p className="text-[10px] text-ps-hint mt-1">
+              <p className="text-3xs text-ps-hint mt-1">
                 The reference is often the only part a bank does not rewrite each month.
               </p>
             </div>
@@ -310,7 +310,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
             <label className="block text-xs font-medium text-ps-label mb-1">Text to match</label>
             <input value={form.description_pattern} onChange={(e) => setForm((f) => ({ ...f, description_pattern: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. BANK CHARGES" />
-            <p className="text-[10px] text-ps-hint mt-1">Plain text, not case-sensitive. No wildcards.</p>
+            <p className="text-3xs text-ps-hint mt-1">Plain text, not case-sensitive. No wildcards.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Or any of these (one per line)</label>
@@ -318,7 +318,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
               onChange={(e) => setForm((f) => ({ ...f, description_patterns: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
               placeholder={"ACME TRADERS\nACME EXPORTS\nACME PVT LTD"} />
-            <p className="text-[10px] text-ps-hint mt-1">
+            <p className="text-3xs text-ps-hint mt-1">
               Matched the same way, against the same field. Three customers, one rule.
             </p>
           </div>
@@ -348,19 +348,19 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
             <input type="number" step="1" value={form.priority}
               onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="100" />
-            <p className="text-[10px] text-ps-hint mt-1">
+            <p className="text-3xs text-ps-hint mt-1">
               Lower runs first. The first rule that fires wins, so give a narrow
               rule a smaller number than the broad one it sits under.
             </p>
           </div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-ps-hint pt-1">Propose</p>
+          <p className="text-3xs font-semibold uppercase tracking-wide text-ps-hint pt-1">Propose</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Book under</label>
               <AccountLookup accounts={accounts} value={form.suggested_account_id}
                 onChange={(v) => setForm((f) => ({ ...f, suggested_account_id: v }))}
                 ariaLabel="Ledger the rule proposes" placeholder="— None —" />
-              <p className="text-[10px] text-ps-hint mt-1">A trusted rule must name a ledger.</p>
+              <p className="text-3xs text-ps-hint mt-1">A trusted rule must name a ledger.</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Category</label>
@@ -384,7 +384,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                 <option value="">— Don&apos;t split —</option>
                 {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <p className="text-[10px] text-ps-hint mt-1">
+              <p className="text-3xs text-ps-hint mt-1">
                 Statement amounts are GST-inclusive. On money out the split claims the input credit
                 (CGST Act s.16); on money in it books the output tax owed (s.9). 18% is usual on bank charges.
               </p>
@@ -398,7 +398,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                     className="mt-0.5 h-3.5 w-3.5 rounded border-ps-disabled" />
                   <span className="text-xs text-ps-label">Inter-state (IGST)</span>
                 </label>
-                <p className="text-[10px] text-ps-hint mt-1">Tick when this bank is registered outside the client&apos;s state (IGST Act s.12(12)).</p>
+                <p className="text-3xs text-ps-hint mt-1">Tick when this bank is registered outside the client&apos;s state (IGST Act s.12(12)).</p>
               </div>
             )}
           </div>
@@ -420,53 +420,53 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
       ) : rules.length === 0 ? (
         <div className="bg-white rounded-xl border border-ps-muted p-10 text-center">
           <p className="text-sm text-ps-hint">No rules yet.</p>
-          <p className="text-[11px] text-ps-hint mt-1">Rules save re-booking the same line every month — bank charges, salary, a recurring vendor. Book a few lines under a ledger in Entries and it will offer to make one.</p>
+          <p className="text-2xs text-ps-hint mt-1">Rules save re-booking the same line every month — bank charges, salary, a recurring vendor. Book a few lines under a ledger in Entries and it will offer to make one.</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-muted overflow-hidden divide-y divide-ps-bg">
           {rules.map((r, i) => (
             <div key={r.id} className={`px-4 py-3 flex items-start gap-3 ${r.is_active ? "" : "bg-ps-surface"}`}>
-              <span className="text-[10px] text-ps-disabled font-mono mt-0.5 w-4 shrink-0">{i + 1}</span>
+              <span className="text-3xs text-ps-disabled font-mono mt-0.5 w-4 shrink-0">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className={`text-xs font-medium truncate ${r.is_active ? "text-ps-ink" : "text-ps-hint"}`}>{r.rule_name}</p>
-                  {!r.is_active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-hint">Off</span>}
+                  {!r.is_active && <span className="text-3xs px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-hint">Off</span>}
                   {/* Only when it is NOT the default. The number on the left is
                       already the evaluation position — this says which rules
                       were deliberately moved, which is the question a CA asks
                       when one rule beats another. */}
                   {r.priority != null && r.priority !== 100 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-label font-mono"
+                    <span className="text-3xs px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-label font-mono"
                       title="Lower runs first. The first rule that fires wins.">
                       priority {r.priority}
                     </span>
                   )}
                   {r.is_trusted && (
-                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-state-ready-surface text-state-ready border border-state-ready-border"
+                    <span className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-full bg-state-ready-surface text-state-ready border border-state-ready-border"
                       title={r.trusted_at ? `Trusted on ${r.trusted_at.slice(0, 10)}` : "Trusted"}>
                       <ShieldCheck size={10} /> Trusted — passes without a click
                     </span>
                   )}
                 </div>
-                <p className="text-[10px] text-ps-hint mt-0.5">When {conditionSummary(r)}</p>
-                <p className="text-[10px] text-ps-label mt-0.5">
+                <p className="text-3xs text-ps-hint mt-0.5">When {conditionSummary(r)}</p>
+                <p className="text-3xs text-ps-label mt-0.5">
                   {r.is_trusted ? "Pass as" : "Propose"}{" "}
                   {[accountName(r.suggested_account_id), r.suggested_category, r.suggested_narration, gstSummary(r)].filter(Boolean).join(" · ")}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Can resource="banking" action="approve"
-                  fallback={r.is_trusted ? <span className="text-[10px] text-ps-hint" title="Only a Manager or Partner can change this">trusted</span> : null}>
+                  fallback={r.is_trusted ? <span className="text-3xs text-ps-hint" title="Only a Manager or Partner can change this">trusted</span> : null}>
                   {r.is_active && (
                     <button onClick={() => trust(r, !r.is_trusted)} disabled={busy[r.id] || (!r.is_trusted && !r.suggested_account_id)}
                       title={!r.is_trusted && !r.suggested_account_id ? "Give the rule a ledger first" : r.is_trusted ? "Stop it passing on its own" : "Let it pass its lines without a click"}
-                      className={`text-[10px] px-2 py-1 border rounded ${r.is_trusted ? "border-ps-border text-ps-label hover:bg-ps-bg" : "border-state-ready-border bg-state-ready-surface text-state-ready hover:bg-emerald-100"} disabled:opacity-40`}>
+                      className={`text-3xs px-2 py-1 border rounded ${r.is_trusted ? "border-ps-border text-ps-label hover:bg-ps-bg" : "border-state-ready-border bg-state-ready-surface text-state-ready hover:bg-emerald-100"} disabled:opacity-40`}>
                       {r.is_trusted ? "Un-trust" : "Trust"}
                     </button>
                   )}
                 </Can>
                 <button onClick={() => patch(r, { is_active: !r.is_active }, "Couldn't change the rule")} disabled={busy[r.id]}
-                  className="text-[10px] px-2 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
+                  className="text-3xs px-2 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
                   {r.is_active ? "Turn off" : "Turn on"}
                 </button>
                 <button onClick={() => startEdit(r)} disabled={busy[r.id]} className="text-ps-hint hover:text-ps-label" aria-label={`Edit ${r.rule_name}`}><Pencil size={13} /></button>

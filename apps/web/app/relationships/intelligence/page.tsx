@@ -321,18 +321,18 @@ export default function RelationshipIntelligencePage() {
                         <td className="px-3 py-3">
                           <div className="flex gap-1 flex-wrap">
                             {loan.section_185_flagged && (
-                              <Badge className="bg-amber-100 text-amber-700 text-[10px]">
+                              <Badge className="bg-amber-100 text-amber-700 text-3xs">
                                 Sec 185
                               </Badge>
                             )}
                             {loan.section_186_flagged && (
-                              <Badge className="bg-orange-100 text-orange-700 text-[10px]">
+                              <Badge className="bg-orange-100 text-orange-700 text-3xs">
                                 Sec 186
                               </Badge>
                             )}
                             {loan.loan_type === "inter_company" &&
                               loan.principal_paise >= 10_000_000_00 && (
-                                <Badge className="bg-blue-100 text-blue-700 text-[10px]">
+                                <Badge className="bg-blue-100 text-blue-700 text-3xs">
                                   TP Risk
                                 </Badge>
                               )}
@@ -425,7 +425,7 @@ export default function RelationshipIntelligencePage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <Badge className="capitalize bg-gray-100 text-gray-600 text-[10px]">
+                      <Badge className="capitalize bg-gray-100 text-gray-600 text-3xs">
                         {m.match_type}
                       </Badge>
                       {m.reviewed ? (

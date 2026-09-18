@@ -299,9 +299,9 @@ export default function WorkflowsPage() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-brand text-sm">{template.name}</span>
                             {template.is_system && (
-                              <span className="text-[10px] bg-[#EFF6FF] text-brand px-2 py-0.5 rounded-full font-medium">SYSTEM</span>
+                              <span className="text-3xs bg-[#EFF6FF] text-brand px-2 py-0.5 rounded-full font-medium">SYSTEM</span>
                             )}
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[template.category] || CATEGORY_COLORS.general}`}>
+                            <span className={`text-3xs px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[template.category] || CATEGORY_COLORS.general}`}>
                               {template.category.toUpperCase().replace("_", " ")}
                             </span>
                           </div>

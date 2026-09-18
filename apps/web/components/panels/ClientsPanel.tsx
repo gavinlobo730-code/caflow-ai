@@ -33,7 +33,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 shrink-0">
         <p className="text-[13px] font-semibold text-brand">Clients</p>
-        <p className="text-[11px] text-gray-500 mt-0.5">Client management</p>
+        <p className="text-2xs text-gray-500 mt-0.5">Client management</p>
       </div>
 
       {/* Search shortcut */}
@@ -44,13 +44,13 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
         >
           <Search size={12} className="shrink-0" />
           <span className="flex-1 text-left">Search clients...</span>
-          <kbd className="text-[10px] text-ps-disabled font-mono">⌘K</kbd>
+          <kbd className="text-3xs text-ps-disabled font-mono">⌘K</kbd>
         </button>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-1">
+        <p className="text-3xs font-semibold uppercase tracking-[0.08em] text-gray-400 px-2 mb-1.5 mt-1">
           Navigate
         </p>
         <div className="space-y-0.5">
@@ -84,7 +84,7 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
         </div>
 
         <div className="mt-4 mx-2 p-2.5 rounded-[7px] bg-ps-bg border border-gray-200">
-          <p className="text-[11px] text-gray-500 leading-relaxed">
+          <p className="text-2xs text-gray-500 leading-relaxed">
             Select a client from{" "}
             <Link href="/clients" className="text-blue-600 hover:underline">
               All Clients

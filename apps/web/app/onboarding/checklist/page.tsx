@@ -164,7 +164,7 @@ function StepRow({
     >
       {/* Step number + icon */}
       <div className="flex flex-col items-center gap-1 pt-0.5 shrink-0">
-        <div className="w-6 h-6 rounded-full bg-ps-muted flex items-center justify-center text-[10px] font-bold text-ps-label">
+        <div className="w-6 h-6 rounded-full bg-ps-muted flex items-center justify-center text-3xs font-bold text-ps-label">
           {step.step_number}
         </div>
       </div>

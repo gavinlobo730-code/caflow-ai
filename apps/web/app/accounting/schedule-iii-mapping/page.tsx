@@ -141,7 +141,7 @@ export default function ScheduleIIIMappingPage() {
         ? acc.schedule_iii_mapping : UNMAPPED}
       disabled={saving === acc.id}
       onChange={e => setMapping(acc, e.target.value)}
-      className="text-[11px] border border-ps-border rounded-md px-2 py-1 bg-white max-w-[210px] disabled:opacity-50"
+      className="text-2xs border border-ps-border rounded-md px-2 py-1 bg-white max-w-[210px] disabled:opacity-50"
     >
       <option value={UNMAPPED}>— not mapped —</option>
       {sections.map(s => (
@@ -154,7 +154,7 @@ export default function ScheduleIIIMappingPage() {
 
   const row = (acc: CoaRow) => (
     <tr key={acc.id} className="hover:bg-ps-bg">
-      <td className="px-4 py-2 font-mono text-[10px] text-ps-hint w-16">{acc.account_code}</td>
+      <td className="px-4 py-2 font-mono text-3xs text-ps-hint w-16">{acc.account_code}</td>
       <td className="px-3 py-2 font-medium text-ps-ink">{acc.account_name}</td>
       <td className="px-3 py-2 text-ps-label">{acc.account_type}</td>
       <td className="px-3 py-2 text-ps-label">{acc.tax_category ?? "—"}</td>
@@ -166,11 +166,11 @@ export default function ScheduleIIIMappingPage() {
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-4 py-2.5 border-b border-ps-bg flex items-center justify-between">
         <span className="text-xs font-semibold text-ps-body">{heading}</span>
-        <span className="text-[10px] text-ps-hint">{rows.length} account{rows.length !== 1 ? "s" : ""}</span>
+        <span className="text-3xs text-ps-hint">{rows.length} account{rows.length !== 1 ? "s" : ""}</span>
       </div>
-      {note && <div className="px-4 py-1.5 text-[10px] text-ps-hint border-b border-ps-bg">{note}</div>}
+      {note && <div className="px-4 py-1.5 text-3xs text-ps-hint border-b border-ps-bg">{note}</div>}
       {rows.length === 0 ? (
-        <div className="px-4 py-2 text-[10px] text-ps-hint italic">No accounts mapped</div>
+        <div className="px-4 py-2 text-3xs text-ps-hint italic">No accounts mapped</div>
       ) : (
         <table className="w-full text-xs">
           <tbody className="divide-y divide-ps-bg">{rows.map(row)}</tbody>

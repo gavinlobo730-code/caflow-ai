@@ -106,7 +106,7 @@ function cell(c: Cell) {
 }
 
 const DemoBadge = () => (
-  <span className="ml-2 align-middle text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-400 text-amber-950">DEMO</span>
+  <span className="ml-2 align-middle text-3xs font-bold px-1.5 py-0.5 rounded bg-amber-400 text-amber-950">DEMO</span>
 );
 
 export default function FilingDemoWizard({
@@ -298,7 +298,7 @@ export default function FilingDemoWizard({
                         <option key={o} value={o}>{o}</option>
                       ))}
                     </select>
-                    {stage.note && <p className="text-[11px] text-amber-800 mt-1">{stage.note}</p>}
+                    {stage.note && <p className="text-2xs text-amber-800 mt-1">{stage.note}</p>}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -318,7 +318,7 @@ export default function FilingDemoWizard({
                     <button onClick={back} className="px-3 py-2 border rounded text-sm">Back</button>
                   </div>
                   {(!declared || !signatory) && (
-                    <p className="text-[11px] text-ps-hint">
+                    <p className="text-2xs text-ps-hint">
                       The portal keeps this disabled until the declaration is ticked and a
                       signatory chosen. So does the demo.
                     </p>
@@ -338,7 +338,7 @@ export default function FilingDemoWizard({
                     ))}
                     <button onClick={back} className="px-3 py-2 border rounded text-sm">Back</button>
                   </div>
-                  <ul className="text-[11px] text-ps-label space-y-0.5">
+                  <ul className="text-2xs text-ps-label space-y-0.5">
                     {(stage.methods ?? []).map((m) => (
                       <li key={m.key}><strong>{m.label}:</strong> {m.note}</li>
                     ))}
@@ -362,12 +362,12 @@ export default function FilingDemoWizard({
                           className="w-8 h-9 rounded border border-ps-border-strong bg-white" />
                       ))}
                     </div>
-                    <p className="text-[11px] text-ps-label mt-2">
+                    <p className="text-2xs text-ps-label mt-2">
                       This is the portal&apos;s screen, not one PracticeSync has.
                       Entered on the authority&apos;s own site.
                     </p>
                   </div>
-                  {stage.note && <p className="text-[11px] text-amber-800">{stage.note}</p>}
+                  {stage.note && <p className="text-2xs text-amber-800">{stage.note}</p>}
                   <div className="flex gap-2">
                     <button onClick={advance}
                       className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
@@ -420,12 +420,12 @@ export default function FilingDemoWizard({
                       nothing was sent, and no return has been filed.
                     </p>
                     <div>
-                      <p className="text-[11px] text-green-800">{stage.reference_label}</p>
+                      <p className="text-2xs text-green-800">{stage.reference_label}</p>
                       <p className="text-lg font-mono font-semibold tracking-wider text-green-900">
                         {stage.specimen}
-                        <span className="ml-2 align-middle text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-400 text-amber-950">SPECIMEN</span>
+                        <span className="ml-2 align-middle text-3xs font-bold px-1.5 py-0.5 rounded bg-amber-400 text-amber-950">SPECIMEN</span>
                       </p>
-                      <p className="text-[11px] text-amber-800">{stage.specimen_note}</p>
+                      <p className="text-2xs text-amber-800">{stage.specimen_note}</p>
                     </div>
                     <p className="text-xs text-green-800">{stage.filed_line}</p>
                   </div>
@@ -437,9 +437,9 @@ export default function FilingDemoWizard({
                     <p className="text-xs text-amber-900">{script.disclaimer}</p>
                   </div>
                   <div className="rounded border border-ps-border bg-ps-bg p-3">
-                    <p className="text-[11px] font-semibold text-ps-body">How this is really filed today</p>
-                    <p className="text-[11px] text-ps-label">{script.real_channel.how}</p>
-                    <p className="text-[11px] text-ps-label mt-1">
+                    <p className="text-2xs font-semibold text-ps-body">How this is really filed today</p>
+                    <p className="text-2xs text-ps-label">{script.real_channel.how}</p>
+                    <p className="text-2xs text-ps-label mt-1">
                       {script.real_channel.software_permitted
                         ? "Software IS permitted to transmit this filing in India — that is the API integration on the roadmap."
                         : "No public API lets software transmit this today; the roadmap integration depends on the authority."}
@@ -454,8 +454,8 @@ export default function FilingDemoWizard({
                       who has to obtain it, and what they will do differently
                       the day it arrives. */}
                   <div className="rounded border border-ps-border bg-white p-3">
-                    <p className="text-[11px] font-semibold text-ps-body">What changes when this is real</p>
-                    <p className="text-[11px] text-ps-label">{script.when_this_is_real}</p>
+                    <p className="text-2xs font-semibold text-ps-body">What changes when this is real</p>
+                    <p className="text-2xs text-ps-label">{script.when_this_is_real}</p>
                   </div>
                 </div>
               )}
@@ -464,7 +464,7 @@ export default function FilingDemoWizard({
         </div>
 
         <div className="px-5 py-3 border-t flex justify-between items-center">
-          <span className="text-[11px] text-ps-hint">
+          <span className="text-2xs text-ps-hint">
             {stage?.kind === "result" ? "Nothing was transmitted." : "Step through as the portal would."}
           </span>
           <button onClick={onClose}

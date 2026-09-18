@@ -153,28 +153,28 @@ export default function ClientRatioNotePage() {
         <div className="min-w-0">
           <button
             onClick={() => router.push(`/clients/${clientId}/reports`)}
-            className="flex items-center gap-1 text-[11px] text-ps-hint hover:text-ps-label mb-1.5"
+            className="flex items-center gap-1 text-2xs text-ps-hint hover:text-ps-label mb-1.5"
           >
             <ArrowLeft size={12} /> Reports
           </button>
           <h2 className="text-sm font-semibold text-ps-ink">Ratio analysis</h2>
-          <p className="text-[11px] text-ps-hint mt-0.5">
+          <p className="text-2xs text-ps-hint mt-0.5">
             {note?.statute ??
               "Schedule III to the Companies Act 2013, Division I — Additional Regulatory Information, clause (Q)"}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <label className="text-[11px] text-ps-label">FY</label>
+          <label className="text-2xs text-ps-label">FY</label>
           <select
             value={fy}
             onChange={(e) => setFy(e.target.value)}
-            className="text-[11px] border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
+            className="text-2xs border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
           >
             {fyOptions().map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
           <button
             onClick={load}
-            className="flex items-center gap-1.5 text-[11px] text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5"
+            className="flex items-center gap-1.5 text-2xs text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5"
           >
             <RefreshCw size={12} /> Refresh
           </button>
@@ -182,7 +182,7 @@ export default function ClientRatioNotePage() {
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-[11px] text-ps-hint py-8">
+        <div className="flex items-center gap-2 text-2xs text-ps-hint py-8">
           <Loader2 size={14} className="animate-spin" /> Computing both years…
         </div>
       )}
@@ -190,7 +190,7 @@ export default function ClientRatioNotePage() {
       {error && (
         <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
           <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-[11px] text-red-700">{error}</p>
+          <p className="text-2xs text-red-700">{error}</p>
         </div>
       )}
 
@@ -199,7 +199,7 @@ export default function ClientRatioNotePage() {
           {outstanding > 0 && (
             <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
               <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-amber-900">
+              <p className="text-2xs text-amber-900">
                 <span className="font-medium">
                   {outstanding} ratio{outstanding === 1 ? "" : "s"} moved by more than 25%
                 </span>{" "}
@@ -214,7 +214,7 @@ export default function ClientRatioNotePage() {
               {note.gaps.map((g) => (
                 <div key={g.code} className="flex items-start gap-2.5">
                   <Info size={13} className="text-ps-hint flex-shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-ps-label">{g.message}</p>
+                  <p className="text-3xs text-ps-label">{g.message}</p>
                 </div>
               ))}
             </div>
@@ -228,7 +228,7 @@ export default function ClientRatioNotePage() {
                   <span className="font-normal text-ps-hint"> compared with {note.preceding_fy}</span>
                 )}
               </p>
-              <p className="text-[10px] text-ps-hint mt-0.5">
+              <p className="text-3xs text-ps-hint mt-0.5">
                 The items in each numerator and denominator are shown because clause (Q)
                 requires them to be explained — they are part of the disclosure.
               </p>
@@ -284,23 +284,23 @@ function RatioRow({
       <div className="flex items-start gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-ps-hint tabular-nums">{r.clause}</span>
+            <span className="text-3xs text-ps-hint tabular-nums">{r.clause}</span>
             <p className="text-xs font-medium text-ps-ink">{r.label}</p>
           </div>
           {r.numerator && (
-            <p className="text-[10px] text-ps-label mt-1">
+            <p className="text-3xs text-ps-label mt-1">
               <span className="text-ps-hint">Numerator</span> {r.numerator.label} ·{" "}
               <span className="tabular-nums">{formatPaise(r.numerator.paise)}</span>
             </p>
           )}
           {r.denominator && (
-            <p className="text-[10px] text-ps-label mt-0.5">
+            <p className="text-3xs text-ps-label mt-0.5">
               <span className="text-ps-hint">Denominator</span> {r.denominator.label} ·{" "}
               <span className="tabular-nums">{formatPaise(r.denominator.paise)}</span>
             </p>
           )}
           {r.unavailable_reason && (
-            <p className="text-[10px] text-amber-800 mt-1.5 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+            <p className="text-3xs text-amber-800 mt-1.5 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
               {r.unavailable_reason}
             </p>
           )}
@@ -311,19 +311,19 @@ function RatioRow({
             {r.unavailable_reason ? "Not computed" : formatBps(r.value_bps, r.unit)}
           </p>
           {precedingFy && (
-            <p className="text-[10px] text-ps-hint mt-0.5 tabular-nums">
+            <p className="text-3xs text-ps-hint mt-0.5 tabular-nums">
               {precedingFy}: {formatBps(r.prior_value_bps, r.unit)}
             </p>
           )}
           {r.variance_bps !== null && (
-            <p className={`text-[10px] mt-0.5 tabular-nums ${
+            <p className={`text-3xs mt-0.5 tabular-nums ${
               r.needs_explanation ? "text-amber-700 font-medium" : "text-ps-hint"
             }`}>
               {formatVariance(r.variance_bps)}
             </p>
           )}
           {r.needs_explanation && r.variance_bps === null && (
-            <p className="text-[10px] mt-0.5 text-amber-700 font-medium">
+            <p className="text-3xs mt-0.5 text-amber-700 font-medium">
               was nil last year
             </p>
           )}
@@ -333,18 +333,18 @@ function RatioRow({
       {/* The one figure the books cannot supply, entered where it is missed. */}
       {r.key === "dscr" && r.unavailable_reason && (
         <div className="mt-2 flex items-center gap-2">
-          <label className="text-[10px] text-ps-label">Principal repaid this year (₹)</label>
+          <label className="text-3xs text-ps-label">Principal repaid this year (₹)</label>
           <input
             value={principal}
             onChange={(e) => onPrincipal(e.target.value)}
             placeholder="e.g. 200000"
             inputMode="decimal"
-            className="text-[11px] border border-ps-border rounded-lg px-2.5 py-1 w-40 text-ps-body"
+            className="text-2xs border border-ps-border rounded-lg px-2.5 py-1 w-40 text-ps-body"
           />
           <button
             onClick={onSavePrincipal}
             disabled={busy}
-            className="text-[10px] border border-ps-border rounded-md px-2.5 py-1 text-ps-label hover:bg-ps-muted disabled:opacity-50"
+            className="text-3xs border border-ps-border rounded-md px-2.5 py-1 text-ps-label hover:bg-ps-muted disabled:opacity-50"
           >
             {busy ? "…" : "Save"}
           </button>
@@ -361,36 +361,36 @@ function RatioRow({
                 onChange={(e) => onDraft(e.target.value)}
                 rows={2}
                 placeholder="Why did this ratio move? This wording goes into the note."
-                className="flex-1 text-[11px] border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body"
+                className="flex-1 text-2xs border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body"
               />
               <button
                 onClick={onSave}
                 disabled={busy || !draft.trim()}
-                className="text-[10px] border border-blue-200 bg-blue-50 text-blue-700 rounded-md px-2 py-1 hover:bg-blue-100 disabled:opacity-50"
+                className="text-3xs border border-blue-200 bg-blue-50 text-blue-700 rounded-md px-2 py-1 hover:bg-blue-100 disabled:opacity-50"
               >
                 {busy ? "…" : <Check size={12} />}
               </button>
               <button
                 onClick={onCancel}
-                className="text-[10px] border border-ps-border rounded-md px-2 py-1 text-ps-hint hover:bg-ps-muted"
+                className="text-3xs border border-ps-border rounded-md px-2 py-1 text-ps-hint hover:bg-ps-muted"
               >
                 <X size={12} />
               </button>
             </div>
           ) : r.explanation ? (
             <div className="flex items-start gap-2">
-              <p className="text-[10px] text-ps-body bg-ps-bg border border-ps-border rounded-lg px-2.5 py-1.5 flex-1">
+              <p className="text-3xs text-ps-body bg-ps-bg border border-ps-border rounded-lg px-2.5 py-1.5 flex-1">
                 {r.explanation}
               </p>
               <button onClick={onEdit}
-                className="text-[10px] text-ps-label hover:underline px-1 py-1">Edit</button>
+                className="text-3xs text-ps-label hover:underline px-1 py-1">Edit</button>
               <button onClick={onClear} disabled={busy}
-                className="text-[10px] text-ps-hint hover:underline px-1 py-1 disabled:opacity-50">Clear</button>
+                className="text-3xs text-ps-hint hover:underline px-1 py-1 disabled:opacity-50">Clear</button>
             </div>
           ) : (
             <button
               onClick={onEdit}
-              className="text-[10px] border border-amber-200 bg-amber-50 text-amber-800 rounded-md px-2.5 py-1 hover:bg-amber-100"
+              className="text-3xs border border-amber-200 bg-amber-50 text-amber-800 rounded-md px-2.5 py-1 hover:bg-amber-100"
             >
               Explain this movement
             </button>

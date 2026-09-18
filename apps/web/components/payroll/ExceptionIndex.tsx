@@ -90,7 +90,7 @@ export function ExceptionIndexTab() {
         {Object.keys(summary).length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3">
             {Object.entries(summary).map(([kind, n]) => (
-              <span key={kind} className="text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-800">
+              <span key={kind} className="text-2xs px-2 py-0.5 rounded bg-amber-50 text-amber-800">
                 {EXCEPTION_LABEL[kind] ?? kind}: {n}
               </span>
             ))}

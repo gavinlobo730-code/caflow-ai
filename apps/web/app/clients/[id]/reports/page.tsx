@@ -179,7 +179,7 @@ export default function ClientReportsPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-ps-body">{group.title}</p>
-                <p className="text-[10px] text-ps-hint mt-0.5">{group.desc}</p>
+                <p className="text-3xs text-ps-hint mt-0.5">{group.desc}</p>
               </div>
             </div>
             <div className="divide-y divide-gray-50">
@@ -193,12 +193,12 @@ export default function ClientReportsPage() {
                     <div className="flex items-center gap-2">
                       <p className="text-xs font-medium text-ps-ink">{r.title}</p>
                       {r.statute && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-ps-muted text-ps-label">
+                        <span className="text-3xs font-medium px-2 py-0.5 rounded-full bg-ps-muted text-ps-label">
                           {r.statute}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-ps-label mt-0.5">{r.desc}</p>
+                    <p className="text-2xs text-ps-label mt-0.5">{r.desc}</p>
                   </div>
                   <ArrowRight size={14} className="text-ps-disabled group-hover:text-ps-label flex-shrink-0" />
                 </button>
@@ -216,7 +216,7 @@ export default function ClientReportsPage() {
           </div>
           <div className="min-w-0">
             <p className="text-xs font-semibold text-ps-body">Not built yet</p>
-            <p className="text-[10px] text-ps-hint mt-0.5">
+            <p className="text-3xs text-ps-hint mt-0.5">
               Listed so the gap is visible. These are not links.
             </p>
           </div>
@@ -225,7 +225,7 @@ export default function ClientReportsPage() {
           {NOT_BUILT.map((n) => (
             <div key={n.title} className="px-5 py-3">
               <p className="text-xs font-medium text-ps-label">{n.title}</p>
-              <p className="text-[11px] text-ps-hint mt-0.5">{n.why}</p>
+              <p className="text-2xs text-ps-hint mt-0.5">{n.why}</p>
             </div>
           ))}
         </div>
@@ -234,7 +234,7 @@ export default function ClientReportsPage() {
 
       <div className="flex items-start gap-2.5 bg-ps-bg border border-ps-border rounded-xl px-4 py-3">
         <Users size={14} className="text-ps-hint flex-shrink-0 mt-0.5" />
-        <p className="text-[11px] text-ps-label">
+        <p className="text-2xs text-ps-label">
           Sharing a report with the client sends it to their portal — see{" "}
           <button
             onClick={() => router.push(`/clients/${clientId}/accounting?tab=reports`)}

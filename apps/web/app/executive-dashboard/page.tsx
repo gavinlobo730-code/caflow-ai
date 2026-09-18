@@ -121,7 +121,7 @@ function HealthRing({ score }: { score: number }) {
       </svg>
       <div className="absolute text-center">
         <p className="text-xl font-bold" style={{ color }}>{score}</p>
-        <p className="text-[10px] text-ps-hint">{healthLabel(score)}</p>
+        <p className="text-3xs text-ps-hint">{healthLabel(score)}</p>
       </div>
     </div>
   );
@@ -274,11 +274,11 @@ export default function ExecutiveDashboardPage() {
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-[#FEF3C7] rounded-lg p-2.5 text-center">
                 <p className="text-lg font-bold text-amber-700">{firm_health_summary.pending_approvals}</p>
-                <p className="text-[10px] text-amber-600">Pending Approvals</p>
+                <p className="text-3xs text-amber-600">Pending Approvals</p>
               </div>
               <div className="bg-[#FEE2E2] rounded-lg p-2.5 text-center">
                 <p className="text-lg font-bold text-red-700">{firm_health_summary.critical_actions}</p>
-                <p className="text-[10px] text-red-600">Critical Actions</p>
+                <p className="text-3xs text-red-600">Critical Actions</p>
               </div>
             </div>
           </div>
@@ -372,7 +372,7 @@ export default function ExecutiveDashboardPage() {
                       <p className="text-sm font-medium text-brand">{sig.client_name}</p>
                       <p className="text-xs text-ps-label mt-0.5">{sig.signal}</p>
                     </div>
-                    <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                    <span className={`ml-auto text-3xs px-2 py-0.5 rounded-full font-semibold ${
                       sig.risk === "high" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
                     }`}>
                       {sig.risk.toUpperCase()}
@@ -419,7 +419,7 @@ export default function ExecutiveDashboardPage() {
             <div className="flex items-center gap-2 mb-3">
               <Sparkles size={16} style={{ color: "#182350" }} />
               <h3 className="font-semibold text-brand">AI Executive Summary</h3>
-              <span className="ml-auto text-[10px] text-ps-hint flex items-center gap-1">
+              <span className="ml-auto text-3xs text-ps-hint flex items-center gap-1">
                 <Clock size={9} /> Generated {new Date(data.generated_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
@@ -428,7 +428,7 @@ export default function ExecutiveDashboardPage() {
                 <p key={i} className="mb-2">{para}</p>
               ))}
             </div>
-            <p className="text-[10px] text-ps-disabled mt-3">
+            <p className="text-3xs text-ps-disabled mt-3">
               AI analysis is advisory. Verify all figures with source records before decisions.
             </p>
           </div>

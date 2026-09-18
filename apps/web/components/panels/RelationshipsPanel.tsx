@@ -32,7 +32,7 @@ export function RelationshipsPanel() {
         </div>
         <div>
           <p className="text-[12px] font-semibold text-brand leading-none">Relationships</p>
-          <p className="text-[10px] text-gray-500 mt-0.5 leading-none">Entity intelligence</p>
+          <p className="text-3xs text-gray-500 mt-0.5 leading-none">Entity intelligence</p>
         </div>
       </div>
 

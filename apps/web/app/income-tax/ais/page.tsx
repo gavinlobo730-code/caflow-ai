@@ -479,10 +479,10 @@ export default function AISPage() {
                     <tr key={line.id} className="hover:bg-ps-bg/50 transition-colors align-top">
                       <td className="px-5 py-3">
                         <p className="font-medium text-ps-ink text-xs">{line.transaction_type}</p>
-                        <p className="text-[11px] text-ps-hint max-w-xs truncate">
+                        <p className="text-2xs text-ps-hint max-w-xs truncate">
                           {line.information_label}
                         </p>
-                        <span className={`mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                        <span className={`mt-1 inline-block text-3xs px-1.5 py-0.5 rounded-full font-medium ${
                           line.source === "json" ? "bg-purple-50 text-purple-700"
                                                  : "bg-ps-muted text-ps-label"}`}>
                           {line.source === "json" ? "AIS (published)" : "Added by the firm"}
@@ -519,7 +519,7 @@ export default function AISPage() {
                           <button
                             onClick={() => { setBooks((p) => ({ ...p, [line.id]: "" })); void saveWorking(line, "not_in_books"); }}
                             disabled={busy}
-                            className="text-[10px] text-red-600 hover:underline disabled:opacity-40"
+                            className="text-3xs text-red-600 hover:underline disabled:opacity-40"
                           >
                             Mark not in books
                           </button>
@@ -527,7 +527,7 @@ export default function AISPage() {
                             <button
                               onClick={() => { void saveWorking(line, "explained"); }}
                               disabled={busy}
-                              className="ml-2 text-[10px] text-blue-600 hover:underline disabled:opacity-40"
+                              className="ml-2 text-3xs text-blue-600 hover:underline disabled:opacity-40"
                             >
                               Explained
                             </button>
@@ -635,14 +635,14 @@ export default function AISPage() {
             <div className="bg-ps-bg rounded-xl p-4">
               <p className="text-xs text-ps-label font-medium uppercase tracking-wide mb-1">Total on the AIS</p>
               <p className="text-lg font-semibold text-ps-ink">{formatRupees(summary.total_amount_paise)}</p>
-              <p className="text-[11px] text-ps-hint mt-1">TDS {formatRupees(summary.total_tds_paise)}</p>
+              <p className="text-2xs text-ps-hint mt-1">TDS {formatRupees(summary.total_tds_paise)}</p>
             </div>
             <div className="bg-ps-bg rounded-xl p-4">
               <p className="text-xs text-ps-label font-medium uppercase tracking-wide mb-1">Not yet reviewed</p>
               <p className="text-lg font-semibold text-ps-body">
                 {summary.not_reviewed_count} of {summary.line_count}
               </p>
-              <p className="text-[11px] text-ps-hint mt-1">No conclusion is drawn about these.</p>
+              <p className="text-2xs text-ps-hint mt-1">No conclusion is drawn about these.</p>
             </div>
             <div className="bg-red-50 rounded-xl p-4">
               <p className="text-xs text-red-600 font-medium uppercase tracking-wide mb-1">Not in the books</p>

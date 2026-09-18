@@ -33,7 +33,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
     <aside className="relative flex flex-col h-full w-[52px] shrink-0 bg-brand border-r border-white/10 z-10">
       {/* Logo */}
       <div className="flex items-center justify-center h-14 border-b border-white/10 shrink-0">
-        <div className="w-7 h-7 rounded-[8px] bg-blue-600 flex items-center justify-center text-[11px] font-bold text-white shadow-[0_0_16px_rgba(59,130,246,0.35)]">
+        <div className="w-7 h-7 rounded-[8px] bg-blue-600 flex items-center justify-center text-2xs font-bold text-white shadow-[0_0_16px_rgba(59,130,246,0.35)]">
           P
         </div>
       </div>
@@ -110,7 +110,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
           <button
             onClick={() => setAvatarMenuOpen((v) => !v)}
             title={user?.email ?? "Account"}
-            className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white hover:opacity-80 transition-opacity shrink-0"
+            className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-3xs font-bold text-white hover:opacity-80 transition-opacity shrink-0"
           >
             {initials}
           </button>
@@ -127,7 +127,7 @@ export function ActivityRail({ onOpenSearch }: ActivityRailProps) {
                   <p className="text-[12px] font-semibold text-white truncate">
                     {user?.email ?? "user@firm.com"}
                   </p>
-                  <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                  <p className="text-3xs text-slate-500 truncate mt-0.5">
                     {userRole ?? "Partner"}
                   </p>
                 </div>

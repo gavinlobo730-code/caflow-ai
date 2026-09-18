@@ -24,7 +24,7 @@ function UtilisationBar({ pct }: { pct: number }) {
       <div className="flex-1 h-1.5 bg-ps-muted rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${clamped}%` }} />
       </div>
-      <span className="text-[11px] text-ps-label w-8 text-right">{clamped}%</span>
+      <span className="text-2xs text-ps-label w-8 text-right">{clamped}%</span>
     </div>
   );
 }
@@ -125,22 +125,22 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
       <CardContent className="py-4 px-5 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-blue-400 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-blue-400 text-white flex items-center justify-center text-2xs font-bold shrink-0">
               {initials}
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-ps-ink truncate">{member.user_name}</p>
-              <p className="text-[11px] text-ps-label">{member.role}</p>
+              <p className="text-2xs text-ps-label">{member.role}</p>
             </div>
           </div>
           <div className="flex gap-1 shrink-0">
             {member.is_overloaded && (
-              <Badge className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 gap-0.5">
+              <Badge className="text-3xs px-1.5 py-0 bg-red-100 text-red-700 gap-0.5">
                 <AlertTriangle size={9} /> Overloaded
               </Badge>
             )}
             {member.is_underutilised && !member.is_overloaded && (
-              <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 gap-0.5">
+              <Badge className="text-3xs px-1.5 py-0 bg-amber-100 text-amber-700 gap-0.5">
                 <TrendingDown size={9} /> Underutilised
               </Badge>
             )}
@@ -155,7 +155,7 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
         </div>
 
         <UtilisationBar pct={member.utilisation_pct} />
-        <p className="text-[11px] text-ps-label">
+        <p className="text-2xs text-ps-label">
           {fmtHours(member.minutes_logged_this_week)} logged of {member.weekly_capacity_hours}h weekly capacity
           · max {member.max_concurrent_tasks} tasks
         </p>
@@ -163,21 +163,21 @@ function MemberCard({ member, onEditCapacity }: { member: WorkloadMember; onEdit
         <div className="grid grid-cols-4 gap-2 text-center">
           <div>
             <p className="text-[18px] font-bold text-ps-ink">{member.active_tasks}</p>
-            <p className="text-[10px] text-ps-hint">Active</p>
+            <p className="text-3xs text-ps-hint">Active</p>
           </div>
           <div>
             <p className={`text-[18px] font-bold ${member.overdue_tasks > 0 ? "text-red-600" : "text-ps-ink"}`}>
               {member.overdue_tasks}
             </p>
-            <p className="text-[10px] text-ps-hint">Overdue</p>
+            <p className="text-3xs text-ps-hint">Overdue</p>
           </div>
           <div>
             <p className="text-[18px] font-bold text-ps-ink">{member.due_this_week}</p>
-            <p className="text-[10px] text-ps-hint">This Week</p>
+            <p className="text-3xs text-ps-hint">This Week</p>
           </div>
           <div>
             <p className="text-[18px] font-bold text-green-600">{member.completed_this_week}</p>
-            <p className="text-[10px] text-ps-hint">Completed</p>
+            <p className="text-3xs text-ps-hint">Completed</p>
           </div>
         </div>
       </CardContent>

@@ -168,22 +168,22 @@ export default function ReviewPage() {
                 </div>
                 {/* Label */}
                 <div className="mt-2 text-center px-1">
-                  <p className="text-[10px] font-semibold text-ps-body">{STEP_LABELS[stepKey]}</p>
+                  <p className="text-3xs font-semibold text-ps-body">{STEP_LABELS[stepKey]}</p>
                   {done && step ? (
                     <>
-                      <p className="text-[10px] text-ps-label mt-0.5">{step.user_name ?? "—"}</p>
-                      {step.user_role && <p className="text-[10px] text-ps-hint">{step.user_role}</p>}
+                      <p className="text-3xs text-ps-label mt-0.5">{step.user_name ?? "—"}</p>
+                      {step.user_role && <p className="text-3xs text-ps-hint">{step.user_role}</p>}
                       {step.completed_at && (
-                        <p className="text-[10px] text-ps-hint">{timeAgo(step.completed_at)}</p>
+                        <p className="text-3xs text-ps-hint">{timeAgo(step.completed_at)}</p>
                       )}
                       {step.comment && (
-                        <p className="text-[10px] text-ps-label mt-1 italic max-w-[100px] mx-auto truncate" title={step.comment}>
+                        <p className="text-3xs text-ps-label mt-1 italic max-w-[100px] mx-auto truncate" title={step.comment}>
                           &quot;{step.comment}&quot;
                         </p>
                       )}
                     </>
                   ) : (
-                    <p className="text-[10px] text-ps-disabled mt-0.5">Pending</p>
+                    <p className="text-3xs text-ps-disabled mt-0.5">Pending</p>
                   )}
                 </div>
               </div>
@@ -290,16 +290,16 @@ export default function ReviewPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-xs font-medium text-ps-body">{h.performed_by}</p>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ACTION_BADGE[h.action] ?? "bg-ps-muted text-ps-label"}`}>
+                    <span className={`text-3xs font-medium px-1.5 py-0.5 rounded-full ${ACTION_BADGE[h.action] ?? "bg-ps-muted text-ps-label"}`}>
                       {h.action.replace(/_/g, " ")}
                     </span>
-                    <span className="text-[10px] text-ps-hint">{timeAgo(h.performed_at)}</span>
+                    <span className="text-3xs text-ps-hint">{timeAgo(h.performed_at)}</span>
                   </div>
                   {h.comment && (
-                    <p className="text-[10px] text-ps-label mt-0.5 italic">&quot;{h.comment}&quot;</p>
+                    <p className="text-3xs text-ps-label mt-0.5 italic">&quot;{h.comment}&quot;</p>
                   )}
                   {h.from_status && (
-                    <p className="text-[10px] text-ps-disabled mt-0.5">
+                    <p className="text-3xs text-ps-disabled mt-0.5">
                       {h.from_status} → {h.to_status}
                     </p>
                   )}

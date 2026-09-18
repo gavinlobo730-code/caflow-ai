@@ -590,7 +590,7 @@ export default function LoansAndFDPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-ps-bg text-[10px] text-ps-hint uppercase tracking-wide">
+                    <tr className="bg-ps-bg text-3xs text-ps-hint uppercase tracking-wide">
                       <th className="text-left px-5 py-2.5">Lender</th>
                       <th className="text-left px-4 py-2.5">Client</th>
                       <th className="text-left px-4 py-2.5">Type</th>
@@ -608,7 +608,7 @@ export default function LoansAndFDPage() {
                         <td className="px-5 py-3">
                           <p className="font-medium text-ps-ink">{loan.lender_name}</p>
                           {loan.account_number && (
-                            <p className="text-[10px] font-mono text-ps-hint">{loan.account_number}</p>
+                            <p className="text-3xs font-mono text-ps-hint">{loan.account_number}</p>
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs text-ps-label">
@@ -793,7 +793,7 @@ export default function LoansAndFDPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-ps-bg text-[10px] text-ps-hint uppercase tracking-wide">
+                    <tr className="bg-ps-bg text-3xs text-ps-hint uppercase tracking-wide">
                       <th className="text-left px-5 py-2.5">Bank</th>
                       <th className="text-left px-4 py-2.5">Client</th>
                       <th className="text-left px-4 py-2.5">FD No.</th>
@@ -1010,7 +1010,7 @@ export default function LoansAndFDPage() {
                 </label>
               </div>
               {fdForm.tds_applicable && (
-                <p className="text-[10px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+                <p className="text-3xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
                   {/* TDS on FD interest per IT Act Section 194A — threshold ₹40,000 p.a. (₹50,000 for senior citizens) */}
                   IT Act Section 194A — TDS deducted on FD interest exceeding ₹40,000 p.a. (₹50,000 for senior citizens). TDS rate: 10% (20% if PAN not furnished).
                 </p>

@@ -372,15 +372,15 @@ export default function TimeTrackingPage() {
                         {e.client_id ? (clientMap.get(e.client_id) ?? "Unknown") : "No client"}
                       </span>
                       {e.is_billable ? (
-                        <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700">Billable</Badge>
+                        <Badge className="text-3xs px-1.5 py-0 bg-green-100 text-green-700">Billable</Badge>
                       ) : (
-                        <Badge className="text-[10px] px-1.5 py-0 bg-ps-muted text-ps-label">Non-billable</Badge>
+                        <Badge className="text-3xs px-1.5 py-0 bg-ps-muted text-ps-label">Non-billable</Badge>
                       )}
                     </div>
                     {e.description && (
                       <p className="text-xs text-ps-label truncate mt-0.5">{e.description}</p>
                     )}
-                    <p className="text-[11px] text-ps-hint mt-0.5">
+                    <p className="text-2xs text-ps-hint mt-0.5">
                       {fmt(e.started_at)} {fmtTime(e.started_at)}
                       {e.ended_at ? ` → ${fmtTime(e.ended_at)}` : ""}
                     </p>
@@ -391,7 +391,7 @@ export default function TimeTrackingPage() {
                         {e.duration_minutes ? formatDuration(e.duration_minutes) : "—"}
                       </p>
                       {e.is_billable && e.hourly_rate_paise && e.duration_minutes && (
-                        <p className="text-[11px] text-ps-label flex items-center justify-end gap-0.5">
+                        <p className="text-2xs text-ps-label flex items-center justify-end gap-0.5">
                           <IndianRupee size={9} />
                           {Math.round((e.hourly_rate_paise * e.duration_minutes) / 6000).toLocaleString("en-IN")}
                         </p>

@@ -149,7 +149,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[15px] font-semibold text-ps-ink">Renew this DSC</p>
-            <p className="text-[11px] text-ps-label mt-0.5">
+            <p className="text-2xs text-ps-label mt-0.5">
               {record.holder_name} · {record.dsc_type} · expires {record.expiry_date}
             </p>
           </div>
@@ -159,21 +159,21 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
         </div>
 
         <div>
-          <label className="block text-[11px] text-ps-label mb-0.5">
+          <label className="block text-2xs text-ps-label mb-0.5">
             New expiry date <span className="text-red-500">*</span>
           </label>
           <input type="date" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}
             className={field} />
         </div>
         <div>
-          <label className="block text-[11px] text-ps-label mb-0.5">
+          <label className="block text-2xs text-ps-label mb-0.5">
             New issue date <span className="text-ps-hint">(optional)</span>
           </label>
           <input type="date" value={newIssued} onChange={(e) => setNewIssued(e.target.value)}
             className={field} />
         </div>
         <div>
-          <label className="block text-[11px] text-ps-label mb-0.5">
+          <label className="block text-2xs text-ps-label mb-0.5">
             Token serial <span className="text-ps-hint">(only if the device changed)</span>
           </label>
           <input value={tokenNo} onChange={(e) => setTokenNo(e.target.value)}
@@ -183,7 +183,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
         {/* CORRECTING A TYPO IS NOT A RENEWAL, and the server keeps them apart:
             renew writes an audit row saying the expiry MOVED, which is a fact
             about the certificate. A date somebody keyed wrongly never moved. */}
-        <p className="text-[10px] text-ps-hint pt-1">
+        <p className="text-3xs text-ps-hint pt-1">
           Keyed a date wrongly? Use <span className="font-medium">Correct</span> on
           the row instead — a renewal is recorded as the expiry having moved, and
           a typo never moved.
@@ -266,7 +266,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[15px] font-semibold text-ps-ink">Correct this record</p>
-            <p className="text-[11px] text-ps-label mt-0.5">
+            <p className="text-2xs text-ps-label mt-0.5">
               For something keyed wrongly. To record a NEW certificate for the
               same holder, use Renew.
             </p>
@@ -277,25 +277,25 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
         </div>
 
         <div>
-          <label className="block text-[11px] text-ps-label mb-0.5">Holder name</label>
+          <label className="block text-2xs text-ps-label mb-0.5">Holder name</label>
           <input value={holderName} onChange={(e) => setHolderName(e.target.value)} className={field} />
         </div>
         <div>
-          <label className="block text-[11px] text-ps-label mb-0.5">PAN</label>
+          <label className="block text-2xs text-ps-label mb-0.5">PAN</label>
           <input value={pan} onChange={(e) => setPan(e.target.value)} className={field} />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-[11px] text-ps-label mb-0.5">Issue date</label>
+            <label className="block text-2xs text-ps-label mb-0.5">Issue date</label>
             <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} className={field} />
           </div>
           <div>
-            <label className="block text-[11px] text-ps-label mb-0.5">Expiry date</label>
+            <label className="block text-2xs text-ps-label mb-0.5">Expiry date</label>
             <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={field} />
           </div>
         </div>
         <div>
-          <label className="block text-[11px] text-ps-label mb-0.5">Notes</label>
+          <label className="block text-2xs text-ps-label mb-0.5">Notes</label>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} />
         </div>
 
@@ -555,12 +555,12 @@ export default function DSCTrackerPage() {
                           before the product will let them say so. */}
                       <td className="px-4 py-3 text-right">
                         <button onClick={() => setRenewing(d)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] border
+                          className="inline-flex items-center gap-1 px-2 py-1 text-2xs border
                                      border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                           <RefreshCw size={11} /> Renew
                         </button>
                         <button onClick={() => setCorrecting(d)}
-                          className="ml-1.5 px-2 py-1 text-[11px] border border-ps-border
+                          className="ml-1.5 px-2 py-1 text-2xs border border-ps-border
                                      rounded-lg text-ps-label hover:bg-ps-bg">
                           Correct
                         </button>

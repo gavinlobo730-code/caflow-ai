@@ -328,13 +328,13 @@ export default function StatutoryPage() {
                           <div className="font-medium text-ps-ink">{r.name}</div>
                           <div className="flex gap-1 mt-0.5">
                             {r.pf_applicable && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">PF</span>
+                              <span className="text-3xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">PF</span>
                             )}
                             {r.esi_applicable && r.esi_employee_paise > 0 && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">ESIC</span>
+                              <span className="text-3xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">ESIC</span>
                             )}
                             {r.pf_applicable && !r.eps_eligible && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-ps-muted text-ps-label"
+                              <span className="text-3xs px-1.5 py-0.5 rounded bg-ps-muted text-ps-label"
                                     title="Excluded from EPS by GSR 609(E) — the whole employer 12% goes to EPF">
                                 No EPS
                               </span>

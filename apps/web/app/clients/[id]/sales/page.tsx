@@ -489,7 +489,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
           <p className="text-xs font-semibold text-ps-body">
             {templates.length} template{templates.length !== 1 ? "s" : ""}
           </p>
-          <p className="text-[11px] text-ps-hint mt-0.5">
+          <p className="text-2xs text-ps-hint mt-0.5">
             Recurring templates generate <strong>draft</strong> invoices for CA review — never auto-issued or auto-emailed.
           </p>
         </div>
@@ -574,7 +574,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="font-medium text-ps-ink">{t.title}</div>
-                        {t.description && <div className="text-[10px] text-ps-hint">{t.description}</div>}
+                        {t.description && <div className="text-3xs text-ps-hint">{t.description}</div>}
                       </td>
                       <td className="px-3 py-2.5 text-ps-body">{custName(t.customer_id)}</td>
                       <td className="px-3 py-2.5 text-ps-label">{FREQ_LABEL[t.frequency] ?? t.frequency}</td>
@@ -583,7 +583,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-ps-body">{fmt(recBase(t.lines ?? []))}</td>
                       <td className="px-3 py-2.5">
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${REC_STATUS_BADGE[t.status] ?? "bg-ps-muted text-ps-label"}`}>
+                        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${REC_STATUS_BADGE[t.status] ?? "bg-ps-muted text-ps-label"}`}>
                           {t.status}
                         </span>
                       </td>
@@ -751,7 +751,7 @@ function RecurringEditor({
                 placeholder="Select customer…"
                 ariaLabel="Customer"
               />
-              {existing && <p className="text-[10px] text-ps-hint mt-1">Customer can&apos;t be changed after creation.</p>}
+              {existing && <p className="text-3xs text-ps-hint mt-1">Customer can&apos;t be changed after creation.</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Title</label>
@@ -790,7 +790,7 @@ function RecurringEditor({
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-medium text-ps-label">Line items</label>
-              <button type="button" onClick={addLine} className="text-[11px] text-blue-600 hover:underline flex items-center gap-1"><Plus size={11} /> Add line</button>
+              <button type="button" onClick={addLine} className="text-2xs text-blue-600 hover:underline flex items-center gap-1"><Plus size={11} /> Add line</button>
             </div>
             <div className="space-y-2">
               {lines.map((l, i) => (
@@ -821,7 +821,7 @@ function RecurringEditor({
                 </div>
               ))}
             </div>
-            <p className="text-[11px] text-ps-hint mt-2">
+            <p className="text-2xs text-ps-hint mt-2">
               Base (excl. GST): <span className="font-mono text-ps-body">{fmt(baseTotal)}</span>. GST is computed by the invoice engine at generation.
             </p>
           </div>
@@ -865,12 +865,12 @@ function RecurringEditor({
             Reverse charge (CGST §9(3)/§9(4))
           </label>
           {isNonStandard(classification) && (
-            <p className="text-[11px] text-amber-700 bg-amber-50 rounded px-3 py-2">
+            <p className="text-2xs text-amber-700 bg-amber-50 rounded px-3 py-2">
               Every invoice this template generates will carry this classification.
             </p>
           )}
 
-          <p className="text-[11px] text-ps-hint bg-ps-bg rounded px-3 py-2">
+          <p className="text-2xs text-ps-hint bg-ps-bg rounded px-3 py-2">
             Each run creates a <strong>draft</strong> invoice for CA review — it is never issued or emailed automatically.
           </p>
 
@@ -926,7 +926,7 @@ function RecurringHistoryDrawer({
           <h3 className="text-sm font-semibold text-ps-ink">{template.title}</h3>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
-        <p className="text-[11px] text-ps-hint mb-4">{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</p>
+        <p className="text-2xs text-ps-hint mb-4">{customerName} · {FREQ_LABEL[template.frequency] ?? template.frequency}</p>
 
         {loading ? (
           <TransactionListSkeleton rows={3} />
@@ -934,18 +934,18 @@ function RecurringHistoryDrawer({
           <div className="space-y-5">
             {template.status === "active" && (
               <div>
-                <p className="text-[11px] font-semibold text-ps-label mb-2 uppercase tracking-wide">Upcoming</p>
+                <p className="text-2xs font-semibold text-ps-label mb-2 uppercase tracking-wide">Upcoming</p>
                 {upcoming.length === 0 ? (
                   <p className="text-xs text-ps-hint">No upcoming runs.</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
-                    {upcoming.map((d) => <span key={d} className="px-2 py-0.5 rounded bg-ps-bg border border-ps-muted text-[11px] text-ps-label">{d}</span>)}
+                    {upcoming.map((d) => <span key={d} className="px-2 py-0.5 rounded bg-ps-bg border border-ps-muted text-2xs text-ps-label">{d}</span>)}
                   </div>
                 )}
               </div>
             )}
             <div>
-              <p className="text-[11px] font-semibold text-ps-label mb-2 uppercase tracking-wide">History</p>
+              <p className="text-2xs font-semibold text-ps-label mb-2 uppercase tracking-wide">History</p>
               {runs.length === 0 ? (
                 <p className="text-xs text-ps-hint">No invoices generated yet.</p>
               ) : (
@@ -954,13 +954,13 @@ function RecurringHistoryDrawer({
                     <div key={r.id} className="border border-ps-muted rounded-lg p-3 text-xs flex items-center justify-between">
                       <div>
                         <div className="font-medium text-ps-body">{r.occurrence_date}</div>
-                        <div className="text-[10px] text-ps-hint">
+                        <div className="text-3xs text-ps-hint">
                           {r.invoice?.invoice_no ? `${r.invoice.invoice_no} · ${r.invoice.status ?? "draft"}` : "—"}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         {r.invoice?.total_paise != null && <span className="font-mono text-ps-body">{fmt(r.invoice.total_paise)}</span>}
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${r.status === "generated" ? "bg-green-50 text-green-700" : r.status === "failed" ? "bg-red-50 text-red-700" : "bg-ps-muted text-ps-label"}`}>
+                        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${r.status === "generated" ? "bg-green-50 text-green-700" : r.status === "failed" ? "bg-red-50 text-red-700" : "bg-ps-muted text-ps-label"}`}>
                           {r.status}
                         </span>
                       </div>
@@ -1185,19 +1185,19 @@ function Statements({ clientId }: { clientId: string }) {
           <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-ps-ink">{stmt.customer.name}</p>
-              <p className="text-[10px] text-ps-hint">{stmt.period.start_date} → {stmt.period.end_date}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>
+              <p className="text-3xs text-ps-hint">{stmt.period.start_date} → {stmt.period.end_date}{stmt.customer.gstin ? ` · GSTIN ${stmt.customer.gstin}` : ""}</p>
             </div>
             <div className="text-right space-y-1">
               <div>
-                <p className="text-[10px] text-ps-hint">Closing Outstanding</p>
+                <p className="text-3xs text-ps-hint">Closing Outstanding</p>
                 <p className={`text-sm font-mono font-semibold ${stmt.closing_balance_paise >= 0 ? "text-blue-700" : "text-orange-700"}`}>{stmtBal(stmt.closing_balance_paise)}</p>
               </div>
               {!!credit && credit.balance_paise > 0 && (
                 <div className="flex items-center justify-end gap-1.5">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 font-mono">
+                  <span className="text-3xs px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 font-mono">
                     Credit: ₹{stmtRupees(credit.balance_paise)}
                   </span>
-                  <button onClick={openApplyModal} className="text-[10px] text-blue-600 hover:text-blue-800 underline">Apply</button>
+                  <button onClick={openApplyModal} className="text-3xs text-blue-600 hover:text-blue-800 underline">Apply</button>
                 </div>
               )}
             </div>
@@ -1276,7 +1276,7 @@ function Statements({ clientId }: { clientId: string }) {
                   </option>
                 ))}
               </select>
-              {applyInvoices.length === 0 && <p className="mt-1 text-[10px] text-ps-hint">No outstanding invoices for this customer.</p>}
+              {applyInvoices.length === 0 && <p className="mt-1 text-3xs text-ps-hint">No outstanding invoices for this customer.</p>}
             </label>
             <label className="block">
               <span className="text-xs font-medium text-ps-label">Amount to apply (₹)</span>
@@ -1895,12 +1895,12 @@ function SalesInvoices({
       render: (i) => (
         <span className={`whitespace-nowrap ${isOverdueForUi(i) ? "text-red-600 font-medium" : "text-ps-label"}`}>
           {i.due_date ?? "—"}
-          {isOverdueForUi(i) && i.days_overdue ? <span className="ml-1 text-[10px]">({i.days_overdue}d)</span> : null}
+          {isOverdueForUi(i) && i.days_overdue ? <span className="ml-1 text-3xs">({i.days_overdue}d)</span> : null}
         </span>
       ) },
     { key: "status", header: "Status", accessor: (i) => i.status, sortable: true,
       render: (i) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[i.status] ?? "bg-ps-muted text-ps-label"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${STATUS_BADGE[i.status] ?? "bg-ps-muted text-ps-label"}`}>
           {i.status.replace("_", " ")}
         </span>
       ) },
@@ -2274,7 +2274,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
           <h3 className="text-sm font-semibold text-ps-ink">Online Payment · {invoice.invoice_no}</h3>
           <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
-        <p className="text-[11px] text-ps-hint mb-4">
+        <p className="text-2xs text-ps-hint mb-4">
           A verified payment posts a receipt automatically through the standard receipt workflow — no manual entry.
         </p>
 
@@ -2286,7 +2286,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
 
         <div className="flex items-center justify-between rounded-lg bg-ps-bg border border-ps-muted px-3 py-2.5 mb-4">
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-ps-hint">Outstanding</p>
+            <p className="text-3xs uppercase tracking-wide text-ps-hint">Outstanding</p>
             <p className="text-base font-semibold text-ps-ink font-mono">{hist ? fmt(hist.outstanding_paise) : "…"}</p>
           </div>
           <button onClick={generate} disabled={busy || !hist || hist.outstanding_paise <= 0}
@@ -2296,7 +2296,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         </div>
 
         {/* Links */}
-        <p className="text-[11px] font-semibold text-ps-label uppercase tracking-wide mb-2">Payment Links</p>
+        <p className="text-2xs font-semibold text-ps-label uppercase tracking-wide mb-2">Payment Links</p>
         {!hist ? (
           <TransactionListSkeleton rows={2} />
         ) : hist.links.length === 0 ? (
@@ -2307,7 +2307,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
               <div key={l.id} className="border border-ps-muted rounded-lg p-2.5 text-xs">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-ps-body truncate">{l.short_url ?? "—"}</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${PAY_STATUS_BADGE[l.status] ?? "bg-ps-muted text-ps-label"}`}>{l.status}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${PAY_STATUS_BADGE[l.status] ?? "bg-ps-muted text-ps-label"}`}>{l.status}</span>
                 </div>
                 <div className="flex items-center justify-between mt-1.5">
                   <span className="font-mono text-ps-label">{fmt(l.amount_paise)}</span>
@@ -2322,7 +2322,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         )}
 
         {/* Payment history / timeline */}
-        <p className="text-[11px] font-semibold text-ps-label uppercase tracking-wide mb-2">Payment History</p>
+        <p className="text-2xs font-semibold text-ps-label uppercase tracking-wide mb-2">Payment History</p>
         {!hist || hist.payments.length === 0 ? (
           <p className="text-xs text-ps-hint">No payments recorded yet.</p>
         ) : (
@@ -2331,9 +2331,9 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
               <div key={p.id} className="flex items-center justify-between border border-ps-muted rounded-lg p-2.5 text-xs">
                 <div>
                   <div className="font-mono text-ps-body">{fmt(p.amount_paise)}</div>
-                  <div className="text-[10px] text-ps-hint">{p.provider}{p.receipt_id ? " · receipt posted" : ""}{p.created_at ? ` · ${fmtDateTime(p.created_at)}` : ""}</div>
+                  <div className="text-3xs text-ps-hint">{p.provider}{p.receipt_id ? " · receipt posted" : ""}{p.created_at ? ` · ${fmtDateTime(p.created_at)}` : ""}</div>
                 </div>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${PAY_STATUS_BADGE[p.status] ?? "bg-ps-muted text-ps-label"}`}>{p.status}</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${PAY_STATUS_BADGE[p.status] ?? "bg-ps-muted text-ps-label"}`}>{p.status}</span>
               </div>
             ))}
           </div>
@@ -2401,7 +2401,7 @@ function SendInvoiceModal({
               autoFocus
             />
             {!defaultEmail && (
-              <p className="text-[10px] text-amber-600 mt-1">
+              <p className="text-3xs text-amber-600 mt-1">
                 No email on the customer record — enter the address to send.
               </p>
             )}
@@ -2499,7 +2499,7 @@ function RemindInvoiceModal({
               No email on the customer record. Add one to the customer before sending a reminder.
             </p>
           )}
-          <p className="text-[10px] text-ps-hint">
+          <p className="text-3xs text-ps-hint">
             Reminders are a collections communication only — they do not change any accounting entry.
           </p>
           {error && <p className="text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
@@ -2568,13 +2568,13 @@ function DeliveryHistoryModal({
                   <span className="text-ps-body font-medium flex items-center gap-1.5">
                     {d.sent_to}
                     {d.kind === "reminder" && (
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700">
+                      <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-amber-50 text-amber-700">
                         Reminder
                       </span>
                     )}
                   </span>
                   <span
-                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                    className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${
                       DELIVERY_STATUS_COLOR[d.status] ?? "bg-ps-muted text-ps-label"
                     }`}
                   >
@@ -2586,7 +2586,7 @@ function DeliveryHistoryModal({
                   {d.sent_by_email && <span>by {d.sent_by_email}</span>}
                 </div>
                 {d.error_message && (
-                  <p className="mt-1 text-red-600 text-[10px]">{d.error_message}</p>
+                  <p className="mt-1 text-red-600 text-3xs">{d.error_message}</p>
                 )}
               </div>
             ))}
@@ -2958,7 +2958,7 @@ function Customers({
       render: (c) => (
         <div>
           <span className="font-medium text-ps-ink">{c.name}</span>
-          {c.email && <div className="text-[10px] text-ps-hint">{c.email}</div>}
+          {c.email && <div className="text-3xs text-ps-hint">{c.email}</div>}
         </div>
       ) },
     { key: "gstin", header: "GSTIN", accessor: (c) => c.gstin ?? "", searchable: true,
@@ -2975,9 +2975,9 @@ function Customers({
       render: (c) => <span className="font-mono text-ps-body">{fmt(c.opening_balance_paise ?? 0)}</span> },
     { key: "is_active", header: "Status", accessor: (c) => (c.is_active ? "active" : "inactive"),
       render: (c) => c.is_active ? (
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700">Active</span>
+        <span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-green-100 text-green-700">Active</span>
       ) : (
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">Inactive</span>
+        <span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">Inactive</span>
       ) },
   ], []);
 
@@ -3397,7 +3397,7 @@ function Receipts({
       render: (r) => <span className="font-mono font-semibold text-ps-ink">{fmt(r.amount_paise)}</span> },
     { key: "payment_mode", header: "Mode", accessor: (r) => r.payment_mode, searchable: true,
       render: (r) => (
-        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label uppercase">
+        <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label uppercase">
           {r.payment_mode}
         </span>
       ) },
@@ -3408,7 +3408,7 @@ function Receipts({
       render: (r) => <span className="font-mono text-amber-700">{fmt(unallocatedOf(r))}</span> },
     { key: "is_reversed", header: "Status", accessor: (r) => (r.is_reversed ? "Reversed" : "Active"),
       render: (r) => r.is_reversed ? (
-        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-600">Reversed</span>
+        <span className="px-1.5 py-0.5 rounded-full text-3xs font-medium bg-red-100 text-red-600">Reversed</span>
       ) : null },
   ], []);
 
@@ -3480,11 +3480,11 @@ function Receipts({
         rowActions={(r) => !r.is_reversed && (
           <div className="flex items-center gap-3">
             <button onClick={() => setAllocating(r)}
-              className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline">
+              className="text-2xs text-blue-600 hover:text-blue-800 hover:underline">
               Apply
             </button>
             <button onClick={() => reverseReceipt(r)}
-              className="text-[11px] text-red-600 hover:text-red-800 hover:underline">
+              className="text-2xs text-red-600 hover:text-red-800 hover:underline">
               Reverse
             </button>
           </div>
@@ -3835,7 +3835,7 @@ function ReceiptForm({
               placeholder="0.00"
               className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
             />
-            <p className="mt-1 text-[10px] text-ps-hint">
+            <p className="mt-1 text-3xs text-ps-hint">
               {tdsPaise !== null && tdsPaise > 0 && amountPaise !== null
                 ? `Settles ${fmtAmt(amountPaise + tdsPaise)} of invoices — the cash plus the tax deducted (IT Act §199).`
                 : "What the customer deducted at source and paid to the government, if any."}
@@ -3890,7 +3890,7 @@ function ReceiptForm({
           that gets it wrong. */}
       {advanceTaxApplicable && (
         <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2.5">
-          <p className="text-[11px] font-medium text-[#92400E] mb-2">
+          <p className="text-2xs font-medium text-[#92400E] mb-2">
             Advance — GSTR-1 Table 11A
             <span className="ml-1 font-normal">
               Fill these in for any part of this receipt that is NOT settling an
@@ -3909,7 +3909,7 @@ function ReceiptForm({
                 placeholder="18"
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="mt-1 text-[10px] text-ps-hint">Per cent, e.g. 18.</p>
+              <p className="mt-1 text-3xs text-ps-hint">Per cent, e.g. 18.</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Place of supply</label>
@@ -3923,7 +3923,7 @@ function ReceiptForm({
                   answer — that is derived in domain/gst/place_of_supply.py from
                   the client's own GSTIN. Shown so a CA is not surprised, and
                   honest about the one case where nobody can decide. */}
-              <p className={`mt-1 text-[10px] ${advancePos && !clientStateCode ? "text-amber-700" : "text-ps-hint"}`}>
+              <p className={`mt-1 text-3xs ${advancePos && !clientStateCode ? "text-amber-700" : "text-ps-hint"}`}>
                 {!advancePos
                   ? "Decides CGST+SGST against IGST."
                   : clientStateCode
@@ -3973,7 +3973,7 @@ function ReceiptForm({
                 placeholder={`1 ${currency} = ? INR`}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-mono"
               />
-              <p className="mt-1 text-[10px] text-ps-hint">
+              <p className="mt-1 text-3xs text-ps-hint">
                 Rate on the day cash was received — may differ from an invoice&apos;s booking rate; the
                 difference posts as Realized FX Gain/Loss.
               </p>
@@ -3992,9 +3992,9 @@ function ReceiptForm({
                 <span className="text-xs text-ps-label flex-1">
                   {inv.invoice_no} — {inv.invoice_date} — {fmtAmt(invoiceOutstanding(inv))} due
                   {isForeign && inv.exchange_rate && (
-                    <span className="ml-1 text-[10px] text-ps-hint">(booked @ {inv.exchange_rate})</span>
+                    <span className="ml-1 text-3xs text-ps-hint">(booked @ {inv.exchange_rate})</span>
                   )}
-                  <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[inv.status]}`}>
+                  <span className={`ml-2 px-1.5 py-0.5 rounded-full text-3xs font-medium ${STATUS_BADGE[inv.status]}`}>
                     {inv.status}
                   </span>
                 </span>
@@ -4318,7 +4318,7 @@ function CreditNotes({
       render: (cn) => <span className="font-mono font-semibold text-ps-ink">{fmt(cn.total_paise)}</span> },
     { key: "status", header: "Status", accessor: (cn) => cn.status, sortable: true,
       render: (cn) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[cn.status] ?? "bg-ps-muted text-ps-label"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${STATUS_BADGE[cn.status] ?? "bg-ps-muted text-ps-label"}`}>
           {cn.status}
         </span>
       ) },
@@ -4749,7 +4749,7 @@ function SalesDebitNotes({
       render: (dn) => <span className="font-mono font-semibold text-ps-ink">{fmt(dn.total_paise)}</span> },
     { key: "status", header: "Status", accessor: (dn) => dn.status, sortable: true,
       render: (dn) => (
-        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${STATUS_BADGE[dn.status] ?? "bg-ps-muted text-ps-label"}`}>
+        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-medium ${STATUS_BADGE[dn.status] ?? "bg-ps-muted text-ps-label"}`}>
           {dn.status}
         </span>
       ) },
@@ -4940,7 +4940,7 @@ function SummaryCard({
   };
   return (
     <div className={`rounded-xl border p-4 ${colors[color]}`}>
-      <p className="text-[10px] font-medium text-ps-label mb-1">{label}</p>
+      <p className="text-3xs font-medium text-ps-label mb-1">{label}</p>
       <p className={`text-lg font-bold tabular-nums ${text[color]}`}>{value}</p>
     </div>
   );

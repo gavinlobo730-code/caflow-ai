@@ -302,12 +302,12 @@ export default function ClientLifecyclePage() {
                             {task.status !== "done" && task.status !== "skipped" ? (
                               <button
                                 onClick={() => handleUpdateTask(wf.id, task.id, "done")}
-                                className="text-[10px] text-brand hover:text-ps-ink ml-2 shrink-0"
+                                className="text-3xs text-brand hover:text-ps-ink ml-2 shrink-0"
                               >
                                 Mark Done
                               </button>
                             ) : (
-                              <Badge className={`text-[10px] ${TASK_STATUS_COLORS[task.status] ?? "bg-gray-100 text-gray-600"}`}>
+                              <Badge className={`text-3xs ${TASK_STATUS_COLORS[task.status] ?? "bg-gray-100 text-gray-600"}`}>
                                 {task.status}
                               </Badge>
                             )}
@@ -315,7 +315,7 @@ export default function ClientLifecyclePage() {
                         ))}
                     </div>
                   )}
-                  <p className="text-[11px] text-gray-500 mt-3">Started {formatDate(wf.created_at)}</p>
+                  <p className="text-2xs text-gray-500 mt-3">Started {formatDate(wf.created_at)}</p>
                 </CardContent>
               </Card>
             );
@@ -362,7 +362,7 @@ export default function ClientLifecyclePage() {
                       <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(r.renewal_date)}</td>
                       <td className="px-3 py-3 text-gray-700 text-xs">{paiseToCurrency(r.fee_paise ?? 0)}</td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-[10px] ${RENEWAL_STATUS_COLORS[r.status] ?? "bg-gray-100 text-gray-600"}`}>
+                        <Badge className={`text-3xs ${RENEWAL_STATUS_COLORS[r.status] ?? "bg-gray-100 text-gray-600"}`}>
                           {r.status}
                         </Badge>
                       </td>

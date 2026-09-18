@@ -359,7 +359,7 @@ export function DebitNoteEditor({
   }
 
   const busy = saving;
-  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-[10px] text-red-600">{msg}</p> : null);
+  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-3xs text-red-600">{msg}</p> : null);
 
   const toolbar = (
     <>
@@ -384,11 +384,11 @@ export function DebitNoteEditor({
           <Row label="SGST" value={fmt(totals.sgst_paise)} />
         </>
       )}
-      <p className="text-[10px] text-ps-hint">
+      <p className="text-3xs text-ps-hint">
         {isInterstate ? "Interstate — IGST" : "Intra-state — CGST + SGST"} (CGST Act §8)
       </p>
       {isReverseCharge && (
-        <p className="text-[10px] text-amber-700">
+        <p className="text-3xs text-amber-700">
           Reverse charge — the GST above was self-assessed by you, not paid to the vendor (CGST Act §9(3)/(4)).
         </p>
       )}
@@ -397,7 +397,7 @@ export function DebitNoteEditor({
         <span className="font-mono">{fmt(totals.grand_total_paise)}</span>
       </div>
       {selectedBill && (
-        <p className="text-[10px] text-ps-hint pt-1">
+        <p className="text-3xs text-ps-hint pt-1">
           Bill outstanding: {fmt(billOutstanding(selectedBill))}
           {totals.grand_total_paise > billOutstanding(selectedBill) && (
             <span className="block text-amber-700 mt-0.5">
@@ -406,11 +406,11 @@ export function DebitNoteEditor({
           )}
         </p>
       )}
-      <p className="text-[10px] text-ps-hint pt-1">
+      <p className="text-3xs text-ps-hint pt-1">
         Preview — GST is confirmed by the server on save.
       </p>
       {attempted && !validation.ok && (
-        <div className="flex items-start gap-1.5 text-[10px] text-red-600 bg-red-50 rounded px-2 py-1.5">
+        <div className="flex items-start gap-1.5 text-3xs text-red-600 bg-red-50 rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.vendor ?? validation.errors.debitNoteDate ?? validation.errors.lines}</span>
         </div>
@@ -426,7 +426,7 @@ export function DebitNoteEditor({
         { label: isEdit ? `Edit ${existing?.debit_note_no || "Debit Note"}` : "New Debit Note" },
       ]}
       title={isEdit ? `Edit ${existing?.debit_note_no || "Debit Note"}` : "New Debit Note"}
-      statusPill={<span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft") : "Draft"}</span>}
+      statusPill={<span className="px-2 py-0.5 rounded-full text-3xs font-medium bg-ps-muted text-ps-label">{isEdit ? (existing?.status ?? "draft") : "Draft"}</span>}
       dirtyHint={dirty ? <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Unsaved changes</span> : undefined}
       toolbar={toolbar}
       summary={summary}
@@ -443,7 +443,7 @@ export function DebitNoteEditor({
             </div>
           )}
           {documentUrl && (
-            <p className="text-[10px] text-amber-700">📎 Attachment on file — supporting evidence for this return.</p>
+            <p className="text-3xs text-amber-700">📎 Attachment on file — supporting evidence for this return.</p>
           )}
         </section>
 
@@ -453,7 +453,7 @@ export function DebitNoteEditor({
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
               <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
-              {isEdit && <p className="mt-1 text-[10px] text-ps-hint">Vendor can&apos;t be changed once a debit note exists.</p>}
+              {isEdit && <p className="mt-1 text-3xs text-ps-hint">Vendor can&apos;t be changed once a debit note exists.</p>}
               {fieldErr(validation.errors.vendor)}
             </div>
             <div>
@@ -461,7 +461,7 @@ export function DebitNoteEditor({
               <input type="date" value={dnDate} onChange={(e) => setDnDate(e.target.value)} disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-ps-bg disabled:text-ps-hint" />
               {fieldErr(validation.errors.debitNoteDate)}
-              {isLocked && <p className="mt-1 text-[10px] text-ps-hint">Frozen once issued — issue a fresh debit note to correct (CGST Act §34).</p>}
+              {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once issued — issue a fresh debit note to correct (CGST Act §34).</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Against Bill (optional)</label>
@@ -506,7 +506,7 @@ export function DebitNoteEditor({
         <section className="bg-white rounded-xl border border-ps-muted p-4">
           <h2 className="text-xs font-semibold text-ps-body mb-2">Line items</h2>
           {isLocked && (
-            <p className="mb-2 text-[10px] text-ps-hint">
+            <p className="mb-2 text-3xs text-ps-hint">
               Frozen once issued — issue a fresh debit note to correct a quantity, rate, or item (CGST Act §34).
             </p>
           )}

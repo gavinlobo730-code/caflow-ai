@@ -218,7 +218,7 @@ function DashboardTab({ clientId }: { clientId: string }) {
 
       {latest && (
         <div className="bg-white rounded-xl border border-ps-border p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-ps-hint mb-3">Latest Run — {fmtMonth(latest.month)}</p>
+          <p className="text-2xs font-semibold uppercase tracking-widest text-ps-hint mb-3">Latest Run — {fmtMonth(latest.month)}</p>
           <div className="grid grid-cols-3 gap-4">
             <SummaryRow label="Gross Payroll" value={fmt(latest.total_gross_paise)} />
             <SummaryRow label="PF (both sides)" value={fmt(latest.total_pf_paise)} />
@@ -226,13 +226,13 @@ function DashboardTab({ clientId }: { clientId: string }) {
           </div>
           <div className="mt-3 flex items-center gap-2">
             <StatusBadge status={latest.status} />
-            <span className="text-[11px] text-ps-hint">{latest.headcount} employees</span>
+            <span className="text-2xs text-ps-hint">{latest.headcount} employees</span>
           </div>
         </div>
       )}
 
       <div className="bg-white rounded-xl border border-ps-border p-4">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-ps-hint mb-3">Payroll History</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-ps-hint mb-3">Payroll History</p>
         {runs.length === 0 ? (
           <p className="text-sm text-ps-hint">No payroll runs yet. Create your first run from the Payroll Runs tab.</p>
         ) : (
@@ -241,7 +241,7 @@ function DashboardTab({ clientId }: { clientId: string }) {
               <div key={r.id} className="flex items-center justify-between py-2 border-b border-ps-muted last:border-0">
                 <div>
                   <p className="text-sm font-medium text-ps-ink">{fmtMonth(r.month)}</p>
-                  <p className="text-[11px] text-ps-hint">{r.headcount} employees</p>
+                  <p className="text-2xs text-ps-hint">{r.headcount} employees</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-ps-ink">{fmt(r.total_gross_paise)}</p>
@@ -420,7 +420,7 @@ function EmployeesTab({ clientId }: { clientId: string }) {
           <thead>
             <tr className="border-b border-ps-muted bg-ps-bg">
               {["Name", "Designation", "Department", "Basic", "PF", "ESI", "Status", ""].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-ps-hint">{h}</th>
+                <th key={h} className="px-4 py-2.5 text-left text-3xs font-semibold uppercase tracking-wider text-ps-hint">{h}</th>
               ))}
             </tr>
           </thead>
@@ -433,12 +433,12 @@ function EmployeesTab({ clientId }: { clientId: string }) {
                 <td className="px-4 py-3 text-ps-label">{e.designation || "—"}</td>
                 <td className="px-4 py-3 text-ps-label">{e.department || "—"}</td>
                 <td className="px-4 py-3 font-mono text-ps-ink">{fmt(e.basic_paise)}</td>
-                <td className="px-4 py-3">{e.pf_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-ps-hint">No</span>}</td>
-                <td className="px-4 py-3">{e.esi_applicable ? <span className="text-[10px] px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-[10px] text-ps-hint">No</span>}</td>
-                <td className="px-4 py-3"><span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", e.status === "active" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600")}>{e.status}</span></td>
+                <td className="px-4 py-3">{e.pf_applicable ? <span className="text-3xs px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-3xs text-ps-hint">No</span>}</td>
+                <td className="px-4 py-3">{e.esi_applicable ? <span className="text-3xs px-1.5 py-0.5 bg-green-50 text-green-600 rounded">Yes</span> : <span className="text-3xs text-ps-hint">No</span>}</td>
+                <td className="px-4 py-3"><span className={cn("text-3xs px-1.5 py-0.5 rounded font-medium", e.status === "active" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600")}>{e.status}</span></td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => setOpenEmployee(e)}
-                    className="text-[11px] px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-muted">
+                    className="text-2xs px-2 py-1 border border-ps-border rounded-lg text-ps-body hover:bg-ps-muted">
                     Open
                   </button>
                 </td>
@@ -697,7 +697,7 @@ function RunsTab({ clientId, firmId, openDoc }:
         <p className="text-[12px] font-semibold text-ps-ink mb-3">Create New Run</p>
         <div className="flex items-end gap-3">
           <div>
-            <label className="block text-[11px] text-ps-label mb-1">Month</label>
+            <label className="block text-2xs text-ps-label mb-1">Month</label>
             <input type="month" value={month} onChange={e => setMonth(e.target.value)}
               className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] text-ps-ink outline-none focus:border-blue-400" />
           </div>
@@ -714,10 +714,10 @@ function RunsTab({ clientId, firmId, openDoc }:
             </p>
             <ul className="mt-1 space-y-0.5">
               {runGaps.map((g, i) => (
-                <li key={i} className="text-[11px] text-amber-800">· {g}</li>
+                <li key={i} className="text-2xs text-amber-800">· {g}</li>
               ))}
             </ul>
-            <p className="text-[11px] text-amber-700 mt-1.5">
+            <p className="text-2xs text-amber-700 mt-1.5">
               The run is a draft — nothing is posted or paid. Fix these and create it again,
               or finalise it if the figures are right.
             </p>
@@ -731,7 +731,7 @@ function RunsTab({ clientId, firmId, openDoc }:
             {runGaps.some(g => g.toLowerCase().includes("attendance")) && (
               <a
                 href={`/payroll/attendance?client=${encodeURIComponent(clientId)}&month=${encodeURIComponent(month)}`}
-                className="inline-flex items-center gap-1 mt-2 text-[11px] font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950"
+                className="inline-flex items-center gap-1 mt-2 text-2xs font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950"
               >
                 Enter attendance for {month} →
               </a>
@@ -753,11 +753,11 @@ function RunsTab({ clientId, firmId, openDoc }:
           </p>
           <ul className="space-y-0.5">
             {blockedRun.gaps.map((g, i) => (
-              <li key={i} className="text-[11px] text-amber-900">· {g}</li>
+              <li key={i} className="text-2xs text-amber-900">· {g}</li>
             ))}
           </ul>
           <div>
-            <label className="block text-[11px] font-medium text-amber-900 mb-1">
+            <label className="block text-2xs font-medium text-amber-900 mb-1">
               Releasing anyway? Say why — this goes on the release log beside these
               items and is what a reviewer reads months later.
             </label>
@@ -768,7 +768,7 @@ function RunsTab({ clientId, firmId, openDoc }:
               placeholder="e.g. Client confirmed by email on the 3rd that nobody was on leave."
               className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-amber-500 bg-white"
             />
-            <p className="text-[10px] text-amber-700 mt-0.5">
+            <p className="text-3xs text-amber-700 mt-0.5">
               {overrideReason.trim().length}/{OVERRIDE_REASON_MIN} characters
             </p>
           </div>
@@ -777,13 +777,13 @@ function RunsTab({ clientId, firmId, openDoc }:
               onClick={() => finalizeRun(blockedRun.runId, overrideReason.trim())}
               disabled={overrideReason.trim().length < OVERRIDE_REASON_MIN
                         || finalizing === blockedRun.runId}
-              className="text-[11px] px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40"
+              className="text-2xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40"
             >
               {finalizing === blockedRun.runId ? "Finalizing…" : "Finalize anyway"}
             </button>
             <button
               onClick={() => { setBlockedRun(null); setOverrideReason(""); }}
-              className="text-[11px] px-3 py-1.5 border border-amber-300 text-amber-900 rounded-lg hover:bg-amber-100"
+              className="text-2xs px-3 py-1.5 border border-amber-300 text-amber-900 rounded-lg hover:bg-amber-100"
             >
               Go back and fix them
             </button>
@@ -811,21 +811,21 @@ function RunsTab({ clientId, firmId, openDoc }:
                 <StatusBadge status={r.status} />
                 <div>
                   <p className="text-sm font-semibold text-ps-ink">{fmtMonth(r.month)}</p>
-                  <p className="text-[11px] text-ps-hint">{r.headcount} employees · Gross {fmt(r.total_gross_paise)}</p>
+                  <p className="text-2xs text-ps-hint">{r.headcount} employees · Gross {fmt(r.total_gross_paise)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => loadSlips(r.id)} className="text-[11px] text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">
+                <button onClick={() => loadSlips(r.id)} className="text-2xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">
                   {selectedRun === r.id ? "Hide Slips" : "View Slips"}
                 </button>
                 {r.status !== "finalized" && r.status !== "paid" && (
                   <button onClick={() => finalizeRun(r.id)} disabled={finalizing === r.id}
-                    className="flex items-center gap-1 text-[11px] px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                    className="flex items-center gap-1 text-2xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
                     <CheckCircle size={11} /> {finalizing === r.id ? "Finalizing…" : "Finalize"}
                   </button>
                 )}
                 {(r.status === "finalized" || r.status === "paid") && (
-                  <span className="text-[11px] text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalized"}</span>
+                  <span className="text-2xs text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalized"}</span>
                 )}
                 {/* A DRAFT CAN BE FIXED (PAY-21). Recompute rebuilds the month
                     from the master data as it stands now — the attendance just
@@ -835,7 +835,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                 {r.status !== "finalized" && r.status !== "paid" && (
                   <button onClick={() => recomputeRun(r.id)} disabled={rebuilding === r.id}
                     title="Rebuild this month's slips from the employee master, attendance and salary revisions as they stand now"
-                    className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-50">
+                    className="flex items-center gap-1 text-2xs px-2.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-50">
                     <RefreshCw size={11} /> {rebuilding === r.id ? "Rebuilding…" : "Recompute"}
                   </button>
                 )}
@@ -843,18 +843,18 @@ function RunsTab({ clientId, firmId, openDoc }:
                   confirmDelete === r.id ? (
                     <span className="flex items-center gap-1">
                       <button onClick={() => deleteRun(r.id)} disabled={rebuilding === r.id}
-                        className="text-[11px] px-2.5 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+                        className="text-2xs px-2.5 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
                         Delete {fmtMonth(r.month)}?
                       </button>
                       <button onClick={() => setConfirmDelete(null)}
-                        className="text-[11px] px-2 py-1.5 text-ps-label hover:text-ps-body">
+                        className="text-2xs px-2 py-1.5 text-ps-label hover:text-ps-body">
                         Cancel
                       </button>
                     </span>
                   ) : (
                     <button onClick={() => setConfirmDelete(r.id)}
                       title="Throw this draft away — the month becomes creatable again"
-                      className="text-[11px] px-2.5 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 text-red-700">
+                      className="text-2xs px-2.5 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 text-red-700">
                       Delete
                     </button>
                   )
@@ -865,13 +865,13 @@ function RunsTab({ clientId, firmId, openDoc }:
                     wizards can never be open at once. */}
                 {(r.status === "finalized" || r.status === "paid") && demoFlows.includes("pf") && (
                   <button onClick={() => setDemo({ flow: "pf", runId: r.id })}
-                    className="text-[11px] px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800">
+                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800">
                     PF ECR (demo)
                   </button>
                 )}
                 {(r.status === "finalized" || r.status === "paid") && demoFlows.includes("esi") && (
                   <button onClick={() => setDemo({ flow: "esi", runId: r.id })}
-                    className="text-[11px] px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800">
+                    className="text-2xs px-2.5 py-1.5 border border-amber-300 rounded-lg hover:bg-amber-50 text-amber-800">
                     ESI (demo)
                   </button>
                 )}
@@ -888,11 +888,11 @@ function RunsTab({ clientId, firmId, openDoc }:
                     <button onClick={() => fetchSlips(r.id)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
                   </div>
                 ) : (
-                  <table className="w-full text-[11px]">
+                  <table className="w-full text-2xs">
                     <thead>
                       <tr className="border-b border-ps-muted">
                         {["Employee", "Gross", "PF (Emp)", "ESI (Emp)", "PT", "TDS", "Net"].map(h => (
-                          <th key={h} className="py-1.5 px-2 text-left text-[10px] font-semibold text-ps-hint">{h}</th>
+                          <th key={h} className="py-1.5 px-2 text-left text-3xs font-semibold text-ps-hint">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -911,7 +911,7 @@ function RunsTab({ clientId, firmId, openDoc }:
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-ps-border font-semibold">
-                        <td className="py-1.5 px-2 text-ps-ink text-[10px]">TOTAL</td>
+                        <td className="py-1.5 px-2 text-ps-ink text-3xs">TOTAL</td>
                         <td className="py-1.5 px-2 font-mono text-ps-ink">{fmt(r.total_gross_paise)}</td>
                         <td colSpan={4} />
                         <td className="py-1.5 px-2 font-mono text-emerald-600">{fmt(r.total_net_paise)}</td>
@@ -994,17 +994,17 @@ function StatutoryTab({ clientId }: { clientId: string }) {
             { label: "TDS — 24Q", amount: data.tds_24q_paise, due: "7th of following month", tone: "text-red-600", detail: "" },
           ].map(({ label, amount, due, tone, detail }) => (
             <div key={label} className="bg-white rounded-xl border border-ps-border p-4">
-              <p className="text-[11px] font-semibold text-ps-label">{label}</p>
+              <p className="text-2xs font-semibold text-ps-label">{label}</p>
               <p className={`text-2xl font-bold mt-1 ${tone}`}>{fmt(amount ?? 0)}</p>
-              {detail && <p className="text-[10px] text-ps-hint mt-1 font-mono">{detail}</p>}
-              <p className="text-[10px] text-ps-hint mt-1">Due: {due}</p>
+              {detail && <p className="text-3xs text-ps-hint mt-1 font-mono">{detail}</p>}
+              <p className="text-3xs text-ps-hint mt-1">Due: {due}</p>
             </div>
           ))}
         </div>
       )}
 
       {data && (data.one_time_paise ?? 0) !== 0 && (
-        <p className="text-[11px] text-ps-label">
+        <p className="text-2xs text-ps-label">
           {fmt(data.one_time_paise ?? 0)} of the gross this month was one-time
           earnings — a bonus, arrears or a reimbursement — not the recurring
           salary bill. It is the usual reason a month&apos;s challans jump.
@@ -1121,7 +1121,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-[12px]">
             <thead>
-              <tr className="bg-ps-bg border-b border-ps-muted text-[10px] font-semibold text-ps-hint uppercase">
+              <tr className="bg-ps-bg border-b border-ps-muted text-3xs font-semibold text-ps-hint uppercase">
                 <th className="px-3 py-2 text-left">Month</th>
                 <th className="px-3 py-2 text-left">State</th>
                 <th className="px-3 py-2 text-right">Net pay</th>
@@ -1136,7 +1136,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                   <tr key={r.id}>
                     <td className="px-3 py-2 font-medium text-ps-ink">{fmtMonth(r.month)}</td>
                     <td className="px-3 py-2">
-                      <span className={`px-2 py-0.5 rounded text-[11px] ${
+                      <span className={`px-2 py-0.5 rounded text-2xs ${
                         paid ? "bg-green-100 text-green-700"
                         : finalized ? "bg-emerald-100 text-emerald-700"
                         : "bg-blue-100 text-blue-700"}`}>
@@ -1161,7 +1161,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                         </button>
                       )}
                       {!finalized && !paid && (
-                        <span className="text-[11px] text-ps-hint">Finalise it under Register</span>
+                        <span className="text-2xs text-ps-hint">Finalise it under Register</span>
                       )}
                     </td>
                   </tr>
@@ -1269,7 +1269,7 @@ function OutputsTab({ clientId }: { clientId: string }) {
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <label className="text-[11px] text-ps-label">Month</label>
+        <label className="text-2xs text-ps-label">Month</label>
         <select value={runId} onChange={(e) => { setRunId(e.target.value); setMsg(null); }}
           className="border border-ps-border rounded-lg px-3 py-1.5 text-[13px] outline-none focus:border-blue-400">
           {runs.map((r) => <option key={r.id} value={r.id}>{fmtMonth(r.month)} · {r.status}</option>)}
@@ -1292,10 +1292,10 @@ function OutputsTab({ clientId }: { clientId: string }) {
       {ecrSeq?.note && (
         <div className={`rounded-xl border p-3 ${(ecrSeq.outstanding?.length ?? 0)
           ? "border-amber-200 bg-amber-50" : "border-ps-border bg-white"}`}>
-          <p className="text-[11px] font-semibold text-ps-ink">EPFO filing order</p>
-          <p className="text-[11px] text-ps-label mt-1">{ecrSeq.note}</p>
+          <p className="text-2xs font-semibold text-ps-ink">EPFO filing order</p>
+          <p className="text-2xs text-ps-label mt-1">{ecrSeq.note}</p>
           {!!ecrSeq.filings?.length && (
-            <p className="text-[10px] text-ps-hint mt-2">
+            <p className="text-3xs text-ps-hint mt-2">
               Recorded: {ecrSeq.filings.map((f) =>
                 `${f.wage_month} ${f.return_type} (${f.status})`).join(" · ")}
             </p>
@@ -1307,7 +1307,7 @@ function OutputsTab({ clientId }: { clientId: string }) {
         {items.map((it) => (
           <div key={it.key} className="bg-white rounded-xl border border-ps-border p-4">
             <p className="text-[12px] font-semibold text-ps-ink">{it.label}</p>
-            <p className="text-[10px] text-ps-hint mt-1 min-h-[28px]">{it.hint}</p>
+            <p className="text-3xs text-ps-hint mt-1 min-h-[28px]">{it.hint}</p>
             <button onClick={it.run} disabled={!it.ready || busy !== null}
               className="mt-2 px-3 py-1.5 text-[12px] border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
               {busy === it.key ? "Building…" : it.ready ? "Download" : "Not yet"}
@@ -1327,7 +1327,7 @@ function OutputsTab({ clientId }: { clientId: string }) {
           and the field for the TRRN were on three other screens. Two copies of
           one filing flow would drift, so this points at the one that is left.
           Track F, phase F3. */}
-      <p className="text-[11px] text-ps-label bg-ps-bg border border-ps-border
+      <p className="text-2xs text-ps-label bg-ps-bg border border-ps-border
                     rounded-xl px-3 py-2">
         Filing EPF, ESI or professional tax for this month? That is on the{" "}
         <span className="font-semibold text-ps-body">File</span> tab — the
@@ -1397,7 +1397,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
           <p className="text-[12px] font-semibold text-ps-ink">
             Form 24Q Annexure II — annual salary detail
           </p>
-          <p className="text-[10px] text-ps-hint mt-1 max-w-[60ch]">
+          <p className="text-3xs text-ps-hint mt-1 max-w-[60ch]">
             Filed with Q4. TRACES builds each employee&apos;s Form 16 Part B from it —
             nothing here issues a certificate, and Part B is downloaded from TRACES
             (CBDT Notification 09/2019).
@@ -1436,24 +1436,24 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
               correct for someone who declared none. */}
           {!!data?.problems?.length && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-              <p className="text-[11px] font-semibold text-red-700">
+              <p className="text-2xs font-semibold text-red-700">
                 Not ready to file — {data.problems.length} problem{data.problems.length === 1 ? "" : "s"}
               </p>
               <ul className="mt-1 space-y-0.5">
                 {data.problems.map((p, i) => (
-                  <li key={i} className="text-[11px] text-red-700">· {p}</li>
+                  <li key={i} className="text-2xs text-red-700">· {p}</li>
                 ))}
               </ul>
             </div>
           )}
           {!!data?.gaps?.length && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-[11px] font-semibold text-amber-800">
+              <p className="text-2xs font-semibold text-amber-800">
                 What payroll cannot know — the employee holds these
               </p>
               <ul className="mt-1 space-y-0.5">
                 {data.gaps.map((g, i) => (
-                  <li key={i} className="text-[11px] text-amber-800">· {g}</li>
+                  <li key={i} className="text-2xs text-amber-800">· {g}</li>
                 ))}
               </ul>
             </div>
@@ -1465,7 +1465,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-[11px]">
+              <table className="w-full text-2xs">
                 <thead>
                   <tr className="text-left text-ps-label border-b border-ps-border">
                     <th className="py-1.5 pr-2">Employee</th>
@@ -1481,7 +1481,7 @@ function AnnexureIIPanel({ clientId, month }: { clientId: string; month?: string
                   {rows.map((r) => (
                     <tr key={r.employee_id} className="border-b border-ps-muted">
                       <td className="py-1.5 pr-2 text-ps-ink">{r.name}</td>
-                      <td className="py-1.5 pr-2 font-mono text-[10px]">{r.pan || "—"}</td>
+                      <td className="py-1.5 pr-2 font-mono text-3xs">{r.pan || "—"}</td>
                       <td className="py-1.5 pr-2">{r.regime === "new" ? "115BAC" : "Old"}</td>
                       <td className="py-1.5 pr-2 text-right">{r.months_paid}</td>
                       <td className="py-1.5 pr-2 text-right">{fmt(r.gross_salary_paise)}</td>
@@ -1672,7 +1672,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
     <div className="p-5 space-y-4">
       <div className="bg-white rounded-xl border border-ps-border p-4">
         <h2 className="text-[13px] font-semibold text-ps-ink">Statutory registrations</h2>
-        <p className="text-[11px] text-ps-label mt-0.5">
+        <p className="text-2xs text-ps-label mt-0.5">
           The numbers this client&apos;s own returns are filed under. Form 24Q carries the TAN;
           the EPFO and ESIC portals take the establishment from the login, so those two are
           shown beside the file rather than in it.
@@ -1700,7 +1700,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
       <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
         <div>
           <h2 className="text-[13px] font-semibold text-ps-ink">Professional tax registrations</h2>
-          <p className="text-[11px] text-ps-label mt-0.5">
+          <p className="text-2xs text-ps-label mt-0.5">
             One per state — PT is a state levy under Article 276(2). The PTRC is the
             employer&apos;s authority to <em>deduct</em> from employees and deposit; the PTEC is the
             entity&apos;s own enrolment. A payroll run reports any state it deducts in with no PTRC here.
@@ -1710,7 +1710,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
         {pt.length > 0 && (
           <table className="w-full text-[12px]">
             <thead>
-              <tr className="text-left text-[10px] text-ps-hint border-b border-ps-muted">
+              <tr className="text-left text-3xs text-ps-hint border-b border-ps-muted">
                 <th className="py-1.5">State</th><th>PTRC</th><th>PTEC</th><th></th>
               </tr>
             </thead>
@@ -1722,7 +1722,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
                   <td className="text-ps-body">{r.ptec_number || <span className="text-ps-hint">—</span>}</td>
                   <td className="text-right">
                     <button onClick={() => removePt(r.state)} disabled={saving === "pt"}
-                      className="text-[11px] text-red-600 hover:underline disabled:opacity-50">Remove</button>
+                      className="text-2xs text-red-600 hover:underline disabled:opacity-50">Remove</button>
                   </td>
                 </tr>
               ))}
@@ -1763,8 +1763,8 @@ function IdentityRow({ field, value, saving, justSaved, onSave }: {
   return (
     <div className="p-3 flex items-end gap-3">
       <div className="flex-1">
-        <label className="block text-[11px] font-medium text-ps-body">{field.label}</label>
-        <p className="text-[10px] text-ps-hint mb-1">{field.used_for}</p>
+        <label className="block text-2xs font-medium text-ps-body">{field.label}</label>
+        <p className="text-3xs text-ps-hint mb-1">{field.used_for}</p>
         <input
           value={draft}
           onChange={e => setDraft(e.target.value)}
@@ -1785,7 +1785,7 @@ function IdentityRow({ field, value, saving, justSaved, onSave }: {
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
   return (
     <div className="bg-white rounded-xl border border-ps-border p-4">
-      <div className="flex items-center gap-1.5 mb-1">{icon}<span className="text-[10px] text-ps-hint">{label}</span></div>
+      <div className="flex items-center gap-1.5 mb-1">{icon}<span className="text-3xs text-ps-hint">{label}</span></div>
       <p className="text-2xl font-bold text-ps-ink">{value}</p>
     </div>
   );
@@ -1794,7 +1794,7 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] text-ps-hint">{label}</p>
+      <p className="text-3xs text-ps-hint">{label}</p>
       <p className="text-sm font-semibold text-ps-ink">{value}</p>
     </div>
   );
@@ -1807,13 +1807,13 @@ function StatusBadge({ status }: { status: string }) {
     finalized: "bg-emerald-50 text-emerald-600",
     paid:      "bg-sky-50 text-sky-600",
   };
-  return <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded capitalize", map[status] || map.draft)}>{status}</span>;
+  return <span className={cn("text-3xs font-medium px-1.5 py-0.5 rounded capitalize", map[status] || map.draft)}>{status}</span>;
 }
 
 function Field({ label, value, onChange, placeholder, type = "text" }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
   return (
     <div>
-      <label className="block text-[11px] text-ps-label mb-0.5">{label}</label>
+      <label className="block text-2xs text-ps-label mb-0.5">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
         className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-[12px] text-ps-ink outline-none focus:border-blue-400" />
     </div>
@@ -2039,7 +2039,7 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
         {structures.map(s => (
           <div key={s.id} className="bg-white rounded-xl border border-ps-border p-4">
             <p className="font-semibold text-[13px] text-ps-ink">{s.name}</p>
-            <div className="mt-2 space-y-1 text-[11px] text-ps-label">
+            <div className="mt-2 space-y-1 text-2xs text-ps-label">
               <p>Basic {s.basic_percent}% · HRA {s.hra_percent}%</p>
               <p>{s.pf_applicable ? "PF ✓" : "PF ✗"} · {s.esi_applicable ? "ESI ✓" : "ESI ✗"}</p>
             </div>
@@ -2126,18 +2126,18 @@ function ReportsTab({ clientId }: { clientId: string }) {
           {downloading ? "Building…" : "Download CSV"}
         </button>
       </div>
-      {downloadError && <p className="text-[11px] text-red-600">{downloadError}</p>}
+      {downloadError && <p className="text-2xs text-red-600">{downloadError}</p>}
       {(data?.slips?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-4 py-3 border-b border-ps-muted flex items-center justify-between">
             <p className="text-[12px] font-semibold text-ps-ink">Salary Register — {fmtMonth(month)}</p>
-            <span className="text-[11px] text-ps-hint">{data!.slips.length} employees</span>
+            <span className="text-2xs text-ps-hint">{data!.slips.length} employees</span>
           </div>
-          <table className="w-full text-[11px]">
+          <table className="w-full text-2xs">
             <thead>
               <tr className="bg-ps-bg border-b border-ps-muted">
                 {["Employee", "PAN", "Gross", "PF", "ESI", "PT", "TDS", "Net"].map(h => (
-                  <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-ps-hint">{h}</th>
+                  <th key={h} className="px-3 py-2 text-left text-3xs font-semibold text-ps-hint">{h}</th>
                 ))}
               </tr>
             </thead>

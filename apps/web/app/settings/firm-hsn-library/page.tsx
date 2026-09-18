@@ -370,7 +370,7 @@ export default function FirmHsnLibraryPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
-                  <tr className="text-[11px] text-ps-hint border-b border-ps-muted">
+                  <tr className="text-2xs text-ps-hint border-b border-ps-muted">
                     <th className="w-8 px-4 py-2">
                       <input
                         type="checkbox"

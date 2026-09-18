@@ -547,22 +547,22 @@ export default function BillingPage() {
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-ps-label">Revenue Collected</p>
               <p className="text-xl font-bold text-ps-ink mt-1">{fmtPaise(dash.totalRevenuePaise)}</p>
-              <p className="text-[11px] text-ps-hint mt-0.5">{dash.paidCount} paid invoices</p>
+              <p className="text-2xs text-ps-hint mt-0.5">{dash.paidCount} paid invoices</p>
             </div>
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-ps-label">Outstanding</p>
               <p className={`text-xl font-bold mt-1 ${dash.outstandingPaise > 0 ? "text-amber-700" : "text-ps-ink"}`}>{fmtPaise(dash.outstandingPaise)}</p>
-              <p className="text-[11px] text-ps-hint mt-0.5">{dash.sentCount} issued invoices</p>
+              <p className="text-2xs text-ps-hint mt-0.5">{dash.sentCount} issued invoices</p>
             </div>
             <div className={`bg-white border rounded-xl p-4 ${dash.overduePaise > 0 ? "border-red-200" : ""}`}>
               <p className="text-xs text-ps-label">Overdue</p>
               <p className={`text-xl font-bold mt-1 ${dash.overduePaise > 0 ? "text-red-600" : "text-ps-ink"}`}>{fmtPaise(dash.overduePaise)}</p>
-              <p className="text-[11px] text-ps-hint mt-0.5">{dash.overdueCount} invoices</p>
+              <p className="text-2xs text-ps-hint mt-0.5">{dash.overdueCount} invoices</p>
             </div>
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-ps-label">ARR (Annualised)</p>
               <p className="text-xl font-bold text-blue-600 mt-1">{fmtPaise(dash.annualisedPaise)}</p>
-              <p className="text-[11px] text-ps-hint mt-0.5">{dash.activeEngCount} active engagements</p>
+              <p className="text-2xs text-ps-hint mt-0.5">{dash.activeEngCount} active engagements</p>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

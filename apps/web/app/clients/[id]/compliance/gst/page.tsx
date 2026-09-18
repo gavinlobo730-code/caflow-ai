@@ -453,7 +453,7 @@ function GSTDashboard({ clientId }: { clientId: string }) {
             <p className="font-semibold">
               {data.iffDue ?? "Not applicable in the last month of a quarter"}
             </p>
-            <p className="text-[10px] text-ps-hint mt-1">
+            <p className="text-3xs text-ps-hint mt-1">
               Upload B2B invoices so the customer&apos;s ITC does not wait for the quarter.
               Nothing is due if it is not used.
             </p>
@@ -1114,7 +1114,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               <input type="date" value={filedOn} aria-label="Date filed"
                 onChange={(e) => setFiledOn(e.target.value)}
                 className="w-full border rounded px-3 py-1.5 text-sm" />
-              <p className="text-[10px] text-ps-hint mt-0.5">
+              <p className="text-3xs text-ps-hint mt-0.5">
                 Date filed — optional. Fill it to see §50 interest.
               </p>
             </div>
@@ -1192,7 +1192,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     <span className="font-mono">{rupees((computeResult.cash_payable_paise as number) ?? (computeResult.net_tax_paise as number))}</span>
                   </div>
                   {((computeResult.rcm_cash_paise as number) ?? 0) > 0 && (
-                    <p className="text-[11px] text-ps-label pt-0.5">
+                    <p className="text-2xs text-ps-label pt-0.5">
                       Input credit cannot pay reverse-charge tax (CGST §49(4) read with §2(82)),
                       so it is paid in cash whatever credit is available.
                     </p>
@@ -1302,7 +1302,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                                  np.igst_paise, np.cgst_paise, np.sgst_paise)}
                           </tbody>
                         </table>
-                        <p className="text-[10px] text-ps-hint mt-2">
+                        <p className="text-3xs text-ps-hint mt-2">
                           Click a blue line to see the documents behind it — the detail
                           report, which sums to the figure beside it. 4(C) and Table 6 are
                           arithmetic over the lines above, so they have no documents of
@@ -1462,7 +1462,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                             className="text-xs px-2 py-0.5 border border-amber-400 rounded hover:bg-amber-100 disabled:opacity-40">
                             {busyRow === r.id ? "Recomputing…" : "Recompute from books"}
                           </button>
-                          <span className="ml-2 text-[11px]">
+                          <span className="ml-2 text-2xs">
                             Recomputing replaces the saved figures and returns this to draft,
                             because an approval of the old ones no longer applies.
                           </span>
@@ -1735,12 +1735,12 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
                   <tr key={i} className="border-b last:border-0">
                     <td className="py-1.5 pr-3">
                       {m.supplier_name || m.supplier_gstin || "—"}
-                      <span className="block text-[10px] text-ps-hint">{m.supplier_gstin}</span>
+                      <span className="block text-3xs text-ps-hint">{m.supplier_gstin}</span>
                     </td>
                     <td className="py-1.5 pr-3">
                       {m.document_number || m.bill_no || "—"}
                       {m.itc_available === "N" && (
-                        <span className="block text-[10px] text-amber-700">2B: ITC not available</span>
+                        <span className="block text-3xs text-amber-700">2B: ITC not available</span>
                       )}
                     </td>
                     <td className="py-1.5 pr-3 text-right font-mono">

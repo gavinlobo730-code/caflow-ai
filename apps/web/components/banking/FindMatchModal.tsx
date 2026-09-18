@@ -160,7 +160,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
           <div className="flex flex-wrap gap-2">
             <select value={entityType} onChange={(e) => setEntityType(e.target.value)}
               aria-label="Document type"
-              className="px-2 py-1 text-[11px] border border-ps-border rounded text-ps-label">
+              className="px-2 py-1 text-2xs border border-ps-border rounded text-ps-label">
               {/* Only what money moving THIS way can settle. The backend applies
                   the same rule and refuses anything else outright, so this list
                   narrows the request rather than deciding it. */}
@@ -169,29 +169,29 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
                 <option key={t} value={t}>{CANDIDATE_TYPE_LABELS[t] ?? t}</option>
               ))}
             </select>
-            <label className="flex items-center gap-1 text-[10px] text-ps-hint">
+            <label className="flex items-center gap-1 text-3xs text-ps-hint">
               From
               <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
                 aria-label="Dated from"
-                className="px-1.5 py-1 text-[11px] border border-ps-border rounded text-ps-label" />
+                className="px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
             </label>
-            <label className="flex items-center gap-1 text-[10px] text-ps-hint">
+            <label className="flex items-center gap-1 text-3xs text-ps-hint">
               To
               <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
                 aria-label="Dated to"
-                className="px-1.5 py-1 text-[11px] border border-ps-border rounded text-ps-label" />
+                className="px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
             </label>
-            <label className="flex items-center gap-1 text-[10px] text-ps-hint">
+            <label className="flex items-center gap-1 text-3xs text-ps-hint">
               ₹ min
               <input type="number" step="0.01" min="0" value={minRs} onChange={(e) => setMinRs(e.target.value)}
                 aria-label="Minimum amount in rupees"
-                className="w-24 px-1.5 py-1 text-[11px] border border-ps-border rounded text-ps-label" />
+                className="w-24 px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
             </label>
-            <label className="flex items-center gap-1 text-[10px] text-ps-hint">
+            <label className="flex items-center gap-1 text-3xs text-ps-hint">
               ₹ max
               <input type="number" step="0.01" min="0" value={maxRs} onChange={(e) => setMaxRs(e.target.value)}
                 aria-label="Maximum amount in rupees"
-                className="w-24 px-1.5 py-1 text-[11px] border border-ps-border rounded text-ps-label" />
+                className="w-24 px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
             </label>
           </div>
         </form>
@@ -205,7 +205,7 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
             </p>
           )}
           {data?.truncated && (
-            <p className="text-[10px] text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-2 py-1">
+            <p className="text-3xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-2 py-1">
               There were more documents than this search reads at once. Narrow the dates or
               the amount to be sure you are seeing everything.
             </p>
@@ -214,8 +214,8 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
             <div key={`${r.matched_entity_type}:${r.matched_entity_id}`}
               className="flex items-center justify-between gap-3 border border-ps-muted rounded px-2.5 py-1.5">
               <div className="min-w-0">
-                <p className="text-[11px] text-ps-body truncate">{r.label}</p>
-                <p className="text-[10px] text-ps-hint">
+                <p className="text-2xs text-ps-body truncate">{r.label}</p>
+                <p className="text-3xs text-ps-hint">
                   {r.entity_date ?? "—"} · {fmt(r.amount_paise)}
                   {r.outstanding_paise !== null && r.outstanding_paise !== r.amount_paise
                     ? ` · ${fmt(r.outstanding_paise)} open` : ""}
@@ -229,13 +229,13 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
                     settlement modal rather than let one click under-settle. */}
                 {r.difference_paise > 0 ? (
                   <button onClick={() => onSettle(r)}
-                    className="text-[10px] px-2 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700"
+                    className="text-3xs px-2 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700"
                     title={`Bank line is ${fmt(r.difference_paise)} short of this document`}>
                     {r.tds_rate_bps ? "Settle with TDS" : "Settle difference"}
                   </button>
                 ) : (
                   <button onClick={() => pick(r)} disabled={picking !== null}
-                    className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                    className="text-3xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
                     {picking === r.matched_entity_id ? "Matching…" : "Match"}
                   </button>
                 )}
@@ -245,17 +245,17 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
         </div>
 
         <div className="flex items-center justify-between px-5 py-3 border-t border-ps-muted">
-          <p className="text-[10px] text-ps-hint">
+          <p className="text-3xs text-ps-hint">
             {total === 0 ? "No documents" :
               `${page * PER_PAGE + 1}–${Math.min((page + 1) * PER_PAGE, total)} of ${total}`}
           </p>
           <div className="flex gap-2">
             <button onClick={() => goTo(page - 1)} disabled={page === 0 || loading}
-              className="text-[11px] px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
+              className="text-2xs px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
               Previous
             </button>
             <button onClick={() => goTo(page + 1)} disabled={page >= lastPage || loading}
-              className="text-[11px] px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
+              className="text-2xs px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
               Next
             </button>
           </div>

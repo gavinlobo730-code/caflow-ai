@@ -110,26 +110,26 @@ export function FxRatesPanel() {
 
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <div>
-          <label htmlFor="fx-base" className="block text-[11px] font-medium text-ps-label mb-1">Currency</label>
+          <label htmlFor="fx-base" className="block text-2xs font-medium text-ps-label mb-1">Currency</label>
           <input id="fx-base" value={base} maxLength={3}
             onChange={(e) => setBase(e.target.value.toUpperCase())}
             className="w-20 text-xs px-2 py-1.5 border border-ps-border rounded-lg font-mono" />
         </div>
         <span className="pb-2 text-xs text-ps-hint">&rarr; {quote}</span>
         <div>
-          <label htmlFor="fx-type" className="block text-[11px] font-medium text-ps-label mb-1">Rate type</label>
+          <label htmlFor="fx-type" className="block text-2xs font-medium text-ps-label mb-1">Rate type</label>
           <select id="fx-type" value={rateType} onChange={(e) => setRateType(e.target.value)}
             className="text-xs px-2 py-1.5 border border-ps-border rounded-lg">
             {types.map((t) => <option key={t.code} value={t.code}>{t.code}</option>)}
           </select>
         </div>
         <div>
-          <label htmlFor="fx-date" className="block text-[11px] font-medium text-ps-label mb-1">For the date</label>
+          <label htmlFor="fx-date" className="block text-2xs font-medium text-ps-label mb-1">For the date</label>
           <input id="fx-date" type="date" value={when} onChange={(e) => setWhen(e.target.value)}
             className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
         </div>
         <div>
-          <label htmlFor="fx-rate" className="block text-[11px] font-medium text-ps-label mb-1">Rate</label>
+          <label htmlFor="fx-rate" className="block text-2xs font-medium text-ps-label mb-1">Rate</label>
           <input id="fx-rate" value={rate} inputMode="decimal" placeholder="83.4200"
             onChange={(e) => setRate(e.target.value)}
             className="w-32 text-xs px-2 py-1.5 border border-ps-border rounded-lg font-mono text-right" />
@@ -143,7 +143,7 @@ export function FxRatesPanel() {
       {/* What this rate type IS. The server's sentence, because the four are not
           interchangeable — recording a market rate as gst_notified declares a
           different taxable value from the one CGST Rule 34 fixes. */}
-      {meaning && <p className="mt-2 text-[11px] text-ps-hint max-w-2xl">{meaning}</p>}
+      {meaning && <p className="mt-2 text-2xs text-ps-hint max-w-2xl">{meaning}</p>}
 
       {msg && (
         <p className={`mt-2 text-xs ${msg.ok ? "text-state-ready" : "text-state-problem"}`}>

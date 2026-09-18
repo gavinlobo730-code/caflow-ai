@@ -379,7 +379,7 @@ export default function GSTR3BPage() {
                         addition. Shown only when there is one: most clients have
                         no Table 11 at all (Notification 66/2017-Central Tax). */}
                     {adv11 !== 0 && (
-                      <span className="block text-[10px] text-ps-label mt-0.5">
+                      <span className="block text-3xs text-ps-label mt-0.5">
                         Includes {r(w.advances_11?.taxable_value_paise ?? 0)} of advances —
                         GSTR-1 Table 11A less 11B, taxable on receipt under CGST s.13(2).
                         Declared and payable here, but not in the general ledger: a receipt
@@ -396,7 +396,7 @@ export default function GSTR3BPage() {
                   <td className="px-5 py-3 text-ps-body">
                     (b) Zero-rated supplies (Exports / SEZ)
                     {w.outward.zero_rated_igst_paise > 0 && (
-                      <span className="block text-[10px] text-ps-label mt-0.5">
+                      <span className="block text-3xs text-ps-label mt-0.5">
                         On payment of tax — CGST s.16(3)(b). Refundable under s.54.
                       </span>
                     )}
@@ -456,7 +456,7 @@ export default function GSTR3BPage() {
                         would make this figure the wrong base for the Table 6
                         set-off below. It is carried to the challan panel
                         instead, which is where it is actually paid. */}
-                    <span className="block text-[10px] font-normal text-blue-700 mt-0.5">
+                    <span className="block text-3xs font-normal text-blue-700 mt-0.5">
                       Reverse charge (d) is excluded — s.2(82) puts it outside output tax,
                       and s.49(4) makes it cash. It is on the challan below.
                     </span>
@@ -857,7 +857,7 @@ export default function GSTR3BPage() {
               <div className="flex items-baseline justify-between px-5 py-3">
                 <div>
                   <p className="text-sm text-ps-body">Reverse charge, payable in cash</p>
-                  <p className="text-[10px] text-ps-label mt-0.5">
+                  <p className="text-3xs text-ps-label mt-0.5">
                     Table 3.1(d). CGST Act s.49(4) with s.2(82) — the credit ledger cannot pay this.
                   </p>
                 </div>
@@ -866,7 +866,7 @@ export default function GSTR3BPage() {
               <div className="flex items-baseline justify-between px-5 py-4 bg-state-problem-surface">
                 <div>
                   <p className="text-sm font-semibold text-ps-ink">Total payable in cash</p>
-                  <p className="text-[10px] text-ps-label mt-0.5">
+                  <p className="text-3xs text-ps-label mt-0.5">
                     This is the challan figure — the set-off result plus the reverse-charge tax.
                   </p>
                 </div>
@@ -884,7 +884,7 @@ export default function GSTR3BPage() {
                   accent: w.itc_utilisation.carried_forward_paise > 0 ? "text-emerald-700" : "" },
               ].map(item => (
                 <div key={item.label}>
-                  <p className="text-[11px] text-ps-hint">{item.label}</p>
+                  <p className="text-2xs text-ps-hint">{item.label}</p>
                   <p className={`text-sm font-semibold font-mono ${item.accent ?? ""}`}>{r(item.value)}</p>
                 </div>
               ))}
@@ -1072,16 +1072,16 @@ export default function GSTR3BPage() {
                       </p>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="rounded-lg bg-white/70 border border-amber-200 px-3 py-2">
-                          <p className="text-[10px] text-amber-700">From the date the credit was availed</p>
+                          <p className="text-3xs text-amber-700">From the date the credit was availed</p>
                           <p className="font-mono text-sm text-amber-900">{r(dueInterest.availment)}</p>
                         </div>
                         <div className="rounded-lg bg-white/70 border border-amber-200 px-3 py-2">
-                          <p className="text-[10px] text-amber-700">From the day the 180 days expired</p>
+                          <p className="text-3xs text-amber-700">From the day the 180 days expired</p>
                           <p className="font-mono text-sm text-amber-900">{r(dueInterest.expiry)}</p>
                         </div>
                       </div>
                       {rule37!.interest_caveats.map((c, i) => (
-                        <p key={i} className="text-[11px] text-amber-700 mt-2">{c}</p>
+                        <p key={i} className="text-2xs text-amber-700 mt-2">{c}</p>
                       ))}
                     </div>
                   </div>
@@ -1190,7 +1190,7 @@ export default function GSTR3BPage() {
                     <div className="grid grid-cols-3 gap-2 mb-3">
                       {(["igst", "cgst", "sgst"] as const).map(h => (
                         <div key={h} className="rounded-lg bg-white/70 border border-amber-200 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-amber-700">{h}</p>
+                          <p className="text-3xs uppercase tracking-wide text-amber-700">{h}</p>
                           <p className="font-mono text-sm text-amber-900">{r(r43.te_paise[h])}</p>
                         </div>
                       ))}
@@ -1235,7 +1235,7 @@ export default function GSTR3BPage() {
                         <li key={i} className="text-xs text-amber-800">• {g}</li>
                       ))}
                     </ul>
-                    <p className="text-[11px] text-amber-700 mt-2">
+                    <p className="text-2xs text-amber-700 mt-2">
                       Record the use on the asset in the client&apos;s Fixed Assets tab, then
                       recompute.
                     </p>
@@ -1245,7 +1245,7 @@ export default function GSTR3BPage() {
                 {r43.caveats.length > 0 && (
                   <div className="px-5 py-3 border-t border-amber-200 space-y-1">
                     {r43.caveats.map((c, i) => (
-                      <p key={i} className="text-[11px] text-amber-700">{c}</p>
+                      <p key={i} className="text-2xs text-amber-700">{c}</p>
                     ))}
                   </div>
                 )}

@@ -142,7 +142,7 @@ export default function FxRevaluationPanel({
         <p className="text-xs font-semibold text-ps-body">
           Revalue open foreign items at {plan.period_end}
         </p>
-        <p className="text-[11px] text-ps-hint mt-0.5">
+        <p className="text-2xs text-ps-hint mt-0.5">
           AS 11 retranslates a monetary item at the closing rate on the balance sheet
           date and takes the difference to the profit and loss account. The entry is
           posted at {plan.period_end} and auto-reversed on {plan.reversal_date}, so the
@@ -203,7 +203,7 @@ export default function FxRevaluationPanel({
       {plan.rate_gaps.length > 0 && (
         <ul className="space-y-1">
           {plan.rate_gaps.map((g, i) => (
-            <li key={i} className="text-[11px] text-[#92400E] bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            <li key={i} className="text-2xs text-[#92400E] bg-amber-50 border border-amber-200 rounded px-2 py-1">
               {g}
             </li>
           ))}
@@ -218,7 +218,7 @@ export default function FxRevaluationPanel({
       )}
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-ps-hint">
+        <p className="text-2xs text-ps-hint">
           {/* Re-running is the CORRECTION path, not a duplicate: the engine posts
               only the delta needed to reach the new target. Saying so is what
               stops a CA from avoiding the button after a rate changes. */}

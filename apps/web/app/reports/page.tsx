@@ -769,7 +769,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
                 />
               </div>
               {clientsError && (
-                <p className="text-[11px] text-red-600">
+                <p className="text-2xs text-red-600">
                   {clientsError}{" "}
                   <button onClick={ensureClients} className="underline hover:no-underline">Retry</button>
                 </p>

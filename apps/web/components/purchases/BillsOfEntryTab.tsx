@@ -230,7 +230,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
           <h2 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Ship size={15} className="text-blue-600" /> Bills of Entry
           </h2>
-          <p className="text-[11px] text-ps-label mt-1 max-w-2xl">
+          <p className="text-2xs text-ps-label mt-1 max-w-2xl">
             The customs assessment on an import of goods. The tax here is paid to
             customs, not to the supplier, so no accounts payable is touched.
             {authorities && (
@@ -272,11 +272,11 @@ export function BillsOfEntryTab({ clientId, openDoc }:
             ["Paid to customs", totals.paid, "total assessed"],
           ].map(([label, value, note]) => (
             <div key={String(label)} className="border border-ps-border rounded-lg px-3 py-2">
-              <p className="text-[10px] text-ps-hint">{label}</p>
+              <p className="text-3xs text-ps-hint">{label}</p>
               <p className="text-sm font-semibold text-ps-ink tabular-nums">
                 {formatPaise(Number(value))}
               </p>
-              <p className="text-[10px] text-ps-hint">{note}</p>
+              <p className="text-3xs text-ps-hint">{note}</p>
             </div>
           ))}
         </div>
@@ -313,7 +313,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                      (openDoc && r.id === openDoc ? " bg-amber-50 ring-2 ring-inset ring-amber-300" : "")}>
                   <td className="py-2 font-mono text-ps-ink">
                     {r.be_number}
-                    <span className="ml-1.5 text-[10px] text-ps-hint uppercase">{r.gstr2b_section}</span>
+                    <span className="ml-1.5 text-3xs text-ps-hint uppercase">{r.gstr2b_section}</span>
                   </td>
                   <td className="py-2">{String(r.be_date).slice(0, 10)}</td>
                   <td className="py-2 font-mono text-ps-label">{r.port_code || "—"}</td>
@@ -323,7 +323,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                   <td className="py-2 text-right tabular-nums">{formatPaise(r.non_creditable_duty_paise)}</td>
                   <td className="py-2 text-right tabular-nums">{formatPaise(r.total_paise)}</td>
                   <td className="py-2">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${r.status === "posted"
+                    <span className={`px-1.5 py-0.5 rounded text-3xs ${r.status === "posted"
                       ? "bg-emerald-50 text-emerald-700" : "bg-ps-muted text-ps-label"}`}>
                       {r.status === "posted" ? "Posted" : "Draft"}
                     </span>
@@ -331,12 +331,12 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                         nothing. Rendered apart so a note does not read as a
                         block. */}
                     {r.refusals.length > 0 && (
-                      <div className="mt-1 text-[10px] text-red-700 space-y-0.5 max-w-xs">
+                      <div className="mt-1 text-3xs text-red-700 space-y-0.5 max-w-xs">
                         {r.refusals.map((x, i) => <p key={i}>{x}</p>)}
                       </div>
                     )}
                     {r.caveats.length > 0 && (
-                      <div className="mt-1 text-[10px] text-amber-800 space-y-0.5 max-w-xs">
+                      <div className="mt-1 text-3xs text-amber-800 space-y-0.5 max-w-xs">
                         {r.caveats.map((x, i) => (
                           <p key={i} className="flex gap-1"><Info size={10} className="shrink-0 mt-0.5" />{x}</p>
                         ))}
@@ -349,7 +349,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                         <button onClick={() => handlePost(r)}
                           disabled={busy || !r.can_post}
                           title={r.can_post ? "" : r.refusals.join(" ")}
-                          className="px-2 py-1 text-[11px] border border-ps-border rounded hover:bg-ps-bg disabled:opacity-40">
+                          className="px-2 py-1 text-2xs border border-ps-border rounded hover:bg-ps-bg disabled:opacity-40">
                           {postingId === r.id ? "Posting…" : "Post"}
                         </button>
                         <button onClick={() => handleDelete(r)} disabled={busy}
@@ -368,7 +368,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       )}
 
       {authorities && authorities.not_modelled.length > 0 && (
-        <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-[11px] text-ps-label space-y-1">
+        <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-2xs text-ps-label space-y-1">
           <p className="font-semibold">What this document does not say</p>
           {authorities.not_modelled.map((x, i) => <p key={i}>{x}</p>)}
         </div>
@@ -406,7 +406,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                     onChange={(e) => setForm(f => ({ ...f, port_code: e.target.value.toUpperCase() }))}
                     placeholder="INNSA1"
                     className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg font-mono" />
-                  <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
+                  <span className="block text-3xs text-ps-hint mt-1 leading-tight">
                     GSTR-2B keys the document on the port and the number together.
                   </span>
                 </label>
@@ -423,13 +423,13 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 <input value={form.assessable_value}
                   onChange={(e) => setForm(f => ({ ...f, assessable_value: e.target.value }))}
                   className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
-                <span className="block text-[10px] text-ps-hint mt-1 leading-tight">
+                <span className="block text-3xs text-ps-hint mt-1 leading-tight">
                   Customs Act s.14 value — not the supplier invoice value. Recorded, never posted.
                 </span>
               </label>
 
               <div className="border-t border-ps-muted pt-3">
-                <p className="text-[11px] font-semibold text-ps-body mb-2">
+                <p className="text-2xs font-semibold text-ps-body mb-2">
                   Input tax — reaches the return
                 </p>
                 <div className="grid grid-cols-2 gap-3">
@@ -447,7 +447,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
               </div>
 
               <div className="border-t border-ps-muted pt-3">
-                <p className="text-[11px] font-semibold text-ps-body mb-2">
+                <p className="text-2xs font-semibold text-ps-body mb-2">
                   Duty — cost, not credit
                 </p>
                 <div className="grid grid-cols-2 gap-3">
@@ -482,7 +482,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                     onChange={(id) => setForm(f => ({ ...f, duty_expense_account_id: id }))}
                     id="boe-duty-account" ariaLabel="Account the customs duty belongs to"
                     placeholder="— Choose account —" />
-                  <p className="text-[10px] text-ps-hint mt-1 leading-tight">
+                  <p className="text-3xs text-ps-hint mt-1 leading-tight">
                     &quot;Customs Duty&quot; is seeded for this. It is not apportioned across
                     stock lines — the basis for that is a judgement nothing here holds.
                   </p>

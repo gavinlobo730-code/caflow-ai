@@ -523,7 +523,7 @@ export default function CapitalGainsPage() {
                     <option value="listed">Listed</option>
                     <option value="unlisted">Not listed</option>
                   </select>
-                  <p className="text-[11px] text-ps-label mt-1">
+                  <p className="text-2xs text-ps-label mt-1">
                     Section 2(42A), proviso: a security listed in a recognised stock exchange
                     in India is long-term after 12 months; anything else needs 24.
                   </p>
@@ -539,7 +539,7 @@ export default function CapitalGainsPage() {
                   <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                          aria-label="Fair market value on 31 January 2018"
                          value={fmv2018Rupees} onChange={e => setFmv2018Rupees(e.target.value)} placeholder="Not recorded" />
-                  <p className="text-[11px] text-ps-label mt-1">
+                  <p className="text-2xs text-ps-label mt-1">
                     Section 55(2)(ac): acquired before 1 February 2018, so the cost is deemed to
                     be the higher of the actual cost and the lower of this and the sale value.
                     Enter the value of the WHOLE holding sold, not a per-share price. Left
@@ -564,7 +564,7 @@ export default function CapitalGainsPage() {
                   <option value="resident_individual_huf">Resident individual or HUF</option>
                   <option value="other">Company, LLP, firm or non-resident</option>
                 </select>
-                <p className="text-[11px] text-ps-label mt-1">
+                <p className="text-2xs text-ps-label mt-1">
                   Section 112(1), fifth proviso: only a resident individual or HUF may pay the
                   lower of 12.5% without indexation and 20% with it, and only on immovable
                   property acquired before 23 July 2024.
@@ -602,7 +602,7 @@ export default function CapitalGainsPage() {
 
               {showCII && purchaseFY && saleFY && (
                 <div className="bg-ps-bg rounded-lg px-3 py-2">
-                  <p className="text-[10px] text-ps-hint">
+                  <p className="text-3xs text-ps-hint">
                     Purchase FY: {purchaseFY} (CII: {ciiByFy[purchaseFY] ?? "—"}) · Sale FY: {saleFY} (CII: {ciiByFy[saleFY] ?? "—"})
                   </p>
                 </div>
@@ -771,7 +771,7 @@ export default function CapitalGainsPage() {
                     <div>
                       <p className="text-xs text-amber-800 font-medium">{result.section_ref}</p>
                       <p className="text-xs text-amber-700 mt-0.5">{result.note}</p>
-                      <p className="text-[10px] text-amber-600 mt-1">
+                      <p className="text-3xs text-amber-600 mt-1">
                         {result.is_slab_rate_estimate
                           ? "This rate is an ESTIMATE at the highest slab — your actual liability depends on your own income slab. "
                           : ""}
@@ -796,7 +796,7 @@ export default function CapitalGainsPage() {
                   <tr>
                     {ciiYears.map(y => (
                       <td key={y} className={`px-3 py-2 text-center border-r border-gray-50 ${purchaseFY === y || saleFY === y ? "bg-blue-50" : ""}`}>
-                        <p className="text-[10px] text-ps-hint">FY {y}</p>
+                        <p className="text-3xs text-ps-hint">FY {y}</p>
                         <p className="text-xs font-semibold text-ps-ink">{ciiByFy[y]}</p>
                       </td>
                     ))}
@@ -825,7 +825,7 @@ export default function CapitalGainsPage() {
                 />
               </div>
               {clientsError && (
-                <p className="text-[11px] text-red-600 mt-1">
+                <p className="text-2xs text-red-600 mt-1">
                   {clientsError}{" "}
                   <button onClick={loadClients} className="underline hover:no-underline">Retry</button>
                 </p>
@@ -944,15 +944,15 @@ export default function CapitalGainsPage() {
                   {exemption && (
                     <div className="grid grid-cols-3 gap-3">
                       <div className="bg-ps-bg rounded-lg px-3 py-2">
-                        <p className="text-[11px] text-ps-label">Gain (s. 48)</p>
+                        <p className="text-2xs text-ps-label">Gain (s. 48)</p>
                         <p className="text-sm font-semibold text-ps-ink">{fmtRs(exemption.gain_paise)}</p>
                       </div>
                       <div className="bg-emerald-50 rounded-lg px-3 py-2">
-                        <p className="text-[11px] text-emerald-700">Exempt</p>
+                        <p className="text-2xs text-emerald-700">Exempt</p>
                         <p className="text-sm font-semibold text-emerald-800">{fmtRs(exemption.total_exemption_paise)}</p>
                       </div>
                       <div className="bg-amber-50 rounded-lg px-3 py-2">
-                        <p className="text-[11px] text-amber-800">Still taxable</p>
+                        <p className="text-2xs text-amber-800">Still taxable</p>
                         <p className="text-sm font-semibold text-amber-900">{fmtRs(exemption.taxable_gain_paise)}</p>
                       </div>
                     </div>
@@ -963,7 +963,7 @@ export default function CapitalGainsPage() {
                   {exemption && exemption.gaps.length > 0 && (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
                       {exemption.gaps.map((g, i) => (
-                        <p key={i} className="text-[11px] text-amber-900 flex gap-1.5">
+                        <p key={i} className="text-2xs text-amber-900 flex gap-1.5">
                           <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />{g}
                         </p>
                       ))}
@@ -978,33 +978,33 @@ export default function CapitalGainsPage() {
                           <p className="text-sm font-medium text-ps-ink">
                             s. {c.section} — {c.new_asset_description}
                           </p>
-                          <p className="text-[11px] text-ps-label">{c.heading}</p>
+                          <p className="text-2xs text-ps-label">{c.heading}</p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className={`text-sm font-semibold ${c.allowed ? "text-emerald-700" : "text-ps-hint"}`}>
                             {c.allowed ? fmtRs(c.exemption_paise) : "Not allowed"}
                           </p>
                           {c.deadline && (
-                            <p className="text-[11px] text-ps-label">
+                            <p className="text-2xs text-ps-label">
                               by {c.deadline}{c.within_time === false ? " — missed" : ""}
                             </p>
                           )}
                         </div>
                       </div>
                       {c.working.map((w, i) => (
-                        <p key={`w${i}`} className="text-[11px] text-ps-label">{w}</p>
+                        <p key={`w${i}`} className="text-2xs text-ps-label">{w}</p>
                       ))}
                       {c.gaps.map((g, i) => (
-                        <p key={`g${i}`} className="text-[11px] text-amber-900 flex gap-1.5">
+                        <p key={`g${i}`} className="text-2xs text-amber-900 flex gap-1.5">
                           <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />{g}
                         </p>
                       ))}
                       {c.caveats.map((v, i) => (
-                        <p key={`c${i}`} className="text-[11px] text-ps-label italic">{v}</p>
+                        <p key={`c${i}`} className="text-2xs text-ps-label italic">{v}</p>
                       ))}
                       {c.id && (
                         <button onClick={() => removeClaim(c.id as string)} disabled={exemptBusy}
-                                className="text-[11px] text-ps-hint hover:text-red-500 transition-colors">
+                                className="text-2xs text-ps-hint hover:text-red-500 transition-colors">
                           Delete this claim
                         </button>
                       )}
@@ -1012,7 +1012,7 @@ export default function CapitalGainsPage() {
                   ))}
 
                   {exemption && exemption.caveats.map((v, i) => (
-                    <p key={i} className="text-[11px] text-ps-label italic">{v}</p>
+                    <p key={i} className="text-2xs text-ps-label italic">{v}</p>
                   ))}
 
                   {/* ── record a claim ─────────────────────────────────── */}
@@ -1031,7 +1031,7 @@ export default function CapitalGainsPage() {
                             <option key={sec} value={sec}>s. {sec}</option>
                           ))}
                         </select>
-                        <p className="text-[11px] text-ps-label mt-1">
+                        <p className="text-2xs text-ps-label mt-1">
                           {sectionInfo.find(x => x.section === claimForm.section)?.new_asset ?? ""}
                         </p>
                       </div>
@@ -1103,7 +1103,7 @@ export default function CapitalGainsPage() {
                                value={claimForm.other_houses}
                                onChange={e => setClaimForm(f => ({ ...f, other_houses: e.target.value }))}
                                placeholder="Leave blank if not established" />
-                        <p className="text-[11px] text-ps-label mt-1">
+                        <p className="text-2xs text-ps-label mt-1">
                           s. 54F needs this and no ledger holds it. Blank is not zero —
                           the working says the claim cannot be tested until it is recorded.
                         </p>
@@ -1132,7 +1132,7 @@ export default function CapitalGainsPage() {
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-ps-hint border-t pt-3">
+                  <p className="text-2xs text-ps-hint border-t pt-3">
                     Every figure and window here is written from knowledge rather than read
                     off the bare Act — this environment cannot reach incometax.gov.in.
                     Check s. 54EC&apos;s ₹50 lakh, the six-month and two- and three-year
@@ -1178,7 +1178,7 @@ export default function CapitalGainsPage() {
                         <option key={n} value={n}>{NATURE_LABELS[n] ?? n}</option>
                       ))}
                     </select>
-                    <p className="text-[11px] text-ps-label mt-1">
+                    <p className="text-2xs text-ps-label mt-1">
                       Decides which of ss. 54, 54B, 54EC and 54F can reach this transfer.
                       &quot;Immovable property&quot; above cannot say — s. 54 reaches a residential
                       house and s. 54F reaches an asset that is not one.
@@ -1199,7 +1199,7 @@ export default function CapitalGainsPage() {
                         <option value="listed">Listed</option>
                         <option value="unlisted">Not listed</option>
                       </select>
-                      <p className="text-[11px] text-ps-label mt-1">
+                      <p className="text-2xs text-ps-label mt-1">
                         Section 2(42A), proviso — a listed security (other than a unit) is
                         long-term after 12 months, everything else after 24. &quot;Bonds&quot; above
                         cannot say which this is.
@@ -1216,7 +1216,7 @@ export default function CapitalGainsPage() {
                       <option value="resident_individual_huf">Resident individual or HUF</option>
                       <option value="other">Company, LLP, firm or non-resident</option>
                     </select>
-                    <p className="text-[11px] text-ps-label mt-1">
+                    <p className="text-2xs text-ps-label mt-1">
                       Section 112(1), fifth proviso — decides whether the 20%-with-indexation
                       option is available on property acquired before 23 July 2024.
                     </p>
@@ -1244,7 +1244,7 @@ export default function CapitalGainsPage() {
                              value={regForm.fmv_31_01_2018_rs}
                              onChange={e => setRegForm(f => ({ ...f, fmv_31_01_2018_rs: e.target.value }))}
                              placeholder="Not recorded" />
-                      <p className="text-[11px] text-ps-label mt-1">
+                      <p className="text-2xs text-ps-label mt-1">
                         Section 55(2)(ac) — acquired before 1 February 2018, so the cost is
                         deemed to be the higher of the actual cost and the lower of this and
                         the sale value. The WHOLE holding, not a per-share price. Left blank,

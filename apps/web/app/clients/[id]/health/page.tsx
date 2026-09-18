@@ -329,9 +329,9 @@ export default function ClientHealthPage() {
             </div>
             <div className="w-px h-16 bg-gray-200" />
             <div className="space-y-1">
-              {score.is_critical && <Badge className="bg-red-100 text-red-700 text-[10px]">CRITICAL</Badge>}
-              {score.is_at_risk && !score.is_critical && <Badge className="bg-amber-100 text-amber-700 text-[10px]">AT RISK</Badge>}
-              <p className="text-[11px] text-gray-500">Last: {formatDate(score.last_calculated_at)}</p>
+              {score.is_critical && <Badge className="bg-red-100 text-red-700 text-3xs">CRITICAL</Badge>}
+              {score.is_at_risk && !score.is_critical && <Badge className="bg-amber-100 text-amber-700 text-3xs">AT RISK</Badge>}
+              <p className="text-2xs text-gray-500">Last: {formatDate(score.last_calculated_at)}</p>
             </div>
           </div>
         </CardContent>
@@ -369,10 +369,10 @@ export default function ClientHealthPage() {
               <Card key={a.id} className="bg-white border border-gray-200">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-1">
-                    <Badge className={`text-[10px] ${SEVERITY_COLORS[a.severity] ?? "bg-gray-100 text-gray-600"}`}>
+                    <Badge className={`text-3xs ${SEVERITY_COLORS[a.severity] ?? "bg-gray-100 text-gray-600"}`}>
                       {a.severity.toUpperCase()}
                     </Badge>
-                    <span className="text-[10px] text-gray-500">{a.alert_type}</span>
+                    <span className="text-3xs text-gray-500">{a.alert_type}</span>
                   </div>
                   <p className="text-sm text-gray-800">{a.message}</p>
                   <p className="text-xs text-gray-500 mt-1">{formatDate(a.created_at)}</p>
@@ -406,7 +406,7 @@ export default function ClientHealthPage() {
                         <span className="text-xs text-gray-400">/100</span>
                       </td>
                       <td className="px-3 py-3">
-                        <Badge className={`text-[11px] ${gradeBadge(h.health_grade)}`}>{h.health_grade}</Badge>
+                        <Badge className={`text-2xs ${gradeBadge(h.health_grade)}`}>{h.health_grade}</Badge>
                       </td>
                     </tr>
                   ))}
@@ -446,7 +446,7 @@ export default function ClientHealthPage() {
                   {overrides.map((o) => (
                     <tr key={o.id} className="hover:bg-gray-50">
                       <td className="px-5 py-3">
-                        <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">
+                        <Badge className="bg-emerald-100 text-emerald-700 text-3xs">
                           {DIMENSION_LABELS[o.dimension ?? ""] ?? o.dimension ?? "Overall"}
                         </Badge>
                       </td>

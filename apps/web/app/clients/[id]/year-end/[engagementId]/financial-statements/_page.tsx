@@ -465,7 +465,7 @@ export default function FinancialStatementsPage() {
         </>
       )}
 
-      <p className="text-[10px] text-ps-hint">
+      <p className="text-3xs text-ps-hint">
         {/* Printed against the actual numbers, so the claim has to be true of
             THIS client: Schedule III reaches financial statements through
             Companies Act 2013 §129(1), which speaks of "a company". Asserting
@@ -554,11 +554,11 @@ function StatementCard({
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-4 py-3 bg-ps-bg border-b border-ps-muted">
-        <p className="text-[10px] font-bold text-ps-label uppercase tracking-wide">{title}</p>
+        <p className="text-3xs font-bold text-ps-label uppercase tracking-wide">{title}</p>
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-ps-muted text-ps-hint text-[10px]">
+          <tr className="border-b border-ps-muted text-ps-hint text-3xs">
             <th className="px-4 py-2 text-left font-semibold">Particulars</th>
             <th className="px-4 py-2 text-right font-semibold">{amountHeader}</th>
             {hasPrevious && (
@@ -639,13 +639,13 @@ function ProfitLossView({ lines, money, amountHeader, previousHeader }:
   return (
     <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
       <div className="px-5 py-3 bg-ps-bg border-b border-ps-muted">
-        <p className="text-[10px] font-bold text-ps-label uppercase tracking-wide">
+        <p className="text-3xs font-bold text-ps-label uppercase tracking-wide">
           Statement of Profit &amp; Loss
         </p>
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-ps-muted text-ps-hint text-[10px]">
+          <tr className="border-b border-ps-muted text-ps-hint text-3xs">
             <th className="px-5 py-2 text-left font-semibold">Particulars</th>
             <th className="px-4 py-2 text-right font-semibold">{amountHeader}</th>
             {hasPrevious && (
@@ -687,7 +687,7 @@ function ProfitLossView({ lines, money, amountHeader, previousHeader }:
               // Section header
               return (
                 <tr key={i} className="bg-ps-bg">
-                  <td colSpan={hasPrevious ? 3 : 2} className="px-5 py-2 text-[10px] font-semibold uppercase tracking-wide text-ps-body">
+                  <td colSpan={hasPrevious ? 3 : 2} className="px-5 py-2 text-3xs font-semibold uppercase tracking-wide text-ps-body">
                     {line.label}
                   </td>
                 </tr>

@@ -197,15 +197,15 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                 <tr key={a.id} className={`hover:bg-ps-bg ${a.is_active ? "" : "opacity-50"}`}>
                   <td className="px-4 py-2.5 font-medium text-ps-ink">
                     {a.bank_name}
-                    {!a.is_active && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-hint">inactive</span>}
-                    {a.ifsc && <div className="text-[10px] text-ps-hint font-mono">{a.ifsc}</div>}
+                    {!a.is_active && <span className="ml-1.5 text-3xs px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-hint">inactive</span>}
+                    {a.ifsc && <div className="text-3xs text-ps-hint font-mono">{a.ifsc}</div>}
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-ps-label text-[10px]">{a.account_no}</td>
+                  <td className="px-3 py-2.5 font-mono text-ps-label text-3xs">{a.account_no}</td>
                   <td className="px-3 py-2.5 text-ps-label">{a.account_type}</td>
                   <td className="px-3 py-2.5 text-ps-label">
                     {a.coa_account_id
                       ? (a.ledger_account_code
-                          ? <span className="font-mono text-[11px]">{a.ledger_account_code} · {a.ledger_account_name}</span>
+                          ? <span className="font-mono text-2xs">{a.ledger_account_code} · {a.ledger_account_name}</span>
                           : "Linked")
                       : <span className="text-amber-600">Not linked</span>}
                   </td>
@@ -216,7 +216,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                         balance on this account wrong by the total of whatever
                         predates it. */}
                     {a.opening_balance_gap && (
-                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-state-attention-surface text-state-attention font-sans"
+                      <span className="ml-1.5 text-3xs px-1.5 py-0.5 rounded-full bg-state-attention-surface text-state-attention font-sans"
                             title={a.opening_balance_gap}>no date</span>
                     )}
                   </td>
@@ -289,7 +289,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
               {statements.map((s) => (
                 <tr key={s.id} className="hover:bg-ps-bg">
                   <td className="px-4 py-2.5 font-medium text-ps-ink">{s.bank_name}</td>
-                  <td className="px-3 py-2.5 font-mono text-ps-label text-[10px]">{s.account_number ?? "—"}</td>
+                  <td className="px-3 py-2.5 font-mono text-ps-label text-3xs">{s.account_number ?? "—"}</td>
                   <td className="px-3 py-2.5 text-ps-label">{s.statement_from} → {s.statement_to}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-money-in">{fmt(s.total_credits_paise)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-money-out">{fmt(s.total_debits_paise)}</td>
@@ -332,7 +332,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
                       <td className="px-3 py-2 text-right font-mono text-money-out">{t.debit_paise > 0 ? fmt(t.debit_paise) : "—"}</td>
                       <td className="px-3 py-2 text-right font-mono text-money-in">{t.credit_paise > 0 ? fmt(t.credit_paise) : "—"}</td>
                       <td className="px-3 py-2">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${t.match_status === "posted" ? "bg-green-100 text-money-in" : t.match_status === "matched" ? "bg-blue-100 text-blue-700" : t.match_status === "ignored" ? "bg-ps-muted text-ps-hint" : "bg-state-attention-border text-state-attention"}`}>{t.match_status}</span>
+                        <span className={`text-3xs px-1.5 py-0.5 rounded-full font-medium ${t.match_status === "posted" ? "bg-green-100 text-money-in" : t.match_status === "matched" ? "bg-blue-100 text-blue-700" : t.match_status === "ignored" ? "bg-ps-muted text-ps-hint" : "bg-state-attention-border text-state-attention"}`}>{t.match_status}</span>
                       </td>
                     </tr>
                   ))}
@@ -525,7 +525,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
               </label>
               <input type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} className={inputCls} />
               {openingBal && openingBal !== "0" && !openingDate && (
-                <p className="mt-1 text-[11px] text-state-attention">
+                <p className="mt-1 text-2xs text-state-attention">
                   The date this balance is as at — usually the day the books begin.
                   Without it the Bank Book adds transactions the figure already includes.
                 </p>
@@ -545,7 +545,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
               <option value="">— Not linked —</option>
               {coaAccounts.map((c) => <option key={c.id} value={c.id}>{c.account_code} · {c.account_name}</option>)}
             </select>
-            <p className="text-[10px] text-ps-hint mt-1">Links this bank account to a chart-of-accounts asset account so postings and the opening balance hit the right GL account.</p>
+            <p className="text-3xs text-ps-hint mt-1">Links this bank account to a chart-of-accounts asset account so postings and the opening balance hit the right GL account.</p>
           </div>
         </div>
         {error && <p className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
@@ -938,7 +938,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 <button onClick={() => fileRef.current?.click()} disabled={busy} className="disabled:opacity-40 w-full border-2 border-dashed border-ps-border rounded-lg py-4 text-sm text-ps-label hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
                   <Upload size={16} /> {file ? file.name : "Click to select a statement file"}
                 </button>
-                <p className="text-[10px] text-ps-hint mt-1">The file is parsed on the server — HDFC / SBI / ICICI / Axis are auto-detected. Any other bank: use <span className="font-medium">Map columns</span> once and we&apos;ll remember it. Amounts stay exact.</p>
+                <p className="text-3xs text-ps-hint mt-1">The file is parsed on the server — HDFC / SBI / ICICI / Axis are auto-detected. Any other bank: use <span className="font-medium">Map columns</span> once and we&apos;ll remember it. Amounts stay exact.</p>
               </div>
 
               {/* The two figures printed on the statement. The server checks
@@ -959,7 +959,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   <input value={closingRs} onChange={(e) => setClosingRs(e.target.value)}
                          placeholder="Closing e.g. 1,30,000.00" className={inputCls} inputMode="decimal" />
                 </div>
-                <p className="text-[10px] text-ps-hint mt-1">
+                <p className="text-3xs text-ps-hint mt-1">
                   {balancesBad
                     ? "Enter plain amounts — 1,30,000.00"
                     : "If the statement prints its own totals we check against those automatically. Give both balances as well and nothing imports unless the lines also add up from one to the other."}
@@ -976,7 +976,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                          onChange={(e) => setAllowVision(e.target.checked)} />
                   <span>
                     Read this with AI if it is a scan or a photo
-                    <span className="block text-[10px] text-ps-hint">
+                    <span className="block text-3xs text-ps-hint">
                       {isImage
                         ? "A photograph has to be read this way."
                         : "Only used if the PDF has no readable text — a normal PDF is parsed exactly, without AI."}
@@ -1006,7 +1006,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   {MAPPING_FIELDS.map((f) => (
                     <div key={f.key}>
-                      <label className="block text-[11px] font-medium text-ps-label">
+                      <label className="block text-2xs font-medium text-ps-label">
                         {f.label}{f.required && <span className="text-red-500"> *</span>}
                         <span className="font-normal text-ps-hint"> — {f.hint}</span>
                       </label>
@@ -1029,7 +1029,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   ))}
                 </div>
 
-                <p className="text-[10px] text-ps-hint">
+                <p className="text-3xs text-ps-hint">
                   Use either <span className="font-medium">Debit + Credit</span>, or a single{" "}
                   <span className="font-medium">Amount</span> with a <span className="font-medium">Dr/Cr</span> column — not both.
                 </p>
@@ -1039,7 +1039,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                           className="text-xs px-3 py-1.5 border border-blue-200 text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 disabled:opacity-40">
                     {checking ? "Checking…" : "Check this mapping"}
                   </button>
-                  <label className="flex items-center gap-1.5 text-[11px] text-ps-label">
+                  <label className="flex items-center gap-1.5 text-2xs text-ps-label">
                     <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
                     Remember this layout for this account
                   </label>
@@ -1096,12 +1096,12 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                       </p>
                     )}
 
-                    <p className="text-[11px] text-ps-label">
+                    <p className="text-2xs text-ps-label">
                       {preview.parsed_count} of {preview.total_rows} rows read
                       {preview.skipped_count > 0 && <span className="text-state-attention"> · {preview.skipped_count} skipped</span>}
                     </p>
                     <div className="overflow-x-auto border border-ps-border rounded-lg">
-                      <table className="w-full text-[11px]">
+                      <table className="w-full text-2xs">
                         <thead className="bg-ps-bg text-ps-label">
                           <tr>
                             <th className="text-left px-2 py-1.5">Date</th>
@@ -1148,7 +1148,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                     className="mt-1 w-full px-2 py-1.5 font-normal border border-state-attention-border rounded focus:outline-none focus:ring-2 focus:ring-amber-400"
                   />
                 </label>
-                <p className="text-[11px] text-state-attention">
+                <p className="text-2xs text-state-attention">
                   {ackReady
                     ? "This is stored against the statement, beside the difference it explains, and the import will not be reported as checked."
                     : "At least 10 characters — this goes on the record."}

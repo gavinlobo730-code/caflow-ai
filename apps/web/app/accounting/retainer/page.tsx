@@ -145,7 +145,7 @@ function SetRetainerModal({
               onChange={e => { setFeeRupees(e.target.value); setError(null); }}
             />
           </div>
-          <p className="text-[10px] text-ps-hint mt-1">Stored as integer paise</p>
+          <p className="text-3xs text-ps-hint mt-1">Stored as integer paise</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -184,7 +184,7 @@ function SetRetainerModal({
             <option value="">Select…</option>
             {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <p className="text-[10px] text-ps-hint mt-1">
+          <p className="text-3xs text-ps-hint mt-1">
             The invoice line comes from the practice&apos;s own service catalogue, so
             the SAC and rate are the ones already recorded.
           </p>
@@ -201,7 +201,7 @@ function SetRetainerModal({
           />
         </div>
 
-        {error && <p className="text-[11px] text-red-600">{error}</p>}
+        {error && <p className="text-2xs text-red-600">{error}</p>}
 
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
@@ -435,7 +435,7 @@ export default function RetainerPage() {
                     <tr key={client.id} className="hover:bg-ps-bg/50">
                       <td className="px-5 py-3">
                         <p className="text-sm font-medium text-ps-ink">{client.client_name}</p>
-                        {client.gstin && <p className="text-[10px] font-mono text-ps-hint">{client.gstin}</p>}
+                        {client.gstin && <p className="text-3xs font-mono text-ps-hint">{client.gstin}</p>}
                       </td>
                       <td className="px-3 py-3 text-right">
                         {sched

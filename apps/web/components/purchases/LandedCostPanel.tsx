@@ -180,7 +180,7 @@ export function LandedCostPanel({
               <Truck size={15} className="text-blue-600" />
               Landed costs
             </p>
-            <p className="text-[11px] text-ps-hint mt-0.5">
+            <p className="text-2xs text-ps-hint mt-0.5">
               AS-2 par. 6 · {data?.bill_no ? `Bill ${data.bill_no}` : "This bill"}
             </p>
           </div>
@@ -235,7 +235,7 @@ export function LandedCostPanel({
                     </select>
                   </label>
                 </div>
-                <p className="text-[11px] text-ps-hint">{data.weight_and_volume_refused}</p>
+                <p className="text-2xs text-ps-hint">{data.weight_and_volume_refused}</p>
               </div>
 
               {/* WHAT COULD NOT BE DECIDED — actionable, so it is separated
@@ -272,12 +272,12 @@ export function LandedCostPanel({
                           <td className="py-1.5 text-ps-ink">
                             {c.description}
                             {c.source === "bill_of_entry" && (
-                              <span className="ml-1.5 text-[10px] text-ps-label">
+                              <span className="ml-1.5 text-3xs text-ps-label">
                                 from the bill of entry
                               </span>
                             )}
                             {c.why_not_in_cost && (
-                              <p className="text-[11px] text-amber-700 mt-0.5">{c.why_not_in_cost}</p>
+                              <p className="text-2xs text-amber-700 mt-0.5">{c.why_not_in_cost}</p>
                             )}
                           </td>
                           <td className="py-1.5 text-right tabular-nums">{fmt(c.amount_paise)}</td>
@@ -323,7 +323,7 @@ export function LandedCostPanel({
                   </button>
                 </div>
                 {received && (
-                  <p className="text-[11px] text-ps-hint">
+                  <p className="text-2xs text-ps-hint">
                     This bill is already received. A charge added now is recorded but
                     does not enter the cost of the stock — the receipt journal is posted.
                   </p>
@@ -363,7 +363,7 @@ export function LandedCostPanel({
                     </tbody>
                   </table>
                   {data.unapportioned_paise > 0 && (
-                    <p className="text-[11px] text-amber-700 mt-1.5">
+                    <p className="text-2xs text-amber-700 mt-1.5">
                       {fmt(data.unapportioned_paise)} could not be apportioned.
                     </p>
                   )}

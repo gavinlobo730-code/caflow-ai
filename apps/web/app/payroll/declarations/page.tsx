@@ -513,7 +513,7 @@ function ProofDocuments({ existing, reference, pending, onChange }: {
   return (
     <div className="pl-1 border-l-2 border-ps-muted ml-1 space-y-1">
       {reference && (
-        <p className="text-[11px] text-ps-hint">
+        <p className="text-2xs text-ps-hint">
           Employee&apos;s reference: {reference}
         </p>
       )}
@@ -527,7 +527,7 @@ function ProofDocuments({ existing, reference, pending, onChange }: {
             : <span className="text-ps-body">{a.name}</span>}
           <button type="button"
                   onClick={() => onChange(current.filter((_, i) => i !== idx))}
-                  className="text-[11px] text-ps-hint hover:text-state-problem">remove</button>
+                  className="text-2xs text-ps-hint hover:text-state-problem">remove</button>
         </div>
       ))}
       <div className="flex gap-2">
@@ -568,7 +568,7 @@ function ProofRow({ label, declared, value, onChange }: {
           className={`w-full border rounded-lg px-3 py-2 text-sm text-right tabular-nums ${
             over ? "border-[#DC2626] bg-state-problem-surface" : "border-ps-border"}`}
         />
-        {over && <p className="text-[11px] text-state-problem mt-1">above what was declared</p>}
+        {over && <p className="text-2xs text-state-problem mt-1">above what was declared</p>}
       </div>
     </div>
   );

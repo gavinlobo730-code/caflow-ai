@@ -289,7 +289,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
             {saving ? "Saving…" : "Add Filing"}
           </button>
         </div>
-        <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1.5">
+        <p className="text-3xs text-amber-600 bg-amber-50 rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
           All filings must be submitted manually on MCA21 portal (mca.gov.in) after CA review.
         </p>
@@ -410,7 +410,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
                   onChange={(e) => setFiledDate(e.target.value)}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-[10px] text-ps-hint mt-1">Applied to all filings below.</p>
+                <p className="text-3xs text-ps-hint mt-1">Applied to all filings below.</p>
               </div>
 
               <div className="space-y-3">
@@ -868,7 +868,7 @@ export default function MCAPage() {
               )
             }
           />
-          <p className="text-[10px] text-ps-hint">
+          <p className="text-3xs text-ps-hint">
             {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
             All filings must be submitted manually on MCA21 portal. PracticeSync does not auto-submit.
           </p>
