@@ -7,26 +7,25 @@ readable. Regenerate with `python3 scripts/findings_status_md.py`.
 
 | state | count | what it means |
 |---|---|---|
-| closed | **258** | re-read against the code. The defect is gone. |
+| closed | **259** | re-read against the code. The defect is gone. |
 | partial | **12** | part of the finding is answered, part is not. Each says which. |
-| open | **3** | re-read and still true. |
+| open | **2** | re-read and still true. |
 | not a defect as stated | **5** | the premise is false, or the suggested fix would be worse than the defect. |
 | deferred to the redesign | **1** | a navigation complaint the module hub answers. |
 | **total** | **279** | |
 
-**The work left is 15 items — 3 open and 12 partial — not 254.**
+**The work left is 14 items — 2 open and 12 partial — not 254.**
 The audit documents were never amended as tranches landed, so they still list
 findings fixed weeks ago. **Every one of the 279 now carries a verdict**; none
 is left as "unknown".
 
-**Every one of the 3 open findings is blocked on something outside the code** — a statutory schema, a file layout, a registration. Each blocker is named below.
+**Every one of the 2 open findings is blocked on something outside the code** — a statutory schema, a file layout, a registration. Each blocker is named below.
 
 ## Open
 
 | severity | finding | what it is |
 |---|---|---|
 | medium | **GST-25** | Composition scheme (CMP-08 / GSTR-4), e-commerce TCS (GSTR-8 and 3B 3.1.1), and GSTR-9C are enti |
-| medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
 | medium | **TDS-16** | No FVU/RPU-format output and no correction-statement support — the only export is a JSON blob |
 
 ### What actually blocks each of them
@@ -34,7 +33,6 @@ is left as "unknown".
 | finding | what actually blocks it |
 |---|---|
 | **GST-25** | schema per return type (CMP-08/GSTR-4, GSTR-8, GSTR-9C) — see docs/audits/what-to-fetch-for-me.md §5 |
-| **GST-32** | the IRP schema, and the 30-day reporting-window rule |
 | **TDS-16** | the NSDL file layout, and a correction-statement model |
 
 ## Partial
@@ -229,6 +227,7 @@ is left as "unknown".
 | medium | **GST-28** | Rule 37A has a reason code but no report; Rule 37 has no interest and no posting help |
 | medium | **GST-29** | GSTIN check-digit validation is not applied on any GST return path |
 | medium | **GST-30** | A test encodes the assumption behind the reverse-charge underpayment, so the suite cannot catch  |
+| medium | **GST-32** | E-invoicing prepares nothing — no INV-01 JSON, no 30-day reporting-window check, and no e-invoic |
 | medium | **INV-02** | Moving average is the only costing method — no FIFO and no standard cost |
 | medium | **INV-03** | No batches/expiry, godowns, item groups, alternate units, reorder levels, BOM or stock transfers |
 | medium | **INV-04** | No stock ageing, movement analysis, slow-moving or non-moving report |

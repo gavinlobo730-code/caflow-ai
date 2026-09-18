@@ -237,6 +237,10 @@ export function CompliancePanel({
         ) : (
           <EligibilityBlock elig={irnElig} actionLabel="Prepare IRN" onAction={() => setModal("prepIrn")} />
         )}
+        <IrpFindings
+          findings={invoice.irn_assessment?.irp_findings ?? []}
+          state={irn.state}
+        />
       </ComplianceCard>
 
       {/* E-Way Bill */}
@@ -525,3 +529,40 @@ function CancelModal({ title, note, busy, onClose, onSubmit }: { title: string; 
     </ModalShell>
   );
 }
+
+/** WHAT THE PORTAL WOULD REFUSE, WHICH IS NOT WHAT THE ACT DISALLOWS (GST-32).
+ *
+ *  CGST Rule 46(b) permits an invoice number like `0001`; the IRP's published
+ *  `Document_Num` expression takes a first character of a letter or 1-9 only,
+ *  so the portal rejects it — and `sales_numbering_service` suggests exactly
+ *  that number to a firm with an empty prefix. The invoice is lawful either
+ *  way, so this WARNS and never blocks the Prepare button.
+ *
+ *  `domain/gst/irp_validations.py` decides all of it and this renders what it
+ *  sent: there is no browser mirror, because whether a portal accepts a value
+ *  is a fact about the portal rather than about the invoice.
+ *
+ *  NOT SHOWN ONCE THE IRN EXISTS. A generated or cancelled record means the
+ *  portal has already answered, so repeating a prediction of what it would
+ *  have said is noise on the one document that settles it. */
+function IrpFindings({ findings, state }: {
+  findings: { field: string; value: string; reason: string; source: string }[];
+  state: string;
+}) {
+  if (!findings.length || state === "generated" || state === "cancelled") return null;
+  return (
+    <div className="mt-2 rounded bg-amber-50 border border-amber-200 p-2 space-y-1.5">
+      <p className="text-[10px] font-semibold text-amber-800 flex items-center gap-1">
+        <AlertTriangle size={11} /> The e-invoice portal will refuse this as it stands
+      </p>
+      {findings.map((f, i) => (
+        <p key={i} className="text-[11px] text-amber-800">
+          <span className="font-mono text-[10px] mr-1">{f.field}</span>
+          {f.value && <span className="font-mono text-[10px] mr-1">&ldquo;{f.value}&rdquo;</span>}
+          {f.reason}
+        </p>
+      ))}
+    </div>
+  );
+}
+

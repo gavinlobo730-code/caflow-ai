@@ -74,8 +74,12 @@ def supplier_state_code(client: Optional[dict]) -> Optional[str]:
     from_gstin = (c.get("gstin") or "").strip().upper()[:2]
     if len(from_gstin) == 2 and from_gstin in _VALID_STATE_CODES():
         return from_gstin
+    # Validated for the reason above: an unusable value is not this client's
+    # state, and returning one makes `is_interstate` compare junk against the
+    # place of supply — which answers True almost always, so an intra-state
+    # supply is charged IGST.
     code = (c.get("state_code") or "").strip()
-    return code or None
+    return code if code in _VALID_STATE_CODES() else None
 
 
 def is_interstate(client: Optional[dict], place_of_supply: Optional[str]) -> Optional[bool]:
@@ -156,8 +160,21 @@ def recipient_place_of_supply(
     if said:
         return said, SOURCE_STATED
     c = customer or {}
+    # VALIDATED, like the branch below it. This one returned whatever was
+    # stored, so a `customers.state_code` that is not a state code became the
+    # invoice's place of supply — while the GSTIN branch four lines down has
+    # always been checked, with a comment saying "so a truncated or garbage
+    # value cannot become a place of supply". Two halves of one chain
+    # disagreeing about the same question, the shape `supplier_state_code`
+    # had until 18-09-2026.
+    #
+    # A value that fails FALLS THROUGH rather than being returned or raising:
+    # this is a fallback chain and an unusable link is exactly what the next
+    # one is for, and refusing here would refuse to build an invoice over a
+    # field the customer master can be corrected in. `models/parties` refuses
+    # it at the door, where somebody is typing.
     from_state = (c.get("state_code") or "").strip()
-    if from_state:
+    if from_state and from_state in _VALID_STATE_CODES():
         return from_state, SOURCE_CUSTOMER_STATE
     # THE PREFIX, not `gstin.state_code`. That function requires a fully valid
     # GSTIN — check digit included — and the question here is WHICH STATE, not

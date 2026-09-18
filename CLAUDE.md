@@ -784,6 +784,75 @@ change. The code is the authority; keep this file in step with it.
   each is pinned exactly by
   `tests/test_which_supplies_must_carry_an_irn.py`. Prepare-only: it decides
   eligibility and reaches no portal.
+- **AND WHAT THE PORTAL WOULD ACCEPT IS A SECOND AUTHORITY, STRICTER THAN THE
+  ACT** (GST-32). Rule 48(4) says WHICH supplies need an IRN; the IRP is
+  software with its own published acceptance rules, and a document that
+  satisfies the Act and fails them comes back as an error code with nothing a
+  CA can act on. `domain/gst/irp_validations.py` is that second authority.
+  **THE ONE THAT PROVES IT IS THE DOCUMENT NUMBER AND IT IS LIVE.** Rule 46(b)
+  allows hyphen, slash, letters and numerals in any combination; the IRP's
+  `Document_Num` expression is `^([a-zA-Z1-9]{1}[a-zA-Z0-9/-]{0,15})$` and its
+  FIRST character class is not its second — a letter or a digit **1-9**, never
+  `0`, `-` or `/`. So `0001` is a lawful invoice number the portal refuses, and
+  `sales_numbering_service.suggest` hands exactly that to a firm with an empty
+  prefix and the FY switched off. **IT REPORTS AND NEVER REFUSES**:
+  `invoice_series` is untouched and still refuses against the Act at every
+  door, because a client below the threshold may number their invoices `0001`
+  for ever. **Asked only where the SUPPLY limb is in scope** — `irn_scope`'s
+  own short-circuit — since a B2C invoice never reaches an IRP; the turnover
+  limb is deliberately not a gate, because a client about to cross it wants
+  the series fixed before they do. Served as `irn_assessment.irp_findings` and
+  rendered by `CompliancePanel`, with **no browser mirror**: whether a portal
+  accepts a value is a fact about the portal, so `assessIrnScope`'s fallback
+  answers an empty list rather than inventing one.
+  **GST-32's REFUSAL OF THE PAYLOAD STANDS AND IS NARROWED, NOT REVERSED** — a
+  wrong field NAME fails visibly at the portal while a misremembered field
+  MEANING generates a real document with wrong figures — so this checks VALUES
+  in named fields and builds no JSON. Five things are NAMED as not held, each
+  with its own reason: the HSN master behind error 2176, `IsServc` against the
+  HSN class and the goods-only quantity rule (both need an `is_service` that
+  `client_sales_invoice_lines` does not have), the payload's own field
+  expressions, and the arithmetic the IRP recomputes.
+  **`VERIFIED` is True here and it is a claim about PROVENANCE** — every
+  expression is transcribed character for character from
+  `docs/compliance/sources/e-invoice/`, fetched by hand on 18-09-2026, and a
+  test asserts each against that file. Two rules that look like one another are
+  pinned APART: Sr. 10.3's transport document number admits a leading `0` and
+  caps no length, and harmonising it is the tempting mistake.
+- **A LINE SAYS GOODS OR SERVICES, THE CODE USUALLY ANSWERS, AND THE COLUMN IS
+  THE OVERRIDE** (migration 411). `models/invoices.InvoiceLineIn.is_service`
+  was declared, validated and DROPPED: `client_sales_invoice_lines` had no such
+  column, so a caller set it and the INSERT never mentioned it. It matters
+  because the e-invoice portal makes **quantity and UQC mandatory for GOODS and
+  optional for services**, and CGST Rule 46(h) asks for them on goods — so
+  without it a service line with no unit and a goods line missing one were the
+  same row and `irp_validations` could not ask at all.
+  **`domain/gst/goods_or_services.py` IS THE RULE AND IT HAD NO PYTHON TWIN.**
+  A Service Accounting Code is Chapter **99** of the tariff and the HSN of goods
+  runs Chapters 1-98, so a well-formed code answers by itself —
+  `apps/web/lib/invoices/compliance.isServiceCode` has done exactly that since
+  the e-way split was built, as the ONLY implementation in the repository, the
+  same defect SALES-17 and SALES-18 were. `tests/fixtures/goods_or_services.json`
+  pins the two, from the Python side.
+  **THE RECORDED VALUE WINS, THEN THE CODE, THEN `None`** — the
+  `place_of_supply` chain shape. The reverse order would make the column
+  unwritable in practice, since every line carrying an HSN would ignore it; and
+  reading the COLUMN alone (which the router did for one commit, and a negative
+  control caught) reports "nobody said" against a line whose own code reads
+  `998313`. The browser folds the third state into `false` and that is right
+  for ITS caller — the e-way split counts unclassified lines on the HSN being
+  absent — so the fixture records the difference rather than bending either
+  side.
+  **NULLABLE, NO DEFAULT, NO BACKFILL, and the model default moved from `False`
+  to `None`.** Migration 392's sibling columns ARE `NOT NULL DEFAULT false` and
+  that is not an inconsistency: those tables were new, so every row in them was
+  written by a door that sets the value, while every row already in
+  `client_sales_invoice_lines` predates the column — `false` there would assert
+  that every line ever raised was goods. `PurchaseBillLineIn` keeps its `False`
+  default for the same reason in reverse. **Nothing computes money from it**: a
+  test asserts `domain/sales/line_tax` and `gstr1_builder` never mention it,
+  because goods-or-services changes the PLACE OF SUPPLY rules (IGST §§10-13),
+  which is a question about the transaction and not a label on a line.
 - **A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE
   PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY** (SALES-13).
   `invoice_templates` and `email_templates` (migration 126) have been written
@@ -1992,6 +2061,10 @@ change. The code is the authority; keep this file in step with it.
   acceptable — Table 12 files what is recorded, so a junk code on a B2C line
   still comes back as 2176. An ABSENT code under a nil requirement is what the
   notification permits and is the one thing that stays silent.
+  The IRP's own limb is DIFFERENT and lives in `domain/gst/irp_validations`:
+  at least FOUR digits on every item of every document it registers, whatever
+  the notification's own requirement is. Two rules about one field, and neither
+  is the other.
   **`GAP_HSN_NOT_A_CODE` is its own kind**, not a long `GAP_HSN_DIGITS`,
   because a screen filtering on the kind would title an eight-character
   non-code "below requirement". Nothing refuses at the API DOOR, the `uqc`
@@ -4345,13 +4418,35 @@ not parse, so `"1200abc"` passed at 1200 while `toPaise` returned NaN, and
   check digits and were used in 77 files, including two frontend
   placeholders that taught a CA an example their own keystroke validator
   rejects.
-  **TWO STATE LISTS, DELIBERATELY DIFFERENT.**
+  **THREE STATE LISTS, DELIBERATELY DIFFERENT, AND A FOURTH THAT IS A PICKER.**
   `domain/gst/validator.VALID_STATE_CODES` is for a PLACE OF SUPPLY and
-  includes **96** (outside India, where an export goes);
+  includes **96** (outside India, where an export goes) and not 99;
   `domain/gst/gstin.VALID_STATE_CODES` is for the first two characters of a
-  GSTIN and does not, because a GSTIN is a registration in a state.
-  Collapsing them would either refuse every export or accept a GSTIN that
-  cannot exist.
+  GSTIN and is the other way round, because a GSTIN is a registration in a
+  state and nobody is registered outside India;
+  `core/validators._VALID_STATE_CODES` is a REGISTRATION's state for the firm's
+  own profile and an internal client, so it holds both. Collapsing any pair
+  would either refuse every export or accept a GSTIN that cannot exist. **The
+  third was reported as dead and is not** — `validate_state_code` and
+  `derive_state_code` read it, and `routers/practice` and
+  `internal_client_service` read them — so `core/validators` now NAMES all
+  three beside the one it declares, which is where a fourth would be added.
+  `apps/web/lib/constants/indianStates.ts` is not a validator at all: it is the
+  PICKER, and it deliberately omits the DEAD codes 25 and 28, because they may
+  not be chosen for a NEW document while a historical one must still parse.
+  **A PARTY'S OWN `state_code` IS THE SECOND LINK OF THE PLACE-OF-SUPPLY CHAIN
+  AND HAD NO RULE ON IT AT ALL.** Both halves of the resolver returned it as
+  stored, while the GSTIN branch four lines below has always been gated with a
+  comment saying "so a truncated or garbage value cannot become a place of
+  supply" — and no door refused one, although the identical value typed into
+  `SalesInvoiceIn.place_of_supply` has been refused for months. So an invoice's
+  CGST+SGST-against-IGST split ran off an unvalidated field.
+  `models/parties._state_code_problem` refuses it at all FOUR doors (create and
+  PATCH, customer and vendor — a validator on one door is one PATCH from being
+  none) against the PLACE-OF-SUPPLY list, because an export customer's state IS
+  96. The RESOLVER falls through instead of raising: it is a fallback chain, an
+  unusable link is what the next one is for, and that also repairs rows written
+  before the door existed or straight over PostgREST.
   Deliberately still NOT in `models.client.validate_gstin`, which guards a
   Pydantic field that 512 invented fixture GSTINs across 95 files flow through.
   Closing the bulk door showed how load-bearing that carve-out is:

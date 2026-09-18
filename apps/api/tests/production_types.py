@@ -103,6 +103,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("service_catalogue", "units_per_alternate"): "migration 409",
     ("service_catalogue", "reorder_level_units"): "migration 409",
     ("payroll_it_declaration_items", "proof_attachments"): "migration 410",
+    ("client_sales_invoice_lines", "is_service"): "migration 411",
     # public.capital_gain_reinvestments (385), public.stock_count_sessions and
     # public.stock_count_lines (387), public.rcm_documents (388),
     # public.bills_of_entry (389), public.client_gst_registrations (390) and

@@ -107,7 +107,19 @@ class InvoiceLineIn(BaseModel):
     @classmethod
     def _gst_rate_is_a_rate(cls, v: float) -> float:
         return _validate_gst_rate_percent(v)
-    is_service: bool = False
+    #: Whether this line is a supply of SERVICES. THREE STATES, and the third is
+    #: `None` (migration 411). It was `bool = False`, so a caller who said
+    #: nothing was recorded as having said GOODS — and until 411 the column did
+    #: not exist at all, so every value was discarded either way.
+    #:
+    #: The default matters now because something reads it: the e-invoice
+    #: portal makes quantity and Unit Quantity Code mandatory for GOODS and
+    #: optional for services, so `False` by omission demands a UQC on every
+    #: professional's fee line. `PurchaseBillLineIn` deliberately KEEPS
+    #: `bool = False`, because `purchase_bill_lines.is_service` is NOT NULL
+    #: with a default and has been written by a door that sets it since it was
+    #: created — a different column with a different history.
+    is_service: Optional[bool] = None
     # Which service_catalogue preset (if any) this line was picked from —
     # pure traceability for the Products & Services delete-guard (real
     # "is this used on any invoice" check, mirroring how customer deletion

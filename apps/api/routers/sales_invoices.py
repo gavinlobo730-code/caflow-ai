@@ -935,6 +935,18 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
         computed_lines.append({
             "description":    ln.get("description", ""),
             "hsn_sac":        ln.get("hsn_sac", ""),
+            # WHETHER THIS IS A SUPPLY OF SERVICES (migration 411). Declared on
+            # `InvoiceLineIn` since it was written and, until 411, dropped here:
+            # the column did not exist, so a caller set it and the create path
+            # discarded it silently.
+            #
+            # `.get(k)` WITHOUT a default and NO `bool()` — the three states are
+            # True, False and "nobody said", and coercing the third to False
+            # would assert every line is goods, which is the whole reason 411's
+            # column is nullable. The e-invoice portal makes quantity and UQC
+            # mandatory for GOODS and optional for services, so guessing waives
+            # a particular CGST Rule 46(h) asks for or demands one it does not.
+            "is_service":     ln.get("is_service"),
             "quantity":       qty,
             # `.get(k, default)` only falls back when the key is ABSENT, but
             # InvoiceLineIn.model_dump() always includes "unit" (as None when
@@ -1209,6 +1221,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "cess_paise":            ln["cess_paise"],
             "line_total_paise":      ln["line_total_paise"],
             "service_catalogue_id":  ln["service_catalogue_id"],
+            "is_service":            ln["is_service"],
         })
     # Atomicity: PostgREST exposes no multi-statement transaction here, so if
     # the line insert fails we compensate by deleting the just-created header.
@@ -1452,6 +1465,8 @@ def _irn_assessment(inv: dict, treatment: str, db=None,
     `domain/gst/treatment` is the one authority for what kind of supply an
     invoice is (SALES-19) and `get_invoice` has already asked it.
     """
+    from domain.gst import goods_or_services as _goods_or_services
+    from domain.gst import irp_validations as _irp_validations
     from domain.gst.irn_scope import assess
 
     highest = None
@@ -1462,7 +1477,7 @@ def _irn_assessment(inv: dict, treatment: str, db=None,
         )
         highest = highest_turnover_within_rule_48_4(
             db, firm_id, str(client_id), str(inv.get("invoice_date") or ""))
-    return assess(
+    scope = assess(
         treatment=treatment,
         # The RECIPIENT's registration, which is what the supply limb turns on
         # for an ordinary domestic supply. The embed is the customer row.
@@ -1470,6 +1485,42 @@ def _irn_assessment(inv: dict, treatment: str, db=None,
         invoice_date=str(inv.get("invoice_date") or ""),
         highest_aato_paise=highest,
     ).as_dict()
+    # WHAT THE PORTAL WOULD REFUSE, BESIDE WHETHER IT MUST BE ASKED (GST-32).
+    #
+    # Rule 48(4) says WHICH supplies need an IRN; `domain/gst/irp_validations`
+    # is the separate, stricter authority for whether the IRP would accept the
+    # values this one carries — its published `Document_Num` expression admits
+    # a first character of a letter or 1-9 only, so `0001` is a lawful Rule
+    # 46(b) number the portal refuses, and `sales_numbering_service` will
+    # suggest exactly that to a firm with an empty prefix.
+    #
+    # ASKED ONLY WHERE THE SUPPLY LIMB IS IN SCOPE, which is `irn_scope`'s own
+    # short-circuit: a B2C invoice never reaches an IRP, so reporting its
+    # number format would put a portal's rule on every retail document. The
+    # TURNOVER limb is deliberately not a gate — it only warns, and a client
+    # about to cross the threshold wants the series fixed before they do.
+    _lines = list(inv.get("lines") or [])
+    scope["irp_findings"] = (
+        [f.__dict__ for f in _irp_validations.assess(
+            document_number=inv.get("invoice_no"),
+            hsn_codes=[(ln.get("hsn_sac") or "") for ln in _lines],
+            # `.get` with no default and no bool(): migration 411's column is
+            # nullable and `None` is "nobody said", which the rule reports
+            # rather than resolving.
+            units=[ln.get("unit") for ln in _lines],
+            # RESOLVED, not read raw. The stored column is an OVERRIDE and the
+            # HSN itself usually answers — a SAC is Chapter 99 of the tariff —
+            # so reading `is_service` alone would report "nobody said" on every
+            # line whose own code says `998313`.
+            is_service_flags=[
+                _goods_or_services.resolve(
+                    recorded=ln.get("is_service"),
+                    hsn_sac_code=ln.get("hsn_sac"))[0]
+                for ln in _lines
+            ],
+        )]
+        if scope.get("supply_in_scope") else [])
+    return scope
 
 
 def _gst_treatment_for(data: dict) -> str:
