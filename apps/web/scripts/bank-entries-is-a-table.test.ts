@@ -156,12 +156,40 @@ function idsOf(src: string, name: string): string[] {
   return [...body.matchAll(/\bid:\s*"([^"]+)"/g)].map((m) => m[1]);
 }
 
-test("the module is three tabs — Entries · Reconcile · Rules — and nothing else", () => {
+test("the module is four tabs — Entries · Reconcile · Worth a Look · Rules — and nothing else", () => {
   const s = fs.readFileSync(SHELL, "utf8");
-  assert.deepEqual(idsOf(s, "TABS"), ["entries", "reconcile", "rules"],
+  assert.deepEqual(idsOf(s, "TABS"), ["entries", "reconcile", "worth-a-look", "rules"],
     "a tab came or went. Accounts is setup and lives behind Entries; Bank Book " +
     "is a report and lives under Reports. A new tab needs a reason a CA would " +
     "give, not a place to put something.");
+});
+
+/** Worth a Look joined the list on 17-09-2026, on the owner's decision, and the
+ *  reason a CA would give is the one the guard above asks for: a partner does
+ *  not re-perform the junior's work, they test what is unusual, and
+ *  domain/banking/exceptions.py had held 315 lines deciding exactly that with
+ *  no reader at all.
+ *
+ *  It is the one tab that must never grow an action. Everything that makes it
+ *  safe is that it advises: the module's own argument is that a platform should
+ *  not hold a CA's books hostage to a threshold it invented, and a button here
+ *  would make a flag a gate. So the rule is asserted, not the tab count. */
+test("Worth a Look advises and cannot act", () => {
+  const s = fs.readFileSync(path.join(BANKING, "WorthALookTab.tsx"), "utf8");
+  for (const verb of ["method: \"POST\"", "method: \"PATCH\"", "method: \"DELETE\"",
+                      "method: \"PUT\""]) {
+    assert.ok(!s.includes(verb), `Worth a Look must not ${verb} — it reports, it does not act`);
+  }
+  assert.ok(!/\.from\(/.test(s), "it must not reach PostgREST either");
+  // One call, and it is the read.
+  const calls = [...s.matchAll(/api\.[a-zA-Z.]+\(/g)].map((m) => m[0]);
+  assert.deepEqual([...new Set(calls)], ["api.banking.worthALook("],
+    "Worth a Look reads one endpoint and calls nothing else");
+  // The period is sent on every call — the server requires it, and a screen
+  // that could omit it is a screen one refactor away from asking for the whole
+  // ledger.
+  assert.match(s, /from_date:/, "the period must be sent");
+  assert.match(s, /to_date:/, "the period must be sent");
 });
 
 test("accounts and statement import are reached from Entries, not from a tab", () => {

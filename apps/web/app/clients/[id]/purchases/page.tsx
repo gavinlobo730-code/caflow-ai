@@ -49,6 +49,7 @@ import { RecurringBills } from "@/components/purchases/RecurringBills";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 
 import { todayLocalISO } from "@/lib/dateMath";
+import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -1319,6 +1320,8 @@ function Vendors({ clientId }: { clientId: string }) {
   // "no vendors yet", which on this tab reads as an invitation to re-create
   // vendors that already exist.
   const [loadFailed, setLoadFailed] = useState(false);
+  // PUR-32 — active vendors of this client whose name the new one resembles.
+  const [resemblances, setResemblances] = useState<PossibleDuplicate[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1533,6 +1536,10 @@ function Vendors({ clientId }: { clientId: string }) {
         token
       );
       if (!result.success) throw new Error(result.error ?? "Failed to add vendor");
+      // PUR-32. The vendor WAS created; this names what it resembles, and is
+      // deliberately not a msg of type "err" — the save succeeded.
+      setResemblances(
+        (result.data as { possible_duplicates?: PossibleDuplicate[] })?.possible_duplicates ?? []);
       setMsg({ type: "ok", text: "Vendor added." });
       setShowForm(false);
       setName(""); setGstin(""); setPan(""); setEmail(""); setPhone("");
@@ -1747,6 +1754,10 @@ function Vendors({ clientId }: { clientId: string }) {
           <button onClick={() => setMsg(null)} className="ml-auto"><X size={13} /></button>
         </div>
       )}
+
+      {/* PUR-32 — the vendor was saved; this names what it resembles. */}
+      <PossibleDuplicatesNotice duplicates={resemblances} noun="supplier"
+        onDismiss={() => setResemblances([])} />
 
       {deactivateTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0F172A]/60 p-4">

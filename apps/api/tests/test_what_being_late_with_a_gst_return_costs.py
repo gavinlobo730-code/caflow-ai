@@ -13,6 +13,8 @@ from datetime import date
 
 import pytest
 
+import domain.gst.late_filing as lf
+
 from domain.gst.late_filing import (
     DAYS_IN_YEAR, GAP_LATE_FEE_RATES_NOT_HELD, LATE_FEE_RATES, LateFeeRate,
     SECTION_47_1_STATUTORY_CAP_PAISE, SECTION_47_1_STATUTORY_PER_DAY_PAISE,
@@ -25,21 +27,37 @@ from domain.gst.late_filing import (
 
 # ── the rates ────────────────────────────────────────────────────────────────
 
-def test_the_one_rate_that_is_held_and_the_one_that_is_not():
+def test_both_rates_are_18_percent_and_the_ceiling_is_not_the_rate():
     """§50(1) is 18%, notified by 13/2017-CT and unmoved since.
 
-    §50(3) is a CORRECTION. This module first stated 24% as its rate, which is
-    what 13/2017-CT notified against the ORIGINAL sub-section — but the Finance
-    Act 2022 substituted §50(3) retrospectively from 01-07-2017, and the rate
-    for the substituted text appears to be 18% (Notification 09/2022-CT). The
-    two differ by a third of the charge, and unlike the §201(1A) month
-    convention the error direction is NOT benign: this is a sum a CA pays over
-    on the client's behalf, so over-stating takes money from somebody who does
-    not owe it. The Act's ceiling is held because it is in the Act; the
-    notified rate is a named gap."""
+    §50(3) HAS BEEN CORRECTED TWICE. This module first stated 24% — what
+    13/2017-CT notified against the ORIGINAL sub-section — then refused to
+    state anything, because the Finance Act 2022 substituted §50(3)
+    retrospectively from 01-07-2017 and the substituted text was believed to
+    carry 18%. A third of the charge separates them and the error direction is
+    NOT benign: this is a sum a CA pays over on a client's behalf, so
+    over-stating takes money from somebody who does not owe it.
+
+    It is now 18%, on s.111 (the substitution), s.116 with the Sixth Schedule
+    (the rate, amended from 24% to 18%) and Notification 9/2022-CT (bringing
+    them into force). `[S]`: corroborated across independent secondary sources,
+    not read off the notification, which is why VERIFIED stays False and this
+    test pins the figure exactly.
+
+    THE CEILING IS NOT THE RATE and the two must stay different numbers — 24%
+    is what the sub-section permits ("not exceeding twenty-four per cent") and
+    18% is what is notified. Collapsing them is how the module got it wrong the
+    first time."""
     assert SECTION_50_1_RATE_BPS == 1800
     assert SECTION_50_3_CEILING_BPS == 2400          # "not exceeding 24%"
-    assert SECTION_50_3_NOTIFIED_RATE_BPS is None    # not read, not guessed
+    assert SECTION_50_3_NOTIFIED_RATE_BPS == 1800    # notified, [S]-graded
+    assert SECTION_50_3_NOTIFIED_RATE_BPS != SECTION_50_3_CEILING_BPS
+    assert lf.SECTION_50_3_RATE_VERIFIED is False, (
+        "the figure is corroborated, not read off the notification — a True "
+        "here would claim a primary source nobody has"
+    )
+    for cite in ("s.111", "s.116", "Sixth Schedule", "9/2022"):
+        assert cite in lf.SECTION_50_3_RATE_SOURCE
     assert DAYS_IN_YEAR == 365
 
 
@@ -144,28 +162,46 @@ def test_credit_availed_but_never_utilised_is_refused_not_charged(monkeypatch):
     assert "₹5,00,000" in out["reason"], "the refusal names the figure it did NOT charge"
 
 
-def test_a_recorded_utilisation_is_refused_because_the_RATE_is_not_held():
-    """Every fact §50(3) needs is stated here and it still refuses — on the
-    rate. The refusal names both notifications and the ceiling, so the reader
-    knows exactly what to go and read."""
-    out = interest_on_wrongly_availed_credit(
+def test_a_recorded_utilisation_is_now_CHARGED_and_carries_its_source():
+    """Every fact §50(3) needs is stated, so it computes — and the answer says
+    where 18% came from.
+
+    The caveat travels ON the charge rather than living in a comment, because a
+    CA is about to pay this over and a bare "18%" reads as a figure somebody
+    read off a notification. Nobody here did."""
+    c = interest_on_wrongly_availed_credit(
         utilised_on=date(2025, 5, 10), reversed_on=date(2025, 8, 10),
         utilised_paise=1_00_000_00)
-    assert out["refused"] is True
-    assert out["gap"] == GAP_SECTION_50_3_RATE_NOT_HELD
-    assert out["ceiling_bps"] == 2400
-    assert "13/2017" in out["reason"] and "09/2022" in out["reason"]
+    assert not isinstance(c, dict), "with the rate held this is a charge, not a refusal"
+    assert c.rate_bps == 1800
+    assert c.caveats, "an [S]-graded rate must not be presented bare"
+    caveat = " ".join(c.caveats)
+    assert "9/2022" in caveat and "secondary sources" in caveat
+    assert "24%" in caveat, "the ceiling is named so the reader can sanity-check the rate"
 
 
-def test_the_rate_refusal_comes_BEFORE_the_missing_facts():
-    """Order matters for what the CA is told to do. With no rate held there is
-    nothing to compute however complete the facts are, so asking them to record
-    a utilisation date first would send them off to fetch something that
-    changes nothing."""
-    out = interest_on_wrongly_availed_credit(
-        utilised_on=None, reversed_on=None, utilised_paise=None,
-        availed_paise=5_00_000_00)
-    assert out["gap"] == GAP_SECTION_50_3_RATE_NOT_HELD
+def test_the_rate_can_be_withdrawn_again_and_the_refusal_still_works():
+    """The constant stays Optional deliberately. A later reader who finds 18%
+    wrong must be able to set it back to None and get a REFUSAL rather than a
+    wrong figure — which is the behaviour this module had, for good reason, and
+    which would rot unexercised if nothing tested it."""
+    import domain.gst.late_filing as lf_
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(lf_, "SECTION_50_3_NOTIFIED_RATE_BPS", None)
+        out = lf_.interest_on_wrongly_availed_credit(
+            utilised_on=date(2025, 5, 10), reversed_on=date(2025, 8, 10),
+            utilised_paise=1_00_000_00)
+        assert out["refused"] is True
+        assert out["gap"] == GAP_SECTION_50_3_RATE_NOT_HELD
+        assert out["ceiling_bps"] == 2400
+        # And the rate refusal still comes BEFORE the missing facts: with no
+        # rate there is nothing to compute however complete the facts are, so
+        # asking for a utilisation date first sends the CA to fetch something
+        # that changes nothing.
+        no_facts = lf_.interest_on_wrongly_availed_credit(
+            utilised_on=None, reversed_on=None, utilised_paise=None,
+            availed_paise=5_00_000_00)
+        assert no_facts["gap"] == GAP_SECTION_50_3_RATE_NOT_HELD
 
 
 def test_the_engine_works_the_moment_the_rate_is_written_in(monkeypatch):
@@ -196,56 +232,128 @@ def test_each_missing_fact_is_named(missing, monkeypatch):
     assert "utilised" in out["reason"].lower()
 
 
-# ── §47 — the refusal ────────────────────────────────────────────────────────
+# ── §47 — the notified fee, and what it still refuses ────────────────────────
 
-def test_the_late_fee_is_refused_with_the_notification_to_read():
+def test_the_notified_ladder_is_held_exactly():
+    """Every figure is `[S]`-graded — corroborated across independent secondary
+    sources, not read off the notification, because this environment's proxy
+    refuses every .gov.in. So each is pinned EXACTLY here, which is the only
+    thing that makes a later silent edit visible."""
+    r = LATE_FEE_RATES[("gstr3b", "2025-26")]
+    assert r.per_day_paise == 50_00              # ₹25 CGST + ₹25 SGST
+    assert r.nil_return_per_day_paise == 20_00   # ₹10 + ₹10
+    assert r.nil_cap_paise == 500_00
+    assert [(b.upto_paise, b.cap_paise) for b in r.turnover_caps] == [
+        (1_50_00_000_00, 2_000_00),   # ≤ ₹1.5 crore
+        (5_00_00_000_00, 5_000_00),   # ₹1.5 crore – ₹5 crore
+        (None,          10_000_00),   # above ₹5 crore
+    ]
+    assert r.verified is False, (
+        "a True here claims a primary source nobody has — the figures are "
+        "corroborated, not read off the notification"
+    )
+    assert "19/2021" in r.source
+
+
+def test_gstr1_has_its_own_row_rather_than_inheriting_gstr3b():
+    """20/2021 is a different notification from 19/2021. They happen to carry
+    the same ladder, and deriving one from the other would hide the day they
+    stop doing so."""
+    assert "20/2021" in LATE_FEE_RATES[("gstr1", "2025-26")].source
+    assert "19/2021" in LATE_FEE_RATES[("gstr3b", "2025-26")].source
+
+
+def test_the_cap_is_banded_by_turnover_and_the_per_day_rate_is_not():
+    """The asymmetry is the reason this is not one number. ₹50 a day is charged
+    to everyone; only the ceiling moves."""
+    r = LATE_FEE_RATES[("gstr3b", "2025-26")]
+    assert r.cap_for(1_00_00_000_00) == 2_000_00     # ₹1 crore
+    assert r.cap_for(1_50_00_000_00) == 2_000_00     # exactly ₹1.5 crore — INCLUSIVE
+    assert r.cap_for(1_50_00_000_01) == 5_000_00     # a paisa over
+    assert r.cap_for(5_00_00_000_00) == 5_000_00     # exactly ₹5 crore — INCLUSIVE
+    assert r.cap_for(5_00_00_000_01) == 10_000_00
+
+
+def test_an_unrecorded_turnover_takes_the_LOWEST_cap_and_says_so():
+    """Neither direction is harmless — the bands differ by 5x — but the PORTAL
+    computes the fee at filing, so an understatement is corrected there while an
+    overstatement is this product telling a CA to budget for money their client
+    does not owe. The assumption is on the answer, not left to be inferred."""
     out = late_fee(return_type="gstr3b", financial_year="2025-26",
                    due_date=date(2025, 7, 20), filed_on=date(2025, 9, 4))
+    assert out.fee_paise == 2_000_00           # 46 × ₹50 = ₹2,300, capped
+    assert out.cap_paise == 2_000_00
+    assert out.turnover_band_assumed is True
+    assert any("LOWEST cap" in c for c in out.caveats)
+
+
+def test_a_recorded_turnover_removes_the_assumption():
+    out = late_fee(return_type="gstr3b", financial_year="2025-26",
+                   due_date=date(2025, 7, 20), filed_on=date(2025, 9, 4),
+                   aggregate_turnover_paise=9_00_00_000_00)
+    assert out.fee_paise == 46 * 50_00         # ₹2,300, well under the ₹10,000 cap
+    assert out.capped is False
+    assert out.cap_paise == 10_000_00
+    assert out.turnover_band_assumed is False
+
+
+def test_a_nil_return_has_its_own_rate_AND_its_own_cap_and_is_not_banded():
+    """A taxpayer with nothing to declare has the same ₹500 ceiling whatever
+    their size, so a nil return must not be reported as having assumed a band."""
+    for turnover in (None, 9_00_00_000_00):
+        out = late_fee(return_type="gstr3b", financial_year="2025-26",
+                       due_date=date(2025, 7, 20), filed_on=date(2025, 9, 4),
+                       is_nil_return=True, aggregate_turnover_paise=turnover)
+        assert out.fee_paise == 500_00         # 46 × ₹20 = ₹920, capped at ₹500
+        assert out.cap_paise == 500_00
+        assert out.turnover_band_assumed is False
+
+
+def test_every_answer_carries_the_source_and_the_grading():
+    out = late_fee(return_type="gstr3b", financial_year="2025-26",
+                   due_date=date(2025, 7, 20), filed_on=date(2025, 9, 4),
+                   aggregate_turnover_paise=1_00_00_000_00)
+    assert out.caveats, "an [S]-graded figure must never be presented bare"
+    joined = " ".join(out.caveats)
+    assert "not read off the notification" in joined
+    assert "portal computes the fee itself" in joined, (
+        "the portal is authoritative for this figure, and saying so is what "
+        "makes it safe to state at all"
+    )
+
+
+def test_a_year_before_the_2021_ladder_still_REFUSES():
+    """Notifications 4/2018 and 76/2018 govern earlier periods with different
+    caps and no turnover bands. Charging those years at the 2021 figures is a
+    rate that was not in force — the fork shape, not a migration."""
+    out = late_fee(return_type="gstr3b", financial_year="2019-20",
+                   due_date=date(2019, 7, 20), filed_on=date(2019, 9, 4))
     assert out["refused"] is True
     assert out["code"] == GAP_LATE_FEE_RATES_NOT_HELD
     assert out["days"] == 46
     for cite in ("4/2018", "76/2018", "19/2021", "20/2021"):
-        assert cite in out["reason"], f"{cite} is the notification a CA has to read"
+        assert cite in out["reason"], f"{cite} is a notification a CA has to read"
+    assert "fee_paise" not in out
 
 
 def test_the_statutory_figure_is_recorded_but_never_used_as_a_fallback():
     """₹200 a day is four times what a registered person has paid since 2018.
-    It is held so nobody has to look up what the notifications reduced, and it
-    is deliberately not a default."""
+    It is held so nobody has to look up what the notifications reduced, and a
+    refused year gets a REFUSAL rather than it."""
     assert SECTION_47_1_STATUTORY_PER_DAY_PAISE == 200_00
     assert SECTION_47_1_STATUTORY_CAP_PAISE == 10_000_00
-    out = late_fee(return_type="gstr3b", financial_year="2025-26",
-                   due_date=date(2025, 7, 20), filed_on=date(2025, 9, 4))
+    out = late_fee(return_type="gstr3b", financial_year="2019-20",
+                   due_date=date(2019, 7, 20), filed_on=date(2019, 9, 4))
     assert "fee_paise" not in out
+    assert str(SECTION_47_1_STATUTORY_PER_DAY_PAISE) not in str(out.get("fee_paise", ""))
 
 
-def test_the_rate_table_is_empty_and_that_is_the_state_of_the_world():
-    assert LATE_FEE_RATES == {}, (
-        "adding a row is a human step — read the notification in force for that "
-        "year and that turnover band, like the state professional-tax slabs")
-
-
-def test_a_recorded_rate_is_applied_and_capped(monkeypatch):
-    """The engine works the moment somebody fills the table in."""
-    monkeypatch.setitem(LATE_FEE_RATES, ("gstr3b", "2025-26"),
-                        LateFeeRate(per_day_paise=50_00, nil_return_per_day_paise=20_00,
-                                    cap_paise=2_000_00, source="Notification 19/2021-CT"))
-    out = late_fee(return_type="gstr3b", financial_year="2025-26",
-                   due_date=date(2025, 7, 20), filed_on=date(2025, 9, 4))
-    assert out.days == 46
-    assert out.fee_paise == 2_000_00        # 46 × ₹50 = ₹2,300, capped at ₹2,000
-    assert out.capped is True
-    assert out.source == "Notification 19/2021-CT"
-
-
-def test_a_nil_return_takes_its_own_lower_rate(monkeypatch):
-    monkeypatch.setitem(LATE_FEE_RATES, ("gstr3b", "2025-26"),
-                        LateFeeRate(per_day_paise=50_00, nil_return_per_day_paise=20_00,
-                                    cap_paise=5_000_00, source="x"))
-    out = late_fee(return_type="gstr3b", financial_year="2025-26",
-                   due_date=date(2025, 7, 20), filed_on=date(2025, 8, 4),
-                   is_nil_return=True)
-    assert out.fee_paise == 15 * 20_00 and out.capped is False
+def test_an_unknown_return_type_is_refused_rather_than_defaulted():
+    """GSTR-9's own late fee is a different figure again, and nothing here
+    holds it. Falling back to the 3B ladder would charge it anyway."""
+    out = late_fee(return_type="gstr9", financial_year="2025-26",
+                   due_date=date(2026, 12, 31), filed_on=date(2027, 1, 15))
+    assert out["refused"] is True
 
 
 # ── the wiring: Table 5.1 and the service ────────────────────────────────────
@@ -323,7 +431,11 @@ def test_the_service_block_names_the_due_date_and_the_days():
     # Table 5.1 shows ₹2,042 because the FORM is in whole rupees (§170, half up)
     # — the paise figure here is the one the working is checked against.
     assert out["interest_total_paise"] == 2 * 2_041_65
-    assert out["late_fee"]["refused"] is True
+    # FY 2026-27 is inside the held ladder, so the fee is now COMPUTED. It was
+    # a refusal until the notified figures were written in.
+    assert out["late_fee"].get("refused") is not True
+    assert out["late_fee"]["fee_paise"] == 2_000_00   # 46 x Rs50, capped
+    assert out["late_fee"]["turnover_band_assumed"] is True
 
 
 def test_the_late_fee_is_keyed_on_the_return_periods_own_financial_year():

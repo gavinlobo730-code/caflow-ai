@@ -240,13 +240,13 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
   if (error) {
     return (
       <Shell onClose={onClose} title="Entry">
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-state-problem">{error}</p>
       </Shell>
     );
   }
   if (!t) {
     // Reached only when the modal was opened without the row (no `initial`).
-    return <Shell onClose={onClose} title="Entry"><p className="text-xs text-[#94A3B8]">Loading…</p></Shell>;
+    return <Shell onClose={onClose} title="Entry"><p className="text-xs text-ps-hint">Loading…</p></Shell>;
   }
 
   const passed = t.entry_state === "passed";
@@ -280,10 +280,10 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
   const s = summary();
 
   const splitModeSwitch = (
-    <div className="inline-flex rounded-lg border border-[#E2E8F0] overflow-hidden" role="tablist" aria-label="What to split this line across">
+    <div className="inline-flex rounded-lg border border-ps-border overflow-hidden" role="tablist" aria-label="What to split this line across">
       {([["ledgers", "Across ledgers"], ["documents", t.credit_paise > 0 ? "Across invoices" : "Across bills"]] as const).map(([mode, label]) => (
         <button key={mode} type="button" role="tab" aria-selected={splitMode === mode} onClick={() => setSplitMode(mode)}
-          className={`text-xs px-3 py-1.5 font-medium ${splitMode === mode ? "bg-[#4338CA] text-white" : "bg-white text-[#475569] hover:bg-[#F8FAFC]"}`}>
+          className={`text-xs px-3 py-1.5 font-medium ${splitMode === mode ? "bg-brand text-white" : "bg-white text-ps-label hover:bg-ps-bg"}`}>
           {label}
         </button>
       ))}
@@ -313,21 +313,21 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
         <>
           {editable && (
             <button onClick={() => act("Couldn't set aside", () => api.banking.ignoreTransaction(t.id)).then((ok) => ok && onClose())} disabled={busy}
-              className="text-[11px] text-[#94A3B8] hover:text-[#64748B] hover:underline mr-auto disabled:opacity-50">Set aside</button>
+              className="text-[11px] text-ps-hint hover:text-ps-label hover:underline mr-auto disabled:opacity-50">Set aside</button>
           )}
           {aside && (
             <button onClick={() => act("Couldn't restore", () => api.banking.unignoreTransaction(t.id))} disabled={busy}
-              className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg text-[#475569] hover:bg-[#F8FAFC] mr-auto">Restore</button>
+              className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg mr-auto">Restore</button>
           )}
           {passed && (
             <button onClick={() => act("Couldn't undo", () => api.banking.undoPost(t.id)).then((ok) => ok && onClose())} disabled={busy}
-              className="text-xs px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 mr-auto">Undo</button>
+              className="text-xs px-3 py-1.5 border border-state-problem-border text-state-problem rounded-lg hover:bg-state-problem-surface mr-auto">Undo</button>
           )}
-          <button onClick={onClose} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#475569]">Close</button>
+          <button onClick={onClose} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">Close</button>
           {editable && (
             <button onClick={pass} disabled={busy || !canPass}
               title={canPass ? "Pass this entry into the books" : t.draft_source === "document" ? "Settle it from the document below" : "Choose a ledger or a document first"}
-              className="text-xs px-4 py-1.5 rounded-lg font-medium text-white bg-[#059669] hover:bg-[#047857] disabled:opacity-40 disabled:cursor-not-allowed">
+              className="text-xs px-4 py-1.5 rounded-lg font-medium text-white bg-state-ready-solid hover:bg-state-ready disabled:opacity-40 disabled:cursor-not-allowed">
               {busy ? "…" : "Pass"}
             </button>
           )}
@@ -338,34 +338,34 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
           carries is still here and still works, so this is a banner with a way
           to try again — never the whole body replaced by an error. */}
       {enrich === "failed" && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex items-start gap-2">
-          <p className="text-[11px] text-amber-800 flex-1 min-w-0">
+        <div className="rounded-lg border border-state-attention-border bg-state-attention-surface px-3 py-2 flex items-start gap-2">
+          <p className="text-[11px] text-state-attention flex-1 min-w-0">
             Couldn&apos;t load this line&apos;s suggested documents, payee and history
             {enrichError ? `: ${enrichError}` : "."} Everything else on this line is
             here — the ledger, GST, split and Pass all work.
           </p>
-          <button onClick={load} className="text-[11px] px-2.5 py-1 border border-amber-300 bg-white text-amber-900 rounded-lg hover:bg-amber-100 shrink-0">
+          <button onClick={load} className="text-[11px] px-2.5 py-1 border border-amber-300 bg-white text-amber-900 rounded-lg hover:bg-state-attention-border shrink-0">
             Try again
           </button>
         </div>
       )}
 
       {/* ── what it becomes ── */}
-      <section className={`rounded-lg px-3 py-2.5 border ${t.draft_error ? "border-red-200 bg-red-50/50" : coded ? "border-emerald-200 bg-emerald-50/50" : t.draft_source ? "border-[#E2E8F0] bg-[#F8FAFC]" : "border-amber-200 bg-amber-50/50"}`}>
-        <p className="text-[10px] uppercase tracking-wide text-[#94A3B8] mb-0.5">
+      <section className={`rounded-lg px-3 py-2.5 border ${t.draft_error ? "border-state-problem-border bg-state-problem-surface/50" : coded ? "border-state-ready-border bg-state-ready-surface/50" : t.draft_source ? "border-ps-border bg-ps-bg" : "border-state-attention-border bg-state-attention-surface/50"}`}>
+        <p className="text-[10px] uppercase tracking-wide text-ps-hint mb-0.5">
           {passed ? "Passed" : aside ? "Set aside" : covered ? "Covered" : coded ? "Will pass as" : t.draft_source ? (t.draft_grade === "ready" ? "Proposed — ready" : "Proposed — your call") : "Needs you"}
           {t.posted_by_rule_id ? " · by a trusted rule" : ""}
         </p>
-        <p className="text-sm font-medium text-[#0F172A]">{s.text}</p>
-        {s.sub && <p className="text-[11px] text-[#64748B] mt-0.5">{s.sub}</p>}
-        {t.draft_error && <p className="text-[11px] text-red-700 mt-1">Last pass refused: {t.draft_error}</p>}
+        <p className="text-sm font-medium text-ps-ink">{s.text}</p>
+        {s.sub && <p className="text-[11px] text-ps-label mt-0.5">{s.sub}</p>}
+        {t.draft_error && <p className="text-[11px] text-money-out mt-1">Last pass refused: {t.draft_error}</p>}
       </section>
 
       {/* ── the ledger and GST ── */}
       {editable && !isSplit && !t.transfer_pair_id && (
         <section className="space-y-2">
           <div>
-            <label className="block text-[11px] font-medium text-[#475569] mb-1">Book under</label>
+            <label className="block text-[11px] font-medium text-ps-label mb-1">Book under</label>
             <AccountLookup accounts={accounts} value={t.account_id ?? ""} disabled={busy} ariaLabel="Ledger"
               placeholder={t.draft_account_id ? `Proposed: ${accountName(t.draft_account_id)}` : "Choose a ledger…"}
               onChange={(id) => id && patch("Couldn't book under that ledger",
@@ -373,25 +373,25 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
                 () => api.banking.setTransactionAccount(t.id, { account_id: id, derive_category: true }))} />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-[#475569] mb-1">GST inside this amount</label>
+            <label className="block text-[11px] font-medium text-ps-label mb-1">GST inside this amount</label>
             {t.gst_allowed ? (
               <div className="flex items-center gap-3 flex-wrap">
                 <select value={gstRateBps} disabled={busy} onChange={(e) => setGstRateBps(e.target.value)}
                   aria-label={t.credit_paise > 0 ? "Output GST on this receipt" : "Input GST on this payment"}
-                  className="px-2 py-1.5 text-xs border border-[#E2E8F0] rounded-lg bg-white">
+                  className="px-2 py-1.5 text-xs border border-ps-border rounded-lg bg-white">
                   <option value="">No GST split</option>
                   {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 {gstRateBps !== "" && gstRateBps !== "0" && (
-                  <label className="flex items-center gap-1.5 text-xs text-[#475569]">
-                    <input type="checkbox" disabled={busy} checked={interstate} onChange={(e) => setInterstate(e.target.checked)} className="h-3.5 w-3.5 rounded border-[#CBD5E1]" />
+                  <label className="flex items-center gap-1.5 text-xs text-ps-label">
+                    <input type="checkbox" disabled={busy} checked={interstate} onChange={(e) => setInterstate(e.target.checked)} className="h-3.5 w-3.5 rounded border-ps-disabled" />
                     IGST (inter-state)
                   </label>
                 )}
-                <span className="text-[10px] text-[#94A3B8]">{t.credit_paise > 0 ? "Output tax owed — CGST Act s.9" : "Input credit claimed — CGST Act s.16"}</span>
+                <span className="text-[10px] text-ps-hint">{t.credit_paise > 0 ? "Output tax owed — CGST Act s.9" : "Input credit claimed — CGST Act s.16"}</span>
               </div>
             ) : (
-              <p className="text-[11px] text-[#94A3B8]">{GST_WHY_LONG[gstWhy(asQueueTxn(t))] ?? "Not available on this line."}</p>
+              <p className="text-[11px] text-ps-hint">{GST_WHY_LONG[gstWhy(asQueueTxn(t))] ?? "Not available on this line."}</p>
             )}
           </div>
         </section>
@@ -400,37 +400,37 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       {/* ── the document ── */}
       {editable && !isSplit && !t.transfer_pair_id && (
         <section className="space-y-1.5">
-          <p className="text-[11px] font-medium text-[#475569]">{t.credit_paise > 0 ? "Invoice" : "Bill"} this settles</p>
+          <p className="text-[11px] font-medium text-ps-label">{t.credit_paise > 0 ? "Invoice" : "Bill"} this settles</p>
           {t.matched_entity_id ? (
             <div className="flex items-center gap-2">
-              <p className="text-xs text-[#334155]">
+              <p className="text-xs text-ps-body">
                 Linked to {t.matched_entity_type?.replace("_", " ")}
                 {t.matched_document_no ? <span className="font-medium"> {t.matched_document_no}</span> : null}.
               </p>
               <button onClick={() => act("Couldn't unlink", () => api.banking.unmatch(t.id))} disabled={busy}
-                className="text-[11px] px-2.5 py-1 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Unlink</button>
+                className="text-[11px] px-2.5 py-1 border border-state-problem-border text-state-problem rounded-lg hover:bg-state-problem-surface">Unlink</button>
             </div>
           ) : (
             <>
               {enrich === "loading" && t.suggestions.length === 0 && (
-                <p className="text-[11px] text-[#94A3B8]">Looking for {t.credit_paise > 0 ? "invoices" : "bills"} that match this amount…</p>
+                <p className="text-[11px] text-ps-hint">Looking for {t.credit_paise > 0 ? "invoices" : "bills"} that match this amount…</p>
               )}
               {t.suggestions.length > 0 && (
-                <ul className="divide-y divide-[#F1F5F9] border border-[#E2E8F0] rounded-lg overflow-hidden">
+                <ul className="divide-y divide-ps-muted border border-ps-border rounded-lg overflow-hidden">
                   {t.suggestions.slice(0, 5).map((sg) => (
                     <li key={sg.matched_entity_id} className="flex items-center gap-2 px-3 py-1.5">
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs text-[#334155] truncate">{sg.label}</p>
-                        <p className="text-[10px] text-[#94A3B8]">
+                        <p className="text-xs text-ps-body truncate">{sg.label}</p>
+                        <p className="text-[10px] text-ps-hint">
                           {fmt(sg.amount_paise)} · {sg.reasons.join(", ")}
-                          {sg.difference_paise > 0 && <span className="text-amber-700"> · short by {fmt(sg.difference_paise)}{sg.tds_rate_bps ? ` (TDS ${sg.tds_rate_bps / 100}%?)` : ""}</span>}
+                          {sg.difference_paise > 0 && <span className="text-state-attention"> · short by {fmt(sg.difference_paise)}{sg.tds_rate_bps ? ` (TDS ${sg.tds_rate_bps / 100}%?)` : ""}</span>}
                         </p>
                       </div>
                       {sg.difference_paise > 0 ? (
-                        <button onClick={() => openSettle(sg)} disabled={busy} className="text-[11px] px-2.5 py-1 border border-amber-200 bg-amber-50 text-amber-800 rounded-lg hover:bg-amber-100 shrink-0">Settle…</button>
+                        <button onClick={() => openSettle(sg)} disabled={busy} className="text-[11px] px-2.5 py-1 border border-state-attention-border bg-state-attention-surface text-state-attention rounded-lg hover:bg-state-attention-border shrink-0">Settle…</button>
                       ) : (
                         <button onClick={() => act("Couldn't link", () => api.banking.matchEntity(t.id, { matched_entity_type: sg.matched_entity_type, matched_entity_id: sg.matched_entity_id }))}
-                          disabled={busy} className="text-[11px] px-2.5 py-1 border border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D] rounded-lg hover:bg-[#DCFCE7] shrink-0">Link</button>
+                          disabled={busy} className="text-[11px] px-2.5 py-1 border border-state-ready-border bg-state-ready-surface text-state-ready rounded-lg hover:bg-state-ready-hover shrink-0">Link</button>
                       )}
                     </li>
                   ))}
@@ -438,12 +438,12 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
               )}
               <div className="flex items-center gap-2 flex-wrap">
                 <button onClick={() => setFinding(true)} disabled={busy}
-                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#CBD5E1] bg-white rounded-lg hover:bg-[#F1F5F9] text-[#334155] font-medium disabled:opacity-50">
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-disabled bg-white rounded-lg hover:bg-ps-muted text-ps-body font-medium disabled:opacity-50">
                   <Search size={13} /> Find the {t.credit_paise > 0 ? "invoice" : "bill"}
                 </button>
                 <button onClick={() => setSplitMode("ledgers")} disabled={busy}
                   title={`Allocate this line across several ledgers, across several ${t.credit_paise > 0 ? "invoices" : "bills"}, or record TDS withheld on it`}
-                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#CBD5E1] bg-white rounded-lg hover:bg-[#F1F5F9] text-[#334155] font-medium disabled:opacity-50">
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-disabled bg-white rounded-lg hover:bg-ps-muted text-ps-body font-medium disabled:opacity-50">
                   <Split size={13} /> Split across several
                 </button>
               </div>
@@ -455,8 +455,8 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
       {/* ── a split already made ── */}
       {isSplit && (
         <section className="flex items-start gap-2 flex-wrap">
-          <p className="text-[11px] text-[#64748B] min-w-0">Split across <span className="text-[#334155]">{(t.splits ?? []).map((sp) => `${accountName(sp.account_id)} ${fmt(sp.amount_paise)}`).join(" · ")}</span></p>
-          {editable && <button onClick={() => setSplitMode("ledgers")} disabled={busy} className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569] shrink-0">Edit the split</button>}
+          <p className="text-[11px] text-ps-label min-w-0">Split across <span className="text-ps-body">{(t.splits ?? []).map((sp) => `${accountName(sp.account_id)} ${fmt(sp.amount_paise)}`).join(" · ")}</span></p>
+          {editable && <button onClick={() => setSplitMode("ledgers")} disabled={busy} className="text-[10px] px-2 py-0.5 border border-ps-border rounded hover:bg-white text-ps-label shrink-0">Edit the split</button>}
         </section>
       )}
 
@@ -465,14 +465,14 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
         <section className="flex items-center gap-2 flex-wrap">
           {t.transfer_pair_id ? (
             <>
-              <p className="text-[11px] text-[#64748B]">{t.transfer_is_primary ? "Paying side of a transfer — this one carries the journal." : "Receiving side of a transfer — the paying side carries the journal."}</p>
-              <button onClick={() => act("Couldn't unpair", () => api.banking.unpairTransfer(t.id))} disabled={busy} className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569]">Not a transfer</button>
+              <p className="text-[11px] text-ps-label">{t.transfer_is_primary ? "Paying side of a transfer — this one carries the journal." : "Receiving side of a transfer — the paying side carries the journal."}</p>
+              <button onClick={() => act("Couldn't unpair", () => api.banking.unpairTransfer(t.id))} disabled={busy} className="text-[10px] px-2 py-0.5 border border-ps-border rounded hover:bg-white text-ps-label">Not a transfer</button>
             </>
           ) : t.transfer_candidate ? (
             <>
-              <p className="text-[11px] text-[#64748B]">Looks like a transfer between own accounts: <span className="text-[#334155]">{t.transfer_candidate.summary}</span></p>
+              <p className="text-[11px] text-ps-label">Looks like a transfer between own accounts: <span className="text-ps-body">{t.transfer_candidate.summary}</span></p>
               <button onClick={() => act("Couldn't confirm the transfer", () => api.banking.pairTransfer(t.transfer_candidate!.primary_id, t.transfer_candidate!.counterpart_id))}
-                disabled={busy} className="text-[11px] px-2.5 py-1 border border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA] rounded-lg hover:bg-[#E0E7FF]">Confirm transfer</button>
+                disabled={busy} className="text-[11px] px-2.5 py-1 border border-brand-light bg-ps-hover text-brand rounded-lg hover:bg-brand-light">Confirm transfer</button>
             </>
           ) : null}
         </section>
@@ -480,29 +480,29 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
 
       {/* ── payee and history ── */}
       {editable && (
-        <section className="space-y-1.5 border-l-2 border-[#E2E8F0] pl-3">
+        <section className="space-y-1.5 border-l-2 border-ps-border pl-3">
           {t.payee_name ? (
             <div className="flex items-center gap-2">
-              <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">Payee <span className="text-[#334155]">{t.payee_name}</span>{t.payee_type ? <span className="text-[#CBD5E1]"> ({t.payee_type})</span> : null}</p>
-              <button onClick={() => act("Couldn't clear the payee", () => api.banking.setPayee(t.id, { payee_name: "" }))} disabled={busy} className="text-[10px] text-[#94A3B8] hover:text-red-600 hover:underline shrink-0">Clear payee</button>
+              <p className="text-[10px] text-ps-hint min-w-0 truncate">Payee <span className="text-ps-body">{t.payee_name}</span>{t.payee_type ? <span className="text-ps-disabled"> ({t.payee_type})</span> : null}</p>
+              <button onClick={() => act("Couldn't clear the payee", () => api.banking.setPayee(t.id, { payee_name: "" }))} disabled={busy} className="text-[10px] text-ps-hint hover:text-state-problem hover:underline shrink-0">Clear payee</button>
             </div>
           ) : t.suggested_payee ? (
             <div className="flex items-center gap-2">
-              <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">Payee looks like <span className="text-[#334155] font-medium">{t.suggested_payee.payee_name}</span><span className="text-[#CBD5E1]"> ({t.suggested_payee.source === "narration" ? "from the narration" : "from the matched party"})</span></p>
+              <p className="text-[10px] text-ps-hint min-w-0 truncate">Payee looks like <span className="text-ps-body font-medium">{t.suggested_payee.payee_name}</span><span className="text-ps-disabled"> ({t.suggested_payee.source === "narration" ? "from the narration" : "from the matched party"})</span></p>
               <button onClick={() => act("Couldn't confirm the payee", () => api.banking.setPayee(t.id, { payee_name: t.suggested_payee!.payee_name, payee_type: t.suggested_payee!.payee_type, payee_id: t.suggested_payee!.payee_id ?? undefined }))}
-                disabled={busy} className="text-[10px] px-2 py-0.5 border border-[#E2E8F0] rounded hover:bg-white text-[#475569] shrink-0">Confirm payee</button>
+                disabled={busy} className="text-[10px] px-2 py-0.5 border border-ps-border rounded hover:bg-white text-ps-label shrink-0">Confirm payee</button>
             </div>
           ) : null}
           {t.history && !t.account_id && !isSplit && (
             <div className="flex items-center gap-2">
-              <p className="text-[10px] text-[#94A3B8] min-w-0 truncate">
-                <span className={t.history.is_unanimous ? "text-emerald-700" : "text-amber-700"}>{t.history.summary}</span>
+              <p className="text-[10px] text-ps-hint min-w-0 truncate">
+                <span className={t.history.is_unanimous ? "text-state-ready" : "text-state-attention"}>{t.history.summary}</span>
                 {t.history.account_id ? ` · ${accountName(t.history.account_id)}` : ""}
-                {t.history.alternatives.length > 0 && <span className="text-[#CBD5E1]"> (also {t.history.alternatives.map((a) => `${accountName(a.account_id)} ×${a.times}`).join(", ")})</span>}
+                {t.history.alternatives.length > 0 && <span className="text-ps-disabled"> (also {t.history.alternatives.map((a) => `${accountName(a.account_id)} ×${a.times}`).join(", ")})</span>}
               </p>
               {t.history.account_id && (
                 <button onClick={() => act("Couldn't apply", () => api.banking.setTransactionAccount(t.id, { account_id: t.history!.account_id!, derive_category: true }))}
-                  disabled={busy} className="text-[10px] px-2 py-0.5 border border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D] rounded hover:bg-[#DCFCE7] shrink-0">Book like last time</button>
+                  disabled={busy} className="text-[10px] px-2 py-0.5 border border-state-ready-border bg-state-ready-surface text-state-ready rounded hover:bg-state-ready-hover shrink-0">Book like last time</button>
               )}
             </div>
           )}
@@ -517,24 +517,24 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
           expense with no bill on file — bank charges, petty cash, anything
           booked straight to a ledger. */}
       <section className="space-y-1.5">
-        <p className="text-[11px] font-medium text-[#475569]">Supporting documents</p>
+        <p className="text-[11px] font-medium text-ps-label">Supporting documents</p>
 
         {attachments.length > 0 && (
-          <ul className="divide-y divide-[#F1F5F9] border border-[#E2E8F0] rounded-lg overflow-hidden">
+          <ul className="divide-y divide-ps-muted border border-ps-border rounded-lg overflow-hidden">
             {attachments.map((a) => (
               <li key={a.document_id ?? a.url} className="flex items-center gap-2 px-3 py-1.5">
-                <Paperclip size={12} className="text-[#94A3B8] shrink-0" />
+                <Paperclip size={12} className="text-ps-hint shrink-0" />
                 <button onClick={() => openAttachment(a)}
-                  className="text-xs text-[#334155] truncate min-w-0 flex-1 text-left hover:text-[#4338CA] hover:underline inline-flex items-center gap-1">
+                  className="text-xs text-ps-body truncate min-w-0 flex-1 text-left hover:text-brand hover:underline inline-flex items-center gap-1">
                   <span className="truncate">{a.name}</span>
-                  <ExternalLink size={10} className="shrink-0 text-[#94A3B8]" />
+                  <ExternalLink size={10} className="shrink-0 text-ps-hint" />
                 </button>
                 {editable && (
                   <button onClick={() => act("Couldn't remove that document",
                       () => api.banking.attachments.remove(t.id,
                         a.document_id ? { document_id: a.document_id } : { url: a.url ?? "" }))}
                     disabled={busy}
-                    className="text-[10px] text-[#94A3B8] hover:text-red-600 hover:underline shrink-0">Remove</button>
+                    className="text-[10px] text-ps-hint hover:text-state-problem hover:underline shrink-0">Remove</button>
                 )}
               </li>
             ))}
@@ -546,15 +546,15 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
             <input ref={fileRef} type="file" className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) attachFile(f); }} />
             <button onClick={() => fileRef.current?.click()} disabled={busy || uploading}
-              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#CBD5E1] bg-white rounded-lg hover:bg-[#F1F5F9] text-[#334155] font-medium disabled:opacity-50">
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-disabled bg-white rounded-lg hover:bg-ps-muted text-ps-body font-medium disabled:opacity-50">
               <Paperclip size={13} /> {uploading ? "Attaching…" : "Attach a file"}
             </button>
             {t.matched_entity_id ? (
-              <span className="text-[10px] text-[#94A3B8]">
+              <span className="text-[10px] text-ps-hint">
                 This line settles {t.matched_document_no ?? "a document"}, which is already on file with its own copy.
               </span>
             ) : attachments.length === 0 ? (
-              <span className="text-[10px] text-[#94A3B8]">The receipt or bill behind this line, if there is no document for it in the books.</span>
+              <span className="text-[10px] text-ps-hint">The receipt or bill behind this line, if there is no document for it in the books.</span>
             ) : null}
           </div>
         )}
@@ -562,8 +562,8 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
 
       {/* ── what the bank sent ── */}
       <section>
-        <p className="text-[10px] uppercase tracking-wide text-[#94A3B8] mb-0.5">Bank narration</p>
-        <p className="text-[10px] text-[#475569] break-words select-text font-mono leading-relaxed">{t.description}</p>
+        <p className="text-[10px] uppercase tracking-wide text-ps-hint mb-0.5">Bank narration</p>
+        <p className="text-[10px] text-ps-label break-words select-text font-mono leading-relaxed">{t.description}</p>
         {/* THE IDENTIFIERS, AND A CHEQUE HAS ONLY ONE (BANK-28). A cheque line
             carries no UTR and usually no reference on the row, so before this
             it showed a bank narration and nothing at all beneath it — while
@@ -587,7 +587,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
             t.parsed?.ifsc,
           ].filter(Boolean);
           return bits.length > 0 ? (
-            <p className="text-[10px] text-[#94A3B8] break-words select-text mt-0.5">
+            <p className="text-[10px] text-ps-hint break-words select-text mt-0.5">
               {bits.join(" · ")}
             </p>
           ) : null;
@@ -621,17 +621,17 @@ function Shell({ title, note, footer, onClose, children }: {
   title: string; note?: ReactNode; footer?: ReactNode; onClose: () => void; children: ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
-        <div className="flex items-start justify-between px-5 py-4 border-b border-[#F1F5F9]">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-ps-muted">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-[#0F172A] truncate" title={title}>{title}</h3>
-            {note && <p className="text-xs text-[#64748B] mt-0.5">{note}</p>}
+            <h3 className="text-sm font-semibold text-ps-ink truncate" title={title}>{title}</h3>
+            {note && <p className="text-xs text-ps-label mt-0.5">{note}</p>}
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-[#94A3B8] hover:text-[#475569] shrink-0"><X size={16} /></button>
+          <button onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-label shrink-0"><X size={16} /></button>
         </div>
         <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">{children}</div>
-        {footer && <div className="px-5 py-3 border-t border-[#F1F5F9] flex items-center justify-end gap-2">{footer}</div>}
+        {footer && <div className="px-5 py-3 border-t border-ps-muted flex items-center justify-end gap-2">{footer}</div>}
       </div>
     </div>
   );

@@ -498,6 +498,12 @@ class MatchingRuleIn(BaseModel):
     # bank, not derivable from the statement, so it is stated once here.
     suggested_gst_rate_bps: Optional[int] = None
     suggested_is_interstate: bool = False
+    # BANK-11 step 3, migration 404 — WHO the money went to. A LABEL on the
+    # transaction and never a journal leg, which is what makes it safe for a
+    # TRUSTED rule to apply unattended. A TDS treatment and a general split leg
+    # are still refused; see domain/banking/rules.
+    payee_type: Optional[str] = None
+    payee_id: Optional[str] = None
     is_active: bool = True
 
     @field_validator("rule_name")
@@ -521,6 +527,11 @@ class MatchingRuleIn(BaseModel):
     @classmethod
     def known_txn_type(cls, v: str) -> str:
         return _validate_txn_type(v)
+
+    @field_validator("payee_type")
+    @classmethod
+    def known_payee_type(cls, v):
+        return _validate_payee_type(v)
 
     @field_validator("match_field")
     @classmethod
@@ -559,6 +570,10 @@ class MatchingRuleUpdateIn(BaseModel):
     suggested_narration: Optional[str] = None
     suggested_gst_rate_bps: Optional[int] = None
     suggested_is_interstate: Optional[bool] = None
+    # BANK-11 step 3 — on BOTH doors, because a validator only at create is one
+    # PATCH from being none.
+    payee_type: Optional[str] = None
+    payee_id: Optional[str] = None
     is_active: Optional[bool] = None
     # Migration 322 — promote to TRUSTED (posts with no click) or demote. The
     # router gates promotion on banking.approve and records who did it; the
@@ -589,6 +604,11 @@ class MatchingRuleUpdateIn(BaseModel):
 
     # The same three as MatchingRuleIn. A validator only on the create door is
     # one PATCH from being none — the lesson `domain/payroll/identity` records.
+    @field_validator("payee_type")
+    @classmethod
+    def known_payee_type(cls, v):
+        return _validate_payee_type(v)
+
     @field_validator("match_field")
     @classmethod
     def known_match_field(cls, v):
@@ -654,6 +674,23 @@ def _validate_gst_rate_bps(v: Optional[int]) -> Optional[int]:
             "Invalid GST rate. Allowed (basis points): "
             + ", ".join(str(r) for r in CHARGE_GST_RATES_BPS))
     return value
+
+
+def _validate_payee_type(value):
+    """The three migration 404's CHECK allows, or a refusal naming them.
+
+    Read off `domain/banking/rules.PAYEE_TYPES` rather than restated, for
+    `_validate_match_field`'s reason: the engine's tuple and the database's
+    CHECK are what this has to agree with, and a third list here is the one
+    that drifts.
+    """
+    if value is None:
+        return None
+    from domain.banking.rules import PAYEE_TYPES
+    v = str(value).strip().lower()
+    if v not in PAYEE_TYPES:
+        raise ValueError("Tag the party as one of: " + ", ".join(PAYEE_TYPES))
+    return v
 
 
 def _validate_match_field(value):

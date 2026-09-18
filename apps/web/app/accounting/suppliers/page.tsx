@@ -56,6 +56,7 @@ import { getClients } from "@/lib/data/clients";
 import { api, type Vendor, type VendorWrite } from "@/lib/api";
 import { listTdsSections, computeTdsAmount, type TDSSection, type TDSAmountResult } from "@/lib/data/tds";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -140,6 +141,7 @@ export default function SuppliersPage() {
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resemblances, setResemblances] = useState<PossibleDuplicate[]>([]);
 
   // TDS section list — thresholds/rates always come from the authoritative
   // TDSComputer via GET /api/tds/sections, never hardcoded here.
@@ -322,6 +324,10 @@ export default function SuppliersPage() {
         setError("A supplier with that GSTIN or PAN already exists for this client — "
                  + "the existing record was kept.");
       }
+      // PUR-32. The supplier WAS created; this names what it resembles. Kept
+      // out of setError deliberately — an error reads as "this did not save".
+      setResemblances(
+        (res.data as { possible_duplicates?: PossibleDuplicate[] })?.possible_duplicates ?? []);
       setShowModal(false);
       await loadVendors();
     } catch (e) {
@@ -364,6 +370,10 @@ export default function SuppliersPage() {
       </div>
 
       {error && <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>}
+      {/* PUR-32 — outside the modal, because the modal has closed and the
+          supplier is saved. Dismissed by the CA, never on a timer. */}
+      <PossibleDuplicatesNotice duplicates={resemblances} noun="supplier"
+        onDismiss={() => setResemblances([])} />
 
       {/* Client selector */}
       <Card>

@@ -199,7 +199,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
   const ALIGN = { left: "text-left", right: "text-right", center: "text-center" } as const;
   const sortHead = (col: RegisterSort, label: string, align: keyof typeof ALIGN = "left") => (
     <th key={col} className={`px-3 py-2 font-medium ${ALIGN[align]} whitespace-nowrap`}>
-      <button onClick={() => toggleSort(col)} className="inline-flex items-center gap-1 hover:text-[#334155]">
+      <button onClick={() => toggleSort(col)} className="inline-flex items-center gap-1 hover:text-ps-body">
         {label}{sort === col && <span className="text-[9px]">{desc ? "▼" : "▲"}</span>}
       </button>
     </th>
@@ -207,10 +207,10 @@ export function BankRegister({ clientId }: { clientId: string }) {
 
   if (accounts.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center max-w-3xl mx-auto">
-        <Landmark size={24} className="mx-auto text-[#CBD5E1]" />
-        <p className="text-sm text-[#94A3B8] mt-2">No bank account yet.</p>
-        <p className="text-[11px] text-[#94A3B8] mt-1">
+      <div className="bg-white rounded-xl border border-ps-muted p-10 text-center max-w-3xl mx-auto">
+        <Landmark size={24} className="mx-auto text-ps-disabled" />
+        <p className="text-sm text-ps-hint mt-2">No bank account yet.</p>
+        <p className="text-[11px] text-ps-hint mt-1">
           Add one from <strong>Bank › Entries › Accounts</strong>, then import a statement —
           the register builds itself from what the bank sent.
         </p>
@@ -221,52 +221,52 @@ export function BankRegister({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
       {/* Account + filters */}
-      <div className="bg-white rounded-xl border border-[#F1F5F9] p-3 flex flex-wrap items-end gap-3">
+      <div className="bg-white rounded-xl border border-ps-muted p-3 flex flex-wrap items-end gap-3">
         <label className="block">
-          <span className="text-[10px] font-medium text-[#64748B]">Account</span>
+          <span className="text-[10px] font-medium text-ps-label">Account</span>
           <select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}
-            className="mt-1 block border border-[#E2E8F0] rounded px-2 py-1.5 text-xs">
+            className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs">
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>{a.bank_name} · ****{a.account_no.slice(-4)}</option>
             ))}
           </select>
         </label>
         <label className="block">
-          <span className="text-[10px] font-medium text-[#64748B]">From</span>
+          <span className="text-[10px] font-medium text-ps-label">From</span>
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-            className="mt-1 block border border-[#E2E8F0] rounded px-2 py-1.5 text-xs" />
+            className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
-          <span className="text-[10px] font-medium text-[#64748B]">To</span>
+          <span className="text-[10px] font-medium text-ps-label">To</span>
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-            className="mt-1 block border border-[#E2E8F0] rounded px-2 py-1.5 text-xs" />
+            className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
-          <span className="text-[10px] font-medium text-[#64748B]">Show</span>
+          <span className="text-[10px] font-medium text-ps-label">Show</span>
           <select value={status} onChange={(e) => setStatus(e.target.value as RegisterStatus)}
-            className="mt-1 block border border-[#E2E8F0] rounded px-2 py-1.5 text-xs">
+            className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs">
             {REGISTER_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </label>
         <label className="block flex-1 min-w-[160px]">
-          <span className="text-[10px] font-medium text-[#64748B]">Search</span>
+          <span className="text-[10px] font-medium text-ps-label">Search</span>
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Narration, reference or category"
-            className="mt-1 block w-full border border-[#E2E8F0] rounded px-2 py-1.5 text-xs" />
+            className="mt-1 block w-full border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <div className="flex items-center gap-2">
           {filtersActive && (
             <button onClick={() => { setDateFrom(""); setDateTo(""); setStatus("all"); setSearch(""); }}
-              className="text-[11px] px-2 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+              className="text-[11px] px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
               Clear
             </button>
           )}
           <button onClick={load} disabled={loading}
-            className="text-[11px] px-2 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] inline-flex items-center gap-1">
+            className="text-[11px] px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label inline-flex items-center gap-1">
             <RefreshCw size={11} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
           <button onClick={exportCsv} disabled={!data || data.lines.length === 0}
-            className="text-[11px] px-2 py-1.5 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569] inline-flex items-center gap-1 disabled:opacity-40">
+            className="text-[11px] px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label inline-flex items-center gap-1 disabled:opacity-40">
             <Download size={11} /> CSV
           </button>
         </div>
@@ -280,12 +280,12 @@ export function BankRegister({ clientId }: { clientId: string }) {
           the other way round sends the CA hunting a missing transaction that
           does not exist. */}
       {data?.account?.opening_balance_gap && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <p className="text-xs font-semibold text-amber-900">
             This account&apos;s opening balance has no date
           </p>
-          <p className="text-[11px] text-amber-800 mt-1">{data.account.opening_balance_gap}</p>
-          <p className="text-[11px] text-amber-700 mt-1">
+          <p className="text-[11px] text-state-attention mt-1">{data.account.opening_balance_gap}</p>
+          <p className="text-[11px] text-state-attention mt-1">
             Set it under Bank › Entries › Accounts. Until then the balances below,
             and any difference against the statement, may be out by the total of
             whatever predates the opening figure.
@@ -294,18 +294,18 @@ export function BankRegister({ clientId }: { clientId: string }) {
       )}
 
       {data?.divergence && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
           <p className="text-xs font-semibold text-amber-900">
             This register stops agreeing with the statement on {data.divergence.transaction_date}
           </p>
-          <p className="text-[11px] text-amber-800 mt-1">
+          <p className="text-[11px] text-state-attention mt-1">
             After “{data.divergence.description}” the bank says the balance was{" "}
             <span className="font-mono">{fmt(data.divergence.statement_balance_paise ?? 0)}</span>;
             from the imported lines it works out to{" "}
             <span className="font-mono">{fmt(data.divergence.computed_balance_paise)}</span> — a
             difference of <span className="font-mono font-semibold">{fmt(Math.abs(data.divergence.delta_paise))}</span>.
           </p>
-          <p className="text-[11px] text-amber-700 mt-1">
+          <p className="text-[11px] text-state-attention mt-1">
             Usually a missing, duplicated or misdated line, or an opening balance that needs
             correcting under Bank › Entries › Accounts. Only the first mismatch is shown — every balance after
             it inherits the same difference.
@@ -329,13 +329,13 @@ export function BankRegister({ clientId }: { clientId: string }) {
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "Opening balance", value: fmt(summary.opening_balance_paise), tone: "text-[#0F172A]" },
-            { label: "Deposits", value: fmt(summary.deposits_paise), tone: "text-green-700" },
-            { label: "Withdrawals", value: fmt(summary.withdrawals_paise), tone: "text-red-700" },
-            { label: "Closing balance", value: fmt(summary.closing_balance_paise), tone: "text-[#0F172A] font-semibold" },
+            { label: "Opening balance", value: fmt(summary.opening_balance_paise), tone: "text-ps-ink" },
+            { label: "Deposits", value: fmt(summary.deposits_paise), tone: "text-money-in" },
+            { label: "Withdrawals", value: fmt(summary.withdrawals_paise), tone: "text-money-out" },
+            { label: "Closing balance", value: fmt(summary.closing_balance_paise), tone: "text-ps-ink font-semibold" },
           ].map((c) => (
-            <div key={c.label} className="bg-white rounded-xl border border-[#F1F5F9] px-4 py-3">
-              <p className="text-[10px] text-[#94A3B8] uppercase tracking-wide">{c.label}</p>
+            <div key={c.label} className="bg-white rounded-xl border border-ps-muted px-4 py-3">
+              <p className="text-[10px] text-ps-hint uppercase tracking-wide">{c.label}</p>
               <p className={`text-sm font-mono mt-0.5 ${c.tone}`}>{c.value}</p>
             </div>
           ))}
@@ -343,24 +343,24 @@ export function BankRegister({ clientId }: { clientId: string }) {
       )}
 
       {loading ? <TableSkeleton cols={6} rows={8} /> : loadError ? (
-        <div className="bg-white rounded-xl border border-red-200 p-10 text-center">
-          <p className="text-sm text-red-600 font-medium mb-2">{loadError}</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        <div className="bg-white rounded-xl border border-state-problem-border p-10 text-center">
+          <p className="text-sm text-state-problem font-medium mb-2">{loadError}</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : !data || data.lines.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center">
-          <p className="text-sm text-[#94A3B8]">
+        <div className="bg-white rounded-xl border border-ps-muted p-10 text-center">
+          <p className="text-sm text-ps-hint">
             {filtersActive ? "Nothing matches these filters." : "No transactions on this account yet."}
           </p>
           {!filtersActive && (
-            <p className="text-[11px] text-[#94A3B8] mt-1">Import a statement from <strong>Bank › Entries</strong>.</p>
+            <p className="text-[11px] text-ps-hint mt-1">Import a statement from <strong>Bank › Entries</strong>.</p>
           )}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-[#F8FAFC] text-[#64748B] border-b border-[#F1F5F9]">
+              <thead className="bg-ps-bg text-ps-label border-b border-ps-muted">
                 <tr>
                   {sortHead("date", "Date")}
                   {sortHead("description", "Description")}
@@ -371,11 +371,11 @@ export function BankRegister({ clientId }: { clientId: string }) {
                   {sortHead("balance", "Balance", "right")}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#F8FAFC]">
+              <tbody className="divide-y divide-ps-bg">
                 {/* The balance immediately before the first row shown. Without it
                     a filtered register does not visibly add up. */}
                 {page === 0 && (
-                  <tr className="bg-[#FCFCFD] text-[#64748B]">
+                  <tr className="bg-ps-surface text-ps-label">
                     <td className="px-3 py-1.5 whitespace-nowrap">
                       {filtersActive || sort !== "date" || desc ? "Balance before this view" : "Opening balance"}
                     </td>
@@ -385,36 +385,36 @@ export function BankRegister({ clientId }: { clientId: string }) {
                 )}
                 {data.lines.map((l) => (
                   <tr key={l.transaction_id}
-                      className={`hover:bg-[#F8FAFC] ${l.precedes_opening ? "text-[#94A3B8]" : ""}`}>
-                    <td className="px-3 py-1.5 whitespace-nowrap text-[#475569]">{l.transaction_date ?? "—"}</td>
+                      className={`hover:bg-ps-bg ${l.precedes_opening ? "text-ps-hint" : ""}`}>
+                    <td className="px-3 py-1.5 whitespace-nowrap text-ps-label">{l.transaction_date ?? "—"}</td>
                     <td className="px-3 py-1.5 min-w-[220px]">
-                      <span className="text-[#1E293B]">{l.description}</span>
-                      {l.reference_no && <span className="text-[10px] text-[#94A3B8] ml-1.5">{l.reference_no}</span>}
+                      <span className="text-ps-ink">{l.description}</span>
+                      {l.reference_no && <span className="text-[10px] text-ps-hint ml-1.5">{l.reference_no}</span>}
                       {!l.posted_journal_id && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] ml-1.5">not posted</span>
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-ps-muted text-ps-label ml-1.5">not posted</span>
                       )}
                       {l.precedes_opening && (
                         <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-700 ml-1.5">before opening</span>
                       )}
                     </td>
-                    <td className="px-3 py-1.5 text-[#64748B] whitespace-nowrap">{l.category ?? "—"}</td>
+                    <td className="px-3 py-1.5 text-ps-label whitespace-nowrap">{l.category ?? "—"}</td>
                     <td className="px-3 py-1.5 text-center">
                       {l.cleared === "R" ? (
                         <span title="Reconciled — part of a completed reconciliation"
-                              className="text-[10px] font-semibold text-green-700">R</span>
+                              className="text-[10px] font-semibold text-money-in">R</span>
                       ) : l.cleared === "C" ? (
                         <span title="Cleared — claimed by a reconciliation still in progress"
                               className="text-[10px] font-semibold text-amber-600">C</span>
-                      ) : <span className="text-[#CBD5E1]">—</span>}
+                      ) : <span className="text-ps-disabled">—</span>}
                     </td>
-                    <td className="px-3 py-1.5 text-right font-mono text-red-700 whitespace-nowrap">
+                    <td className="px-3 py-1.5 text-right font-mono text-money-out whitespace-nowrap">
                       {l.debit_paise ? fmt(l.debit_paise) : ""}
                     </td>
-                    <td className="px-3 py-1.5 text-right font-mono text-green-700 whitespace-nowrap">
+                    <td className="px-3 py-1.5 text-right font-mono text-money-in whitespace-nowrap">
                       {l.credit_paise ? fmt(l.credit_paise) : ""}
                     </td>
                     <td className={`px-3 py-1.5 text-right font-mono whitespace-nowrap ${
-                      l.balance_paise < 0 ? "text-red-700" : "text-[#0F172A]"}`}>
+                      l.balance_paise < 0 ? "text-money-out" : "text-ps-ink"}`}>
                       {fmt(l.balance_paise)}
                       {!!l.balance_delta_paise && (
                         <span title={`The statement said ${fmt(l.statement_balance_paise ?? 0)} here`}
@@ -427,7 +427,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
             </table>
           </div>
 
-          <div className="px-3 py-2 border-t border-[#F1F5F9] flex items-center justify-between text-[11px] text-[#64748B]">
+          <div className="px-3 py-2 border-t border-ps-muted flex items-center justify-between text-[11px] text-ps-label">
             <span>
               {data.filtered_count === data.total_count
                 ? `${data.total_count} transaction${data.total_count === 1 ? "" : "s"}`
@@ -437,17 +437,17 @@ export function BankRegister({ clientId }: { clientId: string }) {
             {totalPages > 1 && (
               <span className="flex items-center gap-2">
                 <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
-                  className="px-2 py-1 border border-[#E2E8F0] rounded disabled:opacity-40 hover:bg-[#F8FAFC]">Previous</button>
+                  className="px-2 py-1 border border-ps-border rounded disabled:opacity-40 hover:bg-ps-bg">Previous</button>
                 <span>Page {page + 1} of {totalPages}</span>
                 <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                  className="px-2 py-1 border border-[#E2E8F0] rounded disabled:opacity-40 hover:bg-[#F8FAFC]">Next</button>
+                  className="px-2 py-1 border border-ps-border rounded disabled:opacity-40 hover:bg-ps-bg">Next</button>
               </span>
             )}
           </div>
         </div>
       )}
 
-      <p className="text-[10px] text-[#94A3B8] text-center">
+      <p className="text-[10px] text-ps-hint text-center">
         The register is read-only. A posted journal cannot be edited — correct it with a
         reversal from the Accounting workspace, and the register will follow.
       </p>

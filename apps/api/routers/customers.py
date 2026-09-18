@@ -11,6 +11,7 @@ from typing import Optional
 from domain.gst.gstin import problem_with as gstin_problem
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
+from domain.party_duplicates import possible_duplicates
 from models.common import api_response
 from models.parties import CustomerIn, CustomerUpdateIn
 from core.authz import assert_client_access, can_access_client
@@ -281,24 +282,35 @@ def create_customer(
             existing = _match_existing(candidates, gstin, pan)
             if existing:
                 return api_response(True, {**existing, "duplicate": True})
+            # PUR-32. Read BEFORE the append, or the customer reports itself.
+            resemblances = possible_duplicates(data.get("name"), candidates)
             data["id"] = str(uuid.uuid4())
             MOCK_CUSTOMERS.append(data)
-            return api_response(True, data)
+            return api_response(True, {
+                **data,
+                "possible_duplicates": [d.as_dict() for d in resemblances]})
 
         from core.supabase_client import get_supabase
         db = get_supabase()
+        # ONE read serves both questions — the GSTIN/PAN guard and the PUR-32
+        # name resemblance ask the same population, so a second query would be
+        # a second cross-region round trip for rows already in hand.
+        active_resp = (
+            db.table("customers")
+            .select("*")
+            .eq("client_id", client_id)
+            .eq("firm_id", firm_id)
+            .eq("is_active", True)
+            .execute()
+        )
+        active_customers = active_resp.data or []
         if gstin or pan:
-            existing_resp = (
-                db.table("customers")
-                .select("*")
-                .eq("client_id", client_id)
-                .eq("firm_id", firm_id)
-                .eq("is_active", True)
-                .execute()
-            )
-            existing = _match_existing(existing_resp.data or [], gstin, pan)
+            existing = _match_existing(active_customers, gstin, pan)
             if existing:
                 return api_response(True, {**existing, "duplicate": True})
+        # PUR-32. The customer is created exactly as asked; a name is not an
+        # identifier — see domain/party_duplicates.
+        resemblances = possible_duplicates(data.get("name"), active_customers)
 
         resp = db.table("customers").insert(data).execute()
         customer = resp.data[0] if resp.data else data
@@ -341,7 +353,9 @@ def create_customer(
             actor_id=current_user.get("auth_user_id"),
             actor_name=current_user.get("email"),
         )
-        return api_response(True, customer)
+        return api_response(True, {
+            **customer,
+            "possible_duplicates": [d.as_dict() for d in resemblances]})
     except HTTPException:
         raise
     except PydanticValidationError as e:

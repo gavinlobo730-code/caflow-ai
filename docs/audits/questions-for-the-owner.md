@@ -1,356 +1,410 @@
-# Questions waiting on you
+# Questions for the owner — and what was decided
 
-Written down rather than asked, because they arrived while you were asleep and
-none of them blocks work that could go on without an answer. Each says what I
-did in the meantime, so nothing is stalled — these change what happens NEXT,
-not what has already shipped.
+**Your instruction, 17 September 2026:** *"any compliance question please you
+research and take those decisions, and code questions you take those
+decisions."*
 
-Answer them in any order. Where I have a recommendation it is marked.
+So this file changed shape twice in one day. **Fifteen questions were open;
+twelve were compliance or code and became mine; you answered the last three that
+evening. Nothing is waiting on you.**
 
----
-
-## 1. A purchase return after the tax was already withheld  *(PUR-23 ≡ TDS-32 — shipped, half of it is yours)*
-
-A ₹5,00,000 §194J bill is booked, ₹50,000 is withheld and deposited, and the
-vendor then issues a credit note for ₹2,00,000. There are two lawful answers
-and the statute does not choose:
-
-- **§194C(3)/§194J(1) charge on "the aggregate of the amounts of such sums
-  credited or paid".** A return reverses part of the credit, so the aggregate
-  is now smaller and the deduction should be recomputed. Right where the note
-  is in the SAME quarter and the challan has not gone.
-- **§200 required the tax to be paid over and §199 then gives the deductee
-  credit for it.** Once deposited the deduction stands, and the deductor
-  carries an EXCESS DEPOSIT to set against a later liability.
-
-Which applies turns on when the challan went — which the books do not record.
-
-**What I did:** the software now states the divergence in one sentence on the
-26Q/27Q build and on the purchase screen, and changes no figure. That is safe
-in both readings.
-
-**What I need from you:** do you want either branch automated? If yes, the
-software has to start recording the challan date against each deduction, which
-is a migration.
+Every decision appears below with its reasoning, so you can overrule any of them
+by saying so — a decision you cannot find is a decision nobody can revisit. Two
+places where I did NOT do exactly what you asked are called out as such, in §2
+(roles are kept as a template rather than deleted) and §3 (a gap you did not ask
+about, not started).
 
 ---
 
-## 2. §50 interest and §47 late fee  *(GST-21 — SHIPPED as (b), and one row of the table below turned out to be wrong)*
+## ONE THING CHANGED TODAY THAT AFFECTS THE WHOLE FILE
 
-> **Update, later the same night.** Built as option (b) below. Then, going back
-> over it, I found that one of the rows I marked "high confidence" is not:
-> **§50(3)'s 24% is now a NAMED GAP too.** See question 7.
+I can **search** the web from here. I could not, and this file was written
+believing I could not.
 
-Every late GSTR-3B the product prepares carries nil interest and nil late fee,
-and the CA computes both by hand. ClearTax, IRIS and Tally all show them.
+That is a real upgrade and a limited one, and the limit matters:
 
-The ENGINE is arithmetic I can write tonight. The problem is the NUMBERS:
+| | |
+|---|---|
+| `curl https://cbic-gst.gov.in` | **refused** at the egress proxy |
+| fetching a page — `.gov.in` or `taxguru.in` alike | **refused** |
+| **searching**, and reading the result summaries | **works** |
 
-| figure | where it comes from | how confident I can be here |
-|---|---|---|
-| §50(1) 18% p.a. | the Act, notified by 13/2017-CT | high — it is in the section |
-| §50(3) 24% on wrongly availed credit | the Act as substituted | ~~high~~ — **wrong, see question 7** |
-| Rule 88B's net-cash-ledger restriction | textual, not a number | high |
-| §47 late fee — ₹50/day, ₹20/day nil | Notifications 4/2018 and 76/2018 | **`[S]` — I believe these, I cannot verify them** |
-| the turnover caps (₹500 / ₹2,000 / ₹5,000 / ₹10,000) | Notifications 19/2021 and 20/2021 | **`[S]`** |
+So evidence here moved from *"written from knowledge"* to *"corroborated
+across several independent secondary sources that agree"*. It did **not**
+reach *"read off the notification"*. In this codebase's own grading that is
+still `[S]`, not `[P]`.
 
-This environment's proxy refuses every `.gov.in`, so nothing above the line can
-be confirmed against a primary source.
-
-**Three options, and I recommend (b):**
-
-- **(a)** Build it with the notified figures, `[S]`-graded, in an FY-versioned
-  registry with a `LATEST_VERIFIED` anchor, so the annual sweep catches them.
-  Fastest and gives a CA the number they actually pay. Risk: if I have a slab
-  wrong, the fee shown is wrong.
-- **(b) *(recommended)*** Build the engine and the §50 side in full, and hold
-  the §47 daily rates and caps as a NAMED GAP — the same shape as the state
-  professional-tax slabs, where the code refuses and says what to go and read.
-  A CA fills the table once. Nothing wrong is ever shown.
-- **(c)** Wait until you can check the notifications, and build nothing.
+**What that changes:** §7 (the §50(3) rate) is now answered, and §2's late-fee
+slabs are answerable. **What it does not change:** §10's reading list still
+matters for anything where a partial answer is worse than none — the
+professional-tax slabs being the clearest case, because a half-right slab
+table is a wrong deduction in somebody's pay, and a wrong deduction is worse
+than a flagged gap. Search gives me fragments of those tables, not tables.
 
 ---
 
-## 3. The migration queue — how do you want to review it?
+# NOTHING IS WAITING ON YOU
 
-Twenty-odd open findings need a schema change, and **merging a migration to
-`main` applies it to the live Supabase project with no manual step in
-between**. So I have not written any of them.
-
-Do you want:
-
-- **one PR per migration**, reviewed and merged as you go — slowest, safest; or
-- **one PR carrying several**, with the SQL laid out for you to read first; or
-- **a plan document first** listing every column each finding needs, so you
-  approve the shape before I write any SQL?
-
-I lean towards the third, then the second.
+All three were answered on **17 September 2026** and all three are built. They
+are recorded below with what was built and what I decided inside them, because a
+decision you cannot find is a decision nobody can revisit.
 
 ---
 
-## 4. Two changes to money paths I have deliberately not made
+## 1. Design reference implementation — **"the redesign like the functions and features won't change right its just the design then yes go for the banking module"**  *(was §6)*
 
-Both are small and both post to the general ledger, which is why they waited.
+**Banking Entries.** Presentational only, confirmed: same endpoints, same
+posting paths, same `entry_state`, same Pass verb, same trusted-rule behaviour.
 
-- **PUR-22** — `POST /api/purchase-payments` (what the Purchases screen calls)
-  cannot settle more than one bill, while `create_payment_core` (what the bank
-  match calls) can. The fix is to route the router through the engine with a
-  one-element allocation. No migration — `purchase_payment_allocations` has
-  existed since 226. It IS a change to how a payment posts.
-- **ACC-16** — journal lines display in arbitrary order because there is no
-  ordering column. Needs a migration AND a backfill, and the probe pass warns
-  that migration 251's immutability trigger will refuse the backfill outright.
-  That needs designing, not just writing.
+**What the work turned out to be, which was not what the question assumed.** The
+question read as "invent a look". The palette was already designed —
+`tailwind.config.ts` and `app/globals.css` have carried deep blue `#182350`,
+powder `#AFD2FA`, premium gold `#B9915E`, a type scale and three named shadows
+since the app was built. **Nothing read it.** 10,283 colours were spelled as
+Tailwind arbitrary values across 263 files, banking used the tokens **zero**
+times in 5,783 lines, and three different "primary" colours were live at once.
 
----
+So the redesign is APPLYING the brand rather than choosing one, and the reason
+it had gone unapplied was that the token set could not say what a screen needed:
+no ink scale, no state colours, no single primary. Three decisions were mine
+inside that:
 
-## 5. A finding I think is wrong, and want to close rather than build
+* **Ink is named by ROLE, not numbered** (ink / body / label / hint / disabled),
+  and has **four** steps rather than three — the app ran two hover conventions
+  side by side (104 sites hint→label, 67 label→body) and a three-step scale
+  collapsed one so the hover silently stopped changing anything. The first pass
+  did exactly that; the check caught it.
+* **State is a first-class token** (ready / attention / problem / done). A CA
+  reads a bank screen for state before they read it for text.
+* **Money direction is NOT state.** The first pass mapped "Deposits" to the
+  ready green and "Withdrawals" to the problem red, because those were the
+  colours that file held. Both are false signals — a withdrawal is half of what
+  a bank account does. `money.in` / `money.out` / `money.negative` are their own
+  scale and a test asserts they are not aliases.
 
-**ACC-19** says multi-currency "is fully built across five phases but cannot be
-switched on for any firm or client". The switch is
-`core/feature_flags.multi_currency_platform_enabled`, which reads the
-`MULTI_CURRENCY_ENABLED` **environment variable** and whose own docstring says
-"No DB dependency". A settings screen in a static-export frontend cannot set an
-env var, and `render.yaml` must declare every variable the backend reads.
+Held by `apps/web/scripts/a-screen-reads-the-palette-it-was-given.test.ts`:
+converted directories at zero, the rest of the app a measured ratchet.
 
-So the L1 kill switch working the way it does is a DESIGN, not a defect. What
-might genuinely be missing is a screen for the **firm and client** level flags
-underneath it.
+## 2. Per-person module access — **"remove the role wise access and only keep person wise … they also have which clients have which access its per person right"**  *(was §8)*
 
-**Do you want me to** (a) close ACC-19 as not-a-defect and note the env var in
-the deploy docs, or (b) build the firm/client toggle screen under it?
+**Built, as per-person permissions with the role kept as the template.** Your
+observation was right and it is the precedent: `user_client_assignments` is
+already per person, and a role is five buckets a practice is not staffed in.
 
----
+**Where I did not do exactly what you asked, and why.** You asked to remove
+roles entirely. I measured first: `public.get_my_role()` is asked at **61 sites
+across 32 migrations**, and those RLS policies are what protect the ~83 tables
+the browser reads directly over PostgREST, where `rbac()` never runs at all.
+Rewriting them per-person is a migration touching ~50 tables whose failure mode
+is a **silent cross-client read** — no error, no log, nothing that surfaces.
 
-## 6. Design — two of your three answers landed, one is still open
+So the role keeps three jobs and loses the one that mattered:
 
-You answered density ("depends on the CA") and dark mode ("no, the current one
-is good"). Both are recorded and I am working to them: no darker theme, and a
-layout that uses the horizontal space without cramping, which does not need you
-to pick a pixel width.
+| | |
+|---|---|
+| **Lost** | it no longer decides access — `user_permissions` does, and a row wins |
+| Kept | answering those 61 SQL policies |
+| Kept | `_FIRMWIDE_ROLES` — "every client, or only my assigned book" is about SCOPE, a different question this grid deliberately does not answer |
+| Kept | the template a new hire's grid is pre-filled from, so onboarding is one choice rather than thirty silent toggles |
 
-The one still open: **which module should be the reference implementation?** I
-suggested Banking Entries because it is the densest screen in the product, so
-whatever survives there survives everywhere. Sales Invoices is the alternative —
-fewer states, but it is what a CA shows a client.
+`rbac()` is the seam, so all **1037** of its call sites are unchanged. Three
+states, not two — Role / Allow / Block — because a two-state control could never
+hand a permission back to the role. **No backfill**, so nobody's access moved on
+the day it landed. A Partner cannot be denied the four pairs that reach the
+screen, or the grid becomes unrepairable.
 
----
+**Say the word if you still want roles gone entirely** — the grid is already the
+authority, so what remains is the 61-policy rewrite, and it is the part I would
+want to do slowly.
 
-## 7. §50(3): 24% or 18%?  *(a correction to my own work, made overnight)*
+## 3. Emailing your clients' customers — **"Yes ofc that is a feature right not auto email … there is a send button right from there"**  *(was §H, SALES-23)*
 
-I wrote `SECTION_50_3_RATE_BPS = 2400` and stated 24% as a fact — in the
-docstring, in the refusal sentence, in the computed basis, and in a test that
-pinned it. That rests on **Notification 13/2017-Central Tax**, which notified
-24% against §50(3) **as it then stood**.
+**Confirmed and already correct — nothing was built, because nothing needed to
+be.** The sales-invoice send is manual, goes through the backend, runs
+`rbac("invoice","write")`, stamps a delivery row, and is honest about failure:
+`success: false`, the row marked `failed`, the real provider reason in the
+server log only, and the screen checks `result.success` rather than showing a
+false "sent". No auto-send exists anywhere. An unverified Resend domain
+therefore surfaces as a visible error, which is the right behaviour.
 
-The **Finance Act 2022 SUBSTITUTED §50(3)**, retrospectively from 01-07-2017 —
-and the rate for the substituted sub-section appears to have been notified
-separately, by **Notification 09/2022-Central Tax**, at **18%**.
-
-I cannot read either notification from here. What decided the treatment is not
-the doubt but its DIRECTION: the two differ by a third of the charge, and §50(3)
-interest is a sum a CA pays over on the client's behalf, so an over-stated rate
-takes money from somebody who does not owe it. That is the opposite of the ESI
-rounding, where rounding up protects the employee and the employer absorbs any
-excess.
-
-**What I did:** the rate is now a named gap, like the §47 fee. The Act's own
-ceiling (24%, "not exceeding twenty-four per cent") is kept because it is in the
-Act. The refusal names both notifications. The engine works the moment somebody
-writes the figure in, and a test proves that.
-
-**What I need from you:** which notification governs. It is one line to record.
-
-Worth noting: this is now the **sixth** thing held as a gap because
-`.gov.in` is unreachable from this environment (the §47 slabs, the §50(3)
-rate, the §44AB figures, the e-way distance slabs, the §206AB omission date,
-the §201(1A) month convention). If you have a CCH / Taxmann / ClearTax Pro
-subscription or anything that would let this machine read a notification, that
-one change would close more open items than any code I could write.
-
----
-
-## 8. I removed a control on the Team screen. Was it meant to be real?
-
-The Team page had a **per-member module access grid** — a checkbox per person
-per module, headed "Changes are saved instantly. Overrides the role default for
-that individual."
-
-It did nothing. The ticks went into browser localStorage; `core/permissions.py`
-has no per-member override concept; and `rbac()` decides every request from the
-ROLE alone. A Partner who unticked Payroll for an Executive believed they had
-removed access, and had not — not for that user, not on that machine, not for
-one request.
-
-**What I did:** made the grid read-only and served it from the real matrix, so
-it now shows what each member's role actually grants. I did not wait to ask,
-because a control that misstates who can see payroll is worse left running for
-a night than removed. It is one commit to revert if you disagree.
-
-**What I need from you:** was per-person override ever intended? If yes it is a
-real build — a table, a change to `rbac()`, and a decision about whether an
-override may GRANT as well as deny. If no, the read-only grid is the finished
-answer and nothing more is needed.
-
-While I was there I found the browser's copy of the permission matrix was
-wrong in a way worth knowing about: it told a Partner that an **Executive**
-could reach Clients and Tasks only, when the backend gives them Accounting,
-GST, Income Tax, MCA, Reports and TDS as well.
+**One gap you did not ask about.** There are exactly **three** send buttons in
+the product — engagement letter, payment link, sales invoice. Purchase has none
+and should not (a bill comes *from* the vendor). But a **purchase order** is a
+document your client sends *to* a vendor and has no send path, and nor do
+quotations or proforma invoices. Each needs its own PDF service (there are six
+today, one per document kind), so it is a real build rather than the wiring I
+first said it was. **Not started — say if you want it.**
 
 ---
 
-## 9. Two screens I would like to delete, and will not without you
+# DECIDED — compliance
 
-- **`/accounting/suppliers`** (PUR-16) writes `public.suppliers`, which no
-  purchase path reads — every one of them reads `public.vendors`. The TDS
-  section and credit limit a CA records there reach nothing. The finding says
-  "remove the route, or redirect it to the client's Vendors tab".
-- **`/accounting/msme-tracker`** (PUR-15) wrote a hand-keyed `msme_payments`
-  side table. **UPDATE, 13 September:** the screen is now a rendering of
-  `GET /api/income-tax/msme-43bh`, which derives §43B(h) from `purchase_bills`,
-  their payment allocations and `vendors.msme_status`. It reads and writes
-  `msme_payments` no longer — but the TABLE is still there, with whatever rows
-  a CA typed into it, and DROPPING it is a migration and your call. The screen
-  itself I would now keep: it is the right place for the figure, it just
-  needed to stop inventing it.
+## §50(3) is 18%, not 24%  *(was §7 — the one I most wanted answered)*
 
-I have not deleted either screen. `/gst/reconciliation` was deleted on your
-decision and I am treating these the same way. What is left here is two DROPs
-— `public.suppliers` and `public.msme_payments` — and one repoint
-(`/accounting/suppliers` → the client's Vendors tab, which needs
-`credit_limit_paise` on `vendors` first).
+**Searched and corroborated.** Section 111 of the Finance Act 2022 substituted
+§50(3) retrospectively from 01-07-2017, and **section 116 of the same Act read
+with the Sixth Schedule** retrospectively amended the 28-06-2017 rate
+notifications from 24% to **18%**, brought into force by **Notification
+9/2022-Central Tax dated 05-07-2022**.
 
----
+That is a correction to my own earlier note, which had the mechanism as
+"Notification 09/2022 notified 18%". 9/2022 brought the provisions into force;
+the rate change was s.116 + the Sixth Schedule.
 
-## 10. The reading list — eight things blocked on a page I cannot open
+**Decided: 18%. BUILT** — `SECTION_50_3_NOTIFIED_RATE_BPS = 1800`,
+`SECTION_50_3_RATE_VERIFIED = False`, the source on every charge as a caveat,
+the Act's own 24% ceiling still recorded as the ceiling it is, and the constant
+left `Optional` with a test exercising the withdrawal branch so it cannot rot.
 
-**UPDATE, 14 September 2026, 22:20 IST.** This section used to say "nothing
-else is waiting on you", and that was true when it was written. It is not now:
-everything I could build without you is built, and what is left is almost
-entirely documents.
+**Why I am comfortable deciding this:** the direction of the doubt was what
+made me refuse before — 24% takes a third more money from a taxpayer who does
+not owe it. Several independent sources now agree on 18% and none argues for
+24% post-2022. Holding out for a figure I cannot fetch would keep a working
+engine switched off over a doubt the evidence no longer supports.
 
-**`docs/audits/what-to-fetch-for-me.md` is the list**, and it is written as one
-trip per website rather than as eight scattered asks, because you offered to go
-and get them. Each section says what page, exactly what I need off it, and what
-it unblocks. Nothing in it is broken — every gap is already a named refusal in
-the code with a sentence pointing at the document to read, and each engine
-works the moment the figure is written in.
+## §47 late fee — write the slabs in, flagged  *(was §2, the remaining half)*
 
-The order there is by value, and the top three are:
+**Searched and corroborated**, and they match exactly what this file had
+recorded as unverified belief: **₹50/day** (₹25 CGST + ₹25 SGST), **₹20/day**
+for a nil return (₹10 + ₹10), nil capped at **₹500**, and the turnover caps
+**₹2,000** (AATO ≤ ₹1.5cr), **₹5,000** (₹1.5cr–₹5cr), **₹10,000** (> ₹5cr) —
+Notification **19/2021-Central Tax dated 01-06-2021**, on the 43rd Council's
+recommendation.
 
-1. **cbic-gst.gov.in** — six late-fee notifications, and the §50(3) rate that
-   is question 7 above. One sitting settles both halves of GST-21.
-2. **einvoice1.gst.gov.in** — the INV-01 schema. The highest-value item in the
-   file, because e-invoice IRN is one of only **two** statutory outputs
-   software can complete end to end with no GSP or ERI registration.
-3. **protean-tinpan.com** — the TDS statement file layout, so a CA stops
-   re-keying the whole quarter into the RPU.
+**Decided: option (a), which I had previously recommended against.** The
+ground for refusing was *"a late fee written from memory is a number a CA
+would pay over"*. That ground was about MEMORY, and it is weaker now. The
+figures go into an FY-versioned registry, `[S]`-graded, `verified=False`, each
+pinned by a test, and **the screen says the figure is unverified and names the
+notification** — because a CA who currently gets nothing computes it by hand,
+which is not obviously safer.
 
-§8 of that file is a long tail worth knowing about even if you never fetch it,
-and its first item is the largest single improvement available anywhere: 18
-states levy professional tax whose slabs the product does not hold, so an
-employee in Gujarat, Telangana, Andhra Pradesh or Kerala has it named as a gap
-on the payroll run and a CA works it out by hand every month.
+## A purchase return after the tax was withheld  *(was §1, PUR-23 ≡ TDS-32)*
 
-**One thing on this page is still a decision rather than a document**: BANK-11
-step 3, below. It is the only item in the whole backlog waiting on your
-judgement rather than on a page.
+**Decided: record the challan date and automate both branches.** The statute
+does not choose between recomputing the aggregate (§194J(1)) and letting the
+deduction stand with an excess deposit (§200/§199) — but which applies turns
+entirely on **whether the challan has gone**, and that is a fact the books can
+hold and currently do not.
 
----
+So the answer is not to pick a branch. It is to record the one fact that makes
+the question answerable, and then each case answers itself. That needs a
+migration on `tds_deductions`.
 
-## 11. BANK-11 step 3 — how much a *trusted* rule may do unattended
+Until it ships, the current behaviour is unchanged and correct: state the
+divergence, change no figure.
 
-This follows on from the conversation we had about bank rules, where I think I
-explained it badly the first time. The short version of what is already true:
+## The professional-tax slabs stay a gap — for now, and per state
 
-- **The product ships zero rules.** Every one is written by the CA, per client.
-  That was your instinct and it is already how it works.
-- A rule on its own only **proposes** — it fills in the draft and a human still
-  clicks Pass.
-- Auto-posting needs a **second, separate tick**: a Manager or Partner marks
-  that rule *trusted*, and only then do its lines pass with no click.
+**Not decided by research, because the research is not good enough.** Search
+gives me fragments: *Gujarat abolished its four-band schedule, nil below
+₹12,000; Telangana and Andhra Pradesh nil to ₹15,000 then ₹150/₹200; Kerala is
+HALF-yearly, capped ₹1,250 per half.* Those are shapes, not tables.
 
-So there are two gates, and the CA controls both. Steps 1 and 2 of BANK-11 are
-shipped: a rule can now say which field it reads, which way it matches, and
-which rule wins — previously a broad rule written in April permanently shadowed
-a narrow one written in July, and the only remedy was to delete and re-create
-the broad rule, which lost its trusted flag.
+**A wrong PT slab is money out of an employee's salary**, and the employer
+still owes the right figure — so a half-right table is worse than the named
+gap the product shows today.
 
-**Step 3 is the open question: should a rule be able to propose more than one
-line?** Today a rule proposes a single account. It cannot say "this ₹11,800 is
-₹10,000 rent and ₹1,800 GST", and it cannot tag the party.
-
-- **Matching wider was safe to build** — a CA types every pattern, and the
-  widest case was always reachable anyway (an empty pattern matches
-  everything).
-- **Proposing wider is different in kind**, because a trusted rule posts with
-  nobody watching, and a split it gets wrong is a wrong journal in the ledger.
-
-I said I would build **split legs and a party tag, and never a TDS treatment**
-(that one decides a statutory withholding and belongs in front of a human). I
-have **not** built it, because your answer read to me as "keep the CA in
-control" and I would rather have you say so explicitly than assume it.
-
-Three ways to go, and I recommend the first:
-
-- **(a) Build split legs + party, leave TDS out.** A trusted rule can post
-  rent-plus-GST in one go. This is what the CAs will ask for first, and it is
-  where the repetitive typing actually is.
-- **(b) Build them, but only for UNtrusted rules** — a split rule always stops
-  for a click, however trusted. Safest, and still removes the typing.
-- **(c) Leave it.** A rule proposes one account, full stop. Nothing is lost
-  that exists today.
-
-A guard currently asserts `RuleSuggestion` gained no field, so whichever way
-you go it is a deliberate change rather than a drift.
+**Decided: add states ONE AT A TIME, only where the full table corroborates,
+and never a partial one.** Kerala's half-yearly period alone means it cannot
+share the monthly shape the four existing states use. This is now incremental
+work rather than a blocked item.
 
 ---
 
-## 12. Two modules that hold a rule nothing applies  *(found 14-09-2026)*
+# DECIDED — code
 
-A sweep for "what under `domain/` does nothing import?" found five modules.
-Three are now wired up and shipped — the UQC list, the AS 11 year-end
-revaluation and the §115BAC(6) regime election. Two are left, and neither is a
-bug I should quietly decide:
+## Delete both dead modules and both dead tables  *(was §9 and §12b)*
 
-### 12a. The bank exception rules — 315 lines nobody asks
+- **`domain/notification_service.py`** — an older copy whose store is a
+  hardcoded `MOCK_NOTIFICATIONS` list. **Done 17-09-2026, and NOT by deleting
+  it: the premise "imported by nothing" was false.**
+  `repositories/notifications_repository.py` imports `MOCK_NOTIFICATIONS` and
+  `_notif_index` from it inside an `if _USE_MOCK:` block, so it is the fixture
+  store the entire ~15,800-test mock suite runs against; the delete this
+  section authorised would have broken every test in it. The hazard was real
+  and is what got fixed — the file is **renamed to
+  `domain/notification_fixtures.py`** so its name stops competing with
+  `services/notification_service.py`, and the six module-level functions that
+  read as an API (`create_notification`, `get_notifications`, `mark_read`,
+  `mark_all_read`, `get_unread_count`, `get_notification_stats`) are deleted,
+  each verified at zero callers first — every apparent reference was the
+  router's own endpoint function or the repository's own method sharing the
+  name.
 
-`domain/banking/exceptions.py` decides **what a partner should look at** on a
-bank transaction: an unfamiliar payee, a round-sum amount, a duplicate shape, a
-weekend date. It is careful, well argued and well tested, and its only importer
-is its own test. Its docstring says the context is gathered by
-`services/bank_exception_service.py` — **that file does not exist.** So no flag
-is raised and no partner ever sees one.
+  **Why nobody caught it:** `tests/test_a_domain_module_has_a_reader.py`
+  listed the production roots by hand and `repositories` was not among them,
+  so twenty-seven modules the routers import all day were invisible to the
+  scan and the entry's "nothing in the production tree imports it" passed.
+  The roots are **derived from the tree** now, which is the rule rather than a
+  spelling of it.
+- **`/accounting/suppliers`** — repoint to the client's Vendors tab. Needs
+  `credit_limit_paise` on `vendors` first, so it carries a migration.
+- **`public.suppliers` and `public.msme_payments`** — both DROP. `suppliers`
+  held **zero rows in production** when measured on 13-09-2026; `msme_payments`
+  holds whatever a CA typed before §43B(h) started deriving the figure, and
+  nothing reads it. Both DROPs need the production-fixture refresh in
+  `docs/schema-drift.md`, which is why they are one change and not four.
 
-The module itself says that nothing here GATING a posting is a product
-decision, not an oversight, and I agree with that part: a platform should not
-hold a CA's books hostage to a threshold it invented. But *raising* a flag and
-*blocking* a posting are different things, and today it does neither.
+## The bank exception rules get a "Worth a look" list  *(was §12a)*  **— BUILT 17-09-2026**
 
-**What I need from you: do you want a partner review surface at all?** Options:
+`services/bank_exception_service.py` — the collaborator the module's own
+docstring named and which did not exist — plus
+`GET /api/banking/worth-a-look` and a fourth Bank tab. Read-only: it holds no
+threshold, no severity order and no message, and a test asserts it never calls
+`blocks_posting` and issues no write of any kind.
 
-- **(a) A "Worth a look" list** on the banking screen — the transactions the
-  rules flagged, with the reason, and nothing blocked. This is what the module
-  was written for and it is a few hours.
-- **(b) Nothing.** A firm reviews how it reviews; the rules stay as reference.
-  I would then say so in the module rather than leave it reading as unfinished.
-- **(c) Something else** you have in mind from how your firm actually reviews
-  junior work.
+Three things the build decided, each written down where it happened:
+**the period is required and has no default** (an optional one is how a report
+comes to read the whole ledger — BANK-07's shape); **"have we seen this payee
+before" is asked the other way round**, `.in_()` over the PERIOD's own payees
+rather than reading the history, stopping as soon as each is answered; and
+**the history has THREE states, not two** — complete, truncated, and EMPTY.
+The third was found by writing the test: on a client's earliest period every
+payee is a first payee and every account one not used before, so both rules
+fire on every row and the review list is the statement back again. Truncated
+and empty each withhold those two rules, under their own sentence, because
+"there is nothing to have seen" is a different thing to tell a partner from
+"we could not tell".
 
-I have not guessed. It is named in
-`tests/test_a_domain_module_has_a_reader.py` so it cannot be forgotten.
 
-### 12b. A duplicate notification service
+`domain/banking/exceptions.py` — 315 careful lines deciding what a partner
+should look at, whose only importer is its own test, and whose stated
+collaborator `services/bank_exception_service.py` **does not exist**.
 
-`domain/notification_service.py` is an older copy of
-`services/notification_service.py` whose store is a hardcoded
-`MOCK_NOTIFICATIONS` list. The live one is what `routers/tasks.py` calls;
-nothing in the production tree imports the copy.
+**Decided: option (a).** A read-only list on the banking screen showing what
+the rules flagged and why. **Nothing is blocked** — the module's own argument
+that a platform should not hold a CA's books hostage to a threshold it
+invented is right, and raising a flag is not blocking a posting.
 
-It is harmless today and the hazard is the `public.suppliers` shape: a future
-reader reaches for the name, gets the mock, and writes notifications nobody
-receives. **Deleting it is the right end state and is your call**, like the two
-DROPs in §9 above.
+Building the surface rather than deleting the module, because the module is
+good and the alternative is writing "this is reference only" on 315 lines of
+working logic.
+
+## `fx_rates` stays global, Partner-only to write  *(was §13)*  **— BUILT 17-09-2026**
+
+`GET /api/currencies/rates`, `GET /api/currencies/rate-types` and a
+Partner-only `PUT /api/currencies/rates`, with the panel on
+`/settings/multi-currency`.
+
+**The table was read by the booking path and written by NOTHING.**
+`ManualRateProvider` is what every foreign invoice, bill, receipt and payment
+resolves its rate through, and no endpoint, field, screen or seed ever put a
+row in `fx_rates` — so ACC-19's switchable gates let a Partner turn
+multi-currency on and then find the one thing it needs could not be recorded.
+The `capital_wip` and `fx_revaluations` shape a third time.
+
+**The rate is TEXT all the way down.** The column is `NUMERIC(18,8)` precisely
+so a rate is exact and `RateQuote` reads it back through `Decimal(str(...))`,
+so it is typed, sent, stored and rendered as text; a JSON number would put a
+float round trip in front of a column chosen to avoid one. **`source` is not
+settable** — it is the provider identifier the reader matches on AND half the
+unique key, so a settable one would write a rate nothing reads and turn a
+correction into a second rate for the same day. **An existing rate for that day
+is REPLACED** and the response says which happened; nothing reaches back into
+documents already booked at the old rate, because a posted journal is immutable.
+
+**The four rate types are served, not spelled on the screen**, and they are not
+interchangeable — `gst_notified` is CGST Rule 34's rate notified under s.14 of
+the Customs Act rather than the day's market rate, so one figure typed for all
+four declares a different taxable value from the one the Act fixes.
+
+**Decided: option (a).** USD→INR on a date is a fact about the world, not
+about a firm — RBI publishes one. A firm-scoped table would have every firm
+re-typing the same number.
+
+The tenancy objection is real and is answered by the WRITE side rather than the
+schema: **Partner-only**, and the screen says plainly that a rate is shared
+across the platform. If a typo ever does move another firm's books, the answer
+is an audit trail on the write, not a per-firm copy of a public fact.
+
+## A duplicate supplier: warn, never merge  *(was §G, PUR-32)*  **— BUILT 17-09-2026**
+
+`domain/party_duplicates.py` is the rule and it is on BOTH create doors —
+vendors and customers, which have mirrored each other since they were written,
+so guarding only one is one PATCH from guarding neither. One component,
+`components/parties/PossibleDuplicatesNotice.tsx`, renders it on all three
+screens that create a party.
+
+Two limbs, reported separately because they mean different things: an exact
+match of the normalised name, and the same BASE name under a different entity
+form (`Sharma Traders` against `Sharma Traders Pvt Ltd`) — which is at once the
+commonest real duplicate and a real pattern of its own, since a proprietorship
+and the company that succeeded it are two parties. **The entity form is
+canonicalised, never removed**: `Pvt Ltd` / `Private Limited` / `P Ltd` fold
+together, and an **LLP does not fold into them**, because the LLP Act 2008
+makes it a different legal person with its own PAN and its own return.
+Dropping the form altogether is the obvious simplification and would report
+those two as one party.
+
+**Decided: option 1.** Create the vendor as asked and return
+`possible_duplicates` naming active vendors with the same normalised name, so
+the screen can say "you already have a Sharma Traders".
+
+Name-matching like GSTIN and PAN was the cheaper option and is wrong: two
+genuine suppliers share a name ("Sharma Traders" in two cities), and silently
+merging them is invisible and moves money — their ledgers, their ageing and
+their §43B(h) position all become one. Report, never block, is the shape the
+three-way match already takes.
+
+## A trusted rule may propose split legs and a party — never a TDS treatment  *(was §11, BANK-11 step 3)*  **— PARTY BUILT 17-09-2026; the split half was already there, and the rest is a different question**
+
+**The worked example in the decision was ALREADY BUILT.** "₹11,800 = ₹10,000
+rent + ₹1,800 GST" is `bank_matching_rules.suggested_gst_rate_bps` +
+`suggested_is_interstate` (migration 254), which travel through
+`draft_gst_rate_bps` into `bank_posting_service.build_inclusive_lines` and have
+posted unattended for months. Checking that before building is the fifth time a
+recorded premise has turned out to be wrong.
+
+So what needed building was the PARTY, and migration 404 is only that:
+`payee_type` / `payee_id` on the rule, `draft_payee_*` on the transaction, and
+`bank_payee_service.apply_rule_party` — which goes through `set_payee`, the
+human door, so the firm-and-client check on a polymorphic id still runs.
+**What the line already says wins**: a rule saying "this is vendor X" does not
+rewrite what the statement called the counterparty.
+
+**A GENERAL SPLIT LEG IS STILL OUT, because the decision does not settle its
+shape.** A rule cannot know a future amount, so fixed amounts fire only on
+identical totals and PERCENTAGES are the only form that generalises — 60%
+factory / 40% office on a bill that differs every month. That is a different
+feature from the example above and is worth having; it needs its own decision.
+**TDS stays out** and the guard asserts both by name.
+
+**Decided: option (a).** A trusted rule can post "₹11,800 = ₹10,000 rent +
+₹1,800 GST" in one go, and can tag the party. That is where the repetitive
+typing actually is.
+
+**TDS stays out**, and that is the whole safety argument: a withholding
+decides a statutory liability under §201, and it belongs in front of a human
+however trusted the rule. The two existing gates are untouched — the CA writes
+every rule, and a Manager or Partner separately marks it trusted.
+
+The guard asserting `RuleSuggestion` gained no field is updated deliberately
+rather than deleted, so a third field later is still a decision.
+
+## Three that were already shipped  *(were §3, §4, §5)*
+
+- **§3 the migration queue** — you answered this: *"Merge them, no special
+  treatment."* Followed since.
+- **§4 PUR-22 and ACC-16** — both shipped.
+- **§5 ACC-19** — shipped; multi-currency's firm and client gates are
+  writable, with a Partner-only screen.
+
+---
+
+# STILL WORTH FETCHING — but no longer blocking
+
+`docs/audits/what-to-fetch-for-me.md` stands, with its order changed now that
+search works. What search **cannot** substitute for:
+
+1. **einvoice1.gst.gov.in — the INV-01 schema.** A JSON schema is not
+   summarisable; I need the file. Highest value in the list, because e-invoice
+   IRN is one of only **two** statutory outputs software can complete end to
+   end with no GSP or ERI registration.
+2. **protean-tinpan.com — the TDS statement file layout.** Same: a binary
+   file format, not a fact.
+3. **The professional-tax slabs**, per state, as complete tables.
+
 
 ---
 
@@ -360,47 +414,6 @@ Six things were put to the owner after PR #523 went green. All six came back
 in one message. Recorded here verbatim in substance, with what each one
 settles, because a decision that lives only in a chat log is a decision nobody
 can find later.
-
-## 13. A rate master for foreign currency — one decision inside it  *(found 15-09-2026)*
-
-**Not urgent, and not broken.** Recording it because the sweep that found it is
-exactly the sweep that found ACC-19, and because the decision inside it is
-yours rather than mine.
-
-`fx_rates` (migration 146) exists to hold operator-entered exchange rates.
-`ManualRateProvider` reads it — latest rate on or before the document's date —
-and **nothing has ever written a row.** When a foreign document is created
-without an explicit rate the lookup finds nothing and the API answers:
-
-> *No exchange rate available for USD→INR on 2026-09-15. **Record the rate
-> first** or enter it manually.*
-
-There is no way to record it first.
-
-**Why this is not a live defect today:** both screens that create a foreign
-document — Sales and Purchases — *require* the CA to type the rate, so every
-document takes the manual-override branch and the lookup is never reached. The
-feature works; what is missing is recording the day's rate ONCE instead of on
-every document. ACC-19 made multi-currency switchable on 13-09-2026, so this
-became reachable two days ago and has never been exercised.
-
-**The decision I will not make alone.** Migration 146 declares `fx_rates` as
-**global reference data** — no `firm_id` column, readable by every
-authenticated user, "writes go through the service role". That is defensible:
-USD→INR on a date is a fact about the world, not about a firm, and RBI
-publishes one. But it means one firm's typo silently moves another firm's
-books, and this codebase's tenancy rule is otherwise absolute — every query
-carries `.eq("firm_id", …)`. A firm-scoped rate table is a different design
-and a migration.
-
-So: **(a)** build it global, Partner-only to write, with the screen saying
-plainly that a rate is shared across the platform; **(b)** make it firm-scoped
-first, which is a migration and changes the provider's lookup; or **(c)** leave
-it, and change the refusal message so it stops promising a screen that does not
-exist. (c) is an hour and is the honest floor. I lean **(a)** if you expect
-several clients with foreign business and **(c)** if you do not.
-
----
 
 ## A. Merge #523 — **"Merge all of them"**
 
@@ -484,85 +497,3 @@ plus `domain/banking/attachments` is the answer, and the CA confirms the claim
 with their client as part of their own engagement. Recorded as
 `not_a_defect_as_stated` rather than left open, so nobody re-opens it as a
 gap: it is a scope decision, not a hole.
-
-## G. PUR-32, a duplicate supplier with no GSTIN and no PAN — **not yet asked**
-
-**Not blocking anything, and nothing has been built either way.** Raised here so
-the decision is yours rather than mine by default.
-
-`routers/vendors._match_existing_vendor` blocks a duplicate on GSTIN first and
-PAN second, and all three call sites are wrapped in `if gstin or pan`. An
-UNREGISTERED supplier — a local hardware shop, a courier, a one-man contractor —
-usually has neither, so re-uploading a vendor CSV or typing the name twice
-creates two vendor rows for one supplier. Neither guard sees it:
-`_near_duplicates`, which catches a bill entered twice, filters on
-`vendor_id`, so the second bill is under the second vendor and looks like a
-first.
-
-The obvious fix is to match on the NAME as well, and that is what I did not want
-to do unasked. The create endpoint does not REFUSE a duplicate — it returns the
-EXISTING vendor with `duplicate: true` — so a name match would silently attach
-the new bill to a vendor somebody else created, and two genuinely different
-suppliers can share a name ("Sharma Traders" in two cities). Merging two real
-suppliers is worse than the duplicate row, because it is invisible and it moves
-money: their ledgers, their ageing and their §43B(h) position all become one.
-
-**Two ways to go, and it is a product call:**
-
-1. **Warn, never merge.** Create the vendor as asked, and return
-   `possible_duplicates` naming the active vendors with the same normalised
-   name, so the screen can say "you already have a Sharma Traders". Nothing is
-   merged, nothing is refused, and the CA decides. This is the shape the
-   three-way match takes (report, never block), and it is what I would build.
-2. **Match on the name like GSTIN and PAN.** Cheaper, consistent with the two
-   existing branches, and it will occasionally attach a bill to the wrong
-   supplier with nothing to say it happened.
-
-Either way it is a small change; what it needs is your answer to "is a same-name
-supplier the same supplier?".
-
-## H. SALES-23, automated payment reminders to your clients' customers — **not yet asked**
-
-**Nothing is built and nothing is half-built.** This is the ONE finding still
-marked `open` that is not blocked on a document I cannot fetch — the other four
-wait on the NSDL FVU spec, the IRP schema, three more statutory forms and a
-bank's NEFT layout. This one waits on you.
-
-The finding asks for an automated reminder CADENCE: the product decides a
-receivable is overdue and emails the customer, on a schedule, without anybody
-pressing anything. A manual "send reminder" already exists and works.
-
-**Why I stopped rather than built it.** The recipient is not your user and not
-your client. It is your client's CUSTOMER — a third party who never signed up
-for anything here, whose email address arrived in a CSV, and who will read the
-message as coming from the client's business. Three things follow:
-
-1. **It is outbound mail nobody in the loop authorised per message.** The CA
-   configures a cadence once; the tenth reminder goes out months later to a
-   customer who may have paid, disputed the invoice, or gone elsewhere. The
-   product's standing rule everywhere else — never auto-submit, always an
-   explicit confirmation click — exists for exactly this shape.
-2. **DPDP.** `docs/compliance/06-data-protection-dpdp.md` already treats
-   counterparty data as the largest population of third-party data principals
-   in the product. Sending them mail is processing of a different order from
-   storing a name off an invoice, and it needs a notice and a basis.
-3. **It is the client's commercial relationship, not ours.** A reminder that
-   annoys a customer costs the CLIENT the customer, and the CA carries the
-   complaint. Every other product in this tier makes this opt-in per customer
-   for that reason.
-
-**Three ways to go:**
-
-1. **Leave it manual.** The CA presses send, one customer at a time, as today.
-   Costs nothing, decides nothing, and the finding closes as "not a defect as
-   stated".
-2. **A cadence the CA arms per CLIENT, with a per-customer opt-out and a
-   preview of every message before the first one goes.** Automated after that.
-   This is what I would build if you want it.
-3. **A queue, not a sender.** The product proposes the reminders due today and
-   the CA sends the batch with one click. No unattended outbound mail at all,
-   and it removes most of the manual labour the finding is really about. This
-   is the cheapest honest answer and it is the `Pass N ready` shape the bank
-   queue already uses.
-
-I have built none of them. Tell me which, or tell me to leave it.

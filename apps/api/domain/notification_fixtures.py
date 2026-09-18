@@ -1,6 +1,34 @@
 """
-Notification Service.
-Types: task_assigned | risk_detected | document_processed | compliance_due | ai_recommendation | status_changed
+The in-memory notification store MOCK MODE runs against. Not a service.
+
+WHY THIS FILE IS NAMED WHAT IT IS NOW
+    It was `domain/notification_service.py`, one import away from
+    `services/notification_service.py`, which is the live one that
+    routers/tasks.py calls. Two files with one basename, one of them a fixture
+    list, is the `public.suppliers` shape: a future reader reaches for the
+    name, gets the mock, and writes notifications nobody receives.
+
+    It also carried SIX module-level functions — create_notification,
+    get_notifications, mark_read, mark_all_read, get_unread_count,
+    get_notification_stats — which read as an API and had ZERO callers. Every
+    apparent reference was either `routers/notifications.py`'s own endpoint
+    function or `repositories/notifications_repository.py`'s own method sharing
+    the name, which is exactly why a grep count did not settle it. They are
+    deleted; the two modules that really answer those questions are the router
+    and the repository.
+
+WHAT IS LEFT IS USED, AND THE RECORDED BELIEF ABOUT IT WAS WRONG TWICE
+    `docs/audits/questions-for-the-owner.md` recorded a decision to DELETE this
+    file as "imported by nothing", and
+    `tests/test_a_domain_module_has_a_reader.py` said "nothing in the
+    production tree imports it". Both were false:
+    `repositories/notifications_repository.py` imports MOCK_NOTIFICATIONS and
+    _notif_index, inside an `if _USE_MOCK:` block — a conditional import at
+    module top, which is why neither a reader nor a scan noticed. Deleting the
+    file would have broken mock mode, which is what the entire ~15,800-test
+    suite runs in.
+
+    So the fixtures stay and the name stops competing with the service.
 """
 from datetime import date, timedelta, datetime
 from typing import Optional
@@ -156,69 +184,3 @@ MOCK_NOTIFICATIONS: list[dict] = [
 ]
 
 _notif_index = {n["id"]: n for n in MOCK_NOTIFICATIONS}
-
-
-def create_notification(
-    type: str,
-    title: str,
-    body: str,
-    severity: str,
-    client_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    action_url: Optional[str] = None,
-) -> dict:
-    nid = f"notif-{str(uuid.uuid4())[:8]}"
-    notif = {
-        "id": nid,
-        "type": type,
-        "title": title,
-        "body": body,
-        "severity": severity,
-        "is_read": False,
-        "client_id": client_id,
-        "user_id": user_id,
-        "action_url": action_url,
-        "created_at": datetime.utcnow().isoformat(),
-    }
-    MOCK_NOTIFICATIONS.append(notif)
-    _notif_index[nid] = notif
-    return notif
-
-
-def get_notifications(user_id: Optional[str] = None, unread_only: bool = False) -> list[dict]:
-    notifications = list(MOCK_NOTIFICATIONS)
-    if user_id:
-        notifications = [n for n in notifications if n.get("user_id") == user_id or n.get("user_id") is None]
-    if unread_only:
-        notifications = [n for n in notifications if not n["is_read"]]
-    return sorted(notifications, key=lambda n: n["created_at"], reverse=True)
-
-
-def mark_read(notification_id: str) -> dict | None:
-    notif = _notif_index.get(notification_id)
-    if notif:
-        notif["is_read"] = True
-    return notif
-
-
-def mark_all_read(user_id: Optional[str] = None) -> int:
-    count = 0
-    for notif in MOCK_NOTIFICATIONS:
-        if not notif["is_read"]:
-            if user_id is None or notif.get("user_id") == user_id:
-                notif["is_read"] = True
-                count += 1
-    return count
-
-
-def get_unread_count() -> int:
-    return len([n for n in MOCK_NOTIFICATIONS if not n["is_read"]])
-
-
-def get_notification_stats() -> dict:
-    total = len(MOCK_NOTIFICATIONS)
-    unread = get_unread_count()
-    by_type: dict[str, int] = {}
-    for n in MOCK_NOTIFICATIONS:
-        by_type[n["type"]] = by_type.get(n["type"], 0) + 1
-    return {"total": total, "unread": unread, "by_type": by_type}

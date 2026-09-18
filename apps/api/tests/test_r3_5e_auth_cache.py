@@ -44,15 +44,30 @@ class _Q:
 
 
 class _CountingSupabase:
-    """Tracks how many times each table was queried."""
-    def __init__(self, users_row, firm_row):
+    """Tracks how many times each table was queried.
+
+    Keyed by table NAME rather than by an if/else on "users", so a lookup added
+    to the cached path later shows up as its own counter instead of silently
+    being served the firms row. That is what happened when migration 403 added
+    `user_permissions`: the stub handed it the firm dict, and the production
+    code iterated a dict's keys.
+    """
+    def __init__(self, users_row, firm_row, permission_rows=None):
         self.calls: dict[str, int] = {}
-        self._users_row = users_row
-        self._firm_row = firm_row
+        self._rows = {
+            "users": users_row,
+            "firms": firm_row,
+            # A row SET, not a row — this is a plain filtered select.
+            "user_permissions": permission_rows if permission_rows is not None else [],
+        }
 
     def table(self, name):
-        row = self._users_row if name == "users" else self._firm_row
-        return _Q(self.calls, name, row)
+        assert name in self._rows, (
+            f"the cached auth path queried {name!r}, which this stub does not "
+            "know about. Add it to _rows with the shape that table really "
+            "returns — do not let it fall through to another table's row."
+        )
+        return _Q(self.calls, name, self._rows[name])
 
 
 def _patch(monkeypatch, users_row, firm_row, sub="counting-user"):
@@ -83,8 +98,13 @@ def test_second_call_within_ttl_skips_both_db_lookups(monkeypatch):
     auth.get_current_user(authorization="Bearer x")
     auth.get_current_user(authorization="Bearer x")
 
-    assert db.calls["users"] == 1, "second call should have been served from cache"
-    assert db.calls["firms"] == 1
+    # The RULE, not a count of two named tables: NOTHING the cached path reads
+    # may be read twice inside the TTL. Written this way because it was written
+    # the other way first — "skips BOTH lookups" — and migration 403 added a
+    # third read that the assertion could not have seen.
+    assert db.calls, "the first call should have read something"
+    repeated = {t: n for t, n in db.calls.items() if n != 1}
+    assert not repeated, f"served from cache, yet these were read again: {repeated}"
 
 
 def test_different_users_get_independent_cache_entries(monkeypatch):

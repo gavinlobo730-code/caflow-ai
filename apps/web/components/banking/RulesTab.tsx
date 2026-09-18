@@ -250,9 +250,9 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
 
   return (
     <div className="space-y-4 max-w-3xl mx-auto">
-      <div className="bg-[#EEF2FF] border border-[#C7D2FE] rounded-xl px-4 py-3">
-        <p className="text-xs font-semibold text-[#312E81]">How rules work</p>
-        <p className="text-[11px] text-[#4338CA] mt-1">
+      <div className="bg-ps-hover border border-brand-light rounded-xl px-4 py-3">
+        <p className="text-xs font-semibold text-brand-dark">How rules work</p>
+        <p className="text-[11px] text-brand mt-1">
           A rule watches for lines that match its conditions and <strong>proposes</strong> how to book
           them — the proposal shows on the line in Entries, ready to pass. A rule marked{" "}
           <strong>trusted</strong> goes one step further: its lines are passed with no click, after each
@@ -263,26 +263,26 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-xs text-[#64748B]">
+        <p className="text-xs text-ps-label">
           {loading ? "Loading…" : `${rules.length} rule${rules.length === 1 ? "" : "s"}${trustedCount ? ` · ${trustedCount} trusted` : ""}`}
         </p>
-        <button onClick={startNew} className="text-xs px-3 py-1.5 bg-[#4338CA] text-white rounded-lg hover:bg-[#3730A3] flex items-center gap-1.5">
+        <button onClick={startNew} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark flex items-center gap-1.5">
           <Plus size={12} /> New rule
         </button>
       </div>
 
       {editing && (
-        <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 space-y-3">
-          <p className="text-xs font-semibold text-[#334155]">{editing === "new" ? "New rule" : "Edit rule"}</p>
+        <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
+          <p className="text-xs font-semibold text-ps-body">{editing === "new" ? "New rule" : "Edit rule"}</p>
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Rule name *</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Rule name *</label>
             <input value={form.rule_name} onChange={(e) => setForm((f) => ({ ...f, rule_name: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. HDFC bank charges" />
           </div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8] pt-1">When</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-ps-hint pt-1">When</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Look at</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Look at</label>
               <select value={form.match_field}
                 onChange={(e) => setForm((f) => ({ ...f, match_field: e.target.value as typeof f.match_field }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
@@ -291,12 +291,12 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                 <option value="payee_name">The payee name</option>
                 <option value="any">Any of the three</option>
               </select>
-              <p className="text-[10px] text-[#94A3B8] mt-1">
+              <p className="text-[10px] text-ps-hint mt-1">
                 The reference is often the only part a bank does not rewrite each month.
               </p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Which</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Which</label>
               <select value={form.match_operator}
                 onChange={(e) => setForm((f) => ({ ...f, match_operator: e.target.value as typeof f.match_operator }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
@@ -307,34 +307,34 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Text to match</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Text to match</label>
             <input value={form.description_pattern} onChange={(e) => setForm((f) => ({ ...f, description_pattern: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. BANK CHARGES" />
-            <p className="text-[10px] text-[#94A3B8] mt-1">Plain text, not case-sensitive. No wildcards.</p>
+            <p className="text-[10px] text-ps-hint mt-1">Plain text, not case-sensitive. No wildcards.</p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Or any of these (one per line)</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Or any of these (one per line)</label>
             <textarea value={form.description_patterns} rows={3}
               onChange={(e) => setForm((f) => ({ ...f, description_patterns: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
               placeholder={"ACME TRADERS\nACME EXPORTS\nACME PVT LTD"} />
-            <p className="text-[10px] text-[#94A3B8] mt-1">
+            <p className="text-[10px] text-ps-hint mt-1">
               Matched the same way, against the same field. Three customers, one rule.
             </p>
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Min amount (₹)</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Min amount (₹)</label>
               <input type="number" min="0" step="0.01" value={form.amount_min} onChange={(e) => setForm((f) => ({ ...f, amount_min: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="any" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Max amount (₹)</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Max amount (₹)</label>
               <input type="number" min="0" step="0.01" value={form.amount_max} onChange={(e) => setForm((f) => ({ ...f, amount_max: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="any" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Direction</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Direction</label>
               <select value={form.txn_type} onChange={(e) => setForm((f) => ({ ...f, txn_type: e.target.value as "debit" | "credit" | "any" }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="any">Either</option>
@@ -344,26 +344,26 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
             </div>
           </div>
           <div className="w-40">
-            <label className="block text-xs font-medium text-[#475569] mb-1">Priority</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Priority</label>
             <input type="number" step="1" value={form.priority}
               onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="100" />
-            <p className="text-[10px] text-[#94A3B8] mt-1">
+            <p className="text-[10px] text-ps-hint mt-1">
               Lower runs first. The first rule that fires wins, so give a narrow
               rule a smaller number than the broad one it sits under.
             </p>
           </div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#94A3B8] pt-1">Propose</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-ps-hint pt-1">Propose</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Book under</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Book under</label>
               <AccountLookup accounts={accounts} value={form.suggested_account_id}
                 onChange={(v) => setForm((f) => ({ ...f, suggested_account_id: v }))}
                 ariaLabel="Ledger the rule proposes" placeholder="— None —" />
-              <p className="text-[10px] text-[#94A3B8] mt-1">A trusted rule must name a ledger.</p>
+              <p className="text-[10px] text-ps-hint mt-1">A trusted rule must name a ledger.</p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">Category</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">Category</label>
               <select value={form.suggested_category} onChange={(e) => setForm((f) => ({ ...f, suggested_category: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="">— Derive from the ledger —</option>
@@ -372,40 +372,40 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#475569] mb-1">Narration</label>
+            <label className="block text-xs font-medium text-ps-label mb-1">Narration</label>
             <input value={form.suggested_narration} onChange={(e) => setForm((f) => ({ ...f, suggested_narration: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank charges" />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-medium text-[#475569] mb-1">GST inside the amount</label>
+              <label className="block text-xs font-medium text-ps-label mb-1">GST inside the amount</label>
               <select value={form.suggested_gst_rate_bps} onChange={(e) => setForm((f) => ({ ...f, suggested_gst_rate_bps: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="">— Don&apos;t split —</option>
                 {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <p className="text-[10px] text-[#94A3B8] mt-1">
+              <p className="text-[10px] text-ps-hint mt-1">
                 Statement amounts are GST-inclusive. On money out the split claims the input credit
                 (CGST Act s.16); on money in it books the output tax owed (s.9). 18% is usual on bank charges.
               </p>
             </div>
             {form.suggested_gst_rate_bps !== "" && form.suggested_gst_rate_bps !== "0" && (
               <div>
-                <label className="block text-xs font-medium text-[#475569] mb-1">Place of supply</label>
+                <label className="block text-xs font-medium text-ps-label mb-1">Place of supply</label>
                 <label className="flex items-start gap-2 pt-1.5">
                   <input type="checkbox" checked={form.suggested_is_interstate}
                     onChange={(e) => setForm((f) => ({ ...f, suggested_is_interstate: e.target.checked }))}
-                    className="mt-0.5 h-3.5 w-3.5 rounded border-[#CBD5E1]" />
-                  <span className="text-xs text-[#475569]">Inter-state (IGST)</span>
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-ps-disabled" />
+                  <span className="text-xs text-ps-label">Inter-state (IGST)</span>
                 </label>
-                <p className="text-[10px] text-[#94A3B8] mt-1">Tick when this bank is registered outside the client&apos;s state (IGST Act s.12(12)).</p>
+                <p className="text-[10px] text-ps-hint mt-1">Tick when this bank is registered outside the client&apos;s state (IGST Act s.12(12)).</p>
               </div>
             )}
           </div>
-          {formError && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{formError}</p>}
+          {formError && <p className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{formError}</p>}
           <div className="flex gap-2 justify-end pt-1">
-            <button onClick={() => setEditing(null)} className="text-xs px-4 py-2 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
-            <button onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-[#4338CA] text-white rounded-lg hover:bg-[#3730A3] disabled:opacity-40">
+            <button onClick={() => setEditing(null)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+            <button onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
               {saving ? "Saving…" : editing === "new" ? "Create rule" : "Save changes"}
             </button>
           </div>
@@ -413,64 +413,64 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
       )}
 
       {loading ? <TableSkeleton cols={3} rows={3} /> : loadError ? (
-        <div className="bg-white rounded-xl border border-red-200 p-10 text-center">
-          <p className="text-sm text-red-600 font-medium mb-2">{loadError}</p>
-          <button onClick={load} className="text-xs px-3 py-1.5 border border-[#E2E8F0] rounded-lg hover:bg-[#F8FAFC] text-[#334155]">Retry</button>
+        <div className="bg-white rounded-xl border border-state-problem-border p-10 text-center">
+          <p className="text-sm text-state-problem font-medium mb-2">{loadError}</p>
+          <button onClick={load} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
         </div>
       ) : rules.length === 0 ? (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] p-10 text-center">
-          <p className="text-sm text-[#94A3B8]">No rules yet.</p>
-          <p className="text-[11px] text-[#94A3B8] mt-1">Rules save re-booking the same line every month — bank charges, salary, a recurring vendor. Book a few lines under a ledger in Entries and it will offer to make one.</p>
+        <div className="bg-white rounded-xl border border-ps-muted p-10 text-center">
+          <p className="text-sm text-ps-hint">No rules yet.</p>
+          <p className="text-[11px] text-ps-hint mt-1">Rules save re-booking the same line every month — bank charges, salary, a recurring vendor. Book a few lines under a ledger in Entries and it will offer to make one.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-[#F1F5F9] overflow-hidden divide-y divide-[#F8FAFC]">
+        <div className="bg-white rounded-xl border border-ps-muted overflow-hidden divide-y divide-ps-bg">
           {rules.map((r, i) => (
-            <div key={r.id} className={`px-4 py-3 flex items-start gap-3 ${r.is_active ? "" : "bg-[#FCFCFD]"}`}>
-              <span className="text-[10px] text-[#CBD5E1] font-mono mt-0.5 w-4 shrink-0">{i + 1}</span>
+            <div key={r.id} className={`px-4 py-3 flex items-start gap-3 ${r.is_active ? "" : "bg-ps-surface"}`}>
+              <span className="text-[10px] text-ps-disabled font-mono mt-0.5 w-4 shrink-0">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className={`text-xs font-medium truncate ${r.is_active ? "text-[#1E293B]" : "text-[#94A3B8]"}`}>{r.rule_name}</p>
-                  {!r.is_active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#94A3B8]">Off</span>}
+                  <p className={`text-xs font-medium truncate ${r.is_active ? "text-ps-ink" : "text-ps-hint"}`}>{r.rule_name}</p>
+                  {!r.is_active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-hint">Off</span>}
                   {/* Only when it is NOT the default. The number on the left is
                       already the evaluation position — this says which rules
                       were deliberately moved, which is the question a CA asks
                       when one rule beats another. */}
                   {r.priority != null && r.priority !== 100 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] font-mono"
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-label font-mono"
                       title="Lower runs first. The first rule that fires wins.">
                       priority {r.priority}
                     </span>
                   )}
                   {r.is_trusted && (
-                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200"
+                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-state-ready-surface text-state-ready border border-state-ready-border"
                       title={r.trusted_at ? `Trusted on ${r.trusted_at.slice(0, 10)}` : "Trusted"}>
                       <ShieldCheck size={10} /> Trusted — passes without a click
                     </span>
                   )}
                 </div>
-                <p className="text-[10px] text-[#94A3B8] mt-0.5">When {conditionSummary(r)}</p>
-                <p className="text-[10px] text-[#64748B] mt-0.5">
+                <p className="text-[10px] text-ps-hint mt-0.5">When {conditionSummary(r)}</p>
+                <p className="text-[10px] text-ps-label mt-0.5">
                   {r.is_trusted ? "Pass as" : "Propose"}{" "}
                   {[accountName(r.suggested_account_id), r.suggested_category, r.suggested_narration, gstSummary(r)].filter(Boolean).join(" · ")}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Can resource="banking" action="approve"
-                  fallback={r.is_trusted ? <span className="text-[10px] text-[#94A3B8]" title="Only a Manager or Partner can change this">trusted</span> : null}>
+                  fallback={r.is_trusted ? <span className="text-[10px] text-ps-hint" title="Only a Manager or Partner can change this">trusted</span> : null}>
                   {r.is_active && (
                     <button onClick={() => trust(r, !r.is_trusted)} disabled={busy[r.id] || (!r.is_trusted && !r.suggested_account_id)}
                       title={!r.is_trusted && !r.suggested_account_id ? "Give the rule a ledger first" : r.is_trusted ? "Stop it passing on its own" : "Let it pass its lines without a click"}
-                      className={`text-[10px] px-2 py-1 border rounded ${r.is_trusted ? "border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC]" : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"} disabled:opacity-40`}>
+                      className={`text-[10px] px-2 py-1 border rounded ${r.is_trusted ? "border-ps-border text-ps-label hover:bg-ps-bg" : "border-state-ready-border bg-state-ready-surface text-state-ready hover:bg-emerald-100"} disabled:opacity-40`}>
                       {r.is_trusted ? "Un-trust" : "Trust"}
                     </button>
                   )}
                 </Can>
                 <button onClick={() => patch(r, { is_active: !r.is_active }, "Couldn't change the rule")} disabled={busy[r.id]}
-                  className="text-[10px] px-2 py-1 border border-[#E2E8F0] rounded hover:bg-[#F8FAFC] text-[#475569]">
+                  className="text-[10px] px-2 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
                   {r.is_active ? "Turn off" : "Turn on"}
                 </button>
-                <button onClick={() => startEdit(r)} disabled={busy[r.id]} className="text-[#94A3B8] hover:text-[#475569]" aria-label={`Edit ${r.rule_name}`}><Pencil size={13} /></button>
-                <button onClick={() => remove(r)} disabled={busy[r.id]} className="text-[#94A3B8] hover:text-red-600" aria-label={`Delete ${r.rule_name}`}><X size={14} /></button>
+                <button onClick={() => startEdit(r)} disabled={busy[r.id]} className="text-ps-hint hover:text-ps-label" aria-label={`Edit ${r.rule_name}`}><Pencil size={13} /></button>
+                <button onClick={() => remove(r)} disabled={busy[r.id]} className="text-ps-hint hover:text-state-problem" aria-label={`Delete ${r.rule_name}`}><X size={14} /></button>
               </div>
             </div>
           ))}

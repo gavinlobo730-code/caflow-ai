@@ -883,9 +883,46 @@ def _bank_detail_rows(db, firm_id, client_id, start, end, *, inward: bool) -> li
     return out
 
 
+def _late_fee_turnover(db, firm_id: str, client_id: str,
+                       period: str) -> Optional[int]:
+    """The turnover that bands §47's CAP, or None where none is recorded.
+
+    THE SAME FIGURE AND THE SAME HOP the HSN-digit requirement uses — CGST
+    §2(6) aggregate turnover for the PRECEDING financial year, resolved through
+    `client_gst_turnover_service.turnover_governing_period` so the "which year
+    governs" rule lives in one place. It is NOT
+    `highest_turnover_within_rule_48_4`, which is a RATCHET across every year
+    since 2017-18 because Rule 48(4) reads "any preceding financial year";
+    Notification 19/2021 reads on the preceding year alone, so a client who
+    shrinks falls back to a lower cap.
+
+    FAILS TO None, NEVER TO ZERO. Zero is a real turnover meaning "below every
+    band", which is exactly the mistake `lib/data/gst.ts` made with the HSN
+    requirement — it sent `aggregate_turnover_paise: 0` and every client was
+    silently told HSN was optional. None is the third state the engine handles
+    by assuming the lowest cap and saying so.
+    """
+    try:
+        period_start = date(int(period[2:]), int(period[:2]), 1)
+    except (ValueError, IndexError):
+        return None
+    try:
+        return client_gst_turnover_service.turnover_governing_period(
+            db, firm_id, client_id, period_start.isoformat())
+    except Exception as exc:
+        # A failed lookup must not fail the return. The engine's own
+        # lowest-cap assumption is the safe answer and it is reported as an
+        # assumption, which is strictly better than a 500 on a screen a CA is
+        # trying to file from.
+        capture_soft_failure(exc, operation="gst.late_fee_turnover",
+                             client_id=str(client_id), period=str(period))
+        return None
+
+
 def _late_filing_block(result, period: str, filed_on,
                        frequency: Optional[str] = None,
-                       state_code: Optional[str] = None) -> dict:
+                       state_code: Optional[str] = None,
+                       aggregate_turnover_paise: Optional[int] = None) -> dict:
     """§50 interest and the §47 refusal, for one period (GST-21).
 
     `available: false` where no filing date was given, so a screen can say
@@ -951,9 +988,15 @@ def _late_filing_block(result, period: str, filed_on,
     # on 20 April 2026, which falls in FY 2026-27 — so keying the late fee off
     # the due date would look up the wrong year's notification on every March
     # return, which is the one month a firm files late most often.
+    # THE CAP IS BANDED BY AGGREGATE TURNOVER AND THE PER-DAY RATE IS NOT
+    # (Notification 19/2021-CT). `None` is a real third state: the engine then
+    # assumes the LOWEST cap and says on the answer that it did, rather than
+    # this caller inventing a figure — CGST §2(6) turnover is PAN-level and
+    # all-India and cannot be derived from one client's books.
     fee = _lf.late_fee(return_type="gstr3b",
                        financial_year=ist_fy_label(period_start.isoformat()),
-                       due_date=due, filed_on=filed_on)
+                       due_date=due, filed_on=filed_on,
+                       aggregate_turnover_paise=aggregate_turnover_paise)
     return {
         "available": True,
         "due_date": due.isoformat(),
@@ -1671,7 +1714,9 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # notified rates are not held here. See domain/gst/late_filing.
         "late_filing": _late_filing_block(result, period, filed_on,
                                           frequency=window.frequency,
-                                          state_code=state_code),
+                                          state_code=state_code,
+                                          aggregate_turnover_paise=_late_fee_turnover(
+                                              db, firm_id, client_id, period)),
         # TWO OF TABLE 4(A)'S FIVE ROWS ARE STRUCTURALLY NIL, and a nil that
         # means "this product cannot see it" is not the same as a nil that
         # means "this client had none". 4(A)(2) is filled from the books now

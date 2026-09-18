@@ -129,11 +129,11 @@
       "reread_on": "2026-09-17"
     },
     "PUR-32": {
-      "status": "partial",
+      "status": "closed",
       "verified_on": "2026-09-17",
-      "why": "the mistyped-bill-number half is built \u2014 domain/purchases/near_duplicate.near_duplicates warns on same-amount/near-date and confusable spelling, carried on the create response and served as a preflight by routers/purchase_bills.probe_near_duplicates",
+      "why": "both halves built. The bill half was already done (domain/purchases/near_duplicate, warned on the create response and served as a preflight by routers/purchase_bills.probe_near_duplicates). The vendor half is domain/party_duplicates.possible_duplicates, on BOTH create doors (vendors and customers, which have mirrored each other since they were written) and rendered by one component on all three screens. Per the owner's decision it REPORTS and never merges: the party is created exactly as asked and the resemblance travels back beside it, because two genuine suppliers share a name and merging on one is invisible and moves money. Two limbs told apart \u2014 an exact normalised match, and a same base name with a different entity form (Sharma Traders against Sharma Traders Pvt Ltd), which is both the commonest real duplicate and a real pattern of its own.",
       "reread_on": "2026-09-17",
-      "what_is_left": "the VENDOR duplicate guard. routers/vendors._match_existing_vendor still tries only GSTIN then PAN, all three call sites are guarded by `if gstin or pan`, there is no unique constraint on vendors, and _near_duplicates filters .eq('vendor_id', \u2026) \u2014 so one invoice booked under two vendor rows for the same UNREGISTERED supplier is seen by neither guard"
+      "what_is_left": "nothing for this finding. The unique constraint on vendors named in the probe is deliberately NOT added: a name is not an identifier and a database constraint cannot warn."
     },
     "IT-24": {
       "status": "closed",
@@ -527,9 +527,9 @@
     },
     "BANK-11": {
       "status": "partial",
-      "verified_on": "2026-09-13",
-      "why": "migration 380 gives the rule row priority, match_field, match_operator and description_patterns, and domain/banking/rules.py reads all four: precedence is priority then created_at, a pattern can be read against the reference_no or the payee_name or all three, contains/starts_with/equals, and one rule can carry several alternatives. Every default reproduces the old behaviour exactly, so no existing rule changes which transactions it fires on or which rule it beats",
-      "what_is_left": "step 3 only \u2014 widening what a rule may PROPOSE (split legs, a party, a TDS treatment). That is an owner decision, not a matching improvement: a trusted rule passes its lines with no click (migration 322), so a wider payload widens what happens with nobody watching. A guard asserts RuleSuggestion gained no field",
+      "verified_on": "2026-09-17",
+      "why": "migration 380 gives the rule row priority, match_field, match_operator and description_patterns, and domain/banking/rules.py reads all four: precedence is priority then created_at, a pattern can be read against the reference_no or the payee_name or all three, contains/starts_with/equals, and one rule can carry several alternatives. Every default reproduces the old behaviour exactly, so no existing rule changes which transactions it fires on or which rule it beats. STEP 3'S PARTY HALF IS BUILT (migration 404, 17-09-2026): bank_matching_rules gains payee_type/payee_id and bank_transactions gains draft_payee_type/draft_payee_id, carried by RuleSuggestion, Draft.as_columns and _apply_draft, applied through the same bank_payee_service.set_payee a human uses \u2014 and what the line already says WINS. It is safe unattended because the pair LABELS a transaction: posting_map.build_lines, the settlement and the reversal never read it, coded_by_a_human does not count it, and the settlement target is matched_entity_*, a different pair \u2014 so a trusted rule that tags a party changes no figure. AND THE FINDING'S OWN WORKED EXAMPLE was already built: \u20b911,800 = \u20b910,000 rent + \u20b91,800 GST is suggested_gst_rate_bps + suggested_is_interstate, which have travelled through draft_gst_rate_bps into build_inclusive_lines since migration 254",
+      "what_is_left": "Two limbs of step 3, and each is a RECORDED REFUSAL with its reason rather than unscheduled work \u2014 both asserted by name in tests/test_a_bank_rule_says_which_field_and_which_one_wins.py so neither can arrive by accident. A general SPLIT LEG is not settled by the finding's own decision at all: a rule cannot know a future amount, so a fixed amount fires only on identical totals and PERCENTAGES are the only form that generalises \u2014 a different feature from the \u20b911,800 example, and an owner decision of its own. A TDS treatment stays out permanently: \u00a7201 puts the tax and \u00a7201(1A) interest on the deductor, so it belongs in front of a human and not in a payload that passes with no click. Reopen only on an owner decision naming the percentage-split shape.",
       "reread_on": "2026-09-17"
     },
     "IT-31": {
@@ -553,15 +553,15 @@
     },
     "PUR-23": {
       "status": "closed",
-      "verified_on": "2026-09-13",
-      "why": "PUR-23 and TDS-32 are the same defect and are closed together. domain/tds/purchase_return.py is the rule; both note-issue routers now resync the register (which sync_for_bill's own docstring always claimed happened 'on every transition'), and tds_26q_from_books / tds_27q_from_books name every bill in the quarter whose credit a note has moved, in statutory_gaps. The purchases screen renders it.",
+      "verified_on": "2026-09-17",
+      "why": "PUR-23 and TDS-32 are the same defect and are closed together. domain/tds/purchase_return.py is the rule; both note-issue routers now resync the register (which sync_for_bill's own docstring always claimed happened 'on every transition'), and tds_26q_from_books / tds_27q_from_books name every bill in the quarter whose credit a note has moved, in statutory_gaps. The purchases screen renders it. SECOND HALF CLOSED 2026-09-17: the module used to end every sentence with 'which applies turns on when the challan went, which the books do not record', and that was false \u2014 tds_deductions.challan_date and its deducted|deposited|filed status have existed since MIGRATION 014 and nothing read them. The recorded owner decision called for a migration to ADD them; there was none to add. deposit_state() now decides the branch: unpaid means the deduction may be RECOMPUTED on the smaller aggregate (s.194J(1)), paid means it STANDS and the deductor carries an excess deposit (s.200 with s.199), and 'deposited with no date' is its own third answer rather than either. Only whether the tax has GONE decides \u2014 the note's date relative to the challan is hindsight, not a different legal answer. Still adjusts nothing: a return can take the year's aggregate back below the threshold, so the recompute figure is not this bill's to compute.",
       "deliberately_not_done": "The FIGURES are not adjusted. s.194 charges the aggregate credited while s.199 gives the deductee credit for tax already paid over, and which applies turns on when the challan went \u2014 a fact the books do not record. Both findings flag this as a decision; the software states the divergence and moves no number. An owner who wants the same-quarter reduction automated needs to decide it first.",
       "reread_on": "2026-09-17"
     },
     "TDS-32": {
       "status": "closed",
-      "verified_on": "2026-09-13",
-      "why": "PUR-23 and TDS-32 are the same defect and are closed together. domain/tds/purchase_return.py is the rule; both note-issue routers now resync the register (which sync_for_bill's own docstring always claimed happened 'on every transition'), and tds_26q_from_books / tds_27q_from_books name every bill in the quarter whose credit a note has moved, in statutory_gaps. The purchases screen renders it.",
+      "verified_on": "2026-09-17",
+      "why": "PUR-23 and TDS-32 are the same defect and are closed together. domain/tds/purchase_return.py is the rule; both note-issue routers now resync the register (which sync_for_bill's own docstring always claimed happened 'on every transition'), and tds_26q_from_books / tds_27q_from_books name every bill in the quarter whose credit a note has moved, in statutory_gaps. The purchases screen renders it. SECOND HALF CLOSED 2026-09-17: the module used to end every sentence with 'which applies turns on when the challan went, which the books do not record', and that was false \u2014 tds_deductions.challan_date and its deducted|deposited|filed status have existed since MIGRATION 014 and nothing read them. The recorded owner decision called for a migration to ADD them; there was none to add. deposit_state() now decides the branch: unpaid means the deduction may be RECOMPUTED on the smaller aggregate (s.194J(1)), paid means it STANDS and the deductor carries an excess deposit (s.200 with s.199), and 'deposited with no date' is its own third answer rather than either. Only whether the tax has GONE decides \u2014 the note's date relative to the challan is hindsight, not a different legal answer. Still adjusts nothing: a return can take the year's aggregate back below the threshold, so the recompute figure is not this bill's to compute.",
       "deliberately_not_done": "The FIGURES are not adjusted. s.194 charges the aggregate credited while s.199 gives the deductee credit for tax already paid over, and which applies turns on when the challan went \u2014 a fact the books do not record. Both findings flag this as a decision; the software states the divergence and moves no number. An owner who wants the same-quarter reduction automated needs to decide it first.",
       "reread_on": "2026-09-17"
     },
@@ -962,15 +962,15 @@
       "reread_on": "2026-09-16"
     },
     "BANK-13": {
-      "status": "partial",
-      "verified_on": "2026-09-16",
-      "why": "named in a merged commit on `main` AND named in the code, in a comment saying what it closed. Not re-read tonight, but the corroboration is real. Promote to `closed` with a read when the finding matters. \u2014 RE-READ 16-09-2026 against main 171ef0e3: apps/api/domain/banking/exceptions.py:293 `evaluate` and :308 `blocks_posting` still have ZERO production importers (a repo walk over apps/api excluding tests/ for banking-exceptions imports, BankException, ExceptionPolicy or TxnContext returns nothing), and `services/bank_exception_service.py` \u2014 named in the module's own docstring at exceptions.py:22 \u2014 does not exist",
+      "status": "closed",
+      "verified_on": "2026-09-17",
+      "why": "CLOSED 17-09-2026. The collaborator domain/banking/exceptions.py named in its own docstring at line 22 \u2014 services/bank_exception_service.py \u2014 now exists, and GET /api/banking/worth-a-look serves its answer to a Worth a Look tab on the client Bank screen. The 315 lines that decided what a partner should test had ZERO production importers for months; `evaluate` now has one. READ-ONLY AND DELIBERATELY SO: the service never calls blocks_posting and issues no write (a test asserts both on the AST, not on the docstring), and a frontend guard asserts the tab makes no non-GET request \u2014 exceptions.py carries the argument, which is that a rule refusing a post would make a materiality threshold into a control nobody voted for. THE HISTORY HAS THREE STATES, NOT TWO, and the third was found by writing the test: complete, TRUNCATED (_HISTORY_PAGE_CAP), and EMPTY \u2014 on a client's earliest period every payee is a first payee and every account is a first account, so both history rules fire on every row and the list is the statement handed back. GAP_HISTORY_EMPTY and GAP_HISTORY_INCOMPLETE both withhold those two rules, under different sentences. The period is keyword-only with NO default, and the \u00b1duplicate_window_days margin supplies SIBLINGS only, never subjects.",
       "commits": [
         "920513d6 Six bank-module reads that answered a question nobody asked (#500)",
         "920513d6 Six bank-module reads that answered a question nobody asked (#500)"
       ],
-      "reread_on": "2026-09-16",
-      "what_is_left": "The interim half of the fix IS done \u2014 the lying \"Needs review\" filter is gone from the Bank Book and the register (services/bank_register_service.py:62-79 and :158, apps/web/components/banking/BankBook.tsx:74). What remains is the feature itself: the context-gathering service, a writer for the flag, and somewhere to show it. Note bank_matching_service.py:546 still accepts a `needs_review` queue status over the API, which can only ever answer empty (no screen offers it).",
+      "reread_on": "2026-09-17",
+      "what_is_left": "Nothing. bank_matching_service.py's `needs_review` queue status is untouched and still answers empty \u2014 deliberately: the flag is only ever written False, and Worth a Look derives its answer at read time rather than depending on a writer, so wiring one would be a second source for the same question.",
       "user_visible_impact": "No materiality, duplicate-suspect, cash-withdrawal, new-payee, weak-match or unusual-account exception is ever raised, so a \u20b920 lakh payment and a \u20b92,000 one arrive in the queue looking identical and nothing prompts partner review. `bank_transactions.needs_review` is still only ever written False (bank_matching_service.py:858, bank_posting_service.py:1154)."
     },
     "BANK-14": {

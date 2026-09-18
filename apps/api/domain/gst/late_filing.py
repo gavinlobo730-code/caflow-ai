@@ -81,26 +81,54 @@ SECTION_50_1_RATE_BPS = 1800
 # per cent as may be notified". The CEILING is in the Act and is held here.
 SECTION_50_3_CEILING_BPS = 2400
 #
-# ⚠️ THE NOTIFIED RATE IS NOT HELD, AND THAT IS A CORRECTION.
+# ⚠️ THE NOTIFIED RATE IS 18%, `[S]`-GRADED, AND THIS IS THE SECOND CORRECTION.
 #
-# This module first stated 24% as the rate, on the strength of Notification
-# 13/2017-Central Tax, which notified 24% against the ORIGINAL §50(3). But the
-# Finance Act 2022 SUBSTITUTED §50(3) with retrospective effect from
-# 01-07-2017, and the rate for the substituted sub-section appears to have been
-# notified separately — by Notification 09/2022-Central Tax — at 18%, not 24%.
+# This module first stated 24%, on the strength of Notification 13/2017-Central
+# Tax, which notified 24% against the ORIGINAL §50(3). It then refused to state
+# any rate at all, because the Finance Act 2022 SUBSTITUTED §50(3) with
+# retrospective effect from 01-07-2017 and the rate for the substituted
+# sub-section was believed to be 18% — a THIRD of the charge apart, on a sum a
+# CA pays over on a client's behalf, where over-stating takes money from
+# somebody who does not owe it. A figure that might be a third too high is
+# worse than a refusal naming the notifications to read, so it refused.
 #
-# Which of the two governs a given period could not be read here: this
-# environment's proxy refuses every `.gov.in`. The two differ by a THIRD of the
-# charge, and unlike the §201(1A) month convention the error direction is not
-# benign — this is a sum a CA pays over on the client's behalf, so an
-# over-stated rate takes money from somebody who does not owe it. A figure that
-# might be a third too high is worse than a refusal that names the two
-# notifications to read.
+# The refusal is now lifted. The mechanism is:
+#     * Finance Act 2022 **s.111** substituted §50(3) retrospectively from
+#       01-07-2017;
+#     * Finance Act 2022 **s.116 with the Sixth Schedule** retrospectively
+#       amended the 28-06-2017 rate notifications from 24% to 18%;
+#     * **Notification 9/2022-Central Tax, 05-07-2022** brought those
+#       provisions into force.
 #
-# So the rate is a NAMED GAP, the same shape as LATE_FEE_RATES below and the
-# state professional-tax slabs. `interest_on_wrongly_availed_credit` refuses on
-# it, and the engine works the moment somebody writes the notified figure in.
-SECTION_50_3_NOTIFIED_RATE_BPS: Optional[int] = None
+# That corrects an earlier note in this repository which had 9/2022 itself
+# notifying the rate. 9/2022 commenced the provisions; s.116 and the Sixth
+# Schedule changed the figure.
+#
+# GRADE `[S]`, NOT `[P]`. Every `.gov.in` is refused at this environment's
+# proxy, so this rests on several independent secondary sources that agree, and
+# none of them argues for 24% after 2022. `VERIFIED` stays False and the figure
+# is pinned exactly by a test, the discipline every other unfetchable statutory
+# constant in this codebase follows.
+#
+# WHY IT IS NOW SAFE TO STATE WHERE IT WAS NOT BEFORE. The refusal existed
+# because the DIRECTION of the doubt was unsafe. The evidence no longer
+# supports the higher reading, so holding out keeps a working engine switched
+# off over a doubt nothing argues for — and a refusal is not free either: a CA
+# who gets no figure computes one by hand, and that is the outcome this module
+# exists to replace. The Act's own 24% CEILING stays recorded above as the
+# ceiling it is, so a later notification moving the rate has somewhere to land.
+SECTION_50_3_NOTIFIED_RATE_BPS: Optional[int] = 1800
+#: Where the 18% comes from, carried on every answer that uses it.
+SECTION_50_3_RATE_SOURCE = (
+    "Finance Act 2022 s.111 substituted s.50(3) retrospectively from "
+    "01-07-2017; s.116 with the Sixth Schedule amended the 28-06-2017 rate "
+    "notifications from 24% to 18%; Notification 9/2022-Central Tax "
+    "(05-07-2022) brought them into force."
+)
+#: Corroborated across independent secondary sources, NOT read off the
+#: notification — this environment's proxy refuses every .gov.in. Kept False so
+#: the caveat travels with the figure rather than being remembered.
+SECTION_50_3_RATE_VERIFIED = False
 GAP_SECTION_50_3_RATE_NOT_HELD = "gst_section_50_3_rate_not_held"
 # The portal's own divisor. See the leap-year caveat in the module docstring.
 DAYS_IN_YEAR = 365
@@ -293,20 +321,23 @@ def interest_on_wrongly_availed_credit(
 ) -> InterestCharge | dict:
     """§50(3) with Rule 88B(3) — on the credit UTILISED, never the availed.
 
-    Returns a REFUSAL (a dict with `refused`) rather than a charge, on either
-    of two grounds.
+    THE RATE IS NOW HELD at 18%, `[S]`-graded — see
+    SECTION_50_3_NOTIFIED_RATE_BPS above for the mechanism and why the earlier
+    refusal was lifted. Every charge carries the source as a caveat rather than
+    presenting the figure as read off the notification, because it was not.
 
-    THE RATE. It is not held — see SECTION_50_3_NOTIFIED_RATE_BPS above. The
-    Act's ceiling is 24% and the substituted sub-section may carry 18%; a third
-    of the charge separates them, and over-stating is the direction that takes
-    money from a taxpayer who does not owe it.
-
-    THE FACTS. Credit wrongly availed and never utilised bears no interest at
-    all — Rule 88B(3)'s explanation is about the balance in the electronic
-    credit ledger falling below the wrongly availed amount — so substituting
-    the availed figure would charge a taxpayer who owes nothing.
+    ONE REFUSAL REMAINS, and it is about the FACTS rather than the rate. Credit
+    wrongly availed and NEVER UTILISED bears no interest at all — Rule
+    88B(3)'s explanation is about the balance in the electronic credit ledger
+    falling below the wrongly availed amount — so substituting the availed
+    figure would charge a taxpayer who owes nothing. That one is not lifted by
+    any notification; it is what the sub-section charges.
     """
     if SECTION_50_3_NOTIFIED_RATE_BPS is None:
+        # Unreachable today and deliberately kept: the constant is typed
+        # Optional so a later reader who finds the 18% wrong can set it back to
+        # None and get a refusal rather than a wrong figure, which is the
+        # behaviour this module had for good reason.
         return {
             "refused": True,
             "section": "50(3)",
@@ -347,7 +378,19 @@ def interest_on_wrongly_availed_credit(
     return _charge(
         section="50(3)", base_paise=int(utilised_paise or 0),
         rate_bps=SECTION_50_3_NOTIFIED_RATE_BPS,
-        days=days_late(utilised_on, reversed_on), caveats=[],
+        days=days_late(utilised_on, reversed_on),
+        # The caveat travels ON the charge rather than living in a comment: a
+        # CA is about to pay this over, and "18%" presented bare reads as a
+        # figure somebody read off a notification. Nobody here did.
+        caveats=[
+            f"The §50(3) rate of "
+            f"{SECTION_50_3_NOTIFIED_RATE_BPS / 100:g}% is corroborated across "
+            f"independent secondary sources, not read off the notification "
+            f"(egress to .gov.in is refused in this environment). "
+            f"{SECTION_50_3_RATE_SOURCE} The sub-section's own ceiling is "
+            f"{SECTION_50_3_CEILING_BPS / 100:g}%; confirm against the "
+            f"notification in force for the period before paying."
+        ],
         basis=(
             f"Section 50(3) with Rule 88B(3): "
             f"{SECTION_50_3_NOTIFIED_RATE_BPS / 100:g}% per annum on input tax "
@@ -357,28 +400,122 @@ def interest_on_wrongly_availed_credit(
     )
 
 
-# ── The late fee, which is a gap ─────────────────────────────────────────────
+# ── The late fee ─────────────────────────────────────────────────────────────
 #
-# One entry per (return type, financial year), and the dict is EMPTY. Adding a
-# row is a human step, like the state professional-tax slabs: read the
-# notification in force for that year and that class of taxpayer, and write it
-# down. Nothing here guesses.
+# ⚠️ EVERY FIGURE BELOW IS `[S]`-GRADED, AND THIS TABLE WAS EMPTY UNTIL NOW.
+#
+# The refusal that stood here was right at the time and its ground was MEMORY:
+# "a late fee written from memory is a number a CA would pay over". §47(1) is
+# ₹100 a day per Act capped at ₹5,000 and no registered person has paid that
+# since 2018, so the statutory figure is four times what is notified.
+#
+# What changed is the evidence, not the caution. The figures below are
+# corroborated across independent secondary sources that agree with each other
+# AND with what this module had already recorded as unverified belief —
+# Notification **19/2021-Central Tax, 01-06-2021** (GSTR-3B) and **20/2021-CT**
+# (GSTR-1), on the 43rd Council's recommendation. Still not read off the
+# notification: this environment's proxy refuses every `.gov.in`. So
+# `verified=False` travels on every rate, every answer carries the source, and
+# a test pins each number exactly.
+#
+# WHY STATE THEM AT ALL, HAVING REFUSED. A CA who gets nothing computes the fee
+# by hand from the same secondary sources, with no caveat attached and no test
+# pinning it. And the PORTAL is authoritative here in a way it is not for
+# §50(3) interest — the fee is computed by GSTN at filing, so this figure is a
+# planning estimate the CA checks against the portal, not a sum they pay over
+# on this product's say-so.
+#
+# ONLY FROM FY 2021-22. Notifications 4/2018 and 76/2018 govern earlier
+# periods, with different caps and no turnover bands, and those were not
+# corroborated to the same standard — so an earlier year still REFUSES rather
+# than being charged at a rate that was not in force. The fork shape this
+# codebase applies to the TDS vocabulary and the capital-gains rates.
+@dataclass(frozen=True)
+class TurnoverCap:
+    """One band of Notification 19/2021's cap ladder.
+
+    `upto_paise` is the band's upper bound, INCLUSIVE, and `None` means the
+    band has no upper bound. Written as a ladder rather than as three named
+    constants because the bands are the notification's own structure and a
+    later one that moves a boundary should move a number here, not add a branch.
+    """
+    upto_paise: Optional[int]
+    cap_paise: int
+
+
 @dataclass(frozen=True)
 class LateFeeRate:
     """What one day of delay costs, and where the ceiling is.
 
-    `per_day_paise` and `cap_paise` are the COMBINED figures (CGST + SGST), the
-    way a portal shows them — §47 sets ₹100 a day capped at ₹5,000 under each
-    Act, so the statutory combined figures are ₹200 and ₹10,000, and every
-    notification since has reduced both halves together.
+    Every figure is the COMBINED one (CGST + SGST), the way a portal shows it —
+    §47 sets ₹100 a day capped at ₹5,000 under EACH Act, and every notification
+    since has reduced both halves together.
+
+    THE CAP DEPENDS ON THE TAXPAYER, THE PER-DAY RATE DOES NOT. That asymmetry
+    is the whole reason this is not one number: ₹50 a day is charged to
+    everyone, and the ceiling is ₹2,000, ₹5,000 or ₹10,000 by aggregate
+    turnover. A nil return is its own rate AND its own cap, and is not banded.
     """
     per_day_paise: int
     nil_return_per_day_paise: int
-    cap_paise: int
+    nil_cap_paise: int
+    turnover_caps: tuple[TurnoverCap, ...]
     source: str
+    #: False everywhere, and not a field anyone should set True without having
+    #: read the notification itself.
+    verified: bool = False
+
+    def cap_for(self, aggregate_turnover_paise: Optional[int]) -> int:
+        """The ceiling for this taxpayer, or the LOWEST band where none is known.
+
+        An unrecorded turnover takes the SMALLEST cap deliberately. The three
+        differ by 5x, so neither direction is harmless — but the portal computes
+        the fee itself at filing, so an understatement is corrected there, while
+        an overstatement is this product telling a CA to budget for money their
+        client does not owe. `late_fee` names the assumption on the answer
+        rather than leaving it to be inferred from the number.
+        """
+        if aggregate_turnover_paise is None:
+            return min(c.cap_paise for c in self.turnover_caps)
+        for band in self.turnover_caps:
+            if band.upto_paise is None or aggregate_turnover_paise <= band.upto_paise:
+                return band.cap_paise
+        return self.turnover_caps[-1].cap_paise
 
 
-LATE_FEE_RATES: dict[tuple[str, str], LateFeeRate] = {}
+_CRORE = 1_00_00_000_00  # one crore rupees, in paise
+
+#: Notification 19/2021-CT (GSTR-3B) and 20/2021-CT (GSTR-1), from the June 2021
+#: tax period. Identical ladders; both are held so neither is inferred from the
+#: other.
+_NOTIFIED_2021 = dict(
+    per_day_paise=50_00,             # ₹25 CGST + ₹25 SGST
+    nil_return_per_day_paise=20_00,  # ₹10 + ₹10
+    nil_cap_paise=500_00,
+    turnover_caps=(
+        TurnoverCap(upto_paise=int(1.5 * _CRORE), cap_paise=2_000_00),
+        TurnoverCap(upto_paise=5 * _CRORE,        cap_paise=5_000_00),
+        TurnoverCap(upto_paise=None,              cap_paise=10_000_00),
+    ),
+)
+
+LATE_FEE_RATES: dict[tuple[str, str], LateFeeRate] = {
+    (rt, fy): LateFeeRate(
+        **_NOTIFIED_2021,
+        source=(
+            f"Notification {'19' if rt == 'gstr3b' else '20'}/2021-Central Tax "
+            f"(01-06-2021), 43rd GST Council. Corroborated across independent "
+            f"secondary sources, not read off the notification."
+        ),
+    )
+    for rt in ("gstr3b", "gstr1")
+    for fy in ("2021-22", "2022-23", "2023-24", "2024-25", "2025-26", "2026-27")
+}
+
+#: The first year the 2021 ladder is held for. An earlier period is REFUSED
+#: rather than charged at a rate that was not in force — 4/2018 and 76/2018
+#: govern those and carry different caps with no turnover bands.
+LATE_FEE_FIRST_HELD_FY = "2021-22"
 
 # The statutory figures, recorded so nobody has to look them up to know what
 # the notifications REDUCED. Deliberately NOT used as a fallback: charging
@@ -397,6 +534,16 @@ class LateFee:
     fee_paise: int
     capped: bool
     source: str
+    #: The ceiling actually applied, so a reader can see WHICH band was used
+    #: rather than inferring it from a capped figure.
+    cap_paise: int = 0
+    #: True where no aggregate turnover was supplied and the lowest band was
+    #: assumed. The fee may be understated for a larger taxpayer, and the
+    #: caveat says so — a capped figure with no such flag reads as the answer.
+    turnover_band_assumed: bool = False
+    #: Never empty. Every figure here is corroborated rather than read off the
+    #: notification, and that travels with the number.
+    caveats: tuple[str, ...] = ()
 
     def as_dict(self) -> dict:
         return {
@@ -406,6 +553,9 @@ class LateFee:
             "is_nil_return": self.is_nil_return,
             "fee_paise": self.fee_paise,
             "capped": self.capped,
+            "cap_paise": self.cap_paise,
+            "turnover_band_assumed": self.turnover_band_assumed,
+            "caveats": list(self.caveats),
             "source": self.source,
         }
 
@@ -417,14 +567,20 @@ def late_fee(
     due_date: date,
     filed_on: date,
     is_nil_return: bool = False,
+    aggregate_turnover_paise: Optional[int] = None,
 ) -> LateFee | dict:
-    """§47 — a named GAP unless somebody has recorded the year's notification.
+    """§47 — the notified fee where it is held, a named refusal where it is not.
 
-    The refusal is the point. §47(1) is ₹100 a day per Act capped at ₹5,000,
-    and no registered person has paid that since 2018; the notified figures
-    move by taxpayer turnover band and by return type, and this environment
-    cannot reach a `.gov.in` to read them. A fee written from memory is a
-    number a CA would pay over.
+    `aggregate_turnover_paise` is CGST §2(6) aggregate turnover, which decides
+    the CAP and not the per-day rate. It is optional, and `None` is a real third
+    state rather than "nil": the lowest band is assumed and the answer SAYS it
+    was assumed. `client_gst_turnover` (migration 401) is where a caller gets
+    it — the same store the HSN-digit requirement reads.
+
+    AN EARLIER YEAR STILL REFUSES. Only the 2021 ladder is held; Notifications
+    4/2018 and 76/2018 govern periods before it with different caps and no
+    turnover bands, so charging those years at the 2021 figures would be a rate
+    that was not in force.
     """
     days = days_late(due_date, filed_on)
     key = (return_type.strip().lower(), financial_year.strip())
@@ -439,19 +595,41 @@ def late_fee(
             "reason": (
                 f"This return is {days} day(s) late and the section 47 late fee "
                 f"for {return_type.upper()} in FY {financial_year} is not "
-                f"recorded. The statutory figure is ₹100 a day under each Act "
-                f"capped at ₹5,000 (so ₹200 and ₹10,000 combined), but every "
-                f"registered person has paid a REDUCED rate since Notifications "
-                f"4/2018 and 76/2018, capped by turnover band since 19/2021 and "
-                f"20/2021. Read the notification in force for this year and this "
-                f"taxpayer's turnover and record it — the statutory figure is "
-                f"not used as a fallback, because charging four times the "
-                f"notified fee is a number somebody would pay."
+                f"recorded. The notified figures are held from FY "
+                f"{LATE_FEE_FIRST_HELD_FY} (Notifications 19/2021 and 20/2021); "
+                f"an earlier period is governed by Notifications 4/2018 and "
+                f"76/2018, which carry different caps and no turnover bands. "
+                f"The statutory figure is ₹100 a day under each Act capped at "
+                f"₹5,000 (₹200 and ₹10,000 combined) and is deliberately NOT "
+                f"used as a fallback, because charging four times the notified "
+                f"fee is a number somebody would pay."
             ),
         }
+
     per_day = rate.nil_return_per_day_paise if is_nil_return else rate.per_day_paise
+    # A nil return has its own cap and is NOT banded by turnover — a taxpayer
+    # with nothing to declare has the same ₹500 ceiling whatever their size.
+    cap = rate.nil_cap_paise if is_nil_return else rate.cap_for(aggregate_turnover_paise)
     raw = per_day * days
-    fee = min(raw, rate.cap_paise)
+    fee = min(raw, cap)
+
+    caveats = [
+        f"Figures from {rate.source} They are corroborated across independent "
+        f"secondary sources, not read off the notification (egress to .gov.in "
+        f"is refused in this environment). The portal computes the fee itself "
+        f"at filing — check this against it before paying."
+    ]
+    assumed = not is_nil_return and aggregate_turnover_paise is None
+    if assumed:
+        caveats.append(
+            "No aggregate turnover is recorded for this client, so the LOWEST "
+            "cap (₹2,000) was assumed. The ceiling is ₹5,000 above ₹1.5 crore "
+            "and ₹10,000 above ₹5 crore, so this fee may be understated for a "
+            "larger taxpayer. Record the turnover to remove the assumption."
+        )
+
     return LateFee(return_type=return_type, financial_year=financial_year,
                    days=days, is_nil_return=is_nil_return, fee_paise=fee,
-                   capped=fee < raw, source=rate.source)
+                   capped=fee < raw, cap_paise=cap,
+                   turnover_band_assumed=assumed, caveats=tuple(caveats),
+                   source=rate.source)

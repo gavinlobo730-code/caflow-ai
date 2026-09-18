@@ -210,14 +210,104 @@ def firm_login_history(
 # decides anything; this only decides what is worth rendering.
 @router.get("/permissions")
 def my_permissions(current_user: dict = Depends(get_current_user)):
-    """The caller's own resource→actions map, plus their canonical role."""
+    """The caller's own resource→actions map, plus their canonical role.
+
+    Answers for the PERSON since migration 403 — the caller's own overrides are
+    passed through, so this agrees with what `rbac()` will actually do. Serving
+    the role's template here instead would offer an Executive granted payroll a
+    screen with no button on it, and hide nothing from an Executive whose
+    payroll was taken away: the drift this endpoint exists to prevent, one layer
+    down.
+    """
     role = canonical_role(current_user.get("role"))
     if role is None:
         # Unknown role string: an empty map rather than a 500. The frontend
         # helpers fail closed on an empty map, which is the right outcome for a
         # row carrying a role nobody recognises.
         return api_response(True, {"role": None, "permissions": {}})
-    return api_response(True, {"role": role, "permissions": get_accessible_resources(role)})
+    overrides = current_user.get("permission_overrides") or {}
+    return api_response(True, {
+        "role": role,
+        "permissions": get_accessible_resources(role, overrides),
+        # The role's own template, so a screen can show what a person has that
+        # their role does not give them (or has had taken away) without asking
+        # a second endpoint. Distinct from `permissions`, which is what they may
+        # actually do.
+        "role_defaults": get_accessible_resources(role),
+        "has_overrides": bool(overrides),
+    })
+
+
+# ─── Per-person access (migration 403) ───────────────────────────────────────
+#
+# The Team screen's grid, made real. Its header used to read "Toggle access per
+# member per module. Changes are saved instantly. Overrides the role default for
+# that individual" while the toggles went into localStorage, reaching no other
+# user, device or server — and nothing in core/permissions.py could have
+# honoured them. It was left read-only rather than deleted because the need was
+# real; these three endpoints are the need, built.
+#
+# Guarded by team:read / team:write, the same tiers that govern every other
+# member administration act in this router and the same tiers migration 403's
+# RLS policies carry — the app-layer check is the primary control and RLS is
+# defence in depth, so the two disagreeing would mean one of them is decorative.
+
+
+@router.get("/permission-vocabulary")
+def permission_vocabulary(current_user: dict = Depends(rbac("team", "read"))):
+    """Every (resource, action) pair that exists, with two flags a grid needs.
+
+    Served rather than spelled in the browser for the reason /role-matrix
+    already exists: the last hardcoded copy of an engine vocabulary in this
+    codebase drifted in BOTH directions at once — offering five captions the
+    engine had never heard of and spelling five others differently — and nine
+    of fifty mapped accounts were silently discarded as a result.
+    """
+    from services.user_permission_service import vocabulary
+    return api_response(True, {"permissions": vocabulary()})
+
+
+@router.get("/users/{user_id}/permissions")
+def member_permissions(user_id: str, current_user: dict = Depends(rbac("team", "read"))):
+    """One member's grid: the role template, the stored overrides, the effective answer."""
+    from core.supabase_client import get_service_supabase
+    from services.user_permission_service import grid_for
+    member = _get_member(user_id, current_user["firm_id"])
+    return api_response(True, grid_for(get_service_supabase(), current_user["firm_id"], member))
+
+
+class PermissionChangesBody(BaseModel):
+    # {"payroll:write": true, "billing:read": false, "gst:approve": null}
+    #
+    # Optional[bool] rather than bool: **null means DELETE the row**, which is a
+    # third state and not a spelling of false. Absence means "whatever the role
+    # says"; false means "refused however senior". A screen that could only send
+    # the second could never hand a permission back to the role, and would
+    # freeze today's role map into the person's row.
+    changes: dict[str, Optional[bool]]
+
+
+@router.put("/users/{user_id}/permissions")
+def set_member_permissions(user_id: str, body: PermissionChangesBody,
+                           current_user: dict = Depends(rbac("team", "write"))):
+    """Change one member's access. Partner-only, audited, validated before any write."""
+    from core.supabase_client import get_service_supabase
+    from services.user_permission_service import PermissionWriteRefused, set_permissions
+    member = _get_member(user_id, current_user["firm_id"])
+    db = get_service_supabase()
+    try:
+        grid = set_permissions(db, current_user["firm_id"], member,
+                               dict(body.changes), current_user.get("id"))
+    except PermissionWriteRefused as e:
+        # 422 rather than 400: the request is well-formed and the firm is not
+        # allowed to make this change, which is what the screen has to explain.
+        raise HTTPException(422, str(e))
+    # Audited like every other mutation in this router, and for a stronger
+    # reason: who may do what is the record an ICAI peer review asks for.
+    log_event(current_user["firm_id"], "user_permissions", user_id, "update",
+              actor_id=current_user.get("id"), actor_email=current_user.get("email"),
+              new_data={"changes": {k: v for k, v in body.changes.items()}})
+    return api_response(True, grid)
 
 
 @router.get("/role-matrix")

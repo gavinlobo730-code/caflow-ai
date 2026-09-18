@@ -1388,9 +1388,20 @@ EXEMPT: dict[str, str] = {
         "there is no user_id parameter, let alone a client_id. `users` has a "
         "firm_id and no client_id column (migration 003).",
     "/api/identity/permissions":
-        "returns the caller's own role and its resource:action map from the "
+        "returns the caller's own role and its resource:action map, resolved "
+        "against the caller's own overrides already on the verified principal. "
+        "Reads no table at all, so there is no client row to scope.",
+    "/api/identity/permission-vocabulary":
+        "the list of (resource, action) pairs that EXIST, derived from the "
         "static PERMISSIONS matrix in core/permissions.py. Reads no table at "
-        "all, so there is no client row to scope.",
+        "all and is the same answer for every firm, let alone every client.",
+    "/api/identity/users/{user_id}/permissions":
+        "one staff member's access grid (migration 403). `user_permissions` "
+        "has firm_id and user_id and NO client_id column — access is per "
+        "person per module, and which CLIENTS that person may touch is a "
+        "different question answered by user_client_assignments. Both GET and "
+        "PUT share this path; the member is resolved through _get_member, "
+        "which refuses a user_id belonging to another firm.",
     # accounting.py — the two firm-level path groups.
     "/api/accounting/year-lock":
         "firms.locked_financial_years (migration 136) is a firm-level "
@@ -1673,6 +1684,22 @@ EXEMPT: dict[str, str] = {
         "its own gate off a client's policy. The L3 gate beside it, PUT "
         "/api/currencies/policy, IS per-client and does call "
         "assert_client_access, which is why only this one is here.",
+    "/api/currencies/rate-types":
+        "the four values fx_rates.rate_type CHECKs (migration 146) and what "
+        "each one is for — reference data with no firm_id and no client_id, "
+        "served so the screen does not keep a second copy of a database "
+        "constraint. Same reasoning as /api/currencies itself.",
+    "/api/currencies/rates":
+        "public.fx_rates is GLOBAL and deliberately so: USD/INR on a date is a "
+        "fact about the world (the RBI publishes one), and the table carries "
+        "no firm_id or client_id — migration 146 created it as reference data "
+        "beside the ISO 4217 master. A firm-scoped copy would have every firm "
+        "re-typing the same number and would make the rate a document was "
+        "booked at depend on who typed it. The tenancy answer is on the WRITE "
+        "side instead, which is the owner's recorded decision: the PUT is "
+        "Partner-only through rbac('settings', 'write') and stamps created_by, "
+        "and the screen says the rate is shared. The GET stays open because "
+        "every screen showing a foreign amount needs the rate behind it.",
     "/api/team/{user_id}/role":
         "users has a firm_id and NO client_id column (migration 003) — "
         "addressed by a STAFF user_id, and already firm-membership checked. "
@@ -1749,7 +1776,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/team": 2, "/api/ai-copilot": 3,
               "/api/einvoice": 4, "/api/form-26as": 6, "/api/fixed-assets": 5,
               "/api/analytics": 5, "/api/intelligence": 6, "/api/hsn": 1,
-              "/api/fx-reports": 5, "/api/currencies": 2,
+              "/api/fx-reports": 5, "/api/currencies": 4,
               "/api/customer-statements": 4, "/api/party-credits": 3,
               "/api/timeline": 1, "/api/search": 1,
               "/api/firm-hsn-rate-history": 4, "/api/assistant": 1,

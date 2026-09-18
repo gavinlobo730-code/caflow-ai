@@ -801,6 +801,40 @@ export type StockCountPostResult = {
 };
 
 /** One entry of GET /api/banking/account-types. */
+export type WorthALookException = {
+  code: string;
+  severity: "high" | "medium" | "low";
+  message: string;
+  /** The rules' own judgement that this WOULD stop a posting if anything did.
+   *  Nothing acts on it — domain/banking/exceptions.py is the authority on why
+   *  the default is advisory. Shown, never enforced. */
+  blocking: boolean;
+  detail: Record<string, unknown>;
+};
+
+export type WorthALookRow = {
+  transaction_id: string;
+  transaction_date: string;
+  description: string | null;
+  payee_name: string | null;
+  debit_paise: number;
+  credit_paise: number;
+  matched_document_no: string | null;
+  exceptions: WorthALookException[];
+};
+
+export type WorthALook = {
+  from_date: string;
+  to_date: string;
+  bank_account_id: string | null;
+  reviewed_count: number;
+  flagged: WorthALookRow[];
+  /** What could NOT be asked, and why. A rule that did not run looks exactly
+   *  like one that passed, so these are rendered rather than swallowed. */
+  gaps: { code: string; message: string }[];
+  policy: Record<string, number>;
+};
+
 export type BankAccountTypeInfo = {
   value: string;
   ledger_account_type: string;
@@ -812,6 +846,23 @@ export type BankAccountTypeInfo = {
 /** GET /api/currencies/policy. `gates` is the half that matters: `active`
  *  alone could not say WHICH of three switches was down, which is why the
  *  feature was unusable (ACC-19). */
+/** One row of public.fx_rates. `rate` is a STRING: NUMERIC(18,8) is exact and
+ *  a JS number is not — read it, show it, never arithmetic on it here. */
+export type FxRate = {
+  id?: string;
+  base: string;
+  quote: string;
+  rate_date: string;
+  rate_type: string;
+  rate: string;
+  source: string;
+  created_at?: string;
+};
+
+export type FxRateList = {
+  base: string; quote: string; rate_type: string; rates: FxRate[];
+};
+
 export type CurrencyPolicy = {
   active: boolean;
   functional_currency: string;
@@ -2596,6 +2647,26 @@ export const api = {
     setEntitlement: (enabled: boolean) =>
       request<ApiResp<{ multi_currency_entitled: boolean }>>("/api/currencies/entitlement",
         { method: "PUT", body: JSON.stringify({ enabled }) }),
+    /** The four rate types the fx_rates CHECK admits, and what each is for.
+     *  Served rather than spelled here: a browser copy is a second vocabulary
+     *  one migration away from disagreeing with the database. */
+    rateTypes: () =>
+      request<ApiResp<{ rate_types: { code: string; meaning: string }[] }>>(
+        "/api/currencies/rate-types"),
+    /** The most recent rates for one (base, quote, rate_type), newest first. */
+    rates: (params: { base: string; quote: string; rate_type: string; limit?: string }) =>
+      request<ApiResp<FxRateList>>(
+        `/api/currencies/rates?${new URLSearchParams(params as Record<string, string>)}`),
+    /** Record one rate. Partner-only, and SHARED ACROSS THE PLATFORM — a rate
+     *  is a fact about the world, so the tenancy answer is on the write side.
+     *  The rate travels as a STRING: the column is NUMERIC(18,8) precisely so
+     *  it is exact, and a JSON number would put a float round trip in front of
+     *  that. `source` is not settable — it is the provider identifier
+     *  ManualRateProvider matches on and half the unique key. */
+    recordRate: (body: { base: string; quote: string; rate_date: string;
+                         rate: string; rate_type: string }) =>
+      request<ApiResp<FxRate & { replaced: boolean }>>("/api/currencies/rates",
+        { method: "PUT", body: JSON.stringify(body) }),
     setClientPolicy: (clientId: string, enabled: boolean) =>
       request<ApiResp<{ multi_currency_enabled: boolean }>>(
         `/api/currencies/policy?client_id=${encodeURIComponent(clientId)}`,
@@ -2604,6 +2675,16 @@ export const api = {
   // Banking (Phase B.0): all bank mutations go through the backend banking
   // service — the frontend never writes bank rows or journals to Supabase.
   banking: {
+    /** BANK — "Worth a look": the posted lines of ONE PERIOD carrying a reason
+     *  for a partner to look, worst first, with what could not be asked.
+     *  Read-only and advisory: nothing it returns blocks or reverses a posting.
+     *  `from_date` and `to_date` are required by the server and are not
+     *  defaulted here either — an optional period is how a report comes to read
+     *  the whole ledger. */
+    worthALook: (params: { client_id: string; from_date: string; to_date: string;
+                           bank_account_id?: string }) =>
+      request<ApiResp<WorthALook>>(
+        `/api/banking/worth-a-look?${new URLSearchParams(params as Record<string, string>)}`),
     // BANK-21 — the five kinds of account and what each one is. The TYPE
     // decides whether the ledger is an asset or a liability and, for a card,
     // which way up its balance reads, so the form must not hold its own list.
@@ -4707,6 +4788,36 @@ export const api = {
     roleMatrix: () =>
       request<ApiResp<{ roles: string[]; matrix: Record<string, Record<string, string[]>> }>>(
         "/api/identity/role-matrix"),
+
+    /** Every (resource, action) pair that exists, with the two flags a grid needs.
+     *
+     *  Served rather than spelled here for the reason roleMatrix is: the last
+     *  hardcoded copy of a backend vocabulary in this app drifted in BOTH
+     *  directions at once and nine of fifty mapped accounts were silently
+     *  discarded as a result. */
+    permissionVocabulary: () =>
+      request<ApiResp<{ permissions: Array<{
+        resource: string; action: string;
+        privilege_changing: boolean; unrevokable_for_partner: boolean;
+      }> }>>("/api/identity/permission-vocabulary"),
+
+    /** One member's access: the role template, the stored overrides, the effective answer.
+     *
+     *  All three, because showing only the last makes an inherited permission
+     *  and a deliberately granted one look identical — so a Partner could not
+     *  tell which of their firm's access was a decision. */
+    memberPermissions: (userId: string) =>
+      request<ApiResp<MemberAccessGrid>>(`/api/identity/users/${userId}/permissions`),
+
+    /** Change one member's access. Partner-only, audited, validated before any write.
+     *
+     *  `changes` is {"resource:action": true | false | null}. **null DELETES the
+     *  override**, which is not the same as false: absence means "whatever the
+     *  role says" and false means "refused however senior". A caller that could
+     *  only send the second could never hand a permission back to the role. */
+    setMemberPermissions: (userId: string, changes: Record<string, boolean | null>) =>
+      request<ApiResp<MemberAccessGrid>>(`/api/identity/users/${userId}/permissions`,
+        { method: "PUT", body: JSON.stringify({ changes }) }),
   },
   /** The Annual Information Statement — IT Act §285BB.
    *
@@ -4919,6 +5030,24 @@ export type ReconciliationRunResult = {
 export type LoginEvent = {
   id: string; user_id?: string; email?: string; event: string;
   ip?: string; user_agent?: string; created_at?: string;
+};
+
+/** One staff member's access, as the server resolves it (migration 403).
+ *
+ *  THREE maps, and they answer three different questions. `role_defaults` is
+ *  what the person's ROLE gives them — the template. `overrides` is what the
+ *  firm decided about this person specifically, keyed "resource:action".
+ *  `effective` is what rbac() will actually do, which is the first with the
+ *  second applied. A screen that rendered only `effective` could not show
+ *  which of the firm's access was a decision and which was inherited. */
+export type MemberAccessGrid = {
+  user_id: string;
+  full_name?: string | null;
+  email?: string | null;
+  role: string | null;
+  role_defaults: Record<string, string[]>;
+  overrides: Record<string, boolean>;
+  effective: Record<string, string[]>;
 };
 
 export type ApprovalRequest = {
