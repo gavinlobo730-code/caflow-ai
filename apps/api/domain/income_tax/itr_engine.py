@@ -504,6 +504,10 @@ class ITRComputeResult:
     #: `other_deductions_paise` could never carry.
     chapter_vi_a_lines: list = field(default_factory=list)
     chapter_vi_a_paise: int = 0
+    #: What each head of income came to, keyed by `itr_json.INCOME_HEAD_KEYS`
+    #: (IT-17). Empty for the entity branch, which has no heads — a firm or a
+    #: company is taxed on one figure and `assessee` reports how.
+    income_heads_paise: dict = field(default_factory=dict)
     deduction_hra_paise: int = 0
     deduction_24b_paise: int = 0
     standard_deduction_paise: int = 0
@@ -751,6 +755,31 @@ class ITREngine:
             + business_income
         )
         gti = ordinary_income + stcg + ltcg + ltcg_other
+
+        # WHAT EACH HEAD CAME TO, RECORDED (IT-17). These are the figures a CA
+        # keys into Part B-TI, and until now they existed only as locals here:
+        # the result carried gross total income and the tax, so a keying sheet
+        # had nothing to place head by head and the transcription was done by
+        # eye off the input boxes.
+        #
+        # They are the POST-set-off, POST-§16 figures — salary after the
+        # standard deduction, each capital head after the brought-forward loss
+        # it absorbed — because that is what the head line of the form asks
+        # for. Recording the inputs instead would put pre-relief figures on a
+        # sheet headed "income chargeable under the head".
+        result.income_heads_paise = {
+            "salary": salary_after_std_ded,
+            "house_property": house_property,
+            "business_income": business_income,
+            "capital_gains_short_term": stcg,
+            # Both §112A equity and §112 other long-term gains: the form's
+            # long-term TOTAL is one figure and the split by rate lives in
+            # Schedule CG, which this payload does not carry.
+            "capital_gains_long_term": ltcg + ltcg_other,
+            "capital_gains_total": stcg + ltcg + ltcg_other,
+            "other_sources": req.other_income_paise,
+            "brought_forward_set_off": result.brought_forward_set_off_paise,
+        }
 
         # 3. Chapter VI-A deductions (only for old regime for most)
         #

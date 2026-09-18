@@ -458,6 +458,17 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             "total_deductions_paise": result.total_deductions_paise,
             "taxable_income_paise": result.taxable_income_paise,
         },
+        # WHAT EACH HEAD CAME TO (IT-17). These are the figures a CA keys into
+        # Part B-TI, and they are NOT the request's own inputs: salary is after
+        # the §16(ia) standard deduction, business after the disallowances were
+        # added back and any presumptive substitution applied, each capital head
+        # after the brought-forward loss §72/§74 let it absorb. The form's head
+        # lines ask for income CHARGEABLE UNDER THE HEAD, so the inputs would be
+        # the wrong figure under the right label.
+        #
+        # Empty for a firm, an LLP or a company — the entity branch computes one
+        # figure and has no heads, which `assessee` already reports.
+        "income_heads": result.income_heads_paise,
         "deductions": {
             "s80c_paise": result.deduction_80c_paise,
             "s80ccd_paise": result.deduction_80ccd_paise,
