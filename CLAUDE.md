@@ -784,6 +784,41 @@ change. The code is the authority; keep this file in step with it.
   each is pinned exactly by
   `tests/test_which_supplies_must_carry_an_irn.py`. Prepare-only: it decides
   eligibility and reaches no portal.
+- **AND WHAT THE PORTAL WOULD ACCEPT IS A SECOND AUTHORITY, STRICTER THAN THE
+  ACT** (GST-32). Rule 48(4) says WHICH supplies need an IRN; the IRP is
+  software with its own published acceptance rules, and a document that
+  satisfies the Act and fails them comes back as an error code with nothing a
+  CA can act on. `domain/gst/irp_validations.py` is that second authority.
+  **THE ONE THAT PROVES IT IS THE DOCUMENT NUMBER AND IT IS LIVE.** Rule 46(b)
+  allows hyphen, slash, letters and numerals in any combination; the IRP's
+  `Document_Num` expression is `^([a-zA-Z1-9]{1}[a-zA-Z0-9/-]{0,15})$` and its
+  FIRST character class is not its second — a letter or a digit **1-9**, never
+  `0`, `-` or `/`. So `0001` is a lawful invoice number the portal refuses, and
+  `sales_numbering_service.suggest` hands exactly that to a firm with an empty
+  prefix and the FY switched off. **IT REPORTS AND NEVER REFUSES**:
+  `invoice_series` is untouched and still refuses against the Act at every
+  door, because a client below the threshold may number their invoices `0001`
+  for ever. **Asked only where the SUPPLY limb is in scope** — `irn_scope`'s
+  own short-circuit — since a B2C invoice never reaches an IRP; the turnover
+  limb is deliberately not a gate, because a client about to cross it wants
+  the series fixed before they do. Served as `irn_assessment.irp_findings` and
+  rendered by `CompliancePanel`, with **no browser mirror**: whether a portal
+  accepts a value is a fact about the portal, so `assessIrnScope`'s fallback
+  answers an empty list rather than inventing one.
+  **GST-32's REFUSAL OF THE PAYLOAD STANDS AND IS NARROWED, NOT REVERSED** — a
+  wrong field NAME fails visibly at the portal while a misremembered field
+  MEANING generates a real document with wrong figures — so this checks VALUES
+  in named fields and builds no JSON. Five things are NAMED as not held, each
+  with its own reason: the HSN master behind error 2176, `IsServc` against the
+  HSN class and the goods-only quantity rule (both need an `is_service` that
+  `client_sales_invoice_lines` does not have), the payload's own field
+  expressions, and the arithmetic the IRP recomputes.
+  **`VERIFIED` is True here and it is a claim about PROVENANCE** — every
+  expression is transcribed character for character from
+  `docs/compliance/sources/e-invoice/`, fetched by hand on 18-09-2026, and a
+  test asserts each against that file. Two rules that look like one another are
+  pinned APART: Sr. 10.3's transport document number admits a leading `0` and
+  caps no length, and harmonising it is the tempting mistake.
 - **A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE
   PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY** (SALES-13).
   `invoice_templates` and `email_templates` (migration 126) have been written
@@ -1992,6 +2027,10 @@ change. The code is the authority; keep this file in step with it.
   acceptable — Table 12 files what is recorded, so a junk code on a B2C line
   still comes back as 2176. An ABSENT code under a nil requirement is what the
   notification permits and is the one thing that stays silent.
+  The IRP's own limb is DIFFERENT and lives in `domain/gst/irp_validations`:
+  at least FOUR digits on every item of every document it registers, whatever
+  the notification's own requirement is. Two rules about one field, and neither
+  is the other.
   **`GAP_HSN_NOT_A_CODE` is its own kind**, not a long `GAP_HSN_DIGITS`,
   because a screen filtering on the kind would title an eight-character
   non-code "below requirement". Nothing refuses at the API DOOR, the `uqc`
