@@ -47,7 +47,7 @@ _Last updated: 2026-09-16_
 |---|---|---|---|---|
 | **T1** | Repair the safety net | 🔧 C | 4–6d | `DONE` — 7 of 7 |
 | **T2** | A demo firm that exists | 🔧 C | 2–3d | `DOING` — T2-0 done |
-| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a and T3-f done 18 Sep |
+| **T3** | Design system + 2 reference screens | 🔧 C | 11–13d | `DOING` — T3-a, T3-b and T3-f done 18 Sep |
 | **T4** | Token adoption | 🔧 C | 5–8d | `DOING` — colour done (10,146 → 116); type is next |
 | **T5** | Outputs — PDF + Excel | 🔧 C | 16–22d | `TODO` — unblocked 16 Sep |
 | **T6** | Navigation + the hub | 🔧 C | 11–17d | `BLOCKED` on T4 |
@@ -234,7 +234,7 @@ So T3 is replace-and-migrate, not define.
 | ID | item | size | DONE WHEN |
 |---|---|---|---|
 | T3-a | ✅ **18 Sep.** Type scale reaches 10px (`text-3xs`) and 11px (`text-2xs`), bare. `darkMode` deleted. Dead gone: 2 colour tokens, 3 box shadows, **17 `:root` variables**, 9 CSS classes. **10,146 → 116 raw hex classes.** Spacing/radius/elevation deliberately NOT invented — see below. | 2.5d | ✅ done |
-| T3-b | The 8 missing base primitives — Input, Select, Textarea, Label, Table shell, Alert, Tooltip, Pagination. There are 856 raw `<input>`, 300 raw `<select>`, 230 raw `<table>` with nothing to converge on. | 3d | Each exists, is documented, and the reference screens use them |
+| T3-b | ✅ **18 Sep.** FIVE built, not eight: `components/ui/field.tsx` (Input, Select, Textarea, Label, **Field** — the aria wiring, since `aria-describedby` appeared ONCE in the tree against 927 `<label>`) and `components/ui/callout.tsx` (Callout + GapList, four tones). **Table and Pagination already exist** as `DataTable` — the 242 raw `<table>` are adoption, not a missing primitive — and **Tooltip is deferred**: 292 sites use native `title=`, and a custom one is a behaviour decision for the reference screens. Both adopted on the screens that argued for them. | 3d | ✅ done |
 | T3-c | The 6 product-specific components | 3.5d | below |
 | T3-d | Reference screen 1 — **periodic Trial Balance** | 1.5d | Renders full-width; 9 Dr/Cr columns; owner approves |
 | T3-e | Reference screen 2 — **Banking Entries** | 1.5d | Density proven; its guard rewritten to name components, not class strings |
